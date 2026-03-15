@@ -115,6 +115,7 @@ import { ConsentsIcon } from './icons/CastingIcons';
 import type { Consent, ConsentType, Candidate, CastingProject, ConsentInvitationStatus } from '../models/casting';
 import { consentService } from '../services/consentService';
 import { Z_INDEX } from '../config/zIndex';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 // TikTok icon (not available in MUI)
 const TikTokIcon = () => (
@@ -126,6 +127,13 @@ const TikTokIcon = () => (
 // WCAG 2.2 compliant touch target size
 const TOUCH_TARGET_SIZE = 44;
 const CONSENT_DIALOG_ACCENT = '#b86bff';
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 interface ConsentContractDialogProps {
   open: boolean;
@@ -434,6 +442,14 @@ export function ConsentContractDialog({
 
   // Company info state (would be loaded from project settings)
   const [companyName, setCompanyName] = useState('');
+  const mentionCandidates = [
+    candidate?.name,
+    project?.name,
+    companyName,
+    'Produksjon',
+    'Juridisk',
+    'Samtykke',
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
 
   // Reset form when dialog opens/closes
@@ -2272,6 +2288,13 @@ return (
                         },
                         '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                       }}
+                    />
+                    <GlobalMentionHelper
+                      text={notes}
+                      localCandidates={mentionCandidates}
+                      onApplySuggestion={(name) => setNotes((prev) => applyMentionSuggestion(prev, name))}
+                      autoTagTitle="Auto-tagget i notater"
+                      suggestionTitle="Mener du?"
                     />
                   </AccordionDetails>
                 </Accordion>

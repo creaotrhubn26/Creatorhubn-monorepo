@@ -84,8 +84,20 @@ import {
 
 import { apiRequest } from '@/lib/queryClient';
 import settingsService, { getCurrentUserId } from '../../services/settingsService';
+import { castingService } from '../../services/castingService';
+import {
+  PRODUCER_DEMO_CLIENT_ADDRESS,
+  PRODUCER_DEMO_CLIENT_COMPANY,
+  PRODUCER_DEMO_CLIENT_EMAIL,
+  PRODUCER_DEMO_CLIENT_NAME,
+  PRODUCER_DEMO_COLLABORATOR_EMAIL,
+  PRODUCER_DEMO_COLLABORATOR_NAME,
+  PRODUCER_DEMO_PROJECT_DESCRIPTION,
+  PRODUCER_DEMO_PROJECT_NAME,
+} from '../../constants/producerDemo';
 import { useExternalData } from '@/services/ExternalDataService';
-import { ContactPicker } from './ContactPicker';
+import { useBrandingSettings } from '../../hooks/useBrandingSettings';
+import RoleRoomBrandMark from '../shared/RoleRoomBrandMark';
 
 // TROLL area configuration matching CastingPlannerPanel navigation colors/icons
 const TROLL_AREA_CONFIG: Record<string, { Icon: any; color: string; label: string }> = {
@@ -93,7 +105,7 @@ const TROLL_AREA_CONFIG: Record<string, { Icon: any; color: string; label: strin
   roles: { Icon: TheaterComedyIcon, color: '#f48fb1', label: 'Roller' },
   candidates: { Icon: RecentActorsIcon, color: '#10b981', label: 'Kandidater' },
   crew: { Icon: GroupsIcon, color: '#00d4ff', label: 'Team' },
-  locations: { Icon: LocationIcon, color: '#4caf50', label: 'Steder' },
+  locations: { Icon: LocationIcon, color: '#4caf50', label: 'Lokasjoner' },
   equipment: { Icon: PropIcon, color: '#9333ea', label: 'Utstyr' },
   production_days: { Icon: CalendarIcon, color: '#9c27b0', label: 'Prod.dager' },
   scenes: { Icon: ShotListIcon, color: '#e91e63', label: 'Scener' },
@@ -110,8 +122,7 @@ import ProjectCollaborators from './ProjectCollaborators';
 import SplitSheetEditor from '../split-sheets/SplitSheetEditor';
 import RelatedContractsSection from '../split-sheets/RelatedContractsSection';
 import ContractEditingInterface from '../split-sheets/ContractEditingInterface';
-import type { SplitSheet, SplitSheetContributor, ContributorRole, Contract } from '../split-sheets/types';
-import { ROLE_DISPLAY_NAMES } from '../split-sheets/types';
+import { ROLE_DISPLAY_NAMES, type SplitSheet, type SplitSheetContributor, type ContributorRole, type Contract } from '../split-sheets/types';
 import { useToast } from '../ToastStack';
 
 interface ProjectData {
@@ -120,6 +131,9 @@ interface ProjectData {
   clientName: string;
   clientEmail: string;
   clientPhone: string;
+  clientCompanyName?: string;
+  clientOrganizationNumber?: string;
+  clientCompanyAddress?: string;
   eventDate: string;
   location: string;
   projectType: string;
@@ -141,6 +155,7 @@ interface NewProjectCreationModalProps {
   initialData?: any;
   onProjectCreated?: (projectData: any) => void;
   isCastingPlanner?: boolean;
+  isContentProducerSession?: boolean;
   getTerm?: (key: string) => string;
   onClose?: () => void;
   onProjectIdChange?: (projectId: string | null) => void;
@@ -168,6 +183,7 @@ export default function NewProjectCreationModal({
   initialData,
   onProjectCreated,
   isCastingPlanner = false,
+  isContentProducerSession = false,
   getTerm,
   onClose,
   onProjectIdChange,
@@ -177,6 +193,7 @@ export default function NewProjectCreationModal({
   const dialogTitleId = useId();
   const dialogDescId = useId();
   const { getBRREGCompanyData, searchBRREGCompanies } = useExternalData();
+  const brandingSettings = useBrandingSettings();
   const toast = useToast();
   // Use React reference 
   const isReactReady = typeof React !== 'undefined' && !!React.version;
@@ -234,6 +251,11 @@ export default function NewProjectCreationModal({
   const [trollInitStatus, setTrollInitStatus] = useState<'idle' | 'loading' | 'complete' | 'error'>('idle');
   const [trollInitError, setTrollInitError] = useState<string | null>(null);
   const [trollInitAreas, setTrollInitAreas] = useState<Record<string, any>>({});
+
+  const demoProjectTitle = isContentProducerSession ? 'Bedriftsdemo for innholdsproduksjon' : 'TROLL Demo-prosjekt';
+  const demoProjectDescription = isContentProducerSession
+    ? 'Last et fiktivt bedriftsprosjekt med klient, manus, storyboard og godkjenningsflyt'
+    : 'Prøv demo-prosjektet for å se hvordan alt fungerer';
   
   // Generate project ID based on project name
   const generateProjectIdFromName = (projectName: string, timestamp?: number): string => {
@@ -286,6 +308,9 @@ export default function NewProjectCreationModal({
       clientName: '',
       clientEmail: '',
       clientPhone: '',
+      clientCompanyName: '',
+      clientOrganizationNumber: '',
+      clientCompanyAddress: '',
       eventDate: '',
       location: '',
       projectType: '',
@@ -318,6 +343,9 @@ export default function NewProjectCreationModal({
       clientName: initialData.clientName || '',
       clientEmail: initialData.clientEmail || '',
       clientPhone: initialData.clientPhone || '',
+      clientCompanyName: initialData.clientCompanyName || '',
+      clientOrganizationNumber: initialData.clientOrganizationNumber || '',
+      clientCompanyAddress: initialData.clientCompanyAddress || '',
       eventDate: initialData.eventDate || '',
       location: initialData.location || '',
       projectType: initialData.projectType || '',
@@ -488,6 +516,9 @@ export default function NewProjectCreationModal({
           clientName: project.clientName || '',
           clientEmail: project.clientEmail || '',
           clientPhone: project.clientPhone || '',
+          clientCompanyName: project.clientCompanyName || '',
+          clientOrganizationNumber: project.clientOrganizationNumber || '',
+          clientCompanyAddress: project.clientCompanyAddress || '',
           eventDate: project.eventDate || '',
           location: project.location || '',
           projectType: project.projectType || '',
@@ -533,6 +564,9 @@ export default function NewProjectCreationModal({
           clientName: data.clientName,
           clientEmail: data.clientEmail,
           clientPhone: data.clientPhone,
+          clientCompanyName: data.clientCompanyName || '',
+          clientOrganizationNumber: data.clientOrganizationNumber || '',
+          clientCompanyAddress: data.clientCompanyAddress || '',
           eventDate: data.eventDate,
           location: data.location,
           projectType: data.projectType,
@@ -617,7 +651,6 @@ export default function NewProjectCreationModal({
     }
   }, []);
 
-  const [selectedContact, setSelectedContact] = useState<any>(null);
   const [showProjectResponsibleInfo, setShowProjectResponsibleInfo] = useState(false);
   const [addCollaboratorDialogOpen, setAddCollaboratorDialogOpen] = useState(false);
   const [editingCollaborator, setEditingCollaborator] = useState<{ id: string; name: string; email: string; role: ContributorRole; availabilityStart?: string; availabilityEnd?: string } | null>(null);
@@ -637,6 +670,15 @@ export default function NewProjectCreationModal({
     organizationForm: string;
   }>>([]);
   const [companySearchLoading, setCompanySearchLoading] = useState(false);
+  const [clientBrregLoading, setClientBrregLoading] = useState(false);
+  const [clientBrregError, setClientBrregError] = useState<string | null>(null);
+  const [clientCompanySearchQuery, setClientCompanySearchQuery] = useState('');
+  const [clientCompanySearchOptions, setClientCompanySearchOptions] = useState<Array<{
+    organizationNumber: string;
+    name: string;
+    organizationForm: string;
+  }>>([]);
+  const [clientCompanySearchLoading, setClientCompanySearchLoading] = useState(false);
   // Get available roles based on profession (same as split sheet)
   const getAvailableRoles = (prof: string): ContributorRole[] => {
     switch(prof) {
@@ -743,6 +785,33 @@ export default function NewProjectCreationModal({
     if (cleaned.length <= 3) return cleaned;
     if (cleaned.length <= 6) return `${cleaned.slice(0, 3)} ${cleaned.slice(3)}`;
     return `${cleaned.slice(0, 3)} ${cleaned.slice(3, 6)} ${cleaned.slice(6, 9)}`;
+  };
+
+  const hasRequiredProjectBasics = useMemo(() => {
+    const hasName = Boolean(projectData.projectName?.trim());
+    if (!hasName) return false;
+    if (!isCastingPlanner) return true;
+    return (
+      Boolean(projectData.clientName?.trim()) &&
+      validateEmail(projectData.clientEmail || '') &&
+      validatePhone(projectData.clientPhone || '')
+    );
+  }, [isCastingPlanner, projectData.clientEmail, projectData.clientName, projectData.clientPhone, projectData.projectName]);
+
+  const resetToFreshProjectDraft = () => {
+    const freshData = mapInitialData();
+    setProjectData(freshData);
+    setActiveStep(0);
+    setClientNameError(false);
+    setClientEmailError(false);
+    setClientPhoneError(false);
+    setSelectedDraftKey(null);
+    setSelectedProjectId(null);
+    setSuccessMessage(null);
+    if (freshData.projectId && onProjectIdChange) {
+      onProjectIdChange(freshData.projectId);
+    }
+    toast.showInfo('Startet med nytt prosjektutkast.');
   };
 
   const handleOrgNumberSearch = async () => {
@@ -853,6 +922,128 @@ export default function NewProjectCreationModal({
       setBrregError(null);
     }
   };
+
+  const applyClientCompanyFromBrreg = useCallback((companyData: {
+    name?: string;
+    organizationNumber?: string;
+    businessAddress?: {
+      adresse?: string;
+      postnummer?: string;
+      poststed?: string;
+    };
+  }) => {
+    if (!companyData?.name) {
+      return;
+    }
+    const businessAddress = companyData.businessAddress;
+    const addressParts = [
+      businessAddress?.adresse || '',
+      businessAddress?.postnummer || '',
+      businessAddress?.poststed || '',
+    ].filter((part) => Boolean(part && part.trim()));
+    const fullAddress = addressParts.join(', ');
+    setProjectData((prev) => ({
+      ...prev,
+      clientCompanyName: companyData.name || prev.clientCompanyName || '',
+      clientOrganizationNumber: companyData.organizationNumber || prev.clientOrganizationNumber || '',
+      clientCompanyAddress: fullAddress || prev.clientCompanyAddress || '',
+    }));
+    setClientBrregError(null);
+  }, []);
+
+  const handleClientOrgNumberSearch = useCallback(async () => {
+    const cleaned = (projectData.clientOrganizationNumber || '').replace(/[\s-]/g, '');
+    if (!validateOrgNumber(cleaned)) {
+      setClientBrregError('Organisasjonsnummer må være 9 siffer');
+      return;
+    }
+
+    setClientBrregLoading(true);
+    try {
+      const companyData = await getBRREGCompanyData(cleaned);
+      if (companyData?.name) {
+        applyClientCompanyFromBrreg(companyData);
+      } else {
+        setClientBrregError('Kunne ikke hente bedriftsinformasjon');
+      }
+    } catch (error: unknown) {
+      console.error('Error fetching BRREG client company data:', error);
+      setClientBrregError('Kunne ikke hente bedriftsinformasjon fra Brønnøysundregistrene');
+    } finally {
+      setClientBrregLoading(false);
+    }
+  }, [applyClientCompanyFromBrreg, getBRREGCompanyData, projectData.clientOrganizationNumber]);
+
+  const handleClientOrgNumberChange = useCallback((value: string) => {
+    const cleaned = value.replace(/[^\d\s-]/g, '');
+    if (cleaned.replace(/[\s-]/g, '').length <= 9) {
+      setProjectData((prev) => ({
+        ...prev,
+        clientOrganizationNumber: formatOrgNumber(cleaned),
+      }));
+      setClientBrregError(null);
+    }
+  }, []);
+
+  const handleClientCompanySelect = useCallback(async (company: { organizationNumber: string; name: string } | null) => {
+    if (!company) return;
+    setProjectData((prev) => ({
+      ...prev,
+      clientCompanyName: company.name,
+      clientOrganizationNumber: formatOrgNumber(company.organizationNumber),
+    }));
+    setClientCompanySearchQuery('');
+    setClientCompanySearchOptions([]);
+    setClientBrregError(null);
+
+    try {
+      const details = await getBRREGCompanyData(company.organizationNumber);
+      applyClientCompanyFromBrreg(details);
+    } catch (_error) {
+      // Non-blocking: keep selected company name/orgnr even if details lookup fails
+    }
+  }, [applyClientCompanyFromBrreg, getBRREGCompanyData]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const searchClientCompanies = async () => {
+      if (!clientCompanySearchQuery || clientCompanySearchQuery.trim().length < 3) {
+        setClientCompanySearchOptions([]);
+        return;
+      }
+
+      setClientCompanySearchLoading(true);
+      try {
+        const results = await searchBRREGCompanies({
+          name: clientCompanySearchQuery.trim(),
+          limit: 10,
+        });
+        if (!controller.signal.aborted && results.companies) {
+          setClientCompanySearchOptions(results.companies.map((company) => ({
+            organizationNumber: company.organizationNumber,
+            name: company.name,
+            organizationForm: company.organizationForm,
+          })));
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error('Error searching BRREG client companies:', error);
+          setClientCompanySearchOptions([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setClientCompanySearchLoading(false);
+        }
+      }
+    };
+
+    const timeoutId = setTimeout(searchClientCompanies, 300);
+    return () => {
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
+  }, [clientCompanySearchQuery, searchBRREGCompanies]);
 
   const handleAddCollaborator = () => {
     if (!newCollaboratorEmail.trim()) {
@@ -1076,6 +1267,9 @@ export default function NewProjectCreationModal({
         clientName: projectData.clientName || '',
         clientEmail: projectData.clientEmail || '',
         clientPhone: projectData.clientPhone || '',
+        clientCompanyName: projectData.clientCompanyName || '',
+        clientOrganizationNumber: projectData.clientOrganizationNumber || '',
+        clientCompanyAddress: projectData.clientCompanyAddress || '',
         eventDate: projectData.eventDate || '',
         location: projectData.location || '',
         projectType: projectData.projectType || '',
@@ -1187,6 +1381,9 @@ export default function NewProjectCreationModal({
         clientName: projectData.clientName || '',
         clientEmail: projectData.clientEmail || '',
         clientPhone: projectData.clientPhone || '',
+        clientCompanyName: projectData.clientCompanyName || '',
+        clientOrganizationNumber: projectData.clientOrganizationNumber || '',
+        clientCompanyAddress: projectData.clientCompanyAddress || '',
         eventDate: projectData.eventDate || '',
         location: projectData.location || '',
         projectType: projectData.projectType || '',
@@ -1347,7 +1544,7 @@ export default function NewProjectCreationModal({
     }
   };
 
-  // TROLL Demo Handler - Load demo project data from database
+  // Demo Handler - role-aware (TROLL for production team, dedicated demo for content producer)
   const handleLoadTrollDemo = async () => {
     setLoadingTrollDemo(true);
     setTrollInitDialogOpen(true);
@@ -1355,6 +1552,52 @@ export default function NewProjectCreationModal({
     setTrollInitError(null);
     
     try {
+      if (isContentProducerSession) {
+        await castingService.initializeContentProducerDemoData();
+        const demoProjectId = castingService.getContentProducerDemoProjectId();
+        const demoProject = await castingService.getProject(demoProjectId);
+
+        if (!demoProject) {
+          throw new Error('Innholdsprodusent-demo ble ikke funnet i database');
+        }
+
+        const collaborators = (demoProject.crew || []).slice(0, 5).map((crewMember: any, idx: number) => ({
+          id: `collab-${idx}`,
+          name: String(crewMember.name || `Teammedlem ${idx + 1}`),
+          email: String(crewMember.email || `crew.${idx + 1}@demo.no`),
+          role: (crewMember.role || crewMember.position || 'crew') as ContributorRole,
+        }));
+
+        setProjectData((prev) => ({
+          ...prev,
+          projectId: demoProject.id,
+          projectName: String(demoProject.name || PRODUCER_DEMO_PROJECT_NAME),
+          projectType: String(demoProject.projectType || 'corporate-training'),
+          description: String(demoProject.description || PRODUCER_DEMO_PROJECT_DESCRIPTION),
+          clientName: String(demoProject.clientName || PRODUCER_DEMO_CLIENT_NAME),
+          clientEmail: String(demoProject.clientEmail || PRODUCER_DEMO_CLIENT_EMAIL),
+          clientCompanyName: String(demoProject.clientCompanyName || PRODUCER_DEMO_CLIENT_COMPANY),
+          clientOrganizationNumber: String(demoProject.clientOrganizationNumber || ''),
+          clientCompanyAddress: String(demoProject.clientCompanyAddress || PRODUCER_DEMO_CLIENT_ADDRESS),
+          location: String(demoProject.locations?.[0]?.name || demoProject.location || PRODUCER_DEMO_CLIENT_COMPANY),
+          eventDate: String(demoProject.startDate || prev.eventDate || ''),
+          enableSplitSheet: false,
+          collaborators: collaborators.length > 0
+            ? collaborators
+            : [{ id: 'collab-1', name: PRODUCER_DEMO_COLLABORATOR_NAME, email: PRODUCER_DEMO_COLLABORATOR_EMAIL, role: 'producer' as ContributorRole }],
+          splitSheetData: null,
+        }));
+
+        setTrollInitAreas({
+          project: { status: 'loaded', count: 1, items: [demoProject] },
+          crew: { status: 'loaded', count: demoProject.crew?.length || 0, items: demoProject.crew || [] },
+          locations: { status: 'loaded', count: demoProject.locations?.length || 0, items: demoProject.locations || [] },
+        });
+        setTrollInitStatus('complete');
+        toast.showSuccess('Bedriftsdemo for innholdsproduksjon lastet inn.');
+        return;
+      }
+
       // Call the comprehensive TROLL initialization endpoint
       const response = await fetch('/api/demo/troll/initialize-all', {
         method: 'POST',
@@ -1431,6 +1674,9 @@ export default function NewProjectCreationModal({
               description: 'Norsk eventyrfilm regissert av Roar Uthaug',
               clientName: 'Netflix / Nordisk Film',
               clientEmail: 'produksjon@troll-film.no',
+              clientCompanyName: 'Netflix / Nordisk Film',
+              clientOrganizationNumber: '999 888 777',
+              clientCompanyAddress: 'Filmveien 1, 0150 Oslo',
               location: String(data.areas.locations?.items?.[0]?.name || 'Dovre, Norge'),
               eventDate: '2026-01-20',
               enableSplitSheet: true,
@@ -1453,7 +1699,10 @@ export default function NewProjectCreationModal({
       console.error('Failed to load TROLL demo:', error);
       setTrollInitError(error instanceof Error ? error.message : 'Ukjent feil');
       setTrollInitStatus('error');
-      toast.showError('Kunne ikke laste TROLL demo: ' + (error instanceof Error ? error.message : 'Ukjent feil'));
+      toast.showError(
+        (isContentProducerSession ? 'Kunne ikke laste innholdsprodusent-demo: ' : 'Kunne ikke laste TROLL demo: ')
+          + (error instanceof Error ? error.message : 'Ukjent feil')
+      );
     } finally {
       setLoadingTrollDemo(false);
     }
@@ -1475,10 +1724,10 @@ export default function NewProjectCreationModal({
                 <MovieFilterIcon sx={{ color: '#ce93d8', fontSize: 28 }} />
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#ce93d8', fontWeight: 600 }}>
-                    TROLL Demo-prosjekt
+                    {demoProjectTitle}
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.8rem' }}>
-                    Prøv demo-prosjektet for å se hvordan alt fungerer
+                    {demoProjectDescription}
                   </Typography>
                 </Box>
               </Box>
@@ -1502,7 +1751,7 @@ export default function NewProjectCreationModal({
                   minWidth: 160,
                 }}
               >
-                {loadingTrollDemo ? 'Laster...' : trollInitStatus === 'complete' ? 'Lastet inn' : 'Last Demo'}
+                {loadingTrollDemo ? 'Laster...' : trollInitStatus === 'complete' ? 'Lastet inn' : 'Last demo'}
               </Button>
             </Box>
             
@@ -1657,7 +1906,7 @@ export default function NewProjectCreationModal({
                   Hva er prosjektansvarlig?
                 </Typography>
                 <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                  Prosjektansvarlig er personen som har hovedansvaret for casting-prosjektet. 
+                  Prosjektansvarlig er personen som har hovedansvaret for The Role Room-prosjektet. 
                   Dette er typisk produksjonsleder, casting director, eller produksjonssjef. 
                   Kontaktinformasjonen brukes for kommunikasjon og koordinering av prosjektet.
                 </Typography>
@@ -1666,24 +1915,10 @@ export default function NewProjectCreationModal({
           )}
           {isCastingPlanner && !showProjectResponsibleInfo && (
             <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2, fontSize: '0.875rem', fontStyle: 'italic' }}>
-              Angi hvem som er prosjektansvarlig for dette casting-prosjektet.
+              Angi hvem som er prosjektansvarlig for dette Role Room prosjektet.
             </Typography>
           )}
           <Stack spacing={2}>
-            <ContactPicker
-              selectedContact={selectedContact}
-              onContactSelect={(contact) => {
-                setSelectedContact(contact);
-                if (contact) {
-                  setProjectData((prev) => ({
-                    ...prev,
-                    clientName: contact.displayName || [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '',
-                    clientEmail: contact.email || '',
-                    clientPhone: contact.phone || '',
-                  }));
-                }
-              }}
-            />
             <TextField
               label={isCastingPlanner ? "Prosjektansvarlig navn *" : "Kontaktnavn"}
               fullWidth
@@ -1733,6 +1968,99 @@ export default function NewProjectCreationModal({
               required={isCastingPlanner}
               tabIndex={0}
             />
+            {isCastingPlanner && (
+              <>
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                  Klientbedrift (BRREG)
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'text.secondary', mt: -0.5 }}>
+                  Valgfritt: søk opp klientbedrift i Brønnøysundregistrene.
+                </Typography>
+                <Autocomplete
+                  fullWidth
+                  options={clientCompanySearchOptions}
+                  getOptionLabel={(option) => `${option.name} (${formatOrgNumber(option.organizationNumber)})`}
+                  inputValue={clientCompanySearchQuery}
+                  onInputChange={(_, newValue, reason) => {
+                    if (reason !== 'reset') {
+                      setClientCompanySearchQuery(newValue);
+                    }
+                  }}
+                  onChange={(_, newValue) => {
+                    void handleClientCompanySelect(newValue);
+                  }}
+                  loading={clientCompanySearchLoading}
+                  value={null}
+                  noOptionsText={clientCompanySearchQuery.length >= 3 ? 'Ingen bedrifter funnet' : 'Skriv minst 3 tegn for å søke'}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      fullWidth
+                      label="Søk klientbedrift"
+                      placeholder="Søk på bedriftsnavn"
+                    />
+                  )}
+                />
+                <TextField
+                  label="Organisasjonsnummer (klient)"
+                  fullWidth
+                  inputMode="numeric"
+                  value={projectData.clientOrganizationNumber || ''}
+                  onChange={(e) => handleClientOrgNumberChange(e.target.value)}
+                  placeholder="123 456 789"
+                  error={!!clientBrregError}
+                  helperText={clientBrregError || 'Fylles automatisk ved BRREG-søk'}
+                  slotProps={{
+                    htmlInput: {
+                      'aria-label': 'Organisasjonsnummer for klientbedrift',
+                      maxLength: 11,
+                      pattern: '[0-9 ]*',
+                    },
+                  }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <CompanyIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                      </InputAdornment>
+                    ),
+                    endAdornment: clientBrregLoading ? (
+                      <InputAdornment position="end">
+                        <CircularProgress size={20} sx={{ color: '#00d4ff' }} />
+                      </InputAdornment>
+                    ) : (projectData.clientOrganizationNumber || '').replace(/[\s-]/g, '').length === 9 ? (
+                      <InputAdornment position="end">
+                        <IconButton
+                          onClick={() => {
+                            void handleClientOrgNumberSearch();
+                          }}
+                          edge="end"
+                          size="small"
+                          aria-label="Søk opp klientbedrift"
+                        >
+                          <SearchIcon />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : null,
+                  }}
+                />
+                <TextField
+                  label="Klientbedrift"
+                  fullWidth
+                  value={projectData.clientCompanyName || ''}
+                  onChange={(e) => {
+                    setProjectData((prev) => ({ ...prev, clientCompanyName: e.target.value }));
+                    if (clientBrregError) setClientBrregError(null);
+                  }}
+                />
+                <TextField
+                  label="Klientadresse"
+                  fullWidth
+                  value={projectData.clientCompanyAddress || ''}
+                  onChange={(e) => setProjectData((prev) => ({ ...prev, clientCompanyAddress: e.target.value }))}
+                />
+              </>
+            )}
           </Stack>
         </CardContent>
       </Card>
@@ -2080,6 +2408,97 @@ export default function NewProjectCreationModal({
           </Box>
         )}
 
+        {isCastingPlanner && (
+          <Card
+            sx={{
+              mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 },
+              borderRadius: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 },
+              bgcolor: 'rgba(125,211,252,0.05)',
+              border: '1px solid rgba(125,211,252,0.2)',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.2)',
+            }}
+          >
+            <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
+              <Stack spacing={2}>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={{ xs: 1.5, sm: 2.25 }}
+                  alignItems={{ xs: 'flex-start', sm: 'center' }}
+                  justifyContent="space-between"
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                    <RoleRoomBrandMark appearance="header" showLabel={false} sx={{ width: { xs: 92, sm: 120 } }} />
+                    <Box>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '0.95rem', sm: '1rem' } }}>
+                        {brandingSettings.identity.appName || 'The Role Room'}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: { xs: '0.78rem', sm: '0.82rem' } }}>
+                        {brandingSettings.identity.tagline || 'Casting. Roles. Together.'}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                    <Chip size="small" label="1. Grunndata" sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }} />
+                    <Chip size="small" label="2. Team & Split Sheet" sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
+                    <Chip size="small" label="3. Oppsummering" sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff' }} />
+                  </Stack>
+                </Stack>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={1.2}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'stretch', sm: 'center' }}
+                >
+                  <Typography sx={{ color: 'rgba(255,255,255,0.76)', fontSize: { xs: '0.8rem', sm: '0.86rem' } }}>
+                    Fyll ut grunnfeltene først. Deretter kan du hoppe direkte til siste steg for gjennomgang.
+                  </Typography>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ minWidth: { sm: 'max-content' } }}>
+                    {!initialData?.id && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={resetToFreshProjectDraft}
+                        sx={{
+                          textTransform: 'none',
+                          borderColor: 'rgba(255,255,255,0.25)',
+                          color: 'rgba(255,255,255,0.9)',
+                          '&:hover': {
+                            borderColor: 'rgba(255,255,255,0.45)',
+                            bgcolor: 'rgba(255,255,255,0.06)',
+                          },
+                        }}
+                      >
+                        Start på nytt
+                      </Button>
+                    )}
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => {
+                        if (!hasRequiredProjectBasics) {
+                          setActiveStep(0);
+                          toast.showWarning('Fyll ut prosjektnavn og ansvarlig kontakt før du går til oppsummering.');
+                          return;
+                        }
+                        setActiveStep(STEPS.length - 1);
+                      }}
+                      sx={{
+                        textTransform: 'none',
+                        bgcolor: '#00d4ff',
+                        color: '#001018',
+                        fontWeight: 700,
+                        '&:hover': { bgcolor: '#22d3ee' },
+                      }}
+                    >
+                      Fortsett til oppsummering
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Draft and Project Selectors */}
         <Card sx={{ 
           mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, 
@@ -2098,6 +2517,9 @@ export default function NewProjectCreationModal({
             }}>
               <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
               Last inn utkast eller prosjekt
+            </Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: { xs: '0.8rem', sm: '0.86rem' }, mt: -2.25, mb: 2.25 }}>
+              Velg et tidligere utkast for å fortsette der du slapp, eller åpne et eksisterende prosjekt for redigering.
             </Typography>
             <Stack spacing={{ xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }} direction={{ xs: 'column', sm: 'row' }}>
               {/* Draft Selector */}
@@ -2457,7 +2879,7 @@ export default function NewProjectCreationModal({
                 py: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 },
               }}
             >
-              Opprett Prosjekt
+              {initialData?.id ? 'Oppdater prosjekt' : 'Opprett prosjekt'}
             </Button>
           </Box>
         )}
@@ -3025,6 +3447,7 @@ export default function NewProjectCreationModal({
         maxWidth="md"
         fullWidth
         fullScreen={isMobile}
+        container={() => document.body}
         TransitionComponent={Grow}
         TransitionProps={{
           timeout: { enter: 225, exit: 150 },
@@ -3036,10 +3459,18 @@ export default function NewProjectCreationModal({
             sx: {
               bgcolor: '#1c2128',
               color: '#fff',
+              zIndex: 100021,
               maxHeight: { xs: '100%', sm: '90vh' },
               m: { xs: 0, sm: 2, md: 3 },
               borderRadius: { xs: 0, sm: 2 },
             },
+          },
+        }}
+        sx={{
+          zIndex: 100020,
+          '& .MuiBackdrop-root': {
+            zIndex: 100019,
+            bgcolor: 'rgba(0,0,0,0.8)',
           },
         }}
       >
@@ -3155,6 +3586,37 @@ export default function NewProjectCreationModal({
                       {projectData.clientPhone || '-'}
                     </Typography>
                   </Box>
+                  {(projectData.clientCompanyName || projectData.clientOrganizationNumber || projectData.clientCompanyAddress) && (
+                    <>
+                      <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+                      <Box>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                          Klientbedrift
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
+                          {projectData.clientCompanyName || '-'}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                          Organisasjonsnummer
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
+                          {projectData.clientOrganizationNumber || '-'}
+                        </Typography>
+                      </Box>
+                      {projectData.clientCompanyAddress && (
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                            Bedriftsadresse
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
+                            {projectData.clientCompanyAddress}
+                          </Typography>
+                        </Box>
+                      )}
+                    </>
+                  )}
                   {projectData.location && (
                     <Box>
                       <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
@@ -3448,7 +3910,7 @@ export default function NewProjectCreationModal({
               },
             }}
           >
-            {loading ? 'Oppretter...' : 'Bekreft og opprett'}
+            {loading ? (initialData?.id ? 'Oppdaterer...' : 'Oppretter...') : (initialData?.id ? 'Bekreft og oppdater' : 'Bekreft og opprett')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -3562,11 +4024,11 @@ export default function NewProjectCreationModal({
 
       {/* Success Snackbar */}
 
-      {/* TROLL Init Status Dialog */}
+      {/* Demo Init Status Dialog */}
       <Dialog open={trollInitDialogOpen} onClose={() => setTrollInitDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
           <SvgIcon sx={{ color: '#9c27b0' }}><InterpreterModeIcon /></SvgIcon>
-          TROLL Initialisering
+          {isContentProducerSession ? 'Innholdsprodusent-initialisering' : 'TROLL Initialisering'}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={1.5}>

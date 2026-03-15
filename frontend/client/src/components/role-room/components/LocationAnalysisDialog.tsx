@@ -64,6 +64,7 @@ import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { Location } from '../models/casting';
 import { externalDataService } from '@/services/ExternalDataService';
 import { LocationAnalysisGuide } from './production/LocationAnalysisGuide';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface LocationAnalysisDialogProps {
   open: boolean;
@@ -217,6 +218,13 @@ const splitListInput = (value: string): string[] =>
     .split(/\n|,/)
     .map((token) => token.trim())
     .filter(Boolean);
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 const createManualDraft = (
   analysis: Location['propertyAnalysis'],
@@ -890,6 +898,19 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
     () => (location ? buildPermitContacts(location, operationFlags, municipalityName) : []),
     [location, operationFlags, municipalityName]
   );
+
+  const mentionCandidates = useMemo(() => {
+    const pool = new Set<string>();
+    if (typeof location?.name === 'string' && location.name.trim()) pool.add(location.name.trim());
+    if (typeof municipalityName === 'string' && municipalityName.trim()) pool.add(municipalityName.trim());
+    permitContacts.forEach((contact) => {
+      if (typeof contact.authority === 'string' && contact.authority.trim()) pool.add(contact.authority.trim());
+      if (typeof contact.unit === 'string' && contact.unit.trim()) pool.add(contact.unit.trim());
+      if (typeof contact.reason === 'string' && contact.reason.trim()) pool.add(contact.reason.trim());
+      if (typeof contact.contactHint === 'string' && contact.contactHint.trim()) pool.add(contact.contactHint.trim());
+    });
+    return Array.from(pool);
+  }, [location?.name, municipalityName, permitContacts]);
 
   const permitTimeline = useMemo<PermitTimelineItem[]>(() => {
     if (!plannedShootDate || permitContacts.length === 0) return [];
@@ -1780,6 +1801,22 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
                       }}
                     />
+                    <GlobalMentionHelper
+                      text={manualDraft.manualNotes}
+                      localCandidates={mentionCandidates}
+                      onApplySuggestion={(name) =>
+                        setManualDraft((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                manualNotes: applyMentionSuggestion(prev.manualNotes, name),
+                              }
+                            : prev
+                        )
+                      }
+                      autoTagTitle="Auto-tagget i notater"
+                      suggestionTitle="Mener du?"
+                    />
 
                     <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
                       <Button
@@ -2125,6 +2162,18 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                     },
                                     '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
                                   }}
+                                />
+                                <GlobalMentionHelper
+                                  text={permitNotes[contact.id] || ''}
+                                  localCandidates={mentionCandidates}
+                                  onApplySuggestion={(name) =>
+                                    handlePermitNoteChange(
+                                      contact.id,
+                                      applyMentionSuggestion(permitNotes[contact.id], name)
+                                    )
+                                  }
+                                  autoTagTitle="Auto-tagget i notat"
+                                  suggestionTitle="Mener du?"
                                 />
                               </Box>
 
@@ -2773,10 +2822,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           </Box>
                           <Box>
                             <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                              Parkeringssteder
+                              Parkeringslokasjoner
                             </Typography>
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
-                              {analysis.accessAnalysis.parkingSpots.length} parkeringssted{analysis.accessAnalysis.parkingSpots.length !== 1 ? 'er' : ''} i nærheten
+                              {analysis.accessAnalysis.parkingSpots.length} parkeringslokasjon{analysis.accessAnalysis.parkingSpots.length !== 1 ? 'er' : ''} i nærheten
                             </Typography>
                           </Box>
                         </Box>

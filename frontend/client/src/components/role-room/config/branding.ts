@@ -1315,18 +1315,24 @@ export type BrandingSettings = {
   tokens: BrandingTokens;
 } & BrandingIdentity;
 
+export const ROLE_ROOM_BRAND_ASSETS = {
+  mark: '/role-room-assets/TheRoleRoom_Logo.webp',
+  appLogo: '/role-room-assets/TheRoleRoom_App_Logo.webp',
+  wordmark: '/role-room-assets/TheRoleRoom_Logo_Tagline.webp',
+} as const;
+
 const DEFAULT_IDENTITY: BrandingIdentity = {
   appName: 'The Role Room',
   tagline: 'Casting. Roles. Together',
   domain: 'theroleroom.com',
   supportEmail: 'support@theroleroom.com',
   docsUrl: 'https://docs.theroleroom.com',
-  logoUrl: '/TheRoleRoom_Logo_Tagline.png',
-  iconUrl: '/TheRoleRoom_Logo_Tagline.png',
-  faviconUrl: '/TheRoleRoom_Logo_Tagline.png',
-  emailLogoUrl: '/TheRoleRoom_Logo_Tagline.png',
-  landingHeroImageUrl: '/TheRoleRoom_Logo_Tagline.png',
-  watermarkUrl: '/TheRoleRoom_Logo_Tagline.png',
+  logoUrl: ROLE_ROOM_BRAND_ASSETS.wordmark,
+  iconUrl: ROLE_ROOM_BRAND_ASSETS.mark,
+  faviconUrl: ROLE_ROOM_BRAND_ASSETS.mark,
+  emailLogoUrl: ROLE_ROOM_BRAND_ASSETS.wordmark,
+  landingHeroImageUrl: ROLE_ROOM_BRAND_ASSETS.wordmark,
+  watermarkUrl: ROLE_ROOM_BRAND_ASSETS.wordmark,
 };
 
 const DEFAULT_COLORS: BrandingColors = {
@@ -1374,7 +1380,7 @@ const DEFAULT_TOKENS: BrandingTokens = {
     candidates: 'Kandidater',
     auditions: 'Auditions',
     team: 'Team',
-    locations: 'Steder',
+    locations: 'Lokasjoner',
     equipment: 'Utstyr',
     schedule: 'Kalender',
     shotList: 'Shot List',
@@ -1387,7 +1393,7 @@ const DEFAULT_TOKENS: BrandingTokens = {
     overviewDescription: 'Opprett nytt casting prosjekt',
     newProjectTitle: 'Nytt prosjekt',
     teamDescription: 'Administrer crew og teammedlemmer',
-    locationsDescription: 'Administrer lokasjoner og steder',
+    locationsDescription: 'Administrer lokasjoner',
     equipmentDescription: 'Administrer rekvisitter og utstyr',
     scheduleDescription: 'Administrer kalender og timeplan',
     scheduleProductionLabel: 'Produksjonsplan',
@@ -1549,7 +1555,7 @@ const DEFAULT_TOKENS: BrandingTokens = {
     closeLabel: 'Lukk',
     projectIdLabel: 'Prosjekt-ID',
     editProjectTitle: 'Rediger Prosjekt',
-    newCastingProjectTitle: 'Nytt Casting Prosjekt',
+    newCastingProjectTitle: 'Nytt Role Room prosjekt',
     newProjectPrefix: 'Nytt',
     sceneFallbackPrefix: 'Scene',
     professionPhotographerName: 'Fotograf',
@@ -2607,8 +2613,8 @@ const DEFAULT_TOKENS: BrandingTokens = {
     productionExitFullscreen: 'Avslutt fullskjerm',
     productionEnterFullscreen: 'Fullskjerm',
     productionCancelLabel: 'Avbryt',
-    storyArcStudio: 'Story Arc Studio',
-    storyArcTagline: 'Planlegg og skriv din historie',
+    storyArcStudio: 'Role Room Studio',
+    storyArcTagline: 'Role Room pre-produksjon, manusflyt og shot list',
     storyArcLogicTitle: 'Story Logic',
     storyArcLogicSubtitle: 'Story Arc',
     storyLogicChip: 'Strukturer din historie',
@@ -2632,6 +2638,27 @@ export const DEFAULT_BRANDING_SETTINGS: BrandingSettings = {
 
 const API_BASE = '/api/branding';
 
+const canonicalizeRoleRoomIdentityAsset = (
+  value: string | undefined,
+  target: 'logo' | 'icon'
+): string | undefined => {
+  if (!value) return value;
+  const normalized = value.trim();
+  if (!normalized) return normalized;
+
+  const lower = normalized.toLowerCase();
+
+  if (lower.includes('theroleroom_logo_tagline') || lower.includes('theroleroom_and_tagline')) {
+    return ROLE_ROOM_BRAND_ASSETS.wordmark;
+  }
+
+  if (lower.includes('theroleroom_app_logo') || lower.includes('theroleroom_logo')) {
+    return target === 'icon' ? ROLE_ROOM_BRAND_ASSETS.mark : ROLE_ROOM_BRAND_ASSETS.wordmark;
+  }
+
+  return normalized;
+};
+
 const normalizeSettings = (settings?: Partial<BrandingSettings>): BrandingSettings => {
   const legacyIdentityOverrides: Partial<BrandingIdentity> = {
     ...(settings?.appName ? { appName: settings.appName } : {}),
@@ -2653,10 +2680,21 @@ const normalizeSettings = (settings?: Partial<BrandingSettings>): BrandingSettin
     ...legacyIdentityOverrides,
   };
 
+  const normalizedIdentity: BrandingIdentity = {
+    ...identity,
+    logoUrl: canonicalizeRoleRoomIdentityAsset(identity.logoUrl, 'logo') ?? DEFAULT_IDENTITY.logoUrl,
+    iconUrl: canonicalizeRoleRoomIdentityAsset(identity.iconUrl, 'icon') ?? DEFAULT_IDENTITY.iconUrl,
+    faviconUrl: canonicalizeRoleRoomIdentityAsset(identity.faviconUrl, 'icon') ?? DEFAULT_IDENTITY.faviconUrl,
+    emailLogoUrl: canonicalizeRoleRoomIdentityAsset(identity.emailLogoUrl, 'logo') ?? DEFAULT_IDENTITY.emailLogoUrl,
+    landingHeroImageUrl:
+      canonicalizeRoleRoomIdentityAsset(identity.landingHeroImageUrl, 'logo') ?? DEFAULT_IDENTITY.landingHeroImageUrl,
+    watermarkUrl: canonicalizeRoleRoomIdentityAsset(identity.watermarkUrl, 'logo') ?? DEFAULT_IDENTITY.watermarkUrl,
+  };
+
   const merged: BrandingSettings = {
     ...DEFAULT_BRANDING_SETTINGS,
     ...(settings ?? {}),
-    identity,
+    identity: normalizedIdentity,
     colors: {
       ...DEFAULT_COLORS,
       ...(settings?.colors ?? {}),
@@ -2681,7 +2719,7 @@ const normalizeSettings = (settings?: Partial<BrandingSettings>): BrandingSettin
 
   return {
     ...merged,
-    ...identity,
+    ...normalizedIdentity,
   };
 };
 

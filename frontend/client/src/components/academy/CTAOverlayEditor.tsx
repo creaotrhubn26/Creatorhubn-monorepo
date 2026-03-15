@@ -33,6 +33,7 @@ import {
   Slider,
   Divider,
 } from '@mui/material';
+import { keyframes } from '@mui/system';
 import {
   Add,
   Edit,
@@ -90,6 +91,101 @@ const WCAG_GUIDELINES = {
   },
 };
 
+type CTAType =
+  | 'subscribe'
+  | 'download'
+  | 'external'
+  | 'email'
+  | 'phone'
+  | 'quiz'
+  | 'assignment'
+  | 'custom';
+
+interface CTAActionConfig {
+  url?: string;
+  email?: string;
+  phone?: string;
+  fileId?: string;
+  assignmentId?: string;
+  quizId?: string;
+  customAction?: string;
+}
+
+type CTAAnimationType =
+  | 'fade-in'
+  | 'slide-up'
+  | 'slide-down'
+  | 'slide-left'
+  | 'slide-right'
+  | 'zoom-in'
+  | 'bounce';
+
+type CTAAnimationEasing = 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'linear';
+
+interface CTAAnimationConfig {
+  type: CTAAnimationType;
+  duration: number; // seconds
+  delay: number; // seconds
+  enabled?: boolean;
+  easing?: CTAAnimationEasing;
+  iterations?: number;
+}
+
+interface SecondaryCTAConfig {
+  enabled: boolean;
+  type: CTAType;
+  buttonText: string;
+  action: CTAActionConfig;
+  variant: 'contained' | 'outlined' | 'text';
+}
+
+const ctaAnimationKeyframes: Record<CTAAnimationType, ReturnType<typeof keyframes>> = {
+  'fade-in': keyframes`
+    from { opacity: 0; }
+    to { opacity: 1; }
+  `,
+  'slide-up': keyframes`
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+  `,
+  'slide-down': keyframes`
+    from { opacity: 0; transform: translateY(-18px); }
+    to { opacity: 1; transform: translateY(0); }
+  `,
+  'slide-left': keyframes`
+    from { opacity: 0; transform: translateX(18px); }
+    to { opacity: 1; transform: translateX(0); }
+  `,
+  'slide-right': keyframes`
+    from { opacity: 0; transform: translateX(-18px); }
+    to { opacity: 1; transform: translateX(0); }
+  `,
+  'zoom-in': keyframes`
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+  `,
+  bounce: keyframes`
+    0%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-8px); }
+    60% { transform: translateY(0); }
+    80% { transform: translateY(-4px); }
+  `,
+};
+
+const getAnimationRuntimeSeconds = (animation: CTAAnimationConfig): number => {
+  const enabled = animation.enabled ?? true;
+  if (!enabled) {
+    return 0;
+  }
+
+  const duration = Number.isFinite(animation.duration) ? Math.max(animation.duration, 0) : 0;
+  const delay = Number.isFinite(animation.delay) ? Math.max(animation.delay, 0) : 0;
+  const iterationsRaw = Number.isFinite(animation.iterations) ? Number(animation.iterations) : 1;
+  const iterations = Math.max(1, Math.min(Math.round(iterationsRaw), 10));
+
+  return delay + duration * iterations;
+};
+
 interface SafeGuide {
   enabled: boolean;
   type: 'title-safe' | 'action-safe' | 'custom';
@@ -108,27 +204,12 @@ interface SafeGuide {
 interface CTAOverlay {
   id: string;
   name: string;
-  type:
-    | 'subscribe'
-    | 'download'
-    | 'external'
-    | 'email'
-    | 'phone'
-    | 'quiz'
-    | 'assignment'
-    | 'custom';
+  type: CTAType;
   title: string;
   description?: string;
   buttonText: string;
-  action: {
-    url?: string;
-    email?: string;
-    phone?: string;
-    fileId?: string;
-    assignmentId?: string;
-    quizId?: string;
-    customAction?: string;
-  };
+  action: CTAActionConfig;
+  secondaryCta?: SecondaryCTAConfig;
   timing: {
     startTime: number; // seconds
     endTime: number; // seconds
@@ -178,18 +259,7 @@ interface CTAOverlay {
       offsetY: number;
     };
   };
-  animation: {
-    type:
-      | 'fade-in'
-      | 'slide-up'
-      | 'slide-down'
-      | 'slide-left'
-      | 'slide-right'
-      | 'zoom-in'
-      | 'bounce';
-    duration: number; // seconds
-    delay: number; // seconds
-  };
+  animation: CTAAnimationConfig;
   isVisible: boolean;
   isPreview: boolean;
   createdAt: string;
@@ -270,6 +340,9 @@ const SAMPLE_CTA_OVERLAYS: CTAOverlay[] = [
       type: 'slide-up',
       duration: 1,
       delay: 0,
+      enabled: true,
+      easing: 'ease-out',
+      iterations: 1,
     },
     isVisible: true,
     isPreview: false,
@@ -336,6 +409,9 @@ const SAMPLE_CTA_OVERLAYS: CTAOverlay[] = [
       type: 'fade-in',
       duration: 0.5,
       delay: 0,
+      enabled: true,
+      easing: 'ease-in-out',
+      iterations: 1,
     },
     isVisible: true,
     isPreview: false,
@@ -408,6 +484,9 @@ const SAMPLE_CTA_OVERLAYS: CTAOverlay[] = [
       type: 'zoom-in',
       duration: 0.8,
       delay: 0.2,
+      enabled: true,
+      easing: 'ease-out',
+      iterations: 1,
     },
     isVisible: true,
     isPreview: false,
@@ -435,8 +514,10 @@ function CTAOverlayEditor({
   const [editingCTA, setEditingCTA] = useState<CTAOverlay | null>(null);
   const [previewCTA, setPreviewCTA] = useState<CTAOverlay | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState(' ');
+  const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'course' | 'lesson'>('all');
+  const [showPreviewPanel, setShowPreviewPanel] = useState(showPreview);
+  const [previewScale, setPreviewScale] = useState(100);
 
   const { analytics, performance, debugging, lifecycle, health } = useEnhancedMasterIntegration();
 
@@ -547,7 +628,7 @@ function CTAOverlayEditor({
       const r = (rgb >> 16) & 0xff;
       const g = (rgb >> 8) & 0xff;
       const b = (rgb >> 0) & 0xff;
-      const [rs, gs, bs] = [rgb].map((c) => {
+      const [rs, gs, bs] = [r, g, b].map((c) => {
         c = c / 255;
         return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
       });
@@ -726,12 +807,23 @@ function CTAOverlayEditor({
                   ? 'Action Safe'
                   : 'Custom'}
             </Box>
-            <Box sx={{ ...labelStyle, top: '10px', right: '10px' }}>CTA Safe Area</Box>
+            <Box sx={{ ...labelStyle, top: '10px', right: '10px' }}>
+              CTA Safe Area ({Math.round(containerWidth)}x{Math.round(containerHeight)})
+            </Box>
           </>
         )}
       </>
     );
   };
+
+  const tabDefinitions = [
+    { label: 'All', icon: <VideoLibrary fontSize="small" /> },
+    { label: 'Conversion', icon: <ShoppingCart fontSize="small" /> },
+    { label: 'Outreach', icon: <Share fontSize="small" /> },
+    { label: 'Learning', icon: <Description fontSize="small" /> },
+    { label: 'Media', icon: <Image fontSize="small" /> },
+    { label: 'Audio', icon: <AudioFile fontSize="small" /> },
+  ];
 
   // Filter CTA overlays based on search and type
   const filteredCTAOverlays = ctaOverlays.filter((cta) => {
@@ -743,7 +835,14 @@ function CTAOverlayEditor({
       filterType === 'all' ||
       (filterType === 'course' && cta.courseId && !cta.lessonId) ||
       (filterType === 'lesson' && cta.lessonId);
-    return matchesSearch && matchesType;
+    const matchesTab =
+      activeTab === 0 ||
+      (activeTab === 1 && ['subscribe', 'download', 'external', 'custom'].includes(cta.type)) ||
+      (activeTab === 2 && ['email', 'phone'].includes(cta.type)) ||
+      (activeTab === 3 && ['quiz', 'assignment'].includes(cta.type)) ||
+      (activeTab === 4 && (cta.type === 'download' || cta.type === 'external')) ||
+      (activeTab === 5 && (cta.type === 'custom' || Boolean(cta.action.customAction)));
+    return matchesSearch && matchesType && matchesTab;
   });
 
   // Create new CTA overlay
@@ -813,6 +912,9 @@ function CTAOverlayEditor({
         type: 'fade-in',
         duration: 1,
         delay: 0,
+        enabled: true,
+        easing: 'ease-in-out',
+        iterations: 1,
       },
       isVisible: true,
       isPreview: false,
@@ -960,8 +1062,7 @@ function CTAOverlayEditor({
             timestamp: Date.now(),
           });
         },
-        (cta.timing.endTime - cta.timing.startTime + cta.animation.delay + cta.animation.duration) *
-          1000,
+        (cta.timing.endTime - cta.timing.startTime + getAnimationRuntimeSeconds(cta.animation)) * 1000,
       );
     },
     [analytics, performance, debugging],
@@ -1018,7 +1119,16 @@ function CTAOverlayEditor({
     containerWidth: number = 800,
     containerHeight: number = 450,
   ) => {
-    const { position, style, title, description, buttonText, animation, accessibility } = cta;
+    const {
+      position,
+      style,
+      title,
+      description,
+      buttonText,
+      animation,
+      accessibility,
+      secondaryCta,
+    } = cta;
 
     const positionStyles = {
       'top-left': {
@@ -1108,6 +1218,16 @@ function CTAOverlayEditor({
         transform: 'translate(0, 0)',
       },
     };
+    const resolvedPositionStyles = cta.safeGuides.enabled ? adjustedPositionStyles : positionStyles;
+    const shouldAnimate =
+      isLive && (animation.enabled ?? true) && !accessibility.reducedMotion && animation.duration > 0;
+    const animationIterations = Math.max(
+      1,
+      Math.min(Math.round(animation.iterations ?? 1), 10),
+    );
+    const hasSecondaryCta = Boolean(
+      secondaryCta?.enabled && secondaryCta.buttonText && secondaryCta.buttonText.trim().length > 0,
+    );
 
     return (
       <>
@@ -1119,7 +1239,17 @@ function CTAOverlayEditor({
           ref={previewRef}
           sx={{
             position: 'absolute',
-            ...adjustedPositionStyles[position.anchor],
+            ...resolvedPositionStyles[position.anchor],
+            maxWidth: '300px',
+            zIndex: 100,
+          }}
+          role="button"
+          tabIndex={accessibility.keyboardNavigation ? 0 : -1}
+          aria-label={accessibility.ariaLabel}
+          aria-describedby={description ? `${cta.id}-description` : undefined}
+        >
+          <Box
+            sx={{
             backgroundColor: style.backgroundColor,
             color: style.textColor,
             border: style.borderColor
@@ -1133,12 +1263,11 @@ function CTAOverlayEditor({
             boxShadow: style.shadow?.enabled
               ? `${style.shadow.offsetX}px ${style.shadow.offsetY}px ${style.shadow.blur}px ${style.shadow.color}`
               : 'none',
-            maxWidth: '300px',
-            zIndex: 100,
-            animation: isLive
-              ? `${animation.type.replace('-', ' ')} ${animation.duration}s ease-in-out ${animation.delay}s`
-              : 'none',
-            display: isLive ? 'block' : 'block',
+            ...(shouldAnimate
+              ? {
+                  animation: `${ctaAnimationKeyframes[animation.type]} ${animation.duration}s ${animation.easing ?? 'ease-in-out'} ${animation.delay}s ${animationIterations} both`,
+                }
+              : {}),
             // WCAG 2.2 AA+ accessibility features
             outline: accessibility.focusVisible
               ? `${WCAG_GUIDELINES.focusIndicators.outlineWidth}px solid currentColor`
@@ -1148,52 +1277,94 @@ function CTAOverlayEditor({
               : 'none',
             filter: accessibility.highContrast ? 'contrast(1.5) brightness(1.2)' : 'none',
             transition: accessibility.reducedMotion ? 'none' : 'all 0.3s ease'}}
-          role="button"
-          tabIndex={accessibility.keyboardNavigation ? 0 : -1}
-          aria-label={accessibility.ariaLabel}
-          aria-describedby={description ? `${cta.id}-description` : undefined}
-        >
-          <Typography
-            variant="h6"
-            sx={{
-              fontWeight: 'bold',
-              mb: 1,
-              color: style.textColor,
-              fontSize: Math.max(style.fontSize, WCAG_GUIDELINES.textSize.minimum)}}
           >
-            {title}
-          </Typography>
-          {description && (
             <Typography
-              variant="body2"
-              id={`${cta.id}-description`}
+              variant="h6"
               sx={{
-                mb: 2,
+                fontWeight: 'bold',
+                mb: 1,
                 color: style.textColor,
-                opacity: 0.9,
-                fontSize: Math.max(style.fontSize - 2, WCAG_GUIDELINES.textSize.minimum)}}
+                fontSize: Math.max(style.fontSize, WCAG_GUIDELINES.textSize.minimum)}}
             >
-              {description}
+              {title}
             </Typography>
-          )}
-          <Button
-            variant="contained"
-            sx={{
-              backgroundColor: style.buttonColor,
-              color: style.buttonTextColor,
-              fontWeight: 'bold',
-              borderRadius: `${style.borderRadius - 2}px`,
-              fontSize: Math.max(style.fontSize, WCAG_GUIDELINES.textSize.minimum), '&:hover': {
-                backgroundColor: style.buttonColor,
-                opacity: 0.9,
-              }, '&:focus-visible': {
-                outline: `${WCAG_GUIDELINES.focusIndicators.outlineWidth}px solid ${style.buttonTextColor}`,
-                outlineOffset: `${WCAG_GUIDELINES.focusIndicators.outlineOffset}px`,
-              }}}
-            aria-label={`${buttonText} - ${accessibility.altText}`}
-          >
-            {buttonText}
-          </Button>
+            {description && (
+              <Typography
+                variant="body2"
+                id={`${cta.id}-description`}
+                sx={{
+                  mb: 2,
+                  color: style.textColor,
+                  opacity: 0.9,
+                  fontSize: Math.max(style.fontSize - 2, WCAG_GUIDELINES.textSize.minimum)}}
+              >
+                {description}
+              </Typography>
+            )}
+
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+              <Button
+                variant="contained"
+                sx={{
+                  backgroundColor: style.buttonColor,
+                  color: style.buttonTextColor,
+                  fontWeight: 'bold',
+                  borderRadius: `${Math.max(style.borderRadius - 2, 0)}px`,
+                  fontSize: Math.max(style.fontSize, WCAG_GUIDELINES.textSize.minimum), '&:hover': {
+                    backgroundColor: style.buttonColor,
+                    opacity: 0.9,
+                  }, '&:focus-visible': {
+                    outline: `${WCAG_GUIDELINES.focusIndicators.outlineWidth}px solid ${style.buttonTextColor}`,
+                    outlineOffset: `${WCAG_GUIDELINES.focusIndicators.outlineOffset}px`,
+                  }}}
+                aria-label={`${buttonText} - ${accessibility.altText}`}
+              >
+                {buttonText}
+              </Button>
+
+              {hasSecondaryCta && secondaryCta && (
+                <Button
+                  variant={secondaryCta.variant}
+                  sx={{
+                    fontWeight: 'bold',
+                    borderRadius: `${Math.max(style.borderRadius - 2, 0)}px`,
+                    fontSize: Math.max(style.fontSize, WCAG_GUIDELINES.textSize.minimum),
+                    ...(secondaryCta.variant === 'contained'
+                      ? {
+                          backgroundColor: style.buttonColor,
+                          color: style.buttonTextColor,
+                          '&:hover': {
+                            backgroundColor: style.buttonColor,
+                            opacity: 0.9,
+                          },
+                        }
+                      : secondaryCta.variant === 'outlined'
+                        ? {
+                            borderColor: style.buttonColor,
+                            color: style.buttonColor,
+                            '&:hover': {
+                              borderColor: style.buttonColor,
+                              backgroundColor: 'rgba(255,255,255,0.08)',
+                            },
+                          }
+                        : {
+                            color: style.buttonColor,
+                            '&:hover': {
+                              backgroundColor: 'rgba(255,255,255,0.08)',
+                            },
+                          }),
+                    '&:focus-visible': {
+                      outline: `${WCAG_GUIDELINES.focusIndicators.outlineWidth}px solid ${style.buttonColor}`,
+                      outlineOffset: `${WCAG_GUIDELINES.focusIndicators.outlineOffset}px`,
+                    },
+                  }}
+                  aria-label={`${secondaryCta.buttonText} - secondary action`}
+                >
+                  {secondaryCta.buttonText}
+                </Button>
+              )}
+            </Stack>
+          </Box>
         </Box>
       </>
     );
@@ -1290,7 +1461,7 @@ function CTAOverlayEditor({
           </Box>
 
           <Stack direction="row" spacing={0.5}>
-            {showPreview && (
+            {showPreview && showPreviewPanel && (
               <Tooltip title="Preview">
                 <IconButton
                   size="small"
@@ -1395,46 +1566,107 @@ function CTAOverlayEditor({
           )}
         </Stack>
 
-        {/* Industry Standards Info */}
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <Typography variant="body2">
-            <strong>Industry Standards:</strong> CTA overlays should display for 3-7 seconds (5s
-            recommended), positioned within safe areas, and meet WCAG 2.2 AA+ accessibility
-            standards for optimal engagement and compliance.
-          </Typography>
-        </Alert>
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          {/* Industry Standards Info */}
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <Typography variant="body2">
+              <strong>Industry Standards:</strong> CTA overlays should display for 3-7 seconds (5s
+              recommended), positioned within safe areas, and meet WCAG 2.2 AA+ accessibility
+              standards for optimal engagement and compliance.
+            </Typography>
+          </Alert>
 
-        {/* CTA Types Info */}
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <Typography variant="body2">
-            <strong>CTA Types:</strong> Subscribe, Download, External Links, Email, Phone, Quiz,
-            Assignment, Custom Actions. Create interactive overlays that appear at specific
-            timestamps in your videos.
-          </Typography>
-        </Alert>
+          {/* CTA Types Info */}
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <Typography variant="body2">
+              <strong>CTA Types:</strong> Subscribe, Download, External Links, Email, Phone, Quiz,
+              Assignment, Custom Actions. Create interactive overlays that appear at specific
+              timestamps in your videos.
+            </Typography>
+          </Alert>
 
-        {/* Search and Filter */}
-        <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-          <TextField
-            placeholder="Search CTA overlays..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            size="small"
-            sx={{ flex: 1 }}
-          />
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel>Type</InputLabel>
-            <Select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value as any)}
-              label="Type"
+          <Tabs
+            value={activeTab}
+            onChange={(_, newValue) => setActiveTab(newValue)}
+            variant="scrollable"
+            allowScrollButtonsMobile
+            sx={{ mb: 2 }}
+          >
+            {tabDefinitions.map((tab) => (
+              <Tab
+                key={tab.label}
+                label={
+                  <Stack direction="row" spacing={0.8} alignItems="center">
+                    {tab.icon}
+                    <span>{tab.label}</span>
+                  </Stack>
+                }
+              />
+            ))}
+          </Tabs>
+
+          <Divider sx={{ mb: 2 }} />
+
+          {/* Search and Filter */}
+          <Stack direction="row" spacing={2} sx={{ mb: 1.5 }}>
+            <TextField
+              placeholder="Search CTA overlays..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              size="small"
+              sx={{ flex: 1 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Type</InputLabel>
+              <Select
+                value={filterType}
+                onChange={(e) => {
+                  const selectedFilter = e.target.value as string;
+                  if (
+                    selectedFilter === 'all' ||
+                    selectedFilter === 'course' ||
+                    selectedFilter === 'lesson'
+                  ) {
+                    setFilterType(selectedFilter);
+                  }
+                }}
+                label="Type"
+              >
+                <MenuItem value="all">All</MenuItem>
+                <MenuItem value="course">Course</MenuItem>
+                <MenuItem value="lesson">Lesson</MenuItem>
+              </Select>
+            </FormControl>
+            <Button
+              variant="outlined"
+              startIcon={showPreviewPanel ? <Visibility /> : <VisibilityOff />}
+              onClick={() => setShowPreviewPanel((current) => !current)}
             >
-              <MenuItem value="all">All</MenuItem>
-              <MenuItem value="course">Course</MenuItem>
-              <MenuItem value="lesson">Lesson</MenuItem>
-            </Select>
-          </FormControl>
-        </Stack>
+              {showPreviewPanel ? 'Hide Preview' : 'Show Preview'}
+            </Button>
+          </Stack>
+
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>
+              Grid Scale
+            </Typography>
+            <Slider
+              value={previewScale}
+              onChange={(_, value) => setPreviewScale(Array.isArray(value) ? value[0] : value)}
+              min={80}
+              max={120}
+              step={5}
+              valueLabelDisplay="auto"
+              sx={{ maxWidth: 240 }}
+            />
+            <Chip
+              size="small"
+              label={`${filteredCTAOverlays.length} overlays`}
+              icon={<VideoLibrary fontSize="small" />}
+              variant="outlined"
+            />
+          </Stack>
+        </Paper>
       </Box>
 
       {/* Content */}
@@ -1530,7 +1762,11 @@ function CTAOverlayEditor({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowCreateDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => editingCTA && handleSaveCTA(editingCTA)}>
+          <Button
+            variant="contained"
+            startIcon={<Save />}
+            onClick={() => editingCTA && handleSaveCTA(editingCTA)}
+          >
             Save
           </Button>
         </DialogActions>
@@ -1549,6 +1785,7 @@ interface CTAEditorProps {
 
 function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) {
   const [activeTab, setActiveTab] = useState(0);
+  const [previewReplayKey, setPreviewReplayKey] = useState(0);
   const { analytics, performance, debugging } = useEnhancedMasterIntegration();
 
   // Helper functions (moved from parent component scope)
@@ -1601,7 +1838,7 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
       const r = (rgb >> 16) & 0xff;
       const g = (rgb >> 8) & 0xff;
       const b = (rgb >> 0) & 0xff;
-      const [rs, gs, bs] = [rgb].map((c) => {
+      const [rs, gs, bs] = [r, g, b].map((c) => {
         c = c / 255;
         return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
       });
@@ -1678,7 +1915,89 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
     });
   };
 
-  const handleTimingChange = (field: string, value: any) => {
+  const addSecondaryCTA = () => {
+    onChange({
+      ...cta,
+      secondaryCta: {
+        enabled: true,
+        type: 'external',
+        buttonText: 'Learn More',
+        action: {
+          url: '',
+        },
+        variant: 'outlined',
+      },
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const removeSecondaryCTA = () => {
+    onChange({
+      ...cta,
+      secondaryCta: undefined,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleSecondaryCTAChange = <K extends keyof SecondaryCTAConfig>(
+    field: K,
+    value: SecondaryCTAConfig[K],
+  ) => {
+    const currentSecondary = cta.secondaryCta;
+    if (!currentSecondary) {
+      return;
+    }
+
+    onChange({
+      ...cta,
+      secondaryCta: {
+        ...currentSecondary,
+        [field]: value,
+      },
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleSecondaryCTATypeChange = (type: CTAType) => {
+    const currentSecondary = cta.secondaryCta;
+    if (!currentSecondary) {
+      return;
+    }
+
+    onChange({
+      ...cta,
+      secondaryCta: {
+        ...currentSecondary,
+        type,
+        action: {},
+      },
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleSecondaryCTAActionChange = (field: keyof CTAActionConfig, value: string) => {
+    const currentSecondary = cta.secondaryCta;
+    if (!currentSecondary) {
+      return;
+    }
+
+    onChange({
+      ...cta,
+      secondaryCta: {
+        ...currentSecondary,
+        action: {
+          ...currentSecondary.action,
+          [field]: value,
+        },
+      },
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleTimingChange = (
+    field: keyof CTAOverlay['timing'],
+    value: CTAOverlay['timing'][keyof CTAOverlay['timing']],
+  ) => {
     onChange({
       ...cta,
       timing: {
@@ -1687,6 +2006,62 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
       },
       updatedAt: new Date().toISOString(),
     });
+  };
+
+  const updateTimingRange = (nextStartTime: number, nextEndTime: number) => {
+    onChange({
+      ...cta,
+      timing: {
+        ...cta.timing,
+        startTime: nextStartTime,
+        endTime: nextEndTime,
+      },
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleTimingInputChange = (field: 'startTime' | 'endTime', valueInSeconds: number) => {
+    const minimumDuration = TIMING_GUIDELINES.ctaOverlay.minimum;
+    const safeValue = Math.max(0, Math.round(valueInSeconds));
+    let nextStart = cta.timing.startTime;
+    let nextEnd = cta.timing.endTime;
+
+    if (field === 'startTime') {
+      nextStart = safeValue;
+      if (nextEnd < nextStart + minimumDuration) {
+        nextEnd = nextStart + minimumDuration;
+      }
+    } else {
+      nextEnd = Math.max(safeValue, Math.ceil(nextStart + minimumDuration));
+    }
+
+    updateTimingRange(nextStart, nextEnd);
+  };
+
+  const toTimeParts = (valueInSeconds: number) => {
+    const safeValue = Math.max(0, Math.round(valueInSeconds));
+    return {
+      minutes: Math.floor(safeValue / 60),
+      seconds: safeValue % 60,
+    };
+  };
+
+  const handleTimingPartChange = (
+    field: 'startTime' | 'endTime',
+    part: 'minutes' | 'seconds',
+    rawValue: string,
+  ) => {
+    const parsedValue = Number.parseInt(rawValue, 10);
+    const safeValue = Number.isFinite(parsedValue) ? parsedValue : 0;
+    const currentParts = toTimeParts(cta.timing[field]);
+
+    const nextMinutes = part === 'minutes' ? Math.max(0, safeValue) : currentParts.minutes;
+    const nextSeconds =
+      part === 'seconds'
+        ? Math.max(0, Math.min(59, safeValue))
+        : currentParts.seconds;
+
+    handleTimingInputChange(field, nextMinutes * 60 + nextSeconds);
   };
 
   const handlePositionChange = (field: string, value: any) => {
@@ -1721,6 +2096,105 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
       updatedAt: new Date().toISOString(),
     });
   };
+
+  const renderActionConfigFields = (
+    type: CTAType,
+    action: CTAActionConfig,
+    onFieldChange: (field: keyof CTAActionConfig, value: string) => void,
+  ) => {
+    if (type === 'subscribe') {
+      return (
+        <Alert severity="info" sx={{ py: 0.5 }}>
+          Subscription CTA uses the platform default subscription flow.
+        </Alert>
+      );
+    }
+
+    if (type === 'external') {
+      return (
+        <TextField
+          fullWidth
+          label="URL"
+          value={action.url || ''}
+          onChange={(e) => onFieldChange('url', e.target.value)}
+          placeholder="https://example.com"
+        />
+      );
+    }
+
+    if (type === 'email') {
+      return (
+        <TextField
+          fullWidth
+          label="Email Address"
+          value={action.email || ''}
+          onChange={(e) => onFieldChange('email', e.target.value)}
+          placeholder="contact@example.com"
+        />
+      );
+    }
+
+    if (type === 'phone') {
+      return (
+        <TextField
+          fullWidth
+          label="Phone Number"
+          value={action.phone || ''}
+          onChange={(e) => onFieldChange('phone', e.target.value)}
+          placeholder="+47 123 45 678"
+        />
+      );
+    }
+
+    if (type === 'download') {
+      return (
+        <TextField
+          fullWidth
+          label="File ID"
+          value={action.fileId || ''}
+          onChange={(e) => onFieldChange('fileId', e.target.value)}
+          placeholder="file-id-or-url"
+        />
+      );
+    }
+
+    if (type === 'quiz') {
+      return (
+        <TextField
+          fullWidth
+          label="Quiz ID"
+          value={action.quizId || ''}
+          onChange={(e) => onFieldChange('quizId', e.target.value)}
+          placeholder="quiz-id"
+        />
+      );
+    }
+
+    if (type === 'assignment') {
+      return (
+        <TextField
+          fullWidth
+          label="Assignment ID"
+          value={action.assignmentId || ''}
+          onChange={(e) => onFieldChange('assignmentId', e.target.value)}
+          placeholder="assignment-id"
+        />
+      );
+    }
+
+    return (
+      <TextField
+        fullWidth
+        label="Custom Action"
+        value={action.customAction || ''}
+        onChange={(e) => onFieldChange('customAction', e.target.value)}
+        placeholder="custom-action-code"
+      />
+    );
+  };
+
+  const startTimeParts = toTimeParts(cta.timing.startTime);
+  const endTimeParts = toTimeParts(cta.timing.endTime);
 
   const handleSafeGuideChange = (field: string, value: any) => {
     onChange({
@@ -1832,70 +2306,99 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
             {/* Action Configuration */}
             <Box>
               <Typography variant="subtitle2" gutterBottom>
-                Action Configuration
+                Primary Action
               </Typography>
-              {cta.type === 'external' && (
-                <TextField
-                  fullWidth
-                  label="URL"
-                  value={cta.action.url || ''}
-                  onChange={(e) => handleActionChange('url', e.target.value)}
-                  placeholder="https://example.com"
-                />
+              {renderActionConfigFields(
+                cta.type,
+                cta.action,
+                (field: keyof CTAActionConfig, value: string) =>
+                  handleActionChange(field, value),
               )}
-              {cta.type === 'email' && (
-                <TextField
-                  fullWidth
-                  label="Email Address"
-                  value={cta.action.email || ''}
-                  onChange={(e) => handleActionChange('email', e.target.value)}
-                  placeholder="contact@example.com"
-                />
-              )}
-              {cta.type === 'phone' && (
-                <TextField
-                  fullWidth
-                  label="Phone Number"
-                  value={cta.action.phone || ', '}
-                  onChange={(e) => handleActionChange('phone', e.target.value)}
-                  placeholder="+1 (555) 123-4567"
-                />
-              )}
-              {cta.type === 'download' && (
-                <TextField
-                  fullWidth
-                  label="File ID"
-                  value={cta.action.fileId || ', '}
-                  onChange={(e) => handleActionChange('fileId', e.target.value)}
-                  placeholder="file-id-or-url"
-                />
-              )}
-              {cta.type === 'quiz' && (
-                <TextField
-                  fullWidth
-                  label="Quiz ID"
-                  value={cta.action.quizId || ', '}
-                  onChange={(e) => handleActionChange('quizId', e.target.value)}
-                  placeholder="quiz-id"
-                />
-              )}
-              {cta.type === 'assignment' && (
-                <TextField
-                  fullWidth
-                  label="Assignment ID"
-                  value={cta.action.assignmentId || ', '}
-                  onChange={(e) => handleActionChange('assignmentId', e.target.value)}
-                  placeholder="assignment-id"
-                />
-              )}
-              {cta.type === 'custom' && (
-                <TextField
-                  fullWidth
-                  label="Custom Action"
-                  value={cta.action.customAction || ', '}
-                  onChange={(e) => handleActionChange('customAction', e.target.value)}
-                  placeholder="custom-action-code"
-                />
+            </Box>
+
+            <Box>
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                sx={{ mb: 1 }}
+              >
+                <Typography variant="subtitle2">Secondary CTA</Typography>
+                {cta.secondaryCta?.enabled ? (
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="outlined"
+                    startIcon={<Delete />}
+                    onClick={removeSecondaryCTA}
+                  >
+                    Remove Secondary CTA
+                  </Button>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<Add />}
+                    onClick={addSecondaryCTA}
+                  >
+                    Add Secondary CTA
+                  </Button>
+                )}
+              </Stack>
+
+              {cta.secondaryCta?.enabled && (
+                <Stack spacing={2}>
+                  <TextField
+                    fullWidth
+                    label="Secondary Button Text"
+                    value={cta.secondaryCta.buttonText}
+                    onChange={(e) => handleSecondaryCTAChange('buttonText', e.target.value)}
+                  />
+
+                  <Stack direction="row" spacing={2}>
+                    <FormControl fullWidth>
+                      <InputLabel>Secondary CTA Type</InputLabel>
+                      <Select
+                        value={cta.secondaryCta.type}
+                        onChange={(e) => handleSecondaryCTATypeChange(e.target.value as CTAType)}
+                        label="Secondary CTA Type"
+                      >
+                        <MenuItem value="subscribe">Subscribe</MenuItem>
+                        <MenuItem value="download">Download</MenuItem>
+                        <MenuItem value="external">External Link</MenuItem>
+                        <MenuItem value="email">Email</MenuItem>
+                        <MenuItem value="phone">Phone</MenuItem>
+                        <MenuItem value="quiz">Quiz</MenuItem>
+                        <MenuItem value="assignment">Assignment</MenuItem>
+                        <MenuItem value="custom">Custom</MenuItem>
+                      </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth>
+                      <InputLabel>Secondary Button Style</InputLabel>
+                      <Select
+                        value={cta.secondaryCta.variant}
+                        onChange={(e) =>
+                          handleSecondaryCTAChange(
+                            'variant',
+                            e.target.value as SecondaryCTAConfig['variant'],
+                          )
+                        }
+                        label="Secondary Button Style"
+                      >
+                        <MenuItem value="contained">Contained</MenuItem>
+                        <MenuItem value="outlined">Outlined</MenuItem>
+                        <MenuItem value="text">Text</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Stack>
+
+                  {renderActionConfigFields(
+                    cta.secondaryCta.type,
+                    cta.secondaryCta.action,
+                    handleSecondaryCTAActionChange,
+                  )}
+                </Stack>
               )}
             </Box>
           </Stack>
@@ -1909,40 +2412,70 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
               <Typography variant="subtitle2" gutterBottom>
                 Timing
               </Typography>
-              <Stack direction="row" spacing={2}>
-                <TextField
-                  label="Start Time (seconds)"
-                  type="number"
-                  value={cta.timing.startTime}
-                  onChange={(e) => handleTimingChange('startTime', parseFloat(e.target.value))}
-                  inputProps={{ min: 0, step: 0.1 }}
-                />
-                <TextField
-                  label="End Time (seconds)"
-                  type="number"
-                  value={cta.timing.endTime}
-                  onChange={(e) => handleTimingChange('endTime', parseFloat(e.target.value))}
-                  inputProps={{
-                    min: TIMING_GUIDELINES.ctaOverlay.minimum + cta.timing.startTime,
-                    max: TIMING_GUIDELINES.ctaOverlay.maximum + cta.timing.startTime,
-                    step: 0.1}}
-                  error={(() => {
-                    const duration = cta.timing.endTime - cta.timing.startTime;
-                    const validation = getTimingValidation(
-                      duration,
-                      `${cta.title} ${cta.description || ', '}`,
-                    );
-                    return validation.severity === 'error';
-                  })()}
-                  helperText={(() => {
-                    const duration = cta.timing.endTime - cta.timing.startTime;
-                    const validation = getTimingValidation(
-                      duration,
-                      `${cta.title} ${cta.description || ', '}`,
-                    );
-                    return validation.suggestion;
-                  })()}
-                />
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                    Trigger Start (min:sek)
+                  </Typography>
+                  <Stack direction="row" spacing={2}>
+                    <TextField
+                      label="Min"
+                      type="number"
+                      value={startTimeParts.minutes}
+                      onChange={(e) =>
+                        handleTimingPartChange('startTime', 'minutes', e.target.value)
+                      }
+                      inputProps={{ min: 0, step: 1 }}
+                    />
+                    <TextField
+                      label="Sek"
+                      type="number"
+                      value={startTimeParts.seconds}
+                      onChange={(e) =>
+                        handleTimingPartChange('startTime', 'seconds', e.target.value)
+                      }
+                      inputProps={{ min: 0, max: 59, step: 1 }}
+                    />
+                  </Stack>
+                </Box>
+
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                    Trigger Slutt (min:sek)
+                  </Typography>
+                  <Stack direction="row" spacing={2}>
+                    <TextField
+                      label="Min"
+                      type="number"
+                      value={endTimeParts.minutes}
+                      onChange={(e) => handleTimingPartChange('endTime', 'minutes', e.target.value)}
+                      inputProps={{ min: 0, step: 1 }}
+                    />
+                    <TextField
+                      label="Sek"
+                      type="number"
+                      value={endTimeParts.seconds}
+                      onChange={(e) => handleTimingPartChange('endTime', 'seconds', e.target.value)}
+                      inputProps={{ min: 0, max: 59, step: 1 }}
+                      error={(() => {
+                        const duration = cta.timing.endTime - cta.timing.startTime;
+                        const validation = getTimingValidation(
+                          duration,
+                          `${cta.title} ${cta.description || ''}`,
+                        );
+                        return validation.severity === 'error';
+                      })()}
+                      helperText={(() => {
+                        const duration = cta.timing.endTime - cta.timing.startTime;
+                        const validation = getTimingValidation(
+                          duration,
+                          `${cta.title} ${cta.description || ''}`,
+                        );
+                        return validation.suggestion;
+                      })()}
+                    />
+                  </Stack>
+                </Box>
               </Stack>
               <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
                 <Button
@@ -1952,15 +2485,15 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
                     const endTiming = performance.startTiming('cta_auto_calculate_duration');
 
                     const duration = calculateOptimalCTADuration(
-                      `${cta.title} ${cta.description || ', '}`,
+                      `${cta.title} ${cta.description || ''}`,
                     );
                     const oldDuration = cta.timing.endTime - cta.timing.startTime;
 
-                    handleTimingChange('endTime', cta.timing.startTime + duration);
+                    handleTimingInputChange('endTime', cta.timing.startTime + duration);
 
                     analytics.trackEvent('cta_auto_calculate_duration', {
                       ctaId: cta.id,
-                      textLength: `${cta.title} ${cta.description || ', '}`.length,
+                      textLength: `${cta.title} ${cta.description || ''}`.length,
                       oldDuration,
                       newDuration: duration,
                       durationChange: duration - oldDuration,
@@ -1971,7 +2504,7 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
                       ctaId: cta.id,
                       oldDuration,
                       newDuration: duration,
-                      textLength: `${cta.title} ${cta.description || ', '}`.length,
+                      textLength: `${cta.title} ${cta.description || ''}`.length,
                     });
 
                     endTiming();
@@ -2057,37 +2590,86 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
               <Typography variant="subtitle2" gutterBottom>
                 Animation
               </Typography>
-              <Stack direction="row" spacing={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Animation Type</InputLabel>
-                  <Select
-                    value={cta.animation.type}
-                    onChange={(e) => handleAnimationChange('type', e.target.value)}
-                    label="Animation Type"
-                  >
-                    <MenuItem value="fade-in">Fade In</MenuItem>
-                    <MenuItem value="slide-up">Slide Up</MenuItem>
-                    <MenuItem value="slide-down">Slide Down</MenuItem>
-                    <MenuItem value="slide-left">Slide Left</MenuItem>
-                    <MenuItem value="slide-right">Slide Right</MenuItem>
-                    <MenuItem value="zoom-in">Zoom In</MenuItem>
-                    <MenuItem value="bounce">Bounce</MenuItem>
-                  </Select>
-                </FormControl>
-                <TextField
-                  label="Duration (seconds)"
-                  type="number"
-                  value={cta.animation.duration}
-                  onChange={(e) => handleAnimationChange('duration', parseFloat(e.target.value))}
-                  inputProps={{ min: 0.1, max: 5, step: 0.1 }}
+              <Stack spacing={2}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={cta.animation.enabled ?? true}
+                      onChange={(e) => handleAnimationChange('enabled', e.target.checked)}
+                    />
+                  }
+                  label="Enable Animation"
                 />
-                <TextField
-                  label="Delay (seconds)"
-                  type="number"
-                  value={cta.animation.delay}
-                  onChange={(e) => handleAnimationChange('delay', parseFloat(e.target.value))}
-                  inputProps={{ min: 0, max: 5, step: 0.1 }}
-                />
+
+                <Stack direction="row" spacing={2}>
+                  <FormControl fullWidth disabled={!(cta.animation.enabled ?? true)}>
+                    <InputLabel>Animation Type</InputLabel>
+                    <Select
+                      value={cta.animation.type}
+                      onChange={(e) => handleAnimationChange('type', e.target.value)}
+                      label="Animation Type"
+                    >
+                      <MenuItem value="fade-in">Fade In</MenuItem>
+                      <MenuItem value="slide-up">Slide Up</MenuItem>
+                      <MenuItem value="slide-down">Slide Down</MenuItem>
+                      <MenuItem value="slide-left">Slide Left</MenuItem>
+                      <MenuItem value="slide-right">Slide Right</MenuItem>
+                      <MenuItem value="zoom-in">Zoom In</MenuItem>
+                      <MenuItem value="bounce">Bounce</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  <FormControl fullWidth disabled={!(cta.animation.enabled ?? true)}>
+                    <InputLabel>Easing</InputLabel>
+                    <Select
+                      value={cta.animation.easing ?? 'ease-in-out'}
+                      onChange={(e) => handleAnimationChange('easing', e.target.value)}
+                      label="Easing"
+                    >
+                      <MenuItem value="ease">Ease</MenuItem>
+                      <MenuItem value="ease-in">Ease In</MenuItem>
+                      <MenuItem value="ease-out">Ease Out</MenuItem>
+                      <MenuItem value="ease-in-out">Ease In Out</MenuItem>
+                      <MenuItem value="linear">Linear</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Stack>
+
+                <Stack direction="row" spacing={2}>
+                  <TextField
+                    label="Duration (seconds)"
+                    type="number"
+                    value={cta.animation.duration}
+                    onChange={(e) => {
+                      const nextValue = parseFloat(e.target.value);
+                      handleAnimationChange('duration', Number.isFinite(nextValue) ? nextValue : 0);
+                    }}
+                    inputProps={{ min: 0.1, max: 5, step: 0.1 }}
+                    disabled={!(cta.animation.enabled ?? true)}
+                  />
+                  <TextField
+                    label="Delay (seconds)"
+                    type="number"
+                    value={cta.animation.delay}
+                    onChange={(e) => {
+                      const nextValue = parseFloat(e.target.value);
+                      handleAnimationChange('delay', Number.isFinite(nextValue) ? nextValue : 0);
+                    }}
+                    inputProps={{ min: 0, max: 5, step: 0.1 }}
+                    disabled={!(cta.animation.enabled ?? true)}
+                  />
+                  <TextField
+                    label="Iterations"
+                    type="number"
+                    value={cta.animation.iterations ?? 1}
+                    onChange={(e) => {
+                      const nextValue = parseInt(e.target.value, 10);
+                      handleAnimationChange('iterations', Number.isFinite(nextValue) ? nextValue : 1);
+                    }}
+                    inputProps={{ min: 1, max: 10, step: 1 }}
+                    disabled={!(cta.animation.enabled ?? true)}
+                  />
+                </Stack>
               </Stack>
             </Box>
           </Stack>
@@ -2492,12 +3074,16 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
               overflow: 'hidden',
               border: 'var(--academy-hairline-width, 1px) solid #333'}}
           >
-            {renderPreview(cta, false)}
+            <Box key={previewReplayKey} sx={{ width: '100%', height: '100%', position: 'relative' }}>
+              {renderPreview(cta, true)}
+            </Box>
           </Box>
           <Button
             variant="outlined"
             startIcon={<PlayArrow />}
             onClick={() => {
+              setPreviewReplayKey((previous) => previous + 1);
+
               analytics.trackEvent('cta_editor_preview_clicked', {
                 ctaId: cta.id,
                 tabContext: 'preview_tab',

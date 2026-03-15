@@ -25,7 +25,6 @@ import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline, Box, Typography } from '@mui/material';
 import { creatorHubTheme } from './theme/creatorHubTheme';
 import { LanguageProvider } from '@/components/language-provider';
-import AcademyLocaleSwitcher from '@/components/academy/AcademyLocaleSwitcher';
 import { DemoModeProvider } from './contexts/DemoModeContext';
 import { UniversalSessionProvider } from './contexts/UniversalSessionContext';
 import { ClientSessionProvider } from './contexts/ClientSessionContext';
@@ -140,13 +139,13 @@ import GlobalChatProvider from '@/components/chat/GlobalChatProvider';
 import AcademyLandingPage from '@/components/academy/AcademyLandingPage';
 import AcademyDashboardCinematic from '@/components/academy/AcademyDashboardCinematic';
 import CourseCreator from '@/components/academy/CourseCreator';
-import ModuleManager from '@/components/academy/ModuleManager';
 import VideoAnnotationEditor from '@/components/academy/VideoAnnotationEditor';
 import QuizManager from '@/components/academy/QuizManager';
 import AcademyVideoPlayerStudio from '@/components/academy/AcademyVideoPlayerStudio';
 import AcademyMonetizationStudio from '@/components/academy/AcademyMonetizationStudio';
 import AcademyCTAOverlayStudio from '@/components/academy/AcademyCTAOverlayStudio';
 import AcademyLowerThirdsStudio from '@/components/academy/AcademyLowerThirdsStudio';
+import AcademyPresentationOverlayStudio from '@/components/academy/AcademyPresentationOverlayStudio';
 import AcademyLessonStudio from '@/components/academy/AcademyLessonStudio';
 import AcademyCohortSettingsStudio from '@/components/academy/AcademyCohortSettingsStudio';
 import AcademyAssignmentsStudio from '@/components/academy/AcademyAssignmentsStudio';
@@ -155,6 +154,9 @@ import AcademyCurriculumStudio from '@/components/academy/AcademyCurriculumStudi
 import AcademyStudentDashboardStudio from '@/components/academy/AcademyStudentDashboardStudio';
 import AcademyAnalyticsStudio from '@/components/academy/AcademyAnalyticsStudio';
 import AcademyMediaStudio from '@/components/academy/AcademyMediaStudio';
+import AcademyInstructorAdminStudio from '@/components/academy/AcademyInstructorAdminStudio';
+import AcademyUserSettingsStudio from '@/components/academy/AcademyUserSettingsStudio';
+import AcademyToolsOverviewStudio from '@/components/academy/AcademyToolsOverviewStudio';
 import AcademyDesignProvider from '@/components/academy/AcademyDesignProvider';
 import CommunityLandingPage from '@/components/community/CommunityLandingPage';
 import ReceiptsManager from '@/components/accounting/ReceiptsManager';
@@ -172,14 +174,67 @@ const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
+
+type AcademyRouteQueryContext = {
+  courseId?: string;
+  lessonId?: string;
+  skillId?: string;
+  assignmentId?: string;
+  view?: string;
+  tab?: string;
+  returnTo?: string;
+};
+
+const getAcademyRouteQueryContext = (): AcademyRouteQueryContext => {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const courseId = String(params.get('courseId') || params.get('course_id') || '').trim();
+    const lessonId = String(params.get('lessonId') || '').trim();
+    const skillId = String(params.get('skillId') || '').trim();
+    const assignmentId = String(params.get('assignmentId') || '').trim();
+    const view = String(params.get('view') || '').trim();
+    const tab = String(params.get('tab') || '').trim();
+    const returnTo = String(params.get('returnTo') || '').trim();
+
+    return {
+      courseId: courseId || undefined,
+      lessonId: lessonId || undefined,
+      skillId: skillId || undefined,
+      assignmentId: assignmentId || undefined,
+      view: view || undefined,
+      tab: tab || undefined,
+      returnTo: returnTo || undefined,
+    };
+  } catch {
+    return {};
+  }
+};
+
 const createAcademyRouteWrapper = (Component: React.ComponentType<any>) => {
-  const AcademyRouteWrapper = (props: any) => (
-    <AcademyDesignProvider>
-      <AcademyProvider>
-        <Component {...props} />
-      </AcademyProvider>
-    </AcademyDesignProvider>
-  );
+  const AcademyRouteWrapper = (props: any) => {
+    const routeContext = getAcademyRouteQueryContext();
+    const mergedProps = {
+      ...routeContext,
+      ...props,
+      courseId: props?.courseId ?? routeContext.courseId,
+      lessonId: props?.lessonId ?? routeContext.lessonId,
+      skillId: props?.skillId ?? routeContext.skillId,
+      assignmentId: props?.assignmentId ?? routeContext.assignmentId,
+      view: props?.view ?? routeContext.view,
+      tab: props?.tab ?? routeContext.tab,
+      returnTo: props?.returnTo ?? routeContext.returnTo,
+    };
+
+    return (
+      <AcademyDesignProvider>
+        <AcademyProvider>
+          <Component {...mergedProps} />
+        </AcademyProvider>
+      </AcademyDesignProvider>
+    );
+  };
 
   return AcademyRouteWrapper;
 };
@@ -187,7 +242,6 @@ const createAcademyRouteWrapper = (Component: React.ComponentType<any>) => {
 const AcademyLandingRouteWrapper = createAcademyRouteWrapper(AcademyLandingPage);
 const AcademyDashboardRouteWrapper = createAcademyRouteWrapper(AcademyDashboardCinematic);
 const AcademyCourseCreatorRouteWrapper = createAcademyRouteWrapper(CourseCreator);
-const AcademyModuleManagerRouteWrapper = createAcademyRouteWrapper(ModuleManager);
 const AcademyAnnotationEditorRouteWrapper = createAcademyRouteWrapper(VideoAnnotationEditor);
 const AcademyQuizManagerRouteWrapper = createAcademyRouteWrapper(QuizManager);
 const AcademyAssignmentsRouteWrapper = createAcademyRouteWrapper(AcademyAssignmentsStudio);
@@ -198,10 +252,14 @@ const AcademyCurriculumRouteWrapper = createAcademyRouteWrapper(AcademyCurriculu
 const AcademyLessonRouteWrapper = createAcademyRouteWrapper(AcademyLessonStudio);
 const AcademyCohortSettingsRouteWrapper = createAcademyRouteWrapper(AcademyCohortSettingsStudio);
 const AcademyMediaRouteWrapper = createAcademyRouteWrapper(AcademyMediaStudio);
+const AcademyInstructorAdminRouteWrapper = createAcademyRouteWrapper(AcademyInstructorAdminStudio);
+const AcademyUserSettingsRouteWrapper = createAcademyRouteWrapper(AcademyUserSettingsStudio);
+const AcademyToolsOverviewRouteWrapper = createAcademyRouteWrapper(AcademyToolsOverviewStudio);
 const AcademyVideoPlayerRouteWrapper = createAcademyRouteWrapper(AcademyVideoPlayerStudio);
 const AcademyMonetizationRouteWrapper = createAcademyRouteWrapper(AcademyMonetizationStudio);
 const AcademyCTAOverlayRouteWrapper = createAcademyRouteWrapper(AcademyCTAOverlayStudio);
 const AcademyLowerThirdsRouteWrapper = createAcademyRouteWrapper(AcademyLowerThirdsStudio);
+const AcademyPresentationOverlayRouteWrapper = createAcademyRouteWrapper(AcademyPresentationOverlayStudio);
 const StoryArcStudioRouteWrapper = () => (
   <SettingsProvider>
     <AppThemeProvider>
@@ -308,9 +366,6 @@ const SmartFileManagerWidget = ({ profession }: { profession?: ValidProfession }
 };
 
 function App() {
-  // #region agent log
-  console.log('[App] App component rendering at', new Date().toISOString());
-  // #endregion
   const [location] = useLocation();
 
   React.useEffect(() => {
@@ -338,7 +393,6 @@ function App() {
                   >
                     <ProjectProvider>
                       <GlobalChatProvider>
-                <AcademyLocaleSwitcher />
                 <Switch>
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
@@ -411,7 +465,7 @@ function App() {
                   <Route path="/academy" component={AcademyLandingRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy-dashboard" component={AcademyDashboardRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/course-creator" component={AcademyCourseCreatorRouteWrapper as React.ComponentType<any>} />
-                  <Route path="/academy/module-manager" component={AcademyModuleManagerRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/module-manager" component={AcademyCurriculumRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/annotation-editor" component={AcademyAnnotationEditorRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/quiz-manager" component={AcademyQuizManagerRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/assignments" component={AcademyAssignmentsRouteWrapper as React.ComponentType<any>} />
@@ -427,19 +481,25 @@ function App() {
                   <Route path="/academy/lesson-editor" component={AcademyLessonRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/lessons" component={AcademyLessonRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/courses" component={AcademyCourseCreatorRouteWrapper as React.ComponentType<any>} />
-                  <Route path="/academy/modules" component={AcademyModuleManagerRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/modules" component={AcademyCurriculumRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/cohort-settings" component={AcademyCohortSettingsRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/cohorts" component={AcademyCohortSettingsRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/media" component={AcademyMediaRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/library" component={AcademyMediaRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/asset-browser" component={AcademyMediaRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/instructors" component={AcademyInstructorAdminRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/instructor-admin" component={AcademyInstructorAdminRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/video-player" component={AcademyVideoPlayerRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/player-studio" component={AcademyVideoPlayerRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/assessments" component={AcademyQuizManagerRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/monetization" component={AcademyMonetizationRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/cta-overlay" component={AcademyCTAOverlayRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/lower-thirds" component={AcademyLowerThirdsRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/presentation-overlay" component={AcademyPresentationOverlayRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/ppt-overlay" component={AcademyPresentationOverlayRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/messages" component={AcademyStudentDashboardRouteWrapper as React.ComponentType<any>} />
-                  <Route path="/academy/settings" component={AcademyCourseCreatorRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/settings" component={AcademyUserSettingsRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/tools" component={AcademyToolsOverviewRouteWrapper as React.ComponentType<any>} />
                   <Route path="/community" component={CommunityLandingPageWrapper} />
                   <Route path="/help" component={() => <SmartDashboardRoute />} />
                   <Route
@@ -465,7 +525,6 @@ function App() {
                     );
                   }} />
                   <Route path="/landing-desktop" component={() => {
-                    console.log('[App.tsx] Landing Desktop route matched!');
                     return (
                       <ErrorBoundary componentName="LandingDesktop" showDetails={true}>
                         <LandingDesktop />
@@ -482,11 +541,9 @@ function App() {
                   <Route path="/showcase-enhanced/:projectId" component={ShowcaseClientEnhanced} />
                   <Route path="/showcase-enhanced-demo" component={() => <ShowcaseClientEnhanced />} />
                   <Route path="/virtual-studio-test" component={() => {
-                    console.log('[App.tsx] Test route matched!');
                     return <div style={{ padding: '40px', backgroundColor: 'green', color: 'white', minHeight: '100vh', fontSize: '24px' }}>TEST ROUTE WORKS!</div>;
                   }} />
                   <Route path="/virtual-studio" component={() => {
-                    console.log('[App.tsx] Virtual Studio route matched!');
                     try {
                       return <VirtualStudioPage />;
                     } catch (error) {

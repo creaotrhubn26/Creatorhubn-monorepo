@@ -77,6 +77,7 @@ import type {
 import {
   productionWorkflowService
 } from '../../services/productionWorkflowService';
+import GlobalMentionHelper from '../shared/GlobalMentionHelper';
 
 // ============================================
 // TYPES
@@ -122,6 +123,13 @@ const STATUS_COLORS: Record<ShootingDay['status'], string> = {
   wrapped: '#4caf50',
   postponed: '#f44336',
   cancelled: '#9e9e9e',
+};
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
 };
 
 // ============================================
@@ -208,6 +216,22 @@ const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
     
     return { total, wrapped, planned, inProgress, totalPages, pagesShot };
   }, [shootingDays, strips]);
+
+  const mentionCandidates = useMemo(() => {
+    const pool = new Set<string>();
+    cast.forEach((member) => {
+      if (typeof member.name === 'string' && member.name.trim()) pool.add(member.name.trim());
+      if (typeof member.character === 'string' && member.character.trim()) pool.add(member.character.trim());
+    });
+    crew.forEach((member) => {
+      if (typeof member.name === 'string' && member.name.trim()) pool.add(member.name.trim());
+      if (typeof member.role === 'string' && member.role.trim()) pool.add(member.role.trim());
+    });
+    shootingDays.forEach((day) => {
+      if (typeof day.location === 'string' && day.location.trim()) pool.add(day.location.trim());
+    });
+    return Array.from(pool);
+  }, [cast, crew, shootingDays]);
 
   // Handlers
   const handleCreateDay = useCallback(async () => {
@@ -678,16 +702,28 @@ const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
               </Grid>
               <Grid size={12}>
                 <TextField
-                fullWidth
-                multiline
-                rows={3}
-                label="Notater"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Spesielle instruksjoner, VFX-krav, etc."
-              />
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Notater"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Spesielle instruksjoner, VFX-krav, etc."
+                />
+                <GlobalMentionHelper
+                  text={formData.notes}
+                  localCandidates={mentionCandidates}
+                  onApplySuggestion={(name) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      notes: applyMentionSuggestion(prev.notes, name),
+                    }))
+                  }
+                  autoTagTitle="Auto-tagget i notater"
+                  suggestionTitle="Mener du?"
+                />
+              </Grid>
             </Grid>
-          </Grid>
           </LocalizationProvider>
         </DialogContent>
         <DialogActions>

@@ -21,25 +21,24 @@ import {
 import {
   Add,
   AttachMoney,
-  Campaign,
   Delete,
   LocalOffer,
   MailOutline,
   MonetizationOn,
   MoreHoriz,
   NotificationsNone,
-  PlayArrow,
   Publish,
   Save,
   Search,
-  Subtitles,
+  VisibilityOff,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
-import { useAcademy, type Course } from '@/contexts/AcademyContext';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
-import AcademyBrandMark from './AcademyBrandMark';
+import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
+import AcademyLeftSidebar from './AcademyLeftSidebar';
 
 interface AcademyMonetizationStudioProps {
   courseId?: string;
@@ -72,66 +71,6 @@ interface RevenuePoint {
 type RightTab = 'monetization' | 'pricing' | 'concierges';
 type PricingModel = 'one_time' | 'subscription' | 'bundle';
 
-const fallbackCourses: Course[] = [
-  {
-    id: 'monetization-course-1',
-    title: 'Directing Masterclass',
-    description: 'Advanced cinematography workflows for premium film productions.',
-    instructor: {
-      id: 'academy-instructor',
-      name: 'Norwedfilm',
-      avatar: '',
-      bio: 'Film director',
-      profession: 'videographer',
-    },
-    thumbnail: '',
-    videoUrl: '/assets/academy/intro-video.mp4',
-    duration: 336,
-    level: 'advanced',
-    category: 'videography',
-    tags: ['directing', 'cinematography'],
-    price: 36984,
-    isFree: false,
-    isPublished: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    rating: 4.8,
-    studentCount: 232,
-    lessons: [],
-    prerequisites: [],
-    learningOutcomes: [],
-    resources: [],
-  },
-  {
-    id: 'monetization-course-2',
-    title: 'Advanced Cinematography',
-    description: 'Deep dive into high-end visual storytelling and production systems.',
-    instructor: {
-      id: 'academy-instructor-2',
-      name: 'CreatorHub Academy',
-      avatar: '',
-      bio: 'Academy editorial team',
-      profession: 'videographer',
-    },
-    thumbnail: '',
-    videoUrl: '/assets/academy/intro-video.mp4',
-    duration: 490,
-    level: 'advanced',
-    category: 'videography',
-    tags: ['cinematography', 'camera'],
-    price: 28740,
-    isFree: false,
-    isPublished: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    rating: 4.7,
-    studentCount: 145,
-    lessons: [],
-    prerequisites: [],
-    learningOutcomes: [],
-    resources: [],
-  },
-];
 
 const defaultCoupons: CouponItem[] = [
   { id: 'coupon-1', code: 'MASTERCLASS20', percent: 20, usage: 57, active: true },
@@ -178,13 +117,13 @@ const panelSx = {
 };
 
 function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMonetizationStudioProps) {
-  const [, setLocation] = useLocation();
-  const { state, getCourse, updateCourse } = useAcademy();
+  const [location, setLocation] = useLocation();
+  const { state, getCourse, updateCourse, setCurrentCourse } = useAcademy();
   const { analytics, debugging } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
-  const [leftNav, setLeftNav] = useState('monetization');
+  const [leftNav, setLeftNav] = useState('tool-monetization');
   const [rightTab, setRightTab] = useState<RightTab>('monetization');
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d');
   const [pricingModel, setPricingModel] = useState<PricingModel>('one_time');
@@ -205,18 +144,55 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
     if (Array.isArray(state.courses) && state.courses.length > 0) {
       return state.courses;
     }
-    return fallbackCourses;
+    return [];
   }, [state.courses]);
 
   const activeCourse = useMemo(() => {
     const fromParam = courseId ? getCourse(courseId) : null;
     if (fromParam) return fromParam;
 
-    const fromSelected = selectedCourseId ? courseItems.find((course) => course.id === selectedCourseId) : null;
+    const fromSelected = selectedCourseId
+      ? courseItems.find((course) => String(course.id) === String(selectedCourseId))
+      : null;
     if (fromSelected) return fromSelected;
 
-    return state.currentCourse || courseItems[0] || fallbackCourses[0];
+    return state.currentCourse || courseItems[0] || null;
   }, [courseId, courseItems, getCourse, selectedCourseId, state.currentCourse]);
+
+  const syncCourseIdInRoute = useCallback(
+    (nextCourseId: string) => {
+      const normalizedCourseId = String(nextCourseId || '').trim();
+      const [pathname, rawQuery = ''] = location.split('?');
+      const params = new URLSearchParams(rawQuery);
+
+      if (normalizedCourseId && normalizedCourseId !== 'all') {
+        params.set('courseId', normalizedCourseId);
+      } else {
+        params.delete('courseId');
+      }
+      params.delete('course_id');
+
+      const suffix = params.toString();
+      setLocation(suffix ? `${pathname}?${suffix}` : pathname);
+    },
+    [location, setLocation],
+  );
+
+  useEffect(() => {
+    const nextCourseId = String(courseId || '').trim();
+    if (!nextCourseId) return;
+    setSelectedCourseId((previousCourseId) =>
+      previousCourseId === nextCourseId ? previousCourseId : nextCourseId,
+    );
+  }, [courseId]);
+
+  useEffect(() => {
+    if (!activeCourse?.id) return;
+    const inState = state.courses.some((course) => String(course.id) === String(activeCourse.id));
+    if (!inState) return;
+    if (String(state.currentCourse?.id || '') === String(activeCourse.id)) return;
+    setCurrentCourse(activeCourse);
+  }, [activeCourse, setCurrentCourse, state.courses, state.currentCourse?.id]);
 
   useEffect(() => {
     if (!selectedCourseId && activeCourse?.id) {
@@ -434,21 +410,6 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
     ],
   );
 
-  const leftNavItems = [
-    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
-    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
-    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
-    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
-    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
-    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
-    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
-    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
-    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
-    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
-    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
-    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
-  ];
-
   return (
     <Box
       sx={{
@@ -470,88 +431,25 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
           position: 'absolute',
           inset: 0,
           background:
-            'radial-gradient(circle at 74% 12%, rgba(248,179,33,0.25), rgba(5,8,13,0) 39%), radial-gradient(circle at 15% 84%, rgba(83,118,193,0.17), rgba(6,8,14,0) 43%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0) 26%)',
+            'radial-gradient(circle at 74% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%)',
           pointerEvents: 'none',
         }}
       />
 
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
-        <Box
-          component="aside"
-          sx={{
-            width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
-            background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
-            display: 'flex',
-            flexDirection: 'column',
+        <AcademyLeftSidebar
+          activeNav={leftNav}
+          onNavigate={(navId, route) => {
+            setLeftNav(navId);
+            setLocation(route);
           }}
-        >
-          <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <AcademyBrandMark />
-            <Button
-              variant="outlined"
-              startIcon={<Add />}
-              onClick={() => setLocation('/academy/course-creator')}
-              sx={{
-                justifyContent: 'flex-start',
-                borderColor: 'rgba(248,179,33,0.55)',
-                color: '#f8d56f',
-                borderRadius: 1,
-                textTransform: 'none',
-                fontWeight: 600,
-              }}
-            >
-              {tt('Opprett nytt kurs', 'Create New Course')}
-            </Button>
-          </Stack>
-
-          <Stack spacing={0.5} sx={{ px: 1.5 }}>
-            {leftNavItems.map((item) => {
-              const active = leftNav === item.id;
-              return (
-                <Button
-                  key={item.id}
-                  onClick={() => {
-                    setLeftNav(item.id);
-                    setLocation(item.route);
-                  }}
-                  sx={{
-                    justifyContent: 'flex-start',
-                    color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
-                    borderRadius: 1,
-                    textTransform: 'none',
-                    px: 2,
-                    py: 1.15,
-                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
-                    background: active
-                      ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
-                      : 'transparent',
-                  }}
-                >
-                  {item.label}
-                </Button>
-              );
-            })}
-          </Stack>
-
-          <Box sx={{ mt: 'auto', p: 2 }}>
-            <Button
-              startIcon={<Add />}
-              onClick={addBundle}
-              sx={{
-                width: '100%',
-                justifyContent: 'flex-start',
-                textTransform: 'none',
-                color: '#edf0f7',
-                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
-                borderRadius: 1,
-              }}
-            >
-              {tt('Ny pakke', 'New Bundle')}
-            </Button>
-          </Box>
-        </Box>
+          onCreateCourse={() => {
+            setLeftNav('curriculum');
+            setLocation('/academy/curriculum?createCompetency=1');
+          }}
+          tt={tt}
+          navLabel={navLabel}
+        />
 
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Box
@@ -577,15 +475,33 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
             </Stack>
 
             <Stack direction="row" spacing={1.2} alignItems="center">
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <AcademyLocaleSwitcher />
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=notifications')}
+                aria-label={tt('Varsler', 'Notifications')}
+                sx={{ color: 'rgba(237,240,247,0.75)' }}
+              >
                 <NotificationsNone fontSize="small" />
               </IconButton>
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=messages')}
+                aria-label={tt('Meldinger', 'Messages')}
+                sx={{ color: 'rgba(237,240,247,0.75)' }}
+              >
                 <MailOutline fontSize="small" />
               </IconButton>
-              <Avatar sx={{ width: 34, height: 34, bgcolor: '#f8b321', color: '#111' }}>
-                N
-              </Avatar>
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=profile')}
+                aria-label={tt('Profil', 'Profile')}
+                sx={{ p: 0 }}
+              >
+                <Avatar sx={{ width: 34, height: 34, bgcolor: '#f8b321', color: '#111' }}>
+                  N
+                </Avatar>
+              </IconButton>
             </Stack>
           </Box>
 
@@ -594,7 +510,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
               flex: 1,
               minHeight: 0,
               display: 'grid',
-              gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1fr) 380px' },
+              gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1fr) var(--academy-right-panel-width, 390px)' },
               gap: 2,
               px: 2,
               py: 2,
@@ -607,15 +523,30 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                 justifyContent="space-between"
                 alignItems={{ xs: 'stretch', lg: 'center' }}
               >
-                <Typography sx={{ fontSize: 38, fontWeight: 600, letterSpacing: '0.02em' }}>
+                <Typography sx={{ fontSize: 32, fontWeight: 600, letterSpacing: '0.02em' }}>
                   {tt('Monetisering', 'Monetization')}
                 </Typography>
 
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  flexWrap="nowrap"
+                  useFlexGap
+                  sx={{
+                    overflowX: 'auto',
+                    pb: 0.2,
+                    '& > *': { flexShrink: 0 },
+                    '&::-webkit-scrollbar': { height: 6 },
+                    '&::-webkit-scrollbar-thumb': {
+                      backgroundColor: 'rgba(255,255,255,0.18)',
+                      borderRadius: 999,
+                    },
+                  }}
+                >
                   <Button
                     variant="outlined"
-                    startIcon={<PlayArrow />}
-                    onClick={() => setLocation('/academy/video-player')}
+                    startIcon={<VisibilityOff />}
+                    onClick={() => setLocation('/academy/player-studio')}
                     sx={{
                       textTransform: 'none',
                       borderColor: 'rgba(255,255,255,0.2)',
@@ -623,7 +554,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                       borderRadius: 1,
                     }}
                   >
-                    {tt('Forhåndsvis', 'Preview')}
+                    {tt('Forhåndsvis (student)', 'Preview (learner)')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -637,32 +568,6 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                     }}
                   >
                     {tt('Lagre', 'Save')}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Campaign />}
-                    onClick={() => setLocation('/academy/cta-overlay')}
-                    sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
-                      borderRadius: 1,
-                    }}
-                  >
-                    CTA
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Subtitles />}
-                    onClick={() => setLocation('/academy/lower-thirds')}
-                    sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
-                      borderRadius: 1,
-                    }}
-                  >
-                    {tt('LowerThirds', 'LowerThirds')}
                   </Button>
                   <Button
                     variant="contained"
@@ -698,7 +603,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
 
               <Box sx={{ ...panelSx, p: 1.2 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.2 }}>
-                  <Typography sx={{ fontSize: 28, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                  <Typography sx={{ fontSize: 18, fontFamily: 'Barlow Condensed, sans-serif' }}>
                     {tt('Inntektsoversikt', 'Earnings Overview')}
                   </Typography>
                   <Stack direction="row" spacing={0.6}>
@@ -732,7 +637,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                       'linear-gradient(145deg, rgba(16,19,29,0.92), rgba(10,13,20,0.95)), radial-gradient(circle at 62% 18%, rgba(248,179,33,0.21), rgba(0,0,0,0))',
                   }}
                 >
-                  <Typography sx={{ fontSize: 56, fontFamily: 'Barlow Condensed, sans-serif', color: '#f8d56f', lineHeight: 1 }}>
+                  <Typography sx={{ fontSize: 34, fontFamily: 'Barlow Condensed, sans-serif', color: '#f8d56f', lineHeight: 1 }}>
                     {toNok(totalEarnings)}
                   </Typography>
                   <Typography sx={{ color: '#7eea8e', letterSpacing: '0.08em', fontSize: 14 }}>
@@ -820,7 +725,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                       }}
                     >
                       <Typography sx={{ color: 'rgba(237,240,247,0.74)', fontSize: 13 }}>{title}</Typography>
-                      <Typography sx={{ fontSize: 36, lineHeight: 1.1, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                      <Typography sx={{ fontSize: 20, lineHeight: 1.1, fontFamily: 'Barlow Condensed, sans-serif' }}>
                         {value}
                       </Typography>
                       <Typography sx={{ color: '#7eea8e', fontSize: 13 }}>{meta}</Typography>
@@ -831,7 +736,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
 
               <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.3} sx={{ minHeight: 0 }}>
                 <Box sx={{ ...panelSx, flex: 1, p: 1.2 }}>
-                  <Typography sx={{ fontSize: 28, fontFamily: 'Barlow Condensed, sans-serif', mb: 1 }}>
+                  <Typography sx={{ fontSize: 18, fontFamily: 'Barlow Condensed, sans-serif', mb: 1 }}>
                     Top Courses
                   </Typography>
 
@@ -886,7 +791,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                           />
 
                           <Stack sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography sx={{ fontSize: 28, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                            <Typography sx={{ fontSize: 18, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
                               {course.title}
                             </Typography>
                             <Typography sx={{ color: 'rgba(237,240,247,0.67)', fontSize: 13 }}>
@@ -907,7 +812,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                             </Stack>
 
                             <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.9 }}>
-                              <Typography sx={{ fontSize: 34, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                              <Typography sx={{ fontSize: 18, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
                                 {toNok(course.revenue)}
                               </Typography>
                               <Typography sx={{ color: '#7eea8e', fontSize: 12 }}>Net</Typography>
@@ -923,7 +828,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                 </Box>
 
                 <Box sx={{ ...panelSx, width: { xs: '100%', xl: 430 }, p: 1.2 }}>
-                  <Typography sx={{ fontSize: 28, fontFamily: 'Barlow Condensed, sans-serif', mb: 1 }}>
+                  <Typography sx={{ fontSize: 18, fontFamily: 'Barlow Condensed, sans-serif', mb: 1 }}>
                     Subscriptions & Bundles
                   </Typography>
                   <Stack spacing={1}>
@@ -941,7 +846,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                         }}
                       >
                         <Stack direction="row" justifyContent="space-between" alignItems="center">
-                          <Typography sx={{ fontSize: 30, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                          <Typography sx={{ fontSize: 20, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
                             {bundle.title}
                           </Typography>
                           <Chip
@@ -954,7 +859,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                           {bundle.description}
                         </Typography>
                         <Stack direction="row" spacing={1.1} alignItems="end" sx={{ mt: 0.9 }}>
-                          <Typography sx={{ fontSize: 38, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                          <Typography sx={{ fontSize: 32, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
                             {toNok(bundle.monthlyPrice)}
                           </Typography>
                           <Typography sx={{ color: 'rgba(237,240,247,0.65)', mb: 0.35 }}>/ month</Typography>
@@ -1007,7 +912,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                   <Stack spacing={1.1}>
                     <Box sx={{ ...panelSx, p: 1.1 }}>
                       <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography sx={{ fontSize: 22, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                        <Typography sx={{ fontSize: 18, fontFamily: 'Barlow Condensed, sans-serif' }}>
                           Pricing
                         </Typography>
                         <Select
@@ -1041,7 +946,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                     </Box>
 
                     <Box sx={{ ...panelSx, p: 1.1 }}>
-                      <Typography sx={{ fontSize: 22, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                      <Typography sx={{ fontSize: 18, fontFamily: 'Barlow Condensed, sans-serif' }}>
                         Revenue Split
                       </Typography>
 
@@ -1076,7 +981,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
 
                     <Box sx={{ ...panelSx, p: 1.1 }}>
                       <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography sx={{ fontSize: 22, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                        <Typography sx={{ fontSize: 18, fontFamily: 'Barlow Condensed, sans-serif' }}>
                           Payouts
                         </Typography>
                         <Chip label="Weekly" size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }} />
@@ -1102,7 +1007,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                     </Box>
 
                     <Box sx={{ ...panelSx, p: 1.1 }}>
-                      <Typography sx={{ fontSize: 22, fontFamily: 'Barlow Condensed, sans-serif', mb: 1 }}>
+                      <Typography sx={{ fontSize: 18, fontFamily: 'Barlow Condensed, sans-serif', mb: 1 }}>
                         Affiliates
                       </Typography>
                       {[
@@ -1140,14 +1045,18 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                 {rightTab === 'pricing' && (
                   <Stack spacing={1.1}>
                     <Box sx={{ ...panelSx, p: 1.1 }}>
-                      <Typography sx={{ fontSize: 22, fontFamily: 'Barlow Condensed, sans-serif', mb: 0.8 }}>
+                      <Typography sx={{ fontSize: 18, fontFamily: 'Barlow Condensed, sans-serif', mb: 0.8 }}>
                         Course Pricing
                       </Typography>
                       <Select
                         fullWidth
                         size="small"
                         value={selectedCourseId}
-                        onChange={(event) => setSelectedCourseId(String(event.target.value))}
+                        onChange={(event) => {
+                          const nextCourseId = String(event.target.value);
+                          setSelectedCourseId(nextCourseId);
+                          syncCourseIdInRoute(nextCourseId);
+                        }}
                         sx={{
                           mb: 1,
                           color: '#edf0f7',
@@ -1229,7 +1138,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                     </Box>
 
                     <Box sx={{ ...panelSx, p: 1.1 }}>
-                      <Typography sx={{ fontSize: 22, fontFamily: 'Barlow Condensed, sans-serif', mb: 0.8 }}>
+                      <Typography sx={{ fontSize: 18, fontFamily: 'Barlow Condensed, sans-serif', mb: 0.8 }}>
                         Coupons
                       </Typography>
                       <Stack direction="row" spacing={0.8}>
@@ -1312,7 +1221,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                 {rightTab === 'concierges' && (
                   <Stack spacing={1.1}>
                     <Box sx={{ ...panelSx, p: 1.1 }}>
-                      <Typography sx={{ fontSize: 24, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                      <Typography sx={{ fontSize: 20, fontFamily: 'Barlow Condensed, sans-serif' }}>
                         Concierge Programs
                       </Typography>
                       <Typography sx={{ color: 'rgba(237,240,247,0.7)', mt: 0.6 }}>
@@ -1327,7 +1236,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                     ].map(([title, details, progress]) => (
                       <Box key={title} sx={{ ...panelSx, p: 1.1 }}>
                         <Stack direction="row" justifyContent="space-between" alignItems="center">
-                          <Typography sx={{ fontSize: 23, fontFamily: 'Barlow Condensed, sans-serif' }}>{title}</Typography>
+                          <Typography sx={{ fontSize: 19, fontFamily: 'Barlow Condensed, sans-serif' }}>{title}</Typography>
                           <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)' }}>
                             <MoreHoriz fontSize="small" />
                           </IconButton>
@@ -1369,18 +1278,6 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                   }}
                 >
                   Revenue
-                </Button>
-                <Button
-                  startIcon={<Save />}
-                  onClick={() => void handleSave(false)}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
-                  }}
-                >
-                  Save
                 </Button>
                 <Button
                   onClick={() => {

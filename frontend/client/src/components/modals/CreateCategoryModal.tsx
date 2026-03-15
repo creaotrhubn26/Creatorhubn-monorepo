@@ -44,12 +44,14 @@ import {
 
 interface CreateCategoryModalProps {
   open: boolean;
-  onClose: () => void
+  onClose: () => void;
+  onCategoryCreated?: (savedCategory: Record<string, unknown>) => void;
 }
 
 const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
   open,
   onClose,
+  onCategoryCreated,
 }) => {
   const [categoryName, setCategoryName] = useState('');
   const [categoryKey, setCategoryKey] = useState('');
@@ -127,7 +129,7 @@ const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
   ];
 
   const createCategoryMutation = useMutation({
-    mutationFn: async (categoryData: any) => {
+    mutationFn: async (categoryData: Record<string, unknown>) => {
       // This would create both the category metadata and initial pricing structures
       const response = await fetch('/api/pricing/categories', {
         method: 'POST',
@@ -139,7 +141,19 @@ const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
       if (!response.ok) throw new Error('Failed to create category');
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (savedCategoryResponse: unknown, categoryData: Record<string, unknown>) => {
+      const isRecord = (value: unknown): value is Record<string, unknown> =>
+        typeof value === 'object' && value !== null && !Array.isArray(value);
+
+      const savedCategory = isRecord(savedCategoryResponse)
+        ? (isRecord(savedCategoryResponse.data)
+            ? savedCategoryResponse.data
+            : (isRecord(savedCategoryResponse.category) ? savedCategoryResponse.category : savedCategoryResponse))
+        : categoryData;
+
+      if (onCategoryCreated) {
+        onCategoryCreated(savedCategory);
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/pricing/categories'] });
       queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages'] });
       queryClient.invalidateQueries({ queryKey: ['/api/price-administration/pricing', ],});

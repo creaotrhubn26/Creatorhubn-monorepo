@@ -302,7 +302,6 @@ interface BeatCardItemProps {
   onDuplicate: () => void;
   onToggleLock: () => void;
   readOnly: boolean;
-  darkMode: boolean;
   responsive: ReturnType<typeof getResponsiveValues>;
 }
 
@@ -319,7 +318,6 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
   onDuplicate,
   onToggleLock,
   readOnly,
-  darkMode,
   responsive,
 }) => {
   const [isEditing, setIsEditing]           = useState(false);
@@ -375,7 +373,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
           m: responsive.gap / 2,
           cursor: beat.locked ? 'not-allowed' : 'pointer',
           border: cardBorder,
-          bgcolor: darkMode ? 'rgba(18,18,28,0.92)' : 'rgba(255,255,255,0.95)',
+          bgcolor: 'rgba(18,18,28,0.92)',
           borderLeft: `4px solid ${accentColor}`,
           boxShadow: cardGlow,
           transform: `scale(${cardScale})`,
@@ -502,7 +500,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
               fontWeight: isClimax ? 800 : isStrong ? 700 : 600,
               textTransform: 'uppercase',
               fontSize: isClimax ? '0.78rem' : compact ? '0.65rem' : responsive.bodyFontSize,
-              color: isClimax ? accentColor : darkMode ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.85)',
+              color: isClimax ? accentColor : 'rgba(255,255,255,0.9)',
               lineHeight: 1.3,
               display: 'block',
               mb: 0.5,
@@ -541,7 +539,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
                 variant="body2"
                 sx={{
                   fontSize: compact ? '0.65rem' : '0.72rem',
-                  color: darkMode ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.65)',
+                  color: 'rgba(255,255,255,0.7)',
                   overflow: 'hidden',
                   display: '-webkit-box',
                   WebkitLineClamp: compact ? 2 : 3,
@@ -754,8 +752,7 @@ const StoryThreadsSidebar: FC<{
   beats: ExtendedBeatCard[];
   activeThread: StoryThread | null;
   onToggleThread: (t: StoryThread | null) => void;
-  darkMode: boolean;
-}> = ({ beats, activeThread, onToggleThread, darkMode }) => {
+}> = ({ beats, activeThread, onToggleThread }) => {
   const threads: StoryThread[] = ['A', 'B', 'C'];
 
   return (
@@ -769,7 +766,7 @@ const StoryThreadsSidebar: FC<{
           <Box key={thread}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.25 }}>
               <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} />
-              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.72rem', color: darkMode ? 'rgba(255,255,255,0.9)' : 'inherit' }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.72rem', color: 'rgba(255,255,255,0.9)' }}>
                 {thread}-Story
               </Typography>
               <Typography variant="caption" sx={{ opacity: 0.6, fontSize: '0.65rem', ml: 'auto' }}>
@@ -900,7 +897,6 @@ export const BeatBoard: FC<BeatBoardProps> = ({
   onAddBeat,
   readOnly = false,
   actsView = false,
-  darkMode = true,
 }) => {
   const { tier, isMobile } = useScreenTier();
   const responsive = getResponsiveValues(tier);
@@ -1062,7 +1058,11 @@ export const BeatBoard: FC<BeatBoardProps> = ({
   const toggleMultiSelect = useCallback((beatId: string) => {
     setMultiSelected(prev => {
       const next = new Set(prev);
-      next.has(beatId) ? next.delete(beatId) : next.add(beatId);
+      if (next.has(beatId)) {
+        next.delete(beatId);
+      } else {
+        next.add(beatId);
+      }
       return next;
     });
   }, []);
@@ -1116,7 +1116,7 @@ export const BeatBoard: FC<BeatBoardProps> = ({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: darkMode ? '#0d0d14' : '#f5f5f5', overflow: 'hidden' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#0d0d14', overflow: 'hidden' }}>
 
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <Paper
@@ -1128,11 +1128,11 @@ export const BeatBoard: FC<BeatBoardProps> = ({
           alignItems: 'center',
           gap: 0.75,
           borderBottom: '1px solid rgba(255,255,255,0.07)',
-          bgcolor: darkMode ? 'rgba(14,14,22,0.95)' : 'rgba(255,255,255,0.9)',
+          bgcolor: 'rgba(14,14,22,0.95)',
           flexWrap: isMobile ? 'wrap' : 'nowrap',
         }}
       >
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: responsive.headerFontSize, color: darkMode ? 'white' : 'inherit', mr: 0.5, whiteSpace: 'nowrap' }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: responsive.headerFontSize, color: 'white', mr: 0.5, whiteSpace: 'nowrap' }}>
           <SceneIcon sx={{ mr: 0.5, fontSize: responsive.iconSize, verticalAlign: 'middle', color: '#7b61ff' }} />
           {!isMobile && 'BeatBoard'} <span style={{ opacity: 0.5 }}>({beats.length})</span>
         </Typography>
@@ -1274,7 +1274,6 @@ export const BeatBoard: FC<BeatBoardProps> = ({
             beats={beats}
             activeThread={activeThread}
             onToggleThread={setActiveThread}
-            darkMode={darkMode}
           />
         </Box>
       </Collapse>
@@ -1306,7 +1305,7 @@ export const BeatBoard: FC<BeatBoardProps> = ({
               <Box sx={{ mb: 1 }}>
                 <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 0.5 }}>
                   <Box>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 800, letterSpacing: 2, fontSize: responsive.actHeaderFontSize, color: darkMode ? 'white' : 'inherit' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 800, letterSpacing: 2, fontSize: responsive.actHeaderFontSize, color: 'white' }}>
                       {label}
                     </Typography>
                     {subtitle && (
@@ -1371,7 +1370,6 @@ export const BeatBoard: FC<BeatBoardProps> = ({
                     onDuplicate={() => handleDuplicate(beat)}
                     onToggleLock={() => patchBeat(beat.id, { locked: !beat.locked })}
                     readOnly={readOnly}
-                    darkMode={darkMode}
                     responsive={responsive}
                   />
                 );

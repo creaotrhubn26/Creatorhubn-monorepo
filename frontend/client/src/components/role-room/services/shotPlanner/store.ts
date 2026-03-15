@@ -1158,14 +1158,19 @@ export const useShotPlannerStore = create<ShotPlannerStore>()(
 // Selector Hooks
 // =============================================================================
 
+const EMPTY_CAMERAS: Camera2D[] = [];
+const EMPTY_ACTORS: Actor2D[] = [];
+const EMPTY_PROPS: Prop2D[] = [];
+const EMPTY_SHOTS: Shot2D[] = [];
+
 export const useCurrentScene = () => useShotPlannerStore(state => state.scene);
 export const useScenes = () => useShotPlannerStore(state => state.scenes);
 export const useActiveTool = () => useShotPlannerStore(state => state.activeTool);
 export const useSelection = () => useShotPlannerStore(state => state.selection);
-export const useCameras = () => useShotPlannerStore(state => state.scene?.cameras ?? []);
-export const useActors = () => useShotPlannerStore(state => state.scene?.actors ?? []);
-export const useProps = () => useShotPlannerStore(state => state.scene?.props ?? []);
-export const useShots = () => useShotPlannerStore(state => state.scene?.shots ?? []);
+export const useCameras = () => useShotPlannerStore(state => state.scene?.cameras ?? EMPTY_CAMERAS);
+export const useActors = () => useShotPlannerStore(state => state.scene?.actors ?? EMPTY_ACTORS);
+export const useProps = () => useShotPlannerStore(state => state.scene?.props ?? EMPTY_PROPS);
+export const useShots = () => useShotPlannerStore(state => state.scene?.shots ?? EMPTY_SHOTS);
 export const useActiveShot = () => useShotPlannerStore(state => {
   if (!state.scene?.activeShotId) return null;
   return state.scene.shots.find(s => s.id === state.scene?.activeShotId) ?? null;

@@ -13,13 +13,13 @@
  */
 
 import { useState, useReducer, useCallback, useRef, useEffect, useMemo, memo, type FC, type MouseEvent } from 'react';
-import React from 'react';
 import {
   Box,
   Paper,
   IconButton,
   Tooltip,
   Chip,
+  CircularProgress,
   ToggleButton,
   ToggleButtonGroup,
   Divider,
@@ -45,19 +45,19 @@ import {
   Close as CloseIcon,
   Fullscreen as FullscreenIcon,
   FullscreenExit as FullscreenExitIcon,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 import { ScreenplayEditor } from './ScreenplayEditor';
-import type { ParsedScene } from './SceneNavigatorSidebar';
-import { SceneNavigatorSidebar } from './SceneNavigatorSidebar';
+import { SceneNavigatorSidebar, type ParsedScene } from './SceneNavigatorSidebar';
 import { BeatBoard } from './BeatBoard';
 import { TableReadPanel } from './TableReadPanel';
 import { ScriptAnalysisPanel } from './ScriptAnalysisPanel';
 import { StoryStructurePanel } from './StoryStructurePanel';
 import { GrammarCheckPanel } from './screenplay/GrammarCheckPanel';
 import { StoryboardIntegrationView } from './StoryboardIntegrationView';
-import type { SceneBreakdown, UserRoleType } from '../models/casting';
-import type { BeatCard } from '../services/scriptAnalysisService';
-import { analyzeScript } from '../services/scriptAnalysisService';
+import type { SceneBreakdown, UserRoleType, Role, Candidate } from '../models/casting';
+import { analyzeScript, type BeatCard } from '../services/scriptAnalysisService';
 import { castingAuthService } from '../services/castingAuthService';
 import { ScreenplayGuide } from './ScreenplayGuide';
 
@@ -195,6 +195,17 @@ const getResponsiveValues = (tier: ScreenTier) => {
 
 export type ScriptLockState = 'unlocked' | 'locked' | 'final';
 export type RightPanelType = 'none' | 'analysis' | 'beatboard' | 'tableread' | 'structure' | 'grammar' | 'storyboard';
+export type HeaderSaveState = 'saved' | 'saving' | 'unsaved' | 'error';
+
+export interface ScreenplayHeaderSummary {
+  pages: number;
+  runtimeMinutes: number;
+  sceneCount: number;
+  characterCount: number;
+  statusLabel?: string;
+  saveLabel?: string;
+  saveState?: HeaderSaveState;
+}
 
 export interface ScreenplayEditorWithNavigatorProps {
   // Editor props
@@ -202,8 +213,11 @@ export interface ScreenplayEditorWithNavigatorProps {
   onChange: (value: string) => void;
   characters?: string[];
   locations?: string[];
+  roles?: Role[];
+  candidates?: Candidate[];
   onCharacterAdd?: (name: string) => void;
   onLocationAdd?: (name: string) => void;
+  onCharacterProfileOpen?: (payload: { characterName: string; role: Role | null; candidate: Candidate | null }) => void;
   showLineNumbers?: boolean;
   editorKey?: string;
   
@@ -234,6 +248,7 @@ export interface ScreenplayEditorWithNavigatorProps {
   
   // Script title for sharing
   scriptTitle?: string;
+  headerSummary?: ScreenplayHeaderSummary | null;
 }
 
 const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorProps> = ({
@@ -241,8 +256,11 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   onChange,
   characters = [],
   locations = [],
+  roles = [],
+  candidates = [],
   onCharacterAdd,
   onLocationAdd,
+  onCharacterProfileOpen,
   showLineNumbers = true,
   scenes,
   onSceneSelect,
@@ -256,6 +274,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   defaultRightPanel = 'none',
   enableSpellcheck = true,
   scriptTitle = 'Untitled',
+  headerSummary = null,
   editorKey,
 }) => {
   const { tier, isMobile, isTablet, isDesktop: _isDesktop, is4K } = useScreenTier();
@@ -283,6 +302,10 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     open: false, message: '', severity: 'success',
   });
   const containerRef = useRef<HTMLDivElement>(null);
+  const mainContentRef = useRef<HTMLDivElement>(null);
+  const editorTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const isResizingRightPanelRef = useRef(false);
+  const [storyboardPanelWidth, setStoryboardPanelWidth] = useState<number | null>(null);
   
   // Role-based permissions
   const [permissions, setPermissions] = useState({
@@ -357,21 +380,18 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     onCursorChange?.(line, column, element);
   }, [onCursorChange]);
 
-  // Handle scene selection from sidebar
-  const handleSceneSelect = useCallback((scene: ParsedScene | SceneBreakdown, lineNumber: number) => {
-    gotoLine(lineNumber);
-    // Store selected scene for storyboard panel
-    if ('id' in scene && 'projectId' in scene) {
-      setSelectedScene(scene as SceneBreakdown);
-    } else {
-      setSelectedScene(toSceneBreakdown(scene as ParsedScene, lineNumber, projectId || 'default'));
+  const resolveEditorTextarea = useCallback(() => {
+    if (editorTextareaRef.current && document.contains(editorTextareaRef.current)) {
+      return editorTextareaRef.current;
     }
-    onSceneSelect?.(scene);
-  }, [onSceneSelect, projectId, /* gotoLine is stable via useCallback below */]);
+    const scopedTextarea = containerRef.current?.querySelector('textarea');
+    editorTextareaRef.current = scopedTextarea instanceof HTMLTextAreaElement ? scopedTextarea : null;
+    return editorTextareaRef.current;
+  }, []);
 
   // Go to a specific line in the editor
-  const gotoLine = useCallback((lineNumber: number) => {
-    const textarea = document.querySelector('textarea') as HTMLTextAreaElement;
+  function gotoLine(lineNumber: number) {
+    const textarea = resolveEditorTextarea();
     if (textarea) {
       const lines = value.split('\n');
       let charIndex = 0;
@@ -386,7 +406,19 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     }
     setHighlightedLine(lineNumber);
     setTimeout(() => setHighlightedLine(null), 2000);
-  }, [value]);
+  }
+
+  // Handle scene selection from sidebar
+  const handleSceneSelect = useCallback((scene: ParsedScene | SceneBreakdown, lineNumber: number) => {
+    gotoLine(lineNumber);
+    // Store selected scene for storyboard panel
+    if ('id' in scene && 'projectId' in scene) {
+      setSelectedScene(scene as SceneBreakdown);
+    } else {
+      setSelectedScene(toSceneBreakdown(scene as ParsedScene, lineNumber, projectId || 'default'));
+    }
+    onSceneSelect?.(scene);
+  }, [gotoLine, onSceneSelect, projectId]);
 
   // Handle lock state change
   const handleLockToggle = useCallback(() => {
@@ -444,6 +476,88 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     dispatchUi({ type: 'TOGGLE_FULLSCREEN' });
   }, []);
 
+  const getStoryboardResizeBounds = useCallback(() => {
+    const rowWidth = mainContentRef.current?.clientWidth ?? window.innerWidth;
+    const sidebarWidth = isMobile ? 0 : (sidebarCollapsed ? 48 : responsive.sidebarWidth);
+    const usableWidth = Math.max(0, rowWidth - sidebarWidth);
+
+    const minEditorWidth = is4K ? 860 : isTablet ? 520 : 620;
+    const minPanelWidth = is4K ? 680 : isTablet ? 460 : 500;
+    const maxPanelWidth = Math.max(minPanelWidth, usableWidth - minEditorWidth);
+
+    return { minPanelWidth, maxPanelWidth, usableWidth };
+  }, [is4K, isMobile, isTablet, responsive.sidebarWidth, sidebarCollapsed]);
+
+  const getDefaultStoryboardPanelWidth = useCallback(() => {
+    const { minPanelWidth, maxPanelWidth, usableWidth } = getStoryboardResizeBounds();
+    const widthRatioByTier: Record<ScreenTier, number> = {
+      xs: 0.85,
+      sm: 0.85,
+      md: 0.52,
+      lg: 0.56,
+      xl: 0.52,
+      xxl: 0.48,
+      '4k': 0.44,
+    };
+    const target = Math.round(usableWidth * widthRatioByTier[tier]);
+    return Math.min(maxPanelWidth, Math.max(minPanelWidth, target));
+  }, [getStoryboardResizeBounds, tier]);
+
+  useEffect(() => {
+    if (isMobile || rightPanel !== 'storyboard') {
+      setStoryboardPanelWidth(null);
+      return;
+    }
+
+    setStoryboardPanelWidth((currentWidth) => {
+      const { minPanelWidth, maxPanelWidth } = getStoryboardResizeBounds();
+      if (currentWidth == null) {
+        return getDefaultStoryboardPanelWidth();
+      }
+      return Math.min(maxPanelWidth, Math.max(minPanelWidth, currentWidth));
+    });
+  }, [
+    getDefaultStoryboardPanelWidth,
+    getStoryboardResizeBounds,
+    isMobile,
+    rightPanel,
+    sidebarCollapsed,
+    tier,
+  ]);
+
+  const handleRightPanelResizeDrag = useCallback((event: globalThis.MouseEvent) => {
+    if (!isResizingRightPanelRef.current || rightPanel !== 'storyboard' || isMobile) return;
+
+    const rowBounds = mainContentRef.current?.getBoundingClientRect();
+    if (!rowBounds) return;
+
+    const widthFromCursor = rowBounds.right - event.clientX;
+    const { minPanelWidth, maxPanelWidth } = getStoryboardResizeBounds();
+    const clampedWidth = Math.min(maxPanelWidth, Math.max(minPanelWidth, widthFromCursor));
+    setStoryboardPanelWidth(clampedWidth);
+  }, [getStoryboardResizeBounds, isMobile, rightPanel]);
+
+  const stopRightPanelResize = useCallback(() => {
+    if (!isResizingRightPanelRef.current) return;
+
+    isResizingRightPanelRef.current = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    window.removeEventListener('mousemove', handleRightPanelResizeDrag);
+    window.removeEventListener('mouseup', stopRightPanelResize);
+  }, [handleRightPanelResizeDrag]);
+
+  const startRightPanelResize = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    if (rightPanel !== 'storyboard' || isMobile) return;
+
+    event.preventDefault();
+    isResizingRightPanelRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', handleRightPanelResizeDrag);
+    window.addEventListener('mouseup', stopRightPanelResize);
+  }, [handleRightPanelResizeDrag, isMobile, rightPanel, stopRightPanelResize]);
+
   // Escape key handler for fullscreen
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -452,6 +566,18 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [isFullscreen]);
+
+  useEffect(() => () => stopRightPanelResize(), [stopRightPanelResize]);
+
+  const storyboardPanelBounds = useMemo(() => {
+    if (isMobile || rightPanel !== 'storyboard') return null;
+    return getStoryboardResizeBounds();
+  }, [getStoryboardResizeBounds, isMobile, rightPanel]);
+
+  const effectiveStoryboardPanelWidth = useMemo(() => {
+    if (isMobile || rightPanel !== 'storyboard') return null;
+    return storyboardPanelWidth ?? getDefaultStoryboardPanelWidth();
+  }, [getDefaultStoryboardPanelWidth, isMobile, rightPanel, storyboardPanelWidth]);
 
   return (
     <Box
@@ -485,6 +611,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           borderBottom: '1px solid rgba(255,255,255,0.1)',
           bgcolor: 'rgba(30,30,50,0.8)',
           flexWrap: 'wrap',
+          position: 'relative',
         }}
       >
         {/* Mobile Menu Button for Sidebar */}
@@ -543,6 +670,101 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             color="default"
             sx={{ fontSize: responsive.captionFontSize }}
           />
+        )}
+
+        {!isMobile && (
+          <Typography
+            variant="body2"
+            sx={{
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              maxWidth: { md: 220, lg: 320, xl: 420, xxl: 520, '4k': 640 },
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              color: 'rgba(255,255,255,0.92)',
+              fontWeight: 700,
+              letterSpacing: '0.02em',
+              textTransform: 'uppercase',
+              fontSize: responsive.captionFontSize,
+              pointerEvents: 'none',
+            }}
+            title={scriptTitle}
+          >
+            {scriptTitle}
+          </Typography>
+        )}
+
+        {!isMobile && headerSummary && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', ml: 1 }}>
+            <Chip
+              size={responsive.chipSize}
+              variant="outlined"
+              label={`${headerSummary.pages} sider`}
+              sx={{ fontSize: responsive.captionFontSize }}
+            />
+            <Chip
+              size={responsive.chipSize}
+              variant="outlined"
+              label={`~${headerSummary.runtimeMinutes} min`}
+              sx={{ fontSize: responsive.captionFontSize }}
+            />
+            <Chip
+              size={responsive.chipSize}
+              variant="outlined"
+              label={`${headerSummary.sceneCount} scener`}
+              sx={{ fontSize: responsive.captionFontSize }}
+            />
+            <Chip
+              size={responsive.chipSize}
+              variant="outlined"
+              label={`${headerSummary.characterCount} karakterer`}
+              sx={{ fontSize: responsive.captionFontSize }}
+            />
+            {headerSummary.statusLabel && (
+              <Chip
+                size={responsive.chipSize}
+                color="primary"
+                label={headerSummary.statusLabel}
+                sx={{ fontSize: responsive.captionFontSize }}
+              />
+            )}
+            {headerSummary.saveLabel && (
+              <Chip
+                size={responsive.chipSize}
+                icon={
+                  headerSummary.saveState === 'saved' ? (
+                    <CheckCircleIcon sx={{ fontSize: responsive.iconSize - 8, color: '#34d399' }} />
+                  ) : headerSummary.saveState === 'saving' ? (
+                    <CircularProgress size={14} sx={{ color: '#60a5fa' }} />
+                  ) : headerSummary.saveState === 'error' ? (
+                    <WarningIcon sx={{ fontSize: responsive.iconSize - 8, color: '#f43f5e' }} />
+                  ) : undefined
+                }
+                label={headerSummary.saveLabel}
+                sx={{
+                  fontSize: responsive.captionFontSize,
+                  bgcolor:
+                    headerSummary.saveState === 'saved'
+                      ? 'rgba(52, 211, 153, 0.2)'
+                      : headerSummary.saveState === 'saving'
+                        ? 'rgba(59, 130, 246, 0.2)'
+                        : headerSummary.saveState === 'error'
+                          ? 'rgba(244, 63, 94, 0.2)'
+                          : 'rgba(251, 191, 36, 0.2)',
+                  color:
+                    headerSummary.saveState === 'saved'
+                      ? '#34d399'
+                      : headerSummary.saveState === 'saving'
+                        ? '#60a5fa'
+                        : headerSummary.saveState === 'error'
+                          ? '#f43f5e'
+                          : '#fbbf24',
+                }}
+              />
+            )}
+          </Box>
         )}
 
         <Box sx={{ flex: 1 }} />
@@ -635,6 +857,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
 
       {/* Main Content */}
       <Box
+        ref={mainContentRef}
         sx={{
           display: 'flex',
           flex: 1,
@@ -722,14 +945,51 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             onChange={handleChange}
             characters={characters}
             locations={locations}
+            roles={roles}
+            candidates={candidates}
             onCharacterAdd={onCharacterAdd}
             onLocationAdd={onLocationAdd}
+            onCharacterProfileOpen={onCharacterProfileOpen}
             readOnly={isReadOnly}
             showLineNumbers={showLineNumbers && !isMobile}
             onCursorChange={handleCursorChange}
             spellCheck={enableSpellcheck}
           />
         </Box>
+
+        {!isMobile && rightPanel !== 'none' && (
+          <Box
+            role={rightPanel === 'storyboard' ? 'separator' : undefined}
+            aria-orientation={rightPanel === 'storyboard' ? 'vertical' : undefined}
+            onMouseDown={rightPanel === 'storyboard' ? startRightPanelResize : undefined}
+            sx={{
+              width: rightPanel === 'storyboard' ? 10 : 1,
+              cursor: rightPanel === 'storyboard' ? 'col-resize' : 'default',
+              bgcolor: rightPanel === 'storyboard' ? 'transparent' : 'rgba(255,255,255,0.1)',
+              position: 'relative',
+              flexShrink: 0,
+              '&::before': rightPanel === 'storyboard'
+                ? {
+                    content: '""',
+                    position: 'absolute',
+                    left: '50%',
+                    top: 0,
+                    bottom: 0,
+                    width: 2,
+                    transform: 'translateX(-50%)',
+                    bgcolor: 'rgba(56,189,248,0.35)',
+                    borderRadius: 2,
+                    transition: 'background-color 0.15s ease',
+                  }
+                : undefined,
+              '&:hover::before': rightPanel === 'storyboard'
+                ? {
+                    bgcolor: 'rgba(56,189,248,0.7)',
+                  }
+                : undefined,
+            }}
+          />
+        )}
 
         {/* Mobile Right Panel Drawer */}
         {isMobile ? (
@@ -801,10 +1061,24 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           rightPanel !== 'none' && (
             <Box
               sx={{
-                width: responsive.rightPanelWidth,
+                width:
+                  rightPanel === 'storyboard'
+                    ? effectiveStoryboardPanelWidth ?? getDefaultStoryboardPanelWidth()
+                    : responsive.rightPanelWidth,
+                minWidth:
+                  rightPanel === 'storyboard'
+                    ? storyboardPanelBounds?.minPanelWidth
+                    : undefined,
+                maxWidth:
+                  rightPanel === 'storyboard'
+                    ? storyboardPanelBounds?.maxPanelWidth
+                    : undefined,
                 height: '100%',
-                borderLeft: '1px solid rgba(255,255,255,0.1)',
+                borderLeft: rightPanel === 'storyboard' ? 'none' : '1px solid rgba(255,255,255,0.1)',
                 overflow: 'hidden',
+                display: rightPanel === 'storyboard' ? 'flex' : 'block',
+                flexDirection: rightPanel === 'storyboard' ? 'column' : undefined,
+                flexShrink: 0,
               }}
             >
               {rightPanel === 'structure' && (
@@ -861,8 +1135,9 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   scene={selectedScene}
                   onUpdate={(updatedScene) => setSelectedScene(updatedScene)}
                   scriptContent={value}
-                  onScriptChange={onChange}
-                  showScriptPanel={false}
+                  onScriptChange={handleChange}
+                  showScriptPanel={true}
+                  storyboardOnly={true}
                 />
               )}
               {rightPanel === 'storyboard' && !selectedScene && (
@@ -921,6 +1196,17 @@ export const ScreenplayEditorWithNavigator = memo(
     if (prevProps.sidebarDefaultCollapsed !== nextProps.sidebarDefaultCollapsed) return false;
     if (prevProps.enableSpellcheck !== nextProps.enableSpellcheck) return false;
     if (prevProps.sidebarWidth !== nextProps.sidebarWidth) return false;
+    const prevSummary = prevProps.headerSummary;
+    const nextSummary = nextProps.headerSummary;
+    if (
+      (prevSummary?.pages ?? null) !== (nextSummary?.pages ?? null) ||
+      (prevSummary?.runtimeMinutes ?? null) !== (nextSummary?.runtimeMinutes ?? null) ||
+      (prevSummary?.sceneCount ?? null) !== (nextSummary?.sceneCount ?? null) ||
+      (prevSummary?.characterCount ?? null) !== (nextSummary?.characterCount ?? null) ||
+      (prevSummary?.statusLabel ?? null) !== (nextSummary?.statusLabel ?? null) ||
+      (prevSummary?.saveLabel ?? null) !== (nextSummary?.saveLabel ?? null) ||
+      (prevSummary?.saveState ?? null) !== (nextSummary?.saveState ?? null)
+    ) return false;
     
     // Callback references (should be memoized, fast equality check)
     if (prevProps.onChange !== nextProps.onChange) return false;
@@ -929,6 +1215,7 @@ export const ScreenplayEditorWithNavigator = memo(
     if (prevProps.onLockStateChange !== nextProps.onLockStateChange) return false;
     if (prevProps.onCharacterAdd !== nextProps.onCharacterAdd) return false;
     if (prevProps.onLocationAdd !== nextProps.onLocationAdd) return false;
+    if (prevProps.onCharacterProfileOpen !== nextProps.onCharacterProfileOpen) return false;
     
     // ── Arrays: fingerprint by length + content identity ──────────────────
 
@@ -942,6 +1229,23 @@ export const ScreenplayEditorWithNavigator = memo(
     const joined = (arr?: string[]) => arr ? arr.join('\x00') : '';
     if (joined(prevProps.characters) !== joined(nextProps.characters)) return false;
     if (joined(prevProps.locations)  !== joined(nextProps.locations))  return false;
+    const rolesFingerprint = (arr?: Role[]) =>
+      arr ? arr.map((role) => {
+        const roleRecord = role as Record<string, unknown>;
+        const candidateIds = Array.isArray(roleRecord.candidateIds) ? roleRecord.candidateIds.join(',') : '';
+        const candidateIdsLegacy = Array.isArray(roleRecord.candidate_ids) ? roleRecord.candidate_ids.join(',') : '';
+        const selectedCandidateId = typeof roleRecord.selectedCandidateId === 'string' ? roleRecord.selectedCandidateId : '';
+        return `${role.id}:${role.updatedAt ?? ''}:${candidateIds}:${candidateIdsLegacy}:${selectedCandidateId}`;
+      }).join('\x00') : '';
+    if (rolesFingerprint(prevProps.roles) !== rolesFingerprint(nextProps.roles)) return false;
+
+    const candidatesFingerprint = (arr?: Candidate[]) =>
+      arr ? arr.map((candidate) => {
+        const candidateRecord = candidate as Record<string, unknown>;
+        const assignedRoles = Array.isArray(candidateRecord.assignedRoles) ? candidateRecord.assignedRoles.join(',') : '';
+        return `${candidate.id}:${candidate.updatedAt ?? ''}:${candidate.roleId ?? ''}:${candidate.role_id ?? ''}:${candidate.status ?? ''}:${assignedRoles}`;
+      }).join('\x00') : '';
+    if (candidatesFingerprint(prevProps.candidates) !== candidatesFingerprint(nextProps.candidates)) return false;
 
     // All checks passed - props are effectively equal, skip re-render
     return true;

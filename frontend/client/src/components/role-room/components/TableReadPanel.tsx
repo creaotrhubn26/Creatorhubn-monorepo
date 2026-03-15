@@ -147,7 +147,6 @@ function getCharacterColor(name: string): string {
 export const TableReadPanel: React.FC<TableReadPanelProps> = ({
   content,
   onLineHighlight,
-  darkMode = true,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -340,7 +339,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: darkMode ? '#1a1a2e' : '#f8f9fa',
+        bgcolor: '#1a1a2e',
         overflow: 'hidden',
       }}
     >
@@ -350,7 +349,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
         sx={{
           p: 2,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: darkMode ? 'rgba(30,30,50,0.9)' : 'rgba(255,255,255,0.95)',
+          bgcolor: 'rgba(30,30,50,0.9)',
         }}
       >
         <Stack direction="row" alignItems="center" spacing={2}>
@@ -457,7 +456,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
           sx={{
             p: 2,
             borderBottom: '1px solid rgba(255,255,255,0.1)',
-            bgcolor: darkMode ? 'rgba(25,25,45,0.9)' : 'rgba(250,250,252,0.95)',
+            bgcolor: 'rgba(25,25,45,0.9)',
           }}
         >
           <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
@@ -607,7 +606,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
             p: 2,
             mx: 2,
             mt: 2,
-            bgcolor: darkMode ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.05)',
+            bgcolor: 'rgba(59,130,246,0.1)',
             borderLeft: `3px solid ${getCharacterColor(currentLine.character)}`,
             borderRadius: 1,
           }}
@@ -662,10 +661,10 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
                 mb: 0.5,
                 cursor: 'pointer',
                 bgcolor: idx === currentIndex
-                  ? darkMode ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.1)'
+                  ? 'rgba(59,130,246,0.2)'
                   : 'transparent',
                 '&:hover': {
-                  bgcolor: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)',
+                  bgcolor: 'rgba(255,255,255,0.05)',
                 },
                 borderLeft: `3px solid ${idx === currentIndex ? getCharacterColor(line.character) : 'transparent'}`,
               }}
@@ -705,7 +704,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
-                      color: darkMode ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)',
+                      color: 'rgba(255,255,255,0.7)',
                     }}
                   >
                     {line.text}

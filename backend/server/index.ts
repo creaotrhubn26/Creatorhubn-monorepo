@@ -40,6 +40,19 @@ import {
 } from '../../frontend/client/src/data/audio-storage-device-database.ts';
 import { WORLD_CAMERA_DATABASE } from '../../frontend/shared/camera-database.ts';
 import { CAMERA_RELEASE_REGISTRY_2020_2026 } from '../../frontend/shared/camera-release-registry.ts';
+import {
+  ACADEMY_PRESENTATION_GRAMMAR_BUDGETS,
+  ACADEMY_PRESENTATION_THEME_TOKENS,
+  academyPresentationBuildGrammarPlan,
+  type AcademyPresentationContinuationPlan as SharedAcademyPresentationContinuationPlan,
+  type AcademyPresentationNarrativeRole as SharedAcademyPresentationNarrativeRole,
+  type AcademyPresentationRepairAction as SharedAcademyPresentationRepairAction,
+  type AcademyPresentationBrandTokens as SharedAcademyPresentationBrandTokens,
+  type AcademyPresentationSlideBudget as SharedAcademyPresentationSlideBudget,
+  type AcademyPresentationSlideGrammarId as SharedAcademyPresentationSlideGrammarId,
+  type AcademyPresentationStructuredContent as SharedAcademyPresentationStructuredContent,
+  type AcademyPresentationVisualNeed as SharedAcademyPresentationVisualNeed,
+} from '../../frontend/shared/academy-presentation-design-system.ts';
 
 // Database connection
 const pool = new Pool({
@@ -90,6 +103,58 @@ const audioUpload = multer({
       cb(new Error('Ugyldig lydformat.'));
     }
   }
+});
+
+const ACADEMY_MEDIA_MAX_FILE_BYTES = 512 * 1024 * 1024;
+const ACADEMY_MEDIA_ALLOWED_DOCUMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'application/zip',
+  'application/x-zip-compressed',
+  'text/plain',
+  'application/json',
+]);
+
+const academyMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: ACADEMY_MEDIA_MAX_FILE_BYTES,
+  },
+  fileFilter: (_req, file, cb) => {
+    const mimetype = String(file.mimetype || '').toLowerCase();
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const isImage = mimetype.startsWith('image/');
+    const isVideo = mimetype.startsWith('video/');
+    const isAudio = mimetype.startsWith('audio/');
+    const hasKnownImageExtension = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'].includes(extension);
+    const hasKnownVideoExtension = ['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.mpeg', '.mpg', '.wmv', '.flv'].includes(extension);
+    const hasKnownAudioExtension = ['.mp3', '.wav', '.aac', '.m4a', '.flac', '.ogg', '.opus'].includes(extension);
+    const isKnownDocument =
+      ACADEMY_MEDIA_ALLOWED_DOCUMENT_MIME_TYPES.has(mimetype) ||
+      ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.zip', '.txt', '.json'].includes(extension);
+
+    if (
+      isImage ||
+      isVideo ||
+      isAudio ||
+      hasKnownImageExtension ||
+      hasKnownVideoExtension ||
+      hasKnownAudioExtension ||
+      isKnownDocument ||
+      mimetype === 'application/octet-stream' ||
+      mimetype === 'binary/octet-stream'
+    ) {
+      cb(null, true);
+      return;
+    }
+
+    cb(new Error('Invalid academy media format'));
+  },
 });
 
 const app = express();
@@ -4232,6 +4297,7 @@ const legacyDialogueByManuscript = new Map<string, any[]>();
 const legacyRevisionsByManuscript = new Map<string, any[]>();
 const legacyActsByManuscript = new Map<string, any[]>();
 const legacyShotListsByProject = new Map<string, any[]>();
+const legacyCalendarEventsByProject = new Map<string, any[]>();
 const legacyTeamDashboardSnapshotsByProject = new Map<string, any[]>();
 const legacyStoryLogicByProject = new Map<string, LegacyStoryLogicEntry>();
 const legacyFavoritesStore = new Map<string, string[]>();
@@ -4239,6 +4305,8 @@ const legacyCandidatePool = new Map<string, any>();
 const legacyRolePool = new Map<string, any>();
 const legacyOffersByProject = new Map<string, any[]>();
 const legacyContractsByProject = new Map<string, any[]>();
+const legacyLiveSetSessionsByProject = new Map<string, any[]>();
+const legacyLiveSetEventsByProject = new Map<string, any[]>();
 const compatUserKvStore = new Map<string, { value: unknown; updatedAt: string }>();
 const compatUiPreferencesStore = new Map<string, Record<string, unknown>>();
 const compatUserPreferencesStore = new Map<string, Record<string, unknown>>();
@@ -5074,6 +5142,10 @@ function dbLegacyShotListsKey(projectId: string): string {
   return `casting:shot-lists:${projectId}`;
 }
 
+function dbLegacyCalendarEventsKey(projectId: string): string {
+  return `casting:calendar-events:${projectId}`;
+}
+
 function dbLegacyTeamSnapshotsKey(projectId: string): string {
   return `casting:team-snapshots:${projectId}`;
 }
@@ -5092,6 +5164,14 @@ function dbLegacyOffersKey(projectId: string): string {
 
 function dbLegacyContractsKey(projectId: string): string {
   return `casting:contracts:${projectId}`;
+}
+
+function dbLegacyLiveSetSessionsKey(projectId: string): string {
+  return `role-room:live-set-sessions:${projectId}`;
+}
+
+function dbLegacyLiveSetEventsKey(projectId: string): string {
+  return `role-room:live-set-events:${projectId}`;
 }
 
 function dbLegacyManuscriptKey(manuscriptId: string): string {
@@ -5727,6 +5807,15 @@ async function getLegacyShotLists(projectId: string): Promise<any[]> {
   return legacyShotListsByProject.get(projectId) || [];
 }
 
+async function getLegacyCalendarEvents(projectId: string): Promise<any[]> {
+  const dbEvents = await compatStoreGet<any[]>(dbLegacyCalendarEventsKey(projectId));
+  if (Array.isArray(dbEvents)) {
+    legacyCalendarEventsByProject.set(projectId, dbEvents);
+    return dbEvents;
+  }
+  return legacyCalendarEventsByProject.get(projectId) || [];
+}
+
 async function getLegacyTeamSnapshots(projectId: string): Promise<any[]> {
   const dbSnapshots = await compatStoreGet<any[]>(dbLegacyTeamSnapshotsKey(projectId));
   if (Array.isArray(dbSnapshots)) {
@@ -5734,6 +5823,24 @@ async function getLegacyTeamSnapshots(projectId: string): Promise<any[]> {
     return dbSnapshots;
   }
   return legacyTeamDashboardSnapshotsByProject.get(projectId) || [];
+}
+
+async function getLegacyLiveSetSessions(projectId: string): Promise<any[]> {
+  const dbSessions = await compatStoreGet<any[]>(dbLegacyLiveSetSessionsKey(projectId));
+  if (Array.isArray(dbSessions)) {
+    legacyLiveSetSessionsByProject.set(projectId, dbSessions);
+    return dbSessions;
+  }
+  return legacyLiveSetSessionsByProject.get(projectId) || [];
+}
+
+async function getLegacyLiveSetEvents(projectId: string): Promise<any[]> {
+  const dbEvents = await compatStoreGet<any[]>(dbLegacyLiveSetEventsKey(projectId));
+  if (Array.isArray(dbEvents)) {
+    legacyLiveSetEventsByProject.set(projectId, dbEvents);
+    return dbEvents;
+  }
+  return legacyLiveSetEventsByProject.get(projectId) || [];
 }
 
 function readManuscriptProjectId(source: any, fallback = ''): string {
@@ -6293,9 +6400,12 @@ app.delete('/api/casting/projects/:projectId', async (req, res) => {
 
   legacyCastingProjects.delete(projectId);
   legacyShotListsByProject.delete(projectId);
+  legacyCalendarEventsByProject.delete(projectId);
   legacyTeamDashboardSnapshotsByProject.delete(projectId);
   legacyOffersByProject.delete(projectId);
   legacyContractsByProject.delete(projectId);
+  legacyLiveSetSessionsByProject.delete(projectId);
+  legacyLiveSetEventsByProject.delete(projectId);
   const manuscriptDeletes = manuscriptsForProject.flatMap((manuscript) => {
     const manuscriptId = typeof manuscript?.id === 'string' ? manuscript.id : '';
     if (!manuscriptId) return [];
@@ -6311,9 +6421,12 @@ app.delete('/api/casting/projects/:projectId', async (req, res) => {
   await Promise.all([
     compatStoreDelete(dbLegacyCastingProjectKey(projectId)),
     compatStoreDelete(dbLegacyShotListsKey(projectId)),
+    compatStoreDelete(dbLegacyCalendarEventsKey(projectId)),
     compatStoreDelete(dbLegacyTeamSnapshotsKey(projectId)),
     compatStoreDelete(dbLegacyOffersKey(projectId)),
     compatStoreDelete(dbLegacyContractsKey(projectId)),
+    compatStoreDelete(dbLegacyLiveSetSessionsKey(projectId)),
+    compatStoreDelete(dbLegacyLiveSetEventsKey(projectId)),
     compatStoreDeleteByPrefix(`casting:favorites:${projectId}::`),
     ...manuscriptDeletes,
   ]);
@@ -6370,6 +6483,120 @@ app.post('/api/casting/projects/:projectId/shot-lists/reorder', async (req, res)
     await compatStoreSet(dbLegacyShotListsKey(projectId), next);
   }
   res.json({ ok: true });
+});
+
+app.get('/api/casting/projects/:projectId/calendar-events', async (req, res) => {
+  const projectId = req.params.projectId;
+  const events = await getLegacyCalendarEvents(projectId);
+  res.json({ events });
+});
+
+app.post('/api/casting/calendar-events', async (req, res) => {
+  const payload = req.body || {};
+  const projectId = typeof payload.projectId === 'string' ? payload.projectId : '';
+  const startTime = typeof payload.startTime === 'string'
+    ? payload.startTime
+    : typeof payload.start_time === 'string'
+      ? payload.start_time
+      : '';
+  if (!projectId || !startTime) {
+    res.status(400).json({ error: 'projectId and startTime are required' });
+    return;
+  }
+
+  const current = await getLegacyCalendarEvents(projectId);
+  const eventId = typeof payload.id === 'string' && payload.id.trim()
+    ? payload.id
+    : `calendar-event-${Date.now()}`;
+  const event = {
+    id: eventId,
+    project_id: projectId,
+    title: typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim() : 'Ny hendelse',
+    description: typeof payload.description === 'string' ? payload.description : '',
+    event_type: typeof payload.eventType === 'string'
+      ? payload.eventType
+      : typeof payload.event_type === 'string'
+        ? payload.event_type
+        : 'general',
+    start_time: startTime,
+    end_time: typeof payload.endTime === 'string'
+      ? payload.endTime
+      : typeof payload.end_time === 'string'
+        ? payload.end_time
+        : null,
+    location_id: typeof payload.locationId === 'string'
+      ? payload.locationId
+      : typeof payload.location_id === 'string'
+        ? payload.location_id
+        : null,
+    all_day: Boolean(payload.allDay ?? payload.all_day ?? false),
+    candidate_ids: Array.isArray(payload.candidateIds) ? payload.candidateIds : Array.isArray(payload.candidate_ids) ? payload.candidate_ids : [],
+    crew_ids: Array.isArray(payload.crewIds) ? payload.crewIds : Array.isArray(payload.crew_ids) ? payload.crew_ids : [],
+    equipment_ids: Array.isArray(payload.equipmentIds) ? payload.equipmentIds : Array.isArray(payload.equipment_ids) ? payload.equipment_ids : [],
+    shot_list_ids: Array.isArray(payload.shotListIds) ? payload.shotListIds : Array.isArray(payload.shot_list_ids) ? payload.shot_list_ids : [],
+    notes: typeof payload.notes === 'string' ? payload.notes : '',
+    status: typeof payload.status === 'string' ? payload.status : 'scheduled',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const next = [...current, event];
+  legacyCalendarEventsByProject.set(projectId, next);
+  await compatStoreSet(dbLegacyCalendarEventsKey(projectId), next);
+  res.json({ eventId });
+});
+
+app.put('/api/casting/calendar-events/:eventId', async (req, res) => {
+  const eventId = req.params.eventId;
+  let location = findByIdInProjectMap(legacyCalendarEventsByProject, eventId);
+  if (!location) {
+    const dbLocation = await findByIdInDbProjectArrays('casting:calendar-events:', eventId);
+    if (dbLocation) {
+      setProjectItems(legacyCalendarEventsByProject, dbLocation.projectId, dbLocation.items);
+      location = { projectId: dbLocation.projectId, index: dbLocation.index };
+    }
+  }
+
+  if (!location) {
+    res.status(404).json({ error: 'Calendar event not found' });
+    return;
+  }
+
+  const current = getProjectItems(legacyCalendarEventsByProject, location.projectId);
+  const existing = current[location.index];
+  current[location.index] = {
+    ...existing,
+    ...req.body,
+    id: eventId,
+    project_id: location.projectId,
+    updated_at: new Date().toISOString(),
+  };
+  setProjectItems(legacyCalendarEventsByProject, location.projectId, current);
+  await compatStoreSet(dbLegacyCalendarEventsKey(location.projectId), current);
+  res.json({ success: true });
+});
+
+app.delete('/api/casting/calendar-events/:eventId', async (req, res) => {
+  const eventId = req.params.eventId;
+  let location = findByIdInProjectMap(legacyCalendarEventsByProject, eventId);
+  if (!location) {
+    const dbLocation = await findByIdInDbProjectArrays('casting:calendar-events:', eventId);
+    if (dbLocation) {
+      setProjectItems(legacyCalendarEventsByProject, dbLocation.projectId, dbLocation.items);
+      location = { projectId: dbLocation.projectId, index: dbLocation.index };
+    }
+  }
+
+  if (!location) {
+    res.status(404).json({ error: 'Calendar event not found' });
+    return;
+  }
+
+  const current = getProjectItems(legacyCalendarEventsByProject, location.projectId)
+    .filter((event) => event?.id !== eventId);
+  setProjectItems(legacyCalendarEventsByProject, location.projectId, current);
+  await compatStoreSet(dbLegacyCalendarEventsKey(location.projectId), current);
+  res.status(204).end();
 });
 
 app.get('/api/casting/projects/:projectId/team-dashboard/snapshots', async (req, res) => {
@@ -6812,6 +7039,126 @@ app.get('/api/role-room/projects/:projectId/contracts', async (req, res) => {
     return;
   }
   res.json({ contracts: getProjectItems(legacyContractsByProject, projectId) });
+});
+
+app.post('/api/role-room/projects/:projectId/live-set/sessions', async (req, res) => {
+  const projectId = req.params.projectId;
+  const payload = req.body || {};
+  const current = await getLegacyLiveSetSessions(projectId);
+  const sessionId = typeof payload.sessionId === 'string' && payload.sessionId.trim()
+    ? payload.sessionId
+    : `live-set-session-${Date.now()}`;
+  const session = {
+    sessionId,
+    projectId,
+    operatorId: typeof payload.operatorId === 'string' ? payload.operatorId : 'unknown-operator',
+    deviceId: typeof payload.deviceId === 'string' ? payload.deviceId : 'unknown-device',
+    shootingDayId: typeof payload.shootingDayId === 'string' ? payload.shootingDayId : undefined,
+    startedAt: new Date().toISOString(),
+    metadata: payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {},
+  };
+  const next = [
+    ...current.filter((entry) => entry?.sessionId !== sessionId),
+    session,
+  ];
+  legacyLiveSetSessionsByProject.set(projectId, next);
+  await compatStoreSet(dbLegacyLiveSetSessionsKey(projectId), next);
+  res.json({ success: true, session });
+});
+
+app.post('/api/role-room/projects/:projectId/live-set/events/batch', async (req, res) => {
+  const projectId = req.params.projectId;
+  const payload = req.body || {};
+  const incoming = Array.isArray(payload.events) ? payload.events : [];
+  if (!incoming.length) {
+    res.json({
+      success: true,
+      ackedEventIds: [],
+      rejected: [],
+      conflicts: [],
+      serverTime: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const current = await getLegacyLiveSetEvents(projectId);
+  const byId = new Map<string, any>(current.map((event) => [String(event?.eventId || event?.id || ''), event]));
+  const ackedEventIds: string[] = [];
+
+  for (const rawEvent of incoming) {
+    const eventId = typeof rawEvent?.eventId === 'string' && rawEvent.eventId.trim()
+      ? rawEvent.eventId
+      : `live-set-event-${Date.now()}-${ackedEventIds.length}`;
+    byId.set(eventId, {
+      ...rawEvent,
+      eventId,
+      projectId,
+      sessionId: typeof rawEvent?.sessionId === 'string' ? rawEvent.sessionId : payload.sessionId,
+      capturedAt: typeof rawEvent?.capturedAt === 'string' ? rawEvent.capturedAt : new Date().toISOString(),
+    });
+    ackedEventIds.push(eventId);
+  }
+
+  const next = Array.from(byId.values()).sort((left, right) => {
+    const leftTime = Date.parse(String(left?.capturedAt || '')) || 0;
+    const rightTime = Date.parse(String(right?.capturedAt || '')) || 0;
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    return Number(left?.seq || 0) - Number(right?.seq || 0);
+  });
+
+  legacyLiveSetEventsByProject.set(projectId, next);
+  await compatStoreSet(dbLegacyLiveSetEventsKey(projectId), next);
+  res.json({
+    success: true,
+    ackedEventIds,
+    rejected: [],
+    conflicts: [],
+    serverTime: new Date().toISOString(),
+  });
+});
+
+app.get('/api/role-room/projects/:projectId/live-set/events', async (req, res) => {
+  const projectId = req.params.projectId;
+  const since = typeof req.query.since === 'string' ? req.query.since : '';
+  const sinceTime = since ? Date.parse(since) : NaN;
+  const current = await getLegacyLiveSetEvents(projectId);
+  const events = Number.isFinite(sinceTime)
+    ? current.filter((event) => {
+        const capturedAt = Date.parse(String(event?.capturedAt || ''));
+        return Number.isFinite(capturedAt) ? capturedAt > sinceTime : true;
+      })
+    : current;
+  const latestEvent = events.length > 0 ? events[events.length - 1] : current[current.length - 1];
+  res.json({
+    success: true,
+    events,
+    conflicts: [],
+    serverCursor: typeof latestEvent?.capturedAt === 'string' ? latestEvent.capturedAt : undefined,
+  });
+});
+
+app.post('/api/role-room/projects/:projectId/live-set/sync/ack', async (req, res) => {
+  const projectId = req.params.projectId;
+  const payload = req.body || {};
+  const eventIds = Array.isArray(payload.eventIds) ? payload.eventIds.map((value) => String(value)) : [];
+  const current = await getLegacyLiveSetEvents(projectId);
+  const known = new Set(current.map((event) => String(event?.eventId || event?.id || '')));
+  const ackedEventIds = eventIds.filter((eventId) => known.has(eventId));
+  const unknownEventIds = eventIds.filter((eventId) => !known.has(eventId));
+  res.json({ success: true, ackedEventIds, unknownEventIds });
+});
+
+app.get('/api/role-room/projects/:projectId/live-set/health', async (_req, res) => {
+  res.json({
+    success: true,
+    status: 'ok',
+    dependencies: {
+      db: 'ok',
+      weatherUpstream: 'ok',
+      websocket: 'degraded',
+    },
+    timestamp: new Date().toISOString(),
+  });
 });
 
 app.post('/api/role-room/offers', async (req, res) => {
@@ -7997,17 +8344,24 @@ app.post('/api/auth/login', async (req, res) => {
         : roleRoomGuestPassword;
       const hashedPassword = await bcrypt.default.hash(safePassword, 10);
       const inferredFirstName = normalizedEmail.split('@')[0]?.slice(0, 64) || 'Role Room';
+      const inferredUsername = normalizedEmail
+        .split('@')[0]
+        ?.toLowerCase()
+        .replace(/[^a-z0-9._-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 64) || `role-room-${Date.now()}`;
 
       result = await pool.query(
-        `INSERT INTO users (email, first_name, role, password, is_active, created_at, updated_at)
-         VALUES ($1, $2, 'user', $3, true, NOW(), NOW())
+        `INSERT INTO users (email, username, first_name, role, password, created_at, updated_at)
+         VALUES ($1, $2, $3, 'user', $4, NOW(), NOW())
          ON CONFLICT (email) DO UPDATE
          SET password = COALESCE(NULLIF(users.password, ''), EXCLUDED.password),
+             username = COALESCE(NULLIF(users.username, ''), EXCLUDED.username),
              first_name = COALESCE(NULLIF(users.first_name, ''), EXCLUDED.first_name),
-             is_active = true,
              updated_at = NOW()
          RETURNING id, email, username, first_name, last_name, password, role`,
-        [normalizedEmail, inferredFirstName, hashedPassword],
+        [normalizedEmail, inferredUsername, inferredFirstName, hashedPassword],
       );
     }
 
@@ -8097,6 +8451,15 @@ app.post('/api/auth/login', async (req, res) => {
 
     console.log(`[Auth] Login: ${dbUser.email} as ${role} (session: ${sessionToken.substring(0, 8)}...)`);
 
+    const normalizedRequestedRole = requestedRole || null;
+    const roleRoomSessionRole = isRoleRoomLogin
+      ? (
+          loginAs === 'content_producer'
+            ? 'content_producer'
+            : (normalizedRequestedRole || role)
+        )
+      : role;
+
     res.json({
       success: true,
       token: sessionToken,
@@ -8104,9 +8467,9 @@ app.post('/api/auth/login', async (req, res) => {
         id: dbUser.id,
         email: dbUser.email,
         name,
-        role,
+        role: roleRoomSessionRole,
         ...(isRoleRoomLogin ? {
-          requestedRole: requestedRole || null,
+          requestedRole: normalizedRequestedRole,
           loginAs,
         } : {}),
         ...(role === 'vendor' && vendorCheck.rows.length > 0 ? {
@@ -11470,6 +11833,10 @@ type AcademyPresentationVisualType =
   | 'process'
   | 'kpi'
   | 'timeline'
+  | 'roadmap'
+  | 'architecture'
+  | 'scenario'
+  | 'knowledge-check'
   | 'comparison'
   | 'demo'
   | 'quote'
@@ -11508,17 +11875,24 @@ interface AcademyPresentationDesignGraphicSlot {
 interface AcademyPresentationDesignSlidePlan {
   slideId: string;
   visualType: AcademyPresentationVisualType;
+  grammarId: SharedAcademyPresentationSlideGrammarId;
+  narrativeRole: SharedAcademyPresentationNarrativeRole;
   layoutHint: string;
   recommendedLayout: AcademyPresentationDisplayMode;
   confidence: number;
   reasons: string[];
   intentTags: string[];
+  contentBudget: SharedAcademyPresentationSlideBudget;
+  structuredContent: SharedAcademyPresentationStructuredContent;
+  repairActions: SharedAcademyPresentationRepairAction[];
+  visualNeeds: SharedAcademyPresentationVisualNeed[];
   copySuggestions: {
     title: string;
     body: string[];
     cta: string;
   };
   graphicSlots: AcademyPresentationDesignGraphicSlot[];
+  continuation?: SharedAcademyPresentationContinuationPlan | null;
 }
 
 const ACADEMY_PRESENTATION_PROJECT_TO_THEME: Record<string, AcademyPresentationVisualThemeId> = {
@@ -11594,7 +11968,7 @@ const ACADEMY_PRESENTATION_VISUAL_KEYWORDS: Array<{
   },
   {
     type: 'process',
-    keywords: ['step', 'prosess', 'workflow', 'flyt', 'metode', 'runbook', 'how to'],
+    keywords: ['step', 'prosess', 'workflow', 'flyt', 'metode', 'runbook', 'how to', 'swimlane', 'handoff', 'cross functional'],
   },
   {
     type: 'kpi',
@@ -11602,11 +11976,27 @@ const ACADEMY_PRESENTATION_VISUAL_KEYWORDS: Array<{
   },
   {
     type: 'timeline',
-    keywords: ['timeline', 'roadmap', 'mile', 'phase', 'quarter', 'q1', 'q2', 'q3', 'q4'],
+    keywords: ['timeline', 'mile', 'phase', 'quarter', 'q1', 'q2', 'q3', 'q4'],
+  },
+  {
+    type: 'roadmap',
+    keywords: ['roadmap', 'release plan', 'milepæl', 'milepael', 'next phase', 'quarter plan'],
+  },
+  {
+    type: 'architecture',
+    keywords: ['architecture', 'arkitektur', 'system map', 'stack', 'layer', 'integration map', 'components', 'data flow', 'api flow', 'integration flow'],
+  },
+  {
+    type: 'scenario',
+    keywords: ['scenario', 'situasjon', 'use case', 'brukstilfelle', 'role play', 'case flow'],
+  },
+  {
+    type: 'knowledge-check',
+    keywords: ['knowledge check', 'quiz', 'check your understanding', 'reflection question', 'test deg selv'],
   },
   {
     type: 'comparison',
-    keywords: ['versus', 'vs', 'compare', 'sammenlign', 'before', 'after', 'alternativ'],
+    keywords: ['versus', 'vs', 'compare', 'sammenlign', 'before', 'after', 'alternativ', 'decision matrix', 'prioriteringsmatrise', 'impact effort'],
   },
   {
     type: 'demo',
@@ -11736,6 +12126,10 @@ const academyPresentationNormalizeVisualType = (
     normalized === 'process' ||
     normalized === 'kpi' ||
     normalized === 'timeline' ||
+    normalized === 'roadmap' ||
+    normalized === 'architecture' ||
+    normalized === 'scenario' ||
+    normalized === 'knowledge-check' ||
     normalized === 'comparison' ||
     normalized === 'demo' ||
     normalized === 'quote' ||
@@ -11810,6 +12204,149 @@ const academyPresentationNormalizeGraphicSlots = (
     .slice(0, 8);
 };
 
+const academyPresentationNormalizeGrammarId = (
+  value: unknown,
+): SharedAcademyPresentationSlideGrammarId | null => {
+  const normalized = String(readString(value) || '').toLowerCase();
+  return normalized in ACADEMY_PRESENTATION_GRAMMAR_BUDGETS
+    ? (normalized as SharedAcademyPresentationSlideGrammarId)
+    : null;
+};
+
+const academyPresentationNormalizeVisualNeeds = (
+  value: unknown,
+): SharedAcademyPresentationVisualNeed[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!academyPresentationIsRecord(entry)) return null;
+      const kind = academyPresentationNormalizeGraphicKind(entry.kind);
+      if (!kind) return null;
+      const label = String(readString(entry.label) || '').trim().slice(0, 80);
+      const prompt = String(readString(entry.prompt) || label).trim().slice(0, 180);
+      const priorityRaw = String(readString(entry.priority) || 'secondary').toLowerCase();
+      const priority = priorityRaw === 'primary' ? 'primary' : 'secondary';
+      return {
+        kind,
+        label: label || 'Visual',
+        prompt: prompt || label || 'Supporting visual',
+        priority,
+      } satisfies SharedAcademyPresentationVisualNeed;
+    })
+    .filter((entry): entry is SharedAcademyPresentationVisualNeed => Boolean(entry))
+    .slice(0, 4);
+};
+
+const academyPresentationBuildSlidePlan = ({
+  slide,
+  index,
+  totalSlides,
+  useNorwegian,
+  visualType,
+  confidence,
+  reasons,
+  intentTags,
+  preferredGrammarId,
+  preferredSubtitle,
+  preferredBullets,
+  preferredQuoteText,
+  preferredQuoteAttribution,
+  preferredCtaLabel,
+  preferredCtaSupport,
+  preferredMediaIntent,
+  preferredVisualNeeds,
+}: {
+  slide: AcademyPresentationDesignSlideInput;
+  index: number;
+  totalSlides: number;
+  useNorwegian: boolean;
+  visualType: AcademyPresentationVisualType;
+  confidence: number;
+  reasons: string[];
+  intentTags: string[];
+  preferredGrammarId?: SharedAcademyPresentationSlideGrammarId | null;
+  preferredSubtitle?: string;
+  preferredBullets?: string[];
+  preferredQuoteText?: string;
+  preferredQuoteAttribution?: string;
+  preferredCtaLabel?: string;
+  preferredCtaSupport?: string;
+  preferredMediaIntent?: string;
+  preferredVisualNeeds?: SharedAcademyPresentationVisualNeed[];
+}): AcademyPresentationDesignSlidePlan => {
+  const baseTitle = academyPresentationSuggestTitle(slide.title, visualType, useNorwegian, index);
+  const bodyLines = academyPresentationBuildBodyLines(slide, useNorwegian);
+  const grammarPlan = academyPresentationBuildGrammarPlan({
+    slideId: slide.id,
+    title: baseTitle,
+    bodyLines: preferredBullets && preferredBullets.length > 0 ? preferredBullets : bodyLines,
+    visualType,
+    index,
+    totalSlides,
+    useNorwegian,
+    preferredGrammarId: preferredGrammarId || null,
+    preferredSubtitle,
+    preferredBullets,
+    preferredQuoteText,
+    preferredQuoteAttribution,
+    preferredCtaLabel,
+    preferredCtaSupport,
+    preferredMediaIntent,
+  });
+
+  return {
+    slideId: slide.id,
+    visualType,
+    grammarId: grammarPlan.grammarId,
+    narrativeRole: grammarPlan.narrativeRole,
+    layoutHint:
+      grammarPlan.grammarId === 'stats' || grammarPlan.grammarId === 'chart'
+        ? 'Use numeric contrast and one primary chart area.'
+        : grammarPlan.grammarId === 'timeline' || grammarPlan.grammarId === 'process'
+          ? 'Flow should be readable in sequence with equal spacing.'
+          : grammarPlan.grammarId === 'comparison'
+            ? 'Keep mirrored card widths and equal content weight.'
+            : grammarPlan.grammarId === 'demo'
+              ? 'Keep slide visual dominant and reserve text as guidance, not transcript.'
+              : grammarPlan.grammarId === 'hero'
+                ? 'Promote one idea and keep text density low.'
+                : 'Balance presenter and slide with strict content budgets.',
+    recommendedLayout: grammarPlan.recommendedLayout,
+    confidence: Number(confidence.toFixed(2)),
+    reasons,
+    intentTags,
+    contentBudget: grammarPlan.contentBudget,
+    structuredContent: grammarPlan.structuredContent,
+    repairActions: grammarPlan.repairActions,
+    visualNeeds:
+      preferredVisualNeeds && preferredVisualNeeds.length > 0
+        ? preferredVisualNeeds
+        : grammarPlan.visualNeeds,
+    copySuggestions: {
+      title: grammarPlan.structuredContent.title,
+      body:
+        grammarPlan.structuredContent.bullets.length > 0
+          ? grammarPlan.structuredContent.bullets
+          : grammarPlan.structuredContent.steps.length > 0
+            ? grammarPlan.structuredContent.steps.map(
+                (entry) => `${entry.title}: ${entry.body}`.trim(),
+              )
+            : grammarPlan.structuredContent.columns.length > 0
+              ? grammarPlan.structuredContent.columns.map(
+                  (entry) => `${entry.title}: ${entry.body}`.trim(),
+                )
+              : grammarPlan.structuredContent.stats.map(
+                  (entry) => `${entry.value} ${entry.label}`.trim(),
+                ),
+      cta:
+        grammarPlan.structuredContent.ctaLabel ||
+        academyPresentationSuggestCta(visualType, useNorwegian),
+    },
+    graphicSlots: grammarPlan.graphicSlots,
+    continuation: grammarPlan.continuation,
+  };
+};
+
 const academyPresentationNormalizeToken = (value: string): string =>
   String(value || '')
     .toLowerCase()
@@ -11827,7 +12364,7 @@ const academyPresentationInferVisualType = (
     if (index === 0) {
       return { type: 'title', score: 0.6, reason: 'first slide default' };
     }
-    if (index >= totalSlides - 1) {
+    if (totalSlides > 2 && index >= totalSlides - 1) {
       return { type: 'summary', score: 0.58, reason: 'last slide default' };
     }
     return { type: 'feature', score: 0.52, reason: 'generic default' };
@@ -11854,7 +12391,9 @@ const academyPresentationInferVisualType = (
 
   if (scores.size === 0) {
     if (index === 0) return { type: 'title', score: 0.62, reason: 'first slide fallback' };
-    if (index >= totalSlides - 1) return { type: 'summary', score: 0.6, reason: 'last slide fallback' };
+    if (totalSlides > 2 && index >= totalSlides - 1) {
+      return { type: 'summary', score: 0.6, reason: 'last slide fallback' };
+    }
     return { type: 'feature', score: 0.56, reason: 'mid deck fallback' };
   }
 
@@ -11868,7 +12407,12 @@ const academyPresentationInferVisualType = (
   });
 
   const bestTypeValue = String(bestType);
-  if (index >= totalSlides - 1 && bestTypeValue !== 'cta' && bestTypeValue !== 'summary') {
+  if (
+    totalSlides > 2 &&
+    index >= totalSlides - 1 &&
+    bestTypeValue !== 'cta' &&
+    bestTypeValue !== 'summary'
+  ) {
     bestType = 'summary';
     bestScore = Math.max(bestScore, 2);
   }
@@ -12102,6 +12646,9 @@ interface AcademyPresentationLlmPlanParams {
   recommendedDisplayMode: AcademyPresentationDisplayMode;
   recommendedSplitLayoutVariant: AcademyPresentationSplitLayoutVariant;
   heuristicSlides: AcademyPresentationDesignSlidePlan[];
+  templateMemory: AcademyPresentationTemplateMemoryItem[];
+  brandContext: AcademyPresentationBrandContext | null;
+  repairFocus: string[];
 }
 
 interface AcademyPresentationLlmPlanResult {
@@ -12111,6 +12658,110 @@ interface AcademyPresentationLlmPlanResult {
   recommendedSplitLayoutVariant: AcademyPresentationSplitLayoutVariant;
   slides: AcademyPresentationDesignSlidePlan[];
   model: string;
+  provider: 'huggingface' | 'openai';
+  templateMatches: AcademyPresentationTemplateMemoryMatch[];
+  retrievalMeta: AcademyPresentationTemplateMemoryMeta;
+}
+
+type AcademyPresentationTemplateMemoryKind = 'deck' | 'brand-kit' | 'preset';
+
+interface AcademyPresentationTemplateMemoryItem {
+  id: string;
+  kind: AcademyPresentationTemplateMemoryKind;
+  name: string;
+  summary: string;
+  templateId: AcademyPresentationTemplateId;
+  visualThemeId: AcademyPresentationVisualThemeId;
+  displayMode: AcademyPresentationDisplayMode;
+  splitLayoutVariant: AcademyPresentationSplitLayoutVariant;
+  searchText: string;
+  brandName: string;
+}
+
+interface AcademyPresentationTemplateMemoryMatch {
+  id: string;
+  kind: AcademyPresentationTemplateMemoryKind;
+  name: string;
+  summary: string;
+  templateId: AcademyPresentationTemplateId;
+  visualThemeId: AcademyPresentationVisualThemeId;
+  displayMode: AcademyPresentationDisplayMode;
+  splitLayoutVariant: AcademyPresentationSplitLayoutVariant;
+  brandName: string;
+  score: number;
+  lexicalScore: number;
+  semanticScore: number;
+  rerankScore: number | null;
+}
+
+interface AcademyPresentationTemplateMemoryMeta {
+  provider: 'lexical' | 'huggingface';
+  embeddingModel?: string;
+  rerankerModel?: string;
+  candidateCount: number;
+  matchedCount: number;
+}
+
+interface AcademyPresentationBrandContext {
+  name: string;
+  primary: string;
+  secondary: string;
+  accent: string;
+  headingFont: string;
+  bodyFont: string;
+  chartStyle: SharedAcademyPresentationBrandTokens['chartStyle'];
+  imageStyle: SharedAcademyPresentationBrandTokens['imageStyle'];
+  logoText: string;
+  footerText: string;
+  minContrastRatio: number;
+}
+
+type AcademyPresentationCritiqueSeverity = 'warning' | 'error';
+type AcademyPresentationCritiqueCategory =
+  | 'content'
+  | 'hierarchy'
+  | 'visual'
+  | 'balance'
+  | 'grammar'
+  | 'narrative'
+  | 'brand';
+
+interface AcademyPresentationCritiqueFinding {
+  id: string;
+  slideId?: string;
+  severity: AcademyPresentationCritiqueSeverity;
+  category: AcademyPresentationCritiqueCategory;
+  messageNo: string;
+  messageEn: string;
+  repairHintNo: string;
+  repairHintEn: string;
+  recommendedGrammarId?: SharedAcademyPresentationSlideGrammarId;
+  recommendedVisualKind?: AcademyPresentationGraphicKind;
+  confidence: number;
+}
+
+interface AcademyPresentationCritiqueSlideInput {
+  slideId: string;
+  title: string;
+  visualType: AcademyPresentationVisualType;
+  grammarId: SharedAcademyPresentationSlideGrammarId;
+  layout: AcademyPresentationDisplayMode;
+  previewImageUrl: string;
+  structuredContent: SharedAcademyPresentationStructuredContent;
+  contentBudget: SharedAcademyPresentationSlideBudget;
+  visualNeeds: SharedAcademyPresentationVisualNeed[];
+}
+
+interface AcademyPresentationCritiqueResult {
+  provider: 'huggingface' | 'heuristic';
+  model: string;
+  overall: number;
+  narrative: number;
+  pedagogy: number;
+  design: number;
+  visuals: number;
+  brand: number;
+  findings: AcademyPresentationCritiqueFinding[];
 }
 
 const academyPresentationParseJsonObjectFromText = (
@@ -12147,20 +12798,290 @@ const academyPresentationParseJsonObjectFromText = (
   return null;
 };
 
+const academyPresentationParseModelList = (rawValue: unknown): string[] => {
+  const raw = String(readString(rawValue) || '');
+  if (!raw) return [];
+  const dedupe = new Set<string>();
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .filter((entry) => {
+      const key = entry.toLowerCase();
+      if (dedupe.has(key)) return false;
+      dedupe.add(key);
+      return true;
+    });
+};
+
+const academyPresentationNormalizeTemplateMemoryKind = (
+  value: unknown,
+): AcademyPresentationTemplateMemoryKind => {
+  const normalized = String(readString(value) || '').trim().toLowerCase();
+  if (normalized === 'brand-kit') return 'brand-kit';
+  if (normalized === 'preset') return 'preset';
+  return 'deck';
+};
+
+const academyPresentationNormalizeTemplateMemoryItem = (
+  value: unknown,
+  index: number,
+): AcademyPresentationTemplateMemoryItem | null => {
+  if (!academyPresentationIsRecord(value)) return null;
+  const id = String(readString(value.id) || `template-memory-${index + 1}`).trim().slice(0, 120);
+  if (!id) return null;
+  const name = String(readString(value.name) || '').trim().slice(0, 180);
+  const summary = String(readString(value.summary) || '').trim().slice(0, 260);
+  const searchText = String(readString(value.searchText) || '').trim().slice(0, 3600);
+  if (!name || !searchText) return null;
+  return {
+    id,
+    kind: academyPresentationNormalizeTemplateMemoryKind(value.kind),
+    name,
+    summary,
+    templateId:
+      academyPresentationNormalizeTemplateId(value.templateId) ||
+      academyPresentationNormalizeTemplateId(value.template) ||
+      'walkthrough',
+    visualThemeId:
+      academyPresentationNormalizeThemeId(value.visualThemeId) ||
+      academyPresentationNormalizeThemeId(value.themeId) ||
+      'neutral-modern',
+    displayMode: academyPresentationNormalizeDisplayMode(value.displayMode),
+    splitLayoutVariant:
+      academyPresentationNormalizeSplitLayoutVariant(value.splitLayoutVariant) || 'balanced',
+    searchText,
+    brandName: String(readString(value.brandName) || '').trim().slice(0, 120),
+  };
+};
+
+const academyPresentationNormalizeBrandContext = (
+  value: unknown,
+): AcademyPresentationBrandContext | null => {
+  if (!academyPresentationIsRecord(value)) return null;
+  const name = String(readString(value.name) || '').trim().slice(0, 120);
+  if (!name) return null;
+  return {
+    name,
+    primary: String(readString(value.primary) || '').trim().slice(0, 24),
+    secondary: String(readString(value.secondary) || '').trim().slice(0, 24),
+    accent: String(readString(value.accent) || '').trim().slice(0, 24),
+    headingFont: String(readString(value.headingFont) || '').trim().slice(0, 80),
+    bodyFont: String(readString(value.bodyFont) || '').trim().slice(0, 80),
+    chartStyle:
+      String(readString(value.chartStyle) || '').trim().toLowerCase() === 'line'
+        ? 'line'
+        : String(readString(value.chartStyle) || '').trim().toLowerCase() === 'cards'
+          ? 'cards'
+          : 'bars',
+    imageStyle:
+      String(readString(value.imageStyle) || '').trim().toLowerCase() === 'clean-card'
+        ? 'clean-card'
+        : String(readString(value.imageStyle) || '').trim().toLowerCase() === 'technical'
+          ? 'technical'
+          : 'editorial',
+    logoText: String(readString(value.logoText) || '').trim().slice(0, 80),
+    footerText: String(readString(value.footerText) || '').trim().slice(0, 180),
+    minContrastRatio: academyPresentationClamp(Number(readNumber(value.minContrastRatio) || 4.5), 3, 7),
+  };
+};
+
+const academyPresentationBuildTemplateMemoryQuery = (params: {
+  deckName: string;
+  projectTemplateId: string;
+  slides: AcademyPresentationDesignSlideInput[];
+}): string =>
+  [
+    params.deckName,
+    params.projectTemplateId,
+    params.slides
+      .slice(0, 12)
+      .map((slide) =>
+        [
+          slide.title,
+          slide.speakerNotes.slice(0, 220),
+          slide.textLines.slice(0, 5).join(' '),
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      )
+      .join('\n'),
+  ]
+    .filter((entry) => String(entry || '').trim().length > 0)
+    .join('\n')
+    .slice(0, 4200);
+
+const academyPresentationResolveTemplateMemoryMatches = async (params: {
+  query: string;
+  items: AcademyPresentationTemplateMemoryItem[];
+}): Promise<{
+  matches: AcademyPresentationTemplateMemoryMatch[];
+  meta: AcademyPresentationTemplateMemoryMeta;
+}> => {
+  const query = String(params.query || '').trim();
+  const items = params.items.slice(0, 80);
+  if (!query || items.length === 0) {
+    return {
+      matches: [],
+      meta: { provider: 'lexical', candidateCount: items.length, matchedCount: 0 },
+    };
+  }
+
+  const lexicalQueryTokens = academyPresentationNormalizeTokenSet(query);
+  const lexicalScores = items.map((item) =>
+    academyPresentationScoreLexicalMatch(
+      {
+        id: item.id,
+        title: item.name,
+        subtitle: `${item.summary} ${item.brandName}`.trim(),
+        text: item.searchText,
+        tags: [item.kind, item.templateId, item.visualThemeId, item.displayMode, item.splitLayoutVariant],
+        searchText: item.searchText,
+      },
+      query,
+      lexicalQueryTokens,
+    ),
+  );
+
+  let semanticScores = items.map(() => 0);
+  let rerankerScores: number[] | null = null;
+  let usedEmbeddingModel = '';
+  let usedRerankerModel = '';
+
+  const huggingFaceToken =
+    readString(process.env.HUGGINGFACE_TOKEN) || readString(process.env.HF_TOKEN);
+  const embeddingModel =
+    readString(process.env.ACADEMY_PRESENTATION_SEARCH_EMBEDDING_MODEL)
+    || readString(process.env.ACADEMY_PRESENTATION_HF_EMBEDDING_MODEL)
+    || 'BAAI/bge-m3';
+  const rerankerModel =
+    readString(process.env.ACADEMY_PRESENTATION_SEARCH_RERANKER_MODEL)
+    || readString(process.env.ACADEMY_PRESENTATION_HF_RERANKER_MODEL)
+    || 'BAAI/bge-reranker-v2-m3';
+
+  if (huggingFaceToken) {
+    const searchTexts = items.map((item) => item.searchText.slice(0, 2600));
+    const embeddings = await academyPresentationRequestHfEmbeddings({
+      token: huggingFaceToken,
+      model: embeddingModel,
+      inputs: [query, ...searchTexts],
+    });
+    if (embeddings && embeddings.length === searchTexts.length + 1) {
+      const queryVector = embeddings[0];
+      semanticScores = embeddings
+        .slice(1)
+        .map((vector) =>
+          Number((((academyPresentationCosineSimilarity(queryVector, vector) + 1) / 2)).toFixed(4)),
+        );
+      usedEmbeddingModel = embeddingModel;
+    }
+
+    const candidateIndexes = items
+      .map((item, index) => ({
+        id: item.id,
+        index,
+        seedScore: lexicalScores[index] * 0.26 + semanticScores[index] * 0.74,
+      }))
+      .sort((left, right) => right.seedScore - left.seedScore)
+      .slice(0, Math.min(18, items.length))
+      .map((entry) => entry.index);
+    if (candidateIndexes.length > 0) {
+      const rerankerDocuments = candidateIndexes.map((index) => items[index].searchText.slice(0, 1800));
+      const rawRerankerScores = await academyPresentationRequestHfRerankerScores({
+        token: huggingFaceToken,
+        model: rerankerModel,
+        query,
+        documents: rerankerDocuments,
+      });
+      if (rawRerankerScores && rawRerankerScores.length === candidateIndexes.length) {
+        const normalizedRerankerScores = academyPresentationNormalizeScoreSeries(rawRerankerScores);
+        rerankerScores = items.map(() => 0);
+        candidateIndexes.forEach((index, offset) => {
+          if (!rerankerScores) return;
+          rerankerScores[index] = Number(normalizedRerankerScores[offset].toFixed(4));
+        });
+        usedRerankerModel = rerankerModel;
+      }
+    }
+  }
+
+  const ranked = items
+    .map((item, index) => {
+      const lexicalScore = lexicalScores[index] || 0;
+      const semanticScore = semanticScores[index] || 0;
+      const rerankScore = rerankerScores ? rerankerScores[index] : null;
+      const score = rerankerScores
+        ? lexicalScore * 0.2 + semanticScore * 0.35 + (rerankScore || 0) * 0.45
+        : lexicalScore * 0.34 + semanticScore * 0.66;
+      return {
+        id: item.id,
+        kind: item.kind,
+        name: item.name,
+        summary: item.summary,
+        templateId: item.templateId,
+        visualThemeId: item.visualThemeId,
+        displayMode: item.displayMode,
+        splitLayoutVariant: item.splitLayoutVariant,
+        brandName: item.brandName,
+        score: Number(score.toFixed(4)),
+        lexicalScore: Number(lexicalScore.toFixed(4)),
+        semanticScore: Number(semanticScore.toFixed(4)),
+        rerankScore: rerankScore === null ? null : Number(rerankScore.toFixed(4)),
+      } satisfies AcademyPresentationTemplateMemoryMatch;
+    })
+    .sort((left, right) => right.score - left.score)
+    .filter(
+      (entry) =>
+        entry.score >= 0.16 || entry.lexicalScore >= 0.14 || entry.semanticScore >= 0.18,
+    )
+    .slice(0, 4);
+
+  return {
+    matches: ranked,
+    meta: {
+      provider: usedEmbeddingModel || usedRerankerModel ? 'huggingface' : 'lexical',
+      embeddingModel: usedEmbeddingModel || undefined,
+      rerankerModel: usedRerankerModel || undefined,
+      candidateCount: items.length,
+      matchedCount: ranked.length,
+    },
+  };
+};
+
 const academyPresentationTryLlmDesignPlan = async (
   params: AcademyPresentationLlmPlanParams,
 ): Promise<AcademyPresentationLlmPlanResult | null> => {
   const openAiApiKey = readString(process.env.OPENAI_API_KEY);
   const huggingFaceToken =
     readString(process.env.HUGGINGFACE_TOKEN) || readString(process.env.HF_TOKEN);
-  if (!openAiApiKey && !huggingFaceToken) return null;
 
   const provider = String(readString(process.env.ACADEMY_PRESENTATION_DESIGN_PROVIDER) || '').toLowerCase();
   const openAiModel = readString(process.env.ACADEMY_PRESENTATION_DESIGN_OPENAI_MODEL)
     || readString(process.env.ACADEMY_PRESENTATION_DESIGN_MODEL)
     || 'gpt-4o-mini';
-  const huggingFaceModel = readString(process.env.ACADEMY_PRESENTATION_DESIGN_HF_MODEL)
-    || 'Qwen/Qwen2.5-72B-Instruct';
+  const huggingFacePrimaryModel = readString(process.env.ACADEMY_PRESENTATION_DESIGN_HF_MODEL_PRIMARY)
+    || readString(process.env.ACADEMY_PRESENTATION_DESIGN_HF_MODEL)
+    || 'Qwen/Qwen3-30B-A3B-Instruct-2507';
+  const huggingFaceFallbackModels = academyPresentationParseModelList(
+    readString(process.env.ACADEMY_PRESENTATION_DESIGN_HF_FALLBACK_MODELS),
+  );
+  if (huggingFaceFallbackModels.length === 0) {
+    huggingFaceFallbackModels.push('Qwen/Qwen3-4B-Instruct-2507');
+  }
+  const huggingFaceModels = [huggingFacePrimaryModel, ...huggingFaceFallbackModels].filter(
+    (entry, index, source) =>
+      source.findIndex((candidate) => candidate.toLowerCase() === entry.toLowerCase()) === index,
+  );
+  const memoryQuery = academyPresentationBuildTemplateMemoryQuery({
+    deckName: params.deckName,
+    projectTemplateId: params.projectTemplateId,
+    slides: params.slides,
+  });
+  const templateMemoryContext = await academyPresentationResolveTemplateMemoryMatches({
+    query: memoryQuery,
+    items: params.templateMemory,
+  });
+  if (!openAiApiKey && !huggingFaceToken) return null;
   const slidePayload = params.slides.slice(0, 50).map((slide, index) => ({
     id: slide.id,
     index: index + 1,
@@ -12173,7 +13094,7 @@ const academyPresentationTryLlmDesignPlan = async (
   }));
 
   const systemPrompt =
-    'You are a presentation design planner that outputs strict JSON only. Generate plans in a Beautiful.ai-like style: strong visual hierarchy, adaptive layouts, concise copy, and clear visual slots. Keep all enum values valid. Never include markdown.';
+    'You are a presentation planning orchestrator that outputs strict JSON only. Decide narrative structure, slide grammar, content importance, and repair intent. Do not invent pixel positions. Keep text concise and within budget. Use the provided slide grammar values only. Treat template memory and brand context as soft constraints, never as permission to override the actual brief. Never include markdown.';
   const userPayload = {
     language: params.useNorwegian ? 'no' : 'en',
     scope: params.scope,
@@ -12221,6 +13142,25 @@ const academyPresentationTryLlmDesignPlan = async (
         'cta',
         'summary',
       ],
+      slideGrammars: [
+        'hero',
+        'agenda',
+        'comparison',
+        'before-after',
+        'timeline',
+        'process',
+        'stats',
+        'chart',
+        'quote',
+        'team',
+        'case-study',
+        'faq',
+        'checklist',
+        'demo',
+        'cta',
+        'summary',
+        'content-grid',
+      ],
       graphicKinds: [
         'chart',
         'icon',
@@ -12235,42 +13175,76 @@ const academyPresentationTryLlmDesignPlan = async (
       recommendedTemplateId: 'string',
       recommendedVisualThemeId: 'string',
       recommendedDisplayMode: 'string',
-      recommendedSplitLayoutVariant: 'string',
-      slides: [
-        {
-          slideId: 'string',
-          visualType: 'string',
-          layoutHint: 'string',
-          recommendedLayout: 'string',
-          confidence: 'number 0..1',
-          reasons: ['string'],
-          intentTags: ['string'],
-          copySuggestions: {
-            title: 'string',
-            body: ['string'],
-            cta: 'string',
-          },
-          graphicSlots: [
-            {
-              id: 'string',
-              kind: 'string',
-              label: 'string',
-              prompt: 'string',
-              x: 'number 0..100',
-              y: 'number 0..100',
-              width: 'number 1..100',
-              height: 'number 1..100',
+        recommendedSplitLayoutVariant: 'string',
+        slides: [
+          {
+            slideId: 'string',
+            visualType: 'string',
+            grammarId: 'string',
+            narrativeRole: 'string',
+            confidence: 'number 0..1',
+            reasons: ['string'],
+            intentTags: ['string'],
+            structuredContent: {
+              title: 'string',
+              subtitle: 'string',
+              bullets: ['string'],
+              quoteText: 'string',
+              quoteAttribution: 'string',
+              ctaLabel: 'string',
+              ctaSupport: 'string',
+              mediaIntent: 'string',
             },
-          ],
-        },
-      ],
+            visualNeeds: [
+              {
+                kind: 'string',
+                label: 'string',
+                prompt: 'string',
+                priority: 'string',
+              },
+            ],
+          },
+        ],
     },
+    brandContext: params.brandContext
+      ? {
+          name: params.brandContext.name,
+          primary: params.brandContext.primary,
+          secondary: params.brandContext.secondary,
+          accent: params.brandContext.accent,
+          headingFont: params.brandContext.headingFont,
+          bodyFont: params.brandContext.bodyFont,
+          chartStyle: params.brandContext.chartStyle,
+          imageStyle: params.brandContext.imageStyle,
+          logoText: params.brandContext.logoText,
+          footerText: params.brandContext.footerText,
+          minContrastRatio: params.brandContext.minContrastRatio,
+        }
+      : null,
+    repairFocus: params.repairFocus.slice(0, 8),
+    templateMemoryMatches: templateMemoryContext.matches.map((entry) => ({
+      id: entry.id,
+      kind: entry.kind,
+      name: entry.name,
+      summary: entry.summary,
+      templateId: entry.templateId,
+      visualThemeId: entry.visualThemeId,
+      displayMode: entry.displayMode,
+      splitLayoutVariant: entry.splitLayoutVariant,
+      brandName: entry.brandName,
+      score: entry.score,
+      lexicalScore: entry.lexicalScore,
+      semanticScore: entry.semanticScore,
+      rerankScore: entry.rerankScore,
+    })),
+    retrievalMeta: templateMemoryContext.meta,
     slides: slidePayload,
   };
 
   const parsePlanPayload = (
     contentPayload: Record<string, unknown>,
     modelName: string,
+    providerName: 'huggingface' | 'openai',
   ): AcademyPresentationLlmPlanResult | null => {
     const recommendedTemplateId =
       academyPresentationNormalizeTemplateId(contentPayload.recommendedTemplateId) ||
@@ -12301,14 +13275,8 @@ const academyPresentationTryLlmDesignPlan = async (
       const override = overridesBySlideId.get(slidePlan.slideId);
       if (!override) return slidePlan;
 
-      const overrideCopy = academyPresentationIsRecord(override.copySuggestions)
-        ? override.copySuggestions
-        : {};
       const overrideVisualType =
         academyPresentationNormalizeVisualType(override.visualType) || slidePlan.visualType;
-      const overrideLayout = academyPresentationNormalizeDisplayMode(
-        override.recommendedLayout,
-      );
       const overrideConfidence = academyPresentationClamp(
         Number(readNumber(override.confidence) ?? slidePlan.confidence),
         0,
@@ -12316,30 +13284,69 @@ const academyPresentationTryLlmDesignPlan = async (
       );
       const overrideReasons = academyPresentationReadStringArray(override.reasons, 6, 140);
       const overrideIntentTags = academyPresentationReadStringArray(override.intentTags, 10, 60);
+      const structuredOverride = academyPresentationIsRecord(override.structuredContent)
+        ? override.structuredContent
+        : {};
       const overrideTitle =
-        String(readString(overrideCopy.title) || slidePlan.copySuggestions.title).slice(0, 120);
-      const overrideBody =
-        academyPresentationReadStringArray(overrideCopy.body, 6, 140);
-      const overrideCta =
-        String(readString(overrideCopy.cta) || slidePlan.copySuggestions.cta).slice(0, 160);
-      const overrideGraphicSlots =
-        academyPresentationNormalizeGraphicSlots(override.graphicSlots, slidePlan.slideId);
+        String(readString(structuredOverride.title) || slidePlan.structuredContent.title).slice(0, 120);
+      const overrideSubtitle = String(
+        readString(structuredOverride.subtitle) || slidePlan.structuredContent.subtitle,
+      ).slice(0, 160);
+      const overrideBullets = academyPresentationReadStringArray(
+        structuredOverride.bullets,
+        8,
+        160,
+      );
+      const overrideQuoteText = String(
+        readString(structuredOverride.quoteText) || slidePlan.structuredContent.quoteText,
+      ).slice(0, 260);
+      const overrideQuoteAttribution = String(
+        readString(structuredOverride.quoteAttribution) ||
+          slidePlan.structuredContent.quoteAttribution,
+      ).slice(0, 80);
+      const overrideCtaLabel = String(
+        readString(structuredOverride.ctaLabel) || slidePlan.structuredContent.ctaLabel,
+      ).slice(0, 120);
+      const overrideCtaSupport = String(
+        readString(structuredOverride.ctaSupport) || slidePlan.structuredContent.ctaSupport,
+      ).slice(0, 160);
+      const overrideMediaIntent = String(
+        readString(structuredOverride.mediaIntent) || slidePlan.structuredContent.mediaIntent,
+      ).slice(0, 160);
+      const overrideGrammarId =
+        academyPresentationNormalizeGrammarId(override.grammarId) || slidePlan.grammarId;
+      const overrideVisualNeeds = academyPresentationNormalizeVisualNeeds(override.visualNeeds);
 
-      return {
-        ...slidePlan,
+      const sourceSlide =
+        params.slides.find((candidate) => candidate.id === slidePlan.slideId) || params.slides[0];
+      const rebuiltPlan = academyPresentationBuildSlidePlan({
+        slide: {
+          ...sourceSlide,
+          title: overrideTitle || sourceSlide.title,
+        },
+        index: Math.max(
+          0,
+          params.slides.findIndex((candidate) => candidate.id === slidePlan.slideId),
+        ),
+        totalSlides: params.slides.length,
+        useNorwegian: params.useNorwegian,
         visualType: overrideVisualType,
-        layoutHint: String(readString(override.layoutHint) || slidePlan.layoutHint).slice(0, 220),
-        recommendedLayout: overrideLayout,
         confidence: Number(overrideConfidence.toFixed(2)),
         reasons: overrideReasons.length > 0 ? overrideReasons : slidePlan.reasons,
         intentTags: overrideIntentTags.length > 0 ? overrideIntentTags : slidePlan.intentTags,
-        copySuggestions: {
-          title: overrideTitle,
-          body: overrideBody.length > 0 ? overrideBody : slidePlan.copySuggestions.body,
-          cta: overrideCta,
-        },
-        graphicSlots:
-          overrideGraphicSlots.length > 0 ? overrideGraphicSlots : slidePlan.graphicSlots,
+        preferredGrammarId: overrideGrammarId,
+        preferredSubtitle: overrideSubtitle,
+        preferredBullets: overrideBullets.length > 0 ? overrideBullets : slidePlan.copySuggestions.body,
+        preferredQuoteText: overrideQuoteText,
+        preferredQuoteAttribution: overrideQuoteAttribution,
+        preferredCtaLabel: overrideCtaLabel,
+        preferredCtaSupport: overrideCtaSupport,
+        preferredMediaIntent: overrideMediaIntent,
+        preferredVisualNeeds: overrideVisualNeeds,
+      });
+
+      return {
+        ...rebuiltPlan,
       } satisfies AcademyPresentationDesignSlidePlan;
     });
 
@@ -12353,6 +13360,9 @@ const academyPresentationTryLlmDesignPlan = async (
           : params.recommendedSplitLayoutVariant,
       slides: mergedSlides,
       model: modelName,
+      provider: providerName,
+      templateMatches: templateMemoryContext.matches,
+      retrievalMeta: templateMemoryContext.meta,
     };
   };
 
@@ -12398,17 +13408,19 @@ const academyPresentationTryLlmDesignPlan = async (
       if (!contentRaw) return null;
       const contentPayload = academyPresentationParseJsonObjectFromText(contentRaw);
       if (!contentPayload) return null;
-      return parsePlanPayload(contentPayload, openAiModel);
+      return parsePlanPayload(contentPayload, openAiModel, 'openai');
     } catch (error) {
       console.warn('Academy design plan OpenAI error:', error);
       return null;
     }
   };
 
-  const requestHuggingFacePlan = async (): Promise<AcademyPresentationLlmPlanResult | null> => {
+  const requestHuggingFacePlanForModel = async (
+    modelName: string,
+  ): Promise<AcademyPresentationLlmPlanResult | null> => {
     if (!huggingFaceToken) return null;
     const routerRequestBody = {
-      model: huggingFaceModel,
+      model: modelName,
       temperature: 0.2,
       messages: [
         { role: 'system' as const, content: systemPrompt },
@@ -12435,15 +13447,20 @@ const academyPresentationTryLlmDesignPlan = async (
         if (contentRaw) {
           const contentPayload = academyPresentationParseJsonObjectFromText(contentRaw);
           if (contentPayload) {
-            return parsePlanPayload(contentPayload, huggingFaceModel);
+            return parsePlanPayload(contentPayload, modelName, 'huggingface');
           }
         }
       } else {
         const errorBody = await routerResponse.text().catch(() => '');
-        console.warn('Academy design plan HF router request failed:', routerResponse.status, errorBody);
+        console.warn(
+          'Academy design plan HF router request failed:',
+          modelName,
+          routerResponse.status,
+          errorBody,
+        );
       }
     } catch (error) {
-      console.warn('Academy design plan HF router error:', error);
+      console.warn('Academy design plan HF router error:', modelName, error);
     }
 
     try {
@@ -12454,7 +13471,7 @@ const academyPresentationTryLlmDesignPlan = async (
         JSON.stringify(userPayload),
       ].join('\n');
       const inferenceResponse = await fetch(
-        `https://api-inference.huggingface.co/models/${encodeURIComponent(huggingFaceModel)}`,
+        `https://api-inference.huggingface.co/models/${encodeURIComponent(modelName)}`,
         {
           method: 'POST',
           headers: {
@@ -12478,7 +13495,12 @@ const academyPresentationTryLlmDesignPlan = async (
       );
       if (!inferenceResponse.ok) {
         const errorBody = await inferenceResponse.text().catch(() => '');
-        console.warn('Academy design plan HF inference request failed:', inferenceResponse.status, errorBody);
+        console.warn(
+          'Academy design plan HF inference request failed:',
+          modelName,
+          inferenceResponse.status,
+          errorBody,
+        );
         return null;
       }
 
@@ -12496,11 +13518,20 @@ const academyPresentationTryLlmDesignPlan = async (
       if (!generatedText) return null;
       const contentPayload = academyPresentationParseJsonObjectFromText(generatedText);
       if (!contentPayload) return null;
-      return parsePlanPayload(contentPayload, huggingFaceModel);
+      return parsePlanPayload(contentPayload, modelName, 'huggingface');
     } catch (error) {
-      console.warn('Academy design plan HF inference error:', error);
+      console.warn('Academy design plan HF inference error:', modelName, error);
       return null;
     }
+  };
+
+  const requestHuggingFacePlan = async (): Promise<AcademyPresentationLlmPlanResult | null> => {
+    if (!huggingFaceToken) return null;
+    for (const modelName of huggingFaceModels) {
+      const result = await requestHuggingFacePlanForModel(modelName);
+      if (result) return result;
+    }
+    return null;
   };
 
   const preferHuggingFace =
@@ -12536,6 +13567,19 @@ app.post('/api/academy/presentation/design-plan', async (req, res) => {
     const deckName = String(readString(body.deckName) || '').trim();
     const requestedTemplate = academyPresentationNormalizeTemplateId(body.deckTemplate);
     const requestedTheme = academyPresentationNormalizeThemeId(body.deckVisualThemeId);
+    const templateMemory = Array.isArray(body.templateMemory)
+      ? body.templateMemory
+          .map((entry, index) => academyPresentationNormalizeTemplateMemoryItem(entry, index))
+          .filter((entry): entry is AcademyPresentationTemplateMemoryItem => Boolean(entry))
+          .slice(0, 80)
+      : [];
+    const brandContext = academyPresentationNormalizeBrandContext(body.brandContext);
+    const repairFocus = Array.isArray(body.repairFocus)
+      ? body.repairFocus
+          .map((entry) => String(readString(entry) || '').trim().slice(0, 220))
+          .filter(Boolean)
+          .slice(0, 12)
+      : [];
 
     const slides = Array.isArray(body.slides)
       ? body.slides
@@ -12569,6 +13613,10 @@ app.post('/api/academy/presentation/design-plan', async (req, res) => {
       process: 0,
       kpi: 0,
       timeline: 0,
+      roadmap: 0,
+      architecture: 0,
+      scenario: 0,
+      'knowledge-check': 0,
       comparison: 0,
       demo: 0,
       quote: 0,
@@ -12590,48 +13638,26 @@ app.post('/api/academy/presentation/design-plan', async (req, res) => {
         slides.length,
       );
       const visualType = classification.type;
-      const recommendedLayout = academyPresentationLayoutForVisualType(visualType);
       visualCounts[visualType] += 1;
-      layoutCounts[recommendedLayout] += 1;
-
-      const intentTags = [
-        visualType,
-        recommendedTemplateId,
-        recommendedVisualThemeId,
-        recommendedLayout,
-      ];
+      const intentTags = [visualType, recommendedTemplateId, recommendedVisualThemeId];
       const reasons = [
         classification.reason,
         `slide ${index + 1}/${slides.length}`,
         `duration ${Math.round(slide.duration)}s`,
       ];
-
-      return {
-        slideId: slide.id,
+      const slidePlan = academyPresentationBuildSlidePlan({
+        slide,
+        index,
+        totalSlides: slides.length,
+        useNorwegian,
         visualType,
-        layoutHint:
-          visualType === 'kpi'
-            ? 'Prioritize numeric contrast and trend direction.'
-            : visualType === 'timeline'
-              ? 'Place chronological flow from top to bottom with clear milestones.'
-              : visualType === 'comparison'
-                ? 'Split options side by side with mirrored structure.'
-                : visualType === 'demo'
-                  ? 'Keep screenshot readable and reserve area for instructor callouts.'
-                  : visualType === 'cta'
-                    ? 'Reserve focal action area and one clear conversion message.'
-                    : 'Balance presenter and slide content with clear visual hierarchy.',
-        recommendedLayout,
-        confidence: Number(classification.score.toFixed(2)),
+        confidence: classification.score,
         reasons,
         intentTags,
-        copySuggestions: {
-          title: academyPresentationSuggestTitle(slide.title, visualType, useNorwegian, index),
-          body: bodyLines,
-          cta: academyPresentationSuggestCta(visualType, useNorwegian),
-        },
-        graphicSlots: academyPresentationGraphicSlotsForType(visualType, slide.id, slide.title),
-      };
+      });
+      layoutCounts[slidePlan.recommendedLayout] += 1;
+      slidePlan.intentTags = [...slidePlan.intentTags, slidePlan.recommendedLayout];
+      return slidePlan;
     });
 
     let heuristicRecommendedDisplayMode: AcademyPresentationDisplayMode = templatePreset.defaultMode;
@@ -12651,8 +13677,19 @@ app.post('/api/academy/presentation/design-plan', async (req, res) => {
       ACADEMY_PRESENTATION_THEME_TO_SPLIT_VARIANT[recommendedVisualThemeId] ||
       templatePreset.splitLayoutVariant;
     let finalSlides = slidePlans;
-    let generatedBy = 'academy-design-plan-heuristic-v1';
+    let generatedBy = 'academy-design-plan-grammar-engine-v2';
     let generatedModel = '';
+    let generatedProvider: 'huggingface' | 'openai' | 'rule-engine' = 'rule-engine';
+    const localTemplateMemoryContext = await academyPresentationResolveTemplateMemoryMatches({
+      query: academyPresentationBuildTemplateMemoryQuery({
+        deckName,
+        projectTemplateId,
+        slides,
+      }),
+      items: templateMemory,
+    });
+    let templateMatches: AcademyPresentationTemplateMemoryMatch[] = localTemplateMemoryContext.matches;
+    let retrievalMeta: AcademyPresentationTemplateMemoryMeta = localTemplateMemoryContext.meta;
 
     const llmPlan = await academyPresentationTryLlmDesignPlan({
       scope,
@@ -12667,6 +13704,9 @@ app.post('/api/academy/presentation/design-plan', async (req, res) => {
       recommendedDisplayMode: finalDisplayMode,
       recommendedSplitLayoutVariant: finalSplitLayoutVariant,
       heuristicSlides: slidePlans,
+      templateMemory,
+      brandContext,
+      repairFocus,
     });
     if (llmPlan) {
       finalTemplateId = llmPlan.recommendedTemplateId;
@@ -12674,9 +13714,24 @@ app.post('/api/academy/presentation/design-plan', async (req, res) => {
       finalDisplayMode = llmPlan.recommendedDisplayMode;
       finalSplitLayoutVariant = llmPlan.recommendedSplitLayoutVariant;
       finalSlides = llmPlan.slides;
-      generatedBy = 'academy-design-plan-llm-v1';
+      generatedBy = 'academy-design-plan-orchestrator-v2';
       generatedModel = llmPlan.model;
+      generatedProvider = llmPlan.provider;
+      templateMatches = llmPlan.templateMatches;
+      retrievalMeta = llmPlan.retrievalMeta;
     }
+
+    const grammarCounts = finalSlides.reduce(
+      (acc, slidePlan) => {
+        acc[slidePlan.grammarId] = (acc[slidePlan.grammarId] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
+    const repairActionsCount = finalSlides.reduce(
+      (acc, slidePlan) => acc + slidePlan.repairActions.length,
+      0,
+    );
 
     const responsePayload = {
       success: true,
@@ -12691,10 +13746,24 @@ app.post('/api/academy/presentation/design-plan', async (req, res) => {
         recommendedSplitLayoutVariant: finalSplitLayoutVariant,
         summary: {
           generatedBy,
+          provider: generatedProvider,
           model: generatedModel || undefined,
           slideCount: slides.length,
           visualCounts,
+          grammarCounts,
+          repairActionsCount,
+          templateMemoryMatches: templateMatches,
+          retrievalMeta,
+          brandContextName: brandContext?.name || undefined,
+          pipeline: [
+            'brief-to-narrative',
+            'template-memory-retrieval',
+            'narrative-to-slide-plan',
+            'grammar-budget-repair',
+            'theme-token-apply',
+          ],
         },
+        brandTokens: ACADEMY_PRESENTATION_THEME_TOKENS[finalVisualThemeId],
         slides: finalSlides,
         generatedAt: new Date().toISOString(),
       },
@@ -12706,6 +13775,6314 @@ app.post('/api/academy/presentation/design-plan', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Could not generate presentation design plan',
+    });
+  }
+});
+
+const academyPresentationNormalizeCritiqueSeverity = (
+  value: unknown,
+): AcademyPresentationCritiqueSeverity =>
+  String(readString(value) || '').trim().toLowerCase() === 'error' ? 'error' : 'warning';
+
+const academyPresentationNormalizeCritiqueCategory = (
+  value: unknown,
+): AcademyPresentationCritiqueCategory => {
+  const normalized = String(readString(value) || '').trim().toLowerCase();
+  if (
+    normalized === 'content' ||
+    normalized === 'hierarchy' ||
+    normalized === 'visual' ||
+    normalized === 'balance' ||
+    normalized === 'grammar' ||
+    normalized === 'narrative' ||
+    normalized === 'brand'
+  ) {
+    return normalized;
+  }
+  return 'content';
+};
+
+const academyPresentationNormalizeStructuredContentForCritique = (
+  value: unknown,
+  fallbackTitle: string,
+): SharedAcademyPresentationStructuredContent => {
+  const record = academyPresentationIsRecord(value) ? value : {};
+  return {
+    eyebrow: String(readString(record.eyebrow) || '').trim().slice(0, 80),
+    title: String(readString(record.title) || fallbackTitle).trim().slice(0, 120),
+    subtitle: String(readString(record.subtitle) || '').trim().slice(0, 220),
+    bullets: academyPresentationReadStringArray(record.bullets, 10, 200),
+    columns: Array.isArray(record.columns)
+      ? record.columns
+          .map((entry) => {
+            if (!academyPresentationIsRecord(entry)) return null;
+            const title = String(readString(entry.title) || '').trim().slice(0, 80);
+            const body = String(readString(entry.body) || '').trim().slice(0, 180);
+            if (!title && !body) return null;
+            return { title, body };
+          })
+          .filter(
+            (entry): entry is SharedAcademyPresentationStructuredContent['columns'][number] =>
+              Boolean(entry),
+          )
+          .slice(0, 6)
+      : [],
+    steps: Array.isArray(record.steps)
+      ? record.steps
+          .map((entry) => {
+            if (!academyPresentationIsRecord(entry)) return null;
+            const title = String(readString(entry.title) || '').trim().slice(0, 80);
+            const body = String(readString(entry.body) || '').trim().slice(0, 180);
+            if (!title && !body) return null;
+            return { title, body };
+          })
+          .filter(
+            (entry): entry is SharedAcademyPresentationStructuredContent['steps'][number] =>
+              Boolean(entry),
+          )
+          .slice(0, 8)
+      : [],
+    stats: Array.isArray(record.stats)
+      ? record.stats
+          .map((entry) => {
+            if (!academyPresentationIsRecord(entry)) return null;
+            const valueText = String(readString(entry.value) || '').trim().slice(0, 40);
+            const label = String(readString(entry.label) || '').trim().slice(0, 80);
+            const context = String(readString(entry.context) || '').trim().slice(0, 120);
+            if (!valueText && !label && !context) return null;
+            return { value: valueText, label, context };
+          })
+          .filter(
+            (entry): entry is SharedAcademyPresentationStructuredContent['stats'][number] =>
+              Boolean(entry),
+          )
+          .slice(0, 6)
+      : [],
+    quoteText: String(readString(record.quoteText) || '').trim().slice(0, 320),
+    quoteAttribution: String(readString(record.quoteAttribution) || '').trim().slice(0, 120),
+    ctaLabel: String(readString(record.ctaLabel) || '').trim().slice(0, 140),
+    ctaSupport: String(readString(record.ctaSupport) || '').trim().slice(0, 220),
+    mediaIntent: String(readString(record.mediaIntent) || '').trim().slice(0, 220),
+    emphasis: academyPresentationReadStringArray(record.emphasis, 8, 120),
+  };
+};
+
+const academyPresentationNormalizeBudgetForCritique = (
+  value: unknown,
+  grammarId: SharedAcademyPresentationSlideGrammarId,
+): SharedAcademyPresentationSlideBudget => {
+  const baseBudget = ACADEMY_PRESENTATION_GRAMMAR_BUDGETS[grammarId] || ACADEMY_PRESENTATION_GRAMMAR_BUDGETS['content-grid'];
+  const record = academyPresentationIsRecord(value) ? value : {};
+  return {
+    titleMaxChars: academyPresentationClamp(
+      Number(readNumber(record.titleMaxChars) || baseBudget.titleMaxChars),
+      20,
+      140,
+    ),
+    subtitleMaxChars: academyPresentationClamp(
+      Number(readNumber(record.subtitleMaxChars) || baseBudget.subtitleMaxChars),
+      40,
+      260,
+    ),
+    maxBullets: academyPresentationClamp(Number(readNumber(record.maxBullets) || baseBudget.maxBullets), 1, 10),
+    bulletMaxChars: academyPresentationClamp(
+      Number(readNumber(record.bulletMaxChars) || baseBudget.bulletMaxChars),
+      30,
+      220,
+    ),
+    maxColumns: academyPresentationClamp(Number(readNumber(record.maxColumns) || baseBudget.maxColumns), 1, 6),
+    maxTimelineSteps: academyPresentationClamp(
+      Number(readNumber(record.maxTimelineSteps) || baseBudget.maxTimelineSteps),
+      1,
+      8,
+    ),
+    maxStats: academyPresentationClamp(Number(readNumber(record.maxStats) || baseBudget.maxStats), 1, 8),
+    maxQuoteChars: academyPresentationClamp(
+      Number(readNumber(record.maxQuoteChars) || baseBudget.maxQuoteChars),
+      40,
+      360,
+    ),
+    maxCtaChars: academyPresentationClamp(Number(readNumber(record.maxCtaChars) || baseBudget.maxCtaChars), 20, 180),
+  };
+};
+
+const academyPresentationNormalizeCritiqueSlideInput = (
+  value: unknown,
+  index: number,
+): AcademyPresentationCritiqueSlideInput | null => {
+  if (!academyPresentationIsRecord(value)) return null;
+  const slideId = String(readString(value.slideId) || `slide-${index + 1}`).trim().slice(0, 120);
+  const title = String(readString(value.title) || `Slide ${index + 1}`).trim().slice(0, 160);
+  const visualType = academyPresentationNormalizeVisualType(value.visualType) || 'feature';
+  const grammarId = academyPresentationNormalizeGrammarId(value.grammarId) || 'content-grid';
+  const layout = academyPresentationNormalizeDisplayMode(value.layout);
+  const previewImageUrl = String(readString(value.previewImageUrl) || '').trim().slice(0, 220_000);
+  const structuredContent = academyPresentationNormalizeStructuredContentForCritique(
+    value.structuredContent,
+    title,
+  );
+  return {
+    slideId,
+    title,
+    visualType,
+    grammarId,
+    layout,
+    previewImageUrl,
+    structuredContent,
+    contentBudget: academyPresentationNormalizeBudgetForCritique(value.contentBudget, grammarId),
+    visualNeeds: academyPresentationNormalizeVisualNeeds(value.visualNeeds),
+  };
+};
+
+const academyPresentationNormalizeCritiqueFinding = (
+  value: unknown,
+  index: number,
+  useNorwegian: boolean,
+): AcademyPresentationCritiqueFinding | null => {
+  if (!academyPresentationIsRecord(value)) return null;
+  const messageNo = String(
+    readString(value.messageNo) ||
+      readString(value.message) ||
+      readString(value.messageEn) ||
+      '',
+  )
+    .trim()
+    .slice(0, 280);
+  const messageEn = String(
+    readString(value.messageEn) ||
+      readString(value.message) ||
+      readString(value.messageNo) ||
+      '',
+  )
+    .trim()
+    .slice(0, 280);
+  const repairHintNo = String(
+    readString(value.repairHintNo) ||
+      readString(value.repairHint) ||
+      readString(value.repairHintEn) ||
+      '',
+  )
+    .trim()
+    .slice(0, 240);
+  const repairHintEn = String(
+    readString(value.repairHintEn) ||
+      readString(value.repairHint) ||
+      readString(value.repairHintNo) ||
+      '',
+  )
+    .trim()
+    .slice(0, 240);
+  if (!(messageNo || messageEn)) return null;
+  return {
+    id: String(readString(value.id) || `critique-${index + 1}`).trim().slice(0, 120),
+    slideId: String(readString(value.slideId) || '').trim().slice(0, 120) || undefined,
+    severity: academyPresentationNormalizeCritiqueSeverity(value.severity),
+    category: academyPresentationNormalizeCritiqueCategory(value.category),
+    messageNo: messageNo || (useNorwegian ? messageEn : ''),
+    messageEn: messageEn || (!useNorwegian ? messageNo : ''),
+    repairHintNo: repairHintNo || (useNorwegian ? repairHintEn : ''),
+    repairHintEn: repairHintEn || (!useNorwegian ? repairHintNo : ''),
+    recommendedGrammarId: academyPresentationNormalizeGrammarId(value.recommendedGrammarId) || undefined,
+    recommendedVisualKind: academyPresentationNormalizeGraphicKind(value.recommendedVisualKind) || undefined,
+    confidence: academyPresentationClamp(Number(readNumber(value.confidence) || 0.68), 0, 1),
+  };
+};
+
+const academyPresentationBuildHeuristicCritique = (params: {
+  slides: AcademyPresentationCritiqueSlideInput[];
+  useNorwegian: boolean;
+  brandContext: AcademyPresentationBrandContext | null;
+}): AcademyPresentationCritiqueResult => {
+  const findings: AcademyPresentationCritiqueFinding[] = [];
+  const t = (no: string, en: string) => (params.useNorwegian ? no : en);
+
+  params.slides.forEach((slide, index) => {
+    const titleLength = slide.structuredContent.title.length;
+    const subtitleLength = slide.structuredContent.subtitle.length;
+    const bulletCount = slide.structuredContent.bullets.length;
+    const longestBullet = slide.structuredContent.bullets.reduce(
+      (max, entry) => Math.max(max, String(entry || '').trim().length),
+      0,
+    );
+    const columnCount = slide.structuredContent.columns.length;
+    const stepCount = slide.structuredContent.steps.length;
+    const statCount = slide.structuredContent.stats.length;
+    const hasPrimaryVisual = slide.visualNeeds.some((entry) => entry.priority === 'primary');
+
+    if (titleLength > slide.contentBudget.titleMaxChars) {
+      findings.push({
+        id: `${slide.slideId}-title-overflow`,
+        slideId: slide.slideId,
+        severity: 'warning',
+        category: 'content',
+        messageNo: `"${slide.title}" har for lang tittel for ${slide.grammarId}.`,
+        messageEn: `"${slide.title}" has a title that is too long for ${slide.grammarId}.`,
+        repairHintNo: 'Forkort tittelen eller promotér resten til undertekst.',
+        repairHintEn: 'Shorten the title or demote the rest into the subtitle.',
+        recommendedGrammarId: slide.grammarId,
+        confidence: 0.84,
+      });
+    }
+    if (subtitleLength > slide.contentBudget.subtitleMaxChars) {
+      findings.push({
+        id: `${slide.slideId}-subtitle-overflow`,
+        slideId: slide.slideId,
+        severity: 'warning',
+        category: 'content',
+        messageNo: `"${slide.title}" har for lang undertekst.`,
+        messageEn: `"${slide.title}" has a subtitle that is too long.`,
+        repairHintNo: 'Komprimer underteksten eller flytt detaljer til speaker notes.',
+        repairHintEn: 'Compress the subtitle or move detail into speaker notes.',
+        recommendedGrammarId: slide.grammarId,
+        confidence: 0.8,
+      });
+    }
+    if (bulletCount > slide.contentBudget.maxBullets || longestBullet > slide.contentBudget.bulletMaxChars) {
+      findings.push({
+        id: `${slide.slideId}-bullet-density`,
+        slideId: slide.slideId,
+        severity: bulletCount > slide.contentBudget.maxBullets + 1 ? 'error' : 'warning',
+        category: 'content',
+        messageNo: `"${slide.title}" har for tett tekstmengde i punktene.`,
+        messageEn: `"${slide.title}" has overly dense bullet content.`,
+        repairHintNo: 'Kort ned punktene, del sliden, eller bytt til checklist/process.',
+        repairHintEn: 'Shorten bullets, split the slide, or switch to checklist/process.',
+        recommendedGrammarId:
+          slide.grammarId === 'hero' || slide.grammarId === 'summary' ? 'checklist' : slide.grammarId,
+        confidence: 0.82,
+      });
+    }
+    if (
+      (slide.grammarId === 'comparison' || slide.grammarId === 'before-after' || slide.grammarId === 'faq') &&
+      columnCount < 2
+    ) {
+      findings.push({
+        id: `${slide.slideId}-missing-columns`,
+        slideId: slide.slideId,
+        severity: 'warning',
+        category: 'grammar',
+        messageNo: `"${slide.title}" mangler nok kolonner/kort for valgt slide-type.`,
+        messageEn: `"${slide.title}" does not have enough cards/columns for the chosen slide type.`,
+        repairHintNo: 'Fyll inn minst to kort eller bytt til content-grid.',
+        repairHintEn: 'Provide at least two cards or switch to content-grid.',
+        recommendedGrammarId: 'content-grid',
+        confidence: 0.78,
+      });
+    }
+    if ((slide.grammarId === 'timeline' || slide.grammarId === 'process') && stepCount < 2) {
+      findings.push({
+        id: `${slide.slideId}-missing-steps`,
+        slideId: slide.slideId,
+        severity: 'warning',
+        category: 'grammar',
+        messageNo: `"${slide.title}" mangler nok steg for timeline/process.`,
+        messageEn: `"${slide.title}" is missing enough steps for timeline/process.`,
+        repairHintNo: 'Bryt innholdet ned i tydelige steg eller bytt slide-type.',
+        repairHintEn: 'Break the content into clear steps or switch slide type.',
+        recommendedGrammarId: 'content-grid',
+        confidence: 0.8,
+      });
+    }
+    if ((slide.grammarId === 'stats' || slide.grammarId === 'chart') && statCount < 2) {
+      findings.push({
+        id: `${slide.slideId}-missing-stats`,
+        slideId: slide.slideId,
+        severity: 'warning',
+        category: 'grammar',
+        messageNo: `"${slide.title}" mangler nok tallgrunnlag for stats/chart.`,
+        messageEn: `"${slide.title}" lacks enough numeric content for stats/chart.`,
+        repairHintNo: 'Legg inn minst to tall eller bytt til hero/content-grid.',
+        repairHintEn: 'Add at least two numbers or switch to hero/content-grid.',
+        recommendedGrammarId: 'content-grid',
+        confidence: 0.79,
+      });
+    }
+    if (hasPrimaryVisual && !slide.previewImageUrl) {
+      findings.push({
+        id: `${slide.slideId}-missing-preview-visual`,
+        slideId: slide.slideId,
+        severity: 'warning',
+        category: 'visual',
+        messageNo: `"${slide.title}" mangler preview for primærvisual.`,
+        messageEn: `"${slide.title}" is missing a preview for the primary visual.`,
+        repairHintNo: 'Generer ny designstruktur eller bytt visual-slot.',
+        repairHintEn: 'Generate a new design structure or change the visual slot.',
+        recommendedVisualKind: slide.visualNeeds[0]?.kind,
+        confidence: 0.72,
+      });
+    }
+    if (index === 0 && slide.grammarId !== 'hero' && slide.visualType !== 'title') {
+      findings.push({
+        id: `${slide.slideId}-opening-weak`,
+        slideId: slide.slideId,
+        severity: 'warning',
+        category: 'narrative',
+        messageNo: `Åpningssliden "${slide.title}" mangler tydelig hook.`,
+        messageEn: `Opening slide "${slide.title}" is missing a clear hook.`,
+        repairHintNo: 'Bytt til hero eller gi sliden et tydelig åpningsløfte.',
+        repairHintEn: 'Switch to hero or give the slide a stronger opening promise.',
+        recommendedGrammarId: 'hero',
+        confidence: 0.7,
+      });
+    }
+    if (
+      index === params.slides.length - 1 &&
+      slide.grammarId !== 'cta' &&
+      slide.grammarId !== 'summary'
+    ) {
+      findings.push({
+        id: `${slide.slideId}-closing-weak`,
+        slideId: slide.slideId,
+        severity: 'warning',
+        category: 'narrative',
+        messageNo: `Siste slide "${slide.title}" avslutter uten tydelig oppsummering eller CTA.`,
+        messageEn: `Final slide "${slide.title}" closes without a clear summary or CTA.`,
+        repairHintNo: 'Avslutt med summary eller CTA.',
+        repairHintEn: 'Close with a summary or CTA.',
+        recommendedGrammarId: 'cta',
+        confidence: 0.76,
+      });
+    }
+  });
+
+  if (params.brandContext) {
+    if (!params.brandContext.logoText.trim()) {
+      findings.push({
+        id: 'brand-wordmark-missing',
+        severity: 'warning',
+        category: 'brand',
+        messageNo: 'Brand-konteksten mangler wordmark/logo-tekst.',
+        messageEn: 'The brand context is missing wordmark/logo text.',
+        repairHintNo: 'Legg til wordmark for tydeligere brand-signatur.',
+        repairHintEn: 'Add a wordmark for a clearer brand signature.',
+        confidence: 0.66,
+      });
+    }
+    if (params.brandContext.minContrastRatio > 4.5 && !params.brandContext.footerText.trim()) {
+      findings.push({
+        id: 'brand-footer-missing',
+        severity: 'warning',
+        category: 'brand',
+        messageNo: 'Brand-konteksten mangler footer selv om brand-styringen er streng.',
+        messageEn: 'The brand context is missing a footer even though brand governance is strict.',
+        repairHintNo: 'Vurder footer for konsekvent brand governance.',
+        repairHintEn: 'Consider adding a footer for consistent brand governance.',
+        confidence: 0.58,
+      });
+    }
+  }
+
+  const byCategory = (category: AcademyPresentationCritiqueCategory) =>
+    findings
+      .filter((entry) => entry.category === category)
+      .reduce((sum, entry) => sum + (entry.severity === 'error' ? 16 : 8), 0);
+  const narrativePenalty = byCategory('narrative');
+  const contentPenalty = byCategory('content');
+  const grammarPenalty = byCategory('grammar');
+  const visualPenalty = byCategory('visual');
+  const brandPenalty = byCategory('brand');
+  const designPenalty = Math.round((contentPenalty + grammarPenalty + visualPenalty) / 3);
+  const overallPenalty = Math.round(
+    (narrativePenalty + contentPenalty + grammarPenalty + visualPenalty + brandPenalty) / 5,
+  );
+
+  return {
+    provider: 'heuristic',
+    model: 'academy-presentation-heuristics-v1',
+    overall: academyPresentationClamp(100 - overallPenalty, 0, 100),
+    narrative: academyPresentationClamp(100 - narrativePenalty, 0, 100),
+    pedagogy: academyPresentationClamp(100 - Math.round((contentPenalty + grammarPenalty) / 2), 0, 100),
+    design: academyPresentationClamp(100 - designPenalty, 0, 100),
+    visuals: academyPresentationClamp(100 - visualPenalty, 0, 100),
+    brand: academyPresentationClamp(100 - brandPenalty, 0, 100),
+    findings,
+  };
+};
+
+const academyPresentationTryHuggingFaceCritique = async (params: {
+  slides: AcademyPresentationCritiqueSlideInput[];
+  deckName: string;
+  scope: AcademyPresentationScope;
+  projectTemplateId: string;
+  useNorwegian: boolean;
+  brandContext: AcademyPresentationBrandContext | null;
+  heuristic: AcademyPresentationCritiqueResult;
+}): Promise<AcademyPresentationCritiqueResult | null> => {
+  const huggingFaceToken =
+    readString(process.env.HUGGINGFACE_TOKEN) || readString(process.env.HF_TOKEN);
+  if (!huggingFaceToken) return null;
+
+  const visionPrimaryModel =
+    readString(process.env.ACADEMY_PRESENTATION_CRITIQUE_HF_VISION_MODEL_PRIMARY) ||
+    'Qwen/Qwen2.5-VL-72B-Instruct';
+  const visionFallbackModels = academyPresentationParseModelList(
+    readString(process.env.ACADEMY_PRESENTATION_CRITIQUE_HF_VISION_FALLBACK_MODELS) ||
+      'Qwen/Qwen2.5-VL-7B-Instruct',
+  );
+  const textFallbackModels = academyPresentationParseModelList(
+    readString(process.env.ACADEMY_PRESENTATION_CRITIQUE_HF_TEXT_MODELS) ||
+      readString(process.env.ACADEMY_PRESENTATION_DESIGN_HF_MODELS) ||
+      'Qwen/Qwen3-32B,Qwen/Qwen3-14B',
+  );
+
+  const normalizedSlides = params.slides.slice(0, 12).map((slide) => ({
+    slideId: slide.slideId,
+    title: slide.title,
+    visualType: slide.visualType,
+    grammarId: slide.grammarId,
+    layout: slide.layout,
+    contentBudget: slide.contentBudget,
+    structuredContent: {
+      title: slide.structuredContent.title,
+      subtitle: slide.structuredContent.subtitle,
+      bullets: slide.structuredContent.bullets.slice(0, 6),
+      columns: slide.structuredContent.columns.slice(0, 4),
+      steps: slide.structuredContent.steps.slice(0, 5),
+      stats: slide.structuredContent.stats.slice(0, 4),
+      quoteText: slide.structuredContent.quoteText,
+      ctaLabel: slide.structuredContent.ctaLabel,
+      mediaIntent: slide.structuredContent.mediaIntent,
+    },
+    visualNeeds: slide.visualNeeds.slice(0, 4),
+  }));
+
+  const systemPrompt =
+    'You are a presentation design critic. Review narrative, pedagogy, design quality, brand fit, and slide grammar. Return strict JSON only. Base your critique on the brief, structured slide content, budgets, and any preview images provided. Prefer actionable repair hints. Never include markdown.';
+  const userPayload = {
+    language: params.useNorwegian ? 'no' : 'en',
+    scope: params.scope,
+    projectTemplateId: params.projectTemplateId,
+    deckName: params.deckName,
+    brandContext: params.brandContext,
+    heuristicBaseline: {
+      overall: params.heuristic.overall,
+      narrative: params.heuristic.narrative,
+      pedagogy: params.heuristic.pedagogy,
+      design: params.heuristic.design,
+      visuals: params.heuristic.visuals,
+      brand: params.heuristic.brand,
+      topIssues: params.heuristic.findings.slice(0, 6).map((entry) => ({
+        slideId: entry.slideId,
+        category: entry.category,
+        severity: entry.severity,
+        messageNo: entry.messageNo,
+        repairHintNo: entry.repairHintNo,
+      })),
+    },
+    allowedValues: {
+      severity: ['warning', 'error'],
+      categories: ['content', 'hierarchy', 'visual', 'balance', 'grammar', 'narrative', 'brand'],
+      slideGrammars: Object.keys(ACADEMY_PRESENTATION_GRAMMAR_BUDGETS),
+      visualKinds: ['chart', 'icon', 'screenshot', 'illustration', 'photo', 'shape', 'badge'],
+    },
+    outputSchema: {
+      overall: 'number 0..100',
+      narrative: 'number 0..100',
+      pedagogy: 'number 0..100',
+      design: 'number 0..100',
+      visuals: 'number 0..100',
+      brand: 'number 0..100',
+      findings: [
+        {
+          slideId: 'string',
+          severity: 'warning|error',
+          category: 'content|hierarchy|visual|balance|grammar|narrative|brand',
+          messageNo: 'string',
+          messageEn: 'string',
+          repairHintNo: 'string',
+          repairHintEn: 'string',
+          recommendedGrammarId: 'string optional',
+          recommendedVisualKind: 'string optional',
+          confidence: 'number 0..1',
+        },
+      ],
+    },
+    slides: normalizedSlides,
+  };
+
+  const parseCritiquePayload = (
+    payload: Record<string, unknown>,
+    model: string,
+    provider: 'huggingface' | 'heuristic' = 'huggingface',
+  ): AcademyPresentationCritiqueResult | null => {
+    const findings = Array.isArray(payload.findings)
+      ? payload.findings
+          .map((entry, index) =>
+            academyPresentationNormalizeCritiqueFinding(entry, index, params.useNorwegian),
+          )
+          .filter((entry): entry is AcademyPresentationCritiqueFinding => Boolean(entry))
+          .slice(0, 20)
+      : [];
+    const score = (value: unknown, fallback: number) =>
+      academyPresentationClamp(Number(readNumber(value) || fallback), 0, 100);
+    return {
+      provider,
+      model,
+      overall: score(payload.overall, params.heuristic.overall),
+      narrative: score(payload.narrative, params.heuristic.narrative),
+      pedagogy: score(payload.pedagogy, params.heuristic.pedagogy),
+      design: score(payload.design, params.heuristic.design),
+      visuals: score(payload.visuals, params.heuristic.visuals),
+      brand: score(payload.brand, params.heuristic.brand),
+      findings: findings.length > 0 ? findings : params.heuristic.findings,
+    };
+  };
+
+  const previewSlides = params.slides
+    .filter((slide) => slide.previewImageUrl && slide.previewImageUrl.length <= 220_000)
+    .slice(0, 4);
+  const visionModels = [visionPrimaryModel, ...visionFallbackModels].filter(
+    (entry, index, source) =>
+      source.findIndex((candidate) => candidate.toLowerCase() === entry.toLowerCase()) === index,
+  );
+
+  for (const modelName of visionModels) {
+    try {
+      const content: Array<Record<string, unknown>> = [
+        {
+          type: 'text',
+          text: JSON.stringify(userPayload),
+        },
+      ];
+      previewSlides.forEach((slide) => {
+        content.push({
+          type: 'text',
+          text: `Preview for ${slide.slideId}: ${slide.title}`,
+        });
+        content.push({
+          type: 'image_url',
+          image_url: {
+            url: slide.previewImageUrl,
+          },
+        });
+      });
+      const routerResponse = await fetch('https://router.huggingface.co/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${huggingFaceToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: modelName,
+          temperature: 0.1,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content },
+          ],
+        }),
+        signal: AbortSignal.timeout(40_000),
+      });
+      if (!routerResponse.ok) {
+        const errorBody = await routerResponse.text().catch(() => '');
+        console.warn('Academy presentation critique vision router failed:', modelName, routerResponse.status, errorBody);
+        continue;
+      }
+      const parsed = (await routerResponse.json()) as Record<string, unknown>;
+      const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
+      const firstChoice = academyPresentationIsRecord(choices[0]) ? choices[0] : null;
+      const message = academyPresentationIsRecord(firstChoice?.message) ? firstChoice.message : null;
+      const contentValue = message?.content;
+      const contentRaw = Array.isArray(contentValue)
+        ? contentValue
+            .map((entry) =>
+              academyPresentationIsRecord(entry) ? String(readString(entry.text) || '') : String(entry || ''),
+            )
+            .join('\n')
+        : String(readString(contentValue) || '');
+      const payload = academyPresentationParseJsonObjectFromText(contentRaw);
+      if (payload) {
+        const critique = parseCritiquePayload(payload, modelName, 'huggingface');
+        if (critique) return critique;
+      }
+    } catch (error) {
+      console.warn('Academy presentation critique vision error:', modelName, error);
+    }
+  }
+
+  for (const modelName of textFallbackModels) {
+    try {
+      const routerResponse = await fetch('https://router.huggingface.co/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${huggingFaceToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: modelName,
+          temperature: 0.1,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: JSON.stringify(userPayload) },
+          ],
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!routerResponse.ok) continue;
+      const parsed = (await routerResponse.json()) as Record<string, unknown>;
+      const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
+      const firstChoice = academyPresentationIsRecord(choices[0]) ? choices[0] : null;
+      const message = academyPresentationIsRecord(firstChoice?.message) ? firstChoice.message : null;
+      const contentRaw = String(readString(message?.content) || '');
+      const payload = academyPresentationParseJsonObjectFromText(contentRaw);
+      if (payload) {
+        const critique = parseCritiquePayload(payload, modelName, 'huggingface');
+        if (critique) return critique;
+      }
+    } catch (error) {
+      console.warn('Academy presentation critique text fallback error:', modelName, error);
+    }
+  }
+
+  return null;
+};
+
+app.post('/api/academy/presentation/critique', async (req, res) => {
+  try {
+    const body = academyPresentationIsRecord(req.body) ? req.body : {};
+    const scope: AcademyPresentationScope = readString(body.scope) === 'skill' ? 'skill' : 'course';
+    const projectTemplateId = String(readString(body.projectTemplateId) || '').toLowerCase();
+    const useNorwegian = readBoolean(body.useNorwegian) === true;
+    const deckName = String(readString(body.deckName) || '').trim() || 'Presentation';
+    const brandContext = academyPresentationNormalizeBrandContext(body.brandContext);
+    const slides = Array.isArray(body.slides)
+      ? body.slides
+          .map((entry, index) => academyPresentationNormalizeCritiqueSlideInput(entry, index))
+          .filter((entry): entry is AcademyPresentationCritiqueSlideInput => Boolean(entry))
+          .slice(0, 16)
+      : [];
+
+    if (slides.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'slides is required',
+      });
+    }
+
+    const heuristic = academyPresentationBuildHeuristicCritique({
+      slides,
+      useNorwegian,
+      brandContext,
+    });
+    const critique =
+      (await academyPresentationTryHuggingFaceCritique({
+        slides,
+        deckName,
+        scope,
+        projectTemplateId,
+        useNorwegian,
+        brandContext,
+        heuristic,
+      })) || heuristic;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        scope,
+        deckName,
+        provider: critique.provider,
+        model: critique.model,
+        overall: critique.overall,
+        narrative: critique.narrative,
+        pedagogy: critique.pedagogy,
+        design: critique.design,
+        visuals: critique.visuals,
+        brand: critique.brand,
+        findings: critique.findings,
+        generatedAt: new Date().toISOString(),
+        pipeline: critique.provider === 'huggingface'
+          ? ['heuristic-baseline', 'qwen-vl-critique', 'text-fallback-if-needed']
+          : ['heuristic-baseline'],
+      },
+    });
+  } catch (error) {
+    console.error('Error generating academy presentation critique:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Could not critique presentation deck',
+    });
+  }
+});
+
+type AcademyCurriculumFoundationQuestionId =
+  | 'competencyTopic'
+  | 'competencySubtype'
+  | 'targetAudience'
+  | 'desiredTransformation'
+  | 'contextConstraint';
+
+interface AcademyCurriculumFoundationQuestion {
+  id: AcademyCurriculumFoundationQuestionId;
+  question: string;
+  placeholder: string;
+  helpText: string;
+  suggestions: string[];
+}
+
+interface AcademyCurriculumFoundationAnswer {
+  id: AcademyCurriculumFoundationQuestionId;
+  question: string;
+  answer: string;
+}
+
+interface AcademyCurriculumFoundationSkillMapItem {
+  title: string;
+  focus: string;
+}
+
+type AcademyCurriculumFoundationCompetencyLevel =
+  | 'basic'
+  | 'operational'
+  | 'advanced';
+
+interface AcademyCurriculumFoundationCompetencyMapItem {
+  title: string;
+  description: string;
+  basic: string[];
+  operational: string[];
+  advanced: string[];
+}
+
+interface AcademyCurriculumFoundationSkillSuggestion {
+  title: string;
+  competency: string;
+  level: AcademyCurriculumFoundationCompetencyLevel;
+  objective: string;
+  recommendedDurationMinutes: number;
+}
+
+type AcademyCurriculumFoundationQuizSuggestionType =
+  | 'single-choice'
+  | 'multi-select'
+  | 'true-false'
+  | 'short-answer';
+
+interface AcademyCurriculumFoundationQuizSuggestionOption {
+  label: string;
+  text: string;
+  isCorrect: boolean;
+  explanation?: string;
+}
+
+interface AcademyCurriculumFoundationQuizSuggestion {
+  prompt: string;
+  hint: string;
+  competency: string;
+  skillTitle?: string;
+  level: AcademyCurriculumFoundationCompetencyLevel;
+  type: AcademyCurriculumFoundationQuizSuggestionType;
+  options: AcademyCurriculumFoundationQuizSuggestionOption[];
+  acceptedAnswers: string[];
+  explanation: string;
+  timestampRatio: number;
+  duration: number;
+  tags: string[];
+}
+
+interface AcademyCurriculumFoundationAnnotationSuggestion {
+  type: AcademyAnnotationRecommendationType;
+  title: string;
+  content: string;
+  competency: string;
+  skillTitle?: string;
+  level: AcademyCurriculumFoundationCompetencyLevel;
+  startRatio: number;
+  endRatio: number;
+  actionType?: AcademyAnnotationRecommendationActionType;
+  actionTarget?: string;
+}
+
+interface AcademyCurriculumFoundationStudioSuggestions {
+  skills: AcademyCurriculumFoundationSkillSuggestion[];
+  quiz: AcademyCurriculumFoundationQuizSuggestion[];
+  annotations: AcademyCurriculumFoundationAnnotationSuggestion[];
+}
+
+interface AcademyCurriculumFoundationArchitecture {
+  purpose: string;
+  audience: string;
+  transformation: string;
+  competencies: string[];
+  skills: string[];
+  transformations: string[];
+  skillMap: AcademyCurriculumFoundationSkillMapItem[];
+  competencyMap?: AcademyCurriculumFoundationCompetencyMapItem[];
+  problemsSolved: string[];
+  learningJourney: string;
+  practiceDesign: string;
+  proofOfLearning: string;
+  studioSuggestions?: AcademyCurriculumFoundationStudioSuggestions;
+}
+
+interface AcademyCurriculumFoundationRecommendation {
+  competencyName: string;
+  recommendedProjectTemplateId: string;
+  rationale: string[];
+  architecture: AcademyCurriculumFoundationArchitecture;
+}
+
+type AcademyCurriculumIndustryProfileId =
+  | 'sales'
+  | 'production'
+  | 'offshore'
+  | 'leadership'
+  | 'customer-service'
+  | 'hr'
+  | 'healthcare'
+  | 'it'
+  | 'compliance'
+  | 'education'
+  | 'marketing'
+  | 'project-management'
+  | 'finance'
+  | 'legal'
+  | 'retail'
+  | 'logistics'
+  | 'construction'
+  | 'hospitality'
+  | 'procurement'
+  | 'real-estate'
+  | 'creative'
+  | 'generic';
+
+interface AcademyCurriculumFoundationProgress {
+  phase: string;
+  statusMessage: string;
+  percent: number;
+  focusAreas: string[];
+  appliedSections: string[];
+}
+
+interface AcademyCurriculumFoundationSectionRationale {
+  section: string;
+  reason: string;
+  evidence: string;
+}
+
+interface AcademyCurriculumFoundationAssistantResult {
+  completed: boolean;
+  totalQuestions: number;
+  answeredCount: number;
+  answers: AcademyCurriculumFoundationAnswer[];
+  nextQuestion: AcademyCurriculumFoundationQuestion | null;
+  recommendation: AcademyCurriculumFoundationRecommendation;
+  industryProfile: AcademyCurriculumIndustryProfileId;
+  progress: AcademyCurriculumFoundationProgress;
+  sectionRationales: AcademyCurriculumFoundationSectionRationale[];
+  provider: 'heuristic' | 'qwen';
+  model: string;
+  domainResolution: AcademyCurriculumFoundationDomainResolution;
+  generationStage: AcademyCurriculumFoundationGenerationStage;
+  templateMatch: AcademyCurriculumFoundationTemplateMatch | null;
+}
+
+type AcademyCurriculumFoundationDomainResolutionSource =
+  | 'manual'
+  | 'template-memory'
+  | 'embedding'
+  | 'lexical'
+  | 'heuristic';
+
+interface AcademyCurriculumFoundationTemplateMemoryItem {
+  id: string;
+  name: string;
+  sourceProjectTemplateId?: string;
+  profileHint: AcademyCurriculumIndustryProfileId;
+  architecture: AcademyCurriculumFoundationArchitecture;
+  searchText: string;
+}
+
+interface AcademyCurriculumFoundationTemplateMatch {
+  id: string;
+  name: string;
+  confidence: number;
+  profileHint: AcademyCurriculumIndustryProfileId;
+  sourceProjectTemplateId?: string;
+}
+
+interface AcademyCurriculumFoundationDomainCandidate {
+  profile: AcademyCurriculumIndustryProfileId;
+  label: string;
+  confidence: number;
+  source: AcademyCurriculumFoundationDomainResolutionSource;
+}
+
+interface AcademyCurriculumFoundationDomainResolution {
+  profile: AcademyCurriculumIndustryProfileId;
+  label: string;
+  confidence: number;
+  source: AcademyCurriculumFoundationDomainResolutionSource;
+  needsConfirmation: boolean;
+  reasoning: string[];
+  alternatives: AcademyCurriculumFoundationDomainCandidate[];
+}
+
+type AcademyCurriculumFoundationGenerationStageId =
+  | 'discover'
+  | 'context'
+  | 'audience'
+  | 'outcomes'
+  | 'practice'
+  | 'production';
+
+interface AcademyCurriculumFoundationGenerationStage {
+  id: AcademyCurriculumFoundationGenerationStageId;
+  label: string;
+  sectionsToRefresh: string[];
+  completedSections: string[];
+  nextSections: string[];
+}
+
+const ACADEMY_CURRICULUM_FOUNDATION_TOTAL_QUESTIONS = 5;
+
+const academyCurriculumDomainDescriptorCatalog: Array<{
+  profile: AcademyCurriculumIndustryProfileId;
+  title: string;
+  searchText: string;
+}> = [
+  {
+    profile: 'sales',
+    title: 'Sales',
+    searchText:
+      'sales b2b pipeline discovery outbound account executive negotiation lead qualification prospecting crm retail sales consultative selling revenue',
+  },
+  {
+    profile: 'production',
+    title: 'Production operations',
+    searchText:
+      'production operations manufacturing sop operator process industry quality control line operations shift leader packaging maintenance factory operational standard',
+  },
+  {
+    profile: 'offshore',
+    title: 'Offshore safety',
+    searchText:
+      'offshore safety rig platform permit to work sja evacuation alarm response emergency preparedness hse maritime installation',
+  },
+  {
+    profile: 'leadership',
+    title: 'Leadership',
+    searchText:
+      'leadership people management coaching team leadership first line manager feedback performance conversations change leadership management meetings delegation',
+  },
+  {
+    profile: 'customer-service',
+    title: 'Customer service',
+    searchText:
+      'customer service support complaint handling service recovery customer success phone support email chat sla escalation customer care front desk',
+  },
+  {
+    profile: 'hr',
+    title: 'HR',
+    searchText:
+      'hr human resources recruitment onboarding people operations employee relations performance review talent development interviewing personnel',
+  },
+  {
+    profile: 'healthcare',
+    title: 'Healthcare',
+    searchText:
+      'healthcare patient clinical nursing care hospital home care triage medication patient safety care pathway observation',
+  },
+  {
+    profile: 'it',
+    title: 'IT operations',
+    searchText:
+      'it operations devops system administration platform operations incident response service desk cybersecurity runbook escalation reliability infrastructure',
+  },
+  {
+    profile: 'compliance',
+    title: 'Compliance',
+    searchText:
+      'compliance governance risk aml gdpr internal controls audit evidence reporting regulatory control framework due diligence',
+  },
+  {
+    profile: 'education',
+    title: 'Education',
+    searchText:
+      'education teaching classroom instruction pedagogy internal training workshop facilitation vocational training lesson planning assessment',
+  },
+  {
+    profile: 'marketing',
+    title: 'Marketing',
+    searchText:
+      'marketing performance marketing branding content marketing seo sem campaign planning social media communication funnel demand generation',
+  },
+  {
+    profile: 'project-management',
+    title: 'Project management',
+    searchText:
+      'project management project delivery agile scrum pmo planning dependency milestone stakeholder coordination program management roadmap status reporting',
+  },
+  {
+    profile: 'finance',
+    title: 'Finance',
+    searchText:
+      'finance accounting controlling budgeting forecast fp&a invoice reconciliation month end reporting financial analysis cash flow',
+  },
+  {
+    profile: 'legal',
+    title: 'Legal',
+    searchText:
+      'legal contracts privacy employment law negotiation contract review legal operations case handling policy interpretation compliance counsel',
+  },
+  {
+    profile: 'retail',
+    title: 'Retail',
+    searchText:
+      'retail store operations merchandising point of sale pos shop floor store leadership in store customer experience checkout',
+  },
+  {
+    profile: 'logistics',
+    title: 'Logistics',
+    searchText:
+      'logistics warehouse transport pick and pack inventory supply chain distribution routing freight order fulfillment',
+  },
+  {
+    profile: 'construction',
+    title: 'Construction',
+    searchText:
+      'construction site work civil works installation building project execution hse site coordination inspection trades handover',
+  },
+  {
+    profile: 'hospitality',
+    title: 'Hospitality',
+    searchText:
+      'hospitality hotel restaurant front desk guest experience service standard host reception booking serving venue operations',
+  },
+  {
+    profile: 'procurement',
+    title: 'Procurement',
+    searchText:
+      'procurement sourcing supplier management category management tender bid purchasing vendor negotiations contract follow-up rfq rfp',
+  },
+  {
+    profile: 'real-estate',
+    title: 'Real estate',
+    searchText:
+      'real estate brokerage property management rentals viewings residential sales listings leasing tenant landlord closing',
+  },
+  {
+    profile: 'creative',
+    title: 'Creative production',
+    searchText:
+      'creative production film production video production editing post production photography lighting design storytelling motion graphics content creator cinematography documentary commercial wedding photo',
+  },
+  {
+    profile: 'generic',
+    title: 'Generic competency',
+    searchText:
+      'general training competency skill development operational improvement professional capability workplace learning performance improvement',
+  },
+];
+
+const academyCurriculumDomainEmbeddingCache = new Map<string, Map<string, number[]>>();
+
+const academyCurriculumNormalizeDomainSource = (
+  semanticScore: number,
+  lexicalScore: number,
+  heuristicBoost: number,
+  templateBoost: number,
+): AcademyCurriculumFoundationDomainResolutionSource => {
+  if (
+    templateBoost <= 0 &&
+    semanticScore <= 0 &&
+    lexicalScore <= 0 &&
+    heuristicBoost <= 0
+  ) {
+    return 'heuristic';
+  }
+  if (templateBoost >= semanticScore && templateBoost >= lexicalScore && templateBoost >= heuristicBoost) {
+    return 'template-memory';
+  }
+  if (semanticScore >= lexicalScore && semanticScore >= heuristicBoost) return 'embedding';
+  if (lexicalScore >= heuristicBoost) return 'lexical';
+  return 'heuristic';
+};
+
+const academyCurriculumSummarizeArchitectureForSearch = (
+  architecture: AcademyCurriculumFoundationArchitecture,
+): string =>
+  [
+    architecture.purpose,
+    architecture.audience,
+    architecture.transformation,
+    ...architecture.competencies,
+    ...architecture.skills,
+    ...architecture.transformations,
+    ...architecture.problemsSolved,
+    architecture.learningJourney,
+    architecture.practiceDesign,
+    architecture.proofOfLearning,
+    ...academyCurriculumNormalizeSkillMap(architecture.skillMap).flatMap((entry) => [
+      entry.title,
+      entry.focus,
+    ]),
+    ...academyCurriculumNormalizeCompetencyMap(architecture.competencyMap).flatMap((entry) => [
+      entry.title,
+      entry.description,
+      ...entry.basic,
+      ...entry.operational,
+      ...entry.advanced,
+    ]),
+    ...academyCurriculumNormalizeStudioSuggestions(architecture.studioSuggestions).skills.flatMap(
+      (entry) => [entry.title, entry.objective, entry.competency],
+    ),
+  ]
+    .map((entry) => academyCurriculumTrimText(entry, 220))
+    .filter((entry) => entry.length > 0)
+    .join(' · ')
+    .slice(0, 2600);
+
+const academyCurriculumNormalizeTemplateMemory = (
+  value: unknown,
+): AcademyCurriculumFoundationTemplateMemoryItem[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!academyPresentationIsRecord(entry)) return null;
+      const id = academyCurriculumTrimText(entry.id, 120);
+      const name = academyCurriculumTrimText(entry.name, 160);
+      const sourceProjectTemplateId = academyCurriculumTrimText(
+        entry.sourceProjectTemplateId,
+        120,
+      );
+      const architecture = academyCurriculumNormalizeArchitecture(entry.architecture);
+      const explicitProfile = academyCurriculumTrimText(entry.profileHint, 64);
+      const profileHint =
+        academyCurriculumNormalizeIndustryProfileId(explicitProfile) ||
+        academyCurriculumInferIndustryProfile(
+          [explicitProfile, name, academyCurriculumSummarizeArchitectureForSearch(architecture)].join(
+            ' ',
+          ),
+      );
+      if (!id || !name) return null;
+      const normalizedEntry: AcademyCurriculumFoundationTemplateMemoryItem = {
+        id,
+        name,
+        profileHint,
+        architecture,
+        searchText: [
+          name,
+          sourceProjectTemplateId,
+          academyCurriculumIndustryProfileLabel(profileHint, false, name),
+          academyCurriculumSummarizeArchitectureForSearch(architecture),
+        ]
+          .filter((item) => item && String(item).trim().length > 0)
+          .join(' · ')
+          .slice(0, 2600),
+      };
+      if (sourceProjectTemplateId) {
+        normalizedEntry.sourceProjectTemplateId = sourceProjectTemplateId;
+      }
+      return normalizedEntry;
+    })
+    .filter((entry): entry is AcademyCurriculumFoundationTemplateMemoryItem => Boolean(entry))
+    .slice(0, 18);
+};
+
+const academyCurriculumScoreDomainLexicalMatch = (
+  query: string,
+  searchText: string,
+): number => {
+  const normalizedQuery = academyPresentationNormalizeToken(query);
+  const normalizedSearch = academyPresentationNormalizeToken(searchText);
+  if (!normalizedQuery || !normalizedSearch) return 0;
+  const queryTokens = academyPresentationNormalizeTokenSet(query);
+  let score = 0;
+  if (normalizedSearch.includes(normalizedQuery)) score += 0.6;
+  queryTokens.forEach((token) => {
+    if (normalizedSearch.includes(token)) score += 0.08;
+  });
+  return academyPresentationClamp(score, 0, 1);
+};
+
+const academyCurriculumRequestSemanticScores = async (params: {
+  query: string;
+  documents: string[];
+  token: string;
+  model: string;
+}): Promise<number[] | null> => {
+  const { query, documents, token, model } = params;
+  if (!query.trim() || documents.length === 0 || !token || !model) return null;
+
+  let modelCache = academyCurriculumDomainEmbeddingCache.get(model);
+  if (!modelCache) {
+    modelCache = new Map<string, number[]>();
+    academyCurriculumDomainEmbeddingCache.set(model, modelCache);
+  }
+
+  const missingDocuments = documents.filter((document) => !modelCache?.has(document));
+  if (missingDocuments.length > 0) {
+    const docEmbeddings = await academyPresentationRequestHfEmbeddings({
+      token,
+      model,
+      inputs: missingDocuments,
+    });
+    if (docEmbeddings && docEmbeddings.length === missingDocuments.length) {
+      missingDocuments.forEach((document, index) => {
+        const vector = docEmbeddings[index];
+        if (vector && modelCache) modelCache.set(document, vector);
+      });
+    }
+  }
+
+  const queryEmbedding = await academyPresentationRequestHfEmbeddings({
+    token,
+    model,
+    inputs: [query],
+  });
+  const queryVector = queryEmbedding?.[0];
+  if (!queryVector) return null;
+
+  const documentVectors = documents.map((document) => modelCache?.get(document) || null);
+  if (documentVectors.some((vector) => !vector)) return null;
+
+  return documentVectors.map((vector) =>
+    Number((((academyPresentationCosineSimilarity(queryVector, vector || []) + 1) / 2)).toFixed(4)),
+  );
+};
+
+const academyCurriculumResolveTemplateMatch = async (params: {
+  query: string;
+  templates: AcademyCurriculumFoundationTemplateMemoryItem[];
+}): Promise<AcademyCurriculumFoundationTemplateMatch | null> => {
+  if (params.templates.length === 0 || params.query.trim().length < 2) return null;
+  const lexicalScores = params.templates.map((template) =>
+    academyCurriculumScoreDomainLexicalMatch(params.query, template.searchText),
+  );
+  const lexicalRanking = params.templates
+    .map((template, index) => ({
+      template,
+      confidence: lexicalScores[index] || 0,
+    }))
+    .sort((a, b) => b.confidence - a.confidence);
+  const lexicalTop = lexicalRanking[0];
+  const lexicalSecond = lexicalRanking[1];
+  const shouldUseSemantic =
+    !lexicalTop ||
+    lexicalTop.confidence < 0.72 ||
+    (lexicalTop.confidence - (lexicalSecond?.confidence || 0)) < 0.14;
+  const huggingFaceToken =
+    readString(process.env.HUGGINGFACE_TOKEN) || readString(process.env.HF_TOKEN);
+  const embeddingModel =
+    readString(process.env.ACADEMY_CURRICULUM_FOUNDATION_EMBEDDING_MODEL) ||
+    readString(process.env.ACADEMY_PRESENTATION_SEARCH_EMBEDDING_MODEL) ||
+    readString(process.env.ACADEMY_PRESENTATION_HF_EMBEDDING_MODEL) ||
+    'Qwen/Qwen3-Embedding-8B';
+  const semanticScores = shouldUseSemantic && huggingFaceToken
+    ? await academyCurriculumRequestSemanticScores({
+        query: params.query,
+        documents: params.templates.map((template) => template.searchText),
+        token: huggingFaceToken,
+        model: embeddingModel,
+      })
+    : null;
+
+  const ranked = params.templates
+    .map((template, index) => {
+      const lexicalScore = lexicalScores[index] || 0;
+      const semanticScore = semanticScores?.[index] || 0;
+      const confidence = academyPresentationClamp(
+        lexicalScore * 0.42 + semanticScore * 0.58,
+        0,
+        1,
+      );
+      return {
+        template,
+        confidence,
+      };
+    })
+    .sort((a, b) => b.confidence - a.confidence);
+
+  const top = ranked[0];
+  if (!top || top.confidence < 0.42) return null;
+  return {
+    id: top.template.id,
+    name: top.template.name,
+    confidence: Number(top.confidence.toFixed(3)),
+    profileHint: top.template.profileHint,
+    sourceProjectTemplateId: top.template.sourceProjectTemplateId,
+  };
+};
+
+const academyCurriculumResolveGenerationStage = (params: {
+  answers: AcademyCurriculumFoundationAnswer[];
+  useNorwegian: boolean;
+  completed: boolean;
+}): AcademyCurriculumFoundationGenerationStage => {
+  const t = (no: string, en: string) => (params.useNorwegian ? no : en);
+  if (params.completed || params.answers.length >= ACADEMY_CURRICULUM_FOUNDATION_TOTAL_QUESTIONS) {
+    return {
+      id: 'production',
+      label: t('Produksjonsklar', 'Production ready'),
+      sectionsToRefresh: [
+        'purpose',
+        'audience',
+        'transformation',
+        'competencies',
+        'skills',
+        'transformations',
+        'skillMap',
+        'competencyMap',
+        'problemsSolved',
+        'learningJourney',
+        'practiceDesign',
+        'proofOfLearning',
+        'studioSuggestions',
+      ],
+      completedSections: [
+        t('Formål', 'Purpose'),
+        t('Målgruppe', 'Audience'),
+        t('Kompetanser', 'Competencies'),
+        t('Ferdigheter', 'Skills'),
+        t('Transformasjon', 'Transformation'),
+        t('Læringsreise', 'Learning journey'),
+        t('Quiz og annoteringer', 'Quiz and annotations'),
+      ],
+      nextSections: [t('Gjennomgå og lagre', 'Review and save')],
+    };
+  }
+
+  if (params.answers.length <= 1) {
+    return {
+      id: 'context',
+      label: t('Kontekst og retning', 'Context and direction'),
+      sectionsToRefresh: ['purpose', 'competencies', 'skills', 'skillMap'],
+      completedSections: [t('Tema', 'Topic')],
+      nextSections: [
+        t('Formål', 'Purpose'),
+        t('Kompetanser', 'Competencies'),
+        t('Ferdigheter', 'Skills'),
+      ],
+    };
+  }
+
+  if (params.answers.length === 2) {
+    return {
+      id: 'audience',
+      label: t('Målgruppe og ansvar', 'Audience and responsibility'),
+      sectionsToRefresh: ['audience', 'problemsSolved'],
+      completedSections: [
+        t('Formål', 'Purpose'),
+        t('Kompetanser', 'Competencies'),
+        t('Ferdigheter', 'Skills'),
+      ],
+      nextSections: [t('Målgruppe', 'Audience'), t('Problemområder', 'Problems solved')],
+    };
+  }
+
+  if (params.answers.length === 3) {
+    return {
+      id: 'outcomes',
+      label: t('Resultat og mestring', 'Outcomes and mastery'),
+      sectionsToRefresh: ['transformation', 'transformations', 'proofOfLearning'],
+      completedSections: [
+        t('Formål', 'Purpose'),
+        t('Målgruppe', 'Audience'),
+        t('Kompetanser', 'Competencies'),
+        t('Ferdigheter', 'Skills'),
+      ],
+      nextSections: [
+        t('Transformasjon', 'Transformation'),
+        t('Proof of learning', 'Proof of learning'),
+      ],
+    };
+  }
+
+  return {
+    id: 'practice',
+    label: t('Praksis og progresjon', 'Practice and progression'),
+    sectionsToRefresh: [
+      'learningJourney',
+      'practiceDesign',
+      'competencyMap',
+      'studioSuggestions',
+    ],
+    completedSections: [
+      t('Formål', 'Purpose'),
+      t('Målgruppe', 'Audience'),
+      t('Kompetanser', 'Competencies'),
+      t('Ferdigheter', 'Skills'),
+      t('Transformasjon', 'Transformation'),
+    ],
+    nextSections: [
+      t('Læringsreise', 'Learning journey'),
+      t('Kompetansekart', 'Competency map'),
+      t('Studioforslag', 'Studio suggestions'),
+    ],
+  };
+};
+
+const academyCurriculumMergeRecommendationWithTemplateMemory = (params: {
+  recommendation: AcademyCurriculumFoundationRecommendation;
+  templateMatch: AcademyCurriculumFoundationTemplateMatch | null;
+  templateMemory: AcademyCurriculumFoundationTemplateMemoryItem[];
+  useNorwegian: boolean;
+}): AcademyCurriculumFoundationRecommendation => {
+  if (!params.templateMatch || params.templateMatch.confidence < 0.68) {
+    return params.recommendation;
+  }
+  const matchedTemplate =
+    params.templateMemory.find((entry) => entry.id === params.templateMatch?.id) || null;
+  if (!matchedTemplate) return params.recommendation;
+
+  const templateArchitecture = academyCurriculumNormalizeArchitecture(matchedTemplate.architecture);
+  const recommendationArchitecture = academyCurriculumNormalizeArchitecture(
+    params.recommendation.architecture,
+  );
+  const t = (no: string, en: string) => (params.useNorwegian ? no : en);
+
+  return {
+    ...params.recommendation,
+    rationale: academyCurriculumDedupedList(
+      [
+        ...params.recommendation.rationale,
+        t(
+          `Forslagene henter også struktur fra den lagrede malen "${matchedTemplate.name}" uten å overstyre temaet ditt.`,
+          `The suggestions also draw structure from the saved template "${matchedTemplate.name}" without overriding your topic.`,
+        ),
+      ],
+      6,
+      220,
+    ),
+    architecture: academyCurriculumNormalizeArchitecture({
+      ...recommendationArchitecture,
+      skillMap:
+        recommendationArchitecture.skillMap.length > 0
+          ? recommendationArchitecture.skillMap
+          : templateArchitecture.skillMap,
+      competencies:
+        recommendationArchitecture.competencies.length > 0
+          ? recommendationArchitecture.competencies
+          : templateArchitecture.competencies,
+      skills:
+        recommendationArchitecture.skills.length > 0
+          ? recommendationArchitecture.skills
+          : templateArchitecture.skills,
+      transformations:
+        recommendationArchitecture.transformations.length > 0
+          ? recommendationArchitecture.transformations
+          : templateArchitecture.transformations,
+      problemsSolved:
+        recommendationArchitecture.problemsSolved.length > 0
+          ? recommendationArchitecture.problemsSolved
+          : templateArchitecture.problemsSolved,
+      learningJourney:
+        recommendationArchitecture.learningJourney || templateArchitecture.learningJourney,
+      practiceDesign:
+        recommendationArchitecture.practiceDesign || templateArchitecture.practiceDesign,
+      proofOfLearning:
+        recommendationArchitecture.proofOfLearning || templateArchitecture.proofOfLearning,
+      competencyMap:
+        academyCurriculumNormalizeCompetencyMap(recommendationArchitecture.competencyMap).length > 0
+          ? recommendationArchitecture.competencyMap
+          : templateArchitecture.competencyMap,
+      studioSuggestions:
+        academyCurriculumNormalizeStudioSuggestions(recommendationArchitecture.studioSuggestions)
+          .skills.length > 0 ||
+        academyCurriculumNormalizeStudioSuggestions(recommendationArchitecture.studioSuggestions)
+          .quiz.length > 0 ||
+        academyCurriculumNormalizeStudioSuggestions(recommendationArchitecture.studioSuggestions)
+          .annotations.length > 0
+          ? recommendationArchitecture.studioSuggestions
+          : templateArchitecture.studioSuggestions,
+    }),
+  };
+};
+
+const academyCurriculumApplyStageToRecommendation = (params: {
+  currentArchitecture: AcademyCurriculumFoundationArchitecture;
+  recommendation: AcademyCurriculumFoundationRecommendation;
+  stage: AcademyCurriculumFoundationGenerationStage;
+}): AcademyCurriculumFoundationRecommendation => {
+  const current = academyCurriculumNormalizeArchitecture(params.currentArchitecture);
+  const generated = academyCurriculumNormalizeArchitecture(params.recommendation.architecture);
+  const shouldRefresh = (section: string) => params.stage.sectionsToRefresh.includes(section);
+
+  return {
+    ...params.recommendation,
+    architecture: academyCurriculumNormalizeArchitecture({
+      ...current,
+      purpose: shouldRefresh('purpose') ? generated.purpose || current.purpose : current.purpose,
+      audience: shouldRefresh('audience') ? generated.audience || current.audience : current.audience,
+      transformation: shouldRefresh('transformation')
+        ? generated.transformation || current.transformation
+        : current.transformation,
+      competencies: shouldRefresh('competencies')
+        ? (generated.competencies.length > 0 ? generated.competencies : current.competencies)
+        : current.competencies,
+      skills: shouldRefresh('skills')
+        ? (generated.skills.length > 0 ? generated.skills : current.skills)
+        : current.skills,
+      transformations: shouldRefresh('transformations')
+        ? (generated.transformations.length > 0
+            ? generated.transformations
+            : current.transformations)
+        : current.transformations,
+      skillMap: shouldRefresh('skillMap')
+        ? (generated.skillMap.length > 0 ? generated.skillMap : current.skillMap)
+        : current.skillMap,
+      competencyMap: shouldRefresh('competencyMap')
+        ? (academyCurriculumNormalizeCompetencyMap(generated.competencyMap).length > 0
+            ? generated.competencyMap
+            : current.competencyMap)
+        : current.competencyMap,
+      problemsSolved: shouldRefresh('problemsSolved')
+        ? (generated.problemsSolved.length > 0
+            ? generated.problemsSolved
+            : current.problemsSolved)
+        : current.problemsSolved,
+      learningJourney: shouldRefresh('learningJourney')
+        ? generated.learningJourney || current.learningJourney
+        : current.learningJourney,
+      practiceDesign: shouldRefresh('practiceDesign')
+        ? generated.practiceDesign || current.practiceDesign
+        : current.practiceDesign,
+      proofOfLearning: shouldRefresh('proofOfLearning')
+        ? generated.proofOfLearning || current.proofOfLearning
+        : current.proofOfLearning,
+      studioSuggestions: shouldRefresh('studioSuggestions')
+        ? academyCurriculumNormalizeStudioSuggestions(generated.studioSuggestions, current.studioSuggestions)
+        : current.studioSuggestions,
+    }),
+  };
+};
+
+const academyCurriculumTrimText = (value: unknown, max = 320): string =>
+  String(readString(value) || '').trim().slice(0, max);
+
+const academyCurriculumDedupedList = (
+  value: unknown,
+  limit: number,
+  maxLength: number,
+): string[] => {
+  const raw = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  raw.forEach((entry) => {
+    const text = academyCurriculumTrimText(entry, maxLength);
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) return;
+    seen.add(key);
+    normalized.push(text);
+  });
+  return normalized.slice(0, limit);
+};
+
+const academyCurriculumNormalizeQuestionId = (
+  value: unknown,
+): AcademyCurriculumFoundationQuestionId | null => {
+  const normalized = academyCurriculumTrimText(value, 80);
+  switch (normalized) {
+    case 'competencyTopic':
+    case 'competencySubtype':
+    case 'targetAudience':
+    case 'desiredTransformation':
+    case 'contextConstraint':
+      return normalized;
+    default:
+      return null;
+  }
+};
+
+const academyCurriculumNormalizeIndustryProfileId = (
+  value: unknown,
+): AcademyCurriculumIndustryProfileId | null => {
+  const normalized = academyCurriculumTrimText(value, 64).toLowerCase();
+  switch (normalized) {
+    case 'sales':
+    case 'production':
+    case 'offshore':
+    case 'leadership':
+    case 'customer-service':
+    case 'hr':
+    case 'healthcare':
+    case 'it':
+    case 'compliance':
+    case 'education':
+    case 'marketing':
+    case 'project-management':
+    case 'finance':
+    case 'legal':
+    case 'retail':
+    case 'logistics':
+    case 'construction':
+    case 'hospitality':
+    case 'procurement':
+    case 'real-estate':
+    case 'creative':
+    case 'generic':
+      return normalized;
+    default:
+      return null;
+  }
+};
+
+const academyCurriculumTitleCase = (value: string): string =>
+  value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+const academyCurriculumNormalizeSkillMap = (
+  value: unknown,
+): AcademyCurriculumFoundationSkillMapItem[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!academyPresentationIsRecord(entry)) return null;
+      const title = academyCurriculumTrimText(entry.title, 140);
+      const focus = academyCurriculumTrimText(entry.focus, 220);
+      if (!title && !focus) return null;
+      return { title, focus } satisfies AcademyCurriculumFoundationSkillMapItem;
+    })
+    .filter((entry): entry is AcademyCurriculumFoundationSkillMapItem => Boolean(entry))
+    .slice(0, 8);
+};
+
+const academyCurriculumNormalizeLevel = (
+  value: unknown,
+  fallback: AcademyCurriculumFoundationCompetencyLevel = 'operational',
+): AcademyCurriculumFoundationCompetencyLevel => {
+  const normalized = academyCurriculumTrimText(value, 32).toLowerCase();
+  if (normalized === 'basic') return 'basic';
+  if (normalized === 'advanced') return 'advanced';
+  if (normalized === 'operational') return 'operational';
+  return fallback;
+};
+
+const academyCurriculumNormalizeCompetencyMap = (
+  value: unknown,
+): AcademyCurriculumFoundationCompetencyMapItem[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!academyPresentationIsRecord(entry)) return null;
+      const title = academyCurriculumTrimText(entry.title, 140);
+      const description = academyCurriculumTrimText(entry.description, 220);
+      const basic = academyCurriculumDedupedList(entry.basic, 6, 180);
+      const operational = academyCurriculumDedupedList(entry.operational, 6, 180);
+      const advanced = academyCurriculumDedupedList(entry.advanced, 6, 180);
+      if (
+        !title &&
+        !description &&
+        basic.length === 0 &&
+        operational.length === 0 &&
+        advanced.length === 0
+      ) {
+        return null;
+      }
+      return {
+        title,
+        description,
+        basic,
+        operational,
+        advanced,
+      } satisfies AcademyCurriculumFoundationCompetencyMapItem;
+    })
+    .filter((entry): entry is AcademyCurriculumFoundationCompetencyMapItem => Boolean(entry))
+    .slice(0, 8);
+};
+
+const academyCurriculumNormalizeQuizSuggestionType = (
+  value: unknown,
+): AcademyCurriculumFoundationQuizSuggestionType => {
+  const normalized = academyCurriculumTrimText(value, 40).toLowerCase();
+  if (normalized === 'multi-select') return 'multi-select';
+  if (normalized === 'true-false') return 'true-false';
+  if (normalized === 'short-answer') return 'short-answer';
+  return 'single-choice';
+};
+
+const academyCurriculumNormalizeQuizSuggestionOptions = (
+  value: unknown,
+): AcademyCurriculumFoundationQuizSuggestionOption[] => {
+  if (!Array.isArray(value)) return [];
+  const normalized: AcademyCurriculumFoundationQuizSuggestionOption[] = [];
+  value.forEach((entry, index) => {
+    if (!academyPresentationIsRecord(entry)) return;
+    const label = academyCurriculumTrimText(
+      entry.label,
+      1,
+    ).toUpperCase() || String.fromCharCode(65 + index);
+    const text = academyCurriculumTrimText(entry.text, 180);
+    const explanation = academyCurriculumTrimText(entry.explanation, 240);
+    if (!text) return;
+    normalized.push({
+      label,
+      text,
+      isCorrect: readBoolean(entry.isCorrect) === true,
+      explanation: explanation || undefined,
+    });
+  });
+  return normalized.slice(0, 6);
+};
+
+const academyCurriculumNormalizeStudioSuggestions = (
+  value: unknown,
+  fallback?: Partial<AcademyCurriculumFoundationStudioSuggestions>,
+): AcademyCurriculumFoundationStudioSuggestions => {
+  const record = academyPresentationIsRecord(value) ? value : {};
+  const fallbackRecord = academyPresentationIsRecord(fallback) ? fallback : {};
+  const rawSkills = Array.isArray(record.skills)
+    ? record.skills
+    : Array.isArray(fallbackRecord.skills)
+      ? fallbackRecord.skills
+      : [];
+  const rawQuiz = Array.isArray(record.quiz)
+    ? record.quiz
+    : Array.isArray(fallbackRecord.quiz)
+      ? fallbackRecord.quiz
+      : [];
+  const rawAnnotations = Array.isArray(record.annotations)
+    ? record.annotations
+    : Array.isArray(fallbackRecord.annotations)
+      ? fallbackRecord.annotations
+      : [];
+
+  return {
+    skills: rawSkills
+      .map((entry) => {
+        if (!academyPresentationIsRecord(entry)) return null;
+        const title = academyCurriculumTrimText(entry.title, 180);
+        const competency = academyCurriculumTrimText(entry.competency, 140);
+        const objective = academyCurriculumTrimText(entry.objective, 260);
+        if (!title || !competency || !objective) return null;
+        return {
+          title,
+          competency,
+          level: academyCurriculumNormalizeLevel(entry.level),
+          objective,
+          recommendedDurationMinutes: academyPresentationClamp(
+            Number(entry.recommendedDurationMinutes) || 8,
+            2,
+            45,
+          ),
+        } satisfies AcademyCurriculumFoundationSkillSuggestion;
+      })
+      .filter((entry): entry is AcademyCurriculumFoundationSkillSuggestion => Boolean(entry))
+      .slice(0, 18),
+    quiz: rawQuiz
+      .map((entry) => {
+        if (!academyPresentationIsRecord(entry)) return null;
+        const prompt = academyCurriculumTrimText(entry.prompt, 220);
+        const hint = academyCurriculumTrimText(entry.hint, 180);
+        const competency = academyCurriculumTrimText(entry.competency, 140);
+        const skillTitle = academyCurriculumTrimText(entry.skillTitle, 160) || undefined;
+        const explanation = academyCurriculumTrimText(entry.explanation, 260);
+        const acceptedAnswers = academyCurriculumDedupedList(entry.acceptedAnswers, 8, 120);
+        const options = academyCurriculumNormalizeQuizSuggestionOptions(entry.options);
+        if (!prompt || !competency) return null;
+        return {
+          prompt,
+          hint,
+          competency,
+          ...(skillTitle ? { skillTitle } : {}),
+          level: academyCurriculumNormalizeLevel(entry.level),
+          type: academyCurriculumNormalizeQuizSuggestionType(entry.type),
+          options,
+          acceptedAnswers,
+          explanation,
+          timestampRatio: academyPresentationClamp(Number(entry.timestampRatio) || 0.15, 0, 0.98),
+          duration: academyPresentationClamp(Number(entry.duration) || 12, 4, 45),
+          tags: academyCurriculumDedupedList(entry.tags, 8, 40),
+        } satisfies AcademyCurriculumFoundationQuizSuggestion;
+      })
+      .filter((entry): entry is AcademyCurriculumFoundationQuizSuggestion => Boolean(entry))
+      .slice(0, 12),
+    annotations: (() => {
+      const normalized: AcademyCurriculumFoundationAnnotationSuggestion[] = [];
+      rawAnnotations.forEach((entry) => {
+        if (!academyPresentationIsRecord(entry)) return;
+        const title = academyCurriculumTrimText(entry.title, 140);
+        const content = academyCurriculumTrimText(entry.content, 340);
+        const competency = academyCurriculumTrimText(entry.competency, 140);
+        if (!title || !content || !competency) return;
+        const startRatio = academyPresentationClamp(Number(entry.startRatio) || 0, 0, 0.97);
+        const endRatio = academyPresentationClamp(
+          Number(entry.endRatio) || startRatio + 0.08,
+          startRatio + 0.02,
+          1,
+        );
+        normalized.push({
+          type: academyAnnotationNormalizeType(entry.type),
+          title,
+          content,
+          competency,
+          skillTitle: academyCurriculumTrimText(entry.skillTitle, 160) || undefined,
+          level: academyCurriculumNormalizeLevel(entry.level),
+          startRatio,
+          endRatio,
+          actionType: academyAnnotationNormalizeActionType(entry.actionType),
+          actionTarget: academyCurriculumTrimText(entry.actionTarget, 320) || undefined,
+        });
+      });
+      return normalized.slice(0, 12);
+    })(),
+  };
+};
+
+const academyCurriculumNormalizeArchitecture = (
+  value: unknown,
+  fallback?: Partial<AcademyCurriculumFoundationArchitecture>,
+): AcademyCurriculumFoundationArchitecture => {
+  const record = academyPresentationIsRecord(value) ? value : {};
+  return {
+    purpose:
+      academyCurriculumTrimText(record.purpose, 700) ||
+      academyCurriculumTrimText(fallback?.purpose, 700),
+    audience:
+      academyCurriculumTrimText(record.audience, 520) ||
+      academyCurriculumTrimText(fallback?.audience, 520),
+    transformation:
+      academyCurriculumTrimText(record.transformation, 700) ||
+      academyCurriculumTrimText(fallback?.transformation, 700),
+    competencies:
+      academyCurriculumDedupedList(
+        record.competencies,
+        8,
+        140,
+      ).length > 0
+        ? academyCurriculumDedupedList(record.competencies, 8, 140)
+        : academyCurriculumDedupedList(fallback?.competencies, 8, 140),
+    skills:
+      academyCurriculumDedupedList(record.skills, 12, 160).length > 0
+        ? academyCurriculumDedupedList(record.skills, 12, 160)
+        : academyCurriculumDedupedList(fallback?.skills, 12, 160),
+    transformations:
+      academyCurriculumDedupedList(record.transformations, 8, 180).length > 0
+        ? academyCurriculumDedupedList(record.transformations, 8, 180)
+        : academyCurriculumDedupedList(fallback?.transformations, 8, 180),
+    skillMap:
+      academyCurriculumNormalizeSkillMap(record.skillMap).length > 0
+        ? academyCurriculumNormalizeSkillMap(record.skillMap)
+        : academyCurriculumNormalizeSkillMap(fallback?.skillMap),
+    competencyMap:
+      academyCurriculumNormalizeCompetencyMap(record.competencyMap).length > 0
+        ? academyCurriculumNormalizeCompetencyMap(record.competencyMap)
+        : academyCurriculumNormalizeCompetencyMap(fallback?.competencyMap),
+    problemsSolved:
+      academyCurriculumDedupedList(record.problemsSolved, 8, 180).length > 0
+        ? academyCurriculumDedupedList(record.problemsSolved, 8, 180)
+        : academyCurriculumDedupedList(fallback?.problemsSolved, 8, 180),
+    learningJourney:
+      academyCurriculumTrimText(record.learningJourney, 1200) ||
+      academyCurriculumTrimText(fallback?.learningJourney, 1200),
+    practiceDesign:
+      academyCurriculumTrimText(record.practiceDesign, 1200) ||
+      academyCurriculumTrimText(fallback?.practiceDesign, 1200),
+    proofOfLearning:
+      academyCurriculumTrimText(record.proofOfLearning, 1200) ||
+      academyCurriculumTrimText(fallback?.proofOfLearning, 1200),
+    studioSuggestions: academyCurriculumNormalizeStudioSuggestions(
+      record.studioSuggestions,
+      fallback?.studioSuggestions,
+    ),
+  };
+};
+
+const academyCurriculumNormalizeAnswers = (
+  value: unknown,
+): AcademyCurriculumFoundationAnswer[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<AcademyCurriculumFoundationQuestionId>();
+  const answers: AcademyCurriculumFoundationAnswer[] = [];
+  value.forEach((entry) => {
+    if (!academyPresentationIsRecord(entry)) return;
+    const id = academyCurriculumNormalizeQuestionId(entry.id);
+    const question = academyCurriculumTrimText(entry.question, 220);
+    const answer = academyCurriculumTrimText(entry.answer, 320);
+    if (!id || !question || !answer || seen.has(id)) return;
+    seen.add(id);
+    answers.push({ id, question, answer });
+  });
+  return answers.slice(0, ACADEMY_CURRICULUM_FOUNDATION_TOTAL_QUESTIONS);
+};
+
+const academyCurriculumInferProjectTemplateId = (value: string): string => {
+  const normalized = value.toLowerCase();
+  if (
+    normalized === 'sales-enablement-a-a' ||
+    normalized === 'production-operations-a-a' ||
+    normalized === 'offshore-safety-a-a'
+  ) {
+    return normalized;
+  }
+  if (
+    /(salg|sales|b2b|crm|pipeline|account executive|prospektering|lead|discovery)/i.test(
+      normalized,
+    )
+  ) {
+    return 'sales-enablement-a-a';
+  }
+  if (
+    /(film|video|videoproduksjon|content production|content creator|foto|photography|musikkproduksjon|music production|podcast|post-production|postproduksjon|editing|redigering|color grading|lyssetting|creative|kreativ|design|storytelling|motion graphics|grafisk)/i.test(
+      normalized,
+    )
+  ) {
+    return '';
+  }
+  if (
+    /(produksjonsdrift|production operations|operat|drift|sop|quality|kvalitet|fabrikk|manufactur|prosessindustri|produksjonslinje|skiftleder)/i.test(
+      normalized,
+    )
+  ) {
+    return 'production-operations-a-a';
+  }
+  if (
+    /(offshore|plattform|rigg|hms|safety|beredskap|evakuering|alarm)/i.test(
+      normalized,
+    )
+  ) {
+    return 'offshore-safety-a-a';
+  }
+  return '';
+};
+
+const academyCurriculumInferIndustryProfile = (
+  value: string,
+): AcademyCurriculumIndustryProfileId => {
+  const normalized = value.toLowerCase();
+  if (
+    /(salg|sales|b2b|crm|pipeline|account executive|prospektering|lead|discovery)/i.test(
+      normalized,
+    )
+  ) {
+    return 'sales';
+  }
+  if (
+    /(film|video|videoproduksjon|content production|content creator|foto|photography|musikkproduksjon|music production|podcast|post-production|postproduksjon|editing|redigering|color grading|lyssetting|creative|kreativ|design|storytelling|motion graphics|grafisk)/i.test(
+      normalized,
+    )
+  ) {
+    return 'creative';
+  }
+  if (
+    /(produksjonsdrift|production operations|operat|drift|sop|quality|kvalitet|fabrikk|manufactur|prosessindustri|produksjonslinje|skiftleder)/i.test(
+      normalized,
+    )
+  ) {
+    return 'production';
+  }
+  if (
+    /(offshore|plattform|rigg|hms|safety|beredskap|evakuering|alarm)/i.test(
+      normalized,
+    )
+  ) {
+    return 'offshore';
+  }
+  if (
+    /(prosjektledelse|prosjektstyring|project management|project delivery|programledelse|agile|scrum|prosjektkontor|pmo)/i.test(
+      normalized,
+    )
+  ) {
+    return 'project-management';
+  }
+  if (
+    /(ledelse|leder|leadership|management|teamledelse|coaching|people manager|first line manager)/i.test(
+      normalized,
+    )
+  ) {
+    return 'leadership';
+  }
+  if (
+    /(kundeservice|customer service|customer success|support|service desk|klage|complaint|kundeoppfolg|kundeoppfølging)/i.test(
+      normalized,
+    )
+  ) {
+    return 'customer-service';
+  }
+  if (
+    /(^|\b)(hr|human resources|people ops|rekrutter|recruit|onboarding|employee relations|personalledelse)(\b|$)/i.test(
+      normalized,
+    )
+  ) {
+    return 'hr';
+  }
+  if (
+    /(helse|healthcare|klinisk|pasient|sykepleie|omsorg|medisin|pleie|patient)/i.test(
+      normalized,
+    )
+  ) {
+    return 'healthcare';
+  }
+  if (
+    /(^|\b)(it|devops|platform|incident|cyber|systemadmin|service management|service desk|drift av systemer|systemdrift)(\b|$)/i.test(
+      normalized,
+    )
+  ) {
+    return 'it';
+  }
+  if (
+    /(compliance|etterlevelse|governance|internkontroll|aml|gdpr|risiko|risk|kontrollmiljo|kontrollmiljø|finansregulatorisk)/i.test(
+      normalized,
+    )
+  ) {
+    return 'compliance';
+  }
+  if (
+    /(undervisning|teaching|education|skole|pedagogikk|klasseledelse|instruksjon|fagopplæring)/i.test(
+      normalized,
+    )
+  ) {
+    return 'education';
+  }
+  if (
+    /(marketing|markedsf|performance marketing|seo|sem|annonsering|content marketing|branding|kommunikasjon|social media|sosiale medier)/i.test(
+      normalized,
+    )
+  ) {
+    return 'marketing';
+  }
+  if (
+    /(økonomi|finance|financial|regnskap|controller|controlling|fp&a|forecast|budsjett|budget|faktur|accounts payable|accounts receivable)/i.test(
+      normalized,
+    )
+  ) {
+    return 'finance';
+  }
+  if (
+    /(juridisk|legal|contract law|kontrakt|forhandling av kontrakt|arbeidsrett|advokat|legal ops|compliance counsel|personvernrett)/i.test(
+      normalized,
+    )
+  ) {
+    return 'legal';
+  }
+  if (
+    /(retail|butikk|butikkdrift|butikkledelse|merchandising|pos|point of sale|butikkgulv|kunde i butikk)/i.test(
+      normalized,
+    )
+  ) {
+    return 'retail';
+  }
+  if (
+    /(logistikk|lager|warehouse|transport|supply chain|frakt|distribution|distribusjon|plukk og pakk)/i.test(
+      normalized,
+    )
+  ) {
+    return 'logistics';
+  }
+  if (
+    /(bygg|anlegg|construction|byggeplass|site management|tømrer|elektroinstallasjon|vvs|anleggsdrift)/i.test(
+      normalized,
+    )
+  ) {
+    return 'construction';
+  }
+  if (
+    /(hospitality|vertskap|hotel|restaurant|resepsjon|servering|gjesteopplevelse|guest experience|barista)/i.test(
+      normalized,
+    )
+  ) {
+    return 'hospitality';
+  }
+  if (
+    /(innkjøp|procurement|sourcing|leverandør|supplier|category management|anbud|tender|anskaffelse)/i.test(
+      normalized,
+    )
+  ) {
+    return 'procurement';
+  }
+  if (
+    /(eiendom|real estate|megling|eiendomsmegling|property management|utleie|leasing|visning|boligsalg)/i.test(
+      normalized,
+    )
+  ) {
+    return 'real-estate';
+  }
+  return 'generic';
+};
+
+const academyCurriculumIndustryProfileLabel = (
+  profile: AcademyCurriculumIndustryProfileId,
+  useNorwegian: boolean,
+  customTopic?: string,
+): string => {
+  const customTopicLabel = academyCurriculumTitleCase(
+    academyCurriculumTrimText(customTopic, 90),
+  );
+  switch (profile) {
+    case 'sales':
+      return useNorwegian ? 'salg' : 'sales';
+    case 'production':
+      return useNorwegian ? 'produksjonsdrift' : 'production operations';
+    case 'offshore':
+      return useNorwegian ? 'offshore-sikkerhet' : 'offshore safety';
+    case 'leadership':
+      return useNorwegian ? 'ledelse' : 'leadership';
+    case 'customer-service':
+      return useNorwegian ? 'kundeservice' : 'customer service';
+    case 'hr':
+      return useNorwegian ? 'HR' : 'HR';
+    case 'healthcare':
+      return useNorwegian ? 'helsetjeneste' : 'healthcare';
+    case 'it':
+      return useNorwegian ? 'IT-drift' : 'IT operations';
+    case 'compliance':
+      return useNorwegian ? 'etterlevelse og risiko' : 'compliance and risk';
+    case 'education':
+      return useNorwegian ? 'undervisning og opplæring' : 'teaching and training';
+    case 'marketing':
+      return useNorwegian ? 'markedsføring' : 'marketing';
+    case 'project-management':
+      return useNorwegian ? 'prosjektledelse' : 'project management';
+    case 'finance':
+      return useNorwegian ? 'økonomi og finans' : 'finance';
+    case 'legal':
+      return useNorwegian ? 'juridisk arbeid' : 'legal';
+    case 'retail':
+      return useNorwegian ? 'retail og butikkdrift' : 'retail operations';
+    case 'logistics':
+      return useNorwegian ? 'logistikk og lager' : 'logistics and warehousing';
+    case 'construction':
+      return useNorwegian ? 'bygg og anlegg' : 'construction';
+    case 'hospitality':
+      return useNorwegian ? 'vertskap og hospitality' : 'hospitality';
+    case 'procurement':
+      return useNorwegian ? 'innkjøp og sourcing' : 'procurement and sourcing';
+    case 'real-estate':
+      return useNorwegian ? 'eiendom og megling' : 'real estate';
+    case 'creative':
+      return useNorwegian ? 'kreativ produksjon' : 'creative production';
+    default:
+      return (
+        customTopicLabel ||
+        (useNorwegian ? 'kompetanseområdet' : 'the competency area')
+      );
+  }
+};
+
+const academyCurriculumResolveDomain = async (params: {
+  answers: AcademyCurriculumFoundationAnswer[];
+  courseTitle: string;
+  useNorwegian: boolean;
+  manualIndustryProfile?: AcademyCurriculumIndustryProfileId;
+  templateMemory: AcademyCurriculumFoundationTemplateMemoryItem[];
+}): Promise<{
+  domainResolution: AcademyCurriculumFoundationDomainResolution;
+  templateMatch: AcademyCurriculumFoundationTemplateMatch | null;
+}> => {
+  const answerById = new Map(
+    params.answers.map((entry) => [entry.id, entry.answer.trim()]),
+  );
+  const topic = String(answerById.get('competencyTopic') || params.courseTitle || '').trim();
+  const subtype = String(answerById.get('competencySubtype') || '').trim();
+  const query = [topic, subtype, params.courseTitle].filter((entry) => entry.trim().length > 0).join(' · ');
+  const t = (no: string, en: string) => (params.useNorwegian ? no : en);
+
+  if (params.manualIndustryProfile) {
+    const label = academyCurriculumIndustryProfileLabel(
+      params.manualIndustryProfile,
+      params.useNorwegian,
+      topic,
+    );
+    return {
+      domainResolution: {
+        profile: params.manualIndustryProfile,
+        label,
+        confidence: 1,
+        source: 'manual',
+        needsConfirmation: false,
+        reasoning: [
+          t(
+            `Domene er manuelt satt til ${label.toLowerCase()}.`,
+            `Domain is manually set to ${label.toLowerCase()}.`,
+          ),
+        ],
+        alternatives: [],
+      },
+      templateMatch: await academyCurriculumResolveTemplateMatch({
+        query,
+        templates: params.templateMemory,
+      }),
+    };
+  }
+
+  const heuristicProfile = academyCurriculumInferIndustryProfile(query);
+  const lexicalScores = academyCurriculumDomainDescriptorCatalog.map((descriptor) =>
+    academyCurriculumScoreDomainLexicalMatch(query, descriptor.searchText),
+  );
+  const lexicalTopOnly = academyCurriculumDomainDescriptorCatalog
+    .map((descriptor, index) => ({
+      profile: descriptor.profile,
+      confidence: lexicalScores[index] || 0,
+    }))
+    .sort((a, b) => b.confidence - a.confidence);
+  const shouldUseSemantic =
+    !lexicalTopOnly[0] ||
+    lexicalTopOnly[0].confidence < 0.72 ||
+    (lexicalTopOnly[0].confidence - (lexicalTopOnly[1]?.confidence || 0)) < 0.14;
+  const huggingFaceToken =
+    readString(process.env.HUGGINGFACE_TOKEN) || readString(process.env.HF_TOKEN);
+  const embeddingModel =
+    readString(process.env.ACADEMY_CURRICULUM_FOUNDATION_EMBEDDING_MODEL) ||
+    readString(process.env.ACADEMY_PRESENTATION_SEARCH_EMBEDDING_MODEL) ||
+    readString(process.env.ACADEMY_PRESENTATION_HF_EMBEDDING_MODEL) ||
+    'Qwen/Qwen3-Embedding-8B';
+  const semanticScores =
+    shouldUseSemantic && huggingFaceToken && query.length >= 3
+      ? await academyCurriculumRequestSemanticScores({
+          query,
+          documents: academyCurriculumDomainDescriptorCatalog.map((descriptor) => descriptor.searchText),
+          token: huggingFaceToken,
+          model: embeddingModel,
+        })
+      : null;
+  const templateMatch = await academyCurriculumResolveTemplateMatch({
+    query,
+    templates: params.templateMemory,
+  });
+
+  const ranked = academyCurriculumDomainDescriptorCatalog
+    .map((descriptor, index) => {
+      const lexicalScore = lexicalScores[index] || 0;
+      const semanticScore = semanticScores?.[index] || 0;
+      const heuristicBoost =
+        heuristicProfile === descriptor.profile
+          ? descriptor.profile === 'generic'
+            ? 0.18
+            : 0.58
+          : 0;
+      const templateBoost =
+        templateMatch && templateMatch.profileHint === descriptor.profile
+          ? Math.max(0.1, templateMatch.confidence * 0.2)
+          : 0;
+      const confidence = academyPresentationClamp(
+        lexicalScore * 0.34 + semanticScore * 0.34 + heuristicBoost + templateBoost,
+        0,
+        1,
+      );
+      return {
+        descriptor,
+        lexicalScore,
+        semanticScore,
+        heuristicBoost,
+        templateBoost,
+        confidence,
+      };
+    })
+    .sort((a, b) => b.confidence - a.confidence);
+
+  const top = ranked[0];
+  const second = ranked[1];
+  const chosenProfile =
+    top && top.confidence >= 0.34 ? top.descriptor.profile : heuristicProfile || 'generic';
+  const chosenLabel = academyCurriculumIndustryProfileLabel(
+    chosenProfile,
+    params.useNorwegian,
+    topic,
+  );
+  const gap = top && second ? top.confidence - second.confidence : top?.confidence || 0;
+  const needsConfirmation =
+    !subtype &&
+    ((top?.descriptor.profile || 'generic') === 'generic' ||
+      (top?.confidence || 0) < 0.58 ||
+      gap < 0.12);
+  const reasoning = academyCurriculumDedupedList(
+    [
+      heuristicProfile !== 'generic'
+        ? t(
+            `Temaet matcher tydelig ${academyCurriculumIndustryProfileLabel(
+              heuristicProfile,
+              params.useNorwegian,
+              topic,
+            ).toLowerCase()} via nøkkelord og kontekst.`,
+            `The topic clearly matches ${academyCurriculumIndustryProfileLabel(
+              heuristicProfile,
+              params.useNorwegian,
+              topic,
+            ).toLowerCase()} through keywords and context.`,
+          )
+        : '',
+      semanticScores && top?.semanticScore
+        ? t(
+            `Semantisk scoring peker mot ${chosenLabel.toLowerCase()} (${Math.round(
+              top.semanticScore * 100,
+            )}%).`,
+            `Semantic scoring points to ${chosenLabel.toLowerCase()} (${Math.round(
+              top.semanticScore * 100,
+            )}%).`,
+          )
+        : '',
+      templateMatch
+        ? t(
+            `Lagret mal "${templateMatch.name}" ligner dette temaet og brukes som svak referanse.`,
+            `Saved template "${templateMatch.name}" resembles this topic and is used as a soft reference.`,
+          )
+        : '',
+      needsConfirmation
+        ? t(
+            'Domenevalget er ikke sikkert nok ennå, så neste spørsmål brukes til å avklare retning.',
+            'The domain choice is not confident enough yet, so the next question is used to clarify direction.',
+          )
+        : '',
+    ],
+    4,
+    220,
+  );
+
+  return {
+    domainResolution: {
+      profile: chosenProfile,
+      label: chosenLabel,
+      confidence: Number((top?.confidence || 0.34).toFixed(3)),
+      source: academyCurriculumNormalizeDomainSource(
+        top?.semanticScore || 0,
+        top?.lexicalScore || 0,
+        top?.heuristicBoost || 0,
+        top?.templateBoost || 0,
+      ),
+      needsConfirmation,
+      reasoning,
+      alternatives: ranked
+        .filter(
+          (entry) =>
+            entry.descriptor.profile !== chosenProfile && entry.confidence >= 0.08,
+        )
+        .slice(0, 3)
+        .map((entry) => ({
+          profile: entry.descriptor.profile,
+          label: academyCurriculumIndustryProfileLabel(
+            entry.descriptor.profile,
+            params.useNorwegian,
+            topic,
+          ),
+          confidence: Number(entry.confidence.toFixed(3)),
+          source: academyCurriculumNormalizeDomainSource(
+            entry.semanticScore,
+            entry.lexicalScore,
+            entry.heuristicBoost,
+            entry.templateBoost,
+          ),
+        })),
+    },
+    templateMatch,
+  };
+};
+
+const academyCurriculumResolveIndustryProfile = (params: {
+  answers: AcademyCurriculumFoundationAnswer[];
+  courseTitle: string;
+}): AcademyCurriculumIndustryProfileId => {
+  const answerById = new Map(
+    params.answers.map((entry) => [entry.id, entry.answer.trim()]),
+  );
+  const topic = String(answerById.get('competencyTopic') || '').trim();
+  const subtype = String(answerById.get('competencySubtype') || '').trim();
+  return academyCurriculumInferIndustryProfile(
+    [topic, subtype, params.courseTitle].filter(Boolean).join(' '),
+  );
+};
+
+const academyCurriculumResolveExpectedTemplateId = (params: {
+  answers: AcademyCurriculumFoundationAnswer[];
+  courseTitle: string;
+}): string => {
+  const answerById = new Map(
+    params.answers.map((entry) => [entry.id, entry.answer.trim()]),
+  );
+  const topic = String(answerById.get('competencyTopic') || '').trim();
+  const subtype = String(answerById.get('competencySubtype') || '').trim();
+  return academyCurriculumInferProjectTemplateId(
+    [topic, subtype, params.courseTitle].filter(Boolean).join(' '),
+  );
+};
+
+const academyCurriculumRecommendationLooksOffTopic = (params: {
+  recommendation: AcademyCurriculumFoundationRecommendation;
+  answers: AcademyCurriculumFoundationAnswer[];
+  courseTitle: string;
+  expectedProfile?: AcademyCurriculumIndustryProfileId;
+  expectedTemplateId?: string;
+}): boolean => {
+  const expectedProfile =
+    params.expectedProfile ||
+    academyCurriculumResolveIndustryProfile({
+      answers: params.answers,
+      courseTitle: params.courseTitle,
+    });
+  const expectedTemplateId =
+    params.expectedTemplateId ||
+    academyCurriculumResolveExpectedTemplateId({
+      answers: params.answers,
+      courseTitle: params.courseTitle,
+    });
+  const recommendationProfile = academyCurriculumInferIndustryProfile(
+    [
+      params.recommendation.recommendedProjectTemplateId || '',
+      params.recommendation.competencyName || '',
+      JSON.stringify(params.recommendation),
+    ].join(' '),
+  );
+  const recommendationTemplateId = academyCurriculumInferProjectTemplateId(
+    [
+      params.recommendation.recommendedProjectTemplateId || '',
+      params.recommendation.competencyName || '',
+      JSON.stringify(params.recommendation),
+    ].join(' '),
+  );
+
+  if (
+    expectedProfile !== 'generic' &&
+    recommendationProfile !== 'generic' &&
+    recommendationProfile !== expectedProfile
+  ) {
+    return true;
+  }
+  if (!recommendationTemplateId) return false;
+  if (!expectedTemplateId) return recommendationProfile !== expectedProfile;
+  return recommendationTemplateId !== expectedTemplateId;
+};
+
+const academyCurriculumQuestionLooksOffTopic = (params: {
+  question: AcademyCurriculumFoundationQuestion | null;
+  answers: AcademyCurriculumFoundationAnswer[];
+  courseTitle: string;
+  expectedProfile?: AcademyCurriculumIndustryProfileId;
+  expectedTemplateId?: string;
+}): boolean => {
+  if (!params.question) return false;
+  const expectedProfile =
+    params.expectedProfile ||
+    academyCurriculumResolveIndustryProfile({
+      answers: params.answers,
+      courseTitle: params.courseTitle,
+    });
+  const expectedTemplateId =
+    params.expectedTemplateId ||
+    academyCurriculumResolveExpectedTemplateId({
+      answers: params.answers,
+      courseTitle: params.courseTitle,
+    });
+  const questionProfile = academyCurriculumInferIndustryProfile(
+    [
+      params.question.question,
+      params.question.placeholder,
+      params.question.helpText,
+      ...(params.question.suggestions || []),
+    ].join(' '),
+  );
+  const questionTemplateId = academyCurriculumInferProjectTemplateId(
+    [
+      params.question.question,
+      params.question.placeholder,
+      params.question.helpText,
+      ...(params.question.suggestions || []),
+    ].join(' '),
+  );
+
+  if (
+    expectedProfile !== 'generic' &&
+    questionProfile !== 'generic' &&
+    questionProfile !== expectedProfile
+  ) {
+    return true;
+  }
+  if (!questionTemplateId) return false;
+  if (!expectedTemplateId) return questionProfile !== expectedProfile;
+  return questionTemplateId !== expectedTemplateId;
+};
+
+const academyCurriculumShouldResetCurrentArchitecture = (params: {
+  answers: AcademyCurriculumFoundationAnswer[];
+  courseTitle: string;
+  currentArchitecture: AcademyCurriculumFoundationArchitecture;
+}): boolean => {
+  const firstTurnOnlyTopic =
+    params.answers.length === 1 &&
+    params.answers[0]?.id === 'competencyTopic' &&
+    String(params.answers[0]?.answer || '').trim().length > 0;
+  const expectedProfile = academyCurriculumResolveIndustryProfile({
+    answers: params.answers,
+    courseTitle: params.courseTitle,
+  });
+  const currentArchitectureProfile = academyCurriculumInferIndustryProfile(
+    JSON.stringify(params.currentArchitecture || {}),
+  );
+
+  if (firstTurnOnlyTopic) {
+    return (
+      expectedProfile !== 'generic' ||
+      currentArchitectureProfile !== 'generic'
+    );
+  }
+
+  if (expectedProfile === 'generic' || currentArchitectureProfile === 'generic') {
+    return false;
+  }
+
+  return currentArchitectureProfile !== expectedProfile;
+};
+
+const academyCurriculumQuestionForState = (params: {
+  answers: AcademyCurriculumFoundationAnswer[];
+  useNorwegian: boolean;
+  projectTemplateId: string;
+  industryProfile: AcademyCurriculumIndustryProfileId;
+  domainResolution?: AcademyCurriculumFoundationDomainResolution;
+}): AcademyCurriculumFoundationQuestion | null => {
+  const {
+    answers,
+    useNorwegian,
+    projectTemplateId,
+    industryProfile,
+    domainResolution,
+  } = params;
+  const answerById = new Map(
+    answers.map((entry) => [entry.id, entry.answer.trim()]),
+  );
+  const topic = String(answerById.get('competencyTopic') || '').trim();
+  const topicLabel =
+    academyCurriculumTitleCase(topic) ||
+    (useNorwegian ? 'kompetansen' : 'the competency');
+
+  const t = (no: string, en: string) => (useNorwegian ? no : en);
+  if (!topic) {
+    return {
+      id: 'competencyTopic',
+      question: t(
+        'Hvilken kompetanse ønsker du utvikle?',
+        'Which competency do you want to develop?',
+      ),
+      placeholder: t(
+        'F.eks. lyssetting, prosjektledelse, HR, eiendomsmegling eller offshore-sikkerhet',
+        'e.g. lighting, project management, HR, real estate, or offshore safety',
+      ),
+      helpText: t(
+        'Start med hovedområdet. Deretter spør vi om kontekst og ønsket læringsresultat.',
+        'Start with the main domain. Then we ask about context and desired learning outcome.',
+      ),
+      suggestions: [
+        t('Salg', 'Sales'),
+        t('Ledelse', 'Leadership'),
+        t('HR', 'HR'),
+        t('Kundeservice', 'Customer service'),
+        t('Helsetjeneste', 'Healthcare'),
+        t('Prosjektledelse', 'Project management'),
+        t('Markedsføring', 'Marketing'),
+        t('Eiendom', 'Real estate'),
+        t('Produksjonsdrift', 'Production operations'),
+        t('Offshore-sikkerhet', 'Offshore safety'),
+        t('IT-drift', 'IT operations'),
+      ],
+    };
+  }
+
+  if (!answerById.get('competencySubtype')) {
+    if (domainResolution?.needsConfirmation) {
+      const clarificationSuggestions = domainResolution.alternatives
+        .map((entry) => academyCurriculumTitleCase(entry.label))
+        .slice(0, 3);
+      const optionList = [
+        academyCurriculumTitleCase(domainResolution.label),
+        ...clarificationSuggestions,
+      ].slice(0, 4);
+      return {
+        id: 'competencySubtype',
+        question: t(
+          `Hvilket område ligner ${topicLabel.toLowerCase()} mest på?`,
+          `Which area does ${topicLabel.toLowerCase()} most closely resemble?`,
+        ),
+        placeholder: t(
+          'Velg nærmeste område, eller beskriv konteksten mer presist hvis ingen passer helt.',
+          'Choose the closest area, or describe the context more precisely if none fits.',
+        ),
+        helpText: t(
+          'Dette spørsmålet brukes bare for å låse riktig domene før vi fyller resten av kompetansegrunnlaget.',
+          'This question is only used to lock the right domain before we fill the rest of the competency foundation.',
+        ),
+        suggestions: optionList,
+      };
+    }
+    if (projectTemplateId === 'sales-enablement-a-a') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hva slags type salg skal kompetansen dekke?',
+          'What type of sales should this competency cover?',
+        ),
+        placeholder: t(
+          'F.eks. B2B SaaS, enterprise, retail eller møtebooking',
+          'e.g. B2B SaaS, enterprise, retail, or outbound booking',
+        ),
+        helpText: t(
+          'Dette gjør at vi kan foreslå riktig salgsprosess, scenarioer og ferdigheter.',
+          'This lets us recommend the right sales process, scenarios, and skills.',
+        ),
+        suggestions: [
+          'B2B SaaS',
+          t('Enterprise-salg', 'Enterprise sales'),
+          t('Retail-salg', 'Retail sales'),
+          t('Møtebooking', 'Outbound booking'),
+        ],
+      };
+    }
+    if (projectTemplateId === 'production-operations-a-a') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken produksjonskontekst gjelder dette?',
+          'Which production context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. næringsmiddel, prosessindustri, pakking eller kvalitetskontroll',
+          'e.g. food production, process industry, packaging, or quality control',
+        ),
+        helpText: t(
+          'Konteksten styrer hvilke SOP-er, risikoer og øvelser som bør anbefales.',
+          'The context determines which SOPs, risks, and practice formats should be recommended.',
+        ),
+        suggestions: [
+          t('Næringsmiddel', 'Food production'),
+          t('Prosessindustri', 'Process industry'),
+          t('Pakking og logistikk', 'Packaging and logistics'),
+          t('Kvalitetskontroll', 'Quality control'),
+        ],
+      };
+    }
+    if (projectTemplateId === 'offshore-safety-a-a') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken offshore-kontekst eller prosedyre er viktigst?',
+          'Which offshore context or procedure is most important?',
+        ),
+        placeholder: t(
+          'F.eks. SJA, alarmrespons, evakuering eller permit to work',
+          'e.g. job safety analysis, alarm response, evacuation, or permit to work',
+        ),
+        helpText: t(
+          'Dette hjelper oss å fokusere på de mest kritiske prosedyrene og beslutningene.',
+          'This helps us focus on the most critical procedures and decisions.',
+        ),
+        suggestions: [
+          'SJA',
+          t('Alarmrespons', 'Alarm response'),
+          t('Evakuering', 'Evacuation'),
+          'Permit to work',
+        ],
+      };
+    }
+    if (industryProfile === 'leadership') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken lederkontekst gjelder dette?',
+          'Which leadership context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. førstelinjeledelse, teamledelse, prosjektledelse eller endringsledelse',
+          'e.g. first-line leadership, team leadership, project leadership, or change leadership',
+        ),
+        helpText: t(
+          'Dette styrer hvilke lederoppgaver, møter og scenarioer som bør inngå.',
+          'This determines which leadership situations, meetings, and scenarios should be included.',
+        ),
+        suggestions: [
+          t('Førstelinjeledelse', 'First-line leadership'),
+          t('Teamledelse', 'Team leadership'),
+          t('Prosjektledelse', 'Project leadership'),
+          t('Endringsledelse', 'Change leadership'),
+        ],
+      };
+    }
+    if (industryProfile === 'customer-service') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken kundeservicekontekst gjelder dette?',
+          'Which customer service context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. e-post og chat, telefon, complaints eller B2B-oppfølging',
+          'e.g. email and chat, phone support, complaints, or B2B account support',
+        ),
+        helpText: t(
+          'Da kan vi foreslå riktige servicestandarder, SLA-er og vanskelige scenarioer.',
+          'This helps us recommend the right service standards, SLAs, and difficult scenarios.',
+        ),
+        suggestions: [
+          t('E-post og chat', 'Email and chat'),
+          t('Telefonstøtte', 'Phone support'),
+          t('Klagehåndtering', 'Complaint handling'),
+          t('B2B-kundeoppfølging', 'B2B account support'),
+        ],
+      };
+    }
+    if (industryProfile === 'hr') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilket HR-område gjelder dette?',
+          'Which HR area does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. rekruttering, onboarding, medarbeidersamtaler eller employee relations',
+          'e.g. recruitment, onboarding, performance conversations, or employee relations',
+        ),
+        helpText: t(
+          'Dette avgjør hvilke samtaler, dokumenter og arbeidsflyter vi bør bygge rundt.',
+          'This determines which conversations, documents, and workflows we should build around.',
+        ),
+        suggestions: [
+          t('Rekruttering', 'Recruitment'),
+          t('Onboarding', 'Onboarding'),
+          t('Medarbeideroppfølging', 'People development'),
+          'Employee relations',
+        ],
+      };
+    }
+    if (industryProfile === 'healthcare') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken helsekontekst gjelder dette?',
+          'Which healthcare context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. sykehus, hjemmetjeneste, legevakt eller psykisk helse',
+          'e.g. hospital, home care, urgent care, or mental health',
+        ),
+        helpText: t(
+          'Konteksten avgjør hvilke prosedyrer, observasjoner og pasientsituasjoner som bør med.',
+          'The context determines which procedures, observations, and patient scenarios should be included.',
+        ),
+        suggestions: [
+          t('Sykehus', 'Hospital'),
+          t('Hjemmetjeneste', 'Home care'),
+          t('Legevakt', 'Urgent care'),
+          t('Psykisk helse', 'Mental health'),
+        ],
+      };
+    }
+    if (industryProfile === 'it') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken IT- eller driftskontekst gjelder dette?',
+          'Which IT or operations context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. service desk, incident response, plattformdrift eller cybersikkerhet',
+          'e.g. service desk, incident response, platform operations, or cybersecurity',
+        ),
+        helpText: t(
+          'Dette hjelper oss å knytte kompetansen til runbooks, systemer og eskaleringsflyt.',
+          'This helps us connect the competency to runbooks, systems, and escalation flow.',
+        ),
+        suggestions: [
+          'Service desk',
+          'Incident response',
+          t('Plattformdrift', 'Platform operations'),
+          t('Cybersikkerhet', 'Cybersecurity'),
+        ],
+      };
+    }
+    if (industryProfile === 'compliance') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken type etterlevelse eller risiko gjelder dette?',
+          'Which compliance or risk domain does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. AML, GDPR, internkontroll eller regulatorisk rapportering',
+          'e.g. AML, GDPR, internal controls, or regulatory reporting',
+        ),
+        helpText: t(
+          'Da kan vi foreslå riktige kontroller, beviskrav og risikoscenarioer.',
+          'This lets us recommend the right controls, evidence requirements, and risk scenarios.',
+        ),
+        suggestions: ['AML', 'GDPR', t('Internkontroll', 'Internal controls'), t('Rapportering', 'Regulatory reporting')],
+      };
+    }
+    if (industryProfile === 'education') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken undervisnings- eller opplæringskontekst gjelder dette?',
+          'Which teaching or training context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. klasserom, internopplæring, fagopplæring eller digitale kurs',
+          'e.g. classroom teaching, internal training, vocational training, or digital courses',
+        ),
+        helpText: t(
+          'Dette avgjør hvilke læringsaktiviteter, vurderingsformer og klasseromssituasjoner som passer.',
+          'This determines which learning activities, assessments, and classroom scenarios fit best.',
+        ),
+        suggestions: [
+          t('Klasserom', 'Classroom teaching'),
+          t('Internopplæring', 'Internal training'),
+          t('Fagopplæring', 'Vocational training'),
+          t('Digitale kurs', 'Digital courses'),
+        ],
+      };
+    }
+    if (industryProfile === 'marketing') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilket markedsføringsområde gjelder dette?',
+          'Which marketing area does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. performance, content, SEO, branding eller sosiale medier',
+          'e.g. performance, content, SEO, branding, or social media',
+        ),
+        helpText: t(
+          'Dette styrer hvilke kanaler, kampanjer og målepunkter opplæringen bør bygges rundt.',
+          'This determines which channels, campaigns, and measurement points the training should be built around.',
+        ),
+        suggestions: [
+          'Performance',
+          'Content',
+          'SEO',
+          t('Sosiale medier', 'Social media'),
+        ],
+      };
+    }
+    if (industryProfile === 'project-management') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken prosjektkontekst gjelder dette?',
+          'Which project context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. interne prosjekter, kundeprosjekter, agile team eller byggeprosjekt',
+          'e.g. internal projects, client delivery, agile teams, or construction projects',
+        ),
+        helpText: t(
+          'Konteksten avgjør hvilke planer, avhengigheter og møtestrukturer som bør trenes.',
+          'The context determines which plans, dependencies, and meeting structures should be trained.',
+        ),
+        suggestions: [
+          t('Interne prosjekter', 'Internal projects'),
+          t('Kundeprosjekter', 'Client delivery'),
+          t('Agile team', 'Agile teams'),
+          t('Programledelse', 'Program leadership'),
+        ],
+      };
+    }
+    if (industryProfile === 'finance') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilket økonomi- eller finansområde gjelder dette?',
+          'Which finance area does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. regnskap, controlling, budsjettering eller forecasting',
+          'e.g. accounting, controlling, budgeting, or forecasting',
+        ),
+        helpText: t(
+          'Dette avgjør hvilke tall, kontroller og arbeidsflyter opplæringen skal ta utgangspunkt i.',
+          'This determines which numbers, controls, and workflows the training should focus on.',
+        ),
+        suggestions: [
+          t('Regnskap', 'Accounting'),
+          'Controlling',
+          t('Budsjettering', 'Budgeting'),
+          'Forecasting',
+        ],
+      };
+    }
+    if (industryProfile === 'legal') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken juridisk eller kontraktuell kontekst gjelder dette?',
+          'Which legal or contractual context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. kontrakter, personvern, arbeidsrett eller forhandling',
+          'e.g. contracts, privacy, employment law, or negotiation',
+        ),
+        helpText: t(
+          'Dette hjelper oss å koble kompetansen til riktig sakstype, vurdering og dokumentasjon.',
+          'This helps us connect the competency to the right case type, judgment, and documentation.',
+        ),
+        suggestions: [
+          t('Kontrakter', 'Contracts'),
+          t('Personvern', 'Privacy'),
+          t('Arbeidsrett', 'Employment law'),
+          t('Forhandling', 'Negotiation'),
+        ],
+      };
+    }
+    if (industryProfile === 'retail') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken retail- eller butikkontekst gjelder dette?',
+          'Which retail context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. butikkgulv, kasse, merchandising eller butikkledelse',
+          'e.g. shop floor, POS, merchandising, or store leadership',
+        ),
+        helpText: t(
+          'Konteksten avgjør hvilke kundesituasjoner, rutiner og kvalitetskrav som bør trenes.',
+          'The context determines which customer situations, routines, and quality requirements should be trained.',
+        ),
+        suggestions: [
+          t('Butikkgulv', 'Shop floor'),
+          'POS',
+          'Merchandising',
+          t('Butikkledelse', 'Store leadership'),
+        ],
+      };
+    }
+    if (industryProfile === 'logistics') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken logistikk- eller lagerkontekst gjelder dette?',
+          'Which logistics or warehouse context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. lager, transport, plukk og pakk eller supply chain',
+          'e.g. warehousing, transport, pick and pack, or supply chain',
+        ),
+        helpText: t(
+          'Dette hjelper oss å knytte opplæringen til flyt, presisjon og avvik i logistikkarbeidet.',
+          'This helps us connect the training to flow, accuracy, and deviation handling in logistics work.',
+        ),
+        suggestions: [
+          t('Lager', 'Warehousing'),
+          t('Transport', 'Transport'),
+          t('Plukk og pakk', 'Pick and pack'),
+          'Supply chain',
+        ],
+      };
+    }
+    if (industryProfile === 'construction') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken bygge- eller anleggskontekst gjelder dette?',
+          'Which construction context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. byggeplass, anlegg, installasjon eller prosjektgjennomføring',
+          'e.g. site work, civil works, installation, or project execution',
+        ),
+        helpText: t(
+          'Konteksten styrer hvilke HMS-krav, samhandlingspunkter og kvalitetskontroller som bør inngå.',
+          'The context determines which HSE requirements, coordination points, and quality controls should be included.',
+        ),
+        suggestions: [
+          t('Byggeplass', 'Site work'),
+          t('Anlegg', 'Civil works'),
+          t('Installasjon', 'Installation'),
+          t('Prosjektgjennomføring', 'Project execution'),
+        ],
+      };
+    }
+    if (industryProfile === 'hospitality') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken service- eller vertskapskontekst gjelder dette?',
+          'Which hospitality context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. hotell, restaurant, resepsjon eller gjesteopplevelse',
+          'e.g. hotel, restaurant, front desk, or guest experience',
+        ),
+        helpText: t(
+          'Dette avgjør hvilke serviceøyeblikk, standarder og vanskelige situasjoner som bør med.',
+          'This determines which service moments, standards, and difficult situations should be included.',
+        ),
+        suggestions: [
+          t('Hotell', 'Hotel'),
+          t('Restaurant', 'Restaurant'),
+          t('Resepsjon', 'Front desk'),
+          t('Gjesteopplevelse', 'Guest experience'),
+        ],
+      };
+    }
+    if (industryProfile === 'procurement') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken innkjøps- eller sourcingkontekst gjelder dette?',
+          'Which procurement or sourcing context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. leverandørvalg, anbud, category management eller kontraktsoppfølging',
+          'e.g. supplier selection, tenders, category management, or contract follow-up',
+        ),
+        helpText: t(
+          'Dette hjelper oss å koble kompetansen til krav, forhandling og leverandørstyring.',
+          'This helps us connect the competency to requirements, negotiation, and supplier management.',
+        ),
+        suggestions: [
+          t('Leverandørvalg', 'Supplier selection'),
+          t('Anbud', 'Tenders'),
+          'Category management',
+          t('Kontraktsoppfølging', 'Contract follow-up'),
+        ],
+      };
+    }
+    if (industryProfile === 'real-estate') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken eiendoms- eller meglerkontekst gjelder dette?',
+          'Which real estate context does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. boligsalg, utleie, eiendomsforvaltning eller visning',
+          'e.g. residential sales, rentals, property management, or viewings',
+        ),
+        helpText: t(
+          'Konteksten avgjør hvilke kundereiser, dokumenter og beslutningspunkter som bør trenes.',
+          'The context determines which customer journeys, documents, and decision points should be trained.',
+        ),
+        suggestions: [
+          t('Boligsalg', 'Residential sales'),
+          t('Utleie', 'Rentals'),
+          t('Eiendomsforvaltning', 'Property management'),
+          t('Visning', 'Viewings'),
+        ],
+      };
+    }
+    if (industryProfile === 'creative') {
+      return {
+        id: 'competencySubtype',
+        question: t(
+          'Hvilken kreativ eller visuell disiplin gjelder dette?',
+          'Which creative or visual discipline does this cover?',
+        ),
+        placeholder: t(
+          'F.eks. foto, video, lyssetting, redigering eller design',
+          'e.g. photography, video, lighting, editing, or design',
+        ),
+        helpText: t(
+          'Dette hjelper oss å knytte kompetansen til riktig prosess, kvalitet og leveranseform.',
+          'This helps us connect the competency to the right process, quality criteria, and delivery format.',
+        ),
+        suggestions: [
+          t('Foto', 'Photography'),
+          'Video',
+          t('Lyssetting', 'Lighting'),
+          t('Design', 'Design'),
+        ],
+      };
+    }
+    return {
+      id: 'competencySubtype',
+      question: t(
+        `Hvilken type eller brukskontekst gjelder ${topicLabel}?`,
+        `What type or use context does ${topicLabel} cover?`,
+      ),
+      placeholder: t(
+        `F.eks. hvordan ${topicLabel.toLowerCase()} brukes i praksis, hvem det gjelder, eller hvilken situasjon det skjer i`,
+        `e.g. how ${topicLabel.toLowerCase()} is used in practice, who it applies to, or which situation it happens in`,
+      ),
+      helpText: t(
+        `Svar med den viktigste situasjonen eller konteksten der ${topicLabel.toLowerCase()} skal brukes.`,
+        `Answer with the main situation or context where ${topicLabel.toLowerCase()} will be used.`,
+      ),
+      suggestions: [
+        t('Internopplæring', 'Internal training'),
+        t('Onboarding', 'Onboarding'),
+        t('Operativ drift', 'Operational execution'),
+        t('Kundeoppfølging', 'Customer follow-up'),
+      ],
+    };
+  }
+
+  if (!answerById.get('targetAudience')) {
+    if (industryProfile === 'leadership') {
+      return {
+        id: 'targetAudience',
+        question: t('Hvilke ledere er målgruppen?', 'Which leaders are the target audience?'),
+        placeholder: t(
+          'F.eks. nye ledere, erfarne teamledere eller prosjektledere',
+          'e.g. new managers, experienced team leads, or project leaders',
+        ),
+        helpText: t(
+          'Målgruppen styrer modenhet, språk og hvilke lederutfordringer som bør trenes på.',
+          'The audience determines maturity, language, and which leadership challenges should be trained.',
+        ),
+        suggestions: [
+          t('Nye ledere', 'New managers'),
+          t('Teamledere', 'Team leads'),
+          t('Prosjektledere', 'Project leads'),
+          t('Mellomledere', 'Middle managers'),
+        ],
+      };
+    }
+    if (industryProfile === 'customer-service') {
+      return {
+        id: 'targetAudience',
+        question: t('Hvem jobber i denne kundeserviceflyten?', 'Who works in this customer service flow?'),
+        placeholder: t(
+          'F.eks. support-agenter, customer success managers eller front desk',
+          'e.g. support agents, customer success managers, or front desk staff',
+        ),
+        helpText: t(
+          'Målgruppen avgjør tone, kanalbruk og eskaleringsansvar i opplæringen.',
+          'The audience determines tone, channel usage, and escalation responsibility in the training.',
+        ),
+        suggestions: [
+          t('Support-agenter', 'Support agents'),
+          'Customer success',
+          t('Front desk', 'Front desk'),
+          t('Teknisk support', 'Technical support'),
+        ],
+      };
+    }
+    if (industryProfile === 'hr') {
+      return {
+        id: 'targetAudience',
+        question: t('Hvem i HR eller linjen er målgruppen?', 'Who in HR or the line organization is the audience?'),
+        placeholder: t(
+          'F.eks. HR Business Partners, rekrutterere eller ledere med personalansvar',
+          'e.g. HR Business Partners, recruiters, or people managers',
+        ),
+        helpText: t(
+          'Målgruppen styrer hvor mye regelverk, samtaletrening og dokumentasjon som bør vektlegges.',
+          'The audience determines how much regulatory detail, conversation training, and documentation should be emphasized.',
+        ),
+        suggestions: ['HRBP', t('Rekrutterere', 'Recruiters'), t('Ledere med personalansvar', 'People managers'), t('HR-koordinatorer', 'HR coordinators')],
+      };
+    }
+    if (industryProfile === 'healthcare') {
+      return {
+        id: 'targetAudience',
+        question: t('Hvem i helsetjenesten er målgruppen?', 'Who in the healthcare setting is the audience?'),
+        placeholder: t(
+          'F.eks. sykepleiere, helsefagarbeidere, leger eller tverrfaglige team',
+          'e.g. nurses, care workers, physicians, or cross-disciplinary teams',
+        ),
+        helpText: t(
+          'Målgruppen påvirker ansvarsnivå, observasjonskrav og kommunikasjon i pasientsituasjoner.',
+          'The audience affects responsibility level, observation demands, and communication in patient situations.',
+        ),
+        suggestions: [
+          t('Sykepleiere', 'Nurses'),
+          t('Helsefagarbeidere', 'Care workers'),
+          t('Leger', 'Physicians'),
+          t('Tverrfaglige team', 'Cross-disciplinary teams'),
+        ],
+      };
+    }
+    if (industryProfile === 'it') {
+      return {
+        id: 'targetAudience',
+        question: t('Hvem skal bruke denne IT-kompetansen?', 'Who will use this IT competency?'),
+        placeholder: t(
+          'F.eks. service desk, on-call-team, plattformingeniører eller sikkerhetsanalytikere',
+          'e.g. service desk, on-call teams, platform engineers, or security analysts',
+        ),
+        helpText: t(
+          'Målgruppen avgjør hvor avanserte runbooks, verktøy og responskrav som bør inn.',
+          'The audience determines how advanced the runbooks, tools, and response expectations should be.',
+        ),
+        suggestions: [
+          'Service desk',
+          t('On-call-team', 'On-call teams'),
+          t('Plattformingeniører', 'Platform engineers'),
+          t('Sikkerhetsanalytikere', 'Security analysts'),
+        ],
+      };
+    }
+    if (industryProfile === 'compliance') {
+      return {
+        id: 'targetAudience',
+        question: t('Hvem eier eller utfører kontrollene?', 'Who owns or performs the controls?'),
+        placeholder: t(
+          'F.eks. compliance-team, linjeledere, first line eller controllere',
+          'e.g. compliance teams, line managers, first line teams, or controllers',
+        ),
+        helpText: t(
+          'Målgruppen avgjør om opplæringen bør fokusere mest på vurdering, dokumentasjon eller eskalering.',
+          'The audience determines whether the training should focus more on assessment, documentation, or escalation.',
+        ),
+        suggestions: [
+          t('Compliance-team', 'Compliance teams'),
+          t('Linjeledere', 'Line managers'),
+          'First line',
+          t('Controllere', 'Controllers'),
+        ],
+      };
+    }
+    if (industryProfile === 'education') {
+      return {
+        id: 'targetAudience',
+        question: t('Hvem underviser eller fasiliterer læringen?', 'Who teaches or facilitates the learning?'),
+        placeholder: t(
+          'F.eks. lærere, instruktører, fagansvarlige eller mentorroller',
+          'e.g. teachers, instructors, subject matter leads, or mentors',
+        ),
+        helpText: t(
+          'Målgruppen styrer nivået på metodikk, vurdering og fasilitering i kompetansegrunnlaget.',
+          'The audience determines the level of methodology, assessment, and facilitation in the foundation.',
+        ),
+        suggestions: [
+          t('Lærere', 'Teachers'),
+          t('Instruktører', 'Instructors'),
+          t('Fagansvarlige', 'Subject leads'),
+          t('Mentorer', 'Mentors'),
+        ],
+      };
+    }
+    return {
+      id: 'targetAudience',
+      question: t('Hvem er målgruppen?', 'Who is the target audience?'),
+      placeholder: t(
+        'F.eks. nye selgere, teamledere eller offshore-personell',
+        'e.g. new sales reps, team leads, or offshore personnel',
+      ),
+      helpText: t(
+        'Målgruppen styrer nivå, språk, scenarioer og anbefalt læringsreise.',
+        'The audience determines level, language, scenarios, and the recommended learning journey.',
+      ),
+      suggestions: [
+        t('Nybegynnere', 'Beginners'),
+        t('Erfarne utøvere', 'Experienced practitioners'),
+        t('Teamledere', 'Team leads'),
+        t('Tverrfaglige team', 'Cross-functional teams'),
+      ],
+    };
+  }
+
+  if (!answerById.get('desiredTransformation')) {
+    if (industryProfile === 'leadership') {
+      return {
+        id: 'desiredTransformation',
+        question: t(
+          'Hva skal lederne gjøre bedre eller mer konsekvent etter opplæringen?',
+          'What should the leaders do better or more consistently after the training?',
+        ),
+        placeholder: t(
+          'F.eks. gi tydeligere feedback, prioritere bedre eller følge opp medarbeidere tettere',
+          'e.g. give clearer feedback, prioritize better, or follow up people more consistently',
+        ),
+        helpText: t(
+          'Dette blir styrende for lederatferd, øvelser og proof of learning.',
+          'This becomes the anchor for leadership behaviors, exercises, and proof of learning.',
+        ),
+        suggestions: [
+          t('Gi tydeligere feedback', 'Give clearer feedback'),
+          t('Prioritere bedre under press', 'Prioritize better under pressure'),
+          t('Følge opp ansatte mer konsekvent', 'Follow up people more consistently'),
+          t('Lede møter med tydeligere retning', 'Lead meetings with clearer direction'),
+        ],
+      };
+    }
+    if (industryProfile === 'customer-service') {
+      return {
+        id: 'desiredTransformation',
+        question: t(
+          'Hva skal kundeserviceteamet levere bedre etter opplæringen?',
+          'What should the service team deliver better after the training?',
+        ),
+        placeholder: t(
+          'F.eks. kortere svartid, bedre de-eskalering eller tydeligere neste steg for kunden',
+          'e.g. faster response time, better de-escalation, or clearer next steps for the customer',
+        ),
+        helpText: t(
+          'Dette gjør at vi kan forme scenarioer rundt faktisk servicekvalitet og kundeopplevelse.',
+          'This helps us shape scenarios around actual service quality and customer experience.',
+        ),
+        suggestions: [
+          t('Løse saker raskere uten å miste kvalitet', 'Resolve issues faster without losing quality'),
+          t('De-eskalere misfornøyde kunder bedre', 'De-escalate unhappy customers better'),
+          t('Dokumentere saker mer presist', 'Document cases more accurately'),
+          t('Gi tydeligere neste steg', 'Provide clearer next steps'),
+        ],
+      };
+    }
+    if (industryProfile === 'hr') {
+      return {
+        id: 'desiredTransformation',
+        question: t(
+          'Hva skal HR- eller lederrollen gjøre mer presist etter opplæringen?',
+          'What should the HR or people role do more accurately after the training?',
+        ),
+        placeholder: t(
+          'F.eks. gjennomføre bedre samtaler, dokumentere riktigere eller følge prosess mer konsekvent',
+          'e.g. run better conversations, document more accurately, or follow process more consistently',
+        ),
+        helpText: t(
+          'Dette brukes til å forme både samtaletrening, dokumentkrav og vurderingskriterier.',
+          'This is used to shape conversation practice, documentation demands, and assessment criteria.',
+        ),
+        suggestions: [
+          t('Gjennomføre tryggere medarbeidersamtaler', 'Run safer people conversations'),
+          t('Dokumentere HR-prosesser riktigere', 'Document HR processes more accurately'),
+          t('Ta riktigere beslutninger i personalsaker', 'Make better decisions in people cases'),
+          t('Skape jevnere onboarding-opplevelser', 'Create more consistent onboarding experiences'),
+        ],
+      };
+    }
+    if (industryProfile === 'healthcare') {
+      return {
+        id: 'desiredTransformation',
+        question: t(
+          'Hva skal helsepersonellet gjøre tryggere eller raskere etter opplæringen?',
+          'What should the healthcare staff do more safely or faster after the training?',
+        ),
+        placeholder: t(
+          'F.eks. oppdage endringer tidligere, dokumentere bedre eller eskalere riktigere',
+          'e.g. detect changes earlier, document better, or escalate more accurately',
+        ),
+        helpText: t(
+          'Dette styrer hvordan vi bygger observasjon, kommunikasjon og pasientsikkerhet inn i grunnlaget.',
+          'This drives how we build observation, communication, and patient safety into the foundation.',
+        ),
+        suggestions: [
+          t('Oppdage endringer tidligere', 'Detect changes earlier'),
+          t('Kommunisere status tydeligere', 'Communicate status more clearly'),
+          t('Dokumentere mer korrekt', 'Document more accurately'),
+          t('Eskalere riktig under press', 'Escalate correctly under pressure'),
+        ],
+      };
+    }
+    if (industryProfile === 'it') {
+      return {
+        id: 'desiredTransformation',
+        question: t(
+          'Hva skal IT-teamet gjøre mer robust etter opplæringen?',
+          'What should the IT team do more robustly after the training?',
+        ),
+        placeholder: t(
+          'F.eks. triagere hendelser raskere, følge runbooks bedre eller kommunisere tydeligere i incidents',
+          'e.g. triage incidents faster, follow runbooks better, or communicate more clearly during incidents',
+        ),
+        helpText: t(
+          'Dette gjør at vi kan knytte opplæringen til konkrete driftsmål og response-kvalitet.',
+          'This lets us connect the training to concrete operations goals and response quality.',
+        ),
+        suggestions: [
+          t('Triagere hendelser raskere', 'Triage incidents faster'),
+          t('Følge runbooks mer konsistent', 'Follow runbooks more consistently'),
+          t('Redusere feil i eskalering', 'Reduce escalation errors'),
+          t('Dokumentere incidents bedre', 'Document incidents better'),
+        ],
+      };
+    }
+    if (industryProfile === 'compliance') {
+      return {
+        id: 'desiredTransformation',
+        question: t(
+          'Hva skal teamet gjøre mer konsistent for å redusere risiko?',
+          'What should the team do more consistently to reduce risk?',
+        ),
+        placeholder: t(
+          'F.eks. gjennomføre kontroller riktigere, dokumentere bevis bedre eller eskalere avvik tidligere',
+          'e.g. execute controls more accurately, document evidence better, or escalate deviations earlier',
+        ),
+        helpText: t(
+          'Dette blir styrende for kontrolltrening, dokumentasjon og risikovurdering i opplegget.',
+          'This drives control training, documentation, and risk assessment in the program.',
+        ),
+        suggestions: [
+          t('Gjennomføre kontroller mer presist', 'Execute controls more accurately'),
+          t('Dokumentere bevis bedre', 'Document evidence better'),
+          t('Eskalere risiko tidligere', 'Escalate risks earlier'),
+          t('Redusere avvik i etterlevelse', 'Reduce compliance deviations'),
+        ],
+      };
+    }
+    if (industryProfile === 'education') {
+      return {
+        id: 'desiredTransformation',
+        question: t(
+          'Hva skal undervisningen eller fasiliteringen oppnå mer konsekvent?',
+          'What should the teaching or facilitation achieve more consistently?',
+        ),
+        placeholder: t(
+          'F.eks. høyere deltakelse, tydeligere struktur eller bedre vurdering av læring',
+          'e.g. higher engagement, clearer structure, or better assessment of learning',
+        ),
+        helpText: t(
+          'Dette brukes til å forme læringsaktiviteter, fasilitering og proof of learning.',
+          'This is used to shape learning activities, facilitation, and proof of learning.',
+        ),
+        suggestions: [
+          t('Skape høyere deltakelse', 'Create higher engagement'),
+          t('Lede økter med tydeligere struktur', 'Lead sessions with clearer structure'),
+          t('Vurdere læring mer presist', 'Assess learning more precisely'),
+          t('Tilpasse undervisning bedre underveis', 'Adapt teaching better in the moment'),
+        ],
+      };
+    }
+    return {
+      id: 'desiredTransformation',
+      question: t(
+        'Hva skal de kunne gjøre annerledes etter opplæringen?',
+        'What should they be able to do differently after the training?',
+      ),
+      placeholder: t(
+        'Beskriv en konkret, observerbar forbedring',
+        'Describe a concrete, observable improvement',
+      ),
+      helpText: t(
+        'Dette blir kjernen i transformasjon, læringsmål og proof of learning.',
+        'This becomes the core of the transformation, learning outcomes, and proof of learning.',
+      ),
+      suggestions: [
+        t('Jobbe mer strukturert', 'Work more structurally'),
+        t('Ta riktigere beslutninger under press', 'Make better decisions under pressure'),
+        t('Levere høyere kvalitet mer konsistent', 'Deliver higher quality more consistently'),
+        t('Følge standard prosess uten avvik', 'Follow the standard process without deviation'),
+      ],
+    };
+  }
+
+  if (!answerById.get('contextConstraint')) {
+    if (industryProfile === 'leadership') {
+      return {
+        id: 'contextConstraint',
+        question: t(
+          'Hvilke møter, prosesser eller verktøy må lederopplæringen passe inn i?',
+          'Which meetings, processes, or tools must the leadership training fit into?',
+        ),
+        placeholder: t(
+          'F.eks. 1:1, medarbeidersamtaler, OKR, performance cycle eller prosjektmøter',
+          'e.g. 1:1s, performance conversations, OKRs, performance cycles, or project meetings',
+        ),
+        helpText: t(
+          'Dette gjør forslagene praktiske og forankret i lederhverdagen.',
+          'This makes the recommendations practical and anchored in day-to-day leadership work.',
+        ),
+        suggestions: ['1:1', 'OKR', t('Performance cycle', 'Performance cycle'), t('Prosjektmøter', 'Project meetings')],
+      };
+    }
+    if (industryProfile === 'customer-service') {
+      return {
+        id: 'contextConstraint',
+        question: t(
+          'Hvilke SLA-er, systemer eller serviceprinsipper må opplæringen passe inn i?',
+          'Which SLAs, systems, or service principles must the training fit into?',
+        ),
+        placeholder: t(
+          'F.eks. Zendesk, telefoniplattform, svartidsmål eller tone-of-voice',
+          'e.g. Zendesk, telephony platform, response-time targets, or tone of voice',
+        ),
+        helpText: t(
+          'Dette hjelper oss å koble opplæringen til faktisk kundereise og servicestandard.',
+          'This helps us connect the training to the actual customer journey and service standard.',
+        ),
+        suggestions: ['SLA', 'Zendesk', t('Telefoniplattform', 'Telephony platform'), t('Tone of voice', 'Tone of voice')],
+      };
+    }
+    if (industryProfile === 'hr') {
+      return {
+        id: 'contextConstraint',
+        question: t(
+          'Hvilke policyer, systemer eller prosesser må HR-opplæringen følge?',
+          'Which policies, systems, or processes must the HR training follow?',
+        ),
+        placeholder: t(
+          'F.eks. HRIS, arbeidsrett, onboardingprosess eller performance review',
+          'e.g. HRIS, employment law, onboarding flow, or performance reviews',
+        ),
+        helpText: t(
+          'Dette gjør anbefalingene relevante for faktiske HR-arbeidsflyter og krav.',
+          'This makes the recommendations relevant to real HR workflows and requirements.',
+        ),
+        suggestions: ['HRIS', t('Arbeidsrett', 'Employment law'), t('Onboardingflyt', 'Onboarding flow'), t('Performance review', 'Performance review')],
+      };
+    }
+    if (industryProfile === 'healthcare') {
+      return {
+        id: 'contextConstraint',
+        question: t(
+          'Hvilke prosedyrer, journalsystemer eller pasientsikkerhetskrav må dette passe inn i?',
+          'Which procedures, journal systems, or patient safety requirements must this fit into?',
+        ),
+        placeholder: t(
+          'F.eks. EPJ, NEWS2, legemiddelhåndtering eller pasientsikkerhetsrutiner',
+          'e.g. EHR, NEWS2, medication handling, or patient safety routines',
+        ),
+        helpText: t(
+          'Dette kobler opplæringen til den reelle kliniske arbeidshverdagen.',
+          'This connects the training to the real clinical context.',
+        ),
+        suggestions: ['EPJ', 'NEWS2', t('Legemiddelhåndtering', 'Medication handling'), t('Pasientsikkerhet', 'Patient safety')],
+      };
+    }
+    if (industryProfile === 'it') {
+      return {
+        id: 'contextConstraint',
+        question: t(
+          'Hvilke systemer, runbooks eller responstider må kompetansen passe inn i?',
+          'Which systems, runbooks, or response targets must the competency fit into?',
+        ),
+        placeholder: t(
+          'F.eks. Jira, PagerDuty, runbooks, SLO-er eller sikkerhetspolicy',
+          'e.g. Jira, PagerDuty, runbooks, SLOs, or security policy',
+        ),
+        helpText: t(
+          'Dette gjør forslagene operative og forankret i faktisk incident- og driftsarbeid.',
+          'This makes the recommendations operational and anchored in real incident and ops work.',
+        ),
+        suggestions: ['Runbooks', 'PagerDuty', 'SLO', t('Sikkerhetspolicy', 'Security policy')],
+      };
+    }
+    if (industryProfile === 'compliance') {
+      return {
+        id: 'contextConstraint',
+        question: t(
+          'Hvilke kontroller, policyer eller rapporteringskrav må dette passe inn i?',
+          'Which controls, policies, or reporting demands must this fit into?',
+        ),
+        placeholder: t(
+          'F.eks. kontrollbibliotek, regulatorisk rapportering, internpolicy eller revisjonskrav',
+          'e.g. control library, regulatory reporting, internal policy, or audit requirements',
+        ),
+        helpText: t(
+          'Dette brukes til å gjøre kompetansegrunnlaget konkret og revisjonsnært.',
+          'This is used to make the competency foundation concrete and audit-relevant.',
+        ),
+        suggestions: [
+          t('Kontrollbibliotek', 'Control library'),
+          t('Regulatorisk rapportering', 'Regulatory reporting'),
+          t('Internpolicy', 'Internal policy'),
+          t('Revisjonskrav', 'Audit requirements'),
+        ],
+      };
+    }
+    if (industryProfile === 'education') {
+      return {
+        id: 'contextConstraint',
+        question: t(
+          'Hvilke læreplaner, vurderingsformer eller læringsplattformer må dette passe inn i?',
+          'Which curricula, assessment forms, or learning platforms must this fit into?',
+        ),
+        placeholder: t(
+          'F.eks. læreplanmål, LMS, vurderingsrubrikker eller intern akademimodell',
+          'e.g. curriculum objectives, LMS, assessment rubrics, or internal academy model',
+        ),
+        helpText: t(
+          'Dette gjør læringsdesignet kompatibelt med den faktiske undervisningsstrukturen.',
+          'This makes the learning design compatible with the real teaching structure.',
+        ),
+        suggestions: ['LMS', t('Læreplanmål', 'Curriculum objectives'), t('Rubrikker', 'Rubrics'), t('Akademimodell', 'Academy model')],
+      };
+    }
+    return {
+      id: 'contextConstraint',
+      question: t(
+        'Hvilke rammer, verktøy eller prosesser må opplæringen passe inn i?',
+        'Which constraints, tools, or processes must the training fit into?',
+      ),
+      placeholder: t(
+        'F.eks. CRM, SOP, HMS-krav, kvalitetssystem eller kundereise',
+        'e.g. CRM, SOP, HSE requirements, quality system, or customer journey',
+      ),
+      helpText: t(
+        'Dette brukes for å gjøre forslagene praktiske og tilpasset den reelle arbeidshverdagen.',
+        'This makes the recommendations practical and adapted to the real operating context.',
+      ),
+      suggestions: [
+        'CRM',
+        'SOP',
+        'HMS',
+        t('Kvalitetssystem', 'Quality system'),
+      ],
+    };
+  }
+
+  return null;
+};
+
+const academyCurriculumBuildHeuristicRecommendation = (params: {
+  courseTitle: string;
+  answers: AcademyCurriculumFoundationAnswer[];
+  useNorwegian: boolean;
+}): AcademyCurriculumFoundationRecommendation => {
+  const { answers, useNorwegian } = params;
+  const t = (no: string, en: string) => (useNorwegian ? no : en);
+  const answerById = new Map(
+    answers.map((entry) => [entry.id, entry.answer.trim()]),
+  );
+  const topicRaw = String(answerById.get('competencyTopic') || '').trim();
+  const subtypeRaw = String(answerById.get('competencySubtype') || '').trim();
+  const audienceRaw = String(answerById.get('targetAudience') || '').trim();
+  const desiredTransformationRaw = String(
+    answerById.get('desiredTransformation') || '',
+  ).trim();
+  const contextRaw = String(answerById.get('contextConstraint') || '').trim();
+  const combinedTopic = [topicRaw, subtypeRaw].filter(Boolean).join(' ');
+  const projectTemplateId = academyCurriculumInferProjectTemplateId(combinedTopic);
+  const industryProfile = academyCurriculumResolveIndustryProfile({
+    answers,
+    courseTitle: params.courseTitle,
+  });
+
+  const topicLabel = academyCurriculumTitleCase(
+    topicRaw || params.courseTitle || t('Kompetanse', 'Competency'),
+  );
+  const subtypeLabel = subtypeRaw || t('generell praksis', 'general practice');
+  const audienceLabel =
+    audienceRaw || t('medarbeidere som skal utføre oppgaven', 'practitioners doing the work');
+  const transformationLabel =
+    desiredTransformationRaw ||
+    t(
+      'gå fra varierende utførelse til trygg, konsistent og målbar praksis',
+      'move from inconsistent execution to confident, consistent, measurable performance',
+    );
+  const contextLabel =
+    contextRaw ||
+    (projectTemplateId === 'sales-enablement-a-a'
+      ? 'CRM, pipeline og salgsprosess'
+      : projectTemplateId === 'production-operations-a-a'
+        ? 'SOP, kvalitetskrav og avvikshåndtering'
+        : projectTemplateId === 'offshore-safety-a-a'
+          ? 'HMS-krav, beredskap og kommandokjede'
+          : t(
+              'daglig drift, arbeidsflyt og tilgjengelige verktøy',
+              'day-to-day operations, workflow, and available tools',
+            ));
+
+  let recommendation: AcademyCurriculumFoundationRecommendation;
+
+  if (projectTemplateId === 'sales-enablement-a-a') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: projectTemplateId,
+      rationale: [
+        t('Bygget rundt salgsprosess, pipeline og samtalekvalitet.', 'Built around sales process, pipeline, and conversation quality.'),
+        t('Foreslår praktiske ferdigheter som kan trenes og måles.', 'Recommends practical skills that can be trained and measured.'),
+        t('Tilpasset målgruppen og salgs-konteksten du beskrev.', 'Tailored to the audience and sales context you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Bygge en opplæringsreise for ${audienceLabel} som utvikler ${topicRaw || 'salg'} i ${subtypeLabel}, slik at teamet kan jobbe mer strukturert og repeterbart i ${contextLabel}.`,
+          `Build a training journey for ${audienceLabel} that develops ${topicRaw || 'sales'} in ${subtypeLabel}, so the team can execute more structurally and repeatably in ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('Discovery og behovsavklaring', 'Discovery and needs assessment'),
+          t('Verdibaserte salgsdialoger', 'Value-based sales conversations'),
+          t('Oppfølging og pipeline-styring', 'Follow-up and pipeline execution'),
+        ],
+        skills: [
+          t(`Gjennomføre discovery i ${subtypeLabel}`, `Run discovery in ${subtypeLabel}`),
+          t('Knytte kundebehov til tydelig verdiargumentasjon', 'Connect customer needs to clear value articulation'),
+          t('Håndtere innvendinger med struktur og neste steg', 'Handle objections with structure and next-step control'),
+          t('Oppdatere CRM og følge opp tilbud med høy kvalitet', 'Update CRM and follow up proposals with high quality'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Mer forutsigbar pipeline og bedre neste steg', 'More predictable pipeline and better next-step discipline'),
+          t('Høyere kvalitet i kundedialoger og oppfølging', 'Higher quality in customer conversations and follow-up'),
+        ],
+        skillMap: [
+          { title: 'Discovery', focus: t('Spørreteknikk, behovsavklaring og prioritering av signaler.', 'Questioning, needs diagnosis, and signal prioritization.') },
+          { title: 'Value Selling', focus: t('Koble løsning til tydelig forretningsverdi.', 'Connect the solution to clear business value.') },
+          { title: 'Objection Handling', focus: t('Redusere friksjon rundt pris, risiko og timing.', 'Reduce friction around price, risk, and timing.') },
+          { title: 'Pipeline Execution', focus: t('Neste steg, forecast og konsekvent oppfølging.', 'Next steps, forecast discipline, and consistent follow-up.') },
+        ],
+        problemsSolved: [
+          t('Leads stopper etter første møte.', 'Leads stall after the first meeting.'),
+          t('Verdiforslaget blir for uklart i dialogen.', 'The value proposition stays too vague in conversations.'),
+          t('Oppfølging og CRM-kvalitet er inkonsistent.', 'Follow-up and CRM quality are inconsistent.'),
+        ],
+        learningJourney: t(
+          `1) Etabler målbilde og kundescenario. 2) Tren discovery i realistiske case for ${subtypeLabel}. 3) Bygg verdiargumentasjon og innvendingshåndtering. 4) Trening på oppfølging i ${contextLabel}. 5) Dokumenter forbedring i samtalekvalitet og pipeline.`,
+          `1) Establish target state and customer scenario. 2) Practice discovery in realistic ${subtypeLabel} cases. 3) Build value articulation and objection handling. 4) Train follow-up inside ${contextLabel}. 5) Document improvement in conversation quality and pipeline execution.`,
+        ),
+        practiceDesign: t(
+          'Bruk rollespill, samtalesimuleringer, case med begrenset informasjon, og analyse av ekte pipeline-eksempler. Start med replisering av struktur, gå videre til scenarioer, og avslutt med full gjennomføring som vurderes av leder eller mentor.',
+          'Use role plays, conversation simulations, cases with limited information, and analysis of real pipeline examples. Start by replicating structure, move into scenarios, and finish with full execution reviewed by a lead or mentor.',
+        ),
+        proofOfLearning: t(
+          'Studenten beviser mestring gjennom møtesimulering, kvalitet i CRM-oppdatering, tydelige neste steg, og dokumentert forbedring i konverterings- eller pipelineindikatorer.',
+          'The learner proves mastery through meeting simulations, quality CRM updates, clear next-step control, and documented improvement in conversion or pipeline indicators.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  if (projectTemplateId === 'production-operations-a-a') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: projectTemplateId,
+      rationale: [
+        t('Bygget rundt standard drift, kvalitet og avvik.', 'Built around standard operations, quality, and deviation handling.'),
+        t('Ferdighetene kan knyttes til SOP og praktisk drift.', 'The skills can be tied directly to SOPs and real operations.'),
+        t('Forslagene er tilpasset produksjonskonteksten du beskrev.', 'The recommendations are adapted to the production context you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Standardisere ${topicRaw || 'produksjonsdrift'} for ${audienceLabel} i ${subtypeLabel}, slik at teamet kan levere jevn kvalitet og færre avvik innenfor ${contextLabel}.`,
+          `Standardize ${topicRaw || 'production operations'} for ${audienceLabel} in ${subtypeLabel}, so the team can deliver stable quality and fewer deviations within ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('Operasjonell standard', 'Operational standard'),
+          t('Kvalitetskontroll', 'Quality control'),
+          t('Avvik og forbedringsarbeid', 'Deviation handling and improvement work'),
+        ],
+        skills: [
+          t('Utføre kritiske SOP-trinn uten avvik', 'Execute critical SOP steps without deviation'),
+          t('Kontrollere relevante kvalitetsparametre', 'Control relevant quality parameters'),
+          t('Dokumentere hendelser og eskalere korrekt', 'Document events and escalate correctly'),
+          t('Gjennomføre årsaksanalyse og tiltak', 'Run root-cause analysis and corrective action'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Stabilere kvalitet mellom skift og team', 'More stable quality across shifts and teams'),
+          t('Raskere og riktigere avvikshåndtering', 'Faster and more accurate deviation handling'),
+        ],
+        skillMap: [
+          { title: t('Standard prosedyre', 'Standard procedure'), focus: t('Kontrollpunkter, rekkefølge og beslutningsgrenser.', 'Control points, sequence, and decision thresholds.') },
+          { title: t('Kvalitet', 'Quality'), focus: t('Målinger, toleranser og verifikasjon.', 'Measurements, tolerances, and verification.') },
+          { title: t('Avvik', 'Deviation'), focus: t('Registrering, eskalering og rotårsaksanalyse.', 'Recording, escalation, and root-cause analysis.') },
+          { title: t('Forbedring', 'Improvement'), focus: t('Tiltak, oppfølging og læringssløyfe.', 'Corrective actions, follow-up, and learning loop.') },
+        ],
+        problemsSolved: [
+          t('Standarden utføres ulikt fra person til person.', 'The standard is executed differently from person to person.'),
+          t('Feil oppdages for sent i prosessen.', 'Errors are detected too late in the process.'),
+          t('Avvik lukkes ikke systematisk.', 'Deviations are not closed systematically.'),
+        ],
+        learningJourney: t(
+          'Start med ønsket standard og kritiske kontrollpunkter. Tren deretter gjennomføring i realistiske situasjoner, før du går over til avvikshåndtering, årsaksanalyse og dokumentert forbedringsarbeid i faktisk drift.',
+          'Start with the target standard and critical checkpoints. Then train execution in realistic situations before moving into deviation handling, root-cause analysis, and documented improvement work in live operations.',
+        ),
+        practiceDesign: t(
+          'Kombiner SOP-replikering, visuell inspeksjon, scenarioer med driftsforstyrrelser, og refleksjon på reelle avvik. Bruk korte økter med tydelig feedback og gjentakelse til utførelsen er stabil.',
+          'Combine SOP replication, visual inspection, scenarios with operational disruptions, and reflection on real deviations. Use short feedback loops and repetition until execution becomes stable.',
+        ),
+        proofOfLearning: t(
+          'Mestring dokumenteres gjennom observasjon i drift, riktig utfylte sjekklister, avviksbehandling med kvalitet, og målbar reduksjon i feil eller omarbeid.',
+          'Mastery is documented through live observation, correctly completed checklists, high-quality deviation handling, and measurable reduction in errors or rework.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  if (projectTemplateId === 'offshore-safety-a-a') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: projectTemplateId,
+      rationale: [
+        t('Bygget rundt HMS, beredskap og tydelig rolleforståelse.', 'Built around HSE, emergency readiness, and clear role understanding.'),
+        t('Fokuserer på beslutninger under press og korrekt respons.', 'Focuses on decisions under pressure and correct response behavior.'),
+        t('Tilpasset den offshore-konteksten du beskrev.', 'Adapted to the offshore context you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Sikre at ${audienceLabel} kan utføre ${topicRaw || 'kritiske HMS-prosedyrer'} trygt og korrekt i ${subtypeLabel}, innenfor ${contextLabel}.`,
+          `Ensure ${audienceLabel} can perform ${topicRaw || 'critical HSE procedures'} safely and correctly in ${subtypeLabel}, within ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('HMS-forståelse og risikovurdering', 'HSE awareness and risk assessment'),
+          t('Beredskap og hendelseshåndtering', 'Emergency readiness and incident response'),
+          t('Kommunikasjon under operativt press', 'Communication under operational pressure'),
+        ],
+        skills: [
+          t('Utføre kritisk prosedyre korrekt under tidspress', 'Execute the critical procedure correctly under time pressure'),
+          t('Velge riktig respons ved alarm eller hendelse', 'Choose the correct response during alarms or incidents'),
+          t('Kommunisere status tydelig i kommandokjede', 'Communicate status clearly through the command chain'),
+          t('Dokumentere hendelse og læringspunkter korrekt', 'Document the incident and learning points correctly'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Raskere og riktigere respons ved hendelser', 'Faster and more accurate response during incidents'),
+          t('Høyere etterlevelse av HMS-krav og prosedyrer', 'Higher adherence to HSE requirements and procedures'),
+        ],
+        skillMap: [
+          { title: t('Forebygging', 'Prevention'), focus: t('Risikoidentifikasjon, barrierer og kontrollpunkter.', 'Risk identification, barriers, and control points.') },
+          { title: t('Respons', 'Response'), focus: t('Tiltakskjede, rolleforståelse og beslutning under press.', 'Response chain, role clarity, and pressure-based decision making.') },
+          { title: t('Beredskap', 'Emergency readiness'), focus: t('Evakuering, muster og samhandling mellom team.', 'Evacuation, muster, and cross-team coordination.') },
+          { title: t('Etterarbeid', 'Post-incident learning'), focus: t('Debrief, læringspunkter og prosedyreoppdatering.', 'Debrief, lessons learned, and procedure updates.') },
+        ],
+        problemsSolved: [
+          t('Kritiske alarmer håndteres ulikt mellom personer.', 'Critical alarms are handled inconsistently across personnel.'),
+          t('Prosedyrene bryter sammen under press.', 'Procedures break down under pressure.'),
+          t('Læring etter hendelser blir ikke tydelig implementert.', 'Learning after incidents is not implemented clearly enough.'),
+        ],
+        learningJourney: t(
+          'Bygg først felles forståelse for risiko og kritiske prosedyrer. Gå deretter over til scenario-trening med realistiske hendelser, før du trener kommunikasjon, koordinering og dokumentert etterarbeid.',
+          'First build shared understanding of risk and critical procedures. Then move into realistic scenario training before practicing communication, coordination, and documented post-incident work.',
+        ),
+        practiceDesign: t(
+          'Bruk scenarioer med alarm, beslutningspunkter og rollebasert samhandling. Kombiner demonstrasjon, simulering, repetisjon og debrief med tydelige kriterier for korrekt handling.',
+          'Use alarm scenarios, decision points, and role-based coordination. Combine demonstration, simulation, repetition, and debrief with clear criteria for correct action.',
+        ),
+        proofOfLearning: t(
+          'Mestring dokumenteres gjennom beståtte scenarioer, korrekt tiltakskjede, tydelig kommunikasjon og etterlevelse av prosedyre- og HMS-krav.',
+          'Mastery is documented through passed scenarios, correct response chains, clear communication, and adherence to HSE and procedure requirements.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  if (industryProfile === 'leadership') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: '',
+      rationale: [
+        t('Bygget rundt lederatferd, oppfølging og beslutningskvalitet.', 'Built around leadership behaviors, follow-up, and decision quality.'),
+        t('Forslagene kobler lederrollen til møter, feedback og prioritering i praksis.', 'The recommendations connect the leadership role to meetings, feedback, and practical prioritization.'),
+        t('Tilpasset lederkonteksten og målgruppen du beskrev.', 'Adapted to the leadership context and audience you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Bygge trygg og tydelig ${topicRaw || 'ledelse'} for ${audienceLabel} i ${subtypeLabel}, slik at lederne kan prioritere, kommunisere og følge opp mer konsekvent innenfor ${contextLabel}.`,
+          `Build confident and clear ${topicRaw || 'leadership'} for ${audienceLabel} in ${subtypeLabel}, so leaders can prioritize, communicate, and follow up more consistently within ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('Kommunikasjon og relasjonsledelse', 'Communication and people leadership'),
+          t('Prioritering og beslutningstaking', 'Prioritization and decision making'),
+          t('Oppfølging og prestasjonsutvikling', 'Follow-up and performance development'),
+        ],
+        skills: [
+          t('Lede 1:1-samtaler med tydelig retning', 'Lead 1:1 conversations with clear direction'),
+          t('Gi konkret feedback og sette forventninger', 'Give concrete feedback and set expectations'),
+          t('Prioritere riktige oppgaver under press', 'Prioritize the right work under pressure'),
+          t('Håndtere krevende samtaler med trygghet', 'Handle difficult conversations with confidence'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Mer konsekvent lederadferd i møter og oppfølging', 'More consistent leadership behavior in meetings and follow-up'),
+          t('Tydeligere retning og bedre prioritering i teamet', 'Clearer direction and better prioritization in the team'),
+        ],
+        skillMap: [
+          { title: t('Samtaler', 'Conversations'), focus: t('1:1, feedback, forventningssetting og vanskelige dialoger.', '1:1s, feedback, expectation setting, and difficult dialogues.') },
+          { title: t('Retning', 'Direction'), focus: t('Mål, prioritering og tydelige neste steg for teamet.', 'Goals, prioritization, and clear next steps for the team.') },
+          { title: t('Beslutning', 'Decision making'), focus: t('Vurdere informasjon, risiko og tempo i lederbeslutninger.', 'Evaluating information, risk, and tempo in leadership decisions.') },
+          { title: t('Oppfølging', 'Follow-up'), focus: t('Prestasjon, utvikling og ansvarliggjøring over tid.', 'Performance, development, and accountability over time.') },
+        ],
+        problemsSolved: [
+          t('Lederadferd varierer for mye mellom personer og situasjoner.', 'Leadership behavior varies too much between people and situations.'),
+          t('Feedback og oppfølging blir for uklar eller for sen.', 'Feedback and follow-up become too unclear or too late.'),
+          t('Prioriteringer blir uklare når tempoet øker.', 'Priorities become unclear when the pace increases.'),
+        ],
+        learningJourney: t(
+          'Start med ønsket lederatferd og de viktigste situasjonene. Tren deretter korte samtaler, møteledelse og prioritering i realistiske scenarioer, før du går over til vanskeligere personalsamtaler og dokumentert utvikling over tid.',
+          'Start with the target leadership behaviors and the most important situations. Then train short conversations, meeting leadership, and prioritization in realistic scenarios before moving into harder people conversations and documented development over time.',
+        ),
+        practiceDesign: t(
+          'Bruk rollespill, møte-simuleringer, refleksjon og observasjon fra lederhverdagen. Øvelsene bør gå fra strukturert modellering til mer åpne scenarioer med avveininger og krevende dialoger.',
+          'Use role plays, meeting simulations, reflection, and observation from day-to-day leadership. Practice should move from structured modeling to more open scenarios with tradeoffs and difficult conversations.',
+        ),
+        proofOfLearning: t(
+          'Lederen beviser mestring gjennom observerte samtaler, tydeligere møteledelse, dokumentert oppfølging og målbar forbedring i kvaliteten på lederatferden.',
+          'The leader proves mastery through observed conversations, clearer meeting leadership, documented follow-up, and measurable improvement in leadership behavior quality.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  if (industryProfile === 'customer-service') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: '',
+      rationale: [
+        t('Bygget rundt servicestandard, kundedialog og eskalering.', 'Built around service standards, customer dialogue, and escalation.'),
+        t('Forslagene kobler opplæringen til faktiske kontaktpunkter og serviceflyt.', 'The recommendations connect the training to real contact points and service workflows.'),
+        t('Tilpasset kanalene og kundesituasjonene du beskrev.', 'Adapted to the channels and customer situations you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Bygge en mer konsistent og trygg ${topicRaw || 'kundeservice'} for ${audienceLabel} i ${subtypeLabel}, slik at teamet leverer høyere kvalitet gjennom ${contextLabel}.`,
+          `Build more consistent and confident ${topicRaw || 'customer service'} for ${audienceLabel} in ${subtypeLabel}, so the team delivers higher quality through ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('Behovsforståelse og kundedialog', 'Needs understanding and customer dialogue'),
+          t('Service recovery og de-eskalering', 'Service recovery and de-escalation'),
+          t('Dokumentasjon og neste steg', 'Documentation and next-step control'),
+        ],
+        skills: [
+          t('Avklare behov raskt og presist', 'Clarify customer needs quickly and accurately'),
+          t('Svare med tydelig struktur og trygg tone', 'Respond with clear structure and confident tone'),
+          t('Håndtere misnøye uten å eskalere unødvendig', 'Handle dissatisfaction without unnecessary escalation'),
+          t('Dokumentere saken og sikre tydelige neste steg', 'Document the case and secure clear next steps'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Jevnere servicekvalitet på tvers av kanaler og personer', 'More consistent service quality across channels and people'),
+          t('Raskere løsning med bedre kundeopplevelse', 'Faster resolution with better customer experience'),
+        ],
+        skillMap: [
+          { title: t('Avklaring', 'Clarification'), focus: t('Spørreteknikk, behovsforståelse og presis sakskartlegging.', 'Questioning, needs understanding, and accurate case framing.') },
+          { title: t('Respons', 'Response'), focus: t('Tydelige svar, forventningsstyring og riktig tone.', 'Clear answers, expectation setting, and the right tone.') },
+          { title: t('Recovery', 'Recovery'), focus: t('Klagehåndtering, de-eskalering og tillitsbygging.', 'Complaint handling, de-escalation, and trust repair.') },
+          { title: t('Oppfølging', 'Follow-up'), focus: t('Sakshistorikk, SLA og konkrete neste steg.', 'Case history, SLA awareness, and concrete next steps.') },
+        ],
+        problemsSolved: [
+          t('Svar og tone varierer for mye mellom medarbeidere.', 'Responses and tone vary too much between employees.'),
+          t('Saker eskaleres eller drar ut for lenge.', 'Cases escalate or drag out too long.'),
+          t('Dokumentasjon og oppfølging blir ujevn.', 'Documentation and follow-up are inconsistent.'),
+        ],
+        learningJourney: t(
+          'Start med serviceprinsipper og ønsket kundeopplevelse. Tren deretter på avklaring, respons og vanskelige saker i realistiske kanalspesifikke scenarioer, før du går over til de-eskalering, dokumentasjon og oppfølging.',
+          'Start with service principles and the target customer experience. Then practice clarification, response, and difficult cases in realistic channel-based scenarios before moving into de-escalation, documentation, and follow-up.',
+        ),
+        practiceDesign: t(
+          'Bruk simuleringer av kundehenvendelser, vanskelige dialoger, skriveøvelser og kvalitetssjekk av saker. Kombiner modellering, repetisjon og feedback mot tydelige servicestandarder.',
+          'Use customer interaction simulations, difficult dialogues, writing drills, and case-quality review. Combine modeling, repetition, and feedback against clear service standards.',
+        ),
+        proofOfLearning: t(
+          'Mestring dokumenteres gjennom håndtering av realistiske kundecase, presis dokumentasjon, tydelig neste steg og målbar forbedring i svartid eller kvalitet.',
+          'Mastery is documented through handling realistic customer cases, accurate documentation, clear next steps, and measurable improvement in response time or quality.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  if (industryProfile === 'hr') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: '',
+      rationale: [
+        t('Bygget rundt HR-prosesser, samtaler og riktig dokumentasjon.', 'Built around HR processes, conversations, and correct documentation.'),
+        t('Forslagene kobler kompetansen til faktiske personalsaker og arbeidsflyter.', 'The recommendations connect the competency to real people cases and workflows.'),
+        t('Tilpasset HR-området du beskrev.', 'Adapted to the HR area you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Bygge trygg og konsistent ${topicRaw || 'HR-praksis'} for ${audienceLabel} i ${subtypeLabel}, slik at prosessene gjennomføres korrekt og med kvalitet innenfor ${contextLabel}.`,
+          `Build confident and consistent ${topicRaw || 'HR practice'} for ${audienceLabel} in ${subtypeLabel}, so the processes are carried out correctly and with quality inside ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('Samtaler og relasjoner', 'Conversations and relationships'),
+          t('Prosess og beslutning', 'Process and decision quality'),
+          t('Dokumentasjon og etterlevelse', 'Documentation and compliance'),
+        ],
+        skills: [
+          t('Gjennomføre strukturerte HR-samtaler', 'Conduct structured HR conversations'),
+          t('Følge riktig prosess med tydelige beslutningspunkter', 'Follow the right process with clear decision points'),
+          t('Dokumentere saker korrekt og presist', 'Document cases correctly and precisely'),
+          t('Eskalerer risiko eller avvik i tide', 'Escalate risks or deviations in time'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Mer konsistent kvalitet i HR-prosesser og samtaler', 'More consistent quality in HR processes and conversations'),
+          t('Riktigere dokumentasjon og tryggere beslutninger', 'More accurate documentation and safer decisions'),
+        ],
+        skillMap: [
+          { title: t('Samtaler', 'Conversations'), focus: t('Forberedelse, struktur, lytting og tydelige avtaler.', 'Preparation, structure, listening, and clear agreements.') },
+          { title: t('Prosess', 'Process'), focus: t('Riktig rekkefølge, beslutningspunkter og rolleavklaringer.', 'Correct sequence, decision points, and role clarity.') },
+          { title: t('Dokumentasjon', 'Documentation'), focus: t('Notater, systembruk og beviskrav i saken.', 'Notes, system use, and evidence requirements in the case.') },
+          { title: t('Risiko', 'Risk'), focus: t('Når og hvordan HR eller leder skal eskalere.', 'When and how HR or the manager should escalate.') },
+        ],
+        problemsSolved: [
+          t('Samtaler gjennomføres for ulikt mellom personer.', 'Conversations are conducted too differently between people.'),
+          t('Prosesser følges ikke alltid likt eller komplett.', 'Processes are not always followed consistently or completely.'),
+          t('Dokumentasjonen blir for svak til å støtte beslutninger.', 'Documentation is too weak to support decisions.'),
+        ],
+        learningJourney: t(
+          'Start med ønsket prosess og kvalitet i samtaler. Tren deretter realistiske HR-situasjoner, dokumentasjon og beslutningspunkter, før du går over til vanskeligere personalsaker og tydeligere risikovurdering.',
+          'Start with the target process and quality in conversations. Then train realistic HR situations, documentation, and decision points before moving into harder people cases and clearer risk assessment.',
+        ),
+        practiceDesign: t(
+          'Bruk case, samtalesimuleringer, dokumentasjonsøvelser og vurdering mot policy. Øvelsene bør veksle mellom samtaler, systembruk og etterarbeid.',
+          'Use cases, conversation simulations, documentation drills, and review against policy. Practice should alternate between conversations, system work, and post-processing.',
+        ),
+        proofOfLearning: t(
+          'Mestring dokumenteres gjennom gjennomførte case, riktige beslutningspunkter, solid dokumentasjon og trygg håndtering av HR-relaterte situasjoner.',
+          'Mastery is documented through completed cases, correct decision points, solid documentation, and confident handling of HR-related situations.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  if (industryProfile === 'healthcare') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: '',
+      rationale: [
+        t('Bygget rundt pasientsikkerhet, observasjon og korrekt oppfølging.', 'Built around patient safety, observation, and correct follow-up.'),
+        t('Forslagene kobler kompetansen til klinisk arbeid og teamkommunikasjon.', 'The recommendations connect the competency to clinical work and team communication.'),
+        t('Tilpasset helsekonteksten du beskrev.', 'Adapted to the healthcare context you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Styrke ${topicRaw || 'klinisk praksis'} for ${audienceLabel} i ${subtypeLabel}, slik at arbeidet utføres tryggere, tydeligere og mer konsekvent innenfor ${contextLabel}.`,
+          `Strengthen ${topicRaw || 'clinical practice'} for ${audienceLabel} in ${subtypeLabel}, so the work is carried out more safely, clearly, and consistently within ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('Observasjon og vurdering', 'Observation and assessment'),
+          t('Kommunikasjon og samhandling', 'Communication and collaboration'),
+          t('Dokumentasjon og pasientsikkerhet', 'Documentation and patient safety'),
+        ],
+        skills: [
+          t('Oppdage relevante endringer tidlig', 'Detect relevant changes early'),
+          t('Kommunisere funn tydelig til riktig mottaker', 'Communicate findings clearly to the right receiver'),
+          t('Dokumentere korrekt og tidsnært', 'Document correctly and in a timely manner'),
+          t('Iverksette eller eskalere riktige tiltak', 'Initiate or escalate the right actions'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Tryggere pasientforløp og færre feil i oppfølging', 'Safer patient pathways and fewer follow-up errors'),
+          t('Mer konsistent kommunikasjon og dokumentasjon', 'More consistent communication and documentation'),
+        ],
+        skillMap: [
+          { title: t('Observasjon', 'Observation'), focus: t('Hva som skal observeres, hvordan det vurderes og når det blir kritisk.', 'What to observe, how to assess it, and when it becomes critical.') },
+          { title: t('Kommunikasjon', 'Communication'), focus: t('Tydelig overlevering, SBAR-lignende struktur og samarbeid.', 'Clear handover, SBAR-like structure, and collaboration.') },
+          { title: t('Tiltak', 'Action'), focus: t('Når teamet skal handle selv og når det skal eskalere.', 'When the team should act themselves and when to escalate.') },
+          { title: t('Dokumentasjon', 'Documentation'), focus: t('Korrekt, relevant og sporbar dokumentasjon.', 'Correct, relevant, and traceable documentation.') },
+        ],
+        problemsSolved: [
+          t('Viktige endringer oppdages eller formidles for sent.', 'Important changes are detected or communicated too late.'),
+          t('Dokumentasjon og oppfølging varierer for mye.', 'Documentation and follow-up vary too much.'),
+          t('Beslutninger og eskalering blir utydelige under press.', 'Decisions and escalation become unclear under pressure.'),
+        ],
+        learningJourney: t(
+          'Start med kritiske observasjoner og pasientsikkerhetsmål. Tren deretter kommunikasjon, dokumentasjon og tiltak i realistiske pasientsituasjoner, før du går over til mer komplekse scenarioer med tidspress og samhandling.',
+          'Start with critical observations and patient safety goals. Then train communication, documentation, and actions in realistic patient situations before moving into more complex scenarios with time pressure and coordination.',
+        ),
+        practiceDesign: t(
+          'Bruk scenario-basert trening, korte simuleringscaser, debrief og dokumentasjonsøvelser. Bygg progresjon fra enkel observasjon til sammensatte pasientforløp med flere beslutningspunkter.',
+          'Use scenario-based training, short simulation cases, debriefs, and documentation drills. Build progression from simple observation to more complex patient pathways with multiple decision points.',
+        ),
+        proofOfLearning: t(
+          'Mestring dokumenteres gjennom riktig observasjon, korrekt kommunikasjon, relevant dokumentasjon og trygg håndtering av realistiske pasientsituasjoner.',
+          'Mastery is documented through correct observation, clear communication, relevant documentation, and safe handling of realistic patient situations.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  if (industryProfile === 'it') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: '',
+      rationale: [
+        t('Bygget rundt runbooks, hendelseshåndtering og tydelig eskalering.', 'Built around runbooks, incident handling, and clear escalation.'),
+        t('Forslagene kobler kompetansen til systemdrift, feilretting og kommunikasjon i sanntid.', 'The recommendations connect the competency to operations, troubleshooting, and real-time communication.'),
+        t('Tilpasset IT-konteksten du beskrev.', 'Adapted to the IT context you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Bygge mer robust ${topicRaw || 'IT-drift'} for ${audienceLabel} i ${subtypeLabel}, slik at teamet responderer raskere og mer presist innenfor ${contextLabel}.`,
+          `Build more robust ${topicRaw || 'IT operations'} for ${audienceLabel} in ${subtypeLabel}, so the team responds faster and more accurately within ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('Forståelse av system og avhengigheter', 'Understanding systems and dependencies'),
+          t('Incident- og problemhåndtering', 'Incident and problem handling'),
+          t('Kommunikasjon, dokumentasjon og læring', 'Communication, documentation, and learning'),
+        ],
+        skills: [
+          t('Triagere hendelser strukturert', 'Triage incidents in a structured way'),
+          t('Følge runbooks og velge riktig tiltak', 'Follow runbooks and choose the right action'),
+          t('Kommunisere tydelig i eskaleringsflyt', 'Communicate clearly in the escalation flow'),
+          t('Dokumentere årsak, tiltak og læringspunkter', 'Document causes, actions, and learning points'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Raskere og tryggere hendelseshåndtering', 'Faster and safer incident handling'),
+          t('Bedre koordinering og mindre støy i eskalering', 'Better coordination and less noise during escalation'),
+        ],
+        skillMap: [
+          { title: t('Triage', 'Triage'), focus: t('Signaler, prioritet og første analyse av hendelsen.', 'Signals, priority, and first analysis of the incident.') },
+          { title: t('Runbooks', 'Runbooks'), focus: t('Bruke standard responser og vite når de ikke strekker til.', 'Using standard responses and knowing when they are insufficient.') },
+          { title: t('Kommunikasjon', 'Communication'), focus: t('Oppdatere interessenter og team med riktig nivå av presisjon.', 'Updating stakeholders and teams with the right level of precision.') },
+          { title: t('Etterarbeid', 'Post-incident learning'), focus: t('RCA, tiltak og forbedring av arbeidsflyt.', 'RCA, actions, and workflow improvement.') },
+        ],
+        problemsSolved: [
+          t('Hendelser håndteres for ulikt mellom team og vakter.', 'Incidents are handled too differently across teams and shifts.'),
+          t('Eskalering skjer for sent eller med for lite presisjon.', 'Escalation happens too late or with too little precision.'),
+          t('Læring etter incidents blir for svak eller usynlig.', 'Learning after incidents is too weak or invisible.'),
+        ],
+        learningJourney: t(
+          'Start med systemforståelse, signaler og prioritering. Tren deretter triage, runbook-bruk og eskalering i realistiske drifts- eller sikkerhetsscenarioer, før du går over til dokumentasjon og forbedring etter hendelser.',
+          'Start with system understanding, signals, and prioritization. Then train triage, runbook usage, and escalation in realistic operations or security scenarios before moving into documentation and post-incident improvement.',
+        ),
+        practiceDesign: t(
+          'Bruk incident-simuleringer, runbook-øvelser, tidskritiske scenarioer og debrief. Bygg progresjon fra kjent feilretting til sammensatte hendelser med høyere usikkerhet.',
+          'Use incident simulations, runbook drills, time-critical scenarios, and debriefs. Build progression from familiar troubleshooting to more complex incidents with higher uncertainty.',
+        ),
+        proofOfLearning: t(
+          'Mestring dokumenteres gjennom korrekt triage, riktige tiltak, tydelig kommunikasjon og bedre kvalitet i incident-dokumentasjon og etterarbeid.',
+          'Mastery is documented through correct triage, the right actions, clear communication, and higher quality incident documentation and post-incident work.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  if (industryProfile === 'compliance') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: '',
+      rationale: [
+        t('Bygget rundt kontrollgjennomføring, dokumentasjon og risikoreduserende praksis.', 'Built around control execution, documentation, and risk-reducing practice.'),
+        t('Forslagene kobler læringen til beviskrav, avvik og styringsbehov.', 'The recommendations connect the learning to evidence requirements, deviations, and governance needs.'),
+        t('Tilpasset etterlevelsesområdet du beskrev.', 'Adapted to the compliance domain you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Bygge sterkere ${topicRaw || 'etterlevelse'} for ${audienceLabel} i ${subtypeLabel}, slik at kontrollene gjennomføres mer presist og konsekvent innenfor ${contextLabel}.`,
+          `Build stronger ${topicRaw || 'compliance'} for ${audienceLabel} in ${subtypeLabel}, so controls are performed more accurately and consistently within ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('Regelverksforståelse og risikovurdering', 'Regulatory understanding and risk assessment'),
+          t('Kontrollgjennomføring og dokumentasjon', 'Control execution and documentation'),
+          t('Avvik, eskalering og forbedring', 'Deviation handling, escalation, and improvement'),
+        ],
+        skills: [
+          t('Utføre kontroller med riktig vurdering og kvalitet', 'Execute controls with the right judgment and quality'),
+          t('Dokumentere bevis og beslutninger korrekt', 'Document evidence and decisions correctly'),
+          t('Identifisere og eskalere risiko eller avvik', 'Identify and escalate risk or deviations'),
+          t('Følge opp tiltak og forbedringer systematisk', 'Follow up actions and improvements systematically'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Mer etterprøvbar og konsistent kontrollpraksis', 'More auditable and consistent control practice'),
+          t('Tidligere identifisering av risiko og svakheter', 'Earlier identification of risks and weaknesses'),
+        ],
+        skillMap: [
+          { title: t('Tolkning', 'Interpretation'), focus: t('Forstå krav, terskler og hva som faktisk må vurderes.', 'Understanding requirements, thresholds, and what actually must be assessed.') },
+          { title: t('Kontroll', 'Control execution'), focus: t('Gjennomføre kontroller uten hull i vurdering eller bevis.', 'Executing controls without gaps in judgment or evidence.') },
+          { title: t('Dokumentasjon', 'Documentation'), focus: t('Hva som må bevises, hvordan og for hvem.', 'What must be evidenced, how, and for whom.') },
+          { title: t('Oppfølging', 'Follow-up'), focus: t('Eskalering, avvik og tiltak over tid.', 'Escalation, deviations, and corrective actions over time.') },
+        ],
+        problemsSolved: [
+          t('Kontroller gjennomføres for ulikt eller uten nok bevis.', 'Controls are performed inconsistently or without enough evidence.'),
+          t('Risiko og avvik oppdages eller eskaleres for sent.', 'Risk and deviations are detected or escalated too late.'),
+          t('Læring fra revisjon og oppfølging blir for svak.', 'Learning from audit and follow-up is too weak.'),
+        ],
+        learningJourney: t(
+          'Start med hva kravene faktisk betyr i praksis. Tren deretter kontrollgjennomføring, dokumentasjon og risikovurdering i realistiske scenarioer, før du går over til avvik, eskalering og forbedring.',
+          'Start with what the requirements actually mean in practice. Then train control execution, documentation, and risk assessment in realistic scenarios before moving into deviations, escalation, and improvement.',
+        ),
+        practiceDesign: t(
+          'Bruk kontrollcase, bevisvurdering, dokumentasjonsøvelser og scenarioer med avvik eller gråsoner. Kombiner modellering, kalibrering og vurdering mot tydelige kriterier.',
+          'Use control cases, evidence review, documentation drills, and scenarios with deviations or gray areas. Combine modeling, calibration, and evaluation against clear criteria.',
+        ),
+        proofOfLearning: t(
+          'Mestring dokumenteres gjennom riktig kontrollutførelse, etterprøvbar dokumentasjon, presis risikovurdering og korrekt håndtering av avvik.',
+          'Mastery is documented through correct control execution, auditable documentation, accurate risk assessment, and correct deviation handling.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  if (industryProfile === 'education') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: '',
+      rationale: [
+        t('Bygget rundt læringsdesign, fasilitering og vurdering av læring.', 'Built around learning design, facilitation, and assessment of learning.'),
+        t('Forslagene kobler opplæringen til faktiske undervisningssituasjoner og læringsmål.', 'The recommendations connect the training to real teaching situations and learning goals.'),
+        t('Tilpasset undervisningskonteksten du beskrev.', 'Adapted to the teaching context you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Styrke ${topicRaw || 'undervisning og fasilitering'} for ${audienceLabel} i ${subtypeLabel}, slik at læringen blir mer strukturert, aktiv og målbar innenfor ${contextLabel}.`,
+          `Strengthen ${topicRaw || 'teaching and facilitation'} for ${audienceLabel} in ${subtypeLabel}, so the learning becomes more structured, active, and measurable within ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('Planlegging og læringsdesign', 'Planning and learning design'),
+          t('Gjennomføring og fasilitering', 'Delivery and facilitation'),
+          t('Vurdering og tilpasning', 'Assessment and adaptation'),
+        ],
+        skills: [
+          t('Formulere tydelige læringsmål og progresjon', 'Define clear learning goals and progression'),
+          t('Lede økter med aktiv deltakelse og struktur', 'Lead sessions with active participation and structure'),
+          t('Vurdere læring underveis og etterpå', 'Assess learning during and after instruction'),
+          t('Tilpasse undervisningen basert på respons og mestring', 'Adapt instruction based on response and mastery'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Tydeligere læringsforløp og høyere deltakelse', 'Clearer learning flows and higher engagement'),
+          t('Mer presis vurdering av faktisk mestring', 'More precise assessment of actual mastery'),
+        ],
+        skillMap: [
+          { title: t('Mål', 'Goals'), focus: t('Tydelige læringsmål, progresjon og relevans.', 'Clear learning goals, progression, and relevance.') },
+          { title: t('Fasilitering', 'Facilitation'), focus: t('Aktiv deltakelse, styring av gruppe og læringsrytme.', 'Active participation, group guidance, and learning tempo.') },
+          { title: t('Vurdering', 'Assessment'), focus: t('Hvordan læring observeres, testes og følges opp.', 'How learning is observed, tested, and followed up.') },
+          { title: t('Tilpasning', 'Adaptation'), focus: t('Justere metode, tempo og støtte basert på læringssignalene.', 'Adjusting method, tempo, and support based on learning signals.') },
+        ],
+        problemsSolved: [
+          t('Undervisningen blir for lite strukturert eller for passiv.', 'Teaching becomes too unstructured or too passive.'),
+          t('Det er uklart om deltakerne faktisk har lært det de skal.', 'It is unclear whether participants have actually learned what they should.'),
+          t('Det blir for lite tilpasning underveis i læringsløpet.', 'There is too little adaptation during the learning journey.'),
+        ],
+        learningJourney: t(
+          'Start med læringsmål, progresjon og ønsket elev- eller deltakeropplevelse. Tren deretter fasilitering, øktdesign og vurdering i realistiske undervisningssituasjoner, før du går over til tilpasning og evaluering av læring over tid.',
+          'Start with learning goals, progression, and the desired participant experience. Then train facilitation, session design, and assessment in realistic teaching situations before moving into adaptation and longer-term evaluation.',
+        ),
+        practiceDesign: t(
+          'Bruk mikroundervisning, fasiliteringsøvelser, observasjon og vurdering av læringsspor. Kombiner modellering, repetisjon og feedback med tydelige kriterier for god undervisning.',
+          'Use micro-teaching, facilitation drills, observation, and review of learning traces. Combine modeling, repetition, and feedback with clear criteria for strong instruction.',
+        ),
+        proofOfLearning: t(
+          'Mestring dokumenteres gjennom gode undervisningsøkter, tydelig progresjon, observerbar deltakeraktivitet og presis vurdering av læring.',
+          'Mastery is documented through strong teaching sessions, clear progression, observable participant activity, and precise assessment of learning.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  if (industryProfile === 'creative') {
+    recommendation = {
+      competencyName:
+        [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+      recommendedProjectTemplateId: '',
+      rationale: [
+        t('Bygget rundt kreativ produksjon, visuell kvalitet og tydelig arbeidsflyt.', 'Built around creative production, visual quality, and a clear workflow.'),
+        t('Forslagene kobler kompetansen til planlegging, opptak og etterarbeid i reelle produksjoner.', 'The recommendations connect the competency to planning, capture, and post-production in real projects.'),
+        t('Tilpasset den kreative disiplinen du beskrev.', 'Adapted to the creative discipline you described.'),
+      ],
+      architecture: {
+        purpose: t(
+          `Bygge sterkere ${topicRaw || 'kreativ produksjon'} for ${audienceLabel} i ${subtypeLabel}, slik at arbeidet blir mer visuelt bevisst, strukturert og profesjonelt innenfor ${contextLabel}.`,
+          `Build stronger ${topicRaw || 'creative production'} for ${audienceLabel} in ${subtypeLabel}, so the work becomes more visually intentional, structured, and professional within ${contextLabel}.`,
+        ),
+        audience: audienceLabel,
+        transformation: transformationLabel,
+        competencies: [
+          t('Visuell forståelse og retning', 'Visual understanding and direction'),
+          t('Produksjonsflyt og opptak', 'Production workflow and capture'),
+          t('Etterarbeid og kvalitet', 'Post-production and quality'),
+        ],
+        skills: [
+          t('Planlegge opptak eller produksjon med tydelig retning', 'Plan a shoot or production with clear direction'),
+          t('Gjøre bevisste valg i kamera, lys, lyd eller komposisjon', 'Make intentional decisions in camera, lighting, sound, or composition'),
+          t('Gjennomføre opptak eller produksjon med stabil kvalitet', 'Execute the shoot or production with stable quality'),
+          t('Forbedre resultatet gjennom seleksjon, redigering og finishing', 'Improve the result through selection, editing, and finishing'),
+        ],
+        transformations: [
+          transformationLabel,
+          t('Mer konsistent visuell kvalitet og tydeligere fortelling', 'More consistent visual quality and clearer storytelling'),
+          t('Bedre produksjonsflyt fra planlegging til ferdig leveranse', 'Better production flow from planning to final delivery'),
+        ],
+        skillMap: [
+          { title: t('Pre-produksjon', 'Pre-production'), focus: t('Idé, plan, manus, shotlist og praktiske forberedelser.', 'Idea, plan, script, shot list, and practical preparation.') },
+          { title: t('Opptak', 'Capture'), focus: t('Kamera, lys, lyd, regi og kvalitet i gjennomføring.', 'Camera, lighting, sound, direction, and execution quality.') },
+          { title: t('Historie og uttrykk', 'Story and expression'), focus: t('Hvordan valg i bilde, rytme og struktur skaper ønsket effekt.', 'How choices in image, rhythm, and structure create the intended effect.') },
+          { title: t('Etterarbeid', 'Post-production'), focus: t('Seleksjon, redigering, finishing og leveransekvalitet.', 'Selection, editing, finishing, and delivery quality.') },
+        ],
+        problemsSolved: [
+          t('Produksjonene mangler tydelig visuell retning.', 'The productions lack clear visual direction.'),
+          t('Opptak eller leveranser blir for ujevne i kvalitet.', 'Captures or deliverables are too inconsistent in quality.'),
+          t('Arbeidsflyten fra planlegging til ferdig produkt er for svak.', 'The workflow from planning to finished output is too weak.'),
+        ],
+        learningJourney: t(
+          'Start med referanser, målbilde og visuell retning. Gå deretter over til planlegging og produksjonsforberedelse, før du trener opptak, valg underveis og etterarbeid i realistiske prosjekter.',
+          'Start with references, target output, and visual direction. Then move into planning and production prep before training capture, in-the-moment decisions, and post-production in realistic projects.',
+        ),
+        practiceDesign: t(
+          'Bruk små produksjonsoppgaver, shot-by-shot øvelser, analyse av referanser og iterativ feedback på råmateriale og ferdig leveranse. Bygg progresjon fra kontrollerte øvelser til mer helhetlige produksjoner.',
+          'Use small production assignments, shot-by-shot drills, reference analysis, and iterative feedback on raw material and final delivery. Build progression from controlled exercises to more complete productions.',
+        ),
+        proofOfLearning: t(
+          'Mestring dokumenteres gjennom planverk, råmateriale, ferdige leveranser og tydelig forbedring i visuell kvalitet, historiefortelling og teknisk gjennomføring.',
+          'Mastery is documented through planning artifacts, raw material, final deliverables, and clear improvement in visual quality, storytelling, and technical execution.',
+        ),
+      },
+    };
+    return recommendation;
+  }
+
+  recommendation = {
+    competencyName:
+      [topicLabel, subtypeRaw].filter(Boolean).join(' · ') || topicLabel,
+    recommendedProjectTemplateId: '',
+    rationale: [
+      t('Tar utgangspunkt i kompetansen og konteksten du beskrev.', 'Grounded in the competency and context you described.'),
+      t('Bygger et resultatbasert grunnlag som kan redigeres videre.', 'Builds a result-based foundation that can be refined further.'),
+      t('Foreslår praktiske ferdigheter, problemer og bevis på mestring.', 'Suggests practical skills, problems, and proof of mastery.'),
+    ],
+    architecture: {
+      purpose: t(
+        `Bygge en tydelig og praktisk opplæring i ${topicLabel} for ${audienceLabel}, tilpasset ${subtypeLabel} og ${contextLabel}.`,
+        `Build clear and practical training in ${topicLabel} for ${audienceLabel}, adapted to ${subtypeLabel} and ${contextLabel}.`,
+      ),
+      audience: audienceLabel,
+      transformation: transformationLabel,
+      competencies: [
+        t('Kjerneforståelse', 'Core understanding'),
+        t('Utførelse i praksis', 'Execution in practice'),
+        t('Kvalitet og forbedring', 'Quality and improvement'),
+      ],
+      skills: [
+        t(`Utføre ${topicLabel} strukturert i ${subtypeLabel}`, `Execute ${topicLabel} in a structured way for ${subtypeLabel}`),
+        t('Ta riktige beslutninger i realistiske scenarioer', 'Make the right decisions in realistic scenarios'),
+        t('Dokumentere og evaluere utførelse med kvalitet', 'Document and evaluate execution with quality'),
+        t('Forbedre praksis gjennom repetisjon og feedback', 'Improve practice through repetition and feedback'),
+      ],
+      transformations: [
+        transformationLabel,
+        t('Mer konsistent kvalitet i utførelsen', 'More consistent execution quality'),
+        t('Tydeligere metode og tryggere beslutninger', 'Clearer method and more confident decisions'),
+      ],
+      skillMap: [
+        { title: t('Forståelse', 'Understanding'), focus: t('Hva som skal oppnås og hvorfor det betyr noe.', 'What should be achieved and why it matters.') },
+        { title: t('Metode', 'Method'), focus: t('Steg-for-steg arbeidsflyt og beslutningspunkter.', 'Step-by-step workflow and decision points.') },
+        { title: t('Kvalitet', 'Quality'), focus: t('Kriterier for god utførelse og vanlige feil.', 'Criteria for strong execution and common mistakes.') },
+        { title: t('Forbedring', 'Improvement'), focus: t('Hvordan studenten evaluerer og forbedrer praksis.', 'How the learner evaluates and improves performance.') },
+      ],
+      problemsSolved: [
+        t('Utførelsen blir for ujevn og personavhengig.', 'Execution is too inconsistent and person-dependent.'),
+        t('Det mangler en tydelig metode for beslutninger og kvalitet.', 'There is no clear method for decisions and quality.'),
+        t('Læring blir ikke godt nok overført til praksis.', 'Learning is not transferred into practice well enough.'),
+      ],
+      learningJourney: t(
+        'Start med målbilde og grunnforståelse. Gå videre til demonstrasjon og guidet praksis. Tren deretter på realistiske scenarioer, med stadig mer selvstendig utførelse og til slutt dokumentert mestring.',
+        'Start with the target state and core understanding. Move into demonstration and guided practice. Then train through realistic scenarios with increasing independence and finish with documented mastery.',
+      ),
+      practiceDesign: t(
+        'Bruk en blanding av modellering, korte øvelser, scenario-trening, refleksjon og tilbakemelding. Øvelsene bør gå fra enkel replisering til mer selvstendig anvendelse i realistiske situasjoner.',
+        'Use a mix of modeling, short drills, scenario training, reflection, and feedback. Practice should move from simple replication to increasingly independent use in realistic situations.',
+      ),
+      proofOfLearning: t(
+        'Studenten beviser mestring gjennom observerbar utførelse, dokumenterte leveranser eller beslutninger, og en tydelig vurdering opp mot definerte kvalitetskriterier.',
+        'The learner proves mastery through observable execution, documented deliverables or decisions, and clear evaluation against defined quality criteria.',
+      ),
+    },
+  };
+
+  return recommendation;
+};
+
+const academyCurriculumBuildAnswerEvidence = (params: {
+  answerById: Map<AcademyCurriculumFoundationQuestionId, string>;
+  ids: AcademyCurriculumFoundationQuestionId[];
+  useNorwegian: boolean;
+}): string => {
+  const labels: Record<AcademyCurriculumFoundationQuestionId, [string, string]> = {
+    competencyTopic: ['kompetanse', 'topic'],
+    competencySubtype: ['kontekst', 'context'],
+    targetAudience: ['målgruppe', 'audience'],
+    desiredTransformation: ['resultat', 'outcome'],
+    contextConstraint: ['rammer', 'constraints'],
+  };
+  const items = params.ids
+    .map((id) => {
+      const value = String(params.answerById.get(id) || '').trim();
+      if (!value) return '';
+      const [noLabel, enLabel] = labels[id];
+      return params.useNorwegian
+        ? `${noLabel}: ${value}`
+        : `${enLabel}: ${value}`;
+    })
+    .filter((item) => item.length > 0);
+  return items.join(' · ');
+};
+
+const academyCurriculumBuildProgress = (params: {
+  answers: AcademyCurriculumFoundationAnswer[];
+  useNorwegian: boolean;
+  industryProfile: AcademyCurriculumIndustryProfileId;
+  completed: boolean;
+}): AcademyCurriculumFoundationProgress => {
+  const answeredCount = params.answers.length;
+  const t = (no: string, en: string) => (params.useNorwegian ? no : en);
+  const answerById = new Map(
+    params.answers.map((entry) => [entry.id, entry.answer.trim()]),
+  );
+  const profileTopic = String(answerById.get('competencyTopic') || '').trim();
+  const profileLabel = academyCurriculumIndustryProfileLabel(
+    params.industryProfile,
+    params.useNorwegian,
+    profileTopic,
+  );
+
+  if (params.completed) {
+    return {
+      phase: t('Klar for gjennomgang', 'Ready for review'),
+      statusMessage: t(
+        `AI har fylt ut kompetansegrunnlaget for ${profileLabel} og koblet forslagene til tydelige begrunnelser.`,
+        `AI has filled out the competency foundation for ${profileLabel} and connected the suggestions to clear rationales.`,
+      ),
+      percent: 100,
+      focusAreas: [
+        t('Valider forslagene', 'Validate the suggestions'),
+        t('Finjuster kompetanser', 'Refine competencies'),
+        t('Lagre eller publiser', 'Save or publish'),
+      ],
+      appliedSections: [
+        t('Formål', 'Purpose'),
+        t('Målgruppe', 'Audience'),
+        t('Kompetanser', 'Competencies'),
+        t('Ferdigheter', 'Skills'),
+        t('Transformasjon', 'Transformation'),
+        t('Læringsreise', 'Learning journey'),
+        t('Kompetansekart', 'Competency map'),
+        t('Quiz og annoteringer', 'Quiz and annotations'),
+      ],
+    };
+  }
+
+  if (answeredCount <= 0) {
+    return {
+      phase: t('Kartlegger retning', 'Mapping direction'),
+      statusMessage: t(
+        'AI venter på hovedkompetansen for å starte kompetansegrunnlaget.',
+        'AI is waiting for the main competency to start the foundation.',
+      ),
+      percent: 8,
+      focusAreas: [
+        t('Kompetanseområde', 'Competency area'),
+        t('Bransje', 'Industry'),
+        t('Brukskontekst', 'Usage context'),
+      ],
+      appliedSections: [t('Kompetanseramme', 'Competency frame')],
+    };
+  }
+
+  if (answeredCount === 1) {
+    return {
+      phase: t('Avklarer kontekst', 'Clarifying context'),
+      statusMessage: t(
+        `AI foreslår nå et grunnlag for ${profileLabel} og avklarer hvilken kontekst opplæringen må passe inn i.`,
+        `AI is now proposing a foundation for ${profileLabel} and clarifying which context the training must fit into.`,
+      ),
+      percent: 28,
+      focusAreas:
+        params.industryProfile === 'sales'
+          ? [t('Salgstype', 'Sales type'), t('Scenarioer', 'Scenarios'), t('Pipeline', 'Pipeline')]
+          : params.industryProfile === 'leadership'
+            ? [t('Lederrolle', 'Leadership role'), t('Møtearenaer', 'Meeting arenas'), t('Teamkontekst', 'Team context')]
+            : params.industryProfile === 'hr'
+              ? [t('HR-område', 'HR area'), t('Samtaler', 'Conversations'), t('Prosessflyt', 'Process flow')]
+              : [t('Kontekst', 'Context'), t('Scenarioer', 'Scenarios'), t('Arbeidsflyt', 'Workflow')],
+      appliedSections: [
+        t('Formål', 'Purpose'),
+        t('Kompetanser', 'Competencies'),
+        t('Ferdigheter', 'Skills'),
+      ],
+    };
+  }
+
+  if (answeredCount === 2) {
+    return {
+      phase: t('Tilpasser målgruppe', 'Adapting audience'),
+      statusMessage: t(
+        `AI bygger nå kompetansegrunnlaget videre for ${profileLabel} og justerer nivå, språk og ansvar etter målgruppen.`,
+        `AI is now building the ${profileLabel} foundation further and adjusting level, language, and responsibility to the audience.`,
+      ),
+      percent: 48,
+      focusAreas: [
+        t('Målgruppe', 'Audience'),
+        t('Erfaringsnivå', 'Experience level'),
+        t('Ansvar', 'Responsibility'),
+      ],
+      appliedSections: [
+        t('Målgruppe', 'Audience'),
+        t('Kompetanser', 'Competencies'),
+        t('Ferdigheter', 'Skills'),
+        t('Problemområder', 'Problems solved'),
+      ],
+    };
+  }
+
+  if (answeredCount === 3) {
+    return {
+      phase: t('Former resultatmål', 'Shaping outcomes'),
+      statusMessage: t(
+        'AI konkretiserer nå ønsket transformasjon, læringsmål og hvordan mestring skal kunne observeres.',
+        'AI is now clarifying the desired transformation, learning outcomes, and how mastery should be observed.',
+      ),
+      percent: 68,
+      focusAreas: [
+        t('Transformasjon', 'Transformation'),
+        t('Observerbar adferd', 'Observable behavior'),
+        t('Proof of learning', 'Proof of learning'),
+      ],
+      appliedSections: [
+        t('Transformasjon', 'Transformation'),
+        t('Proof of learning', 'Proof of learning'),
+        t('Ferdigheter', 'Skills'),
+      ],
+    };
+  }
+
+  return {
+    phase: t('Knytter til praksis', 'Connecting to practice'),
+    statusMessage: t(
+      'AI kobler nå kompetansegrunnlaget til faktiske verktøy, prosesser, kvalitetskrav og arbeidssituasjoner.',
+      'AI is now connecting the competency foundation to real tools, processes, quality requirements, and working situations.',
+    ),
+    percent: 88,
+    focusAreas: [
+      t('Verktøy og systemer', 'Tools and systems'),
+      t('Prosesser og rammer', 'Processes and constraints'),
+      t('Læringsreise', 'Learning journey'),
+    ],
+    appliedSections: [
+      t('Læringsreise', 'Learning journey'),
+      t('Practice design', 'Practice design'),
+      t('Problemområder', 'Problems solved'),
+      t('Kompetanser', 'Competencies'),
+    ],
+  };
+};
+
+const academyCurriculumLevelLabel = (
+  level: AcademyCurriculumFoundationCompetencyLevel,
+  useNorwegian: boolean,
+): string => {
+  if (level === 'basic') return useNorwegian ? 'grunnleggende' : 'basic';
+  if (level === 'advanced') return useNorwegian ? 'avansert' : 'advanced';
+  return useNorwegian ? 'operativ' : 'operational';
+};
+
+const academyCurriculumGroupSkillsByCompetency = (params: {
+  competencies: string[];
+  skills: string[];
+  fallbackSkillMap: AcademyCurriculumFoundationSkillMapItem[];
+  useNorwegian: boolean;
+}): Map<string, string[]> => {
+  const map = new Map<string, string[]>();
+  const competencies = params.competencies.length > 0
+    ? params.competencies
+    : [
+        params.useNorwegian ? 'Generell kompetanse' : 'General competency',
+      ];
+
+  competencies.forEach((competency) => {
+    map.set(competency, []);
+  });
+
+  params.skills.forEach((skill, index) => {
+    const competency = competencies[index % competencies.length];
+    map.set(competency, [...(map.get(competency) || []), skill]);
+  });
+
+  if (params.skills.length === 0) {
+    params.fallbackSkillMap.forEach((entry, index) => {
+      const competency = competencies[index % competencies.length];
+      const fallbackSkill = entry.title || entry.focus;
+      if (!fallbackSkill) return;
+      map.set(competency, [...(map.get(competency) || []), fallbackSkill]);
+    });
+  }
+
+  return map;
+};
+
+const academyCurriculumBuildCompetencyMapsAndSuggestions = (params: {
+  answers: AcademyCurriculumFoundationAnswer[];
+  recommendation: AcademyCurriculumFoundationRecommendation;
+  useNorwegian: boolean;
+  industryProfile: AcademyCurriculumIndustryProfileId;
+}): {
+  competencyMap: AcademyCurriculumFoundationCompetencyMapItem[];
+  studioSuggestions: AcademyCurriculumFoundationStudioSuggestions;
+} => {
+  const t = (no: string, en: string) => (params.useNorwegian ? no : en);
+  const answerById = new Map(
+    params.answers.map((entry) => [entry.id, entry.answer.trim()]),
+  );
+  const topic = String(answerById.get('competencyTopic') || params.recommendation.competencyName || '').trim();
+  const subtype = String(answerById.get('competencySubtype') || '').trim();
+  const audience = String(
+    answerById.get('targetAudience') || params.recommendation.architecture.audience || '',
+  ).trim();
+  const desiredTransformation = String(
+    answerById.get('desiredTransformation') || params.recommendation.architecture.transformation || '',
+  ).trim();
+  const constraint = String(answerById.get('contextConstraint') || '').trim();
+  const contextLabel = [subtype, constraint].filter((value) => value.length > 0).join(' · ');
+  const groupedSkills = academyCurriculumGroupSkillsByCompetency({
+    competencies: params.recommendation.architecture.competencies,
+    skills: params.recommendation.architecture.skills,
+    fallbackSkillMap: params.recommendation.architecture.skillMap,
+    useNorwegian: params.useNorwegian,
+  });
+
+  const competencyMap = params.recommendation.architecture.competencies
+    .slice(0, 6)
+    .map((competency, index) => {
+      const relatedSkills = groupedSkills.get(competency) || [];
+      const firstSkill = relatedSkills[0] || competency;
+      const secondSkill = relatedSkills[1] || firstSkill;
+      const thirdSkill = relatedSkills[2] || secondSkill;
+      const description = contextLabel
+        ? t(
+            `${competency} i konteksten ${contextLabel}.`,
+            `${competency} in the context ${contextLabel}.`,
+          )
+        : t(
+            `${competency} bygget for ${topic.toLowerCase() || competency.toLowerCase()}.`,
+            `${competency} built for ${topic.toLowerCase() || competency.toLowerCase()}.`,
+          );
+
+      const basic = [
+        t(
+          `Forstår grunnprinsippene i ${competency.toLowerCase()} og kan gjennomføre ${firstSkill.toLowerCase()} i standard situasjoner.`,
+          `Understands the fundamentals of ${competency.toLowerCase()} and can perform ${firstSkill.toLowerCase()} in standard situations.`,
+        ),
+        audience
+          ? t(
+              `Kan følge en tydelig arbeidsflyt tilpasset ${audience.toLowerCase()}.`,
+              `Can follow a clear workflow adapted for ${audience.toLowerCase()}.`,
+            )
+          : t(
+              `Kan følge en tydelig arbeidsflyt uten tett støtte.`,
+              `Can follow a clear workflow without close support.`,
+            ),
+      ];
+
+      const operational = [
+        t(
+          `Bruker ${secondSkill.toLowerCase()} selvstendig i arbeidshverdagen og tar gode valg under normale avvik.`,
+          `Uses ${secondSkill.toLowerCase()} independently in day-to-day work and makes sound decisions during normal deviations.`,
+        ),
+        desiredTransformation
+          ? t(
+              `Leverer et observerbart resultat som støtter målet: ${desiredTransformation.toLowerCase()}.`,
+              `Delivers an observable result that supports the target outcome: ${desiredTransformation.toLowerCase()}.`,
+            )
+          : t(
+              `Knytter kompetansen til faktiske prosesser, kvalitet og samarbeid.`,
+              `Connects the competency to real processes, quality, and collaboration.`,
+            ),
+      ];
+
+      const advanced = [
+        t(
+          `Håndterer komplekse situasjoner innen ${competency.toLowerCase()} og kan forbedre praksis på tvers av teamet.`,
+          `Handles complex situations within ${competency.toLowerCase()} and can improve practice across the team.`,
+        ),
+        t(
+          `Kan coache andre i ${thirdSkill.toLowerCase()} og kvalitetssikre leveranser mot krav og standarder.`,
+          `Can coach others in ${thirdSkill.toLowerCase()} and quality-assure delivery against standards and requirements.`,
+        ),
+      ];
+
+      return {
+        title: competency,
+        description,
+        basic,
+        operational,
+        advanced,
+      } satisfies AcademyCurriculumFoundationCompetencyMapItem;
+    });
+
+  const skillSuggestions = competencyMap.flatMap((mapItem) => {
+    const relatedSkills = groupedSkills.get(mapItem.title) || [mapItem.title];
+    const levels: AcademyCurriculumFoundationCompetencyLevel[] = ['basic', 'operational', 'advanced'];
+    return relatedSkills.slice(0, 3).map((skillTitle, skillIndex) => {
+      const level = levels[skillIndex % levels.length];
+      const objectiveSource =
+        level === 'basic'
+          ? mapItem.basic[0]
+          : level === 'advanced'
+            ? mapItem.advanced[0]
+            : mapItem.operational[0];
+      return {
+        title: skillTitle,
+        competency: mapItem.title,
+        level,
+        objective: objectiveSource || mapItem.description,
+        recommendedDurationMinutes: level === 'basic' ? 8 : level === 'operational' ? 12 : 16,
+      } satisfies AcademyCurriculumFoundationSkillSuggestion;
+    });
+  }).slice(0, 12);
+
+  const quizSuggestions = skillSuggestions.slice(0, 8).map((skill, index) => {
+    const relatedCompetency =
+      competencyMap.find((entry) => entry.title === skill.competency) || competencyMap[0];
+    const distractor =
+      competencyMap[(index + 1) % Math.max(competencyMap.length, 1)]?.operational[0] ||
+      t('Velger en tilfeldig arbeidsflyt uten å sjekke krav.', 'Chooses a random workflow without checking requirements.');
+    const correctOperational =
+      skill.objective ||
+      relatedCompetency?.operational[0] ||
+      relatedCompetency?.basic[0] ||
+      relatedCompetency?.description ||
+      skill.title;
+    const incorrectBasic = relatedCompetency?.basic[0] || distractor;
+    const incorrectAdvanced = relatedCompetency?.advanced[0] || distractor;
+    return {
+      prompt: t(
+        `Hvilken handling viser best ${academyCurriculumLevelLabel(skill.level, true)} mestring i ${skill.title.toLowerCase()}?`,
+        `Which action best demonstrates ${academyCurriculumLevelLabel(skill.level, false)} mastery in ${skill.title.toLowerCase()}?`,
+      ),
+      hint: t(
+        'Velg alternativet som beskriver trygg, selvstendig utførelse i praksis.',
+        'Choose the option that describes confident, independent execution in practice.',
+      ),
+      competency: skill.competency,
+      skillTitle: skill.title,
+      level: skill.level,
+      type: 'single-choice' as const,
+      options: [
+        {
+          label: 'A',
+          text: incorrectBasic,
+          isCorrect: false,
+          explanation: t('Dette beskriver et mer grunnleggende nivå.', 'This describes a more basic level.'),
+        },
+        {
+          label: 'B',
+          text: correctOperational,
+          isCorrect: true,
+          explanation: t('Dette viser operativ, observerbar mestring i arbeidssituasjonen.', 'This shows operational, observable mastery in the work setting.'),
+        },
+        {
+          label: 'C',
+          text: incorrectAdvanced,
+          isCorrect: false,
+          explanation: t('Dette ligger typisk på et mer avansert nivå.', 'This typically belongs to a more advanced level.'),
+        },
+        {
+          label: 'D',
+          text: distractor,
+          isCorrect: false,
+          explanation: t('Dette er ikke den beste praksisen i denne konteksten.', 'This is not the best practice in this context.'),
+        },
+      ],
+      acceptedAnswers: [],
+      explanation: t(
+        `${academyCurriculumLevelLabel(skill.level, true)} mestring i ${skill.title.toLowerCase()} betyr at ferdigheten brukes riktig i reelle arbeidssituasjoner.`,
+        `${academyCurriculumLevelLabel(skill.level, false)} mastery in ${skill.title.toLowerCase()} means the skill is applied correctly in real work situations.`,
+      ),
+      timestampRatio: academyPresentationClamp(0.12 + index * 0.12, 0.08, 0.88),
+      duration: 12,
+        tags: [
+          skill.competency.toLowerCase(),
+          skill.title.toLowerCase(),
+          academyCurriculumLevelLabel(skill.level, params.useNorwegian),
+          academyCurriculumIndustryProfileLabel(
+            params.industryProfile,
+            params.useNorwegian,
+            topic,
+          ),
+        ],
+      } satisfies AcademyCurriculumFoundationQuizSuggestion;
+  }).slice(0, 8);
+
+  const annotationTypes: AcademyAnnotationRecommendationType[] = [
+    'callout',
+    'note',
+    'hotspot',
+    'quiz',
+    'callout',
+    'note',
+  ];
+  const annotationSuggestions = skillSuggestions.slice(0, 8).map((skill, index) => {
+    const type = annotationTypes[index % annotationTypes.length];
+    const startRatio = academyPresentationClamp(0.06 + index * 0.1, 0.04, 0.9);
+    const endRatio = academyPresentationClamp(startRatio + (skill.level === 'advanced' ? 0.11 : 0.09), startRatio + 0.04, 0.98);
+    return {
+      type,
+      title:
+        type === 'quiz'
+          ? t(`Sjekk ${skill.title}`, `Check ${skill.title}`)
+          : skill.title,
+      content:
+        type === 'quiz'
+          ? t(
+              `Hvordan ville du demonstrert ${academyCurriculumLevelLabel(skill.level, true)} mestring av ${skill.title.toLowerCase()} her?`,
+              `How would you demonstrate ${academyCurriculumLevelLabel(skill.level, false)} mastery of ${skill.title.toLowerCase()} here?`,
+            )
+          : skill.objective,
+      competency: skill.competency,
+      skillTitle: skill.title,
+      level: skill.level,
+      startRatio,
+      endRatio,
+      actionType: type === 'quiz' ? 'showQuiz' : 'showContent',
+      actionTarget: undefined,
+    } satisfies AcademyCurriculumFoundationAnnotationSuggestion;
+  });
+
+  return {
+    competencyMap,
+    studioSuggestions: {
+      skills: skillSuggestions,
+      quiz: quizSuggestions,
+      annotations: annotationSuggestions,
+    },
+  };
+};
+
+const academyCurriculumEnrichRecommendation = (params: {
+  answers: AcademyCurriculumFoundationAnswer[];
+  recommendation: AcademyCurriculumFoundationRecommendation;
+  useNorwegian: boolean;
+  industryProfile: AcademyCurriculumIndustryProfileId;
+}): AcademyCurriculumFoundationRecommendation => {
+  const generated = academyCurriculumBuildCompetencyMapsAndSuggestions(params);
+  const existingArchitecture = academyCurriculumNormalizeArchitecture(
+    params.recommendation.architecture,
+  );
+  const existingCompetencyMap = Array.isArray(existingArchitecture.competencyMap)
+    ? existingArchitecture.competencyMap
+    : [];
+  const existingStudioSuggestions = existingArchitecture.studioSuggestions || {
+    skills: [],
+    quiz: [],
+    annotations: [],
+  };
+  const mergedArchitecture = academyCurriculumNormalizeArchitecture({
+    ...existingArchitecture,
+    competencyMap:
+      existingCompetencyMap.length > 0
+        ? existingCompetencyMap
+        : generated.competencyMap,
+    studioSuggestions: {
+      skills:
+        existingStudioSuggestions.skills.length > 0
+          ? existingStudioSuggestions.skills
+          : generated.studioSuggestions.skills,
+      quiz:
+        existingStudioSuggestions.quiz.length > 0
+          ? existingStudioSuggestions.quiz
+          : generated.studioSuggestions.quiz,
+      annotations:
+        existingStudioSuggestions.annotations.length > 0
+          ? existingStudioSuggestions.annotations
+          : generated.studioSuggestions.annotations,
+    },
+  });
+
+  return {
+    ...params.recommendation,
+    architecture: mergedArchitecture,
+  };
+};
+
+const academyCurriculumBuildSectionRationales = (params: {
+  answers: AcademyCurriculumFoundationAnswer[];
+  recommendation: AcademyCurriculumFoundationRecommendation;
+  useNorwegian: boolean;
+}): AcademyCurriculumFoundationSectionRationale[] => {
+  const t = (no: string, en: string) => (params.useNorwegian ? no : en);
+  const answerById = new Map(
+    params.answers.map((entry) => [entry.id, entry.answer.trim()]),
+  );
+  const competencyName =
+    params.recommendation.competencyName || t('kompetansegrunnlaget', 'the competency foundation');
+  const firstCompetencies = params.recommendation.architecture.competencies
+    .slice(0, 3)
+    .join(', ');
+  const firstSkills = params.recommendation.architecture.skills
+    .slice(0, 3)
+    .join(', ');
+  const firstProblems = params.recommendation.architecture.problemsSolved
+    .slice(0, 2)
+    .join(', ');
+  const recommendationCompetencyMap = Array.isArray(
+    params.recommendation.architecture.competencyMap,
+  )
+    ? params.recommendation.architecture.competencyMap
+    : [];
+  const recommendationStudioSuggestions =
+    params.recommendation.architecture.studioSuggestions || {
+      skills: [],
+      quiz: [],
+      annotations: [],
+    };
+  const firstCompetencyMap = recommendationCompetencyMap
+    .slice(0, 2)
+    .map((entry) => entry.title)
+    .join(', ');
+  const suggestionCounts = [
+    recommendationStudioSuggestions.skills.length > 0
+      ? `${recommendationStudioSuggestions.skills.length} ${t('ferdighetsforslag', 'skill suggestions')}`
+      : '',
+    recommendationStudioSuggestions.quiz.length > 0
+      ? `${recommendationStudioSuggestions.quiz.length} ${t('quizforslag', 'quiz suggestions')}`
+      : '',
+    recommendationStudioSuggestions.annotations.length > 0
+      ? `${recommendationStudioSuggestions.annotations.length} ${t('annoteringsforslag', 'annotation suggestions')}`
+      : '',
+  ]
+    .filter((entry) => entry.length > 0)
+    .join(' · ');
+
+  return [
+    {
+      section: t('Formål', 'Purpose'),
+      reason: t(
+        `Formålet er formulert for å gjøre ${competencyName} praktisk og relevant i arbeidshverdagen.`,
+        `The purpose is framed to make ${competencyName} practical and relevant in daily work.`,
+      ),
+      evidence: academyCurriculumBuildAnswerEvidence({
+        answerById,
+        ids: ['competencyTopic', 'competencySubtype', 'contextConstraint'],
+        useNorwegian: params.useNorwegian,
+      }),
+    },
+    {
+      section: t('Målgruppe', 'Audience'),
+      reason: t(
+        `Målgruppen er spisset for å justere nivå, språk og ansvar i opplegget.`,
+        `The audience is sharpened to adjust level, language, and responsibility in the program.`,
+      ),
+      evidence: academyCurriculumBuildAnswerEvidence({
+        answerById,
+        ids: ['targetAudience', 'competencySubtype'],
+        useNorwegian: params.useNorwegian,
+      }) || params.recommendation.architecture.audience,
+    },
+    {
+      section: t('Kompetanser', 'Competencies'),
+      reason: t(
+        `Kompetansene er valgt for å dekke kjerneområdene som må mestres i denne konteksten.`,
+        `The competencies were selected to cover the core areas that must be mastered in this context.`,
+      ),
+      evidence: firstCompetencies,
+    },
+    {
+      section: t('Ferdigheter', 'Skills'),
+      reason: t(
+        `Ferdighetene er gjort konkrete slik at de kan trenes, observeres og vurderes.`,
+        `The skills are made concrete so they can be practiced, observed, and assessed.`,
+      ),
+      evidence: firstSkills,
+    },
+    {
+      section: t('Transformasjon og bevis', 'Transformation and proof'),
+      reason: t(
+        'Transformasjon og proof of learning er koblet sammen, slik at ønsket effekt blir målbar.',
+        'Transformation and proof of learning are linked so the desired effect becomes measurable.',
+      ),
+      evidence: academyCurriculumBuildAnswerEvidence({
+        answerById,
+        ids: ['desiredTransformation', 'contextConstraint'],
+        useNorwegian: params.useNorwegian,
+      }) || params.recommendation.architecture.proofOfLearning,
+    },
+    {
+      section: t('Problemområder', 'Problems solved'),
+      reason: t(
+        'Problemområdene er tatt med for å gjøre opplæringen relevant for faktiske friksjoner i praksis.',
+        'The problems solved are included to make the training relevant to real friction in practice.',
+      ),
+      evidence: firstProblems,
+    },
+    {
+      section: t('Kompetansekart per nivå', 'Competency map by level'),
+      reason: t(
+        'Kompetansekartet deler mestring i grunnleggende, operativt og avansert nivå slik at progresjonen blir tydelig.',
+        'The competency map splits mastery into basic, operational, and advanced levels so progression becomes clear.',
+      ),
+      evidence: firstCompetencyMap,
+    },
+    {
+      section: t('Studioforslag', 'Studio suggestions'),
+      reason: t(
+        'Ferdigheter, quiz og annoteringer bygges fra det samme intervjuet for å holde flyten konsistent i hele Academy.',
+        'Skills, quiz, and annotations are built from the same interview to keep the flow consistent across Academy.',
+      ),
+      evidence: suggestionCounts,
+    },
+  ].filter(
+    (entry) =>
+      entry.section.trim().length > 0 &&
+      entry.reason.trim().length > 0 &&
+      entry.evidence.trim().length > 0,
+  );
+};
+
+const academyCurriculumBuildFoundationFallback = async (params: {
+  courseTitle: string;
+  useNorwegian: boolean;
+  answers: AcademyCurriculumFoundationAnswer[];
+  currentArchitecture: AcademyCurriculumFoundationArchitecture;
+  manualIndustryProfile?: AcademyCurriculumIndustryProfileId;
+  templateMemory: AcademyCurriculumFoundationTemplateMemoryItem[];
+}): Promise<AcademyCurriculumFoundationAssistantResult> => {
+  const answerById = new Map(
+    params.answers.map((entry) => [entry.id, entry.answer.trim()]),
+  );
+  const topic = String(answerById.get('competencyTopic') || params.courseTitle || '').trim();
+  const { domainResolution, templateMatch } = await academyCurriculumResolveDomain({
+    answers: params.answers,
+    courseTitle: params.courseTitle,
+    useNorwegian: params.useNorwegian,
+    manualIndustryProfile: params.manualIndustryProfile,
+    templateMemory: params.templateMemory,
+  });
+  const projectTemplateId = academyCurriculumInferProjectTemplateId(
+    [topic, answerById.get('competencySubtype') || ''].join(' '),
+  );
+  const industryProfile = domainResolution.profile;
+  const nextQuestion = academyCurriculumQuestionForState({
+    answers: params.answers,
+    useNorwegian: params.useNorwegian,
+    projectTemplateId,
+    industryProfile,
+    domainResolution,
+  });
+  const generationStage = academyCurriculumResolveGenerationStage({
+    answers: params.answers,
+    useNorwegian: params.useNorwegian,
+    completed: nextQuestion === null,
+  });
+  const generatedRecommendation = academyCurriculumEnrichRecommendation({
+    answers: params.answers,
+    recommendation: academyCurriculumBuildHeuristicRecommendation(params),
+    useNorwegian: params.useNorwegian,
+    industryProfile,
+  });
+  const memoryAwareRecommendation = academyCurriculumMergeRecommendationWithTemplateMemory({
+    recommendation: generatedRecommendation,
+    templateMatch,
+    templateMemory: params.templateMemory,
+    useNorwegian: params.useNorwegian,
+  });
+  const recommendation = academyCurriculumApplyStageToRecommendation({
+    currentArchitecture: params.currentArchitecture,
+    recommendation: memoryAwareRecommendation,
+    stage: generationStage,
+  });
+  const completed = nextQuestion === null;
+  return {
+    completed,
+    totalQuestions: ACADEMY_CURRICULUM_FOUNDATION_TOTAL_QUESTIONS,
+    answeredCount: params.answers.length,
+    answers: params.answers,
+    nextQuestion,
+    recommendation,
+    industryProfile,
+    domainResolution,
+    generationStage,
+    templateMatch,
+    progress: academyCurriculumBuildProgress({
+      answers: params.answers,
+      useNorwegian: params.useNorwegian,
+      industryProfile,
+      completed,
+    }),
+    sectionRationales: academyCurriculumBuildSectionRationales({
+      answers: params.answers,
+      recommendation,
+      useNorwegian: params.useNorwegian,
+    }),
+    provider: 'heuristic',
+    model: '',
+  };
+};
+
+const academyCurriculumNormalizeQuestion = (
+  value: unknown,
+  fallback: AcademyCurriculumFoundationQuestion | null,
+): AcademyCurriculumFoundationQuestion | null => {
+  if (!academyPresentationIsRecord(value)) return fallback;
+  const id = academyCurriculumNormalizeQuestionId(value.id);
+  const question = academyCurriculumTrimText(value.question, 220);
+  const placeholder = academyCurriculumTrimText(value.placeholder, 220);
+  const helpText = academyCurriculumTrimText(value.helpText, 260);
+  const suggestions = academyCurriculumDedupedList(value.suggestions, 6, 80);
+  if (!id || !question) return fallback;
+  return {
+    id,
+    question,
+    placeholder: placeholder || fallback?.placeholder || '',
+    helpText: helpText || fallback?.helpText || '',
+    suggestions: suggestions.length > 0 ? suggestions : fallback?.suggestions || [],
+  };
+};
+
+const academyCurriculumNormalizeRecommendation = (
+  value: unknown,
+  fallback: AcademyCurriculumFoundationRecommendation,
+): AcademyCurriculumFoundationRecommendation => {
+  const record = academyPresentationIsRecord(value) ? value : {};
+  const recommendedProjectTemplateId = academyCurriculumInferProjectTemplateId(
+    academyCurriculumTrimText(record.recommendedProjectTemplateId, 120),
+  ) || fallback.recommendedProjectTemplateId;
+  const competencyName =
+    academyCurriculumTrimText(record.competencyName, 180) ||
+    fallback.competencyName;
+  const rationale = academyCurriculumDedupedList(record.rationale, 5, 180);
+  return {
+    competencyName,
+    recommendedProjectTemplateId,
+    rationale: rationale.length > 0 ? rationale : fallback.rationale,
+    architecture: academyCurriculumNormalizeArchitecture(
+      academyPresentationIsRecord(record.architecture) ? record.architecture : {},
+      fallback.architecture,
+    ),
+  };
+};
+
+const academyCurriculumTryQwenFoundationAssistant = async (params: {
+  courseTitle: string;
+  currentArchitecture: AcademyCurriculumFoundationArchitecture;
+  useNorwegian: boolean;
+  answers: AcademyCurriculumFoundationAnswer[];
+  fallback: AcademyCurriculumFoundationAssistantResult;
+  templateMemory: AcademyCurriculumFoundationTemplateMemoryItem[];
+}): Promise<AcademyCurriculumFoundationAssistantResult | null> => {
+  const huggingFaceToken =
+    readString(process.env.HUGGINGFACE_TOKEN) || readString(process.env.HF_TOKEN);
+  if (!huggingFaceToken) return null;
+
+  const modelListRaw =
+    readString(process.env.ACADEMY_CURRICULUM_FOUNDATION_MODELS) ||
+    readString(process.env.ACADEMY_PRESENTATION_DESIGN_HF_MODELS) ||
+    'Qwen/Qwen3-32B,Qwen/Qwen3-14B';
+  const modelList = modelListRaw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .slice(0, 4);
+  if (modelList.length === 0) return null;
+
+  const systemPrompt = [
+    'You are an academy curriculum foundation assistant.',
+    'Return strict JSON object only.',
+    'You ask one follow-up question at a time and continuously refine the competency foundation.',
+    'Mirror the user topic exactly. Never switch the domain to sales unless the user explicitly mentions sales-related work.',
+    'If the user writes HR, leadership, customer service, healthcare, or another domain, keep that exact domain.',
+    'If no known profile fits, treat the topic as a custom domain and keep the user topic verbatim in questions and recommendations.',
+    'Adapt the next question to the resolved industry profile and stage of the interview.',
+    'Supported profile examples include sales, leadership, customer service, HR, healthcare, IT operations, compliance, education, production, offshore safety, marketing, project management, finance, legal, retail, logistics, construction, hospitality, procurement, real estate, and creative disciplines.',
+    'If domainResolution.needsConfirmation is true, ask a short clarification question before moving on.',
+    'Only refresh the sections listed in generationStage.sectionsToRefresh. Keep the rest aligned with currentArchitecture or fallback.',
+    'Keep next question short, specific, and practical.',
+    'Always return a complete recommendation object with all architecture fields populated, including a competency map and downstream studio suggestions, even if some sections will be merged later.',
+    'Schema:',
+    '{"completed":boolean,"nextQuestion":{"id":"competencySubtype|targetAudience|desiredTransformation|contextConstraint","question":"string","placeholder":"string","helpText":"string","suggestions":["string"]},"recommendation":{"competencyName":"string","recommendedProjectTemplateId":"sales-enablement-a-a|production-operations-a-a|offshore-safety-a-a|","rationale":["string"],"architecture":{"purpose":"string","audience":"string","transformation":"string","competencies":["string"],"skills":["string"],"transformations":["string"],"skillMap":[{"title":"string","focus":"string"}],"competencyMap":[{"title":"string","description":"string","basic":["string"],"operational":["string"],"advanced":["string"]}],"problemsSolved":["string"],"learningJourney":"string","practiceDesign":"string","proofOfLearning":"string","studioSuggestions":{"skills":[{"title":"string","competency":"string","level":"basic|operational|advanced","objective":"string","recommendedDurationMinutes":8}],"quiz":[{"prompt":"string","hint":"string","competency":"string","skillTitle":"string","level":"basic|operational|advanced","type":"single-choice|multi-select|true-false|short-answer","options":[{"label":"A","text":"string","isCorrect":true,"explanation":"string"}],"acceptedAnswers":["string"],"explanation":"string","timestampRatio":0.18,"duration":12,"tags":["string"]}],"annotations":[{"type":"callout|note|hotspot|quiz|link|image|video","title":"string","content":"string","competency":"string","skillTitle":"string","level":"basic|operational|advanced","startRatio":0.1,"endRatio":0.2,"actionType":"showContent|showQuiz|openLink|playVideo|navigate","actionTarget":"string"}]}}}}',
+  ].join('\n');
+
+  const userPayload = {
+    language: params.useNorwegian ? 'no' : 'en',
+    courseTitle: params.courseTitle,
+    answers: params.answers,
+    domainResolution: params.fallback.domainResolution,
+    generationStage: params.fallback.generationStage,
+    industryProfileHint: params.fallback.domainResolution.profile,
+    expectedTemplateHint: params.fallback.recommendation.recommendedProjectTemplateId,
+    currentArchitecture: params.currentArchitecture,
+    templateMemory: params.templateMemory.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      profileHint: entry.profileHint,
+      sourceProjectTemplateId: entry.sourceProjectTemplateId,
+      searchText: entry.searchText,
+    })),
+    matchedTemplate: params.fallback.templateMatch,
+    fallback: {
+      completed: params.fallback.completed,
+      nextQuestion: params.fallback.nextQuestion,
+      recommendation: params.fallback.recommendation,
+    },
+  };
+
+  for (const modelName of modelList) {
+    try {
+      const routerResponse = await fetch('https://router.huggingface.co/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${huggingFaceToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: modelName,
+          temperature: 0.2,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: JSON.stringify(userPayload) },
+          ],
+        }),
+        signal: AbortSignal.timeout(35_000),
+      });
+      if (!routerResponse.ok) continue;
+
+      const routerPayload = (await routerResponse.json()) as unknown;
+      if (!academyPresentationIsRecord(routerPayload)) continue;
+      const choices = Array.isArray(routerPayload.choices) ? routerPayload.choices : [];
+      const firstChoice = academyPresentationIsRecord(choices[0]) ? choices[0] : null;
+      const message = academyPresentationIsRecord(firstChoice?.message) ? firstChoice.message : null;
+      const contentRaw = String(readString(message?.content) || '');
+      if (!contentRaw) continue;
+      const parsed = academyPresentationParseJsonObjectFromText(contentRaw);
+      if (!parsed) continue;
+
+      const recommendation = academyCurriculumNormalizeRecommendation(
+        parsed.recommendation,
+        params.fallback.recommendation,
+      );
+      if (
+        academyCurriculumRecommendationLooksOffTopic({
+          recommendation,
+          answers: params.answers,
+          courseTitle: params.courseTitle,
+          expectedProfile: params.fallback.domainResolution.profile,
+          expectedTemplateId: params.fallback.recommendation.recommendedProjectTemplateId,
+        })
+      ) {
+        return null;
+      }
+      const nextQuestion = academyCurriculumNormalizeQuestion(
+        parsed.nextQuestion,
+        params.fallback.nextQuestion,
+      );
+      if (
+        academyCurriculumQuestionLooksOffTopic({
+          question: nextQuestion,
+          answers: params.answers,
+          courseTitle: params.courseTitle,
+          expectedProfile: params.fallback.domainResolution.profile,
+          expectedTemplateId: params.fallback.recommendation.recommendedProjectTemplateId,
+        })
+      ) {
+        return null;
+      }
+      const completed =
+        readBoolean(parsed.completed) === true || nextQuestion === null;
+      const industryProfile = params.fallback.domainResolution.profile;
+      const generationStage = academyCurriculumResolveGenerationStage({
+        answers: params.answers,
+        useNorwegian: params.useNorwegian,
+        completed,
+      });
+      const enrichedRecommendation = academyCurriculumEnrichRecommendation({
+        answers: params.answers,
+        recommendation,
+        useNorwegian: params.useNorwegian,
+        industryProfile,
+      });
+      const memoryAwareRecommendation = academyCurriculumMergeRecommendationWithTemplateMemory({
+        recommendation: enrichedRecommendation,
+        templateMatch: params.fallback.templateMatch,
+        templateMemory: params.templateMemory,
+        useNorwegian: params.useNorwegian,
+      });
+      const stagedRecommendation = academyCurriculumApplyStageToRecommendation({
+        currentArchitecture: params.currentArchitecture,
+        recommendation: memoryAwareRecommendation,
+        stage: generationStage,
+      });
+
+      return {
+        completed,
+        totalQuestions: ACADEMY_CURRICULUM_FOUNDATION_TOTAL_QUESTIONS,
+        answeredCount: params.answers.length,
+        answers: params.answers,
+        nextQuestion: completed ? null : nextQuestion,
+        recommendation: stagedRecommendation,
+        industryProfile,
+        domainResolution: params.fallback.domainResolution,
+        generationStage,
+        templateMatch: params.fallback.templateMatch,
+        progress: academyCurriculumBuildProgress({
+          answers: params.answers,
+          useNorwegian: params.useNorwegian,
+          industryProfile,
+          completed,
+        }),
+        sectionRationales: academyCurriculumBuildSectionRationales({
+          answers: params.answers,
+          recommendation: stagedRecommendation,
+          useNorwegian: params.useNorwegian,
+        }),
+        provider: 'qwen',
+        model: modelName,
+      };
+    } catch (error) {
+      console.warn('Academy curriculum Qwen foundation generation failed:', modelName, error);
+    }
+  }
+
+  return null;
+};
+
+app.post('/api/academy/curriculum/foundation-assistant', async (req, res) => {
+  try {
+    const body = academyPresentationIsRecord(req.body) ? req.body : {};
+    const useNorwegian = readBoolean(body.useNorwegian) === true;
+    const courseTitle = academyCurriculumTrimText(body.courseTitle, 220);
+    const provider = String(
+      readString(body.provider) ||
+      readString(process.env.ACADEMY_CURRICULUM_FOUNDATION_PROVIDER) ||
+      'auto',
+    ).trim().toLowerCase();
+    const answers = academyCurriculumNormalizeAnswers(body.answers);
+    const manualIndustryProfile = (() => {
+      const normalized = academyCurriculumTrimText(body.manualIndustryProfile, 64);
+      if (!normalized) return undefined;
+      const explicit = academyCurriculumNormalizeIndustryProfileId(normalized);
+      if (explicit) return explicit;
+      const inferred = academyCurriculumInferIndustryProfile(normalized);
+      return inferred === 'generic' ? undefined : inferred;
+    })();
+    const templateMemory = academyCurriculumNormalizeTemplateMemory(body.templateMemory);
+    const currentArchitecture = academyCurriculumNormalizeArchitecture(
+      body.currentArchitecture,
+    );
+    const currentArchitectureForGeneration =
+      academyCurriculumShouldResetCurrentArchitecture({
+        answers,
+        courseTitle,
+        currentArchitecture,
+      })
+        ? academyCurriculumNormalizeArchitecture({})
+        : currentArchitecture;
+
+    const fallback = await academyCurriculumBuildFoundationFallback({
+      courseTitle,
+      useNorwegian,
+      answers,
+      currentArchitecture: currentArchitectureForGeneration,
+      manualIndustryProfile,
+      templateMemory,
+    });
+
+    const shouldTryQwen =
+      provider === 'qwen' ||
+      provider === 'huggingface' ||
+      provider === 'hf' ||
+      ((provider === 'auto' || provider === '') &&
+        answers.length >= 2 &&
+        fallback.domainResolution.confidence >= 0.58 &&
+        !fallback.domainResolution.needsConfirmation);
+    const llmResult = shouldTryQwen
+      ? await academyCurriculumTryQwenFoundationAssistant({
+          courseTitle,
+          currentArchitecture: currentArchitectureForGeneration,
+          useNorwegian,
+          answers,
+          fallback,
+          templateMemory,
+        })
+      : null;
+
+    const result = llmResult || fallback;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        completed: result.completed,
+        totalQuestions: result.totalQuestions,
+        answeredCount: result.answeredCount,
+        answers: result.answers,
+        nextQuestion: result.nextQuestion,
+        recommendation: result.recommendation,
+        progress: result.progress,
+        sectionRationales: result.sectionRationales,
+        meta: {
+          provider: result.provider,
+          model: result.model || undefined,
+          industryProfile: result.industryProfile,
+          domainResolution: result.domainResolution,
+          generationStage: result.generationStage,
+          templateMatch: result.templateMatch,
+          generatedAt: new Date().toISOString(),
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error generating academy curriculum foundation suggestion:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Could not generate curriculum foundation suggestion',
+    });
+  }
+});
+
+type AcademyAnnotationRecommendationType =
+  | 'hotspot'
+  | 'callout'
+  | 'note'
+  | 'quiz'
+  | 'link'
+  | 'image'
+  | 'video';
+
+type AcademyAnnotationRecommendationActionType =
+  | 'navigate'
+  | 'showContent'
+  | 'openLink'
+  | 'playVideo'
+  | 'showQuiz';
+
+interface AcademyAnnotationRecommendationItem {
+  type: AcademyAnnotationRecommendationType;
+  title: string;
+  content: string;
+  startTime: number;
+  endTime: number;
+  actionType?: AcademyAnnotationRecommendationActionType;
+  actionTarget?: string;
+  confidence?: number;
+}
+
+const academyAnnotationNormalizeType = (
+  value: unknown,
+): AcademyAnnotationRecommendationType => {
+  const normalized = String(readString(value) || '').trim().toLowerCase();
+  if (normalized === 'hotspot') return normalized;
+  if (normalized === 'note') return normalized;
+  if (normalized === 'quiz') return normalized;
+  if (normalized === 'link') return normalized;
+  if (normalized === 'image') return normalized;
+  if (normalized === 'video') return normalized;
+  return 'callout';
+};
+
+const academyAnnotationNormalizeActionType = (
+  value: unknown,
+): AcademyAnnotationRecommendationActionType | undefined => {
+  const normalized = String(readString(value) || '').trim();
+  if (normalized === 'navigate') return normalized;
+  if (normalized === 'showContent') return normalized;
+  if (normalized === 'openLink') return normalized;
+  if (normalized === 'playVideo') return normalized;
+  if (normalized === 'showQuiz') return normalized;
+  return undefined;
+};
+
+const academyAnnotationNormalizeRecommendations = (
+  payload: unknown,
+  durationSeconds: number,
+  fallbackLocaleNorwegian: boolean,
+): AcademyAnnotationRecommendationItem[] => {
+  const safeDuration = academyPresentationClamp(Number(durationSeconds) || 300, 20, 7200);
+  if (!academyPresentationIsRecord(payload)) return [];
+  const recommendations = Array.isArray(payload.recommendations) ? payload.recommendations : [];
+  if (recommendations.length === 0) return [];
+
+  const normalized: AcademyAnnotationRecommendationItem[] = [];
+  recommendations.slice(0, 10).forEach((entry, index) => {
+    if (!academyPresentationIsRecord(entry)) return;
+    const type = academyAnnotationNormalizeType(entry.type);
+    const titleRaw = String(readString(entry.title) || '').trim();
+    const contentRaw = String(readString(entry.content) || '').trim();
+    const defaultTitle = fallbackLocaleNorwegian
+      ? `Anbefalt annotering ${index + 1}`
+      : `Recommended annotation ${index + 1}`;
+    const title = (titleRaw || defaultTitle).slice(0, 140);
+    const content = (contentRaw || titleRaw || defaultTitle).slice(0, 520);
+
+    const fallbackStart = ((index + 1) * safeDuration) / Math.max(2, Math.min(recommendations.length + 1, 9));
+    const startTime = academyPresentationClamp(
+      Number(readNumber(entry.startTime) || fallbackStart),
+      0,
+      Math.max(0, safeDuration - 1.5),
+    );
+    const endTime = academyPresentationClamp(
+      Number(readNumber(entry.endTime) || startTime + 6),
+      startTime + 1.5,
+      safeDuration,
+    );
+
+    const actionType = academyAnnotationNormalizeActionType(entry.actionType);
+    const actionTarget = String(readString(entry.actionTarget) || '').trim().slice(0, 400);
+    const confidence = academyPresentationClamp(
+      Number(readNumber(entry.confidence) || 0.72),
+      0,
+      1,
+    );
+
+    normalized.push({
+      type,
+      title,
+      content,
+      startTime: Number(startTime.toFixed(2)),
+      endTime: Number(endTime.toFixed(2)),
+      actionType,
+      actionTarget: actionTarget || undefined,
+      confidence: Number(confidence.toFixed(2)),
+    });
+  });
+
+  return normalized;
+};
+
+const academyAnnotationFallbackRecommendations = (params: {
+  intent: string;
+  useNorwegian: boolean;
+  videoDuration: number;
+}): AcademyAnnotationRecommendationItem[] => {
+  const { intent, useNorwegian, videoDuration } = params;
+  const safeDuration = academyPresentationClamp(Number(videoDuration) || 300, 20, 7200);
+  const at = (ratio: number): number => Number((safeDuration * ratio).toFixed(2));
+  const from = (
+    type: AcademyAnnotationRecommendationType,
+    start: number,
+    duration: number,
+    titleNo: string,
+    titleEn: string,
+    contentNo: string,
+    contentEn: string,
+    actionType?: AcademyAnnotationRecommendationActionType,
+  ): AcademyAnnotationRecommendationItem => ({
+    type,
+    title: useNorwegian ? titleNo : titleEn,
+    content: useNorwegian ? contentNo : contentEn,
+    startTime: start,
+    endTime: academyPresentationClamp(start + duration, start + 1.5, safeDuration),
+    actionType,
+    confidence: 0.66,
+  });
+
+  if (intent === 'quick-publish') {
+    return [
+      from(
+        'callout',
+        at(0.1),
+        7,
+        'Hva skal studenten få ut av denne delen?',
+        'What outcome should learners get from this section?',
+        'Oppsummer målet i én kort setning.',
+        'Summarize the lesson goal in one short sentence.',
+      ),
+      from(
+        'note',
+        at(0.58),
+        6,
+        'Nøkkelpoeng',
+        'Key takeaway',
+        'Forsterk det viktigste poenget før videoen går videre.',
+        'Reinforce the key takeaway before the video moves on.',
+      ),
+    ];
+  }
+
+  if (intent === 'quality-first') {
+    return [
+      from(
+        'callout',
+        at(0.12),
+        7,
+        'Begrep å huske',
+        'Concept to remember',
+        'Definer begrepet med enkel og tydelig tekst.',
+        'Define the concept with simple, clear wording.',
+      ),
+      from(
+        'hotspot',
+        at(0.36),
+        8,
+        'Se her',
+        'Focus area',
+        'Marker området som ofte skaper feil.',
+        'Highlight the area where learners often make mistakes.',
+        'showContent',
+      ),
+      from(
+        'quiz',
+        at(0.7),
+        10,
+        'Kvalitetssjekk',
+        'Quality check',
+        'Still ett kontrollspørsmål for å sjekke forståelse.',
+        'Ask one checkpoint question to validate understanding.',
+        'showQuiz',
+      ),
+    ];
+  }
+
+  if (intent === 'story-led') {
+    return [
+      from(
+        'note',
+        at(0.08),
+        7,
+        'Kontekst',
+        'Context',
+        'Gi en kort situasjonsbeskrivelse før handlingen starter.',
+        'Provide brief context before the action starts.',
+      ),
+      from(
+        'callout',
+        at(0.44),
+        7,
+        'Vendepunkt',
+        'Turning point',
+        'Forklar hvorfor dette steget er avgjørende.',
+        'Explain why this step is pivotal.',
+      ),
+      from(
+        'quiz',
+        at(0.78),
+        9,
+        'Refleksjon',
+        'Reflection prompt',
+        'La studenten velge riktig neste steg.',
+        'Let the learner choose the right next step.',
+        'showQuiz',
+      ),
+    ];
+  }
+
+  return [
+    from(
+      'callout',
+      at(0.1),
+      7,
+      'Læringsmål',
+      'Learning goal',
+      'Forklar hva studenten skal mestre i denne delen.',
+      'State what the learner should master in this segment.',
+    ),
+    from(
+      'hotspot',
+      at(0.34),
+      8,
+      'Fokuser her',
+      'Focus here',
+      'Marker området som er viktigst for utførelse.',
+      'Highlight the area most important for execution.',
+      'showContent',
+    ),
+    from(
+      'quiz',
+      at(0.68),
+      9,
+      'Sjekk forståelse',
+      'Knowledge check',
+      'Legg inn et kort spørsmål før studenten går videre.',
+      'Add a short question before the learner moves on.',
+      'showQuiz',
+    ),
+  ];
+};
+
+const academyAnnotationTryQwenRecommendations = async (params: {
+  intent: string;
+  useNorwegian: boolean;
+  videoDuration: number;
+  maxItems: number;
+  summary: string;
+  courseTitle: string;
+  lessonTitle: string;
+  scope: string;
+}): Promise<{ recommendations: AcademyAnnotationRecommendationItem[]; model: string } | null> => {
+  const huggingFaceToken =
+    readString(process.env.HUGGINGFACE_TOKEN) || readString(process.env.HF_TOKEN);
+  if (!huggingFaceToken) return null;
+
+  const modelListRaw =
+    readString(process.env.ACADEMY_ANNOTATION_RECOMMENDATION_MODELS) ||
+    readString(process.env.ACADEMY_PRESENTATION_DESIGN_HF_MODELS) ||
+    'Qwen/Qwen3-32B,Qwen/Qwen3-14B';
+  const modelList = modelListRaw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .slice(0, 4);
+  if (modelList.length === 0) return null;
+
+  const safeDuration = academyPresentationClamp(Number(params.videoDuration) || 300, 20, 7200);
+  const safeMaxItems = Math.max(1, Math.min(10, Number(params.maxItems) || 6));
+  const systemPrompt = [
+    'You create precise training video annotation recommendations.',
+    'Return strict JSON object only.',
+    'Schema:',
+    '{"recommendations":[{"type":"callout|note|hotspot|quiz|link|image|video","title":"string","content":"string","startTime":number,"endTime":number,"actionType":"showQuiz|openLink|showContent|navigate|playVideo","actionTarget":"string","confidence":number}]}',
+    `Rules: max ${safeMaxItems} recommendations, 1.5-14 seconds each, timeline within 0-${safeDuration}.`,
+    'Prefer pedagogically useful placements (intro, key decision moments, recap/checkpoint).',
+  ].join('\n');
+
+  const userPayload = {
+    scope: params.scope,
+    intent: params.intent,
+    courseTitle: params.courseTitle,
+    lessonTitle: params.lessonTitle,
+    useNorwegian: params.useNorwegian,
+    videoDuration: safeDuration,
+    maxItems: safeMaxItems,
+    summary: params.summary,
+  };
+
+  for (const modelName of modelList) {
+    try {
+      const routerResponse = await fetch('https://router.huggingface.co/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${huggingFaceToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: modelName,
+          temperature: 0.2,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: JSON.stringify(userPayload) },
+          ],
+        }),
+        signal: AbortSignal.timeout(35_000),
+      });
+      if (!routerResponse.ok) {
+        continue;
+      }
+
+      const routerPayload = (await routerResponse.json()) as unknown;
+      if (!academyPresentationIsRecord(routerPayload)) continue;
+      const choices = Array.isArray(routerPayload.choices) ? routerPayload.choices : [];
+      const firstChoice = academyPresentationIsRecord(choices[0]) ? choices[0] : null;
+      const message = academyPresentationIsRecord(firstChoice?.message) ? firstChoice.message : null;
+      const contentRaw = String(readString(message?.content) || '');
+      if (!contentRaw) continue;
+      const parsed = academyPresentationParseJsonObjectFromText(contentRaw);
+      if (!parsed) continue;
+      const normalized = academyAnnotationNormalizeRecommendations(
+        parsed,
+        safeDuration,
+        params.useNorwegian,
+      );
+      if (normalized.length === 0) continue;
+      return { recommendations: normalized.slice(0, safeMaxItems), model: modelName };
+    } catch (error) {
+      console.warn('Academy annotation Qwen generation failed:', modelName, error);
+    }
+  }
+
+  return null;
+};
+
+app.post('/api/academy/annotation/recommendations', async (req, res) => {
+  try {
+    const body = academyPresentationIsRecord(req.body) ? req.body : {};
+    const intent = String(readString(body.intent) || 'interactive-lesson').trim().toLowerCase();
+    const scope = String(readString(body.scope) || 'course').trim().toLowerCase();
+    const useNorwegian = readBoolean(body.useNorwegian) === true;
+    const courseTitle = String(readString(body.courseTitle) || '').trim().slice(0, 220);
+    const lessonTitle = String(readString(body.lessonTitle) || '').trim().slice(0, 220);
+    const summary = String(readString(body.summary) || '').trim().slice(0, 7000);
+    const videoDuration = academyPresentationClamp(
+      Number(readNumber(body.videoDuration) || 300),
+      20,
+      7200,
+    );
+    const maxItems = academyPresentationClamp(
+      Number(readNumber(body.maxItems) || 6),
+      1,
+      10,
+    );
+    const provider = String(
+      readString(body.provider) ||
+      readString(process.env.ACADEMY_ANNOTATION_RECOMMENDATION_PROVIDER) ||
+      'qwen',
+    ).trim().toLowerCase();
+
+    const shouldTryQwen = provider === 'qwen' || provider === 'huggingface' || provider === 'hf';
+    const llmResult = shouldTryQwen
+      ? await academyAnnotationTryQwenRecommendations({
+          intent,
+          scope,
+          useNorwegian,
+          videoDuration,
+          maxItems,
+          courseTitle,
+          lessonTitle,
+          summary,
+        })
+      : null;
+
+    const fallback = academyAnnotationFallbackRecommendations({
+      intent,
+      useNorwegian,
+      videoDuration,
+    }).slice(0, maxItems);
+
+    const recommendations =
+      llmResult?.recommendations?.length ? llmResult.recommendations : fallback;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        intent,
+        scope,
+        recommendations,
+        meta: {
+          provider: llmResult ? 'qwen' : 'heuristic',
+          model: llmResult?.model || undefined,
+          generatedAt: new Date().toISOString(),
+          videoDuration,
+          maxItems,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error generating academy annotation recommendations:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Could not generate annotation recommendations',
+    });
+  }
+});
+
+interface AcademyPresentationSemanticSearchItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  text: string;
+  tags: string[];
+  searchText: string;
+}
+
+const academyPresentationNormalizeSemanticSearchItem = (
+  value: unknown,
+  index: number,
+): AcademyPresentationSemanticSearchItem | null => {
+  if (!academyPresentationIsRecord(value)) return null;
+  const id = String(readString(value.id) || `item-${index + 1}`).trim().slice(0, 120);
+  if (!id) return null;
+  const title = String(readString(value.title) || '').trim().slice(0, 180);
+  const subtitle = String(readString(value.subtitle) || '').trim().slice(0, 260);
+  const text = String(readString(value.text) || '').trim().slice(0, 3200);
+  const tags = Array.isArray(value.tags)
+    ? value.tags
+        .map((entry) => String(readString(entry) || '').trim().slice(0, 48))
+        .filter((entry) => entry.length > 0)
+        .slice(0, 16)
+    : [];
+  const searchText = [title, subtitle, text, tags.join(' ')].join('\n').trim();
+  if (!searchText) return null;
+  return { id, title, subtitle, text, tags, searchText };
+};
+
+const academyPresentationNormalizeNumericVector = (value: unknown): number[] | null => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const numeric = value
+    .map((entry) => Number(entry))
+    .filter((entry) => Number.isFinite(entry));
+  if (numeric.length === 0 || numeric.length !== value.length) return null;
+  return numeric;
+};
+
+const academyPresentationPoolTokenEmbeddings = (value: unknown): number[] | null => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const tokenVectors = value
+    .map((entry) => academyPresentationNormalizeNumericVector(entry))
+    .filter((entry): entry is number[] => Boolean(entry));
+  if (tokenVectors.length === 0) return null;
+  const dimensions = tokenVectors[0].length;
+  if (dimensions === 0) return null;
+  const sums = new Array<number>(dimensions).fill(0);
+  let count = 0;
+  tokenVectors.forEach((vector) => {
+    if (vector.length !== dimensions) return;
+    for (let i = 0; i < dimensions; i += 1) sums[i] += vector[i];
+    count += 1;
+  });
+  if (count === 0) return null;
+  return sums.map((valueItem) => valueItem / count);
+};
+
+const academyPresentationExtractEmbeddingVectors = (
+  payload: unknown,
+  expectedCount: number,
+): number[][] | null => {
+  if (Array.isArray(payload)) {
+    const singleVector = academyPresentationNormalizeNumericVector(payload);
+    if (singleVector && expectedCount <= 1) return [singleVector];
+
+    const vectors = payload
+      .map((entry) => academyPresentationNormalizeNumericVector(entry))
+      .filter((entry): entry is number[] => Boolean(entry));
+    if (vectors.length === payload.length && vectors.length >= expectedCount) {
+      return vectors.slice(0, expectedCount);
+    }
+
+    const pooledVectors = payload
+      .map((entry) => academyPresentationPoolTokenEmbeddings(entry))
+      .filter((entry): entry is number[] => Boolean(entry));
+    if (pooledVectors.length === payload.length && pooledVectors.length >= expectedCount) {
+      return pooledVectors.slice(0, expectedCount);
+    }
+
+    const recordVectors = payload
+      .map((entry) => {
+        if (!academyPresentationIsRecord(entry)) return null;
+        return (
+          academyPresentationNormalizeNumericVector(entry.embedding) ||
+          academyPresentationNormalizeNumericVector(entry.vector) ||
+          academyPresentationNormalizeNumericVector(entry.features) ||
+          academyPresentationPoolTokenEmbeddings(entry.embedding) ||
+          academyPresentationPoolTokenEmbeddings(entry.vector) ||
+          null
+        );
+      })
+      .filter((entry): entry is number[] => Boolean(entry));
+    if (recordVectors.length === payload.length && recordVectors.length >= expectedCount) {
+      return recordVectors.slice(0, expectedCount);
+    }
+  }
+
+  if (academyPresentationIsRecord(payload)) {
+    const candidates = [
+      payload.embeddings,
+      payload.vectors,
+      payload.features,
+      payload.data,
+      payload.output,
+    ];
+    for (const candidate of candidates) {
+      const parsed = academyPresentationExtractEmbeddingVectors(candidate, expectedCount);
+      if (parsed && parsed.length >= expectedCount) return parsed.slice(0, expectedCount);
+    }
+  }
+
+  return null;
+};
+
+const academyPresentationCosineSimilarity = (a: number[], b: number[]): number => {
+  const dimensions = Math.min(a.length, b.length);
+  if (dimensions <= 0) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < dimensions; i += 1) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA <= 0 || normB <= 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+};
+
+const academyPresentationNormalizeTokenSet = (query: string): string[] => {
+  const normalized = academyPresentationNormalizeToken(query);
+  if (!normalized) return [];
+  return Array.from(new Set(normalized.split(/\s+/).filter((entry) => entry.length > 1))).slice(0, 18);
+};
+
+const academyPresentationScoreLexicalMatch = (
+  item: AcademyPresentationSemanticSearchItem,
+  query: string,
+  queryTokens: string[],
+): number => {
+  const normalizedQuery = academyPresentationNormalizeToken(query);
+  const title = academyPresentationNormalizeToken(item.title);
+  const subtitle = academyPresentationNormalizeToken(item.subtitle);
+  const content = academyPresentationNormalizeToken(item.searchText);
+  if (!normalizedQuery || !content) return 0;
+  let score = 0;
+  if (title.includes(normalizedQuery)) score += 0.58;
+  if (subtitle.includes(normalizedQuery)) score += 0.26;
+  if (content.includes(normalizedQuery)) score += 0.34;
+  queryTokens.forEach((token) => {
+    if (title.includes(token)) score += 0.09;
+    else if (subtitle.includes(token)) score += 0.055;
+    else if (content.includes(token)) score += 0.04;
+  });
+  return academyPresentationClamp(score, 0, 1);
+};
+
+const academyPresentationNormalizeScoreSeries = (values: number[]): number[] => {
+  if (values.length === 0) return [];
+  const finiteValues = values.map((value) => Number(value));
+  const min = Math.min(...finiteValues);
+  const max = Math.max(...finiteValues);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return values.map(() => 0);
+  }
+  if (Math.abs(max - min) < 1e-6) {
+    return values.map(() => 0.5);
+  }
+  return finiteValues.map((value) => academyPresentationClamp((value - min) / (max - min), 0, 1));
+};
+
+const academyPresentationReadRerankerScores = (
+  payload: unknown,
+  expectedCount: number,
+): number[] | null => {
+  if (Array.isArray(payload)) {
+    const numeric = payload.map((entry) => Number(entry));
+    if (
+      numeric.length === expectedCount &&
+      numeric.every((entry) => Number.isFinite(entry))
+    ) {
+      return numeric;
+    }
+
+    const scores = payload
+      .map((entry) => (academyPresentationIsRecord(entry) ? Number(readNumber(entry.score)) : NaN));
+    if (
+      scores.length === expectedCount &&
+      scores.every((entry) => Number.isFinite(entry))
+    ) {
+      return scores;
+    }
+
+    if (payload.length > 0 && Array.isArray(payload[0])) {
+      const maxScores = payload
+        .map((entry) => {
+          if (!Array.isArray(entry) || entry.length === 0) return NaN;
+          const candidateScores = entry
+            .map((item) =>
+              academyPresentationIsRecord(item)
+                ? Number(readNumber(item.score))
+                : Number(item),
+            )
+            .filter((valueItem) => Number.isFinite(valueItem));
+          if (candidateScores.length === 0) return NaN;
+          return Math.max(...candidateScores);
+        });
+      if (
+        maxScores.length === expectedCount &&
+        maxScores.every((entry) => Number.isFinite(entry))
+      ) {
+        return maxScores;
+      }
+    }
+  }
+
+  if (academyPresentationIsRecord(payload)) {
+    const nestedCandidates = [payload.scores, payload.results, payload.data, payload.output];
+    for (const candidate of nestedCandidates) {
+      const parsed = academyPresentationReadRerankerScores(candidate, expectedCount);
+      if (parsed && parsed.length === expectedCount) return parsed;
+    }
+  }
+  return null;
+};
+
+const academyPresentationRequestHfEmbeddings = async (params: {
+  token: string;
+  model: string;
+  inputs: string[];
+}): Promise<number[][] | null> => {
+  const { token, model, inputs } = params;
+  if (!token || inputs.length === 0) return null;
+  try {
+    const response = await fetch(
+      `https://api-inference.huggingface.co/models/${encodeURIComponent(model)}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          inputs,
+          options: {
+            wait_for_model: true,
+            use_cache: true,
+          },
+        }),
+        signal: AbortSignal.timeout(40_000),
+      },
+    );
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      console.warn(
+        'Academy semantic search HF embedding request failed:',
+        model,
+        response.status,
+        errorBody,
+      );
+      return null;
+    }
+    const payload = (await response.json()) as unknown;
+    return academyPresentationExtractEmbeddingVectors(payload, inputs.length);
+  } catch (error) {
+    console.warn('Academy semantic search HF embedding error:', model, error);
+    return null;
+  }
+};
+
+const academyPresentationRequestHfRerankerScores = async (params: {
+  token: string;
+  model: string;
+  query: string;
+  documents: string[];
+}): Promise<number[] | null> => {
+  const { token, model, query, documents } = params;
+  if (!token || !query || documents.length === 0) return null;
+  const payloadVariants = [
+    { inputs: { query, documents } },
+    { inputs: { query, texts: documents } },
+    { inputs: documents.map((document) => ({ text: query, text_pair: document })) },
+    { inputs: documents.map((document) => [query, document]) },
+  ];
+
+  for (const payload of payloadVariants) {
+    try {
+      const response = await fetch(
+        `https://api-inference.huggingface.co/models/${encodeURIComponent(model)}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...payload,
+            options: {
+              wait_for_model: true,
+              use_cache: true,
+            },
+          }),
+          signal: AbortSignal.timeout(45_000),
+        },
+      );
+      if (!response.ok) continue;
+      const result = (await response.json()) as unknown;
+      const parsed = academyPresentationReadRerankerScores(result, documents.length);
+      if (parsed && parsed.length === documents.length) return parsed;
+    } catch (error) {
+      console.warn('Academy semantic search HF reranker error:', model, error);
+    }
+  }
+  return null;
+};
+
+app.post('/api/academy/presentation/semantic-search', async (req, res) => {
+  try {
+    const body = academyPresentationIsRecord(req.body) ? req.body : {};
+    const query = String(readString(body.query) || '').trim().slice(0, 220);
+    if (query.length < 2) {
+      return res.status(400).json({ success: false, error: 'query must have at least 2 characters' });
+    }
+
+    const requestedLimit = academyPresentationClamp(
+      Number(readNumber(body.limit) || 12),
+      1,
+      60,
+    );
+    const items = Array.isArray(body.items)
+      ? body.items
+          .map((entry, index) => academyPresentationNormalizeSemanticSearchItem(entry, index))
+          .filter((entry): entry is AcademyPresentationSemanticSearchItem => Boolean(entry))
+          .slice(0, 180)
+      : [];
+    if (items.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: { query, ranking: [], meta: { provider: 'lexical', totalItems: 0 } },
+      });
+    }
+
+    const queryTokens = academyPresentationNormalizeTokenSet(query);
+    const lexicalScores = items.map((item) => academyPresentationScoreLexicalMatch(item, query, queryTokens));
+    let semanticScores = items.map(() => 0);
+    let rerankerScores: number[] | null = null;
+    let usedEmbeddingModel = '';
+    let usedRerankerModel = '';
+
+    const huggingFaceToken =
+      readString(process.env.HUGGINGFACE_TOKEN) || readString(process.env.HF_TOKEN);
+    const embeddingModel =
+      readString(process.env.ACADEMY_PRESENTATION_SEARCH_EMBEDDING_MODEL)
+      || readString(process.env.ACADEMY_PRESENTATION_HF_EMBEDDING_MODEL)
+      || 'Qwen/Qwen3-Embedding-8B';
+    const rerankerModel =
+      readString(process.env.ACADEMY_PRESENTATION_SEARCH_RERANKER_MODEL)
+      || readString(process.env.ACADEMY_PRESENTATION_HF_RERANKER_MODEL)
+      || 'Qwen/Qwen3-Reranker-8B';
+
+    if (huggingFaceToken) {
+      const documents = items.map((item) => item.searchText.slice(0, 2600));
+      const embeddings = await academyPresentationRequestHfEmbeddings({
+        token: huggingFaceToken,
+        model: embeddingModel,
+        inputs: [query, ...documents],
+      });
+      if (embeddings && embeddings.length === documents.length + 1) {
+        const queryVector = embeddings[0];
+        semanticScores = embeddings
+          .slice(1)
+          .map((vector) => Number((((academyPresentationCosineSimilarity(queryVector, vector) + 1) / 2)).toFixed(4)));
+        usedEmbeddingModel = embeddingModel;
+      }
+
+      const candidateIndexes = items
+        .map((item, index) => ({
+          id: item.id,
+          index,
+          seedScore: lexicalScores[index] * 0.34 + semanticScores[index] * 0.66,
+        }))
+        .sort((a, b) => b.seedScore - a.seedScore)
+        .slice(0, Math.min(24, items.length))
+        .map((entry) => entry.index);
+      if (candidateIndexes.length > 0) {
+        const rerankerDocuments = candidateIndexes.map((index) => items[index].searchText.slice(0, 1900));
+        const rawRerankerScores = await academyPresentationRequestHfRerankerScores({
+          token: huggingFaceToken,
+          model: rerankerModel,
+          query,
+          documents: rerankerDocuments,
+        });
+        if (rawRerankerScores && rawRerankerScores.length === candidateIndexes.length) {
+          const normalizedRerankerScores = academyPresentationNormalizeScoreSeries(rawRerankerScores);
+          rerankerScores = items.map(() => 0);
+          candidateIndexes.forEach((index, offset) => {
+            if (!rerankerScores) return;
+            rerankerScores[index] = Number(normalizedRerankerScores[offset].toFixed(4));
+          });
+          usedRerankerModel = rerankerModel;
+        }
+      }
+    }
+
+    const ranking = items
+      .map((item, index) => {
+        const lexicalScore = lexicalScores[index];
+        const semanticScore = semanticScores[index];
+        const rerankScore = rerankerScores ? rerankerScores[index] : null;
+        const score = rerankerScores
+          ? lexicalScore * 0.22 + semanticScore * 0.38 + (rerankScore || 0) * 0.4
+          : lexicalScore * 0.35 + semanticScore * 0.65;
+        return {
+          id: item.id,
+          score: Number(score.toFixed(4)),
+          lexicalScore: Number(lexicalScore.toFixed(4)),
+          semanticScore: Number(semanticScore.toFixed(4)),
+          rerankScore: rerankScore === null ? null : Number(rerankScore.toFixed(4)),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    const filteredRanking = ranking.filter(
+      (entry) => entry.score >= 0.15 || entry.lexicalScore >= 0.13 || entry.semanticScore >= 0.2,
+    );
+    const topRanking =
+      filteredRanking.length > 0
+        ? filteredRanking.slice(0, requestedLimit)
+        : ranking.slice(0, requestedLimit);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        query,
+        ranking: topRanking,
+        meta: {
+          provider: usedEmbeddingModel || usedRerankerModel ? 'huggingface' : 'lexical',
+          embeddingModel: usedEmbeddingModel || undefined,
+          rerankerModel: usedRerankerModel || undefined,
+          totalItems: items.length,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error running academy semantic search:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Could not run semantic search',
     });
   }
 });
@@ -26073,6 +33450,298 @@ const probeVideoDurationSeconds = async (
   return Number.isFinite(durationValue) && durationValue > 0 ? durationValue : 0;
 };
 
+type AcademyStoredMediaType = 'image' | 'video' | 'audio' | 'document';
+
+interface AcademyStoredMediaVersionRecord {
+  version: number;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  duration?: number;
+  fingerprint: string;
+  updatedAt: string;
+  relativePath: string;
+  posterRelativePath?: string;
+  posterMimeType?: string;
+}
+
+interface AcademyStoredMediaAssetRecord {
+  id: string;
+  name: string;
+  type: AcademyStoredMediaType;
+  folderId: string;
+  courseId?: string;
+  lessonId?: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  currentVersion: AcademyStoredMediaVersionRecord;
+  history: AcademyStoredMediaVersionRecord[];
+}
+
+interface AcademyStoredMediaManifest {
+  version: number;
+  updatedAt: string;
+  assets: AcademyStoredMediaAssetRecord[];
+}
+
+const ACADEMY_MEDIA_STORAGE_DIR = path.join(REPO_ROOT, 'tmp', 'academy-media');
+const ACADEMY_MEDIA_MANIFEST_PATH = path.join(ACADEMY_MEDIA_STORAGE_DIR, 'manifest.json');
+let academyMediaManifestCache: AcademyStoredMediaManifest | null = null;
+let academyMediaManifestWritePromise: Promise<void> = Promise.resolve();
+
+const createDefaultAcademyMediaManifest = (): AcademyStoredMediaManifest => ({
+  version: 1,
+  updatedAt: new Date().toISOString(),
+  assets: [],
+});
+
+const sanitizeAcademyMediaName = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return 'academy-media';
+  return trimmed
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120) || 'academy-media';
+};
+
+const normalizeAcademyMediaType = (mimetype: string, fileName: string): AcademyStoredMediaType => {
+  const normalizedMime = String(mimetype || '').toLowerCase();
+  const extension = path.extname(fileName || '').toLowerCase();
+  if (normalizedMime.startsWith('image/')) return 'image';
+  if (normalizedMime.startsWith('video/')) return 'video';
+  if (normalizedMime.startsWith('audio/')) return 'audio';
+  if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'].includes(extension)) return 'image';
+  if (['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.mpeg', '.mpg', '.wmv', '.flv'].includes(extension)) return 'video';
+  if (['.mp3', '.wav', '.aac', '.m4a', '.flac', '.ogg', '.opus'].includes(extension)) return 'audio';
+  return 'document';
+};
+
+const computeAcademyMediaFingerprint = (buffer: Buffer): string =>
+  crypto.createHash('sha1').update(buffer).digest('hex');
+
+const normalizeAcademyMediaTags = (value: unknown, folderId: string): string[] => {
+  const tags = Array.isArray(value)
+    ? value.map((entry) => String(entry || '').trim()).filter(Boolean)
+    : typeof value === 'string'
+      ? value
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      : [];
+
+  const withFolderTag = folderId && !tags.includes(folderId) ? [folderId, ...tags] : tags;
+  return Array.from(new Set(withFolderTag));
+};
+
+const buildAcademyMediaFileUrl = (assetId: string, version?: number): string =>
+  `/api/academy/media-assets/${encodeURIComponent(assetId)}/file${
+    version ? `?version=${encodeURIComponent(String(version))}` : ''
+  }`;
+
+const buildAcademyMediaPosterUrl = (assetId: string, version?: number): string =>
+  `/api/academy/media-assets/${encodeURIComponent(assetId)}/poster${
+    version ? `?version=${encodeURIComponent(String(version))}` : ''
+  }`;
+
+const loadAcademyMediaManifest = async (): Promise<AcademyStoredMediaManifest> => {
+  if (academyMediaManifestCache) {
+    return academyMediaManifestCache;
+  }
+
+  try {
+    const raw = await fs.readFile(ACADEMY_MEDIA_MANIFEST_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as Partial<AcademyStoredMediaManifest>;
+    academyMediaManifestCache = {
+      version: 1,
+      updatedAt: String(parsed.updatedAt || '').trim() || new Date().toISOString(),
+      assets: Array.isArray(parsed.assets) ? parsed.assets : [],
+    };
+    return academyMediaManifestCache;
+  } catch (error) {
+    const code =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: string }).code || '')
+        : '';
+    if (code && code !== 'ENOENT') {
+      console.warn('[academy-media] failed to read manifest:', error);
+    }
+    academyMediaManifestCache = createDefaultAcademyMediaManifest();
+    return academyMediaManifestCache;
+  }
+};
+
+const persistAcademyMediaManifest = async (manifest: AcademyStoredMediaManifest): Promise<void> => {
+  academyMediaManifestCache = manifest;
+  academyMediaManifestWritePromise = academyMediaManifestWritePromise
+    .catch(() => undefined)
+    .then(async () => {
+      await fs.mkdir(ACADEMY_MEDIA_STORAGE_DIR, { recursive: true });
+      await fs.writeFile(ACADEMY_MEDIA_MANIFEST_PATH, JSON.stringify(manifest, null, 2), 'utf8');
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[academy-media] failed to persist manifest:', message);
+    });
+
+  await academyMediaManifestWritePromise;
+};
+
+const extractAcademyMediaPoster = async (params: {
+  assetId: string;
+  version: number;
+  videoFilePath: string;
+  versionDir: string;
+  durationSeconds?: number;
+}): Promise<{ relativePath: string; mimeType: string } | null> => {
+  const outputPath = path.join(params.versionDir, 'poster.jpg');
+  const seekSeconds = Number.isFinite(Number(params.durationSeconds)) && Number(params.durationSeconds) > 0
+    ? Math.min(2.5, Math.max(0.2, Number(params.durationSeconds) * 0.15))
+    : 0.25;
+
+  const primaryAttempt = await runBinaryCommand(
+    FFMPEG_BINARY,
+    [
+      '-y',
+      '-ss',
+      seekSeconds.toFixed(3),
+      '-i',
+      params.videoFilePath,
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=1280:-2:force_original_aspect_ratio=decrease',
+      outputPath,
+    ],
+    90_000,
+  );
+
+  if ((primaryAttempt.code !== 0 || !existsSync(outputPath))) {
+    const fallbackAttempt = await runBinaryCommand(
+      FFMPEG_BINARY,
+      [
+        '-y',
+        '-i',
+        params.videoFilePath,
+        '-frames:v',
+        '1',
+        '-vf',
+        'scale=1280:-2:force_original_aspect_ratio=decrease',
+        outputPath,
+      ],
+      90_000,
+    );
+
+    if (fallbackAttempt.code !== 0 || !existsSync(outputPath)) {
+      return null;
+    }
+  }
+
+  return {
+    relativePath: path.join(params.assetId, `v${params.version}`, 'poster.jpg'),
+    mimeType: 'image/jpeg',
+  };
+};
+
+const persistAcademyMediaVersion = async (params: {
+  assetId: string;
+  version: number;
+  file: {
+    originalname: string;
+    mimetype: string;
+    buffer: Buffer;
+    size: number;
+  };
+  type: AcademyStoredMediaType;
+}): Promise<AcademyStoredMediaVersionRecord> => {
+  await fs.mkdir(ACADEMY_MEDIA_STORAGE_DIR, { recursive: true });
+  const versionDir = path.join(ACADEMY_MEDIA_STORAGE_DIR, params.assetId, `v${params.version}`);
+  await fs.mkdir(versionDir, { recursive: true });
+
+  const extension = path.extname(params.file.originalname || '').toLowerCase() || (
+    params.type === 'video' ? '.mp4' : params.type === 'audio' ? '.mp3' : params.type === 'image' ? '.jpg' : '.bin'
+  );
+  const safeBaseName = sanitizeAcademyMediaName(path.basename(params.file.originalname || 'academy-media', extension));
+  const storedFileName = `${safeBaseName}${extension}`;
+  const targetPath = path.join(versionDir, storedFileName);
+
+  await fs.writeFile(targetPath, params.file.buffer);
+
+  let durationSeconds: number | undefined;
+  if (params.type === 'video') {
+    try {
+      const probedDuration = await probeVideoDurationSeconds(targetPath);
+      if (Number.isFinite(probedDuration) && probedDuration > 0) {
+        durationSeconds = probedDuration;
+      }
+    } catch {
+      durationSeconds = undefined;
+    }
+  }
+
+  const poster =
+    params.type === 'video'
+      ? await extractAcademyMediaPoster({
+          assetId: params.assetId,
+          version: params.version,
+          videoFilePath: targetPath,
+          versionDir,
+          durationSeconds,
+        })
+      : null;
+
+  return {
+    version: params.version,
+    fileName: params.file.originalname || storedFileName,
+    mimeType: String(params.file.mimetype || '').trim() || 'application/octet-stream',
+    size: params.file.size,
+    duration: durationSeconds,
+    fingerprint: computeAcademyMediaFingerprint(params.file.buffer),
+    updatedAt: new Date().toISOString(),
+    relativePath: path.join(params.assetId, `v${params.version}`, storedFileName),
+    posterRelativePath: poster?.relativePath,
+    posterMimeType: poster?.mimeType,
+  };
+};
+
+const resolveAcademyMediaVersion = (
+  record: AcademyStoredMediaAssetRecord,
+  requestedVersion?: number,
+): AcademyStoredMediaVersionRecord | null => {
+  if (!requestedVersion || requestedVersion === record.currentVersion.version) {
+    return record.currentVersion;
+  }
+  return record.history.find((entry) => entry.version === requestedVersion) || null;
+};
+
+const mapAcademyStoredMediaRecordToResponse = (
+  record: AcademyStoredMediaAssetRecord,
+  requestedVersion?: number,
+) => {
+  const versionRecord = resolveAcademyMediaVersion(record, requestedVersion) || record.currentVersion;
+  return {
+    id: record.id,
+    name: record.name,
+    type: record.type,
+    url: buildAcademyMediaFileUrl(record.id, versionRecord.version),
+    posterUrl:
+      versionRecord.posterRelativePath
+        ? buildAcademyMediaPosterUrl(record.id, versionRecord.version)
+        : undefined,
+    size: versionRecord.size,
+    duration: versionRecord.duration,
+    updatedAt: versionRecord.updatedAt,
+    tags: record.tags,
+    source: 'upload' as const,
+    courseId: record.courseId,
+    lessonId: record.lessonId,
+    version: versionRecord.version,
+    fingerprint: versionRecord.fingerprint,
+  };
+};
+
 const normalizeWordToken = (value: unknown): string => {
   const raw = readString(value);
   if (!raw) {
@@ -39385,6 +47054,208 @@ app.post('/api/price-administration/reports/export-all', async (req, res) => {
 });
 
 // ============================================
+// Price Administration — BRREG Integration
+// ============================================
+
+type BrregAddress = {
+  adresse?: string[];
+  postnummer?: string;
+  poststed?: string;
+};
+
+type BrregUnit = {
+  organisasjonsnummer?: string;
+  navn?: string;
+  organisasjonsform?: { beskrivelse?: string };
+  enhetstype?: { beskrivelse?: string };
+  registreringsdatoEnhetsregisteret?: string;
+  stiftelsesdato?: string;
+  forretningsadresse?: BrregAddress;
+  postadresse?: BrregAddress;
+  naeringskode1?: { beskrivelse?: string };
+  antallAnsatte?: number;
+  hjemmeside?: string;
+  hjemmesideUrl?: string;
+};
+
+const normalizeBrregAddress = (address?: BrregAddress) => ({
+  adresse: Array.isArray(address?.adresse) ? address?.adresse.join(', ') : '',
+  postnummer: address?.postnummer || '',
+  poststed: address?.poststed || '',
+});
+
+const mapBrregUnit = (unit: BrregUnit, source: 'brreg_api' | 'fallback') => ({
+  organizationNumber: unit.organisasjonsnummer || '',
+  name: unit.navn || '',
+  organizationForm: unit.organisasjonsform?.beskrivelse || unit.enhetstype?.beskrivelse || '',
+  registrationDate: unit.registreringsdatoEnhetsregisteret || unit.stiftelsesdato || '',
+  businessAddress: normalizeBrregAddress(unit.forretningsadresse),
+  mailingAddress: normalizeBrregAddress(unit.postadresse),
+  industry: unit.naeringskode1?.beskrivelse || '',
+  employees: Number(unit.antallAnsatte || 0),
+  website: unit.hjemmeside || unit.hjemmesideUrl || '',
+  source,
+  lastUpdated: new Date().toISOString(),
+});
+
+const buildBrregFallbackSearch = (name: string, limit: number) => {
+  const baseName = (name || 'Eksempel').trim();
+  const rows = [
+    {
+      organisasjonsnummer: '123456789',
+      navn: `${baseName} AS`,
+      organisasjonsform: { beskrivelse: 'Aksjeselskap' },
+      registreringsdatoEnhetsregisteret: '2020-01-01',
+      forretningsadresse: { adresse: ['Eksempelgata 1'], postnummer: '0150', poststed: 'OSLO' },
+      naeringskode1: { beskrivelse: 'Film- og videoproduksjon' },
+      antallAnsatte: 12,
+      hjemmeside: 'https://example.no',
+    },
+    {
+      organisasjonsnummer: '987654321',
+      navn: `${baseName} Norge AS`,
+      organisasjonsform: { beskrivelse: 'Aksjeselskap' },
+      registreringsdatoEnhetsregisteret: '2019-06-15',
+      forretningsadresse: { adresse: ['Bryggeveien 5'], postnummer: '5003', poststed: 'BERGEN' },
+      naeringskode1: { beskrivelse: 'Markedsføring og innholdsproduksjon' },
+      antallAnsatte: 7,
+      hjemmeside: 'https://example.org',
+    },
+  ];
+  return rows.slice(0, Math.max(1, Math.min(limit, 20))).map((row) => mapBrregUnit(row, 'fallback'));
+};
+
+app.get('/api/price-administration/brreg/companies/search', async (req, res) => {
+  const rawName = String(req.query.name || '').trim();
+  const rawLimit = Number(req.query.limit || 10);
+  const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, Math.floor(rawLimit))) : 10;
+
+  if (rawName.length < 2) {
+    return res.json({
+      success: true,
+      companies: [],
+      total: 0,
+      searchTerm: rawName,
+      source: 'brreg_api',
+      lastUpdated: new Date().toISOString(),
+    });
+  }
+
+  try {
+    const params = new URLSearchParams({
+      navn: rawName,
+      size: String(limit),
+    });
+
+    const response = await fetch(`https://data.brreg.no/enhetsregisteret/api/enheter?${params.toString()}`, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'CreatorHub/1.0 (+https://creatorhub.no)',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`BRREG search failed (${response.status})`);
+    }
+
+    const payload = await response.json() as {
+      _embedded?: { enheter?: BrregUnit[] };
+      page?: { totalElements?: number };
+    };
+
+    const units = Array.isArray(payload?._embedded?.enheter) ? (payload?._embedded?.enheter ?? []) : [];
+    const companies = units.map((unit) => mapBrregUnit(unit, 'brreg_api'));
+
+    return res.json({
+      success: true,
+      companies,
+      total: Number(payload?.page?.totalElements ?? companies.length),
+      searchTerm: rawName,
+      source: 'brreg_api',
+      lastUpdated: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.warn('BRREG company search failed, returning fallback data:', error);
+    const companies = buildBrregFallbackSearch(rawName, limit);
+    return res.json({
+      success: true,
+      companies,
+      total: companies.length,
+      searchTerm: rawName,
+      source: 'fallback',
+      lastUpdated: new Date().toISOString(),
+    });
+  }
+});
+
+app.get('/api/price-administration/brreg/company/:organizationNumber', async (req, res) => {
+  const organizationNumber = String(req.params.organizationNumber || '').replace(/\D/g, '');
+  if (organizationNumber.length !== 9) {
+    return res.status(400).json({
+      success: false,
+      error: 'Ugyldig organisasjonsnummer',
+      organizationNumber,
+    });
+  }
+
+  try {
+    const response = await fetch(`https://data.brreg.no/enhetsregisteret/api/enheter/${organizationNumber}`, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'CreatorHub/1.0 (+https://creatorhub.no)',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`BRREG company lookup failed (${response.status})`);
+    }
+
+    const payload = await response.json() as BrregUnit;
+    return res.json({
+      success: true,
+      ...mapBrregUnit(payload, 'brreg_api'),
+    });
+  } catch (error) {
+    console.warn('BRREG company lookup failed, returning fallback data:', error);
+    const fallback = buildBrregFallbackSearch(organizationNumber, 1)[0];
+    return res.json({
+      success: true,
+      ...fallback,
+      organizationNumber,
+      source: 'fallback',
+      lastUpdated: new Date().toISOString(),
+    });
+  }
+});
+
+app.get('/api/price-administration/brreg/vehicle/:registrationNumber', async (req, res) => {
+  res.json({
+    success: true,
+    registrationNumber: String(req.params.registrationNumber || '').toUpperCase(),
+    liens: [],
+    encumbrances: [],
+    status: 'clean',
+    source: 'fallback',
+    lastUpdated: new Date().toISOString(),
+  });
+});
+
+app.get('/api/price-administration/brreg/notices', async (req, res) => {
+  const limitRaw = Number(req.query.limit || 20);
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(100, Math.floor(limitRaw))) : 20;
+  const type = typeof req.query.type === 'string' ? req.query.type : undefined;
+  res.json({
+    success: true,
+    notices: [],
+    total: 0,
+    type,
+    source: 'fallback',
+    lastUpdated: new Date().toISOString(),
+    limit,
+  });
+});
+
+// ============================================
 // YR.no (MET Norway) Weather API Integration
 // https://api.met.no/weatherapi/locationforecast/2.0/
 // ============================================
@@ -45063,6 +52934,243 @@ app.get('/api/business/intelligence/status', async (_req, res) => {
       version: '2.1.0',
       timestamp: new Date().toISOString(),
     });
+  }
+});
+
+app.post('/api/academy/media-assets/upload', academyMediaUpload.array('files', 20), async (req, res) => {
+  try {
+    const files = Array.isArray(req.files)
+      ? (req.files as Array<{
+          originalname: string;
+          mimetype: string;
+          buffer: Buffer;
+          size: number;
+        }>)
+      : [];
+    if (files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    const folderId = String(req.body?.folderId || 'course-materials').trim() || 'course-materials';
+    const courseId = String(req.body?.courseId || '').trim() || undefined;
+    const lessonId = String(req.body?.lessonId || '').trim() || undefined;
+    const tags = normalizeAcademyMediaTags(req.body?.tags, folderId);
+    const manifest = await loadAcademyMediaManifest();
+    const createdRecords: AcademyStoredMediaAssetRecord[] = [];
+
+    for (const file of files) {
+      const assetId = `academy-media-${crypto.randomUUID()}`;
+      const mediaType = normalizeAcademyMediaType(file.mimetype, file.originalname);
+      const currentVersion = await persistAcademyMediaVersion({
+        assetId,
+        version: 1,
+        file,
+        type: mediaType,
+      });
+      const nowIso = currentVersion.updatedAt;
+      const record: AcademyStoredMediaAssetRecord = {
+        id: assetId,
+        name: String(file.originalname || '').trim() || `academy-media-${assetId}`,
+        type: mediaType,
+        folderId,
+        courseId,
+        lessonId,
+        tags,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        currentVersion,
+        history: [],
+      };
+      manifest.assets.unshift(record);
+      createdRecords.push(record);
+    }
+
+    manifest.updatedAt = new Date().toISOString();
+    await persistAcademyMediaManifest(manifest);
+
+    return res.json({
+      assets: createdRecords.map((record) => mapAcademyStoredMediaRecordToResponse(record)),
+    });
+  } catch (error) {
+    console.error('[academy-media] upload failed:', error);
+    return res.status(500).json({ error: 'Failed to upload academy media' });
+  }
+});
+
+app.post('/api/academy/media-assets/:assetId/replace', academyMediaUpload.single('file'), async (req, res) => {
+  try {
+    const assetId = String(req.params.assetId || '').trim();
+    if (!assetId) {
+      return res.status(400).json({ error: 'Missing asset id' });
+    }
+    const file = req.file as
+      | {
+          originalname: string;
+          mimetype: string;
+          buffer: Buffer;
+          size: number;
+        }
+      | undefined;
+    if (!file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const manifest = await loadAcademyMediaManifest();
+    const recordIndex = manifest.assets.findIndex((entry) => entry.id === assetId);
+    const existing = recordIndex >= 0 ? manifest.assets[recordIndex] : null;
+    const requestedType = normalizeAcademyMediaType(
+      String(req.body?.type || file.mimetype || ''),
+      String(file.originalname || ''),
+    );
+    if (existing && existing.type !== requestedType) {
+      return res.status(400).json({ error: 'Replacement must keep the same media type' });
+    }
+
+    const folderId = String(req.body?.folderId || existing?.folderId || 'course-materials').trim() || 'course-materials';
+    const courseId = String(req.body?.courseId || existing?.courseId || '').trim() || undefined;
+    const lessonId = String(req.body?.lessonId || existing?.lessonId || '').trim() || undefined;
+    const tags = normalizeAcademyMediaTags(req.body?.tags, folderId);
+    const requestedCurrentVersion = Number(req.body?.currentVersion || 0);
+    const currentVersionSeed = Math.max(
+      existing?.currentVersion.version || 0,
+      Number.isFinite(requestedCurrentVersion) ? requestedCurrentVersion : 0,
+      1,
+    );
+    const nextVersion = currentVersionSeed + 1;
+    const currentVersion = await persistAcademyMediaVersion({
+      assetId,
+      version: nextVersion,
+      file,
+      type: existing?.type || requestedType,
+    });
+    const nowIso = currentVersion.updatedAt;
+
+    const nextRecord: AcademyStoredMediaAssetRecord = {
+      id: assetId,
+      name:
+        String(req.body?.name || '').trim() ||
+        String(file.originalname || '').trim() ||
+        existing?.name ||
+        `academy-media-${assetId}`,
+      type: existing?.type || requestedType,
+      folderId,
+      courseId,
+      lessonId,
+      tags: tags.length > 0 ? tags : existing?.tags || [folderId],
+      createdAt: existing?.createdAt || nowIso,
+      updatedAt: nowIso,
+      currentVersion,
+      history: existing
+        ? [...existing.history.filter((entry) => entry.version !== existing.currentVersion.version), existing.currentVersion]
+        : [],
+    };
+
+    if (recordIndex >= 0) {
+      manifest.assets.splice(recordIndex, 1, nextRecord);
+    } else {
+      manifest.assets.unshift(nextRecord);
+    }
+    manifest.updatedAt = new Date().toISOString();
+    await persistAcademyMediaManifest(manifest);
+
+    return res.json({
+      asset: mapAcademyStoredMediaRecordToResponse(nextRecord),
+    });
+  } catch (error) {
+    console.error('[academy-media] replace failed:', error);
+    return res.status(500).json({ error: 'Failed to replace academy media asset' });
+  }
+});
+
+app.delete('/api/academy/media-assets/:assetId', async (req, res) => {
+  try {
+    const assetId = String(req.params.assetId || '').trim();
+    if (!assetId) {
+      return res.status(400).json({ error: 'Missing asset id' });
+    }
+    const manifest = await loadAcademyMediaManifest();
+    const nextAssets = manifest.assets.filter((entry) => entry.id !== assetId);
+    if (nextAssets.length === manifest.assets.length) {
+      return res.status(404).json({ error: 'Academy media asset not found' });
+    }
+
+    manifest.assets = nextAssets;
+    manifest.updatedAt = new Date().toISOString();
+    await persistAcademyMediaManifest(manifest);
+
+    const assetDir = path.join(ACADEMY_MEDIA_STORAGE_DIR, assetId);
+    try {
+      await fs.rm(assetDir, { recursive: true, force: true });
+    } catch (error) {
+      console.warn('[academy-media] failed to remove asset directory:', error);
+    }
+
+    return res.json({ success: true, assetId });
+  } catch (error) {
+    console.error('[academy-media] delete failed:', error);
+    return res.status(500).json({ error: 'Failed to delete academy media asset' });
+  }
+});
+
+app.get('/api/academy/media-assets/:assetId/file', async (req, res) => {
+  try {
+    const assetId = String(req.params.assetId || '').trim();
+    const requestedVersion = Number(req.query.version || 0);
+    const manifest = await loadAcademyMediaManifest();
+    const record = manifest.assets.find((entry) => entry.id === assetId);
+    if (!record) {
+      return res.status(404).json({ error: 'Academy media asset not found' });
+    }
+    const versionRecord = resolveAcademyMediaVersion(
+      record,
+      Number.isFinite(requestedVersion) && requestedVersion > 0 ? requestedVersion : undefined,
+    );
+    if (!versionRecord) {
+      return res.status(404).json({ error: 'Academy media version not found' });
+    }
+
+    const absolutePath = path.join(ACADEMY_MEDIA_STORAGE_DIR, versionRecord.relativePath);
+    if (!existsSync(absolutePath)) {
+      return res.status(404).json({ error: 'Academy media file missing on disk' });
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.type(versionRecord.mimeType || 'application/octet-stream');
+    return res.sendFile(absolutePath);
+  } catch (error) {
+    console.error('[academy-media] serve file failed:', error);
+    return res.status(500).json({ error: 'Failed to load academy media file' });
+  }
+});
+
+app.get('/api/academy/media-assets/:assetId/poster', async (req, res) => {
+  try {
+    const assetId = String(req.params.assetId || '').trim();
+    const requestedVersion = Number(req.query.version || 0);
+    const manifest = await loadAcademyMediaManifest();
+    const record = manifest.assets.find((entry) => entry.id === assetId);
+    if (!record) {
+      return res.status(404).json({ error: 'Academy media asset not found' });
+    }
+    const versionRecord = resolveAcademyMediaVersion(
+      record,
+      Number.isFinite(requestedVersion) && requestedVersion > 0 ? requestedVersion : undefined,
+    );
+    if (!versionRecord?.posterRelativePath) {
+      return res.status(404).json({ error: 'Poster not available for this asset' });
+    }
+
+    const absolutePath = path.join(ACADEMY_MEDIA_STORAGE_DIR, versionRecord.posterRelativePath);
+    if (!existsSync(absolutePath)) {
+      return res.status(404).json({ error: 'Poster file missing on disk' });
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.type(versionRecord.posterMimeType || 'image/jpeg');
+    return res.sendFile(absolutePath);
+  } catch (error) {
+    console.error('[academy-media] serve poster failed:', error);
+    return res.status(500).json({ error: 'Failed to load academy media poster' });
   }
 });
 

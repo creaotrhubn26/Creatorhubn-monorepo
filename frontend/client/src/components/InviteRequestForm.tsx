@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useCallback } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAuth } from '@/hooks/useAuth';
 import { useTheming } from '../utils/theming-helper';
 import {
@@ -35,7 +35,6 @@ import {
   People as PeopleIcon,
   CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
-import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 // import { debounce } from "lodash"; // Removed to avoid type errors
 // Using inline debounce instead
@@ -66,6 +65,7 @@ interface InviteRequestFormProps {
   onCancel?: () => void;
   selectedRole?: string;
   selectedPlan?: any;
+  source?: string;
 }
 
 interface InviteRequestData {
@@ -113,6 +113,7 @@ export function InviteRequestForm({
   onCancel,
   selectedRole,
   selectedPlan,
+  source = "landing",
 }: InviteRequestFormProps) {
   const [formData, setFormData] = useState<InviteRequestData>({
     email: "",
@@ -393,6 +394,7 @@ export function InviteRequestForm({
       selectedPlan: selectedPlan?.id || null,
       planName: selectedPlan?.name || null,
       planPrice: selectedPlan?.price || null,
+      source: source || "landing",
       // Include enterprise team size and pricing if applicable
       ...(isEnterprisePlan ? {
         enterpriseTeamSize: teamSize,
@@ -408,6 +410,7 @@ export function InviteRequestForm({
       profession: submissionData.profession,
       selectedPlan: submissionData.selectedPlan,
       planName: submissionData.planName,
+      source: submissionData.source,
       enterpriseTeamSize: isEnterprisePlan ? teamSize : undefined,
       enterprisePricing: isEnterprisePlan ? submissionData.enterprisePricing : undefined,
     });

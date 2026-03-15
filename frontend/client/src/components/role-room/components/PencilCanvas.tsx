@@ -11,7 +11,7 @@
  * - Real-time stroke preview
  */
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useImperativeHandle } from 'react';
 import {
   Box,
   IconButton,
@@ -40,14 +40,13 @@ import {
   TouchApp,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import type {
-  PencilPoint,
-  PencilStroke,
-  InputType} from '../hooks/useApplePencil';
 import {
   useApplePencil,
   drawPressureStroke,
-  drawTiltStroke
+  drawTiltStroke,
+  type PencilPoint,
+  type PencilStroke,
+  type InputType,
 } from '../hooks/useApplePencil';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 
@@ -77,6 +76,14 @@ export interface PencilCanvasProps {
   onSave?: (imageData: string) => void;
 }
 
+export interface PencilCanvasHandle {
+  undo: () => void;
+  redo: () => void;
+  clear: () => void;
+  save: () => void;
+  setBrush: (settings: Partial<BrushSettings>) => void;
+}
+
 // =============================================================================
 // Styled Components
 // =============================================================================
@@ -103,19 +110,30 @@ const PreviewCanvas = styled('canvas')({
   pointerEvents: 'none', // Don't capture events
 });
 
-const Toolbar = styled(Paper)({
+const Toolbar = styled(Paper, {
+  shouldForwardProp: (prop) => prop !== 'drawing',
+})<{ drawing?: boolean }>(({ drawing = false }) => ({
   position: 'absolute',
   bottom: 16,
   left: '50%',
-  transform: 'translateX(-50%)',
+  transform: 'translate3d(-50%, 0, 0)',
   padding: '8px 16px',
   borderRadius: 24,
-  backgroundColor: 'rgba(26, 26, 46, 0.95)',
-  backdropFilter: 'blur(8px)',
+  backgroundColor: drawing ? 'rgba(18, 20, 36, 0.995)' : 'rgba(26, 26, 46, 0.97)',
+  backdropFilter: drawing ? 'none' : 'blur(6px)',
+  WebkitBackdropFilter: drawing ? 'none' : 'blur(6px)',
   display: 'flex',
   alignItems: 'center',
   gap: 8,
-});
+  boxShadow: drawing
+    ? '0 12px 30px rgba(0,0,0,0.48)'
+    : '0 10px 26px rgba(0,0,0,0.4)',
+  willChange: 'transform',
+  contain: 'layout paint',
+  isolation: 'isolate',
+  backfaceVisibility: 'hidden',
+  WebkitBackfaceVisibility: 'hidden',
+}));
 
 const PressureIndicator = styled(Box)({
   position: 'absolute',
@@ -183,7 +201,7 @@ const DEFAULT_BRUSH: BrushSettings = {
 // Component
 // =============================================================================
 
-export const PencilCanvas: React.FC<PencilCanvasProps> = ({
+export const PencilCanvas = React.forwardRef<PencilCanvasHandle, PencilCanvasProps>(({
   width,
   height,
   backgroundImage,
@@ -194,7 +212,7 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
   palmRejection = 'smart',
   onStrokesChange,
   onSave,
-}) => {
+}, ref) => {
   // Device detection
   const device = useDeviceDetection();
   
@@ -202,6 +220,7 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const previewLastPointRef = useRef<PencilPoint | null>(null);
   
   // State
   const [brushSettings, setBrushSettings] = useState<BrushSettings>({
@@ -212,6 +231,7 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
   const [undoStack, setUndoStack] = useState<PencilStroke[][]>([]);
   const [redoStack, setRedoStack] = useState<PencilStroke[][]>([]);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number } | null>(null);
+  const [lastInputType, setLastInputType] = useState<InputType>('mouse');
   const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null);
   const [sizeAnchor, setSizeAnchor] = useState<HTMLElement | null>(null);
   
@@ -219,30 +239,38 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
   const {
     ref: pencilRef,
     state: pencilState,
-    currentStroke,
     getStrokeWidth,
     getOpacity,
   } = useApplePencil({
     onStrokeStart: (point: PencilPoint, inputType: InputType) => {
+      setLastInputType((prev) => (prev === inputType ? prev : inputType));
       // Clear preview canvas
       const previewCtx = previewCanvasRef.current?.getContext('2d');
       if (previewCtx) {
         previewCtx.clearRect(0, 0, width, height);
       }
+      previewLastPointRef.current = point;
     },
     
     onStrokeMove: (point: PencilPoint, inputType: InputType) => {
-      // Draw preview stroke
-      if (currentStroke && previewCanvasRef.current) {
-        const ctx = previewCanvasRef.current.getContext('2d');
-        if (!ctx) return;
-        
-        ctx.clearRect(0, 0, width, height);
-        drawStrokeToCanvas(ctx, currentStroke.points, brushSettings);
+      setLastInputType((prev) => (prev === inputType ? prev : inputType));
+      if (!previewCanvasRef.current) return;
+      const ctx = previewCanvasRef.current.getContext('2d');
+      if (!ctx) return;
+
+      const previousPoint = previewLastPointRef.current;
+      if (!previousPoint) {
+        previewLastPointRef.current = point;
+        return;
       }
+
+      drawStrokeToCanvas(ctx, [previousPoint, point], brushSettings);
+      previewLastPointRef.current = point;
     },
     
     onStrokeEnd: (stroke: PencilStroke, inputType: InputType) => {
+      setLastInputType((prev) => (prev === inputType ? prev : inputType));
+      previewLastPointRef.current = null;
       // Handle eraser
       if (brushSettings.type === 'eraser') {
         // Erase strokes that intersect with this stroke
@@ -263,7 +291,6 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
       if (previewCtx) {
         previewCtx.clearRect(0, 0, width, height);
       }
-      redrawMainCanvas();
     },
     
     onHoverStart: (point: PencilPoint) => {
@@ -292,13 +319,21 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
     enableHover: true,
     enableDoubleTap: true,
   });
-  
-  // Merge pencil ref with container ref
-  useEffect(() => {
-    if (containerRef.current) {
-      (pencilRef as React.MutableRefObject<HTMLElement | null>).current = containerRef.current;
-    }
+
+  const setCanvasContainerRef = useCallback((node: HTMLDivElement | null) => {
+    containerRef.current = node;
+    pencilRef.current = node;
   }, [pencilRef]);
+
+  useEffect(() => {
+    if (!initialBrushSettings) return;
+    setBrushSettings((prev) => ({ ...prev, ...initialBrushSettings }));
+  }, [
+    initialBrushSettings?.type,
+    initialBrushSettings?.size,
+    initialBrushSettings?.color,
+    initialBrushSettings?.opacity,
+  ]);
   
   // Draw stroke to canvas
   const drawStrokeToCanvas = useCallback((
@@ -449,13 +484,31 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
     const imageData = canvas.toDataURL('image/png');
     onSave?.(imageData);
   }, [onSave]);
+
+  useImperativeHandle(ref, () => ({
+    undo,
+    redo,
+    clear: clearCanvas,
+    save: saveCanvas,
+    setBrush: (settings: Partial<BrushSettings>) => {
+      setBrushSettings((prev) => ({ ...prev, ...settings }));
+    },
+  }), [undo, redo, clearCanvas, saveCanvas]);
   
   // Calculate dynamic cursor size
-  const cursorSize = brushSettings.size * (0.5 + (pencilState.currentPressure || 0.5));
+  const activePressure = pencilState.currentPressure || 0.5;
+  const dynamicStrokeWidth = getStrokeWidth(activePressure, brushSettings.size);
+  const dynamicOpacity = getOpacity(activePressure, brushSettings.opacity);
+  const cursorSize = dynamicStrokeWidth;
+  const inputLabel = pencilState.isPencilConnected
+    ? 'Apple Pencil'
+    : lastInputType === 'touch' || (lastInputType === 'mouse' && device.hasTouchScreen)
+      ? 'Touch'
+      : 'Mouse';
   
   return (
     <CanvasContainer
-      ref={containerRef}
+      ref={setCanvasContainerRef}
       sx={{ width, height }}
     >
       {/* Main canvas with completed strokes */}
@@ -485,9 +538,14 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
       {/* Pressure indicator */}
       {showPressureIndicator && pencilState.isActive && (
         <PressureIndicator>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-            Pressure: {(pencilState.currentPressure * 100).toFixed(0)}%
-          </Typography>
+          <Stack spacing={0.25}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+              Pressure: {(pencilState.currentPressure * 100).toFixed(0)}%
+            </Typography>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+              Width {dynamicStrokeWidth.toFixed(1)}px • Opacity {(dynamicOpacity * 100).toFixed(0)}%
+            </Typography>
+          </Stack>
           <Box
             sx={{
               mt: 0.5,
@@ -523,7 +581,7 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
       
       {/* Toolbar */}
       {showToolbar && (
-        <Toolbar>
+        <Toolbar data-pencil-ignore="true" drawing={pencilState.isDrawing}>
           {/* Brush type selection */}
           <ToggleButtonGroup
             value={brushSettings.type}
@@ -556,14 +614,17 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
               size="small"
               onClick={(e) => setColorAnchor(e.currentTarget)}
             >
-              <Box
-                sx={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: '50%',
-                  bgcolor: brushSettings.color,
-                  border: '2px solid white'}}
-              />
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <ColorLens sx={{ fontSize: 14 }} />
+                <Box
+                  sx={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    bgcolor: brushSettings.color,
+                    border: '2px solid white'}}
+                />
+              </Stack>
             </IconButton>
           </Tooltip>
           
@@ -665,13 +726,17 @@ export const PencilCanvas: React.FC<PencilCanvasProps> = ({
                 color: pencilState.isPencilConnected ? 'success.main' : 'text.secondary'}}
             >
               {pencilState.isPencilConnected ? <Create sx={{ fontSize: 16 }} /> : <TouchApp sx={{ fontSize: 16 }} />}
+              <Typography variant="caption" sx={{ ml: 0.5 }}>
+                {inputLabel}
+              </Typography>
             </Box>
           </Tooltip>
         </Toolbar>
       )}
     </CanvasContainer>
   );
-};
+});
+
+PencilCanvas.displayName = 'PencilCanvas';
 
 export default PencilCanvas;
-

@@ -75,6 +75,7 @@ import type {
 import {
   CameraMovement
 } from '../models/casting';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface ShootModeViewProps {
   shotList: ShotList;
@@ -113,6 +114,13 @@ const lightingRecommendations: Record<CameraAngle, string> = {
   'Worms Eye': 'Rim light for silhuett, minimal frontbelysning',
   'Dutch Angle': 'Dramatisk sidelys, hoye kontraster',
   'Overhead': 'Softbox direkte ovenfra',
+};
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
 };
 
 export const ShootModeView: React.FC<ShootModeViewProps> = ({
@@ -173,6 +181,24 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
     
     return groups;
   }, [orderedShots, locations]);
+
+  const mentionCandidates = useMemo(() => {
+    const pool = new Set<string>();
+    locations.forEach((loc) => {
+      if (typeof loc.name === 'string' && loc.name.trim()) pool.add(loc.name.trim());
+    });
+    orderedShots.forEach((shot) => {
+      if (typeof shot.description === 'string' && shot.description.trim()) pool.add(shot.description.trim());
+      if (typeof shot.roleId === 'string' && shot.roleId.trim()) {
+        const roleName = getRoleName(shot.roleId);
+        if (roleName?.trim()) pool.add(roleName.trim());
+      }
+    });
+    pool.add('Regi');
+    pool.add('Foto');
+    pool.add('Lyd');
+    return Array.from(pool);
+  }, [getRoleName, locations, orderedShots]);
 
   const stats = useMemo(() => {
     const completed = orderedShots.filter(s => s.status === 'completed').length;
@@ -911,6 +937,13 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
               },
               '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
             }}
+          />
+          <GlobalMentionHelper
+            text={currentNotes}
+            localCandidates={mentionCandidates}
+            onApplySuggestion={(name) => setCurrentNotes((prev) => applyMentionSuggestion(prev, name))}
+            autoTagTitle="Auto-tagget i notater"
+            suggestionTitle="Mener du?"
           />
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', mt: 1, display: 'block' }}>
             Tips: Notater lagres automatisk og inkluderes i eksportert rapport

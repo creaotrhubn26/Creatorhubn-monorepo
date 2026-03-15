@@ -77,17 +77,16 @@ import {
   Visibility as ViewIcon,
   Download as DownloadIcon,
 } from '@mui/icons-material';
-import type {
-  ExtendedScriptAnalysis,
-  NumberedScene,
-  ScenePurpose,
-  CharacterArc,
-  DialogueBalance,
-  PacingAnalysis,
-  ScriptShareConfig} from '../services/scriptAnalysisService';
 import {
   analyzeScriptExtended,
   createShareConfig,
+  type ExtendedScriptAnalysis,
+  type NumberedScene,
+  type ScenePurpose,
+  type CharacterArc,
+  type DialogueBalance,
+  type PacingAnalysis,
+  type ScriptShareConfig,
 } from '../services/scriptAnalysisService';
 
 interface StoryStructurePanelProps {
@@ -147,7 +146,6 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
   onGotoLine,
   onSceneNumberingChange,
   showSceneNumbers = true,
-  darkMode = true,
 }) => {
   const [tabValue, setTabValue] = useState(0);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -183,7 +181,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: darkMode ? '#1a1a2e' : '#f8f9fa',
+        bgcolor: '#1a1a2e',
         overflow: 'hidden',
       }}
     >
@@ -193,7 +191,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         sx={{
           p: 1.5,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: darkMode ? 'rgba(30,30,50,0.9)' : 'rgba(255,255,255,0.95)',
+          bgcolor: 'rgba(30,30,50,0.9)',
         }}
       >
         <Stack direction="row" alignItems="center" spacing={1}>
@@ -239,7 +237,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         scrollButtons="auto"
         sx={{
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: darkMode ? 'rgba(25,25,45,0.8)' : 'rgba(248,249,250,0.95)',
+          bgcolor: 'rgba(25,25,45,0.8)',
           minHeight: 42,
           '& .MuiTab-root': { minHeight: 42, py: 1 },
         }}
@@ -257,7 +255,6 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
           showNumbers={localShowNumbers}
           onToggleNumbers={handleNumberingToggle}
           onGotoLine={onGotoLine}
-          darkMode={darkMode}
         />
       </TabPanel>
 
@@ -265,7 +262,6 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         <StructurePanel
           analysis={analysis}
           onGotoLine={onGotoLine}
-          darkMode={darkMode}
         />
       </TabPanel>
 
@@ -274,7 +270,6 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
           arcs={analysis.characterArcs}
           dialogueBalance={analysis.dialogueBalance}
           onGotoLine={onGotoLine}
-          darkMode={darkMode}
         />
       </TabPanel>
 
@@ -283,7 +278,6 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
           pacing={analysis.pacingAnalysis}
           scenes={analysis.numberedScenes}
           onGotoLine={onGotoLine}
-          darkMode={darkMode}
         />
       </TabPanel>
 
@@ -306,7 +300,6 @@ interface SceneListPanelProps {
   showNumbers: boolean;
   onToggleNumbers: (checked: boolean) => void;
   onGotoLine?: (lineNumber: number) => void;
-  darkMode?: boolean;
 }
 
 const SceneListPanel: FC<SceneListPanelProps> = ({
@@ -314,7 +307,6 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
   showNumbers,
   onToggleNumbers,
   onGotoLine,
-  darkMode,
 }) => {
   const [filter, setFilter] = useState<ScenePurpose | 'all'>('all');
 
@@ -370,9 +362,9 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
                 mb: 0.5,
                 cursor: 'pointer',
                 borderLeft: `3px solid ${purposeConfig?.color || '#6b7280'}`,
-                bgcolor: darkMode ? 'rgba(30,30,50,0.5)' : 'rgba(255,255,255,0.8)',
+                bgcolor: 'rgba(30,30,50,0.5)',
                 '&:hover': {
-                  bgcolor: darkMode ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.05)',
+                  bgcolor: 'rgba(59,130,246,0.1)',
                 },
               }}
               secondaryAction={
@@ -469,13 +461,11 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
 interface StructurePanelProps {
   analysis: ExtendedScriptAnalysis;
   onGotoLine?: (lineNumber: number) => void;
-  darkMode?: boolean;
 }
 
 const StructurePanel: FC<StructurePanelProps> = ({
   analysis,
   onGotoLine,
-  darkMode,
 }) => {
   return (
     <Box sx={{ p: 2 }}>
@@ -491,7 +481,7 @@ const StructurePanel: FC<StructurePanelProps> = ({
             key={act.actNumber}
             sx={{
               p: 1.5,
-              bgcolor: darkMode ? 'rgba(30,30,50,0.5)' : 'rgba(255,255,255,0.8)',
+              bgcolor: 'rgba(30,30,50,0.5)',
             }}
           >
             <Stack direction="row" alignItems="center" spacing={2}>
@@ -537,11 +527,11 @@ const StructurePanel: FC<StructurePanelProps> = ({
               key={seq.id}
               sx={{
                 p: 1,
-                bgcolor: darkMode ? 'rgba(30,30,50,0.3)' : 'rgba(255,255,255,0.6)',
+                bgcolor: 'rgba(30,30,50,0.3)',
                 borderLeft: `3px solid ${purposeConfig.color}`,
                 cursor: 'pointer',
                 '&:hover': {
-                  bgcolor: darkMode ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.05)',
+                  bgcolor: 'rgba(59,130,246,0.1)',
                 },
               }}
               onClick={() => {
@@ -601,14 +591,12 @@ interface CharacterPanelProps {
   arcs: CharacterArc[];
   dialogueBalance: DialogueBalance[];
   onGotoLine?: (lineNumber: number) => void;
-  darkMode?: boolean;
 }
 
 const CharacterPanel: FC<CharacterPanelProps> = ({
   arcs,
   dialogueBalance,
   onGotoLine,
-  darkMode,
 }) => {
   const [expanded, setExpanded] = useState<string | false>(arcs[0]?.character || false);
 
@@ -673,7 +661,7 @@ const CharacterPanel: FC<CharacterPanelProps> = ({
           expanded={expanded === arc.character}
           onChange={(_, isExpanded) => setExpanded(isExpanded ? arc.character : false)}
           sx={{
-            bgcolor: darkMode ? 'rgba(30,30,50,0.5)' : 'rgba(255,255,255,0.8)',
+            bgcolor: 'rgba(30,30,50,0.5)',
             '&:before': { display: 'none' },
             mb: 0.5,
           }}
@@ -755,14 +743,12 @@ interface PacingPanelProps {
   pacing: PacingAnalysis;
   scenes: NumberedScene[];
   onGotoLine?: (lineNumber: number) => void;
-  darkMode?: boolean;
 }
 
 const PacingPanel: FC<PacingPanelProps> = ({
   pacing,
   scenes,
   onGotoLine,
-  darkMode,
 }) => {
   return (
     <Box sx={{ p: 2 }}>
@@ -771,7 +757,7 @@ const PacingPanel: FC<PacingPanelProps> = ({
         sx={{
           p: 2,
           mb: 2,
-          bgcolor: darkMode ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.05)',
+          bgcolor: 'rgba(59,130,246,0.1)',
           borderRadius: 2,
         }}
       >
@@ -902,7 +888,7 @@ const PacingPanel: FC<PacingPanelProps> = ({
                 sx={{
                   cursor: 'pointer',
                   borderRadius: 1,
-                  bgcolor: darkMode ? 'rgba(245,158,11,0.1)' : 'rgba(245,158,11,0.05)',
+                  bgcolor: 'rgba(245,158,11,0.1)',
                   mb: 0.5,
                   '&:hover': { bgcolor: 'rgba(245,158,11,0.2)' },
                 }}

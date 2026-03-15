@@ -71,11 +71,14 @@ import {
 } from './icons/CastingIcons';
 import type { Prop } from '../models/casting';
 import { castingService } from '../services/castingService';
+import globalTagService from '../services/globalTagService';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import equipPng from './icons/Keep/roleroom_equip.png';
 import WarehouseInventoryDialog, { type WarehouseDialogItem } from './shared/WarehouseInventoryDialog';
 import warehouseInventoryService from '../services/warehouseInventoryService';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useAuth } from '../../../hooks/useAuth';
 // GLB3DPreview stub — renders inline 3D preview placeholder
 const GLB3DPreview = ({ _src, width, height }: { _src?: string; width?: number; height?: number }) => (
   <Box sx={{ width: width || 200, height: height || 200, bgcolor: 'grey.100', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 1 }}>
@@ -92,6 +95,18 @@ const focusVisibleStyles = {
     outline: '3px solid #9333ea',
     outlineOffset: 2,
   },
+};
+
+const formatPropNoteTimestamp = (value: unknown): string => {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleString('nb-NO', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
 const OPEN_PROP_CREATE_MODAL_EVENT = 'role-room:open-prop-create-modal';
@@ -299,6 +314,12 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
   // Toast notifications
   const { showSuccess, showError, showInfo } = useToast();
+  const { user } = useAuth();
+  const noteActorLabel = useMemo(() => {
+    const raw = user?.displayName ?? user?.name ?? user?.email;
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
+  }, [user]);
+  const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
 
   // Unique IDs for WCAG
   const baseId = useId();
@@ -338,6 +359,28 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     location: '',
     notes: '',
   });
+  const mentionCandidates = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...props.map((item) => item.name),
+            formData.name,
+            formData.location,
+          ]
+            .filter((value): value is string => typeof value === 'string')
+            .map((value) => value.trim())
+            .filter((value) => value.length >= 2),
+        ),
+      ),
+    [formData.location, formData.name, props],
+  );
+  const applyMentionSuggestion = useCallback((sourceText: string | undefined, name: string): string => {
+    const current = typeof sourceText === 'string' ? sourceText : '';
+    if (!current.trim()) return name;
+    const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+    return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+  }, []);
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -827,12 +870,27 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     }
 
     try {
+      const nowIso = new Date().toISOString();
+      const notesText = typeof formData.notes === 'string' ? formData.notes.trim() : '';
       const selectedItemType: PropItemType =
         formData.itemType === 'equipment' ? 'equipment' : formData.itemType === 'prop' ? 'prop' : resolveItemTypeFromCategory(formData.category);
       const fallbackCategory = selectedItemType === 'equipment' ? 'equipment' : 'prop';
       const normalizedCategory = normalizeCategoryKey(formData.category) || fallbackCategory;
       const prop: Prop = editingProp
-        ? { ...editingProp, ...formData, itemType: selectedItemType, category: normalizedCategory, updatedAt: new Date().toISOString() }
+        ? {
+            ...editingProp,
+            ...formData,
+            itemType: selectedItemType,
+            category: normalizedCategory,
+            ...(notesText
+              ? {
+                  notesAuthorName: noteActorLabel,
+                  notesAuthorId: noteActorId,
+                  notesUpdatedAt: nowIso,
+                }
+              : {}),
+            updatedAt: nowIso,
+          }
         : {
             id: `prop-${Date.now()}`,
             name: formData.name || '',
@@ -844,11 +902,31 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             quantity: formData.quantity || 1,
             location: formData.location,
             notes: formData.notes,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            ...(notesText
+              ? {
+                  notesAuthorName: noteActorLabel,
+                  notesAuthorId: noteActorId,
+                  notesUpdatedAt: nowIso,
+                }
+              : {}),
+            createdAt: nowIso,
+            updatedAt: nowIso,
           };
 
       await castingService.saveProp(projectId, prop);
+      const mentionSeed = [
+        formData.name,
+        formData.location,
+        ...globalTagService.parseExplicitMentions(typeof formData.notes === 'string' ? formData.notes : ''),
+      ]
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter((value) => value.length >= 2);
+      if (mentionSeed.length > 0) {
+        void globalTagService.add(mentionSeed).catch((error) => {
+          console.warn('Kunne ikke oppdatere globalt mention-register for rekvisitter:', error);
+        });
+      }
       const loadedProps = await castingService.getProps(projectId);
       setProps(Array.isArray(loadedProps) ? loadedProps : []);
 
@@ -2320,6 +2398,26 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                           <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.85rem', lineHeight: 1.5 }}>
                             {prop.notes}
                           </Typography>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem', mt: 0.55 }}>
+                            Skrevet av:{' '}
+                            {(() => {
+                              const rawAuthor =
+                                prop.notesAuthorName
+                                ?? prop.notesAuthor
+                                ?? prop.notesBy;
+                              return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
+                                ? rawAuthor.trim()
+                                : 'Ikke registrert';
+                            })()}
+                            {(() => {
+                              const rawUpdatedAt =
+                                prop.notesUpdatedAt
+                                ?? prop.notesLastEditedAt
+                                ?? prop.notesTimestamp;
+                              const updatedText = formatPropNoteTimestamp(rawUpdatedAt);
+                              return updatedText ? ` • ${updatedText}` : '';
+                            })()}
+                          </Typography>
                         </Box>
                       )}
 
@@ -2839,6 +2937,36 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 },
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
               }}
+            />
+            <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>
+              Skrevet av:{' '}
+              {(() => {
+                const rawAuthor =
+                  formData.notesAuthorName
+                  ?? formData.notesAuthor
+                  ?? formData.notesBy;
+                return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
+                  ? rawAuthor.trim()
+                  : 'Ikke registrert';
+              })()}
+              {(() => {
+                const rawUpdatedAt =
+                  formData.notesUpdatedAt
+                  ?? formData.notesLastEditedAt
+                  ?? formData.notesTimestamp;
+                const updatedText = formatPropNoteTimestamp(rawUpdatedAt);
+                return updatedText ? ` • ${updatedText}` : '';
+              })()}
+            </Typography>
+            <GlobalMentionHelper
+              text={typeof formData.notes === 'string' ? formData.notes : ''}
+              localCandidates={mentionCandidates}
+              onApplySuggestion={(name) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  notes: applyMentionSuggestion(typeof prev.notes === 'string' ? prev.notes : '', name),
+                }))
+              }
             />
           </Box>
         </DialogContent>

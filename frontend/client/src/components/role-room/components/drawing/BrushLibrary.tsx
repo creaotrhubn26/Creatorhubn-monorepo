@@ -25,10 +25,8 @@ import {
   DialogActions,
   Button,
   Chip,
-  Divider,
   Menu,
   MenuItem,
-  Grid,
 } from '@mui/material';
 import {
   Add,
@@ -44,8 +42,7 @@ import {
   Save,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import type { BrushConfig} from './AdvancedBrushEngine';
-import { DEFAULT_BRUSH_CONFIG, AdvancedBrushType } from './AdvancedBrushEngine';
+import { DEFAULT_BRUSH_CONFIG, type BrushConfig } from './AdvancedBrushEngine';
 import settingsService from '../../services/settingsService';
 
 // =============================================================================
@@ -149,15 +146,206 @@ const DEFAULT_PRESETS: BrushPreset[] = [
     icon: '🌫️',
     createdAt: Date.now(),
   },
+  {
+    id: 'soft-charcoal-shading',
+    name: 'Soft Charcoal',
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      type: 'pencil',
+      size: 18,
+      color: '#2f2f34',
+      hardness: 0.18,
+      flow: 0.42,
+      grain: 0.9,
+      opacity: 0.3,
+      pressureSensitivity: 0.95,
+    },
+    favorite: true,
+    category: 'Shading',
+    icon: '🪨',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'soft-airbrush-shading',
+    name: 'Soft Airbrush',
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      type: 'brush',
+      size: 42,
+      color: '#42485a',
+      hardness: 0.08,
+      flow: 0.28,
+      grain: 0.15,
+      opacity: 0.25,
+      pressureSensitivity: 0.8,
+      tiltSensitivity: 0.75,
+    },
+    favorite: true,
+    category: 'Shading',
+    icon: '🌫️',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'graphite-shading',
+    name: 'Graphite Shading',
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      type: 'pencil',
+      size: 14,
+      color: '#3b3b3b',
+      hardness: 0.34,
+      flow: 0.56,
+      grain: 0.82,
+      opacity: 0.35,
+      pressureSensitivity: 0.9,
+    },
+    favorite: true,
+    category: 'Shading',
+    icon: '✏️',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'texture-grain-forest',
+    name: 'Texture Grain',
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      type: 'pencil',
+      size: 22,
+      color: '#2e3130',
+      hardness: 0.24,
+      flow: 0.5,
+      grain: 1,
+      opacity: 0.34,
+      pressureSensitivity: 0.92,
+      tiltSensitivity: 0.7,
+    },
+    favorite: true,
+    category: 'Texture',
+    icon: '🌲',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'dry-brush',
+    name: 'Dry Brush',
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      type: 'brush',
+      size: 20,
+      color: '#4a4a4f',
+      hardness: 0.72,
+      flow: 0.36,
+      grain: 0.82,
+      opacity: 0.32,
+      pressureSensitivity: 0.86,
+    },
+    favorite: false,
+    category: 'Texture',
+    icon: '🖌️',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'grain-brush',
+    name: 'Grain Brush',
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      type: 'pencil',
+      size: 16,
+      color: '#3d3f42',
+      hardness: 0.28,
+      flow: 0.48,
+      grain: 0.96,
+      opacity: 0.3,
+      pressureSensitivity: 0.9,
+    },
+    favorite: false,
+    category: 'Texture',
+    icon: '🪨',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'speed-lines',
+    name: 'Speed Lines',
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      type: 'pen',
+      size: 3,
+      color: '#171717',
+      hardness: 0.96,
+      flow: 1,
+      grain: 0.08,
+      opacity: 0.58,
+      pressureSensitivity: 0.95,
+      tiltSensitivity: 0.35,
+    },
+    favorite: true,
+    category: 'Action',
+    icon: '💨',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'motion-brush',
+    name: 'Motion Brush',
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      type: 'brush',
+      size: 24,
+      color: '#20262f',
+      hardness: 0.2,
+      flow: 0.82,
+      grain: 0.25,
+      opacity: 0.4,
+      pressureSensitivity: 0.94,
+      tiltSensitivity: 0.78,
+    },
+    favorite: true,
+    category: 'Action',
+    icon: '⚡',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'impact-brush',
+    name: 'Impact Brush',
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      type: 'marker',
+      size: 12,
+      color: '#151515',
+      hardness: 0.86,
+      flow: 1,
+      grain: 0.2,
+      opacity: 0.68,
+      pressureSensitivity: 0.88,
+      tiltSensitivity: 0.65,
+    },
+    favorite: true,
+    category: 'Action',
+    icon: '💥',
+    createdAt: Date.now(),
+  },
 ];
 
-const CATEGORIES = ['All', 'Drawing', 'Painting', 'Markers', 'Custom'];
+const CATEGORIES = ['All', 'Drawing', 'Painting', 'Shading', 'Texture', 'Action', 'Markers', 'Custom'];
+
+function mergeWithDefaultPresets(existingPresets: BrushPreset[]): BrushPreset[] {
+  if (!Array.isArray(existingPresets) || existingPresets.length === 0) {
+    return [...DEFAULT_PRESETS];
+  }
+
+  const existingPresetIds = new Set(existingPresets.map((preset) => preset.id));
+  const missingDefaultPresets = DEFAULT_PRESETS.filter((preset) => !existingPresetIds.has(preset.id));
+
+  if (missingDefaultPresets.length === 0) {
+    return existingPresets;
+  }
+
+  return [...existingPresets, ...missingDefaultPresets];
+}
 
 // =============================================================================
 // Styled Components
 // =============================================================================
 
-const LibraryContainer = styled(Paper)(({ theme }) => ({
+const LibraryContainer = styled(Paper)(() => ({
   backgroundColor: 'rgba(20, 20, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
@@ -200,11 +388,30 @@ const BrushPreview = styled(Box)({
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
+let brushPresetApiAvailable: boolean | null = null;
+let brushPresetApiCheckPromise: Promise<boolean> | null = null;
+let brushPresetApiFallbackLogged = false;
+
+function markBrushPresetApiUnavailable(reason?: string): void {
+  brushPresetApiAvailable = false;
+
+  if (brushPresetApiFallbackLogged) {
+    return;
+  }
+
+  const detail = reason ? ` (${reason})` : '';
+  console.info(`Brush preset API unavailable${detail}. Falling back to local settings cache.`);
+  brushPresetApiFallbackLogged = true;
+}
 
 async function checkDatabaseAvailability(): Promise<boolean> {
   if (dbAvailable !== null) return dbAvailable;
   try {
     const response = await fetch('/api/casting/health');
+    if (!response.ok) {
+      dbAvailable = false;
+      return false;
+    }
     const result = await response.json();
     dbAvailable = result.status === 'healthy';
     return dbAvailable;
@@ -212,6 +419,46 @@ async function checkDatabaseAvailability(): Promise<boolean> {
     dbAvailable = false;
     return false;
   }
+}
+
+async function checkBrushPresetApiAvailability(): Promise<boolean> {
+  if (brushPresetApiAvailable !== null) {
+    return brushPresetApiAvailable;
+  }
+
+  if (brushPresetApiCheckPromise) {
+    return brushPresetApiCheckPromise;
+  }
+
+  brushPresetApiCheckPromise = (async () => {
+    const dbIsAvailable = await checkDatabaseAvailability();
+    if (!dbIsAvailable) {
+      brushPresetApiAvailable = false;
+      return false;
+    }
+
+    try {
+      const response = await fetch('/api/user/brush-presets', { method: 'HEAD' });
+      if (response.status === 404) {
+        markBrushPresetApiUnavailable('missing /api/user/brush-presets route');
+        return false;
+      }
+
+      const available = response.ok || response.status === 405;
+      brushPresetApiAvailable = available;
+      if (!available) {
+        markBrushPresetApiUnavailable(`status ${response.status}`);
+      }
+      return available;
+    } catch {
+      brushPresetApiAvailable = false;
+      return false;
+    } finally {
+      brushPresetApiCheckPromise = null;
+    }
+  })();
+
+  return brushPresetApiCheckPromise;
 }
 
 function useBrushLibrary() {
@@ -222,16 +469,22 @@ function useBrushLibrary() {
   useEffect(() => {
     const loadPresets = async () => {
       try {
-        if (await checkDatabaseAvailability()) {
+        if (await checkBrushPresetApiAvailability()) {
           const response = await fetch('/api/user/brush-presets');
           if (response.ok) {
             const data = await response.json();
-            if (data.presets?.length > 0) {
-              setPresets(data.presets);
-              setRecentlyUsed(data.recentlyUsed || []);
-              await settingsService.setSetting(SETTINGS_NAMESPACE, data);
-              return;
-            }
+              if (data.presets?.length > 0) {
+                const mergedPresets = mergeWithDefaultPresets(data.presets);
+                setPresets(mergedPresets);
+                setRecentlyUsed(data.recentlyUsed || []);
+                await settingsService.setSetting(SETTINGS_NAMESPACE, {
+                  ...data,
+                  presets: mergedPresets,
+                });
+                return;
+              }
+          } else if (response.status === 404) {
+            markBrushPresetApiUnavailable('GET /api/user/brush-presets');
           }
         }
       } catch (error) {
@@ -242,12 +495,28 @@ function useBrushLibrary() {
         SETTINGS_NAMESPACE
       );
       if (cached?.presets?.length) {
-        setPresets(cached.presets);
+        const mergedPresets = mergeWithDefaultPresets(cached.presets);
+        setPresets(mergedPresets);
         setRecentlyUsed(cached.recentlyUsed || []);
         return;
       }
 
-      setPresets(DEFAULT_PRESETS);
+      const localRaw = localStorage.getItem(STORAGE_KEY);
+      if (localRaw) {
+        try {
+          const local = JSON.parse(localRaw) as { presets?: BrushPreset[]; recentlyUsed?: string[] };
+          if (Array.isArray(local.presets) && local.presets.length > 0) {
+            const mergedPresets = mergeWithDefaultPresets(local.presets);
+            setPresets(mergedPresets);
+            setRecentlyUsed(Array.isArray(local.recentlyUsed) ? local.recentlyUsed : []);
+            return;
+          }
+        } catch (error) {
+          console.warn('Failed to parse local brush library cache:', error);
+        }
+      }
+
+      setPresets(mergeWithDefaultPresets([]));
     };
     loadPresets();
   }, []);
@@ -257,15 +526,20 @@ function useBrushLibrary() {
     const data = { presets, recentlyUsed };
 
     await settingsService.setSetting(SETTINGS_NAMESPACE, data);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     
     // Try to save to database
     try {
-      if (await checkDatabaseAvailability()) {
-        await fetch('/api/user/brush-presets', {
+      if (await checkBrushPresetApiAvailability()) {
+        const response = await fetch('/api/user/brush-presets', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
+
+        if (response.status === 404) {
+          markBrushPresetApiUnavailable('PUT /api/user/brush-presets');
+        }
       }
     } catch (error) {
       console.warn('Failed to save brush library to database:', error);
@@ -375,6 +649,8 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renamePresetName, setRenamePresetName] = useState('');
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuPresetId, setMenuPresetId] = useState<string | null>(null);
 
@@ -407,9 +683,10 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
     };
     
     addPreset(newPreset);
+    onSaveCurrentBrush();
     setSaveDialogOpen(false);
     setNewPresetName('');
-  }, [newPresetName, currentConfig, addPreset]);
+  }, [newPresetName, currentConfig, addPreset, onSaveCurrentBrush]);
 
   const handleDeletePreset = useCallback(() => {
     if (menuPresetId) {
@@ -418,6 +695,23 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
       setMenuPresetId(null);
     }
   }, [menuPresetId, deletePreset]);
+
+  const handleOpenRenamePreset = useCallback(() => {
+    if (!menuPresetId) return;
+    const preset = presets.find((item) => item.id === menuPresetId);
+    if (!preset) return;
+    setRenamePresetName(preset.name);
+    setRenameDialogOpen(true);
+    setMenuAnchor(null);
+  }, [menuPresetId, presets]);
+
+  const handleRenamePreset = useCallback(() => {
+    if (!menuPresetId || !renamePresetName.trim()) return;
+    updatePreset(menuPresetId, { name: renamePresetName.trim() });
+    setRenameDialogOpen(false);
+    setRenamePresetName('');
+    setMenuPresetId(null);
+  }, [menuPresetId, renamePresetName, updatePreset]);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -434,7 +728,13 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
           </Stack>
           <Stack direction="row" spacing={0.5}>
             <Tooltip title="Save Current Brush">
-              <IconButton size="small" onClick={() => setSaveDialogOpen(true)}>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  onSaveCurrentBrush();
+                  setSaveDialogOpen(true);
+                }}
+              >
                 <Save sx={{ fontSize: 16 }} />
               </IconButton>
             </Tooltip>
@@ -599,6 +899,9 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
           paper: { sx: { bgcolor: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(8px)' } }
         }}
       >
+        <MenuItem onClick={handleOpenRenamePreset} sx={{ fontSize: 12 }}>
+          <Edit sx={{ fontSize: 14, mr: 1 }} /> Rename
+        </MenuItem>
         <MenuItem onClick={handleDeletePreset} sx={{ fontSize: 12, color: 'error.main' }}>
           <Delete sx={{ fontSize: 14, mr: 1 }} /> Delete
         </MenuItem>
@@ -631,8 +934,43 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSaveDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleSavePreset} variant="contained" disabled={!newPresetName.trim()}>
+          <Button
+            onClick={handleSavePreset}
+            variant="contained"
+            disabled={!newPresetName.trim()}
+            startIcon={<Add />}
+          >
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Rename dialog */}
+      <Dialog
+        open={renameDialogOpen}
+        onClose={() => setRenameDialogOpen(false)}
+        PaperProps={{ sx: { bgcolor: 'rgba(30,30,40,0.98)', backgroundImage: 'none' } }}
+      >
+        <DialogTitle>Rename Brush Preset</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Preset Name"
+            value={renamePresetName}
+            onChange={(event) => setRenamePresetName(event.target.value)}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleRenamePreset}
+            variant="contained"
+            disabled={!renamePresetName.trim()}
+            startIcon={<Edit />}
+          >
+            Rename
           </Button>
         </DialogActions>
       </Dialog>

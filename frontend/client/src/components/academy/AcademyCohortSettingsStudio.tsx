@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Avatar,
   Box,
@@ -25,7 +25,6 @@ import {
   MonetizationOn,
   MoreHoriz,
   NotificationsNone,
-  PeopleAlt,
   Publish,
   Save,
   Search,
@@ -33,11 +32,13 @@ import {
   TrendingUp,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
-import { useAcademy, type Course } from '@/contexts/AcademyContext';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { academyPdfExportService } from '@/services/academyPdfExportService';
 import { useAcademyLocale } from './academyLocale';
-import AcademyBrandMark from './AcademyBrandMark';
+import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
+import AcademyLeftSidebar from './AcademyLeftSidebar';
 
 interface AcademyCohortSettingsStudioProps {
   courseId?: string;
@@ -71,6 +72,24 @@ interface DiscussionItem {
   timestamp: string;
 }
 
+interface CohortSettingsPayload {
+  courseId: string;
+  cohorts: CohortItem[];
+  featureFlags: {
+    earlyAccess: boolean;
+    invitationOnly: boolean;
+    closed: boolean;
+    dripRelease: boolean;
+  };
+  selectedCohortId: string | null;
+  discussions: DiscussionItem[];
+}
+
+interface CohortSettingsResponse {
+  success: boolean;
+  data: CohortSettingsPayload | null;
+}
+
 const panelSx = {
   borderRadius: 1.4,
   border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
@@ -84,123 +103,19 @@ const placeholderBackgrounds = [
   'linear-gradient(145deg, rgba(19,24,36,0.93), rgba(11,14,22,0.98)), radial-gradient(circle at 70% 22%, rgba(248,179,33,0.22), rgba(0,0,0,0))',
 ];
 
-const fallbackCourses: Course[] = [
-  {
-    id: 'cohort-course-1',
-    title: 'Directing Masterclass',
-    description: 'Premium directing education with live cohort support.',
-    instructor: {
-      id: 'cohort-instructor-1',
-      name: 'Norwedfilm',
-      avatar: '',
-      bio: 'Film director',
-      profession: 'videographer',
-    },
-    thumbnail: '',
-    videoUrl: '/assets/academy/intro-video.mp4',
-    duration: 336,
-    level: 'advanced',
-    category: 'videography',
-    tags: ['directing', 'cohort'],
-    price: 36984,
-    isFree: false,
-    isPublished: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    rating: 4.8,
-    studentCount: 232,
-    lessons: [],
-    prerequisites: [],
-    learningOutcomes: [],
-    resources: [],
-  },
-];
 
-const defaultCohorts = (): CohortItem[] => [
-  {
-    id: 'cohort-1',
-    name: 'Digital Photography',
-    subtitle: 'Freelance · Foundation track',
-    startDate: '2026-01-05',
-    endDate: '2026-02-29',
-    enrollments: 45,
-    capacity: 100,
-    completionRate: 78,
-    revenue: 50700,
-    status: 'active',
-    tags: ['Early Access'],
-    imageTheme: 0,
-  },
-  {
-    id: 'cohort-2',
-    name: 'Cinematic Filmmaking [Closed]',
-    subtitle: 'Filmmaking · Advanced',
-    startDate: '2025-12-01',
-    endDate: '2026-01-31',
-    enrollments: 120,
-    capacity: 150,
-    completionRate: 66,
-    revenue: 90600,
-    status: 'closed',
-    tags: ['Closed'],
-    imageTheme: 1,
-  },
-  {
-    id: 'cohort-3',
-    name: 'Vocal Production Pros [Early Access]',
-    subtitle: 'Music production · Pro',
-    startDate: '2026-03-01',
-    endDate: '2026-04-15',
-    enrollments: 80,
-    capacity: 200,
-    completionRate: 32,
-    revenue: 38900,
-    status: 'early_access',
-    tags: ['Early Access', 'Drip Release'],
-    imageTheme: 2,
-  },
-  {
-    id: 'cohort-4',
-    name: 'Freelance Photographers',
-    subtitle: 'Business growth · 8-week sprint',
-    startDate: '2026-04-10',
-    endDate: '2026-05-15',
-    enrollments: 92,
-    capacity: 100,
-    completionRate: 48,
-    revenue: 80100,
-    status: 'invitation_only',
-    tags: ['Invitation Only'],
-    imageTheme: 3,
-  },
-];
+const defaultFeatureFlags = {
+  earlyAccess: true,
+  invitationOnly: true,
+  closed: true,
+  dripRelease: false,
+};
 
-const defaultDiscussions = (): DiscussionItem[] => [
-  {
-    id: 'discussion-1',
-    author: 'Adrain Bergland',
-    message: 'Posted ideas for onboarding prompts in filmmaking cohort.',
-    timestamp: '1h ago',
-  },
-  {
-    id: 'discussion-2',
-    author: 'Sarah Ornnson',
-    message: 'Completed Lesson & Finessing the progression timeline.',
-    timestamp: '23m ago',
-  },
-  {
-    id: 'discussion-3',
-    author: 'Armette Lindo',
-    message: 'Shared cinematic LUT pack and setup feedback.',
-    timestamp: '5h ago',
-  },
-];
-
-const formatDateRange = (startDate: string, endDate: string): string => {
+const formatDateRange = (startDate: string, endDate: string, locale: 'nb-NO' | 'en-US'): string => {
   const format = (value: string) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return new Intl.DateTimeFormat('en-US', {
+    return new Intl.DateTimeFormat(locale, {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -218,30 +133,30 @@ const toNok = (value: number): string =>
   }).format(Math.max(0, value));
 
 function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCohortSettingsStudioProps) {
-  const [, setLocation] = useLocation();
-  const { state, getCourse, updateCourse } = useAcademy();
+  const [location, setLocation] = useLocation();
+  const { state, getCourse, updateCourse, setCurrentCourse } = useAcademy();
   const { analytics, debugging } = useEnhancedMasterIntegration();
   
-  const { navLabel, tt } = useAcademyLocale();
+  const { navLabel, tt, language } = useAcademyLocale();
+  const dateLocale: 'nb-NO' | 'en-US' = language === 'no' ? 'nb-NO' : 'en-US';
 
   const [leftNav, setLeftNav] = useState('cohort');
   const [filter, setFilter] = useState<CohortFilter>('all');
   const [searchValue, setSearchValue] = useState('');
   const [selectedCourseId, setSelectedCourseId] = useState(courseId || '');
   const [saveMessage, setSaveMessage] = useState('');
+  const [isHydratingCohorts, setIsHydratingCohorts] = useState(false);
+  const [isPersistingCohorts, setIsPersistingCohorts] = useState(false);
+  const cohortAutoSaveTimerRef = useRef<number | null>(null);
+  const hasLoadedCourseSettingsRef = useRef(false);
 
-  const [cohortItems, setCohortItems] = useState<CohortItem[]>(defaultCohorts);
+  const [cohortItems, setCohortItems] = useState<CohortItem[]>([]);
   const [selectedCohortId, setSelectedCohortId] = useState('');
-  const [discussionItems, setDiscussionItems] = useState<DiscussionItem[]>(defaultDiscussions);
-  const [discussionAuthor, setDiscussionAuthor] = useState('You');
+  const [discussionItems, setDiscussionItems] = useState<DiscussionItem[]>([]);
+  const [discussionAuthor, setDiscussionAuthor] = useState(() => tt('Du', 'You'));
   const [discussionDraft, setDiscussionDraft] = useState('');
 
-  const [featureFlags, setFeatureFlags] = useState({
-    earlyAccess: true,
-    invitationOnly: true,
-    closed: true,
-    dripRelease: false,
-  });
+  const [featureFlags, setFeatureFlags] = useState(defaultFeatureFlags);
 
   const [tagDraft, setTagDraft] = useState('');
 
@@ -259,7 +174,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
     if (Array.isArray(state.courses) && state.courses.length > 0) {
       return state.courses;
     }
-    return fallbackCourses;
+    return [];
   }, [state.courses]);
 
   const courseOptionIds = useMemo(
@@ -276,8 +191,43 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
       : null;
     if (fromSelected) return fromSelected;
 
-    return state.currentCourse || courseItems[0] || fallbackCourses[0];
+    return state.currentCourse || courseItems[0] || null;
   }, [courseId, courseItems, getCourse, selectedCourseId, state.currentCourse]);
+
+  const syncCourseIdInRoute = useCallback(
+    (nextCourseId: string) => {
+      const normalizedCourseId = String(nextCourseId || '').trim();
+      const [pathname, rawQuery = ''] = location.split('?');
+      const params = new URLSearchParams(rawQuery);
+
+      if (normalizedCourseId && normalizedCourseId !== 'all') {
+        params.set('courseId', normalizedCourseId);
+      } else {
+        params.delete('courseId');
+      }
+      params.delete('course_id');
+
+      const suffix = params.toString();
+      setLocation(suffix ? `${pathname}?${suffix}` : pathname);
+    },
+    [location, setLocation],
+  );
+
+  useEffect(() => {
+    const nextCourseId = String(courseId || '').trim();
+    if (!nextCourseId) return;
+    setSelectedCourseId((previousCourseId) =>
+      previousCourseId === nextCourseId ? previousCourseId : nextCourseId,
+    );
+  }, [courseId]);
+
+  useEffect(() => {
+    if (!activeCourse?.id) return;
+    const inState = state.courses.some((course) => String(course.id) === String(activeCourse.id));
+    if (!inState) return;
+    if (String(state.currentCourse?.id || '') === String(activeCourse.id)) return;
+    setCurrentCourse(activeCourse);
+  }, [activeCourse, setCurrentCourse, state.courses, state.currentCourse?.id]);
 
   const selectedCourseValue = useMemo(() => {
     const preferredId = String(selectedCourseId || activeCourse?.id || '');
@@ -299,8 +249,163 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
     }
   }, [selectedCourseId, selectedCourseValue]);
 
+  const persistCohortDraft = useCallback(
+    async (publish: boolean, silent: boolean): Promise<boolean> => {
+      const targetCourseId = String(selectedCourseValue || activeCourse?.id || '').trim();
+      if (!targetCourseId) {
+        if (!silent) {
+          setSaveMessage(tt('Velg en kompetanse før lagring.', 'Select a competency before saving.'));
+        }
+        return false;
+      }
+
+      const payload: CohortSettingsPayload = {
+        courseId: targetCourseId,
+        cohorts: cohortItems,
+        featureFlags,
+        selectedCohortId: selectedCohortId || null,
+        discussions: discussionItems,
+      };
+
+      if (!silent) {
+        setIsPersistingCohorts(true);
+      }
+
+      try {
+        const response = await fetch('/api/academy/cohort-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            ...payload,
+            publish,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            tt('Kunne ikke lagre kohortinnstillinger.', 'Could not save cohort settings.'),
+          );
+        }
+        return true;
+      } catch (error) {
+        if (!silent) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : tt('Kunne ikke lagre kohortinnstillinger.', 'Could not save cohort settings.');
+          setSaveMessage(message);
+        }
+        return false;
+      } finally {
+        if (!silent) {
+          setIsPersistingCohorts(false);
+        }
+      }
+    },
+    [
+      activeCourse?.id,
+      cohortItems,
+      discussionItems,
+      featureFlags,
+      selectedCohortId,
+      selectedCourseValue,
+      tt,
+    ],
+  );
+
+  const hydrateCohortSettings = useCallback(async () => {
+    const targetCourseId = String(selectedCourseValue || '').trim();
+    if (!targetCourseId) {
+      hasLoadedCourseSettingsRef.current = false;
+      setCohortItems([]);
+      setDiscussionItems([]);
+      setSelectedCohortId('');
+      setFeatureFlags(defaultFeatureFlags);
+      return;
+    }
+
+    setIsHydratingCohorts(true);
+    hasLoadedCourseSettingsRef.current = false;
+
+    try {
+      const response = await fetch(
+        `/api/academy/cohort-settings?courseId=${encodeURIComponent(targetCourseId)}`,
+        { credentials: 'include' },
+      );
+      if (!response.ok) {
+        throw new Error(
+          tt('Kunne ikke hente kohortinnstillinger.', 'Could not load cohort settings.'),
+        );
+      }
+      const payload = (await response.json().catch(() => null)) as CohortSettingsResponse | null;
+      const data = payload?.data;
+
+      setCohortItems(Array.isArray(data?.cohorts) ? data.cohorts : []);
+      setDiscussionItems(Array.isArray(data?.discussions) ? data.discussions : []);
+      setFeatureFlags({
+        ...defaultFeatureFlags,
+        ...(data?.featureFlags || {}),
+      });
+      setSelectedCohortId(typeof data?.selectedCohortId === 'string' ? data.selectedCohortId : '');
+      setSaveMessage('');
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : tt('Kunne ikke hente kohortinnstillinger.', 'Could not load cohort settings.');
+      setSaveMessage(message);
+      setCohortItems([]);
+      setDiscussionItems([]);
+      setSelectedCohortId('');
+      setFeatureFlags(defaultFeatureFlags);
+    } finally {
+      hasLoadedCourseSettingsRef.current = true;
+      setIsHydratingCohorts(false);
+    }
+  }, [selectedCourseValue, tt]);
+
   useEffect(() => {
-    if (!selectedCohortId && cohortItems.length > 0) {
+    void hydrateCohortSettings();
+  }, [hydrateCohortSettings]);
+
+  useEffect(() => {
+    if (!hasLoadedCourseSettingsRef.current) return;
+    if (isHydratingCohorts) return;
+    if (!selectedCourseValue) return;
+
+    if (cohortAutoSaveTimerRef.current) {
+      window.clearTimeout(cohortAutoSaveTimerRef.current);
+    }
+
+    cohortAutoSaveTimerRef.current = window.setTimeout(() => {
+      void persistCohortDraft(false, true);
+    }, 600);
+
+    return () => {
+      if (cohortAutoSaveTimerRef.current) {
+        window.clearTimeout(cohortAutoSaveTimerRef.current);
+        cohortAutoSaveTimerRef.current = null;
+      }
+    };
+  }, [
+    cohortItems,
+    discussionItems,
+    featureFlags,
+    isHydratingCohorts,
+    persistCohortDraft,
+    selectedCohortId,
+    selectedCourseValue,
+  ]);
+
+  useEffect(() => {
+    if (cohortItems.length === 0) {
+      if (selectedCohortId) setSelectedCohortId('');
+      return;
+    }
+
+    const stillExists = cohortItems.some((item) => item.id === selectedCohortId);
+    if (!stillExists) {
       setSelectedCohortId(cohortItems[0].id);
     }
   }, [cohortItems, selectedCohortId]);
@@ -367,7 +472,137 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
       .slice(0, 3);
   }, [cohortItems]);
 
+  const handleExport = useCallback(async () => {
+    if (visibleCohorts.length === 0) {
+      setSaveMessage(tt('Ingen kohortdata å eksportere.', 'No cohort data to export.'));
+      return;
+    }
+
+    const courseLabel = activeCourse?.title || tt('Aktiv kompetanse', 'Active competency');
+    await academyPdfExportService.exportReport({
+      fileName: `academy-cohorts-${new Date().toISOString().slice(0, 10)}.pdf`,
+      title: tt('Kohortinnstillinger', 'Cohort Settings'),
+      subtitle: tt(
+        'Kohortoversikt, status og fremdrift',
+        'Cohort overview, status, and progress',
+      ),
+      courseLabel,
+      locale: language === 'no' ? 'nb-NO' : 'en-US',
+      sections: [
+        {
+          title: tt('Oversikt', 'Overview'),
+          metrics: [
+            { label: tt('Kohorter', 'Cohorts'), value: cohortItems.length },
+            { label: tt('Synlige', 'Visible'), value: visibleCohorts.length },
+            { label: tt('Gj.sn. fullføring', 'Avg completion'), value: `${averageCompletion}%` },
+            { label: tt('Inntekt', 'Revenue'), value: toNok(totalRevenue) },
+          ],
+        },
+        {
+          title: tt('Ytelseshøydepunkter', 'Performance Highlights'),
+          table: {
+            columns: [tt('Måling', 'Metric'), tt('Verdi', 'Value')],
+            rows: [
+              [tt('Påmeldingshastighet', 'Enrollment velocity'), `${enrollmentVelocity}%`],
+              [tt('Gj.sn. fullføring', 'Avg completion'), `${averageCompletion}%`],
+              [tt('Total inntekt', 'Total revenue'), toNok(totalRevenue)],
+            ],
+          },
+        },
+        {
+          title: tt('Kohortliste', 'Cohort List'),
+          table: {
+            columns: [
+              tt('Kohort', 'Cohort'),
+              tt('Periode', 'Period'),
+              tt('Påmeldinger', 'Enrollments'),
+              tt('Kapasitet', 'Capacity'),
+              tt('Fullføring', 'Completion'),
+              tt('Status', 'Status'),
+              tt('Tagger', 'Tags'),
+            ],
+            rows: visibleCohorts.map((cohort) => [
+              cohort.name,
+              formatDateRange(cohort.startDate, cohort.endDate, dateLocale),
+              cohort.enrollments,
+              cohort.capacity,
+              `${cohort.completionRate}%`,
+              localizedStatusLabel(cohort.status),
+              cohort.tags.join(', ') || '-',
+            ]),
+          },
+        },
+        {
+          title: tt('Toppliste', 'Leaderboard'),
+          table: {
+            columns: [
+              tt('Kohort', 'Cohort'),
+              tt('Fullføring', 'Completion'),
+              tt('Påmeldinger', 'Enrollments'),
+            ],
+            rows: leaderboard.map((cohort) => [
+              cohort.name,
+              `${cohort.completionRate}%`,
+              cohort.enrollments,
+            ]),
+          },
+        },
+        {
+          title: tt('Kommende kull', 'Upcoming Cohorts'),
+          table: {
+            columns: [
+              tt('Kohort', 'Cohort'),
+              tt('Periode', 'Period'),
+              tt('Påmeldinger', 'Enrollments'),
+            ],
+            rows: upcomingCohorts.map((cohort) => [
+              cohort.name,
+              formatDateRange(cohort.startDate, cohort.endDate, dateLocale),
+              cohort.enrollments,
+            ]),
+          },
+        },
+      ],
+    });
+
+    analytics.trackEvent('academy_cohort_settings_export_clicked', {
+      courseId: activeCourse?.id || null,
+      cohortCount: visibleCohorts.length,
+      timestamp: Date.now(),
+    });
+    setSaveMessage(tt('Kohortrapport eksportert som PDF.', 'Cohort report exported as PDF.'));
+  }, [
+    activeCourse?.id,
+    activeCourse?.title,
+    analytics,
+    averageCompletion,
+    cohortItems.length,
+    dateLocale,
+    enrollmentVelocity,
+    language,
+    leaderboard,
+    localizedStatusLabel,
+    totalRevenue,
+    tt,
+    upcomingCohorts,
+    visibleCohorts,
+  ]);
+
+  const handleReports = useCallback(async () => {
+    analytics.trackEvent('academy_cohort_settings_reports_clicked', {
+      courseId: activeCourse?.id || null,
+      cohortCount: visibleCohorts.length,
+      timestamp: Date.now(),
+    });
+    await handleExport();
+  }, [activeCourse?.id, analytics, handleExport, visibleCohorts.length]);
+
   const addCohort = useCallback(() => {
+    if (!selectedCourseValue) {
+      setSaveMessage(tt('Velg en kompetanse først.', 'Select a competency first.'));
+      return;
+    }
+
     const index = cohortItems.length + 1;
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth() + 1, 8 + index);
@@ -375,8 +610,8 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
 
     const newCohort: CohortItem = {
       id: `cohort-${Date.now()}`,
-      name: `New Cohort ${index}`,
-      subtitle: 'Creator track · Scheduled',
+      name: `${tt('Nytt kull', 'New Cohort')} ${index}`,
+      subtitle: tt('Kompetansefokus · Planlagt', 'Competency track · Scheduled'),
       startDate: start.toISOString().slice(0, 10),
       endDate: end.toISOString().slice(0, 10),
       enrollments: 0,
@@ -384,13 +619,44 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
       completionRate: 0,
       revenue: 0,
       status: 'active',
-      tags: ['Invitation Only'],
+      tags: [tt('Kun invitasjon', 'Invitation Only')],
       imageTheme: index % placeholderBackgrounds.length,
     };
 
     setCohortItems((prev) => [newCohort, ...prev]);
     setSelectedCohortId(newCohort.id);
-  }, [cohortItems.length]);
+  }, [cohortItems.length, selectedCourseValue, tt]);
+
+  const updateSelectedCohort = useCallback(
+    (patch: Partial<CohortItem>) => {
+      if (!selectedCohort) return;
+      setCohortItems((prev) =>
+        prev.map((item) => (item.id === selectedCohort.id ? { ...item, ...patch } : item)),
+      );
+    },
+    [selectedCohort],
+  );
+
+  const removeSelectedCohort = useCallback(
+    (cohortId: string) => {
+      setCohortItems((prev) => prev.filter((item) => item.id !== cohortId));
+      if (selectedCohortId === cohortId) {
+        setSelectedCohortId('');
+      }
+      setSaveMessage(tt('Kohort fjernet.', 'Cohort removed.'));
+    },
+    [selectedCohortId, tt],
+  );
+
+  const openCohortEnrollment = useCallback(
+    (cohort: CohortItem) => {
+      const params = new URLSearchParams();
+      if (selectedCourseValue) params.set('courseId', selectedCourseValue);
+      params.set('cohort', cohort.id);
+      setLocation(`/academy/enrollment?${params.toString()}`);
+    },
+    [selectedCourseValue, setLocation],
+  );
 
   const toggleFeatureFlag = useCallback((key: keyof typeof featureFlags) => {
     setFeatureFlags((prev) => ({
@@ -429,16 +695,28 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
 
   const saveCohortSettings = useCallback(
     async (publish: boolean) => {
+      const targetCourseId = String(selectedCourseValue || activeCourse?.id || '').trim();
+      if (!targetCourseId) {
+        setSaveMessage(tt('Velg en kompetanse før lagring.', 'Select a competency before saving.'));
+        return;
+      }
+
       const payload = {
-        courseId: activeCourse?.id || null,
+        courseId: targetCourseId,
         cohorts: cohortItems,
         featureFlags,
         selectedCohortId,
+        discussions: discussionItems,
         publish,
         updatedAt: new Date().toISOString(),
       };
 
       try {
+        const persisted = await persistCohortDraft(publish, false);
+        if (!persisted) {
+          return;
+        }
+
         if (activeCourse?.id && state.courses.some((course) => String(course.id) === String(activeCourse.id))) {
           const enrichedTags = Array.from(new Set([...(activeCourse.tags || []), 'cohort'])) as string[];
           await updateCourse({
@@ -457,7 +735,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
         onSave?.(payload);
 
         analytics.trackEvent(publish ? 'academy_cohort_settings_publish' : 'academy_cohort_settings_save', {
-          courseId: activeCourse?.id || null,
+          courseId: targetCourseId,
           cohortCount: cohortItems.length,
           publish,
           timestamp: Date.now(),
@@ -475,10 +753,13 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
       activeCourse,
       analytics,
       cohortItems,
+      discussionItems,
       debugging,
       featureFlags,
       onSave,
+      persistCohortDraft,
       selectedCohortId,
+      selectedCourseValue,
       state.courses,
       tt,
       updateCourse,
@@ -504,21 +785,6 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
     setSaveMessage(tt('Diskusjonsnotat lagt til.', 'Discussion note added.'));
   }, [discussionAuthor, discussionDraft, tt]);
 
-  const leftNavItems = [
-    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
-    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
-    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
-    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
-    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
-    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
-    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
-    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
-    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
-    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
-    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
-    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
-  ];
-
   return (
     <Box
       sx={{
@@ -535,89 +801,29 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
           position: 'absolute',
           inset: 0,
           background:
-            'radial-gradient(circle at 76% 14%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 15% 80%, rgba(82,121,204,0.13), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 30%)',
+            'radial-gradient(circle at 74% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%)',
           pointerEvents: 'none',
         }}
       />
 
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
-        <Box
-          component="aside"
-          sx={{
-            width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
-            background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
-            display: 'flex',
-            flexDirection: 'column',
+        <AcademyLeftSidebar
+          activeNav={leftNav}
+          onNavigate={(navId, route) => {
+            setLeftNav(navId);
+            setLocation(route);
           }}
-        >
-          <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <AcademyBrandMark />
-            <Button
-              variant="outlined"
-              startIcon={<Add />}
-              onClick={() => setLocation('/academy/course-creator')}
-              sx={{
-                justifyContent: 'flex-start',
-                borderColor: 'rgba(248,179,33,0.55)',
-                color: '#f8d56f',
-                borderRadius: 1,
-                textTransform: 'none',
-                fontWeight: 600,
-              }}
-            >
-              {tt('Opprett nytt kurs', 'Create New Course')}
-            </Button>
-          </Stack>
-
-          <Stack spacing={0.5} sx={{ px: 1.5 }}>
-            {leftNavItems.map((item) => {
-              const active = item.id === leftNav;
-              return (
-                <Button
-                  key={item.id}
-                  onClick={() => {
-                    setLeftNav(item.id);
-                    setLocation(item.route);
-                  }}
-                  sx={{
-                    justifyContent: 'flex-start',
-                    color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
-                    borderRadius: 1,
-                    textTransform: 'none',
-                    px: 2,
-                    py: 1.15,
-                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
-                    background: active
-                      ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
-                      : 'transparent',
-                  }}
-                >
-                  {item.label}
-                </Button>
-              );
-            })}
-          </Stack>
-
-          <Box sx={{ mt: 'auto', p: 2 }}>
-            <Button
-              variant="text"
-              startIcon={<Add />}
-              onClick={addCohort}
-              sx={{
-                width: '100%',
-                justifyContent: 'flex-start',
-                color: '#edf0f7',
-                textTransform: 'none',
-                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
-                borderRadius: 1,
-              }}
-            >
-              {tt('Ny modul', 'New Module')}
-            </Button>
-          </Box>
-        </Box>
+          onCreateCourse={() => {
+            setLeftNav('curriculum');
+            setLocation('/academy/curriculum?createCompetency=1');
+          }}
+          tt={tt}
+          navLabel={navLabel}
+          bottomAction={{
+            label: tt('Nytt kull', 'New Cohort'),
+            onClick: addCohort,
+          }}
+        />
 
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Box
@@ -643,15 +849,33 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
             </Stack>
 
             <Stack direction="row" spacing={1.2} alignItems="center">
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <AcademyLocaleSwitcher />
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=notifications')}
+                aria-label={tt('Varsler', 'Notifications')}
+                sx={{ color: 'rgba(237,240,247,0.75)' }}
+              >
                 <NotificationsNone fontSize="small" />
               </IconButton>
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=messages')}
+                aria-label={tt('Meldinger', 'Messages')}
+                sx={{ color: 'rgba(237,240,247,0.75)' }}
+              >
                 <MailOutline fontSize="small" />
               </IconButton>
-              <Avatar sx={{ width: 34, height: 34, bgcolor: '#f8b321', color: '#111' }}>
-                {String(activeCourse?.instructor?.name || 'N').charAt(0).toUpperCase()}
-              </Avatar>
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=profile')}
+                aria-label={tt('Profil', 'Profile')}
+                sx={{ p: 0 }}
+              >
+                <Avatar sx={{ width: 34, height: 34, bgcolor: '#f8b321', color: '#111' }}>
+                  {String(activeCourse?.instructor?.name || 'N').charAt(0).toUpperCase()}
+                </Avatar>
+              </IconButton>
             </Stack>
           </Box>
 
@@ -673,7 +897,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                 justifyContent="space-between"
                 alignItems={{ xs: 'stretch', lg: 'center' }}
               >
-                <Typography sx={{ fontSize: 38, fontWeight: 600, letterSpacing: '0.02em' }}>
+                <Typography sx={{ fontSize: 26, fontWeight: 600, letterSpacing: '0.02em' }}>
                   {tt('Kohortinnstillinger', 'Cohort Settings')}
                 </Typography>
 
@@ -681,6 +905,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                   <Button
                     variant="outlined"
                     startIcon={<Download />}
+                    onClick={handleExport}
                     sx={{
                       textTransform: 'none',
                       borderColor: 'rgba(255,255,255,0.2)',
@@ -693,6 +918,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                   <Button
                     variant="outlined"
                     startIcon={<Assessment />}
+                    onClick={handleReports}
                     sx={{
                       textTransform: 'none',
                       borderColor: 'rgba(255,255,255,0.2)',
@@ -714,7 +940,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                       boxShadow: '0 10px 24px rgba(248,179,33,0.26)',
                     }}
                   >
-                    {tt('Opprett diagram', 'Create Chart')}
+                    {tt('Legg til kohort', 'Add Cohort')}
                   </Button>
                 </Stack>
               </Stack>
@@ -734,6 +960,23 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                 </Typography>
               )}
 
+              {(isHydratingCohorts || isPersistingCohorts) && (
+                <Typography
+                  sx={{
+                    px: 1.2,
+                    py: 0.7,
+                    borderRadius: 1,
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
+                    color: 'rgba(237,240,247,0.78)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
+                  }}
+                >
+                  {isHydratingCohorts
+                    ? tt('Laster kohortdata fra database ...', 'Loading cohort data from database ...')
+                    : tt('Lagrer kohortutkast ...', 'Saving cohort draft ...')}
+                </Typography>
+              )}
+
               <Box sx={{ ...panelSx, p: 1.2 }}>
                 <Stack
                   direction={{ xs: 'column', md: 'row' }}
@@ -746,7 +989,12 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     <Select
                       size="small"
                       value={selectedCourseValue}
-                      onChange={(event) => setSelectedCourseId(String(event.target.value))}
+                      displayEmpty
+                      onChange={(event) => {
+                        const nextCourseId = String(event.target.value);
+                        setSelectedCourseId(nextCourseId);
+                        syncCourseIdInRoute(nextCourseId);
+                      }}
                       sx={{
                         minWidth: 210,
                         color: '#edf0f7',
@@ -754,6 +1002,11 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                       }}
                     >
+                      {courseItems.length === 0 && (
+                        <MenuItem value="" disabled>
+                          {tt('Ingen kompetanser', 'No competencies')}
+                        </MenuItem>
+                      )}
                       {courseItems.map((course) => (
                         <MenuItem key={course.id} value={course.id}>
                           {course.title}
@@ -778,19 +1031,6 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                       <MenuItem value="closed">{tt('Lukket', 'Closed')}</MenuItem>
                     </Select>
                   </Stack>
-
-                  <Button
-                    startIcon={<Add />}
-                    onClick={addCohort}
-                    sx={{
-                      textTransform: 'none',
-                      color: '#0f0f0f',
-                      background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {tt('Legg til kohort', 'Add Cohort')}
-                  </Button>
                 </Stack>
 
                 <TextField
@@ -890,7 +1130,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                           </Stack>
 
                           <Typography sx={{ color: 'rgba(237,240,247,0.76)', fontSize: 13 }}>
-                            {formatDateRange(cohort.startDate, cohort.endDate)}
+                            {formatDateRange(cohort.startDate, cohort.endDate, dateLocale)}
                           </Typography>
 
                           <Box>
@@ -921,13 +1161,34 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                           </Box>
 
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                            <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)' }}>
+                            <IconButton
+                              size="small"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openCohortEnrollment(cohort);
+                              }}
+                              sx={{ color: 'rgba(237,240,247,0.68)' }}
+                            >
                               <MailOutline fontSize="small" />
                             </IconButton>
-                            <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)' }}>
+                            <IconButton
+                              size="small"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedCohortId(cohort.id);
+                              }}
+                              sx={{ color: 'rgba(237,240,247,0.68)' }}
+                            >
                               <Edit fontSize="small" />
                             </IconButton>
-                            <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)' }}>
+                            <IconButton
+                              size="small"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                removeSelectedCohort(cohort.id);
+                              }}
+                              sx={{ color: 'rgba(237,240,247,0.68)' }}
+                            >
                               <MoreHoriz fontSize="small" />
                             </IconButton>
                           </Stack>
@@ -964,7 +1225,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                   </Stack>
                 </Stack>
 
-                <Typography sx={{ mt: 1.3, fontSize: 32, fontWeight: 600 }}>{tt('Kommende kohorter', 'Upcoming Cohorts')}</Typography>
+                <Typography sx={{ mt: 1.3, fontSize: 26, fontWeight: 600 }}>{tt('Kommende kohorter', 'Upcoming Cohorts')}</Typography>
 
                 <Box
                   sx={{
@@ -996,17 +1257,19 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                         {cohort.name}
                       </Typography>
                       <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.64)' }}>
-                        {formatDateRange(cohort.startDate, cohort.endDate)}
+                        {formatDateRange(cohort.startDate, cohort.endDate, dateLocale)}
                       </Typography>
                       <Stack direction="row" spacing={0.8} sx={{ mt: 0.8 }}>
                         <Button
                           size="small"
+                          onClick={() => setSelectedCohortId(cohort.id)}
                           sx={{ textTransform: 'none', color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}
                         >
                           {tt('Administrer', 'Manage')}
                         </Button>
                         <Button
                           size="small"
+                          onClick={() => openCohortEnrollment(cohort)}
                           sx={{ textTransform: 'none', color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}
                         >
                           {tt('Vis', 'View')}
@@ -1020,7 +1283,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
 
             <Box sx={{ ...panelSx, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ p: 1.2, borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }}>
-                <Typography sx={{ fontSize: 34, fontWeight: 600 }}>{tt('Kohortadministrasjon', 'Cohort Management')}</Typography>
+                <Typography sx={{ fontSize: 28, fontWeight: 600 }}>{tt('Kohortadministrasjon', 'Cohort Management')}</Typography>
                 <Stack direction="row" spacing={0.8} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
                   <Chip
                     label={tt('Tidlig tilgang', 'Early Access')}
@@ -1050,6 +1313,131 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
               </Box>
 
               <Box sx={{ p: 1.2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Box sx={{ ...panelSx, p: 1 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography sx={{ fontSize: 18, fontWeight: 700 }}>
+                      {tt('Valgt kohort', 'Selected Cohort')}
+                    </Typography>
+                    {selectedCohort && (
+                      <Button
+                        size="small"
+                        onClick={() => removeSelectedCohort(selectedCohort.id)}
+                        sx={{
+                          textTransform: 'none',
+                          color: '#edf0f7',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                        }}
+                      >
+                        {tt('Fjern', 'Remove')}
+                      </Button>
+                    )}
+                  </Stack>
+
+                  {!selectedCohort ? (
+                    <Typography sx={{ mt: 1, color: 'rgba(237,240,247,0.64)' }}>
+                      {tt('Ingen kohort valgt.', 'No cohort selected.')}
+                    </Typography>
+                  ) : (
+                    <Stack spacing={0.8} sx={{ mt: 1 }}>
+                      <TextField
+                        label={tt('Kohortnavn', 'Cohort name')}
+                        value={selectedCohort.name}
+                        onChange={(event) => updateSelectedCohort({ name: event.target.value })}
+                        size="small"
+                        sx={{ '& .MuiInputBase-root': { color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.03)' } }}
+                      />
+                      <TextField
+                        label={tt('Beskrivelse', 'Description')}
+                        value={selectedCohort.subtitle}
+                        onChange={(event) => updateSelectedCohort({ subtitle: event.target.value })}
+                        size="small"
+                        sx={{ '& .MuiInputBase-root': { color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.03)' } }}
+                      />
+                      <Stack direction="row" spacing={0.8}>
+                        <TextField
+                          label={tt('Startdato', 'Start date')}
+                          type="date"
+                          value={selectedCohort.startDate}
+                          onChange={(event) => updateSelectedCohort({ startDate: event.target.value })}
+                          size="small"
+                          InputLabelProps={{ shrink: true }}
+                          sx={{ flex: 1, '& .MuiInputBase-root': { color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.03)' } }}
+                        />
+                        <TextField
+                          label={tt('Sluttdato', 'End date')}
+                          type="date"
+                          value={selectedCohort.endDate}
+                          onChange={(event) => updateSelectedCohort({ endDate: event.target.value })}
+                          size="small"
+                          InputLabelProps={{ shrink: true }}
+                          sx={{ flex: 1, '& .MuiInputBase-root': { color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.03)' } }}
+                        />
+                      </Stack>
+                      <Stack direction="row" spacing={0.8}>
+                        <TextField
+                          label={tt('Påmeldinger', 'Enrollments')}
+                          type="number"
+                          value={selectedCohort.enrollments}
+                          onChange={(event) =>
+                            updateSelectedCohort({ enrollments: Math.max(0, Number(event.target.value || 0)) })
+                          }
+                          size="small"
+                          sx={{ flex: 1, '& .MuiInputBase-root': { color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.03)' } }}
+                        />
+                        <TextField
+                          label={tt('Kapasitet', 'Capacity')}
+                          type="number"
+                          value={selectedCohort.capacity}
+                          onChange={(event) =>
+                            updateSelectedCohort({ capacity: Math.max(1, Number(event.target.value || 1)) })
+                          }
+                          size="small"
+                          sx={{ flex: 1, '& .MuiInputBase-root': { color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.03)' } }}
+                        />
+                      </Stack>
+                      <Stack direction="row" spacing={0.8}>
+                        <TextField
+                          label={tt('Fullføringsrate', 'Completion rate')}
+                          type="number"
+                          value={selectedCohort.completionRate}
+                          onChange={(event) =>
+                            updateSelectedCohort({
+                              completionRate: Math.min(100, Math.max(0, Number(event.target.value || 0))),
+                            })
+                          }
+                          size="small"
+                          sx={{ flex: 1, '& .MuiInputBase-root': { color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.03)' } }}
+                        />
+                        <TextField
+                          label={tt('Inntekt (NOK)', 'Revenue (NOK)')}
+                          type="number"
+                          value={selectedCohort.revenue}
+                          onChange={(event) =>
+                            updateSelectedCohort({ revenue: Math.max(0, Number(event.target.value || 0)) })
+                          }
+                          size="small"
+                          sx={{ flex: 1, '& .MuiInputBase-root': { color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.03)' } }}
+                        />
+                      </Stack>
+                      <Select
+                        size="small"
+                        value={selectedCohort.status}
+                        onChange={(event) => updateSelectedCohort({ status: event.target.value as CohortStatus })}
+                        sx={{
+                          color: '#edf0f7',
+                          bgcolor: 'rgba(255,255,255,0.03)',
+                          '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
+                        }}
+                      >
+                        <MenuItem value="active">{tt('Aktiv', 'Active')}</MenuItem>
+                        <MenuItem value="early_access">{tt('Tidlig tilgang', 'Early Access')}</MenuItem>
+                        <MenuItem value="invitation_only">{tt('Kun invitasjon', 'Invitation Only')}</MenuItem>
+                        <MenuItem value="closed">{tt('Lukket', 'Closed')}</MenuItem>
+                      </Select>
+                    </Stack>
+                  )}
+                </Box>
+
                 <Box sx={{ ...panelSx, p: 1 }}>
                   <Typography sx={{ fontSize: 18, fontWeight: 700 }}>{tt('Kohorttagger', 'Cohort Tags')}</Typography>
 
@@ -1086,25 +1474,25 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                 </Box>
 
                 <Box sx={{ ...panelSx, p: 1 }}>
-                  <Typography sx={{ fontSize: 32, fontWeight: 600, mb: 0.8 }}>{tt('Ytelseshøydepunkter', 'Performance Highlights')}</Typography>
+                  <Typography sx={{ fontSize: 26, fontWeight: 600, mb: 0.8 }}>{tt('Ytelseshøydepunkter', 'Performance Highlights')}</Typography>
                   <Stack direction="row" spacing={1}>
                     <Box sx={{ flex: 1 }}>
-                      <Typography sx={{ fontSize: 30, fontWeight: 700, color: '#f8d56f' }}>+{enrollmentVelocity}%</Typography>
+                      <Typography sx={{ fontSize: 24, fontWeight: 700, color: '#f8d56f' }}>+{enrollmentVelocity}%</Typography>
                       <Typography sx={{ color: 'rgba(237,240,247,0.7)' }}>{tt('Påmeldingshastighet', 'Enrollment Velocity')}</Typography>
                     </Box>
                     <Box sx={{ flex: 1 }}>
-                      <Typography sx={{ fontSize: 30, fontWeight: 700 }}>{averageCompletion}%</Typography>
+                      <Typography sx={{ fontSize: 24, fontWeight: 700 }}>{averageCompletion}%</Typography>
                       <Typography sx={{ color: 'rgba(237,240,247,0.7)' }}>{tt('Gj.sn. fullføring', 'Avg Completion')}</Typography>
                     </Box>
                     <Box sx={{ flex: 1 }}>
-                      <Typography sx={{ fontSize: 30, fontWeight: 700 }}>{toNok(totalRevenue)}</Typography>
+                      <Typography sx={{ fontSize: 24, fontWeight: 700 }}>{toNok(totalRevenue)}</Typography>
                       <Typography sx={{ color: 'rgba(237,240,247,0.7)' }}>{tt('Inntekt', 'Revenue')}</Typography>
                     </Box>
                   </Stack>
                 </Box>
 
                 <Box sx={{ ...panelSx, p: 1 }}>
-                  <Typography sx={{ fontSize: 32, fontWeight: 600, mb: 0.8 }}>{tt('Kohort-toppliste', 'Cohort Leaderboard')}</Typography>
+                  <Typography sx={{ fontSize: 26, fontWeight: 600, mb: 0.8 }}>{tt('Kohort-toppliste', 'Cohort Leaderboard')}</Typography>
                   <Stack spacing={0.8}>
                     {leaderboard.map((cohort) => (
                       <Stack
@@ -1133,7 +1521,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Typography noWrap sx={{ fontWeight: 600 }}>{cohort.name}</Typography>
                           <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.64)' }} noWrap>
-                            {formatDateRange(cohort.startDate, cohort.endDate)}
+                            {formatDateRange(cohort.startDate, cohort.endDate, dateLocale)}
                           </Typography>
                         </Box>
                         <Typography sx={{ color: '#f8d56f', fontWeight: 700 }}>{cohort.completionRate}%</Typography>
@@ -1144,7 +1532,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
 
                 <Box sx={{ ...panelSx, p: 1 }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Typography sx={{ fontSize: 32, fontWeight: 600 }}>{tt('Ny diskusjon', 'New Discussion')}</Typography>
+                    <Typography sx={{ fontSize: 26, fontWeight: 600 }}>{tt('Ny diskusjon', 'New Discussion')}</Typography>
                     <Button
                       size="small"
                       onClick={addDiscussion}
@@ -1250,27 +1638,16 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  {tt('LowerThirds', 'LowerThirds')}
+                  {tt('Supring Studio', 'Lower Thirds Studio')}
                 </Button>
               </Stack>
 
               <Stack direction="row" spacing={1} sx={{ p: 1.1, pt: 0 }}>
                 <Button
-                  startIcon={<PeopleAlt />}
-                  onClick={addCohort}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                  }}
-                >
-                  {tt('Legg til kohort', 'Add Cohort')}
-                </Button>
-                <Button
                   startIcon={<Lock />}
                   onClick={() => toggleFeatureFlag('closed')}
                   sx={{
+                    flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
                     border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',

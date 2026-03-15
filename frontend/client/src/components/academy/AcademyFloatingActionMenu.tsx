@@ -239,6 +239,13 @@ const ACADEMY_TOOLS = [
     description: 'Preview course',
   },
   {
+    id: 'preview-hide',
+    label: 'Hide Preview',
+    icon: <VisibilityOff />,
+    color: '#607d8b',
+    description: 'Hide preview overlays',
+  },
+  {
     id: 'share',
     label: 'Share',
     icon: <Share />,
@@ -300,6 +307,8 @@ function AcademyFloatingActionMenu({
   const [notificationSort, setNotificationSort] = useState<'recent' | 'oldest' | 'priority'>('recent');
   const [showNotificationOptions, setShowNotificationOptions] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'saving' | 'saved' | 'error' | 'idle'>('idle');
+  const [advancedPanelOpen, setAdvancedPanelOpen] = useState(false);
+  const [advancedQuery, setAdvancedQuery] = useState('');
 
   const { analytics, performance, debugging, features } = useEnhancedMasterIntegration();
 
@@ -336,7 +345,7 @@ function AcademyFloatingActionMenu({
       debounceDelay: 2000,
       maxRetries: 3,
       retryDelay: 1000,
-      conflictResolution: 'client' as any,
+      conflictResolution: 'client',
       enableConflictDetection: true,
       enableVersioning: true,
       maxVersions: 10,
@@ -378,37 +387,9 @@ function AcademyFloatingActionMenu({
     },
   });
 
-  // Sample notifications
   useEffect(() => {
-    const sampleNotifications = [
-      {
-        id: '1',
-        title: 'Course Published',
-        message: 'Your "Photography Basics" course has been published successfully',
-        type: 'success',
-        timestamp: new Date().toISOString(),
-        read: false,
-      },
-      {
-        id: '2',
-        title: 'New Student Enrolled',
-        message: 'Sarah Johnson enrolled in your "Advanced Lighting" course',
-        type: 'info',
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        read: false,
-      },
-      {
-        id: '3',
-        title: 'Auto-Save Error',
-        message: 'Failed to save course changes. Retrying...',
-        type: 'warning',
-        timestamp: new Date(Date.now() - 7200000).toISOString(),
-        read: true,
-      },
-    ];
-    setNotifications(sampleNotifications);
-    setUnreadCount(sampleNotifications.filter((n) => !n.read).length);
-  }, []);
+    setUnreadCount(notifications.filter((notification) => !notification.read).length);
+  }, [notifications]);
 
   // Handle action click
   const handleActionClick = useCallback(
@@ -450,6 +431,12 @@ function AcademyFloatingActionMenu({
         case 'preview':
           onQuickPreview?.();
           break;
+        case 'preview-hide':
+          onQuickPreview?.();
+          debugging.logIntegration('info', 'Preview hidden from floating action menu', {
+            timestamp: Date.now(),
+          });
+          break;
         case 'share':
           onQuickShare?.();
           break;
@@ -483,6 +470,7 @@ function AcademyFloatingActionMenu({
       onQuickShare,
       onQuickExport,
       analytics,
+      debugging,
       autoSave,
     ],
   );
@@ -904,6 +892,163 @@ function AcademyFloatingActionMenu({
           <Chip icon={<Refresh />} label="Refresh" onClick={() => queryClient.invalidateQueries()} variant="outlined" />
           <Chip icon={<SyncDisabled />} label="Pause Sync" variant="outlined" />
         </Stack>
+
+        <Divider sx={{ my: 2 }} />
+
+        <Button
+          size="small"
+          variant="text"
+          startIcon={advancedPanelOpen ? <ExpandLess /> : <ExpandMore />}
+          onClick={() => setAdvancedPanelOpen((prev) => !prev)}
+        >
+          Advanced Workflow Controls
+        </Button>
+
+        {advancedPanelOpen ? (
+          <Paper variant="outlined" sx={{ mt: 1.5, p: 1.5 }}>
+            <Stack spacing={1.5}>
+              <TextField
+                size="small"
+                label="Quick Action Filter"
+                value={advancedQuery}
+                onChange={(event) => setAdvancedQuery(event.target.value)}
+                placeholder="Search actions…"
+                InputProps={{
+                  startAdornment: (
+                    <ListItemIcon sx={{ minWidth: 24 }}>
+                      {advancedQuery.trim().length > 0 ? (
+                        <Search fontSize="small" />
+                      ) : (
+                        <SearchOff fontSize="small" />
+                      )}
+                    </ListItemIcon>
+                  ),
+                }}
+              />
+
+              <FormControl size="small" fullWidth>
+                <InputLabel>Notification Sorting</InputLabel>
+                <Select
+                  value={notificationSort}
+                  label="Notification Sorting"
+                  onChange={(event) => {
+                    const selectedSort = event.target.value as string;
+                    if (
+                      selectedSort === 'recent' ||
+                      selectedSort === 'oldest' ||
+                      selectedSort === 'priority'
+                    ) {
+                      setNotificationSort(selectedSort);
+                    }
+                  }}
+                >
+                  <MenuItem value="recent">Recent</MenuItem>
+                  <MenuItem value="oldest">Oldest</MenuItem>
+                  <MenuItem value="priority">Priority</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showNotificationOptions}
+                    onChange={(event) => setShowNotificationOptions(event.target.checked)}
+                  />
+                }
+                label="Show notification options"
+              />
+
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<PlayArrow />}
+                  fullWidth
+                  onClick={autoSave.resume}
+                >
+                  Resume
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<Pause />}
+                  fullWidth
+                  onClick={autoSave.pause}
+                >
+                  Pause
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<Stop />}
+                  fullWidth
+                  onClick={autoSave.clearQueue}
+                >
+                  Clear
+                </Button>
+              </Stack>
+
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Chip icon={<AutoAwesome />} label="Automation" size="small" variant="outlined" />
+                <Chip icon={<Speed />} label="Performance" size="small" variant="outlined" />
+                <Chip icon={<Security />} label="Security" size="small" variant="outlined" />
+                <Chip icon={<TrendingUp />} label="Growth" size="small" variant="outlined" />
+                <Chip icon={<People />} label="Audience" size="small" variant="outlined" />
+                <Chip icon={<Business />} label="Business" size="small" variant="outlined" />
+                <Chip icon={<Celebration />} label="Milestones" size="small" variant="outlined" />
+                <Chip icon={<Work />} label="Tasks" size="small" variant="outlined" />
+                <Chip icon={<ContentCopy />} label="Clone action" size="small" variant="outlined" />
+                <Chip icon={unreadCount > 0 ? <Bookmark /> : <BookmarkBorder />} label="Bookmarks" size="small" variant="outlined" />
+                <Chip icon={unreadCount > 0 ? <Star /> : <StarBorder />} label="Priority" size="small" variant="outlined" />
+                <Chip icon={autoSave.isPaused ? <Lock /> : <LockOpen />} label={autoSave.isPaused ? 'Locked' : 'Unlocked'} size="small" variant="outlined" />
+                <Chip icon={<Group />} label="Team mode" size="small" variant="outlined" />
+                <Chip icon={<Person />} label="Solo mode" size="small" variant="outlined" />
+                <Chip icon={<BusinessCenter />} label="Ops mode" size="small" variant="outlined" />
+                <Chip icon={<CelebrationOutlined />} label="Published mode" size="small" variant="outlined" />
+              </Stack>
+
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<Edit />}
+                  fullWidth
+                  onClick={() =>
+                    analytics.trackEvent('floating_menu_advanced_edit', {
+                      query: advancedQuery,
+                      timestamp: Date.now(),
+                    })
+                  }
+                >
+                  Edit Config
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<Delete />}
+                  fullWidth
+                  onClick={() =>
+                    analytics.trackEvent('floating_menu_advanced_cleanup', {
+                      queueSize: autoSave.queueSize,
+                      timestamp: Date.now(),
+                    })
+                  }
+                >
+                  Cleanup
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<CloudDownload />}
+                  fullWidth
+                  onClick={() => autoSave.restoreFromBackup()}
+                >
+                  Restore
+                </Button>
+              </Stack>
+            </Stack>
+          </Paper>
+        ) : null}
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setShowAutoSaveDialog(false)} startIcon={<Close />}>Close</Button>

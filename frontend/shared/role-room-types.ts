@@ -11,6 +11,8 @@ export type UserRoleType =
   | 'casting_director'
   | 'production_manager'
   | 'camera_team'
+  | 'content_producer'
+  | 'client_reviewer'
   | 'agency'
   | 'writer'
   | 'script_editor'
@@ -23,10 +25,14 @@ export interface UserRolePermissions {
   canManageCrew: boolean;
   canManageLocations: boolean;
   canEditShots: boolean;
+  canEditShotLists?: boolean;
   canApprove: boolean;
   canEditScript: boolean;
   canLockScript: boolean;
   canRunTableRead: boolean;
+  canComment?: boolean;
+  canRequestChanges?: boolean;
+  canViewEconomy?: boolean;
 }
 
 export interface UserRole {

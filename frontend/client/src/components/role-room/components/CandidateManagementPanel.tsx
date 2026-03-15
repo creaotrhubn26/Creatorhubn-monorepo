@@ -56,17 +56,12 @@ import {
   PersonSearch as PersonSearchIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
-  Movie as MovieIcon,
   ViewInAr as ViewInArIcon,
   Close as CloseIcon,
   Check as CheckIcon,
   Preview as PreviewIcon,
   Lightbulb as LightbulbIcon,
-  WbSunny as SunnyIcon,
-  Tungsten as TungstenIcon,
-  FlashOn as FlashIcon,
   Upload as UploadIcon,
-  FileCopy as CopyToProjectIcon,
   Inventory as InventoryIcon,
   FileDownload as DownloadIcon,
   ContactPhone as QuickContactIcon,
@@ -80,9 +75,9 @@ import {
   ViewCarousel as ViewCarouselIcon,
 } from '@mui/icons-material';
 import { Virtuoso } from 'react-virtuoso';
-import { CandidatesIcon as RecentActorsIcon, RolesIcon, StatsIcon } from './icons/CastingIcons';
+import { CandidatesIcon as RecentActorsIcon, StatsIcon } from './icons/CastingIcons';
 import { ConsentStatusBadge } from './ConsentStatusBadge';
-import { candidatePoolService } from '../services/candidatePoolService';
+import { candidatePoolService, type PoolCandidate } from '../services/candidatePoolService';
 import { GLB3DPreview, PERSONALITY_TRAITS } from './GLB3DPreview';
 import settingsService from '../services/settingsService';
 
@@ -204,9 +199,8 @@ const LIGHTING_PRESETS: LightingPreset[] = [
     ]
   },
 ];
-import type { Candidate, Role } from '../models/casting';
+import type { Candidate, ContactInfo, Role } from '../models/casting';
 import { castingService } from '../services/castingService';
-import { castingAuthService } from '../services/castingAuthService';
 import { castingToSceneService } from '../services/castingToSceneService';
 import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
 import { useToast } from './ToastStack';
@@ -264,6 +258,30 @@ interface CandidateManagementPanelProps {
   onQuickContactsChange?: (ids: string[]) => void;
 }
 
+const isValidCandidate = (candidate: unknown): candidate is Candidate => {
+  if (!candidate || typeof candidate !== 'object') {
+    return false;
+  }
+
+  const record = candidate as Record<string, unknown>;
+  return typeof record.id === 'string'
+    && record.id.trim().length > 0
+    && typeof record.name === 'string'
+    && record.name.trim().length > 0;
+};
+
+const isValidRole = (role: unknown): role is Role => {
+  if (!role || typeof role !== 'object') {
+    return false;
+  }
+
+  const record = role as Record<string, unknown>;
+  return typeof record.id === 'string'
+    && record.id.trim().length > 0
+    && typeof record.name === 'string'
+    && record.name.trim().length > 0;
+};
+
 function CandidateManagementPanelInner({
   projectId,
   candidates,
@@ -306,7 +324,7 @@ function CandidateManagementPanelInner({
   const [poolMode, setPoolMode] = useState<'project' | 'pool'>('project');
   const [poolSearchQuery, setPoolSearchQuery] = useState('');
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
-  const [poolCandidates, setPoolCandidates] = useState<import('../services/candidatePoolService').PoolCandidate[]>([]);
+  const [poolCandidates, setPoolCandidates] = useState<PoolCandidate[]>([]);
   const [poolLoading, setPoolLoading] = useState(false);
   const [proSortField, setProSortField] = useState<ProSortField>('fitScore');
   const [proSortDirection, setProSortDirection] = useState<SortDirection>('desc');
@@ -331,18 +349,80 @@ function CandidateManagementPanelInner({
   const quickContactColorMuted = 'rgba(70,217,255,0.46)';
   const quickContactBackground = 'rgba(70,217,255,0.12)';
   const quickContacts = quickContactIds ?? localQuickContacts;
+  const safeRoles = useMemo(
+    () => (Array.isArray(roles) ? roles.filter(isValidRole) : []),
+    [roles],
+  );
+  const safeCandidatesInput = useMemo(
+    () => (Array.isArray(candidates) ? candidates.filter(isValidCandidate) : []),
+    [candidates],
+  );
 
   const FAVORITES_NAMESPACE = 'virtualStudio_candidateFavorites';
   const proViewNamespace = `${PRO_VIEW_NAMESPACE}:${projectId}`;
 
   const getCandidateDate = (candidate: Candidate, field: 'createdAt' | 'updatedAt') => {
-    const raw = (candidate as any)[field] || (candidate as any)[`${field}_at`];
+    const camelCaseValue = candidate[field];
+    const snakeCaseValue = candidate[`${field}_at`];
+    const raw = typeof camelCaseValue === 'string'
+      ? camelCaseValue
+      : typeof snakeCaseValue === 'string'
+        ? snakeCaseValue
+        : undefined;
     const value = raw ? new Date(raw).getTime() : 0;
     return Number.isFinite(value) ? value : 0;
   };
 
+  const getCandidateContactInfo = (candidate?: Candidate | null): ContactInfo => {
+    if (!candidate) {
+      return {};
+    }
+
+    const directContact = candidate.contactInfo;
+    const snakeCaseContact = candidate.contact_info;
+    const email = directContact?.email
+      ?? snakeCaseContact?.email
+      ?? (typeof candidate.email === 'string' ? candidate.email : undefined);
+    const phone = directContact?.phone
+      ?? snakeCaseContact?.phone
+      ?? (typeof candidate.phone === 'string' ? candidate.phone : undefined);
+    return { email, phone };
+  };
+
+  const getCandidateAssignedRoles = (candidate: Candidate): string[] => {
+    const directRoles = candidate.assignedRoles;
+    if (Array.isArray(directRoles)) {
+      return directRoles.filter((roleId): roleId is string => typeof roleId === 'string' && roleId.length > 0);
+    }
+    const snakeCaseRoles = candidate.assigned_roles;
+    if (Array.isArray(snakeCaseRoles)) {
+      return snakeCaseRoles.filter((roleId): roleId is string => typeof roleId === 'string' && roleId.length > 0);
+    }
+    const fallbackRoleId = typeof candidate.roleId === 'string'
+      ? candidate.roleId
+      : typeof candidate.role_id === 'string'
+        ? candidate.role_id
+        : undefined;
+    return fallbackRoleId ? [fallbackRoleId] : [];
+  };
+
+  const getCandidateAuditionNotes = (candidate: Candidate): string => {
+    if (typeof candidate.auditionNotes === 'string' && candidate.auditionNotes.trim().length > 0) {
+      return candidate.auditionNotes;
+    }
+    if (typeof candidate.audition_notes === 'string' && candidate.audition_notes.trim().length > 0) {
+      return candidate.audition_notes;
+    }
+    if (typeof candidate.notes === 'string' && candidate.notes.trim().length > 0) {
+      return candidate.notes;
+    }
+    return '';
+  };
+
+  const validCandidates = safeCandidatesInput;
+
   const getCandidateConsents = (candidate: Candidate): CandidateConsent[] => {
-    const raw = (candidate as any).consent;
+    const raw = candidate.consent;
     return Array.isArray(raw) ? (raw as CandidateConsent[]) : [];
   };
 
@@ -357,9 +437,9 @@ function CandidateManagementPanelInner({
   };
 
   const getContactCoverageScore = (candidate: Candidate) => {
-    const contactInfo = ((candidate as any).contactInfo || {}) as { email?: string; phone?: string };
-    const email = contactInfo.email || (candidate as any).email;
-    const phone = contactInfo.phone || (candidate as any).phone;
+    const contactInfo = getCandidateContactInfo(candidate);
+    const email = contactInfo.email;
+    const phone = contactInfo.phone;
     if (email && phone) return 100;
     if (email || phone) return 50;
     return 0;
@@ -376,7 +456,7 @@ function CandidateManagementPanelInner({
       rejected: 0,
     };
     const statusScore = statusScoreMap[status] ?? 10;
-    const roleCount = Array.isArray((candidate as any).assignedRoles) ? (candidate as any).assignedRoles.length : 0;
+    const roleCount = getCandidateAssignedRoles(candidate).length;
     const roleScore = Math.min(20, roleCount * 7);
     const mediaCount = Array.isArray(candidate.photos) ? candidate.photos.length : 0;
     const mediaScore = Math.min(15, mediaCount * 5);
@@ -516,16 +596,16 @@ function CandidateManagementPanelInner({
 
   // Filter and sort
   const filteredAndSortedCandidates = useMemo(() => {
-    let result = [...candidates];
+    let result = [...validCandidates];
     
     // Search
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(c => 
         c.name.toLowerCase().includes(q) ||
-        c.contactInfo.email?.toLowerCase().includes(q) ||
-        c.contactInfo.phone?.toLowerCase().includes(q) ||
-        c.auditionNotes.toLowerCase().includes(q)
+        (getCandidateContactInfo(c).email || '').toLowerCase().includes(q) ||
+        (getCandidateContactInfo(c).phone || '').toLowerCase().includes(q) ||
+        getCandidateAuditionNotes(c).toLowerCase().includes(q)
       );
     }
     
@@ -553,7 +633,7 @@ function CandidateManagementPanelInner({
           comparison = a.status.localeCompare(b.status);
           break;
         case 'roles':
-          comparison = (a.assignedRoles?.length || 0) - (b.assignedRoles?.length || 0);
+          comparison = getCandidateAssignedRoles(a).length - getCandidateAssignedRoles(b).length;
           break;
         case 'createdAt':
           comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -563,17 +643,17 @@ function CandidateManagementPanelInner({
     });
     
     return result;
-  }, [candidates, searchQuery, statusFilter, sortField, sortDirection, favorites, quickContacts]);
+  }, [validCandidates, searchQuery, statusFilter, sortField, sortDirection, favorites, quickContacts]);
 
   // Statistics
   const statistics = useMemo(() => ({
-    total: candidates.length,
-    confirmed: candidates.filter(c => c.status === 'confirmed').length,
-    selected: candidates.filter(c => c.status === 'selected').length,
-    shortlist: candidates.filter(c => c.status === 'shortlist').length,
-    pending: candidates.filter(c => c.status === 'pending' || c.status === 'requested').length,
+    total: validCandidates.length,
+    confirmed: validCandidates.filter(c => c.status === 'confirmed').length,
+    selected: validCandidates.filter(c => c.status === 'selected').length,
+    shortlist: validCandidates.filter(c => c.status === 'shortlist').length,
+    pending: validCandidates.filter(c => c.status === 'pending' || c.status === 'requested').length,
     favorites: favorites.size,
-  }), [candidates, favorites]);
+  }), [validCandidates, favorites]);
 
   const filteredPoolCandidates = useMemo(() => {
     const query = poolSearchQuery.trim().toLowerCase();
@@ -583,7 +663,7 @@ function CandidateManagementPanelInner({
       return (
         poolCandidate.name.toLowerCase().includes(query)
         || (poolCandidate.notes || '').toLowerCase().includes(query)
-        || (poolCandidate.contactInfo?.email || '').toLowerCase().includes(query)
+        || (getCandidateContactInfo(poolCandidate).email || '').toLowerCase().includes(query)
         || tags.includes(query)
       );
     });
@@ -591,11 +671,11 @@ function CandidateManagementPanelInner({
 
   const candidateFitScores = useMemo(() => {
     const scores = new Map<string, number>();
-    candidates.forEach((candidate) => {
+    validCandidates.forEach((candidate) => {
       scores.set(candidate.id, getCandidateFitScore(candidate));
     });
     return scores;
-  }, [candidates, favorites, quickContacts]);
+  }, [validCandidates, favorites, quickContacts]);
 
   const proCandidates = useMemo(() => {
     let result = [...filteredAndSortedCandidates];
@@ -664,6 +744,21 @@ function CandidateManagementPanelInner({
     if (!selectedCandidateId) return activeCandidates[0];
     return activeCandidates.find((candidate) => candidate.id === selectedCandidateId) || activeCandidates[0];
   }, [activeCandidates, selectedCandidateId]);
+
+  const selectedCandidateContact = useMemo(
+    () => (selectedCandidate ? getCandidateContactInfo(selectedCandidate) : {}),
+    [selectedCandidate],
+  );
+
+  const selectedCandidateAssignedRoles = useMemo(
+    () => (selectedCandidate ? getCandidateAssignedRoles(selectedCandidate) : []),
+    [selectedCandidate],
+  );
+
+  const selectedCandidateNotes = useMemo(
+    () => (selectedCandidate ? getCandidateAuditionNotes(selectedCandidate) : ''),
+    [selectedCandidate],
+  );
 
   const compareCandidates = useMemo(
     () => proCandidates.filter((candidate) => selectedIds.has(candidate.id)).slice(0, 4),
@@ -881,7 +976,7 @@ function CandidateManagementPanelInner({
   };
 
   const handleBulkStatusUpdate = async (status: StatusFilter) => {
-    const selectedCandidates = candidates.filter((candidate) => selectedIds.has(candidate.id));
+    const selectedCandidates = validCandidates.filter((candidate) => selectedIds.has(candidate.id));
     if (selectedCandidates.length === 0) {
       showInfo('Velg minst én kandidat først', 2500);
       return;
@@ -1054,8 +1149,8 @@ function CandidateManagementPanelInner({
 
   const handleOpenPreviewDialog = () => {
     const candidatesToAdd = selectedIds.size > 0
-      ? candidates.filter(c => selectedIds.has(c.id))
-      : candidates.filter(c => c.status === 'confirmed' || c.status === 'selected');
+      ? validCandidates.filter(c => selectedIds.has(c.id))
+      : validCandidates.filter(c => c.status === 'confirmed' || c.status === 'selected');
     
     if (candidatesToAdd.length === 0) {
       showInfo('Ingen kandidater å legge til. Velg kandidater eller bekreft noen først.', 4000);
@@ -1088,7 +1183,7 @@ function CandidateManagementPanelInner({
       
       const result = await castingToSceneService.addMultipleCandidatesToScene(
         candidatesToPreview,
-        roles,
+        safeRoles,
         Object.keys(options).length > 0 ? options : undefined
       );
       
@@ -1163,7 +1258,7 @@ function CandidateManagementPanelInner({
     loadPoolCandidates();
   }, []);
 
-  const handleImportFromPool = async (poolCandidate: import('../services/candidatePoolService').PoolCandidate) => {
+  const handleImportFromPool = async (poolCandidate: PoolCandidate) => {
     try {
       const newId = await candidatePoolService.importToProject(poolCandidate.id, projectId);
       if (newId) {
@@ -1202,7 +1297,7 @@ function CandidateManagementPanelInner({
         return;
       }
 
-      const htmlContent = generateCandidatesHTML(project, filteredAndSortedCandidates, roles);
+      const htmlContent = generateCandidatesHTML(project, filteredAndSortedCandidates, safeRoles);
 
       // Create a new window for printing/viewing
       const printWindow = window.open('', '_blank');
@@ -1590,11 +1685,12 @@ function CandidateManagementPanelInner({
             ${candidates
               .map(
                 (c) => {
-                  const rolesList = c.assignedRoles?.map(rid => roles.find(r => r.id === rid)?.name || '').filter(Boolean).join(', ') || '-';
+                  const contactInfo = getCandidateContactInfo(c);
+                  const rolesList = getCandidateAssignedRoles(c).map(rid => roles.find(r => r.id === rid)?.name || '').filter(Boolean).join(', ') || '-';
                   return `<tr>
               <td><strong>${c.name}</strong></td>
-              <td style="font-size: 13px;">${c.contactInfo?.email || '-'}</td>
-              <td style="font-size: 13px;">${c.contactInfo?.phone || '-'}</td>
+              <td style="font-size: 13px;">${contactInfo.email || '-'}</td>
+              <td style="font-size: 13px;">${contactInfo.phone || '-'}</td>
               <td><span class="badge ${getStatusBadgeClass(c.status)}">${getStatusLabel(c.status)}</span></td>
               <td style="font-size: 13px;">${rolesList.length > 60 ? rolesList.substring(0, 60) + '...' : rolesList}</td>
               <td style="font-size: 13px;">${new Date(c.createdAt).toLocaleDateString('nb-NO')}</td>
@@ -1634,7 +1730,7 @@ function CandidateManagementPanelInner({
     });
   };
 
-  const getRoleName = (roleId: string) => roles.find(r => r.id === roleId)?.name || 'Ukjent rolle';
+  const getRoleName = (roleId: string) => safeRoles.find(r => r.id === roleId)?.name || 'Ukjent rolle';
 
   const renderProCandidateCard = (candidate: Candidate) => {
     const isSelectedCard = selectedCandidateId === candidate.id;
@@ -1718,7 +1814,7 @@ function CandidateManagementPanelInner({
                     height: 22,
                   }}
                 />
-                <Chip label={`${candidate.assignedRoles?.length || 0} roller`} size="small" sx={{ height: 22 }} />
+                <Chip label={`${getCandidateAssignedRoles(candidate).length} roller`} size="small" sx={{ height: 22 }} />
                 <Chip
                   icon={<TuneIcon sx={{ color: `${roleTabAccent} !important`, fontSize: '0.9rem' }} />}
                   label={`Treffscore ${fitScore}`}
@@ -1979,7 +2075,7 @@ function CandidateManagementPanelInner({
             },
           }}
         >
-          Prosjektkandidater ({candidates.length})
+          Prosjektkandidater ({validCandidates.length})
         </Button>
         <Button
           variant={poolMode === 'pool' ? 'contained' : 'outlined'}
@@ -2462,7 +2558,7 @@ function CandidateManagementPanelInner({
                       <Typography sx={{ color: roleText, fontWeight: 800, fontSize: '1.2rem' }}>{selectedCandidate.name}</Typography>
                       <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
                         <Chip label={getStatusLabel(selectedCandidate.status)} sx={{ bgcolor: `${getStatusColor(selectedCandidate.status)}24`, color: getStatusColor(selectedCandidate.status), fontWeight: 700 }} />
-                        <Chip label={`${selectedCandidate.assignedRoles?.length || 0} roller`} sx={{ bgcolor: roleSurfaceMuted, color: roleText }} />
+                        <Chip label={`${selectedCandidateAssignedRoles.length} roller`} sx={{ bgcolor: roleSurfaceMuted, color: roleText }} />
                         <Chip label={`Treffscore ${candidateFitScores.get(selectedCandidate.id) || 0}`} sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent, fontWeight: 700 }} />
                       </Box>
                       <LinearProgress
@@ -2471,22 +2567,22 @@ function CandidateManagementPanelInner({
                         sx={{ height: 8, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent } }}
                       />
                       <Typography sx={{ color: roleTextMuted, fontSize: '0.9rem' }}>
-                        {selectedCandidate.auditionNotes || 'Ingen audition-notater lagt inn.'}
+                        {selectedCandidateNotes || 'Ingen audition-notater lagt inn.'}
                       </Typography>
                       <Box>
                         <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.5 }}>Kontakt</Typography>
                         <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>
-                          E-post: {(((selectedCandidate as any).contactInfo || {}).email || (selectedCandidate as any).email || 'Ikke satt')}
+                          E-post: {selectedCandidateContact.email || 'Ikke satt'}
                         </Typography>
                         <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>
-                          Telefon: {(((selectedCandidate as any).contactInfo || {}).phone || (selectedCandidate as any).phone || 'Ikke satt')}
+                          Telefon: {selectedCandidateContact.phone || 'Ikke satt'}
                         </Typography>
                       </Box>
                       <Box>
                         <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.5 }}>Tilknyttede roller</Typography>
                         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                          {(selectedCandidate.assignedRoles || []).length > 0
-                            ? (selectedCandidate.assignedRoles || []).map((roleId) => (
+                          {selectedCandidateAssignedRoles.length > 0
+                            ? selectedCandidateAssignedRoles.map((roleId) => (
                                 <Chip key={roleId} label={getRoleName(roleId)} size="small" sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent }} />
                               ))
                             : <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>Ingen roller satt</Typography>}
@@ -2782,7 +2878,7 @@ function CandidateManagementPanelInner({
                                       )}
                                     </Box>
                                     <Typography sx={{ color: roleText, fontSize: '0.78rem' }}>Treffscore: {fit}</Typography>
-                                    <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>Roller: {(candidate.assignedRoles || []).length}</Typography>
+                                    <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>Roller: {getCandidateAssignedRoles(candidate).length}</Typography>
                                     <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>
                                       Samtykke: {getConsentCompletionScore(candidate)}%
                                     </Typography>
@@ -3060,17 +3156,17 @@ function CandidateManagementPanelInner({
             '& .MuiAlert-icon': { color: roleTabAccent },
           }}
         >
-          Viser {filteredAndSortedCandidates.length} av {candidates.length} kandidater
+          Viser {filteredAndSortedCandidates.length} av {validCandidates.length} kandidater
         </Alert>
       )}
 
       {/* Empty state */}
-      {candidates.length === 0 ? (
+      {validCandidates.length === 0 ? (
         <RoleRoomEmptyState
           iconSrc={kandidaterPng}
           title="Legg til kandidater"
-          subtitle={roles.length > 0
-            ? `Du har ${roles.length} rolle${roles.length > 1 ? 'r' : ''} som venter på kandidater.`
+          subtitle={safeRoles.length > 0
+            ? `Du har ${safeRoles.length} rolle${safeRoles.length > 1 ? 'r' : ''} som venter på kandidater.`
             : 'Start med å opprette roller, deretter legg til kandidater.'}
           color="#b86bff"
           buttonLabel="Legg til kandidat"
@@ -3141,7 +3237,10 @@ function CandidateManagementPanelInner({
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredAndSortedCandidates.map((candidate) => (
+              {filteredAndSortedCandidates.map((candidate) => {
+                const contactInfo = getCandidateContactInfo(candidate);
+                const assignedRoles = getCandidateAssignedRoles(candidate);
+                return (
                 <TableRow
                   key={candidate.id}
                   sx={{
@@ -3203,25 +3302,25 @@ function CandidateManagementPanelInner({
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Stack spacing={0.5}>
-                      {candidate.contactInfo.email && (
+                      {contactInfo.email && (
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                          <EmailIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 } }} /> {candidate.contactInfo.email}
+                          <EmailIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 } }} /> {contactInfo.email}
                         </Typography>
                       )}
-                      {candidate.contactInfo.phone && (
+                      {contactInfo.phone && (
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                          <PhoneIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 } }} /> {candidate.contactInfo.phone}
+                          <PhoneIcon sx={{ fontSize: { xs: 12, sm: 14, md: 13, lg: 15, xl: 18 } }} /> {contactInfo.phone}
                         </Typography>
                       )}
                     </Stack>
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {candidate.assignedRoles?.slice(0, 2).map(roleId => (
+                      {assignedRoles.slice(0, 2).map(roleId => (
                         <Chip key={roleId} label={getRoleName(roleId)} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, height: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                       ))}
-                      {(candidate.assignedRoles?.length || 0) > 2 && (
-                        <Chip label={`+${(candidate.assignedRoles?.length || 0) - 2}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, height: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
+                      {assignedRoles.length > 2 && (
+                        <Chip label={`+${assignedRoles.length - 2}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, height: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                       )}
                     </Box>
                   </TableCell>
@@ -3250,7 +3349,8 @@ function CandidateManagementPanelInner({
                     </Box>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -3271,6 +3371,9 @@ function CandidateManagementPanelInner({
           {filteredAndSortedCandidates.map((candidate) => {
             const statusColor = getStatusColor(candidate.status);
             const statusLabel = getStatusLabel(candidate.status);
+            const contactInfo = getCandidateContactInfo(candidate);
+            const assignedRoles = getCandidateAssignedRoles(candidate);
+            const auditionNotes = getCandidateAuditionNotes(candidate);
 
             return (
               <Box key={candidate.id}>
@@ -3474,7 +3577,7 @@ function CandidateManagementPanelInner({
 
                     {/* Contact Info Cards - Enhanced */}
                     <Stack spacing={{ xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }} sx={{ mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
-                      {candidate.contactInfo.email && (
+                      {contactInfo.email && (
                         <Box
                           sx={{
                             display: 'flex',
@@ -3521,12 +3624,12 @@ function CandidateManagementPanelInner({
                                 whiteSpace: 'nowrap',
                               }}
                             >
-                              {candidate.contactInfo.email}
+                              {contactInfo.email}
                             </Typography>
                           </Box>
                         </Box>
                       )}
-                      {candidate.contactInfo.phone && (
+                      {contactInfo.phone && (
                         <Box
                           sx={{
                             display: 'flex',
@@ -3570,7 +3673,7 @@ function CandidateManagementPanelInner({
                                 fontWeight: 700,
                               }}
                             >
-                              {candidate.contactInfo.phone}
+                              {contactInfo.phone}
                             </Typography>
                           </Box>
                         </Box>
@@ -3580,7 +3683,7 @@ function CandidateManagementPanelInner({
                     {/* Expandable content */}
                     <Collapse in={expandedCards.has(candidate.id)}>
                       <Box sx={{ mt: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                        {candidate.auditionNotes && (
+                        {auditionNotes && (
                           <Box
                             sx={{
                               mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
@@ -3604,11 +3707,11 @@ function CandidateManagementPanelInner({
                               Audition-notater
                             </Typography>
                             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                              {candidate.auditionNotes}
+                              {auditionNotes}
                             </Typography>
                           </Box>
                         )}
-                        {candidate.assignedRoles && candidate.assignedRoles.length > 0 && (
+                        {assignedRoles.length > 0 && (
                           <Box sx={{ mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
                             <Typography
                               variant="subtitle2"
@@ -3624,7 +3727,7 @@ function CandidateManagementPanelInner({
                               Tildelte roller
                             </Typography>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
-                              {(candidate.assignedRoles || []).map(roleId => (
+                              {assignedRoles.map(roleId => (
                                 <Chip
                                   key={roleId}
                                   label={getRoleName(roleId)}
@@ -3861,10 +3964,10 @@ function CandidateManagementPanelInner({
                             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, fontSize: { xs: '1rem', sm: '1.1rem' } }}>
                               {poolCandidate.name}
                             </Typography>
-                            {poolCandidate.contactInfo?.email && (
+                            {getCandidateContactInfo(poolCandidate).email && (
                               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                 <EmailIcon sx={{ fontSize: 12 }} />
-                                {poolCandidate.contactInfo.email}
+                                {getCandidateContactInfo(poolCandidate).email}
                               </Typography>
                             )}
                           </Box>
@@ -4105,7 +4208,8 @@ function CandidateManagementPanelInner({
             pr: 1,
           }}>
             {candidatesToPreview.map((candidate) => {
-              const assignedRoles = roles.filter(r => (candidate.assignedRoles || []).includes(r.id));
+              const candidateAssignedRoles = getCandidateAssignedRoles(candidate);
+              const assignedRoles = safeRoles.filter(r => candidateAssignedRoles.includes(r.id));
               return (
                 <Card
                   key={candidate.id}

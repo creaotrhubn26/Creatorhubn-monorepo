@@ -20,7 +20,7 @@ import {
   Box, Paper, Typography, Chip, IconButton, Tooltip,
   Divider, Collapse, LinearProgress, Stack, Badge,
   TextField, InputAdornment, ToggleButton, ToggleButtonGroup,
-  alpha, useTheme,
+  alpha,
 } from '@mui/material';
 import {
   WbSunny as DayIcon,
@@ -45,9 +45,8 @@ import {
   Star as StarIcon,
 } from '@mui/icons-material';
 
-import type { ScenePoolItem, IntExtType, TimeOfDay, ScenePoolStats, ShootDay } from './stripboard.types';
+import type { ScenePoolItem, IntExtType, TimeOfDay, ScenePoolStats, ShootDay, ResponsiveValues } from './stripboard.types';
 import type { ScenePoolFilters, PoolSortKey, ScenePoolHandle } from './useScenePool';
-import type { ResponsiveValues } from './stripboard.types';
 
 // ─── Sub-types ────────────────────────────────────────────────────────────────
 
@@ -108,14 +107,11 @@ interface SceneCardProps {
 const SceneCard: FC<SceneCardProps> = ({
   item, isMobile, responsive, onAssignRequest, onSceneSelect, onDragStart,
 }) => {
-  const theme  = useTheme();
-  const isDark = theme.palette.mode === 'dark';
-
   // Does the background colour need dark text?
   const needsDarkText = ['#fff', '#ffe', '#fff9', '#e3f', '#e8f', '#fbe', '#ede', '#ffe0', '#fce4', '#fff3'].some(
     prefix => item.color.toLowerCase().startsWith(prefix),
   );
-  const textColor = needsDarkText || !isDark ? 'rgba(0,0,0,0.87)' : '#fff';
+  const textColor = needsDarkText ? 'rgba(0,0,0,0.87)' : '#fff';
 
   // On mobile, collapse less-critical info to keep the card compact
   const showSynopsis       = !isMobile && !!item.title;

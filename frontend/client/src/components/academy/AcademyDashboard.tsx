@@ -129,7 +129,9 @@ import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC'
 import { useTheming } from '../../utils/theming-helper';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import { academyPdfExportService } from '@/services/academyPdfExportService';
 import AcademyVideoPlayerStudio from './AcademyVideoPlayerStudio';
+import VideoAnnotationEditor, { type VideoAnnotation } from './VideoAnnotationEditor';
 import CourseCreator from './CourseCreator';
 import AcademyAssetBrowser from './AcademyAssetBrowser';
 import AcademyFloatingActionMenu from './AcademyFloatingActionMenu';
@@ -503,7 +505,14 @@ function AcademyDashboard() {
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
   
   // Push notifications
-  const userId = auth.state.user?.id || (auth.state.user as any)?.sub;
+  const authSub =
+    auth.state.user &&
+    typeof auth.state.user === 'object' &&
+    'sub' in auth.state.user &&
+    typeof (auth.state.user as { sub?: unknown }).sub === 'string'
+      ? ((auth.state.user as { sub?: string }).sub ?? '')
+      : '';
+  const userId = auth.state.user?.id || authSub || undefined;
   const { pushEnabled, isSupported } = usePushNotifications(userId);
   const [showGoogleLogin, setShowGoogleLogin] = useState(false);
   const [showModuleManager, setShowModuleManager] = useState(false);
@@ -533,7 +542,7 @@ function AcademyDashboard() {
   const [showVideoAnnotationEditor, setShowVideoAnnotationEditor] = useState(false);
   const [showVideoChapterManager, setShowVideoChapterManager] = useState(false);
   const [selectedVideoForEditing, setSelectedVideoForEditing] = useState<any>(null);
-  const [videoAnnotations, setVideoAnnotations] = useState<any[]>([]);
+  const [videoAnnotations, setVideoAnnotations] = useState<VideoAnnotation[]>([]);
   const [videoChapters, setVideoChapters] = useState<any[]>([]);
   
   // Academy Tutorial
@@ -1400,12 +1409,84 @@ function AcademyDashboard() {
     });
   }, [analytics, isDemoMode]);
 
-  const handleQuickExport = useCallback(() => {
+  const handleQuickExport = useCallback(async () => {
+    const formatNok = (value: number): string =>
+      new Intl.NumberFormat('nb-NO', {
+        style: 'currency',
+        currency: 'NOK',
+        maximumFractionDigits: 0,
+      }).format(Math.max(0, Number(value || 0)));
+
+    await academyPdfExportService.exportReport({
+      fileName: `academy-dashboard-${new Date().toISOString().slice(0, 10)}.pdf`,
+      title: 'Academy Dashboard Snapshot',
+      subtitle: 'Hurtig eksport av nøkkeltall og kompetanseoversikt',
+      courseLabel: `Profesjon: ${professionDisplayName}`,
+      locale: 'nb-NO',
+      sections: [
+        {
+          title: 'Nøkkelstatus',
+          metrics: [
+            { label: 'Filtrerte kompetanser', value: filteredCourses.length },
+            { label: 'Påmeldte kompetanser', value: enrolledCourses.length },
+            { label: 'Pågående', value: inProgressCourses.length },
+            { label: 'Fullførte', value: completedCourses.length },
+          ],
+        },
+        {
+          title: 'Instruktørinntekt',
+          metrics: [
+            {
+              label: 'Total opptjent',
+              value: formatNok(dashboardData?.instructorRevenue?.totalEarnings || 0),
+            },
+            {
+              label: 'Til utbetaling',
+              value: formatNok(dashboardData?.instructorRevenue?.pendingRevenue || 0),
+            },
+            {
+              label: 'Utbetalt',
+              value: formatNok(dashboardData?.instructorRevenue?.paidOut || 0),
+            },
+            {
+              label: 'Denne måneden',
+              value: formatNok(dashboardData?.instructorRevenue?.thisMonthEarnings || 0),
+            },
+          ],
+        },
+        {
+          title: 'Kompetanseoversikt',
+          table: {
+            columns: ['Kompetanse', 'Nivå', 'Pris', 'Studenter', 'Status'],
+            rows: filteredCourses.slice(0, 40).map((course: any) => [
+              course?.title || 'Uten tittel',
+              course?.level || '-',
+              formatNok(Number(course?.price || 0)),
+              Number(course?.studentCount || 0),
+              course?.isPublished ? 'Publisert' : 'Utkast',
+            ]),
+          },
+        },
+      ],
+    });
+
     analytics.trackEvent('floating_action_quick_export', {
       timestamp: Date.now(),
       isDemoMode,
     });
-  }, [analytics, isDemoMode]);
+  }, [
+    analytics,
+    completedCourses.length,
+    dashboardData?.instructorRevenue?.paidOut,
+    dashboardData?.instructorRevenue?.pendingRevenue,
+    dashboardData?.instructorRevenue?.thisMonthEarnings,
+    dashboardData?.instructorRevenue?.totalEarnings,
+    enrolledCourses.length,
+    filteredCourses,
+    inProgressCourses.length,
+    isDemoMode,
+    professionDisplayName,
+  ]);
 
   // Video editing handlers
   const handleVideoAnnotationEditorOpen = useCallback(
@@ -1437,7 +1518,7 @@ function AcademyDashboard() {
   );
 
   const handleVideoAnnotationsChange = useCallback(
-    (annotations: any[]) => {
+    (annotations: VideoAnnotation[]) => {
       setVideoAnnotations(annotations);
       analytics.trackEvent('video_annotations_updated', {
         videoId: selectedVideoForEditing?.id,
@@ -2518,7 +2599,7 @@ function AcademyDashboard() {
         <Toolbar>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexGrow: 1, minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              {React.cloneElement(professionIcon as any, {
+              {React.cloneElement(professionIcon, {
                 sx: { color: professionColor, fontSize: 22 }
               })}
             </Box>
@@ -3373,7 +3454,7 @@ function AcademyDashboard() {
           <Button 
             variant="outlined" 
             startIcon={<Add />}
-            onClick={() => handleCreateVisualModule({ id: Date.now(), title: 'Ny modul', lessons: [] })}
+            onClick={() => handleCreateVisualModule({ id: Date.now(), title: 'Ny kompetanse', lessons: [] })}
             sx={{ mt: 2 }}
           >
             Opprett ny modul
@@ -3719,60 +3800,28 @@ function AcademyDashboard() {
           fullWidth
           fullScreen
         >
-          <DialogTitle>
-            <Stack direction="row" alignItems="center" justifyContent="space-between">
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                Video Annotasjon Editor
-              </Typography>
-              <IconButton onClick={() => setShowVideoAnnotationEditor(false)}>
-                <Close />
-              </IconButton>
-            </Stack>
-          </DialogTitle>
           <DialogContent sx={{ p: 0 }}>
-            {/* VideoAnnotationEditor component would go here */}
-            <Box sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                Video Annotation Editor
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Video: {selectedVideoForEditing.title}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Annotations: {videoAnnotations.length}
-              </Typography>
-              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                <Button 
-                  variant="outlined" 
-                  startIcon={<Add />}
-                  onClick={() => handleVideoAnnotationsChange([
-                    ...videoAnnotations,
-                    { id: Date.now(), text: 'Ny annotasjon', timestamp: 0 }
-                  ])}
-                >
-                  Legg til annotasjon
-                </Button>
-                <Button 
-                  variant="outlined" 
-                  color="secondary"
-                  onClick={() => handleVideoAnnotationsChange([])}
-                >
-                  Fjern alle
-                </Button>
-              </Stack>
-              {videoAnnotations.length > 0 && (
-                <List sx={{ mt: 2 }}>
-                  {videoAnnotations.map((annotation, index) => (
-                    <ListItem key={annotation.id || index}>
-                      <ListItemText 
-                        primary={annotation.text || `Annotasjon ${index + 1}`}
-                        secondary={`Tidspunkt: ${annotation.timestamp || 0}s`}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-            </Box>
+            <VideoAnnotationEditor
+              courseId={selectedCourse?.id || undefined}
+              lessonId={selectedLesson?.id || undefined}
+              videoUrl={
+                selectedVideoForEditing?.videoUrl ||
+                selectedVideoForEditing?.url ||
+                undefined
+              }
+              duration={
+                Number.isFinite(Number(selectedVideoForEditing?.duration))
+                  ? Number(selectedVideoForEditing?.duration)
+                  : undefined
+              }
+              annotations={videoAnnotations}
+              onAnnotationsChange={handleVideoAnnotationsChange}
+              onSave={(nextAnnotations) => {
+                handleVideoAnnotationsChange(nextAnnotations);
+                setShowVideoAnnotationEditor(false);
+              }}
+              onCancel={() => setShowVideoAnnotationEditor(false)}
+            />
           </DialogContent>
         </Dialog>
       )}

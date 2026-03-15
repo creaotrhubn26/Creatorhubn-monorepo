@@ -27,6 +27,7 @@ import {
 } from '@mui/icons-material';
 
 import { type NoteType, NOTE_TYPE_META } from './types';
+import GlobalMentionHelper from '../shared/GlobalMentionHelper';
 
 // ---- Icon lookup ----
 const NOTE_ICONS: Record<NoteType, typeof CameraIcon> = {
@@ -279,6 +280,15 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
                         '& .MuiFormHelperText-root': { color: '#4b5563', fontSize: 9 },
                       }}
                     />
+                    <GlobalMentionHelper
+                      text={drafts[type] ?? value}
+                      onApplySuggestion={(name) => {
+                        const current = drafts[type] ?? value;
+                        const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+                        const next = replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+                        handleDraftChange(type, next);
+                      }}
+                    />
                     <Stack direction="row" spacing={1}>
                       <Button size="small" variant="contained" onClick={() => handleSaveAndClose(type)} startIcon={<CheckIcon sx={{ fontSize: 12 }} />} sx={{ bgcolor: meta.color, fontSize: 10 }}>
                         Lagre
@@ -373,6 +383,16 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
                   '&:hover fieldset': { borderColor: '#3b82f6' },
                   '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
                 },
+              }}
+            />
+            <GlobalMentionHelper
+              text={addNoteValue}
+              onApplySuggestion={(name) => {
+                setAddNoteValue((previous) => {
+                  if (!previous.trim()) return name;
+                  const replaced = previous.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+                  return replaced !== previous ? replaced : `${previous.trimEnd()} ${name}`;
+                });
               }}
             />
           </Stack>

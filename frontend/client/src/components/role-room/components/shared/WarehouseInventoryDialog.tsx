@@ -54,6 +54,8 @@ import {
   warehouseInventoryService,
 } from '../../services/warehouseInventoryService';
 import QrCameraScanner from './QrCameraScanner';
+import globalTagService from '../../services/globalTagService';
+import GlobalMentionHelper from './GlobalMentionHelper';
 
 const NODE_TYPES: Array<{ value: WarehouseNodeType; label: string }> = [
   { value: 'warehouse', label: 'Lager' },
@@ -159,6 +161,27 @@ export function WarehouseInventoryDialog({
   const [sceneId, setSceneId] = useState('');
   const [shotId, setShotId] = useState('');
   const [operationNote, setOperationNote] = useState('');
+  const mentionCandidates = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...items.map((item) => item.name),
+            ...snapshot.nodes.map((node) => node.name),
+          ]
+            .filter((value): value is string => typeof value === 'string')
+            .map((value) => value.trim())
+            .filter((value) => value.length >= 2),
+        ),
+      ),
+    [items, snapshot.nodes],
+  );
+  const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+    const current = typeof sourceText === 'string' ? sourceText : '';
+    if (!current.trim()) return name;
+    const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+    return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+  };
   const [qrLabelOpen, setQrLabelOpen] = useState(false);
   const [qrScanOpen, setQrScanOpen] = useState(false);
   const [qrItemKey, setQrItemKey] = useState('');
@@ -370,6 +393,18 @@ export function WarehouseInventoryDialog({
       return;
     }
 
+    const mentionSeed = [
+      selectedItem?.name,
+      ...globalTagService.parseExplicitMentions(typeof operationNote === 'string' ? operationNote : ''),
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter((value) => value.length >= 2);
+    if (mentionSeed.length > 0) {
+      void globalTagService.add(mentionSeed).catch((error) => {
+        console.warn('Kunne ikke oppdatere globalt mention-register fra lagernotat:', error);
+      });
+    }
     setFeedback({ kind: 'success', message: 'Lageroperasjon lagret' });
     reloadSnapshot();
   };
@@ -1002,6 +1037,11 @@ export function WarehouseInventoryDialog({
                 value={operationNote}
                 onChange={(event) => setOperationNote(event.target.value)}
                 sx={WAREHOUSE_CONTROL_SX}
+              />
+              <GlobalMentionHelper
+                text={typeof operationNote === 'string' ? operationNote : ''}
+                localCandidates={mentionCandidates}
+                onApplySuggestion={(name) => setOperationNote((prev) => applyMentionSuggestion(prev, name))}
               />
             </Box>
 

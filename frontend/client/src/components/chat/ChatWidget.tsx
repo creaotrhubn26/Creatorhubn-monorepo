@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import ChatWidgetErrorBoundary from './ChatWidgetErrorBoundary';
 import {
   Fab,
   Dialog,
@@ -58,7 +59,7 @@ interface ChatContact {
   status: 'online' | 'away' | 'offline';
   lastMessage?: string;
   unreadCount?: number;
-  type: 'client' | 'team' | 'support'
+  type: 'client' | 'team' | 'support' | 'google_chat'
 }
 
 interface ChatMessage {
@@ -71,13 +72,14 @@ interface ChatMessage {
 }
 
 export default function ChatWidget({
-  position = 'bottom-right,',
+  position = 'bottom-right',
   profession = 'photographer',
 }: ChatWidgetProps) {
   const [open, setOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const [tabValue, setTabValue] = useState(0); // 0 = Internal Chat, 1 = Google Chat
+  const [isPageVisible, setIsPageVisible] = useState(() => typeof document === 'undefined' || document.visibilityState === 'visible');
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -85,7 +87,7 @@ export default function ChatWidget({
   const { auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming(profession);
 
   // CRM suggestion system states - SAME AS FULLSCREEN
   const [needsHelpMessage, setNeedsHelpMessage] = useState<any>(null);
@@ -93,7 +95,7 @@ export default function ChatWidget({
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Get profession color - SAME AS FULLSCREEN
-  const getProfessionColor = () => {
+  const getProfessionColor = useCallback(() => {
     switch (profession) {
       case 'photographer':
         return '#ff8c00';
@@ -104,21 +106,34 @@ export default function ChatWidget({
       case 'vendor':
         return '#27ae60';
       default: return '#ff8c00';
-}
-};
+    }
+  }, [profession]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  const conversationRefetchInterval = isPageVisible ? 10000 : 30000;
+  const messageRefetchInterval = isPageVisible ? 2000 : 7000;
 
   // Fetch internal conversations - SAME AS FULLSCREEN
   const { data: conversationsResponse } = useQuery({
     queryKey: ['/api/communication/conversations'],
     queryFn: () => apiRequest('/api/communication/conversations'),
     enabled: open && tabValue === 0,
-    refetchInterval: 3000,
+    refetchInterval: open && tabValue === 0 ? conversationRefetchInterval : false,
   });
 
   const contacts: ChatContact[] = (conversationsResponse?.conversations || []).map((conv: any) => ({
     id: conv.id,
     name: conv.contactName || 'Unknown Contact',
-    email: conv.contactEmail || ', ',
+    email: conv.contactEmail || 'ukjent@creatorhub.no',
     status: conv.status || 'offline',
     lastMessage: conv.lastMessage || 'No messages',
     unreadCount: conv.unreadCount || 0,
@@ -133,13 +148,13 @@ export default function ChatWidget({
       return apiRequest('/api/google/chat/spaces', { headers });
     },
     enabled: open && tabValue === 1,
-    refetchInterval: 3000,
+    refetchInterval: open && tabValue === 1 ? conversationRefetchInterval : false,
   });
 
   const googleSpaces = (googleSpacesResponse?.spaces || []).map((space: any) => ({
     id: space.name,
     name: space.displayName || 'Google Chat Space',
-    email: space.spaceDetails?.description ||', ',
+    email: space.spaceDetails?.description || 'Google Chat',
     status: 'online',
     lastMessage: space.lastMessage?.text || 'Ny Google Chat',
     unreadCount:  0,
@@ -154,7 +169,7 @@ export default function ChatWidget({
         ? apiRequest(`/api/communication/messages/${selectedContact.id}`)
         : Promise.resolve(null),
     enabled: !!selectedContact && tabValue === 0,
-    refetchInterval: 500,
+    refetchInterval: selectedContact && tabValue === 0 ? messageRefetchInterval : false,
   });
 
   // Fetch Google Chat messages
@@ -166,7 +181,7 @@ export default function ChatWidget({
       return apiRequest(`/api/google/chat/messages?space=${selectedContact.id}`, { headers });
     },
     enabled: !!selectedContact && tabValue === 1 && selectedContact.type === 'google_chat',
-    refetchInterval: 500,
+    refetchInterval: selectedContact && tabValue === 1 ? messageRefetchInterval : false,
   });
 
   const messages: ChatMessage[] =
@@ -187,7 +202,7 @@ export default function ChatWidget({
       queryClient.invalidateQueries({
         queryKey: ['/api/communication/conversations'],
       });
-      setMessageInput(', ');
+      setMessageInput('');
     },
   });
 
@@ -267,7 +282,7 @@ export default function ChatWidget({
       queryClient.invalidateQueries({
         queryKey: ['/api/google/chat/messages'],
       });
-      setMessageInput(', ');
+      setMessageInput('');
     },
   });
 
@@ -321,6 +336,18 @@ export default function ChatWidget({
     setMenuAnchorEl(null);
 };
 
+  const handleMentionUser = () => {
+    if (!selectedContact) return;
+    const mention = `@${selectedContact.name.split(' ')[0]}`;
+    setMessageInput((prev) => `${prev}${prev ? ' ' : ''}${mention} `);
+    handleMenuClose();
+  };
+
+  const handleStartMeet = () => {
+    window.open('https://meet.google.com/new', '_blank', 'noopener,noreferrer');
+    handleMenuClose();
+  };
+
   // Create new Google Chat space
   const handleCreateGoogleSpace = () => {
     createGoogleSpaceMutation.mutate({
@@ -354,11 +381,12 @@ export default function ChatWidget({
 
   const positionStyles =
     position === 'bottom-right'
-      ? { position: 'fixed', bottom: 10, right:  20, zIndex: 100,}
-      : { position: 'fixed', bottom: 10, left:  20, zIndex: 100,};
+      ? { position: 'fixed', bottom: 16, right: 24, zIndex: 1200 }
+      : { position: 'fixed', bottom: 16, left: 24, zIndex: 1200 };
 
   return (
-    <>
+    <ChatWidgetErrorBoundary widgetName="ChatWidget">
+      <>
       {/* Chat Bubble Button */}
       <Fab
         sx={{
@@ -389,50 +417,67 @@ export default function ChatWidget({
             borderRadius: 3,
             maxHeight: '90vh',
             height: '700px',
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(2, 4, 8, 250, 252, 0.9))',
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.97), rgba(248,250,252,0.98))',
             backdropFilter: 'blur(10px)',
         }}}
         TransitionComponent={Slide}
         TransitionProps={{ direction: 'up'}}
       >
-        {/* HEADER WITH TABS INTEGRATED */}
-        <Box
+        <DialogTitle
           sx={{
-            bgcolor: getProfessionColor(),
+            p: 0,
+            borderBottom: '1px solid rgba(255,255,255,0.18)',
+            background: `linear-gradient(132deg, ${getProfessionColor()} 0%, rgba(15,23,42,0.92) 130%)`,
             color: 'white',
-            p:  2,
-            borderRadius: '12px 12px 0 0'}}
+          }}
+        >
+          {/* HEADER WITH TABS INTEGRATED */}
+          <Box
+          sx={{
+            p: 2,
+            pb: 1.25,
+          }}
         >
           <Box
             sx={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              mb:  2}}
+              mb: 1.25,
+            }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
               <Chat sx={{ fontSize: 28}} />
-              <Typography variant="h5" sx={{  fontWeight: 600}}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 Google Chat Integration v2.1
               </Typography>
               <Chip
-                label={tabValue === 0 ? 'INTERN CHAT' : 'GOOGLE CHAT'}
+                label={tabValue === 0 ? 'CREATORHUB' : 'GOOGLE CHAT'}
                 size="small"
                 sx={{
-                  bgcolor: tabValue === 0 ? '#FF5722' : '#4285F0',
+                  bgcolor: tabValue === 0 ? 'rgba(251,146,60,0.95)' : 'rgba(66,133,244,0.95)',
                   color: 'white',
                   fontSize: '0.75rem',
-                  fontWeight: 'bold'}}
+                  fontWeight: 700,
+                }}
               />
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
               {tabValue === 1 && (
-                <IconButton onClick={handleMenuClick} sx={{ color: 'white'}} size="large">
-                  {theming.getThemedIcon('moreVert')}
+                <IconButton
+                  onClick={handleMenuClick}
+                  sx={{ color: 'white', border: '1px solid rgba(255,255,255,0.25)' }}
+                  size="small"
+                >
+                  <MoreVert />
                 </IconButton>
               )}
-              <IconButton onClick={() => setOpen(false)} sx={{ color: 'white'}}>
-                {theming.getThemedIcon('close')}
+              <IconButton
+                onClick={() => setOpen(false)}
+                sx={{ color: 'white', border: '1px solid rgba(255,255,255,0.25)' }}
+                size="small"
+              >
+                <Close />
               </IconButton>
             </Box>
           </Box>
@@ -447,21 +492,21 @@ export default function ChatWidget({
                 minHeight: 60,
               },
               '& .MuiTab-root': {
-                color: 'rgba(25,255,255,0.7)',
+                color: 'rgba(255,255,255,0.75)',
                 minHeight: 60,
                 fontSize: '1rem',
                 fontWeight: 600,
-                border: '2px solid rgba(25,255,255,0.2)',
+                border: '1px solid rgba(255,255,255,0.22)',
                 borderRadius: 2,
                 mx: 0.5,
                 '&:hover': {
-                  bgcolor: 'rgba(25,255,255,0.1)',
+                  bgcolor: 'rgba(255,255,255,0.1)',
                 },
               },
               '& .Mui-selected': {
                 color: 'white !important',
-                bgcolor: 'rgba(25,255,255,0.2)',
-                border: '2px solid white',
+                bgcolor: 'rgba(255,255,255,0.16)',
+                border: '1px solid rgba(255,255,255,0.55)',
               },
               '& .MuiTabs-indicator': {
                 display: 'none',
@@ -482,16 +527,18 @@ export default function ChatWidget({
             />
           </Tabs>
         </Box>
+        </DialogTitle>
 
         <DialogContent sx={{ p: 0, height: 500}}>
           <Box sx={{ display: 'flex', height: '100%'}}>
             {/* Contact List */}
             <Box
               sx={{
-                width: 20,
+                width: 320,
                 borderRight:  1,
                 borderColor: 'divider',
-                bgcolor: 'rgba(25, 255, 255, 0.7)'}}
+                bgcolor: 'rgba(248, 250, 252, 0.95)',
+              }}
             >
               <List sx={{ py:  0 }}>
                 {(tabValue === 0 ? contacts : googleSpaces).map((contact) => (
@@ -566,7 +613,7 @@ export default function ChatWidget({
                     </Typography>
                     {tabValue === 1 && (
                       <Button
-                        startIcon={theming.getThemedIcon('add')}
+                        startIcon={<Add />}
                         size="small"
                         onClick={handleCreateGoogleSpace}
                         sx={{ mt: 1, display: 'block'}}
@@ -591,16 +638,18 @@ export default function ChatWidget({
                         sx={{
                           display: 'flex',
                           justifyContent: message.senderId === 'current-user' ? 'flex-end' : 'flex-start',
-                          mb:  1}}
+                          mb: 1,
+                          transitionDelay: `${Math.min(index * 24, 180)}ms`,
+                        }}
                       >
                         <Paper
                           sx={[
                             {
                               p: 1.5,
-                              maxWidth: '70, %',
+                              maxWidth: '70%',
                               bgcolor: message.senderId === 'current-user'
                                 ? getProfessionColor()
-                                : 'grey.10',
+                                : 'grey.100',
                               color: message.senderId === 'current-user' ? 'white' : 'text.primary',
                               borderRadius: 2,
                             },
@@ -630,7 +679,8 @@ export default function ChatWidget({
                       p:  1,
                       borderTop:  1,
                       borderColor: 'divider',
-                      background: 'rgba(25, 255, 255, 0.9)'}}
+                      background: 'rgba(248, 250, 252, 0.98)',
+                    }}
                   >
                     <TextField
                       fullWidth
@@ -650,7 +700,7 @@ export default function ChatWidget({
                         startAdornment: (
                           <InputAdornment position="start">
                             <IconButton size="small">
-                              <AttachFile />
+                              <AttachDescription />
                             </IconButton>
                           </InputAdornment>
                         ),
@@ -697,14 +747,18 @@ export default function ChatWidget({
                               </IconButton>
                               <IconButton
                                 onClick={handleSendMessage}
-                                disabled={!messageInput.trim() || sendMessageMutation.isPending}
+                                disabled={
+                                  !messageInput.trim() ||
+                                  sendMessageMutation.isPending ||
+                                  sendGoogleChatMutation.isPending
+                                }
                                 size="small"
                                 sx={{
-                                  bgcolor: messageInput.trim() ? getProfessionColor() : 'grey.30',
+                                  bgcolor: messageInput.trim() ? getProfessionColor() : 'grey.300',
                                   color: 'white','&:hover': {
                                     bgcolor: messageInput.trim()
                                       ? getProfessionColor()
-                                      : 'grey.30',
+                                      : 'grey.300',
                                 }}}
                               >
                                 <Send />
@@ -720,10 +774,10 @@ export default function ChatWidget({
                         sx={{
                           mt:  1,
                           p:  1,
-                          bgcolor: 'rgba(25, 255, 255, 0.95)',
+                          bgcolor: 'rgba(255,255,255,0.96)',
                           borderRadius:  2,
                           border: `1px solid ${getProfessionColor()}30`,
-                          maxHeight: 20,
+                          maxHeight: 220,
                           overflow: 'auto'}}
                       >
                         <Box
@@ -741,9 +795,9 @@ export default function ChatWidget({
                           </IconButton>
                         </Box>
 
-                        {analyzeMessageMutation.data.suggestions?.map((suggestion: any) => (
+                        {analyzeMessageMutation.data.suggestions?.map((suggestion: any, suggestionIndex: number) => (
                           <Paper
-                            key={suggestion.d}
+                            key={suggestion.id || `${suggestion.category || 'suggestion'}-${suggestionIndex}`}
                             sx={{
                               p:  1,
                               mb:  1,
@@ -795,7 +849,7 @@ export default function ChatWidget({
                         sx={{
                           mt:  1,
                           p:  1,
-                          bgcolor: 'rgba(25, 255, 255, 0.95)',
+                          bgcolor: 'rgba(255,255,255,0.96)',
                           borderRadius:  2,
                           display: 'flex',
                           alignItems: 'center',
@@ -848,7 +902,7 @@ export default function ChatWidget({
         sx={{
           '& .MuiPaper-root': {
             borderRadius:  2,
-            minWidth: 10,
+            minWidth: 220,
             boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
         }}}
       >
@@ -857,15 +911,16 @@ export default function ChatWidget({
           Nytt Chat-rom
         </MenuItem>
         <Divider />
-        <MenuItem onClick={handleMenuClose}>
+        <MenuItem onClick={handleMentionUser}>
           <AlternateEmail sx={{ mr: 1, color: 'text.secondary'}} />
           @Mention bruker
         </MenuItem>
-        <MenuItem onClick={handleMenuClose}>
-          <VideoCall sx={{ mr: 1, color: 'text.secondary'}} />
+        <MenuItem onClick={handleStartMeet}>
+          <VideocamCall sx={{ mr: 1, color: 'text.secondary'}} />
           Start Meet
         </MenuItem>
       </Menu>
-    </>
+      </>
+    </ChatWidgetErrorBoundary>
   );
 }

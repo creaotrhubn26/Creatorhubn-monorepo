@@ -11,9 +11,8 @@
  * • Palette: near-black base, white/10 glass, indigo-violet accents
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from 'react';
 import { keyframes } from '@mui/system';
-import type { KeyboardEvent } from 'react';
 import {
   Dialog,
   Box,
@@ -32,6 +31,7 @@ import {
   EmailOutlined as EmailIcon,
   LockOutlined as LockIcon,
 } from '@mui/icons-material';
+import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import authSessionService from '../services/authSessionService';
 import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
 
@@ -41,14 +41,19 @@ interface LoginDialogProps {
   open: boolean;
   onClose: () => void;
   onLoginSuccess: (user: {
-    id: number;
+    id: number | string;
     email: string;
     role: string;
     display_name: string;
+    name?: string;
+    loginAs?: string;
+    requestedRole?: string | null;
   }) => void;
   isLandingPage?: boolean;
   onGuestEnter?: () => void;
 }
+
+type LoginPersona = '' | 'production_team' | 'content_producer';
 
 /* ─────────────────────────── per-card config ───────────────────────────
  * Add a new card by adding one entry here — label, icon, video and focal
@@ -62,7 +67,7 @@ const ROLE_CARDS: Record<string, {
 }> = {
   admin:             { label: 'Admin',         icon: '/role-room-assets/roleroom_dashboard.webp' },
   photographer:      { label: 'Fotograf',      icon: '/role-room-assets/roleroom_photographer.webp', video: '/role-room-assets/roleroom_photographer.mp4' },
-  film_photographer: { label: 'Filmfotograf',  icon: '/role-room-assets/roleroom_filmfotograf.webp',     video: '/role-room-assets/roleroom_filmfotograf.mp4' },
+  film_photographer: { label: 'Innholdsprodusent',  icon: '/role-room-assets/roleroom_filmfotograf.webp',     video: '/role-room-assets/roleroom_filmfotograf.mp4' },
   photo_director:    { label: 'Fotodirektør',  icon: '/role-room-assets/roleroom_photo_director.webp',   video: '/role-room-assets/roleroom_photo_director.mp4' },
   photo_assistant:   { label: 'Fotoassistent', icon: '/role-room-assets/roleroom_photo_assistant.webp',  video: '/role-room-assets/roleroom_photo_assistant.mp4' },
   director:          { label: 'Regissør',      icon: '/role-room-assets/roleroom_director.webp',         video: '/role-room-assets/roleroom_director.mp4' },
@@ -175,6 +180,23 @@ const professionCategories = [
 ];
 
 const allRoles = Object.entries(ROLE_CARDS).map(([id, v]) => ({ id, label: v.label }));
+
+const LOGIN_PERSONA_OPTIONS: ReadonlyArray<{
+  id: Exclude<LoginPersona, ''>;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: 'production_team',
+    label: 'Produksjonsteam',
+    description: 'For crew, planlegging og live set',
+  },
+  {
+    id: 'content_producer',
+    label: 'Innholdsprodusent',
+    description: 'For innhold, storyboard og leveranser',
+  },
+];
 
 /* ═══════════════════ ✏️  VISUAL DESIGN CONFIG ════════════════════ *
  * All visual design values live here. Change colours, sizes,        *
@@ -678,6 +700,7 @@ export default function LoginDialog({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
+  const [loginPersona, setLoginPersona] = useState<LoginPersona>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [emailFocused, setEmailFocused] = useState(false);
@@ -701,6 +724,18 @@ export default function LoginDialog({
   const [testimonialIdx, setTestimonialIdx] = useState(0);
   const [testimonialVisible, setTestimonialVisible] = useState(true);
   const hasSeenHint = useRef(false);
+
+  const visibleProfessionCategories =
+    loginPersona === 'content_producer'
+      ? professionCategories
+          .map((category) => ({
+            ...category,
+            roleIds: category.roleIds.filter(
+              (id) => id === 'film_photographer' || id === 'client'
+            ),
+          }))
+          .filter((category) => category.roleIds.length > 0)
+      : professionCategories;
 
   /* ── pull published visual-editor settings (landing-desktop page) ── */
   const { data: pageData } = usePublishedPageCustomizations('landing-desktop');
@@ -814,6 +849,7 @@ export default function LoginDialog({
         setEmail('');
         setPassword('');
         setSelectedRole('');
+        setLoginPersona('');
         setError('');
         setLoading(false);
         setForgotPassword(false);
@@ -823,6 +859,14 @@ export default function LoginDialog({
       return () => clearTimeout(t);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (loginPersona !== 'content_producer') return;
+    if (!selectedRole) return;
+    if (selectedRole !== 'film_photographer' && selectedRole !== 'client') {
+      setSelectedRole('');
+    }
+  }, [loginPersona, selectedRole]);
 
   /* submit */
   const handleLogin = useCallback(async () => {
@@ -840,6 +884,10 @@ export default function LoginDialog({
       setError('Velg en rolle for å fortsette');
       return;
     }
+    if (!loginPersona) {
+      setError('Velg om du logger inn som Produksjonsteam eller Innholdsprodusent');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -853,36 +901,70 @@ export default function LoginDialog({
       const request = fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password, role: selectedRole }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          role: selectedRole,
+          loginAs: loginPersona || undefined,
+        }),
         credentials: 'include',
       }).then((r) => r.json());
 
       const data: {
         success: boolean;
-        user: { id: number; email: string; role: string; display_name: string };
+        user: {
+          id: number | string;
+          email: string;
+          role: string;
+          display_name?: string;
+          name?: string;
+          loginAs?: string;
+          requestedRole?: string | null;
+        };
         detail?: string;
+        error?: string;
       } = await Promise.race([request, timeout]);
 
       if (data.success) {
-        await authSessionService.setAdminUser(data.user);
-        await authSessionService.setCurrentUserId(String(data.user.id));
-        onLoginSuccess(data.user);
+        const resolvedRole =
+          loginPersona === 'content_producer'
+            ? 'content_producer'
+            : (data.user.requestedRole?.trim() || data.user.role);
+        const normalizedUser = {
+          ...data.user,
+          role: resolvedRole,
+          loginAs: data.user.loginAs || loginPersona || undefined,
+          requestedRole: data.user.requestedRole ?? selectedRole ?? null,
+          display_name:
+            data.user.display_name ||
+            data.user.name ||
+            data.user.email.split('@')[0],
+        };
+        await authSessionService.setAdminUser(normalizedUser);
+        await authSessionService.setCurrentUserId(String(normalizedUser.id));
+        onLoginSuccess(normalizedUser);
       } else {
-        setError(data.detail ?? 'Ugyldig e-post eller passord');
-        setLoading(false);
+        setError(data.detail ?? data.error ?? 'Ugyldig e-post eller passord');
       }
     } catch {
       const mockUser = {
         id: 1,
         email: email.trim(),
-        role: selectedRole || 'producer',
+        role:
+          loginPersona === 'content_producer'
+            ? 'content_producer'
+            : (selectedRole || 'producer'),
+        loginAs: loginPersona || undefined,
+        requestedRole: selectedRole || null,
         display_name: email.trim().split('@')[0],
       };
       await authSessionService.setAdminUser(mockUser);
       await authSessionService.setCurrentUserId(String(mockUser.id));
       onLoginSuccess(mockUser);
+    } finally {
+      setLoading(false);
     }
-  }, [loading, email, password, selectedRole, isLandingPage, onLoginSuccess]);
+  }, [loading, email, password, selectedRole, loginPersona, isLandingPage, onLoginSuccess]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !loading) {
@@ -892,6 +974,94 @@ export default function LoginDialog({
   };
 
   const selectedRoleLabel = allRoles.find((r) => r.id === selectedRole)?.label;
+  const showPersonaChooserInLeftPanel = isLandingPage && !isMobile;
+  const showPersonaChooserInRightPanel = true;
+  const loginPersonaChooser = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <Typography
+        sx={{
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          color: 'rgba(225,218,246,0.95)',
+          letterSpacing: '0.03em',
+          textTransform: 'uppercase',
+        }}
+      >
+        Logg inn som
+      </Typography>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 1,
+        }}
+      >
+        {LOGIN_PERSONA_OPTIONS.map((option) => {
+          const isSelected = loginPersona === option.id;
+          return (
+            <Button
+              key={option.id}
+              type="button"
+              onClick={() => setLoginPersona(option.id)}
+              aria-pressed={isSelected}
+              sx={{
+                textTransform: 'none',
+                borderRadius: '14px',
+                py: 1,
+                px: 1.25,
+                justifyContent: 'flex-start',
+                alignItems: 'flex-start',
+                textAlign: 'left',
+                border: `1px solid ${
+                  isSelected
+                    ? `rgba(${aR},${aG},${aB},0.45)`
+                    : 'rgba(255,255,255,0.12)'
+                }`,
+                bgcolor: isSelected
+                  ? `rgba(${aR},${aG},${aB},0.16)`
+                  : 'rgba(255,255,255,0.05)',
+                color: isSelected ? glass.text : 'rgba(235,235,245,0.82)',
+                transition: `all 0.25s ${easing}`,
+                '&:hover': {
+                  bgcolor: isSelected
+                    ? `rgba(${aR},${aG},${aB},0.22)`
+                    : 'rgba(255,255,255,0.08)',
+                  borderColor: isSelected
+                    ? `rgba(${aR},${aG},${aB},0.62)`
+                    : 'rgba(255,255,255,0.2)',
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                <Typography
+                  sx={{
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    lineHeight: 1.2,
+                    letterSpacing: '0.01em',
+                  }}
+                >
+                  {option.label}
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: '0.65rem',
+                    lineHeight: 1.3,
+                    color: isSelected
+                      ? `rgba(${aR},${aG},${aB},0.95)`
+                      : 'rgba(185,185,200,0.7)',
+                    transition: 'color 0.25s ease',
+                  }}
+                >
+                  {option.description}
+                </Typography>
+              </Box>
+            </Button>
+          );
+        })}
+      </Box>
+    </Box>
+  );
 
   /* ── render ── */
   return (
@@ -1062,7 +1232,7 @@ export default function LoginDialog({
           {/* logo */}
           <Box
             component="img"
-            src={lp.logoUrl || '/role-room-assets/TheRoleRoom_App_Logo.webp'}
+            src={lp.logoUrl || ROLE_ROOM_BRAND_ASSETS.wordmark}
             alt="The Role Room"
             sx={{
               width: { xs: 'min(200px, 55vw)', sm: '60%', md: '72%', lg: '82%' },
@@ -1133,6 +1303,21 @@ export default function LoginDialog({
               ? loginSubtitle
               : 'Logg inn for å administrere The Role Room'}
           </Typography>
+
+          {showPersonaChooserInLeftPanel && (
+            <Box
+              sx={{
+                mt: { xs: 1.5, md: 2.2 },
+                width: '100%',
+                maxWidth: { xs: 260, md: 320, lg: 390, xl: 440 },
+                px: { xs: 0.25, md: 0.5 },
+                position: 'relative',
+                zIndex: 2,
+              }}
+            >
+              {loginPersonaChooser}
+            </Box>
+          )}
 
           {/* ── social proof stats bar ── */}
           {isLandingPage && (
@@ -1516,6 +1701,9 @@ export default function LoginDialog({
             </Alert>
           )}
 
+          {/* ── login persona chooser ── */}
+          {showPersonaChooserInRightPanel && loginPersonaChooser}
+
           {/* ── role picker ── */}
           {isLandingPage && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -1566,7 +1754,7 @@ export default function LoginDialog({
                 Velg din rolle
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                {professionCategories.map((cat) => (
+                {visibleProfessionCategories.map((cat) => (
                   <CategorySection
                     key={cat.id}
                     category={cat}

@@ -8,6 +8,10 @@ import { Buffer } from 'buffer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const backendProxyTarget =
+  process.env.VITE_API_PROXY_TARGET ||
+  process.env.API_PROXY_TARGET ||
+  'http://localhost:3003';
 
 // Custom plugin to resolve @/* paths with fallback (matches tsconfig.json behavior)
 const customPathResolver = (): Plugin => {
@@ -236,18 +240,18 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: backendProxyTarget,
         changeOrigin: true,
         secure: false,
       },
       '/ws': {
-        target: 'http://localhost:3001',
+        target: backendProxyTarget,
         ws: true,
         changeOrigin: true,
       },
-      '/auth': { target: 'http://localhost:3001', changeOrigin: true },
+      '/auth': { target: backendProxyTarget, changeOrigin: true },
       '/socket': {
-        target: 'http://localhost:3001',
+        target: backendProxyTarget,
         ws: true,
         changeOrigin: true,
       },

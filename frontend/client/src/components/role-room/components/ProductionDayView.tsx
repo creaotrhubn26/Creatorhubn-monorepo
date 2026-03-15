@@ -34,6 +34,10 @@ import {
   useTheme,
   useMediaQuery,
   Grow,
+  Divider,
+  LinearProgress,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -75,8 +79,21 @@ import {
   KeyboardArrowDown as ArrowDownIcon,
   KeyboardArrowUp as ArrowUpIcon,
   CheckCircle as CheckCircleIcon,
+  Description as CallSheetIcon,
+  CloudOff as OfflineIcon,
+  CloudQueue as OnlineIcon,
+  SwapHoriz as RescheduleIcon,
+  Comment as CommentIcon,
+  AssignmentTurnedIn as ReadyIcon,
+  ErrorOutline as RiskIcon,
+  Block as BlockedIcon,
+  PlayArrow as StartIcon,
+  Stop as StopIcon,
+  Autorenew as QueueIcon,
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
+import globalTagService from '../services/globalTagService';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { LocationsIcon as LocationIcon, CalendarCustomIcon as CalendarMonthIcon, StatsIcon } from './icons/CastingIcons';
 import type { ProductionDay } from '../models/casting';
 import { productionPlanningService } from '../services/productionPlanningService';
@@ -105,6 +122,55 @@ type SortField = 'date' | 'location' | 'status' | 'scenes';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
 type StatusFilter = 'all' | 'planned' | 'in_progress' | 'completed' | 'cancelled';
+type ReadinessLevel = 'klar' | 'risiko' | 'blokkert';
+type TeamFlowEntryType = 'comment' | 'decision';
+
+interface TeamFlowEntry {
+  id: string;
+  author: string;
+  createdAt: string;
+  type: TeamFlowEntryType;
+  text: string;
+  mentions: string[];
+}
+
+interface ProductionDayProMeta {
+  permitsReady?: boolean;
+  transportReady?: boolean;
+  dependencies?: string[];
+  estimatedMinutes?: number;
+  actualMinutes?: number;
+  checkInAt?: string;
+  checkOutAt?: string;
+  lastFieldStatus?: ProductionDay['status'];
+  riskAccepted?: boolean;
+  teamFlow?: TeamFlowEntry[];
+}
+
+interface OfflineFieldQueueItem {
+  id: string;
+  dayId: string;
+  action: 'check_in' | 'check_out' | 'status_update';
+  payload: {
+    status?: ProductionDay['status'];
+    timestamp: string;
+  };
+  createdAt: string;
+}
+
+interface ReadinessResult {
+  level: ReadinessLevel;
+  score: number;
+  reasons: string[];
+}
+
+interface DayConflictSummary {
+  crew: string[];
+  location: string[];
+  props: string[];
+  time: string[];
+  total: number;
+}
 
 interface ProductionDayViewProps {
   projectId: string;
@@ -291,6 +357,26 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     validation: { valid: boolean; errors: string[]; warnings: string[] };
   }
   const [dayDataCache, setDayDataCache] = useState<Record<string, DayDataCache>>({});
+
+  // Pro workflow state (persisted per project)
+  const [proViewEnabled, setProViewEnabled] = useState(true);
+  const [proMetaByDay, setProMetaByDay] = useState<Record<string, ProductionDayProMeta>>({});
+  const [proMetaLoaded, setProMetaLoaded] = useState(false);
+  const [proSelectedDayId, setProSelectedDayId] = useState<string | null>(null);
+  const [teamFlowDraftByDay, setTeamFlowDraftByDay] = useState<Record<string, string>>({});
+  const [showBulkShiftDialog, setShowBulkShiftDialog] = useState(false);
+  const [bulkShiftDays, setBulkShiftDays] = useState(1);
+  const [draggingDayId, setDraggingDayId] = useState<string | null>(null);
+  const [dragTargetDayId, setDragTargetDayId] = useState<string | null>(null);
+  const [showDragPreviewDialog, setShowDragPreviewDialog] = useState(false);
+  const [fieldModeEnabled, setFieldModeEnabled] = useState(false);
+  const [offlineQueue, setOfflineQueue] = useState<OfflineFieldQueueItem[]>([]);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  const [globalTagRegistry, setGlobalTagRegistry] = useState<string[]>([]);
+  const [globalTagRegistryLoaded, setGlobalTagRegistryLoaded] = useState(false);
+
+  const PRO_META_NAMESPACE = 'virtualStudio_productionDayProMeta_v1';
+  const PRO_FIELD_QUEUE_NAMESPACE = 'virtualStudio_productionDayFieldQueue_v1';
 
   // Inform team dialog state
   const [showInformTeamDialog, setShowInformTeamDialog] = useState(false);
@@ -527,6 +613,101 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     void settingsService.setSetting(FAVORITES_NAMESPACE, [...favorites], { projectId });
   }, [favorites, projectId, favoritesLoaded]);
 
+  useEffect(() => {
+    const loadProSettings = async () => {
+      const [storedMeta, storedQueue] = await Promise.all([
+        settingsService.getSetting<Record<string, ProductionDayProMeta>>(PRO_META_NAMESPACE, { projectId }),
+        settingsService.getSetting<OfflineFieldQueueItem[]>(PRO_FIELD_QUEUE_NAMESPACE, { projectId }),
+      ]);
+      if (storedMeta) {
+        setProMetaByDay(storedMeta);
+      }
+      if (Array.isArray(storedQueue)) {
+        setOfflineQueue(storedQueue);
+      }
+      setProMetaLoaded(true);
+    };
+    void loadProSettings();
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!proMetaLoaded) return;
+    void settingsService.setSetting(PRO_META_NAMESPACE, proMetaByDay, { projectId });
+  }, [proMetaByDay, projectId, proMetaLoaded]);
+
+  useEffect(() => {
+    if (!proMetaLoaded) return;
+    void settingsService.setSetting(PRO_FIELD_QUEUE_NAMESPACE, offlineQueue, { projectId });
+  }, [offlineQueue, projectId, proMetaLoaded]);
+
+  useEffect(() => {
+    let active = true;
+    const loadGlobalTags = async () => {
+      const tags = await globalTagService.load();
+      if (!active) return;
+      setGlobalTagRegistry(tags);
+      setGlobalTagRegistryLoaded(true);
+    };
+    void loadGlobalTags();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!globalTagRegistryLoaded) return;
+    const seedTags = crew
+      .map((member: any) => String(member?.name || '').trim())
+      .filter((name) => name.length > 0);
+    if (seedTags.length === 0) return;
+    void globalTagService.add(seedTags).then((tags) => {
+      setGlobalTagRegistry(tags);
+    });
+  }, [crew, globalTagRegistryLoaded]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncOfflineQueue = async () => {
+      if (!isOnline || offlineQueue.length === 0) return;
+      const queueCopy = [...offlineQueue];
+      for (const queueItem of queueCopy) {
+        const targetDay = productionDays.find((day) => day.id === queueItem.dayId);
+        if (!targetDay) continue;
+        const nextDay: ProductionDay = {
+          ...targetDay,
+          status: queueItem.payload.status || targetDay.status,
+          updatedAt: new Date().toISOString(),
+        };
+        try {
+          await productionPlanningService.saveProductionDay(projectId, nextDay);
+          setOfflineQueue((prev) => prev.filter((item) => item.id !== queueItem.id));
+        } catch (error) {
+          console.error('Offline queue sync failed:', error);
+        }
+      }
+      const days = await productionPlanningService.getProductionDays(projectId);
+      setProductionDays(Array.isArray(days) ? days : []);
+    };
+
+    void syncOfflineQueue();
+
+    const handleOnline = () => {
+      void syncOfflineQueue();
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [isOnline, offlineQueue, productionDays, projectId]);
+
   // Load weather forecasts for production days that don't have them
   useEffect(() => {
     const loadMissingWeatherForecasts = async () => {
@@ -657,6 +838,16 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     return result;
   }, [productionDays, searchQuery, statusFilter, sortField, sortDirection, favorites, locations]);
 
+  useEffect(() => {
+    if (!proSelectedDayId && filteredAndSortedDays.length > 0) {
+      setProSelectedDayId(filteredAndSortedDays[0].id);
+      return;
+    }
+    if (proSelectedDayId && !filteredAndSortedDays.some((day) => day.id === proSelectedDayId)) {
+      setProSelectedDayId(filteredAndSortedDays[0]?.id ?? null);
+    }
+  }, [filteredAndSortedDays, proSelectedDayId]);
+
   // Group by month for grid view
   const groupedDays = useMemo(() => {
     const groups: Record<string, ProductionDay[]> = {};
@@ -691,6 +882,572 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       favorites: favorites.size,
     };
   }, [productionDays, favorites]);
+
+  const mentionDirectory = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...crew.map((member: any) => String(member?.name || '').trim()).filter(Boolean),
+            ...globalTagRegistry,
+          ]
+        )
+      ).sort((a, b) => a.localeCompare(b, 'nb')),
+    [crew, globalTagRegistry]
+  );
+
+  const parseClockMinutes = (clock?: string): number | null => {
+    if (!clock || !clock.includes(':')) return null;
+    const [h, m] = clock.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+  };
+
+  const plannedMinutesForDay = (day: ProductionDay): number => {
+    const start = parseClockMinutes(day.callTime);
+    const endRaw = parseClockMinutes(day.wrapTime);
+    if (start === null || endRaw === null) return 0;
+    const end = endRaw < start ? endRaw + 24 * 60 : endRaw;
+    return Math.max(0, end - start);
+  };
+
+  const rangesOverlap = (aStart: number | null, aEnd: number | null, bStart: number | null, bEnd: number | null): boolean => {
+    if (aStart === null || aEnd === null || bStart === null || bEnd === null) return false;
+    const aEffectiveEnd = aEnd < aStart ? aEnd + 24 * 60 : aEnd;
+    const bEffectiveEnd = bEnd < bStart ? bEnd + 24 * 60 : bEnd;
+    return aStart < bEffectiveEnd && bStart < aEffectiveEnd;
+  };
+
+  const conflictMap = useMemo<Record<string, DayConflictSummary>>(() => {
+    const map: Record<string, DayConflictSummary> = {};
+    productionDays.forEach((day) => {
+      map[day.id] = { crew: [], location: [], props: [], time: [], total: 0 };
+    });
+
+    for (let i = 0; i < productionDays.length; i += 1) {
+      for (let j = i + 1; j < productionDays.length; j += 1) {
+        const a = productionDays[i];
+        const b = productionDays[j];
+        if (a.date !== b.date) continue;
+
+        const overlaps = rangesOverlap(
+          parseClockMinutes(a.callTime),
+          parseClockMinutes(a.wrapTime),
+          parseClockMinutes(b.callTime),
+          parseClockMinutes(b.wrapTime)
+        );
+        if (!overlaps) continue;
+
+        const aCrew = new Set(Array.isArray(a.crew) ? a.crew : []);
+        const bCrew = new Set(Array.isArray(b.crew) ? b.crew : []);
+        const sharedCrew = [...aCrew].filter((crewId) => bCrew.has(crewId));
+
+        const aProps = new Set(Array.isArray(a.props) ? a.props : []);
+        const bProps = new Set(Array.isArray(b.props) ? b.props : []);
+        const sharedProps = [...aProps].filter((propId) => bProps.has(propId));
+
+        map[a.id].time.push(`Tidskollisjon med ${new Date(b.date).toLocaleDateString('nb-NO')} (${b.callTime}-${b.wrapTime})`);
+        map[b.id].time.push(`Tidskollisjon med ${new Date(a.date).toLocaleDateString('nb-NO')} (${a.callTime}-${a.wrapTime})`);
+
+        if (a.locationId && b.locationId && a.locationId === b.locationId) {
+          map[a.id].location.push(`Lokasjonen brukes også av en annen produksjonsdag`);
+          map[b.id].location.push(`Lokasjonen brukes også av en annen produksjonsdag`);
+        }
+
+        if (sharedCrew.length > 0) {
+          map[a.id].crew.push(`Crew-kollisjon: ${sharedCrew.length} person(er) er dobbeltbooket`);
+          map[b.id].crew.push(`Crew-kollisjon: ${sharedCrew.length} person(er) er dobbeltbooket`);
+        }
+
+        if (sharedProps.length > 0) {
+          map[a.id].props.push(`Utstyr/rekvisitt-kollisjon: ${sharedProps.length} element(er) overlapper`);
+          map[b.id].props.push(`Utstyr/rekvisitt-kollisjon: ${sharedProps.length} element(er) overlapper`);
+        }
+      }
+    }
+
+    Object.values(map).forEach((summary) => {
+      summary.total = summary.crew.length + summary.location.length + summary.props.length + summary.time.length;
+    });
+
+    return map;
+  }, [productionDays]);
+
+  const getReadiness = (day: ProductionDay): ReadinessResult => {
+    const dayCache = dayDataCache[day.id];
+    const meta = proMetaByDay[day.id] || {};
+    const reasons: string[] = [];
+    let score = 100;
+
+    if (!day.locationId) {
+      reasons.push('Mangler lokasjon');
+      score -= 25;
+    }
+    if (!Array.isArray(day.scenes) || day.scenes.length === 0) {
+      reasons.push('Ingen scener tilordnet');
+      score -= 20;
+    }
+    if (!Array.isArray(day.crew) || day.crew.length === 0) {
+      reasons.push('Ingen crew tilordnet');
+      score -= 22;
+    }
+    if (!Array.isArray(day.props) || day.props.length === 0) {
+      reasons.push('Ingen utstyr/rekvisitter tilordnet');
+      score -= 10;
+    }
+    if (dayCache?.validation?.errors?.length) {
+      reasons.push(`Har ${dayCache.validation.errors.length} valideringsfeil`);
+      score -= Math.min(28, dayCache.validation.errors.length * 10);
+    }
+    if (dayCache?.validation?.warnings?.length) {
+      reasons.push(`Har ${dayCache.validation.warnings.length} advarsler`);
+      score -= Math.min(14, dayCache.validation.warnings.length * 4);
+    }
+    if (!meta.permitsReady) {
+      reasons.push('Tillatelser ikke bekreftet');
+      score -= 12;
+    }
+    if (!meta.transportReady) {
+      reasons.push('Transport ikke bekreftet');
+      score -= 8;
+    }
+
+    const conflicts = conflictMap[day.id];
+    if (conflicts?.total) {
+      reasons.push(`${conflicts.total} registrerte kollisjoner`);
+      score -= Math.min(32, conflicts.total * 8);
+    }
+
+    const safeScore = Math.max(0, Math.min(100, score));
+    if (safeScore < 55) {
+      return { level: 'blokkert', score: safeScore, reasons };
+    }
+    if (safeScore < 80) {
+      return { level: 'risiko', score: safeScore, reasons };
+    }
+    return {
+      level: 'klar',
+      score: safeScore,
+      reasons: reasons.length > 0 ? reasons : ['Sjekklisten er grønn'],
+    };
+  };
+
+  const readinessByDay = useMemo<Record<string, ReadinessResult>>(() => {
+    const result: Record<string, ReadinessResult> = {};
+    productionDays.forEach((day) => {
+      result[day.id] = getReadiness(day);
+    });
+    return result;
+  }, [productionDays, dayDataCache, proMetaByDay, conflictMap]);
+
+  const getReadinessColor = (level: ReadinessLevel): string => {
+    if (level === 'klar') return '#10b981';
+    if (level === 'risiko') return '#ffb800';
+    return '#ef4444';
+  };
+
+  const getReadinessLabel = (level: ReadinessLevel): string => {
+    if (level === 'klar') return 'Klar';
+    if (level === 'risiko') return 'Risiko';
+    return 'Blokkert';
+  };
+
+  const getRiskSignals = (day: ProductionDay): string[] => {
+    const risks: string[] = [];
+    const meta = proMetaByDay[day.id] || {};
+    const start = parseClockMinutes(day.callTime);
+    const endRaw = parseClockMinutes(day.wrapTime);
+    const end = start !== null && endRaw !== null && endRaw < start ? endRaw + 24 * 60 : endRaw;
+
+    if (start !== null && (start < 6 * 60 || start >= 22 * 60)) {
+      risks.push('Natt-/tidlig call time');
+    }
+    if (end !== null && end > 22 * 60) {
+      risks.push('Sen wrap (overtidsrisiko)');
+    }
+    if (!meta.permitsReady) {
+      risks.push('Tillatelser ikke markert som klar');
+    }
+    if (!meta.transportReady) {
+      risks.push('Transportplan ikke markert som klar');
+    }
+    if ((conflictMap[day.id]?.total || 0) > 0) {
+      risks.push('Aktive ressurskollisjoner');
+    }
+    const symbol = String((day as any)?.weatherForecast?.forecast?.[0]?.symbol || '').toLowerCase();
+    if (symbol.includes('thunder') || symbol.includes('storm')) {
+      risks.push('Værrisiko: torden/storm');
+    }
+    if ((Array.isArray(day.crew) ? day.crew.length : 0) < 2) {
+      risks.push('Lav bemanning');
+    }
+    return risks;
+  };
+
+  const sortedProductionDays = useMemo(
+    () => [...productionDays].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    [productionDays]
+  );
+
+  const getDependencyIssues = (day: ProductionDay): string[] => {
+    const issues: string[] = [];
+    const dayIndex = sortedProductionDays.findIndex((item) => item.id === day.id);
+    const previousDay = dayIndex > 0 ? sortedProductionDays[dayIndex - 1] : null;
+    if (previousDay && previousDay.status !== 'completed' && day.status !== 'planned') {
+      issues.push(`Forrige dag (${new Date(previousDay.date).toLocaleDateString('nb-NO')}) er ikke fullført`);
+    }
+
+    const deps = proMetaByDay[day.id]?.dependencies || [];
+    deps.forEach((depId) => {
+      const depDay = productionDays.find((item) => item.id === depId);
+      if (!depDay) return;
+      if (depDay.status !== 'completed') {
+        issues.push(`Avhengig av ${new Date(depDay.date).toLocaleDateString('nb-NO')} (${getStatusLabel(depDay.status)})`);
+      }
+    });
+    return issues;
+  };
+
+  const selectedProDay = useMemo(
+    () => productionDays.find((day) => day.id === proSelectedDayId) || null,
+    [productionDays, proSelectedDayId]
+  );
+
+  const proKpis = useMemo(() => {
+    const totalPlanned = productionDays.reduce((sum, day) => sum + plannedMinutesForDay(day), 0);
+    const totalActual = productionDays.reduce((sum, day) => {
+      const actual = proMetaByDay[day.id]?.actualMinutes;
+      if (typeof actual === 'number') return sum + actual;
+      if (day.status === 'completed') return sum + plannedMinutesForDay(day);
+      return sum;
+    }, 0);
+    const completedCount = productionDays.filter((day) => day.status === 'completed').length;
+    const delayedCount = productionDays.filter((day) => {
+      const dayDate = new Date(day.date).getTime();
+      const today = new Date().setHours(0, 0, 0, 0);
+      return dayDate < today && day.status !== 'completed' && day.status !== 'cancelled';
+    }).length;
+    const avgReadiness =
+      productionDays.length === 0
+        ? 0
+        : Math.round(
+            productionDays.reduce((sum, day) => sum + (readinessByDay[day.id]?.score || 0), 0) /
+              productionDays.length
+          );
+    return {
+      totalPlanned,
+      totalActual,
+      overtime: Math.max(0, totalActual - totalPlanned),
+      coveragePercent: productionDays.length ? Math.round((completedCount / productionDays.length) * 100) : 0,
+      delayedCount,
+      avgReadiness,
+    };
+  }, [productionDays, readinessByDay, proMetaByDay]);
+
+  const extractMentions = (text: string): string[] => {
+    const explicit = globalTagService.parseExplicitMentions(text);
+    const implicit = mentionDirectory.filter((name) => text.toLowerCase().includes(name.toLowerCase()));
+    return Array.from(new Set([...explicit, ...implicit]));
+  };
+
+  const levenshtein = (a: string, b: string): number => {
+    const matrix = Array.from({ length: b.length + 1 }, (_, i) => [i]);
+    for (let j = 0; j <= a.length; j += 1) {
+      matrix[0][j] = j;
+    }
+    for (let i = 1; i <= b.length; i += 1) {
+      for (let j = 1; j <= a.length; j += 1) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+    return matrix[b.length][a.length];
+  };
+
+  const getDidYouMeanMention = (rawTag: string): string | null => {
+    if (!rawTag) return null;
+    const normalized = rawTag.toLowerCase();
+    const exact = mentionDirectory.find((name) => name.toLowerCase() === normalized);
+    if (exact) return null;
+    const scored = mentionDirectory
+      .map((name) => ({ name, distance: levenshtein(normalized, name.toLowerCase()) }))
+      .sort((a, b) => a.distance - b.distance);
+    if (scored[0] && scored[0].distance <= 2) return scored[0].name;
+    return null;
+  };
+
+  const selectedDraft = selectedProDay ? teamFlowDraftByDay[selectedProDay.id] || '' : '';
+
+  const selectedDraftMentions = useMemo(() => {
+    if (!selectedProDay) return [];
+    return extractMentions(selectedDraft);
+  }, [selectedDraft, selectedProDay, mentionDirectory]);
+
+  const selectedDidYouMean = useMemo(() => {
+    const rawTag = (selectedDraft.match(/@([A-Za-z0-9_.\-ÆØÅæøå]+)/g) || [])
+      .map((tag) => tag.replace(/^@/, ''))
+      .find(Boolean);
+    return rawTag ? { rawTag, suggestion: getDidYouMeanMention(rawTag) } : null;
+  }, [selectedDraft, mentionDirectory]);
+
+  const updateDayMeta = (dayId: string, updater: (previous: ProductionDayProMeta) => ProductionDayProMeta) => {
+    setProMetaByDay((prev) => {
+      const base = prev[dayId] || {};
+      return {
+        ...prev,
+        [dayId]: updater(base),
+      };
+    });
+  };
+
+  const addTeamFlowEntry = (dayId: string, type: TeamFlowEntryType) => {
+    const draft = (teamFlowDraftByDay[dayId] || '').trim();
+    if (!draft) return;
+    const entry: TeamFlowEntry = {
+      id: `team-flow-${Date.now()}`,
+      author: getCurrentUser(),
+      createdAt: new Date().toISOString(),
+      type,
+      text: draft,
+      mentions: extractMentions(draft),
+    };
+    updateDayMeta(dayId, (previous) => ({
+      ...previous,
+      teamFlow: [...(previous.teamFlow || []), entry],
+    }));
+    setTeamFlowDraftByDay((prev) => ({ ...prev, [dayId]: '' }));
+    void globalTagService
+      .add([entry.author, ...entry.mentions, ...globalTagService.parseExplicitMentions(entry.text)])
+      .then((tags) => {
+        setGlobalTagRegistry(tags);
+      });
+  };
+
+  const replaceDraftMention = (dayId: string, from: string, to: string) => {
+    setTeamFlowDraftByDay((prev) => {
+      const current = prev[dayId] || '';
+      return {
+        ...prev,
+        [dayId]: current.replace(new RegExp(`@?${from}`, 'ig'), `@${to}`),
+      };
+    });
+  };
+
+  const applyDraftSuggestion = (dayId: string, suggestion: string) => {
+    setTeamFlowDraftByDay((prev) => {
+      const current = prev[dayId] || '';
+      if (!current.trim()) {
+        return { ...prev, [dayId]: suggestion };
+      }
+
+      if (/@([A-Za-z0-9_.\-ÆØÅæøå]*)$/u.test(current)) {
+        return {
+          ...prev,
+          [dayId]: current.replace(/@([A-Za-z0-9_.\-ÆØÅæøå]*)$/u, `@${suggestion}`),
+        };
+      }
+
+      if (/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u.test(current)) {
+        return {
+          ...prev,
+          [dayId]: current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, suggestion),
+        };
+      }
+
+      return { ...prev, [dayId]: `${current.trimEnd()} ${suggestion}` };
+    });
+  };
+
+  const enqueueOfflineItem = (dayId: string, action: OfflineFieldQueueItem['action'], status?: ProductionDay['status']) => {
+    const queueItem: OfflineFieldQueueItem = {
+      id: `queue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      dayId,
+      action,
+      payload: {
+        status,
+        timestamp: new Date().toISOString(),
+      },
+      createdAt: new Date().toISOString(),
+    };
+    setOfflineQueue((prev) => [...prev, queueItem]);
+  };
+
+  const applyFieldStatus = async (day: ProductionDay, status: ProductionDay['status'], action: OfflineFieldQueueItem['action']) => {
+    const nowIso = new Date().toISOString();
+    updateDayMeta(day.id, (previous) => ({
+      ...previous,
+      checkInAt: action === 'check_in' ? nowIso : previous.checkInAt,
+      checkOutAt: action === 'check_out' ? nowIso : previous.checkOutAt,
+      actualMinutes:
+        action === 'check_out' && previous.checkInAt
+          ? Math.max(0, Math.round((new Date(nowIso).getTime() - new Date(previous.checkInAt).getTime()) / 60000))
+          : previous.actualMinutes,
+      lastFieldStatus: status,
+    }));
+
+    if (!isOnline) {
+      enqueueOfflineItem(day.id, action, status);
+      showInfo('Offline: endringen er lagt i synk-kø');
+      return;
+    }
+
+    try {
+      await productionPlanningService.saveProductionDay(projectId, {
+        ...day,
+        status,
+        updatedAt: nowIso,
+      });
+      const days = await productionPlanningService.getProductionDays(projectId);
+      setProductionDays(Array.isArray(days) ? days : []);
+    } catch (error) {
+      console.error('Field status update failed, queued offline instead:', error);
+      enqueueOfflineItem(day.id, action, status);
+    }
+  };
+
+  const shiftIsoDate = (dateIso: string, days: number): string => {
+    const date = new Date(dateIso);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().split('T')[0];
+  };
+
+  const bulkShiftPreview = useMemo(() => {
+    const items = [...selectedIds]
+      .map((id) => productionDays.find((day) => day.id === id))
+      .filter((day): day is ProductionDay => !!day)
+      .map((day) => ({
+        id: day.id,
+        from: day.date,
+        to: shiftIsoDate(day.date, bulkShiftDays),
+      }));
+    return items;
+  }, [selectedIds, productionDays, bulkShiftDays]);
+
+  const applyBulkShift = async () => {
+    if (bulkShiftPreview.length === 0) {
+      setShowBulkShiftDialog(false);
+      return;
+    }
+    for (const item of bulkShiftPreview) {
+      const day = productionDays.find((candidate) => candidate.id === item.id);
+      if (!day) continue;
+      await productionPlanningService.saveProductionDay(projectId, {
+        ...day,
+        date: item.to,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    const days = await productionPlanningService.getProductionDays(projectId);
+    setProductionDays(Array.isArray(days) ? days : []);
+    setShowBulkShiftDialog(false);
+    showSuccess(`Flyttet ${bulkShiftPreview.length} produksjonsdag(er) med ${bulkShiftDays} dag(er)`);
+  };
+
+  const applyDragMove = async () => {
+    if (!draggingDayId || !dragTargetDayId || draggingDayId === dragTargetDayId) {
+      setShowDragPreviewDialog(false);
+      setDraggingDayId(null);
+      setDragTargetDayId(null);
+      return;
+    }
+    const source = productionDays.find((day) => day.id === draggingDayId);
+    const target = productionDays.find((day) => day.id === dragTargetDayId);
+    if (!source || !target) {
+      setShowDragPreviewDialog(false);
+      setDraggingDayId(null);
+      setDragTargetDayId(null);
+      return;
+    }
+    await productionPlanningService.saveProductionDay(projectId, {
+      ...source,
+      date: target.date,
+      updatedAt: new Date().toISOString(),
+    });
+    const days = await productionPlanningService.getProductionDays(projectId);
+    setProductionDays(Array.isArray(days) ? days : []);
+    setShowDragPreviewDialog(false);
+    setDraggingDayId(null);
+    setDragTargetDayId(null);
+    showSuccess('Dag flyttet via drag/drop');
+  };
+
+  const generateCallSheetForDay = (day: ProductionDay) => {
+    const relatedCrew = (Array.isArray(day.crew) ? day.crew : [])
+      .map((crewId) => crew.find((member: any) => member.id === crewId))
+      .filter(Boolean);
+    const relatedProps = (Array.isArray(day.props) ? day.props : [])
+      .map((propId) => props.find((item: any) => item.id === propId))
+      .filter(Boolean);
+
+    const html = `
+      <!doctype html>
+      <html lang="nb">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Call sheet ${day.date}</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#0a0f1c; color:#f8fafc; padding:24px; }
+          .sheet { border:1px solid rgba(156,39,176,.35); border-radius:16px; padding:20px; background:linear-gradient(160deg, rgba(124,58,237,.22), rgba(6,182,212,.1)); }
+          h1 { margin:0 0 8px; font-size:28px; }
+          h2 { margin:20px 0 8px; font-size:16px; color:#c4b5fd; text-transform:uppercase; letter-spacing:.08em; }
+          .meta { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+          .card { background:rgba(15,23,42,.65); border:1px solid rgba(148,163,184,.2); border-radius:12px; padding:12px; }
+          ul { margin:0; padding-left:18px; }
+        </style>
+      </head>
+      <body>
+        <div class="sheet">
+          <h1>Role Room Call Sheet</h1>
+          <div>${new Date(day.date).toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+          <div class="meta" style="margin-top:16px">
+            <div class="card"><strong>Lokasjon</strong><br/>${getLocationName(day.locationId)}</div>
+            <div class="card"><strong>Arbeidstid</strong><br/>${day.callTime} – ${day.wrapTime}</div>
+            <div class="card"><strong>Status</strong><br/>${getStatusLabel(day.status)}</div>
+          </div>
+          <h2>Crew (${relatedCrew.length})</h2>
+          <ul>${relatedCrew.map((member: any) => `<li>${member.name} · ${member.role || 'Crew'}</li>`).join('') || '<li>Ingen crew tilordnet</li>'}</ul>
+          <h2>Scener (${Array.isArray(day.scenes) ? day.scenes.length : 0})</h2>
+          <ul>${(Array.isArray(day.scenes) ? day.scenes : []).map((sceneId) => {
+            const scene = availableScenes.find((item) => item.id === sceneId);
+            return `<li>${scene?.name || sceneId}</li>`;
+          }).join('') || '<li>Ingen scener tilordnet</li>'}</ul>
+          <h2>Utstyr / rekvisitter (${relatedProps.length})</h2>
+          <ul>${relatedProps.map((item: any) => `<li>${item.name}${item.category ? ` · ${item.category}` : ''}</li>`).join('') || '<li>Ingen utstyr/rekvisitter tilordnet</li>'}</ul>
+          <h2>Notater</h2>
+          <div class="card">${day.notes || 'Ingen notater registrert'}</div>
+        </div>
+      </body>
+      </html>
+    `;
+    const sheetWindow = window.open('', '_blank');
+    if (!sheetWindow) {
+      showError('Kunne ikke åpne call sheet-vindu');
+      return;
+    }
+    sheetWindow.document.write(html);
+    sheetWindow.document.close();
+    setTimeout(() => sheetWindow.print(), 150);
+  };
+
+  const selectedConflictSummary = selectedProDay ? conflictMap[selectedProDay.id] : undefined;
+  const selectedReadiness = selectedProDay ? readinessByDay[selectedProDay.id] : undefined;
+  const selectedRisks = selectedProDay ? getRiskSignals(selectedProDay) : [];
+  const selectedDependencies = selectedProDay ? getDependencyIssues(selectedProDay) : [];
+  const selectedTeamFlow = selectedProDay ? proMetaByDay[selectedProDay.id]?.teamFlow || [] : [];
+  const selectedMentionQuery = (selectedDraft.match(/@([A-Za-z0-9_.\-ÆØÅæøå]*)$/) || [])[1] || '';
+  const selectedMentionSuggestions =
+    selectedMentionQuery.length === 0
+      ? []
+      : mentionDirectory
+          .filter((name) => name.toLowerCase().includes(selectedMentionQuery.toLowerCase()))
+          .slice(0, 6);
 
   // Handlers
   const handleOpenDialog = (day?: ProductionDay) => {
@@ -1562,6 +2319,528 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         </Box>
       </Box>
 
+      {/* Pro view */}
+      <Box
+        sx={{
+          mb: 2,
+          p: { xs: 1.5, sm: 2 },
+          borderRadius: 2,
+          border: '1px solid rgba(124,58,237,0.35)',
+          background:
+            'linear-gradient(135deg, rgba(124,58,237,0.16) 0%, rgba(8,145,178,0.08) 100%)',
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1.5,
+          }}
+        >
+          <Box>
+            <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '0.95rem', sm: '1rem' } }}>
+              Pro visning: operativ produksjonsstyring
+            </Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.8rem' }}>
+              Konflikter, readiness, call sheet, avhengigheter, risiko, teamflyt, KPI og feltmodus
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+            <FormControlLabel
+              sx={{ m: 0 }}
+              control={
+                <Switch
+                  checked={proViewEnabled}
+                  onChange={(event) => setProViewEnabled(event.target.checked)}
+                  color="secondary"
+                />
+              }
+              label={<Typography sx={{ color: '#e9d5ff', fontSize: '0.8rem' }}>Pro</Typography>}
+            />
+            <FormControlLabel
+              sx={{ m: 0 }}
+              control={
+                <Switch
+                  checked={fieldModeEnabled}
+                  onChange={(event) => setFieldModeEnabled(event.target.checked)}
+                  color="secondary"
+                />
+              }
+              label={<Typography sx={{ color: '#67e8f9', fontSize: '0.8rem' }}>Feltmodus</Typography>}
+            />
+            <Chip
+              icon={isOnline ? <OnlineIcon /> : <OfflineIcon />}
+              label={isOnline ? `Online${offlineQueue.length > 0 ? ` · kø ${offlineQueue.length}` : ''}` : `Offline · kø ${offlineQueue.length}`}
+              sx={{
+                bgcolor: isOnline ? 'rgba(16,185,129,0.18)' : 'rgba(239,68,68,0.18)',
+                color: '#fff',
+                border: `1px solid ${isOnline ? 'rgba(16,185,129,0.45)' : 'rgba(239,68,68,0.45)'}`,
+              }}
+            />
+          </Box>
+        </Box>
+
+        <Collapse in={proViewEnabled} mountOnEnter>
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 260 } }}>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Fokusdag</InputLabel>
+                <Select
+                  value={proSelectedDayId || ''}
+                  label="Fokusdag"
+                  onChange={(event) => setProSelectedDayId(String(event.target.value))}
+                  sx={{
+                    color: '#fff',
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#a855f7' },
+                  }}
+                >
+                  {filteredAndSortedDays.map((day) => (
+                    <MenuItem key={day.id} value={day.id}>
+                      {new Date(day.date).toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short' })} · {getLocationName(day.locationId)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              {selectedProDay && (
+                <Button
+                  variant="outlined"
+                  startIcon={<CallSheetIcon />}
+                  onClick={() => generateCallSheetForDay(selectedProDay)}
+                  sx={{
+                    minHeight: TOUCH_TARGET_SIZE,
+                    color: '#67e8f9',
+                    borderColor: 'rgba(103,232,249,0.5)',
+                  }}
+                >
+                  Call sheet
+                </Button>
+              )}
+
+              <Button
+                variant="outlined"
+                startIcon={<RescheduleIcon />}
+                onClick={() => setShowBulkShiftDialog(true)}
+                disabled={selectedIds.size === 0}
+                sx={{
+                  minHeight: TOUCH_TARGET_SIZE,
+                  color: selectedIds.size > 0 ? '#f5d0fe' : 'rgba(255,255,255,0.45)',
+                  borderColor: selectedIds.size > 0 ? 'rgba(217,70,239,0.5)' : 'rgba(255,255,255,0.2)',
+                }}
+              >
+                Bulk-flytt ({selectedIds.size})
+              </Button>
+            </Box>
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: 'repeat(2,minmax(0,1fr))', lg: 'repeat(6,minmax(0,1fr))' },
+                gap: 1.5,
+              }}
+            >
+              <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(17,24,39,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Readiness</Typography>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '1.2rem' }}>{proKpis.avgReadiness}/100</Typography>
+              </Box>
+              <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(17,24,39,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Dekning</Typography>
+                <Typography sx={{ color: '#22d3ee', fontWeight: 700, fontSize: '1.2rem' }}>{proKpis.coveragePercent}%</Typography>
+              </Box>
+              <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(17,24,39,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Planlagt tid</Typography>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '1.2rem' }}>{Math.round(proKpis.totalPlanned / 60)}t</Typography>
+              </Box>
+              <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(17,24,39,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Faktisk tid</Typography>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '1.2rem' }}>{Math.round(proKpis.totalActual / 60)}t</Typography>
+              </Box>
+              <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(17,24,39,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Overtid</Typography>
+                <Typography sx={{ color: proKpis.overtime > 0 ? '#fb7185' : '#4ade80', fontWeight: 700, fontSize: '1.2rem' }}>
+                  {Math.round(proKpis.overtime / 60)}t
+                </Typography>
+              </Box>
+              <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(17,24,39,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Forsinkede dager</Typography>
+                <Typography sx={{ color: proKpis.delayedCount > 0 ? '#fb7185' : '#4ade80', fontWeight: 700, fontSize: '1.2rem' }}>
+                  {proKpis.delayedCount}
+                </Typography>
+              </Box>
+            </Box>
+
+            {selectedProDay && selectedReadiness && (
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(2,6,23,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 1.25 }}>
+                  <Chip
+                    icon={
+                      selectedReadiness.level === 'klar' ? <ReadyIcon /> : selectedReadiness.level === 'risiko' ? <RiskIcon /> : <BlockedIcon />
+                    }
+                    label={`Readiness: ${getReadinessLabel(selectedReadiness.level)} (${selectedReadiness.score})`}
+                    sx={{
+                      bgcolor: `${getReadinessColor(selectedReadiness.level)}25`,
+                      color: '#fff',
+                      border: `1px solid ${getReadinessColor(selectedReadiness.level)}66`,
+                    }}
+                  />
+                  <Chip
+                    icon={<WarningIcon />}
+                    label={`Konflikter: ${selectedConflictSummary?.total || 0}`}
+                    sx={{
+                      bgcolor: (selectedConflictSummary?.total || 0) > 0 ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)',
+                      color: '#fff',
+                      border: `1px solid ${(selectedConflictSummary?.total || 0) > 0 ? 'rgba(239,68,68,0.55)' : 'rgba(16,185,129,0.55)'}`,
+                    }}
+                  />
+                  <Chip
+                    icon={<RiskIcon />}
+                    label={`Risikoflagg: ${selectedRisks.length}`}
+                    sx={{
+                      bgcolor: selectedRisks.length > 0 ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)',
+                      color: '#fff',
+                      border: `1px solid ${selectedRisks.length > 0 ? 'rgba(245,158,11,0.55)' : 'rgba(16,185,129,0.55)'}`,
+                    }}
+                  />
+                </Box>
+
+                <LinearProgress
+                  variant="determinate"
+                  value={selectedReadiness.score}
+                  sx={{
+                    height: 9,
+                    borderRadius: 999,
+                    bgcolor: 'rgba(255,255,255,0.15)',
+                    '& .MuiLinearProgress-bar': { bgcolor: getReadinessColor(selectedReadiness.level) },
+                  }}
+                />
+
+                <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  <FormControlLabel
+                    sx={{ m: 0 }}
+                    control={
+                      <Switch
+                        size="small"
+                        checked={!!proMetaByDay[selectedProDay.id]?.permitsReady}
+                        onChange={(event) =>
+                          updateDayMeta(selectedProDay.id, (previous) => ({
+                            ...previous,
+                            permitsReady: event.target.checked,
+                          }))
+                        }
+                      />
+                    }
+                    label={<Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem' }}>Tillatelser klar</Typography>}
+                  />
+                  <FormControlLabel
+                    sx={{ m: 0 }}
+                    control={
+                      <Switch
+                        size="small"
+                        checked={!!proMetaByDay[selectedProDay.id]?.transportReady}
+                        onChange={(event) =>
+                          updateDayMeta(selectedProDay.id, (previous) => ({
+                            ...previous,
+                            transportReady: event.target.checked,
+                          }))
+                        }
+                      />
+                    }
+                    label={<Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem' }}>Transport klar</Typography>}
+                  />
+                </Box>
+
+                <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {selectedReadiness.reasons.slice(0, 4).map((reason) => (
+                    <Chip key={reason} label={reason} size="small" sx={{ bgcolor: 'rgba(148,163,184,0.2)', color: '#e2e8f0' }} />
+                  ))}
+                </Box>
+
+                <Box sx={{ mt: 1.5, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.25 }}>
+                  <Box sx={{ p: 1.2, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <Typography sx={{ color: '#c4b5fd', fontWeight: 600, fontSize: '0.82rem', mb: 0.75 }}>
+                      Avhengigheter
+                    </Typography>
+                    <FormControl size="small" fullWidth sx={{ mb: 0.75 }}>
+                      <Select
+                        multiple
+                        value={proMetaByDay[selectedProDay.id]?.dependencies || []}
+                        onChange={(event) =>
+                          updateDayMeta(selectedProDay.id, (previous) => ({
+                            ...previous,
+                            dependencies: typeof event.target.value === 'string'
+                              ? event.target.value.split(',')
+                              : (event.target.value as string[]),
+                          }))
+                        }
+                        renderValue={(selected) => {
+                          const ids = selected as string[];
+                          if (ids.length === 0) return 'Velg avhengige dager';
+                          return `${ids.length} valgt`;
+                        }}
+                        sx={{
+                          color: '#fff',
+                          '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                        }}
+                      >
+                        {productionDays
+                          .filter((candidate) => candidate.id !== selectedProDay.id)
+                          .map((candidate) => (
+                            <MenuItem key={`dep-${candidate.id}`} value={candidate.id}>
+                              {new Date(candidate.date).toLocaleDateString('nb-NO')} · {getLocationName(candidate.locationId)}
+                            </MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+                    {selectedDependencies.length === 0 ? (
+                      <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>
+                        Ingen blokkerende avhengigheter funnet.
+                      </Typography>
+                    ) : (
+                      <Stack spacing={0.5}>
+                        {selectedDependencies.map((dependency) => (
+                          <Typography key={dependency} sx={{ color: '#f8fafc', fontSize: '0.82rem' }}>
+                            • {dependency}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+                  <Box sx={{ p: 1.2, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <Typography sx={{ color: '#fbbf24', fontWeight: 600, fontSize: '0.82rem', mb: 0.75 }}>
+                      Risikopanel
+                    </Typography>
+                    {selectedRisks.length === 0 ? (
+                      <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>
+                        Ingen kritiske risikoer registrert.
+                      </Typography>
+                    ) : (
+                      <Stack spacing={0.5}>
+                        {selectedRisks.map((risk) => (
+                          <Typography key={risk} sx={{ color: '#f8fafc', fontSize: '0.82rem' }}>
+                            • {risk}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+                </Box>
+              </Box>
+            )}
+
+            {selectedProDay && (
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(2,6,23,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                <Typography sx={{ color: '#67e8f9', fontWeight: 700, fontSize: '0.9rem', mb: 1 }}>
+                  Feltmodus og teamflyt
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.25 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<StartIcon />}
+                    onClick={() => void applyFieldStatus(selectedProDay, 'in_progress', 'check_in')}
+                    sx={{ color: '#22d3ee', borderColor: 'rgba(34,211,238,0.45)' }}
+                  >
+                    Check-in
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<StopIcon />}
+                    onClick={() => void applyFieldStatus(selectedProDay, 'completed', 'check_out')}
+                    sx={{ color: '#34d399', borderColor: 'rgba(52,211,153,0.45)' }}
+                  >
+                    Check-out
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<QueueIcon />}
+                    onClick={() => void applyFieldStatus(selectedProDay, selectedProDay.status || 'planned', 'status_update')}
+                    sx={{ color: '#e9d5ff', borderColor: 'rgba(217,70,239,0.45)' }}
+                  >
+                    Synk status
+                  </Button>
+                </Box>
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4,minmax(0,1fr))' }, gap: 1, mb: 1.25 }}>
+                  <TextField
+                    size="small"
+                    type="number"
+                    label="Estimert min"
+                    value={proMetaByDay[selectedProDay.id]?.estimatedMinutes ?? plannedMinutesForDay(selectedProDay)}
+                    onChange={(event) =>
+                      updateDayMeta(selectedProDay.id, (previous) => ({
+                        ...previous,
+                        estimatedMinutes: Number(event.target.value) || 0,
+                      }))
+                    }
+                    sx={{
+                      '& .MuiInputBase-root': { color: '#fff' },
+                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                    }}
+                  />
+                  <TextField
+                    size="small"
+                    type="number"
+                    label="Faktisk min"
+                    value={proMetaByDay[selectedProDay.id]?.actualMinutes ?? ''}
+                    onChange={(event) =>
+                      updateDayMeta(selectedProDay.id, (previous) => ({
+                        ...previous,
+                        actualMinutes: Number(event.target.value) || 0,
+                      }))
+                    }
+                    sx={{
+                      '& .MuiInputBase-root': { color: '#fff' },
+                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                    }}
+                  />
+                  <Box sx={{ p: 1, borderRadius: 1, bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem' }}>Check-in</Typography>
+                    <Typography sx={{ color: '#f8fafc', fontSize: '0.82rem', fontWeight: 600 }}>
+                      {proMetaByDay[selectedProDay.id]?.checkInAt
+                        ? new Date(proMetaByDay[selectedProDay.id]!.checkInAt!).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
+                        : 'Ikke satt'}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ p: 1, borderRadius: 1, bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem' }}>Check-out</Typography>
+                    <Typography sx={{ color: '#f8fafc', fontSize: '0.82rem', fontWeight: 600 }}>
+                      {proMetaByDay[selectedProDay.id]?.checkOutAt
+                        ? new Date(proMetaByDay[selectedProDay.id]!.checkOutAt!).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
+                        : 'Ikke satt'}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, gap: 1.25 }}>
+                  <Box>
+                    <TextField
+                      multiline
+                      minRows={3}
+                      fullWidth
+                      value={selectedDraft}
+                      onChange={(event) =>
+                        setTeamFlowDraftByDay((prev) => ({
+                          ...prev,
+                          [selectedProDay.id]: event.target.value,
+                        }))
+                      }
+                      placeholder="Skriv vurdering eller beslutning. Bruk @navn for tagging."
+                      sx={{
+                        '& .MuiInputBase-root': {
+                          color: '#fff',
+                          bgcolor: 'rgba(15,23,42,0.55)',
+                        },
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                      }}
+                    />
+                    <GlobalMentionHelper
+                      text={selectedDraft}
+                      localCandidates={mentionDirectory}
+                      onApplySuggestion={(name) => applyDraftSuggestion(selectedProDay.id, name)}
+                    />
+                    {selectedMentionSuggestions.length > 0 && (
+                      <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                        {selectedMentionSuggestions.map((name) => (
+                          <Chip
+                            key={name}
+                            icon={<CommentIcon />}
+                            label={`@${name}`}
+                            onClick={() => replaceDraftMention(selectedProDay.id, selectedMentionQuery, name)}
+                            sx={{ bgcolor: 'rgba(6,182,212,0.2)', color: '#cffafe' }}
+                          />
+                        ))}
+                      </Box>
+                    )}
+                    {selectedDidYouMean?.suggestion && (
+                      <Alert
+                        severity="info"
+                        sx={{ mt: 1, bgcolor: 'rgba(14,116,144,0.2)', color: '#e0f2fe', '& .MuiAlert-icon': { color: '#67e8f9' } }}
+                        action={
+                          <Button
+                            size="small"
+                            onClick={() => replaceDraftMention(selectedProDay.id, selectedDidYouMean.rawTag, selectedDidYouMean.suggestion!)}
+                            sx={{ color: '#67e8f9' }}
+                          >
+                            Bytt
+                          </Button>
+                        }
+                      >
+                        Mener du @{selectedDidYouMean.suggestion}?
+                      </Alert>
+                    )}
+                    {selectedDraftMentions.length > 0 && (
+                      <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                        {selectedDraftMentions.map((tag) => (
+                          <Chip
+                            key={tag}
+                            label={`Tag: ${tag}`}
+                            onDelete={() => replaceDraftMention(selectedProDay.id, tag, '')}
+                            sx={{ bgcolor: 'rgba(124,58,237,0.25)', color: '#f5d0fe' }}
+                          />
+                        ))}
+                      </Box>
+                    )}
+                    <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<CommentIcon />}
+                        onClick={() => addTeamFlowEntry(selectedProDay.id, 'comment')}
+                        sx={{ bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
+                      >
+                        Legg til kommentar
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<HistoryIcon />}
+                        onClick={() => addTeamFlowEntry(selectedProDay.id, 'decision')}
+                        sx={{ color: '#fbbf24', borderColor: 'rgba(251,191,36,0.45)' }}
+                      >
+                        Logg beslutning
+                      </Button>
+                    </Box>
+                  </Box>
+                  <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(255,255,255,0.1)', maxHeight: 220, overflowY: 'auto' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.82rem', mb: 0.75 }}>
+                      Teamlogg
+                    </Typography>
+                    {selectedTeamFlow.length === 0 ? (
+                      <Typography sx={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.8rem' }}>
+                        Ingen registrerte kommentarer eller beslutninger.
+                      </Typography>
+                    ) : (
+                      <Stack spacing={0.75}>
+                        {[...selectedTeamFlow].reverse().slice(0, 8).map((entry) => (
+                          <Box key={entry.id} sx={{ p: 0.75, borderRadius: 1.25, bgcolor: 'rgba(2,6,23,0.6)', border: '1px solid rgba(148,163,184,0.2)' }}>
+                            <Typography sx={{ color: entry.type === 'decision' ? '#fbbf24' : '#67e8f9', fontSize: '0.72rem', fontWeight: 700 }}>
+                              {entry.type === 'decision' ? 'Beslutning' : 'Kommentar'} · {entry.author}
+                            </Typography>
+                            <Typography sx={{ color: '#f8fafc', fontSize: '0.8rem' }}>{entry.text}</Typography>
+                            {!!entry.mentions.length && (
+                              <Typography sx={{ color: '#d8b4fe', fontSize: '0.72rem', mt: 0.25 }}>
+                                Tags: {entry.mentions.join(', ')}
+                              </Typography>
+                            )}
+                          </Box>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+                </Box>
+              </Box>
+            )}
+          </Box>
+        </Collapse>
+      </Box>
+
       {/* Results count */}
       {(searchQuery || statusFilter !== 'all') && (
         <Alert
@@ -1752,7 +3031,18 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               >
                 {month}
               </Typography>
-              <Grid container spacing={{ xs: 2, sm: 2.5, md: 3, lg: 3.5 }}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: 'minmax(0, 1fr)',
+                    sm: 'repeat(2, minmax(0, 1fr))',
+                    lg: 'repeat(3, minmax(0, 1fr))',
+                  },
+                  gap: { xs: 2, sm: 2.5, md: 3, lg: 3.5 },
+                  alignItems: 'stretch',
+                }}
+              >
                 {days.map((day) => {
                   // Use cached data from async loading
                   const cachedData = dayDataCache[day.id] || { scenes: [], crew: [], props: [], validation: { valid: true, errors: [], warnings: [] } };
@@ -1760,14 +3050,39 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   const dayCrew = cachedData.crew;
                   const dayProps = cachedData.props;
                   const validation = cachedData.validation;
+                  const dayReadiness = readinessByDay[day.id] || { level: 'risiko' as ReadinessLevel, score: 0, reasons: [] };
+                  const dayConflicts = conflictMap[day.id] || { crew: [], location: [], props: [], time: [], total: 0 };
+                  const dayRiskCount = getRiskSignals(day).length;
+                  const dependencyIssueCount = getDependencyIssues(day).length;
 
                   return (
-                    <Grid key={day.id} size={{ xs: 12, sm: 6, md: 6, lg: 4 }}>
+                    <Box key={day.id} sx={{ minWidth: 0, height: '100%' }}>
                       <Card
                         component="article"
+                        draggable
+                        onDragStart={() => {
+                          setDraggingDayId(day.id);
+                        }}
+                        onDragEnd={() => {
+                          setDragTargetDayId(null);
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          if (draggingDayId && draggingDayId !== day.id) {
+                            setDragTargetDayId(day.id);
+                          }
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          if (draggingDayId && draggingDayId !== day.id) {
+                            setDragTargetDayId(day.id);
+                            setShowDragPreviewDialog(true);
+                          }
+                        }}
                         sx={{
                           bgcolor: selectedIds.has(day.id) ? 'rgba(156,39,176,0.15)' : 'rgba(255,255,255,0.05)',
                           border: selectedIds.has(day.id) ? '2px solid #9c27b0' : '1px solid rgba(255,255,255,0.1)',
+                          outline: dragTargetDayId === day.id ? '2px dashed rgba(34,211,238,0.8)' : 'none',
                           borderRadius: 2,
                           transition: 'all 0.2s ease',
                           height: '100%',
@@ -1940,6 +3255,47 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                     {getStatusLabel(day.status)}
                                   </Typography>
                                 </Box>
+                                {proViewEnabled && (
+                                  <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                                    <Chip
+                                      size="small"
+                                      label={`${getReadinessLabel(dayReadiness.level)} ${dayReadiness.score}`}
+                                      sx={{
+                                        bgcolor: `${getReadinessColor(dayReadiness.level)}28`,
+                                        color: '#fff',
+                                        border: `1px solid ${getReadinessColor(dayReadiness.level)}66`,
+                                        fontWeight: 700,
+                                      }}
+                                    />
+                                    <Chip
+                                      size="small"
+                                      label={`Konflikt ${dayConflicts.total}`}
+                                      sx={{
+                                        bgcolor: dayConflicts.total > 0 ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.2)',
+                                        color: '#fff',
+                                        border: `1px solid ${dayConflicts.total > 0 ? 'rgba(239,68,68,0.55)' : 'rgba(16,185,129,0.55)'}`,
+                                      }}
+                                    />
+                                    <Chip
+                                      size="small"
+                                      label={`Risiko ${dayRiskCount}`}
+                                      sx={{
+                                        bgcolor: dayRiskCount > 0 ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)',
+                                        color: '#fff',
+                                        border: `1px solid ${dayRiskCount > 0 ? 'rgba(245,158,11,0.55)' : 'rgba(16,185,129,0.55)'}`,
+                                      }}
+                                    />
+                                    <Chip
+                                      size="small"
+                                      label={`Avheng. ${dependencyIssueCount}`}
+                                      sx={{
+                                        bgcolor: dependencyIssueCount > 0 ? 'rgba(59,130,246,0.2)' : 'rgba(148,163,184,0.2)',
+                                        color: '#fff',
+                                        border: `1px solid ${dependencyIssueCount > 0 ? 'rgba(59,130,246,0.55)' : 'rgba(148,163,184,0.45)'}`,
+                                      }}
+                                    />
+                                  </Box>
+                                )}
                               </Box>
                             </Box>
                             <IconButton
@@ -3011,6 +4367,20 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               {expandedCards.has(day.id) ? 'Skjul detaljer' : 'Vis detaljer'}
                             </Button>
                             <Box sx={{ display: 'flex', gap: { xs: 0.5, sm: 1 } }}>
+                              <Tooltip title="Generer call sheet">
+                                <IconButton
+                                  onClick={() => generateCallSheetForDay(day)}
+                                  sx={{
+                                    minWidth: TOUCH_TARGET_SIZE,
+                                    minHeight: TOUCH_TARGET_SIZE,
+                                    color: '#67e8f9',
+                                    '&:hover': { bgcolor: 'rgba(103,232,249,0.12)' },
+                                    ...focusVisibleStyles,
+                                  }}
+                                >
+                                  <CallSheetIcon sx={{ fontSize: { xs: 20, sm: 22 } }} />
+                                </IconButton>
+                              </Tooltip>
                               <Tooltip title="Dupliser til neste dag">
                                 <IconButton
                                   onClick={() => handleDuplicate(day)}
@@ -3060,14 +4430,131 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                           </Box>
                         </CardContent>
                       </Card>
-                    </Grid>
+                    </Box>
                   );
                 })}
-              </Grid>
+              </Box>
             </Box>
           ))}
         </Box>
       )}
+
+      <Dialog
+        open={showBulkShiftDialog}
+        onClose={() => setShowBulkShiftDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#1f2430', color: '#fff' }}>Bulk-flytt med konsekvenspreview</DialogTitle>
+        <DialogContent sx={{ bgcolor: '#1f2430', color: '#fff' }}>
+          <Typography sx={{ mt: 1, mb: 1, color: 'rgba(255,255,255,0.8)' }}>
+            Flytt valgte produksjonsdager med antall dager:
+          </Typography>
+          <TextField
+            type="number"
+            value={bulkShiftDays}
+            onChange={(event) => setBulkShiftDays(Number(event.target.value) || 0)}
+            fullWidth
+            size="small"
+            sx={{
+              mb: 1.5,
+              '& .MuiInputBase-root': { color: '#fff' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
+            }}
+          />
+          <Stack spacing={1}>
+            {bulkShiftPreview.length === 0 ? (
+              <Typography sx={{ color: 'rgba(255,255,255,0.7)' }}>Ingen valgte dager.</Typography>
+            ) : (
+              bulkShiftPreview.slice(0, 8).map((item) => (
+                <Box
+                  key={item.id}
+                  sx={{
+                    p: 1,
+                    borderRadius: 1,
+                    bgcolor: 'rgba(15,23,42,0.65)',
+                    border: '1px solid rgba(148,163,184,0.25)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Typography sx={{ color: '#e2e8f0', fontSize: '0.85rem' }}>
+                    {new Date(item.from).toLocaleDateString('nb-NO')}
+                  </Typography>
+                  <Typography sx={{ color: '#67e8f9', fontSize: '0.85rem', fontWeight: 700 }}>
+                    {new Date(item.to).toLocaleDateString('nb-NO')}
+                  </Typography>
+                </Box>
+              ))
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#1f2430' }}>
+          <Button onClick={() => setShowBulkShiftDialog(false)} sx={{ color: 'rgba(255,255,255,0.8)' }}>
+            Avbryt
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => void applyBulkShift()}
+            disabled={bulkShiftPreview.length === 0}
+            sx={{ bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
+          >
+            Flytt
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={showDragPreviewDialog}
+        onClose={() => {
+          setShowDragPreviewDialog(false);
+          setDraggingDayId(null);
+          setDragTargetDayId(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#1f2430', color: '#fff' }}>Drag/drop preview</DialogTitle>
+        <DialogContent sx={{ bgcolor: '#1f2430', color: '#fff' }}>
+          {(() => {
+            const source = productionDays.find((day) => day.id === draggingDayId);
+            const target = productionDays.find((day) => day.id === dragTargetDayId);
+            if (!source || !target) {
+              return <Typography sx={{ mt: 1 }}>Kunne ikke lage preview.</Typography>;
+            }
+            return (
+              <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography sx={{ color: 'rgba(255,255,255,0.85)' }}>
+                  Flytt dag fra <strong>{new Date(source.date).toLocaleDateString('nb-NO')}</strong> til{' '}
+                  <strong>{new Date(target.date).toLocaleDateString('nb-NO')}</strong>.
+                </Typography>
+                <Typography sx={{ color: '#fbbf24', fontSize: '0.85rem' }}>
+                  Merk: Dette kan introdusere nye kollisjoner. Konfliktmotoren oppdateres automatisk.
+                </Typography>
+              </Box>
+            );
+          })()}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#1f2430' }}>
+          <Button
+            onClick={() => {
+              setShowDragPreviewDialog(false);
+              setDraggingDayId(null);
+              setDragTargetDayId(null);
+            }}
+            sx={{ color: 'rgba(255,255,255,0.8)' }}
+          >
+            Avbryt
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => void applyDragMove()}
+            sx={{ bgcolor: '#06b6d4', '&:hover': { bgcolor: '#0891b2' } }}
+          >
+            Bekreft flytt
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Undo Delete Snackbar */}
       <Snackbar

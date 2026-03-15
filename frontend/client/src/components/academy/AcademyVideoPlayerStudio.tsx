@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  alpha,
   Avatar,
   Box,
   Button,
@@ -17,7 +18,6 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  Add,
   Bookmark,
   Campaign,
   Check,
@@ -35,18 +35,23 @@ import {
   Settings,
   SkipNext,
   SkipPrevious,
+  Slideshow,
   Subtitles,
+  Visibility,
+  VisibilityOff,
   VolumeOff,
   VolumeUp,
   Save,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
-import { useAcademy } from '@/contexts/AcademyContext';
+import { useAcademy, type CourseResource, type LessonResource } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
-import AcademyBrandMark from './AcademyBrandMark';
+import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
+import AcademyLeftSidebar from './AcademyLeftSidebar';
 import AcademyPlayerStudio from './AcademyPlayerStudio';
+import { resolveAcademyVideoUrl } from './academyVideoSourceUtils';
 
 interface ChapterItem {
   id: string;
@@ -86,8 +91,125 @@ interface AcademyVideoPlayerStudioProps {
 }
 
 type RightTab = 'chapters' | 'shownotes' | 'transcript';
+type AssignmentPlacement = 'bottom-center' | 'bottom-right' | 'center' | 'top-right';
+type AssignmentOverlayAnimationType = 'slide-up' | 'fade' | 'zoom';
+type AssignmentOverlayAnimationEasing = 'ease-out' | 'ease-in-out' | 'ease-in' | 'linear';
+type RuntimeOverlayScope = 'course' | 'skill';
+type PresentationDisplayMode = 'picture-in-picture' | 'side-panel' | 'split-screen' | 'full-frame';
+type PresentationPlacement = 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'center';
+
+interface RuntimeCTAOverlay {
+  id: string;
+  scope: RuntimeOverlayScope;
+  name: string;
+  title: string;
+  subtitle: string;
+  primaryLabel: string;
+  secondaryLabel: string;
+  url: string;
+  triggerAt: number;
+  endAt: number;
+}
+
+interface RuntimeLowerThird {
+  id: string;
+  scope: RuntimeOverlayScope;
+  name: string;
+  title: string;
+  subtitle: string;
+  startTime: number;
+  duration: number;
+}
+
+interface RuntimePresentationOverlay {
+  id: string;
+  scope: RuntimeOverlayScope;
+  deckName: string;
+  slideTitle: string;
+  template: string;
+  displayMode: PresentationDisplayMode;
+  splitLayoutVariant: string;
+  placement: PresentationPlacement;
+  sourceName: string;
+  sourceSlideNumber: number;
+  slideImageUrl: string;
+  startTime: number;
+  endTime: number;
+  order: number;
+}
+
+interface RuntimeAnnotationOverlay {
+  id: string;
+  scope: RuntimeOverlayScope;
+  type: string;
+  title: string;
+  content: string;
+  startTime: number;
+  endTime: number;
+  position: {
+    x: number;
+    y: number;
+  };
+  size: {
+    width: number;
+    height: number;
+  };
+  style: {
+    backgroundColor: string;
+    textColor: string;
+    borderColor: string;
+    borderWidth: number;
+    borderRadius: number;
+    opacity: number;
+  };
+  isVisible: boolean;
+}
+
+interface AssignmentOverlayItem {
+  id: string;
+  courseId: string;
+  title: string;
+  subtitle: string;
+  scope?: 'course' | 'skill';
+  skillId?: string;
+  placement?: AssignmentPlacement;
+  triggerAt?: number;
+  endAt?: number;
+  overlayEnabled?: boolean;
+  overlayBackground?: string;
+  overlayTextColor?: string;
+  overlayPrimaryButtonColor?: string;
+  overlayPrimaryButtonTextColor?: string;
+  overlayFontFamily?: string;
+  overlayAnimationEnabled?: boolean;
+  overlayAnimationType?: AssignmentOverlayAnimationType;
+  overlayAnimationEasing?: AssignmentOverlayAnimationEasing;
+  overlayAnimationDuration?: number;
+  overlayAnimationDelay?: number;
+  overlayRadius?: number;
+  overlayOpacity?: number;
+  overlayTitleSize?: number;
+  dueDate?: string;
+  points?: number;
+}
+
+type CourseWithAssignmentStudio = NonNullable<ReturnType<typeof useAcademy>['state']['currentCourse']> & {
+  assignmentStudio?: {
+    assignments?: AssignmentOverlayItem[];
+  };
+};
 
 const VIDEO_PLACEHOLDER = '/assets/academy/intro-video.mp4';
+const CTA_RESOURCE_COURSE_PREFIX = 'cta-resource-course-';
+const CTA_RESOURCE_SKILL_PREFIX = 'cta-resource-skill-';
+const LOWER_THIRD_RESOURCE_COURSE_PREFIX = 'lowerthird-resource-course-';
+const LOWER_THIRD_RESOURCE_SKILL_PREFIX = 'lowerthird-resource-skill-';
+const PRESENTATION_RESOURCE_COURSE_PREFIX = 'presentation-resource-course-';
+const PRESENTATION_RESOURCE_SKILL_PREFIX = 'presentation-resource-skill-';
+const ANNOTATION_RESOURCE_COURSE_PREFIX = 'annotation-resource-course-';
+const ANNOTATION_RESOURCE_SKILL_PREFIX = 'annotation-resource-skill-';
+const ANNOTATION_STORE_KEY = 'academyAnnotationStoreV1';
+const ANNOTATION_META_MARKER = '::annotation-meta::';
 
 const cinematicPanelSx = {
   borderRadius: 1.4,
@@ -106,47 +228,261 @@ const formatTime = (seconds: number): string => {
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
-const buildFallbackCourse = () => ({
-  id: 'video-player-preview-course',
-  title: 'Directing Masterclass',
-  description: 'Studio preview player.',
-  instructor: {
-    id: 'studio-instructor',
-    name: 'Norwedfilm',
-    avatar: '',
-    bio: 'Film director',
-    profession: 'videographer' as const,
-  },
-  thumbnail: '',
-  videoUrl: VIDEO_PLACEHOLDER,
-  duration: 336,
-  level: 'advanced' as const,
-  category: 'videography' as const,
-  tags: ['directing', 'filmmaking'],
-  price: 0,
-  isFree: true,
-  isPublished: false,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  rating: 4.8,
-  studentCount: 370,
-  prerequisites: [],
-  learningOutcomes: [],
-  resources: [],
-  lessons: [
-    {
-      id: 'lesson-preview-1',
-      courseId: 'video-player-preview-course',
-      title: 'Lighting Setup',
-      description: 'Key light scene review',
-      videoUrl: VIDEO_PLACEHOLDER,
-      duration: 336,
-      order: 1,
-      isPreview: true,
-      resources: [],
+const parseTimecode = (value: string): number | null => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const match = raw.match(/^(\d+):(\d{1,2})$/);
+  if (!match) return null;
+  const minutes = Number.parseInt(match[1], 10);
+  const seconds = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(minutes) || !Number.isFinite(seconds)) return null;
+  return Math.max(0, minutes * 60 + seconds);
+};
+
+const parseCtaResource = (
+  resource: CourseResource | LessonResource,
+  scope: RuntimeOverlayScope,
+  maxDuration: number,
+): RuntimeCTAOverlay | null => {
+  const rawTitle = String(resource.title || '').trim();
+  const rawDescription = String(resource.description || '').trim();
+  const titleMatch = rawTitle.match(/^\[CTA\]\[(?:Course|Skill)\]\s*(.+)$/i);
+  const descMatch = rawDescription.match(
+    /^(.+?)\s*·\s*(\d+:\d{1,2})\s*-\s*(\d+:\d{1,2})(?:\s*·\s*.+)?$/,
+  );
+  if (!titleMatch || !descMatch) return null;
+
+  const triggerAtRaw = parseTimecode(descMatch[2]);
+  const endAtRaw = parseTimecode(descMatch[3]);
+  if (triggerAtRaw === null || endAtRaw === null) return null;
+
+  const safeDuration = Math.max(1, maxDuration);
+  const safeTriggerAt = clamp(triggerAtRaw, 0, Math.max(0, safeDuration - 1));
+  const safeEndAt = clamp(Math.max(safeTriggerAt + 1, endAtRaw), safeTriggerAt + 1, safeDuration);
+
+  return {
+    id: String(resource.id || `cta-${scope}-${titleMatch[1]}`),
+    scope,
+    name: String(descMatch[1] || '').trim() || titleMatch[1].trim(),
+    title: titleMatch[1].trim(),
+    subtitle: scope === 'skill' ? 'Skill CTA overlay' : 'Course CTA overlay',
+    primaryLabel: 'Open',
+    secondaryLabel: 'Dismiss',
+    url: String(resource.url || '').trim(),
+    triggerAt: safeTriggerAt,
+    endAt: safeEndAt,
+  };
+};
+
+const parseLowerThirdResource = (
+  resource: CourseResource | LessonResource,
+  scope: RuntimeOverlayScope,
+  maxDuration: number,
+): RuntimeLowerThird | null => {
+  const rawTitle = String(resource.title || '').trim();
+  const rawDescription = String(resource.description || '').trim();
+  const titleMatch = rawTitle.match(/^\[LowerThird\]\[(?:Course|Skill)\]\s*(.+)$/i);
+  const descMatch = rawDescription.match(
+    /^(.+?)\s*·\s*(\d+:\d{1,2})\s*·\s*(\d+(?:\.\d+)?)s(?:\s*·\s*.+)?$/,
+  );
+  if (!titleMatch || !descMatch) return null;
+
+  const startRaw = parseTimecode(descMatch[2]);
+  const durationRaw = Number.parseFloat(descMatch[3]);
+  if (startRaw === null || !Number.isFinite(durationRaw)) return null;
+
+  const safeDuration = Math.max(1, maxDuration);
+  const startTime = clamp(startRaw, 0, Math.max(0, safeDuration - 1));
+  const duration = clamp(Math.max(0.6, durationRaw), 0.6, Math.max(1.2, safeDuration - startTime));
+
+  return {
+    id: String(resource.id || `lower-third-${scope}-${titleMatch[1]}`),
+    scope,
+    name: String(descMatch[1] || '').trim() || titleMatch[1].trim(),
+    title: titleMatch[1].trim(),
+    subtitle: scope === 'skill' ? 'Skill lower third' : 'Course lower third',
+    startTime,
+    duration,
+  };
+};
+
+const toPresentationDisplayMode = (value: string): PresentationDisplayMode => {
+  const candidate = String(value || '').trim().toLowerCase();
+  if (
+    candidate === 'picture-in-picture' ||
+    candidate === 'side-panel' ||
+    candidate === 'split-screen' ||
+    candidate === 'full-frame'
+  ) {
+    return candidate;
+  }
+  return 'picture-in-picture';
+};
+
+const toPresentationPlacement = (value: string): PresentationPlacement => {
+  const candidate = String(value || '').trim().toLowerCase();
+  if (
+    candidate === 'top-right' ||
+    candidate === 'top-left' ||
+    candidate === 'bottom-right' ||
+    candidate === 'bottom-left' ||
+    candidate === 'center'
+  ) {
+    return candidate;
+  }
+  return 'bottom-right';
+};
+
+const parsePresentationResource = (
+  resource: CourseResource | LessonResource,
+  scope: RuntimeOverlayScope,
+  maxDuration: number,
+): RuntimePresentationOverlay | null => {
+  const rawTitle = String(resource.title || '').trim();
+  const rawDescription = String(resource.description || '').trim();
+
+  const titleMatch = rawTitle.match(
+    /^\[Presentation\]\[(?:Course|Skill)\]\s*(.+?)(?:\s*::\s*(.+))?$/i,
+  );
+  const descMatch = rawDescription.match(
+    /^(.+?)\s*·\s*(\d+:\d{1,2})-(\d+:\d{1,2})\s*·\s*order:(\d+)\s*·\s*template:([a-z0-9-]+)(?:\s*·\s*theme:([a-z0-9-]+))?\s*·\s*mode:([a-z-]+)(?:\s*·\s*variant:([a-z-]+))?\s*·\s*placement:([a-z-]+)(?:\s*·\s*layout:([a-z-]+))?(?:\s*·\s*deck:[a-z0-9_-]+)?(?:\s*·\s*slide:[a-z0-9_-]+)?(?:\s*·\s*slideNo:(\d+))?(?:\s*·\s*nav:[a-z0-9-]+)?(?:\s*·\s*source:(.+))?$/i,
+  );
+
+  if (!titleMatch || !descMatch) return null;
+
+  const startRaw = parseTimecode(descMatch[2]);
+  const endRaw = parseTimecode(descMatch[3]);
+  const orderRaw = Number.parseInt(descMatch[4], 10);
+  if (startRaw === null || endRaw === null || !Number.isFinite(orderRaw)) return null;
+
+  const safeDuration = Math.max(1, maxDuration);
+  const startTime = clamp(startRaw, 0, Math.max(0, safeDuration - 1));
+  const endTime = clamp(Math.max(startTime + 1, endRaw), startTime + 1, safeDuration);
+  const deckDisplayMode = toPresentationDisplayMode(descMatch[7]);
+  const slideDisplayMode = toPresentationDisplayMode(descMatch[10] || descMatch[7]);
+  const effectiveDisplayMode: PresentationDisplayMode =
+    deckDisplayMode === 'split-screen' || slideDisplayMode === 'split-screen'
+      ? 'split-screen'
+      : slideDisplayMode;
+
+  return {
+    id: String(resource.id || `presentation-${scope}-${titleMatch[1]}`),
+    scope,
+    deckName: String(titleMatch[1] || '').trim() || String(descMatch[1] || '').trim() || 'Presentation',
+    slideTitle: String(titleMatch[2] || '').trim() || `Slide ${Math.max(1, orderRaw)}`,
+    template: String(descMatch[5] || '').trim() || 'product-overview',
+    displayMode: effectiveDisplayMode,
+    splitLayoutVariant: String(descMatch[8] || '').trim() || 'balanced',
+    placement: toPresentationPlacement(descMatch[9]),
+    sourceName: String(descMatch[12] || '').trim(),
+    sourceSlideNumber: Math.max(1, Number.parseInt(String(descMatch[11] || ''), 10) || orderRaw),
+    slideImageUrl: String(resource.url || '').trim(),
+    startTime,
+    endTime,
+    order: Math.max(1, orderRaw),
+  };
+};
+
+const stripAnnotationMetaFromDescription = (description: string): string => {
+  const source = String(description || '');
+  const markerIndex = source.indexOf(ANNOTATION_META_MARKER);
+  if (markerIndex === -1) return source;
+  return source.slice(0, markerIndex).trim();
+};
+
+const parseAnnotationMetaFromDescription = (
+  description: string,
+): Partial<RuntimeAnnotationOverlay> | null => {
+  const source = String(description || '');
+  const markerIndex = source.indexOf(ANNOTATION_META_MARKER);
+  if (markerIndex === -1) return null;
+
+  const encoded = source.slice(markerIndex + ANNOTATION_META_MARKER.length).trim();
+  if (!encoded) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(decodeURIComponent(encoded));
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed as Partial<RuntimeAnnotationOverlay>;
+  } catch {
+    return null;
+  }
+};
+
+const parseAnnotationResource = (
+  resource: CourseResource | LessonResource,
+  scope: RuntimeOverlayScope,
+  maxDuration: number,
+): RuntimeAnnotationOverlay | null => {
+  const rawTitle = String(resource.title || '').trim();
+  const rawDescription = String(resource.description || '').trim();
+
+  const titleMatch = rawTitle.match(/^\[Annotation\]\[(?:Course|Skill)\]\s*(.+)$/i);
+  if (!titleMatch) return null;
+
+  const withoutMeta = stripAnnotationMetaFromDescription(rawDescription);
+  const rangeMatch = withoutMeta.match(/^(.+?)\s*·\s*(\d+:\d{1,2})-(\d+:\d{1,2})\s*·\s*(.+)$/i);
+  if (!rangeMatch) return null;
+
+  const startRaw = parseTimecode(rangeMatch[2]);
+  const endRaw = parseTimecode(rangeMatch[3]);
+  if (startRaw === null || endRaw === null) return null;
+
+  const safeDuration = Math.max(1, maxDuration);
+  const startTime = clamp(startRaw, 0, Math.max(0, safeDuration - 1));
+  const endTime = clamp(Math.max(startTime + 1, endRaw), startTime + 1, safeDuration);
+
+  const parsedMeta = parseAnnotationMetaFromDescription(rawDescription);
+  const contentFromMeta = String(parsedMeta?.content || '').trim();
+  const contentFromDescription = String(rangeMatch[4] || '').trim();
+
+  return {
+    id: String(resource.id || `annotation-${scope}-${titleMatch[1]}`),
+    scope,
+    type: String(parsedMeta?.type || rangeMatch[1] || 'callout').toLowerCase(),
+    title: String(parsedMeta?.title || titleMatch[1] || 'Annotation').trim() || 'Annotation',
+    content: contentFromMeta || contentFromDescription || 'Annotation',
+    startTime,
+    endTime,
+    position: {
+      x: clamp(Number(parsedMeta?.position?.x ?? 12), 0, 100),
+      y: clamp(Number(parsedMeta?.position?.y ?? 12), 0, 100),
     },
-  ],
-});
+    size: {
+      width: clamp(Number(parsedMeta?.size?.width ?? 26), 1, 100),
+      height: clamp(Number(parsedMeta?.size?.height ?? 13), 1, 100),
+    },
+    style: {
+      backgroundColor: String(parsedMeta?.style?.backgroundColor || 'rgba(248,179,33,0.22)'),
+      textColor: String(parsedMeta?.style?.textColor || '#f7f8fb'),
+      borderColor: String(parsedMeta?.style?.borderColor || '#f8b321'),
+      borderWidth: clamp(Number(parsedMeta?.style?.borderWidth ?? 2), 1, 8),
+      borderRadius: clamp(Number(parsedMeta?.style?.borderRadius ?? 10), 0, 30),
+      opacity: clamp(Number(parsedMeta?.style?.opacity ?? 0.95), 0.1, 1),
+    },
+    isVisible: parsedMeta?.isVisible !== false,
+  };
+};
+
+type RuntimeAnnotationStoreEntry = {
+  items?: Array<Partial<RuntimeAnnotationOverlay>>;
+  duration?: number;
+  updatedAt?: string;
+};
+
+type RuntimeAnnotationStoreMap = Record<string, RuntimeAnnotationStoreEntry>;
+
+const readAnnotationStore = (): RuntimeAnnotationStoreMap => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(ANNOTATION_STORE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as RuntimeAnnotationStoreMap;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
 
 const buildDefaultChapters = (duration: number): ChapterItem[] => {
   const safeDuration = Math.max(duration, 240);
@@ -199,8 +535,8 @@ const buildDefaultQuiz = (): PlayerQuiz => ({
 });
 
 function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: AcademyVideoPlayerStudioProps) {
-  const [location, setLocation] = useLocation();
-  const { state, updateProgress, updateSettings, addBookmark, addNote, getCourse } = useAcademy();
+  const [, setLocation] = useLocation();
+  const { state, updateProgress, updateSettings, addBookmark, addNote, getCourse, setCurrentCourse } = useAcademy();
   const { analytics, debugging } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
@@ -208,22 +544,38 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressRef = useRef(0);
 
-  const fallbackCourse = useMemo(() => buildFallbackCourse(), []);
-
   const activeCourse = useMemo(() => {
     if (courseId) {
-      return getCourse(courseId) || fallbackCourse;
+      return getCourse(courseId) || state.currentCourse || state.courses[0] || null;
     }
-    return state.currentCourse || state.courses[0] || fallbackCourse;
-  }, [courseId, fallbackCourse, getCourse, state.courses, state.currentCourse]);
+    return state.currentCourse || state.courses[0] || null;
+  }, [courseId, getCourse, state.courses, state.currentCourse]);
+
+  useEffect(() => {
+    if (!activeCourse?.id) return;
+    const inState = state.courses.some((course) => String(course.id) === String(activeCourse.id));
+    if (!inState) return;
+    if (String(state.currentCourse?.id || '') === String(activeCourse.id)) return;
+    setCurrentCourse(activeCourse);
+  }, [activeCourse, setCurrentCourse, state.courses, state.currentCourse?.id]);
 
   const activeLesson = useMemo(() => {
     const lessons = Array.isArray(activeCourse?.lessons) ? activeCourse.lessons : [];
     if (lessonId) {
-      return lessons.find((lesson) => String(lesson.id) === String(lessonId)) || lessons[0] || fallbackCourse.lessons[0];
+      return lessons.find((lesson) => String(lesson.id) === String(lessonId)) || state.currentLesson || lessons[0] || null;
     }
-    return state.currentLesson || lessons[0] || fallbackCourse.lessons[0];
-  }, [activeCourse, fallbackCourse.lessons, lessonId, state.currentLesson]);
+    return state.currentLesson || lessons[0] || null;
+  }, [activeCourse, lessonId, state.currentLesson]);
+  const activeCourseWithAssignments = activeCourse as CourseWithAssignmentStudio | null;
+  const effectiveVideoUrl = useMemo(
+    () =>
+      resolveAcademyVideoUrl({
+        course: activeCourse,
+        preferredLessonId: activeLesson?.id || null,
+        fallbackUrl: VIDEO_PLACEHOLDER,
+      }),
+    [activeCourse, activeLesson?.id],
+  );
 
   const [rightTab, setRightTab] = useState<RightTab>('chapters');
   const [transcriptSearch, setTranscriptSearch] = useState('');
@@ -242,6 +594,12 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
   const [chapters, setChapters] = useState<ChapterItem[]>(() => buildDefaultChapters(Number(activeLesson?.duration || 336)));
   const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>(buildDefaultTranscript);
   const [activeQuiz] = useState<PlayerQuiz>(buildDefaultQuiz);
+  const [dismissedAssignmentIds, setDismissedAssignmentIds] = useState<string[]>([]);
+  const assignmentOverlayVisibilityRef = useRef<string | null>(null);
+  const ctaOverlayVisibilityRef = useRef<string | null>(null);
+  const lowerThirdVisibilityRef = useRef<string | null>(null);
+  const presentationOverlayVisibilityRef = useRef<string | null>(null);
+  const annotationOverlayVisibilityRef = useRef<string | null>(null);
 
   useEffect(() => {
     setDuration(Number(activeLesson?.duration || activeCourse?.duration || 336));
@@ -253,6 +611,471 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
       setSelectedChapterId(chapters[0].id);
     }
   }, [chapters, selectedChapterId]);
+
+  useEffect(() => {
+    setDismissedAssignmentIds([]);
+  }, [activeCourse?.id, activeLesson?.id]);
+
+  const runtimeOverlayResources = useMemo(() => {
+    const courseResources = Array.isArray(activeCourse?.resources) ? activeCourse.resources : [];
+    const lessonResources = Array.isArray(activeLesson?.resources) ? activeLesson.resources : [];
+    return { courseResources, lessonResources };
+  }, [activeCourse?.resources, activeLesson?.resources]);
+
+  const runtimeCtaOverlays = useMemo<RuntimeCTAOverlay[]>(() => {
+    const safeDuration = Math.max(
+      1,
+      Number(duration || activeLesson?.duration || activeCourse?.duration || 1),
+    );
+    const byId = new Map<string, RuntimeCTAOverlay>();
+    runtimeOverlayResources.courseResources
+      .filter((resource) => String(resource.id || '').startsWith(CTA_RESOURCE_COURSE_PREFIX))
+      .forEach((resource) => {
+        const parsed = parseCtaResource(resource, 'course', safeDuration);
+        if (parsed) byId.set(parsed.id, parsed);
+      });
+    runtimeOverlayResources.lessonResources
+      .filter((resource) => String(resource.id || '').startsWith(CTA_RESOURCE_SKILL_PREFIX))
+      .forEach((resource) => {
+        const parsed = parseCtaResource(resource, 'skill', safeDuration);
+        if (parsed) byId.set(parsed.id, parsed);
+      });
+    return Array.from(byId.values()).sort(
+      (left, right) => Number(left.triggerAt || 0) - Number(right.triggerAt || 0),
+    );
+  }, [
+    activeCourse?.duration,
+    activeLesson?.duration,
+    duration,
+    runtimeOverlayResources.courseResources,
+    runtimeOverlayResources.lessonResources,
+  ]);
+
+  const activeCtaOverlay = useMemo<RuntimeCTAOverlay | null>(() => {
+    return (
+      runtimeCtaOverlays.find(
+        (overlay) =>
+          currentTime >= Number(overlay.triggerAt || 0) &&
+          currentTime <= Number(overlay.endAt || Number(overlay.triggerAt || 0)),
+      ) || null
+    );
+  }, [currentTime, runtimeCtaOverlays]);
+
+  const runtimeLowerThirds = useMemo<RuntimeLowerThird[]>(() => {
+    const safeDuration = Math.max(
+      1,
+      Number(duration || activeLesson?.duration || activeCourse?.duration || 1),
+    );
+    const byId = new Map<string, RuntimeLowerThird>();
+    runtimeOverlayResources.courseResources
+      .filter((resource) => String(resource.id || '').startsWith(LOWER_THIRD_RESOURCE_COURSE_PREFIX))
+      .forEach((resource) => {
+        const parsed = parseLowerThirdResource(resource, 'course', safeDuration);
+        if (parsed) byId.set(parsed.id, parsed);
+      });
+    runtimeOverlayResources.lessonResources
+      .filter((resource) => String(resource.id || '').startsWith(LOWER_THIRD_RESOURCE_SKILL_PREFIX))
+      .forEach((resource) => {
+        const parsed = parseLowerThirdResource(resource, 'skill', safeDuration);
+        if (parsed) byId.set(parsed.id, parsed);
+      });
+    return Array.from(byId.values()).sort(
+      (left, right) => Number(left.startTime || 0) - Number(right.startTime || 0),
+    );
+  }, [
+    activeCourse?.duration,
+    activeLesson?.duration,
+    duration,
+    runtimeOverlayResources.courseResources,
+    runtimeOverlayResources.lessonResources,
+  ]);
+
+  const activeLowerThird = useMemo<RuntimeLowerThird | null>(() => {
+    return (
+      runtimeLowerThirds.find((lowerThird) => {
+        const start = Number(lowerThird.startTime || 0);
+        const end = start + Number(lowerThird.duration || 0);
+        return currentTime >= start && currentTime <= end;
+      }) || null
+    );
+  }, [currentTime, runtimeLowerThirds]);
+
+  const runtimePresentationOverlays = useMemo<RuntimePresentationOverlay[]>(() => {
+    const safeDuration = Math.max(
+      1,
+      Number(duration || activeLesson?.duration || activeCourse?.duration || 1),
+    );
+    const byId = new Map<string, RuntimePresentationOverlay>();
+    runtimeOverlayResources.courseResources
+      .filter((resource) => String(resource.id || '').startsWith(PRESENTATION_RESOURCE_COURSE_PREFIX))
+      .forEach((resource) => {
+        const parsed = parsePresentationResource(resource, 'course', safeDuration);
+        if (parsed) byId.set(parsed.id, parsed);
+      });
+    runtimeOverlayResources.lessonResources
+      .filter((resource) => String(resource.id || '').startsWith(PRESENTATION_RESOURCE_SKILL_PREFIX))
+      .forEach((resource) => {
+        const parsed = parsePresentationResource(resource, 'skill', safeDuration);
+        if (parsed) byId.set(parsed.id, parsed);
+      });
+    return Array.from(byId.values()).sort((left, right) => {
+      if (Number(left.startTime || 0) !== Number(right.startTime || 0)) {
+        return Number(left.startTime || 0) - Number(right.startTime || 0);
+      }
+      return Number(left.order || 0) - Number(right.order || 0);
+    });
+  }, [
+    activeCourse?.duration,
+    activeLesson?.duration,
+    duration,
+    runtimeOverlayResources.courseResources,
+    runtimeOverlayResources.lessonResources,
+  ]);
+
+  const activePresentationOverlay = useMemo<RuntimePresentationOverlay | null>(() => {
+    return (
+      runtimePresentationOverlays.find((overlay) => {
+        const start = Number(overlay.startTime || 0);
+        const end = Number(overlay.endTime || start);
+        return currentTime >= start && currentTime <= end;
+      }) || null
+    );
+  }, [currentTime, runtimePresentationOverlays]);
+
+  const runtimeAnnotationOverlays = useMemo<RuntimeAnnotationOverlay[]>(() => {
+    const safeDuration = Math.max(
+      1,
+      Number(duration || activeLesson?.duration || activeCourse?.duration || 1),
+    );
+    const activeLessonId = String(activeLesson?.id || '').trim();
+    const byId = new Map<string, RuntimeAnnotationOverlay>();
+
+    const toCanonicalId = (id: string, scope: RuntimeOverlayScope): string => {
+      const rawId = String(id || '').trim();
+      if (!rawId) return rawId;
+      if (scope === 'course' && rawId.startsWith(ANNOTATION_RESOURCE_COURSE_PREFIX)) {
+        return rawId.slice(ANNOTATION_RESOURCE_COURSE_PREFIX.length);
+      }
+      if (
+        scope === 'skill' &&
+        activeLessonId &&
+        rawId.startsWith(`${ANNOTATION_RESOURCE_SKILL_PREFIX}${activeLessonId}-`)
+      ) {
+        return rawId.slice(`${ANNOTATION_RESOURCE_SKILL_PREFIX}${activeLessonId}-`.length);
+      }
+      return rawId;
+    };
+
+    const upsert = (overlay: RuntimeAnnotationOverlay) => {
+      const canonicalId = toCanonicalId(overlay.id, overlay.scope) || overlay.id;
+      const key = `${overlay.scope}:${canonicalId}`;
+      byId.set(key, { ...overlay, id: canonicalId });
+    };
+
+    runtimeOverlayResources.courseResources
+      .filter((resource) => String(resource.id || '').startsWith(ANNOTATION_RESOURCE_COURSE_PREFIX))
+      .forEach((resource) => {
+        const parsed = parseAnnotationResource(resource, 'course', safeDuration);
+        if (parsed) upsert(parsed);
+      });
+    runtimeOverlayResources.lessonResources
+      .filter((resource) => String(resource.id || '').startsWith(ANNOTATION_RESOURCE_SKILL_PREFIX))
+      .forEach((resource) => {
+        const parsed = parseAnnotationResource(resource, 'skill', safeDuration);
+        if (parsed) upsert(parsed);
+      });
+
+    const localStore = readAnnotationStore();
+    const courseIdValue = String(activeCourse?.id || '').trim();
+    if (courseIdValue) {
+      const courseEntry = localStore[`${courseIdValue}::course`];
+      const skillEntry =
+        activeLessonId.length > 0
+          ? localStore[`${courseIdValue}::skill::${activeLessonId}`]
+          : undefined;
+
+      const pushEntryItems = (
+        entry: RuntimeAnnotationStoreEntry | undefined,
+        scope: RuntimeOverlayScope,
+      ) => {
+        if (!entry || !Array.isArray(entry.items)) return;
+        entry.items.forEach((item, index) => {
+          const startRaw = Number(item?.startTime ?? 0);
+          const endRaw = Number(item?.endTime ?? startRaw + 6);
+          const startTime = clamp(
+            Number.isFinite(startRaw) ? startRaw : 0,
+            0,
+            Math.max(0, safeDuration - 1),
+          );
+          const endTime = clamp(
+            Math.max(startTime + 1, Number.isFinite(endRaw) ? endRaw : startTime + 6),
+            startTime + 1,
+            safeDuration,
+          );
+          const nextOverlay: RuntimeAnnotationOverlay = {
+            id: String(item?.id || `local-annotation-${scope}-${index}`),
+            scope,
+            type: String(item?.type || 'callout').toLowerCase(),
+            title: String(item?.title || 'Annotation').trim() || 'Annotation',
+            content: String(item?.content || '').trim() || 'Annotation',
+            startTime,
+            endTime,
+            position: {
+              x: clamp(Number(item?.position?.x ?? 12), 0, 100),
+              y: clamp(Number(item?.position?.y ?? 12), 0, 100),
+            },
+            size: {
+              width: clamp(Number(item?.size?.width ?? 26), 1, 100),
+              height: clamp(Number(item?.size?.height ?? 13), 1, 100),
+            },
+            style: {
+              backgroundColor: String(item?.style?.backgroundColor || 'rgba(248,179,33,0.22)'),
+              textColor: String(item?.style?.textColor || '#f7f8fb'),
+              borderColor: String(item?.style?.borderColor || '#f8b321'),
+              borderWidth: clamp(Number(item?.style?.borderWidth ?? 2), 1, 8),
+              borderRadius: clamp(Number(item?.style?.borderRadius ?? 10), 0, 30),
+              opacity: clamp(Number(item?.style?.opacity ?? 0.95), 0.1, 1),
+            },
+            isVisible: item?.isVisible !== false,
+          };
+          upsert(nextOverlay);
+        });
+      };
+
+      pushEntryItems(courseEntry, 'course');
+      pushEntryItems(skillEntry, 'skill');
+    }
+
+    return Array.from(byId.values()).sort((left, right) => {
+      if (Number(left.startTime || 0) !== Number(right.startTime || 0)) {
+        return Number(left.startTime || 0) - Number(right.startTime || 0);
+      }
+      return String(left.id || '').localeCompare(String(right.id || ''));
+    });
+  }, [
+    activeCourse?.duration,
+    activeCourse?.id,
+    activeLesson?.duration,
+    activeLesson?.id,
+    duration,
+    runtimeOverlayResources.courseResources,
+    runtimeOverlayResources.lessonResources,
+  ]);
+
+  const activeAnnotationOverlays = useMemo<RuntimeAnnotationOverlay[]>(() => {
+    return runtimeAnnotationOverlays.filter((overlay) => {
+      if (!overlay.isVisible) return false;
+      const start = Number(overlay.startTime || 0);
+      const end = Number(overlay.endTime || start);
+      return currentTime >= start && currentTime <= end;
+    });
+  }, [currentTime, runtimeAnnotationOverlays]);
+
+  const assignmentOverlays = useMemo<AssignmentOverlayItem[]>(() => {
+    const rawAssignments = Array.isArray(activeCourseWithAssignments?.assignmentStudio?.assignments)
+      ? activeCourseWithAssignments.assignmentStudio.assignments
+      : [];
+    const maxDuration = Math.max(30, Number(activeLesson?.duration || activeCourse?.duration || 300));
+    const activeLessonId = String(activeLesson?.id || '');
+
+    return rawAssignments
+      .map((assignment, index) => {
+        const triggerAt =
+          Number.isFinite(Number(assignment.triggerAt))
+            ? Math.max(0, Number(assignment.triggerAt))
+            : Math.max(8, 18 + index * 12);
+        const endAt =
+          Number.isFinite(Number(assignment.endAt))
+            ? Math.max(triggerAt, Number(assignment.endAt))
+            : Math.min(maxDuration, triggerAt + 22);
+        const placement: AssignmentPlacement =
+          assignment.placement === 'bottom-center' ||
+          assignment.placement === 'bottom-right' ||
+          assignment.placement === 'center' ||
+          assignment.placement === 'top-right'
+            ? assignment.placement
+            : 'bottom-right';
+        const animationTypeRaw = String(assignment.overlayAnimationType || '').toLowerCase();
+        const animationType: AssignmentOverlayAnimationType =
+          animationTypeRaw === 'slide-up' || animationTypeRaw === 'fade' || animationTypeRaw === 'zoom'
+            ? (animationTypeRaw as AssignmentOverlayAnimationType)
+            : 'slide-up';
+        const animationEasingRaw = String(assignment.overlayAnimationEasing || '').toLowerCase();
+        const animationEasing: AssignmentOverlayAnimationEasing =
+          animationEasingRaw === 'ease-out' ||
+          animationEasingRaw === 'ease-in-out' ||
+          animationEasingRaw === 'ease-in' ||
+          animationEasingRaw === 'linear'
+            ? (animationEasingRaw as AssignmentOverlayAnimationEasing)
+            : 'ease-out';
+        const scope: 'course' | 'skill' = assignment.scope === 'skill' ? 'skill' : 'course';
+        return {
+          ...assignment,
+          scope,
+          triggerAt: Math.min(maxDuration, triggerAt),
+          endAt: Math.min(maxDuration, endAt),
+          placement,
+          overlayEnabled: assignment.overlayEnabled !== false,
+          overlayBackground: String(assignment.overlayBackground || 'rgba(10,15,25,0.84)'),
+          overlayTextColor: String(assignment.overlayTextColor || '#f5f1e7'),
+          overlayPrimaryButtonColor: String(assignment.overlayPrimaryButtonColor || '#d99622'),
+          overlayPrimaryButtonTextColor: String(assignment.overlayPrimaryButtonTextColor || '#1a1306'),
+          overlayFontFamily: String(assignment.overlayFontFamily || 'Barlow Condensed, "Manrope", sans-serif'),
+          overlayAnimationEnabled: assignment.overlayAnimationEnabled !== false,
+          overlayAnimationType: animationType,
+          overlayAnimationEasing: animationEasing,
+          overlayAnimationDuration: Number.isFinite(Number(assignment.overlayAnimationDuration))
+            ? Math.max(0, Math.min(8, Number(assignment.overlayAnimationDuration)))
+            : 0.45,
+          overlayAnimationDelay: Number.isFinite(Number(assignment.overlayAnimationDelay))
+            ? Math.max(0, Math.min(8, Number(assignment.overlayAnimationDelay)))
+            : 0,
+          overlayRadius: Number.isFinite(Number(assignment.overlayRadius))
+            ? Math.max(0, Math.min(48, Number(assignment.overlayRadius)))
+            : 16,
+          overlayOpacity: Number.isFinite(Number(assignment.overlayOpacity))
+            ? Math.max(0.2, Math.min(1, Number(assignment.overlayOpacity)))
+            : 1,
+          overlayTitleSize: Number.isFinite(Number(assignment.overlayTitleSize))
+            ? Math.max(14, Math.min(72, Number(assignment.overlayTitleSize)))
+            : 32,
+          points: Number.isFinite(Number(assignment.points)) ? Number(assignment.points) : 100,
+          skillId: String(assignment.skillId || ''),
+        };
+      })
+      .filter((assignment) => {
+        if (!assignment.overlayEnabled) return false;
+        if (assignment.scope === 'skill') {
+          return activeLessonId.length > 0 && String(assignment.skillId || '') === activeLessonId;
+        }
+        return true;
+      })
+      .sort((a, b) => Number(a.triggerAt || 0) - Number(b.triggerAt || 0));
+  }, [activeCourse?.duration, activeCourseWithAssignments?.assignmentStudio?.assignments, activeLesson?.duration, activeLesson?.id]);
+
+  const activeAssignmentOverlay = useMemo(() => {
+    return (
+      assignmentOverlays.find((assignment) => {
+        const id = String(assignment.id || '');
+        if (!id || dismissedAssignmentIds.includes(id)) return false;
+        return (
+          currentTime >= Number(assignment.triggerAt || 0) &&
+          currentTime <= Number(assignment.endAt || Number(assignment.triggerAt || 0))
+        );
+      }) || null
+    );
+  }, [assignmentOverlays, currentTime, dismissedAssignmentIds]);
+
+  const activeAssignmentOverlayAnimationSx = useMemo(() => {
+    if (!activeAssignmentOverlay || !activeAssignmentOverlay.overlayAnimationEnabled) {
+      return {};
+    }
+    const duration = Math.max(0, Number(activeAssignmentOverlay.overlayAnimationDuration || 0));
+    const delay = Math.max(0, Number(activeAssignmentOverlay.overlayAnimationDelay || 0));
+    if (duration <= 0) return {};
+    if (activeAssignmentOverlay.overlayAnimationType === 'fade') {
+      return {
+        animation: `academyPlayerAssignmentFade ${duration}s ${activeAssignmentOverlay.overlayAnimationEasing} ${delay}s both`,
+        '@keyframes academyPlayerAssignmentFade': {
+          '0%': { opacity: 0 },
+          '100%': { opacity: 1 },
+        },
+      };
+    }
+    if (activeAssignmentOverlay.overlayAnimationType === 'zoom') {
+      return {
+        animation: `academyPlayerAssignmentZoom ${duration}s ${activeAssignmentOverlay.overlayAnimationEasing} ${delay}s both`,
+        '@keyframes academyPlayerAssignmentZoom': {
+          '0%': { opacity: 0, transform: 'translate(var(--assignment-overlay-x, 0), var(--assignment-overlay-y, 0)) scale(0.92)' },
+          '100%': { opacity: 1, transform: 'translate(var(--assignment-overlay-x, 0), var(--assignment-overlay-y, 0)) scale(1)' },
+        },
+      };
+    }
+    return {
+      animation: `academyPlayerAssignmentSlideUp ${duration}s ${activeAssignmentOverlay.overlayAnimationEasing} ${delay}s both`,
+      '@keyframes academyPlayerAssignmentSlideUp': {
+        '0%': { opacity: 0, transform: 'translate(var(--assignment-overlay-x, 0), calc(var(--assignment-overlay-y, 0) + 18px))' },
+        '100%': { opacity: 1, transform: 'translate(var(--assignment-overlay-x, 0), var(--assignment-overlay-y, 0))' },
+      },
+    };
+  }, [activeAssignmentOverlay]);
+
+  const activePresentationOverlaySx = useMemo(() => {
+    const overlay = activePresentationOverlay;
+    if (!overlay) return {};
+
+    const base = {
+      position: 'absolute',
+      zIndex: 3,
+      borderRadius: 1.2,
+      border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.52)',
+      background: 'rgba(11,16,25,0.9)',
+      boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
+      overflow: 'hidden',
+    } as const;
+
+    if (overlay.displayMode === 'full-frame') {
+      return {
+        ...base,
+        inset: 24,
+        borderRadius: 1.4,
+      };
+    }
+
+    if (overlay.displayMode === 'split-screen') {
+      return {
+        ...base,
+        top: 20,
+        right: 20,
+        bottom: 116,
+        width: 'min(45%, 520px)',
+      };
+    }
+
+    if (overlay.displayMode === 'side-panel') {
+      return {
+        ...base,
+        top: 20,
+        right: 20,
+        bottom: 116,
+        width: 'min(34%, 420px)',
+      };
+    }
+
+    if (overlay.placement === 'top-left') {
+      return { ...base, top: 20, left: 20, width: 'min(34%, 410px)' };
+    }
+    if (overlay.placement === 'top-right') {
+      return { ...base, top: 20, right: 20, width: 'min(34%, 410px)' };
+    }
+    if (overlay.placement === 'bottom-left') {
+      return { ...base, left: 20, bottom: 116, width: 'min(34%, 410px)' };
+    }
+    if (overlay.placement === 'center') {
+      return {
+        ...base,
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: 'min(60%, 640px)',
+      };
+    }
+    return { ...base, right: 20, bottom: 116, width: 'min(34%, 410px)' };
+  }, [activePresentationOverlay]);
+
+  const isSplitScreenPresentationActive = activePresentationOverlay?.displayMode === 'split-screen';
+
+  const splitScreenPlayerColumns = useMemo(() => {
+    if (!isSplitScreenPresentationActive) return '1fr';
+    const variant = String(activePresentationOverlay?.splitLayoutVariant || 'balanced');
+    if (variant === 'presenter-focus') {
+      return 'minmax(360px, 1.2fr) minmax(320px, 1fr)';
+    }
+    if (variant === 'slide-focus') {
+      return 'minmax(300px, 0.92fr) minmax(420px, 1.08fr)';
+    }
+    return 'minmax(340px, 1fr) minmax(360px, 1fr)';
+  }, [activePresentationOverlay?.splitLayoutVariant, isSplitScreenPresentationActive]);
 
   const filteredTranscript = useMemo(() => {
     const query = transcriptSearch.trim().toLowerCase();
@@ -274,6 +1097,109 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
       lessonId: activeLesson?.id,
     });
   }, [activeCourse?.id, activeLesson?.id, analytics, debugging]);
+
+  useEffect(() => {
+    const visibleId = activeAssignmentOverlay?.id ? String(activeAssignmentOverlay.id) : null;
+    if (!visibleId) {
+      assignmentOverlayVisibilityRef.current = null;
+      return;
+    }
+    if (assignmentOverlayVisibilityRef.current === visibleId) return;
+    assignmentOverlayVisibilityRef.current = visibleId;
+    analytics.trackEvent('academy_assignment_overlay_shown', {
+      courseId: activeCourse?.id || null,
+      lessonId: activeLesson?.id || null,
+      assignmentId: visibleId,
+      triggerAt: activeAssignmentOverlay?.triggerAt || 0,
+      endAt: activeAssignmentOverlay?.endAt || 0,
+      timestamp: Date.now(),
+    });
+  }, [activeAssignmentOverlay, activeCourse?.id, activeLesson?.id, analytics]);
+
+  useEffect(() => {
+    const visibleId = activeCtaOverlay?.id ? String(activeCtaOverlay.id) : null;
+    if (!visibleId) {
+      ctaOverlayVisibilityRef.current = null;
+      return;
+    }
+    if (ctaOverlayVisibilityRef.current === visibleId) return;
+    ctaOverlayVisibilityRef.current = visibleId;
+    analytics.trackEvent('academy_cta_overlay_shown', {
+      courseId: activeCourse?.id || null,
+      lessonId: activeLesson?.id || null,
+      overlayId: visibleId,
+      scope: activeCtaOverlay?.scope || 'course',
+      triggerAt: activeCtaOverlay?.triggerAt || 0,
+      endAt: activeCtaOverlay?.endAt || 0,
+      timestamp: Date.now(),
+    });
+  }, [activeCourse?.id, activeCtaOverlay, activeLesson?.id, analytics]);
+
+  useEffect(() => {
+    const visibleId = activeLowerThird?.id ? String(activeLowerThird.id) : null;
+    if (!visibleId) {
+      lowerThirdVisibilityRef.current = null;
+      return;
+    }
+    if (lowerThirdVisibilityRef.current === visibleId) return;
+    lowerThirdVisibilityRef.current = visibleId;
+    analytics.trackEvent('academy_lower_third_shown', {
+      courseId: activeCourse?.id || null,
+      lessonId: activeLesson?.id || null,
+      lowerThirdId: visibleId,
+      scope: activeLowerThird?.scope || 'course',
+      startTime: activeLowerThird?.startTime || 0,
+      duration: activeLowerThird?.duration || 0,
+      timestamp: Date.now(),
+    });
+  }, [activeCourse?.id, activeLesson?.id, activeLowerThird, analytics]);
+
+  useEffect(() => {
+    const visibleId = activePresentationOverlay?.id ? String(activePresentationOverlay.id) : null;
+    if (!visibleId) {
+      presentationOverlayVisibilityRef.current = null;
+      return;
+    }
+    if (presentationOverlayVisibilityRef.current === visibleId) return;
+    presentationOverlayVisibilityRef.current = visibleId;
+    analytics.trackEvent('academy_presentation_overlay_shown', {
+      courseId: activeCourse?.id || null,
+      lessonId: activeLesson?.id || null,
+      overlayId: visibleId,
+      scope: activePresentationOverlay?.scope || 'course',
+      template: activePresentationOverlay?.template || null,
+      displayMode: activePresentationOverlay?.displayMode || 'picture-in-picture',
+      splitLayoutVariant: activePresentationOverlay?.splitLayoutVariant || 'balanced',
+      placement: activePresentationOverlay?.placement || 'bottom-right',
+      sourceSlideNumber: activePresentationOverlay?.sourceSlideNumber || 1,
+      startTime: activePresentationOverlay?.startTime || 0,
+      endTime: activePresentationOverlay?.endTime || 0,
+      timestamp: Date.now(),
+    });
+  }, [activeCourse?.id, activeLesson?.id, activePresentationOverlay, analytics]);
+
+  useEffect(() => {
+    const visibleIds = activeAnnotationOverlays
+      .map((overlay) => `${overlay.scope}:${String(overlay.id || '')}`)
+      .filter(Boolean)
+      .sort();
+    const visibilityKey = visibleIds.join('|');
+
+    if (!visibilityKey) {
+      annotationOverlayVisibilityRef.current = null;
+      return;
+    }
+    if (annotationOverlayVisibilityRef.current === visibilityKey) return;
+    annotationOverlayVisibilityRef.current = visibilityKey;
+
+    analytics.trackEvent('academy_annotation_overlay_shown', {
+      courseId: activeCourse?.id || null,
+      lessonId: activeLesson?.id || null,
+      overlayIds: visibleIds,
+      count: visibleIds.length,
+      timestamp: Date.now(),
+    });
+  }, [activeAnnotationOverlays, activeCourse?.id, activeLesson?.id, analytics]);
 
   const syncVideoSettings = useCallback(() => {
     const video = videoRef.current;
@@ -334,6 +1260,10 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
       setIsPlaying(false);
     }
   }, []);
+
+  const toggleStudentPreview = useCallback(() => {
+    togglePlayback();
+  }, [togglePlayback]);
 
   const skipBy = useCallback((delta: number) => {
     const target = clamp(currentTime + delta, 0, duration || 1);
@@ -434,21 +1364,6 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
     ));
   }, [activeCourse?.id, activeLesson?.id, chapters, onSave, speed, state.settings.subtitles, transcriptLines, tt]);
 
-  const leftNavItems = [
-    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
-    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
-    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
-    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
-    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
-    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
-    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
-    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
-    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
-    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
-    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
-    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
-  ];
-
   const speedOptions = [0.5, 1, 1.25, 1.5, 2, 6];
 
   return (
@@ -467,7 +1382,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
           position: 'absolute',
           inset: 0,
           background:
-            'radial-gradient(circle at 74% 14%, rgba(248,179,33,0.22), rgba(5,8,13,0) 40%), radial-gradient(circle at 20% 82%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 30%)',
+            'radial-gradient(circle at 74% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%)',
           pointerEvents: 'none',
         }}
       />
@@ -483,82 +1398,18 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
           mx: 'auto',
         }}
       >
-        <Box
-          component="aside"
-          sx={{
-            width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
-            background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
-            display: 'flex',
-            flexDirection: 'column',
+        <AcademyLeftSidebar
+          activeNav="tools"
+          onNavigate={(_, route) => setLocation(route)}
+          onCreateCourse={() => setLocation('/academy/curriculum?createCompetency=1')}
+          tt={tt}
+          navLabel={navLabel}
+          bottomAction={{
+            label: tt('Legg til bokmerke', 'Add Bookmark'),
+            onClick: handleBookmark,
+            icon: <Bookmark />,
           }}
-        >
-          <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <AcademyBrandMark />
-            <Button
-              variant="outlined"
-              startIcon={<Add />}
-              sx={{
-                justifyContent: 'flex-start',
-                borderColor: 'rgba(248,179,33,0.55)',
-                color: '#f8d56f',
-                borderRadius: 1,
-                textTransform: 'none',
-                fontWeight: 600,
-              }}
-              onClick={() => setLocation('/academy/course-creator')}
-            >
-              {navLabel('Create New Course')}
-            </Button>
-          </Stack>
-
-          <Stack spacing={0.5} sx={{ px: 1.5 }}>
-            {leftNavItems.map((item) => {
-              const active =
-                location === item.route ||
-                (item.id === 'media' && location === '/academy/video-player');
-              return (
-                <Button
-                  key={item.id}
-                  onClick={() => setLocation(item.route)}
-                  sx={{
-                    justifyContent: 'flex-start',
-                    color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
-                    borderRadius: 1,
-                    textTransform: 'none',
-                    px: 2,
-                    py: 1.15,
-                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
-                    background: active
-                      ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
-                      : 'transparent',
-                  }}
-                >
-                  {item.label}
-                </Button>
-              );
-            })}
-          </Stack>
-
-          <Box sx={{ mt: 'auto', p: 2 }}>
-            <Button
-              variant="text"
-              startIcon={<Bookmark />}
-              onClick={handleBookmark}
-              sx={{
-                width: '100%',
-                justifyContent: 'flex-start',
-                color: '#edf0f7',
-                textTransform: 'none',
-                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
-                borderRadius: 1,
-              }}
-            >
-              {tt('Legg til bokmerke', 'Add Bookmark')}
-            </Button>
-          </Box>
-        </Box>
+        />
 
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Box
@@ -580,13 +1431,31 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
             </Stack>
 
             <Stack direction="row" spacing={1.2} alignItems="center">
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <AcademyLocaleSwitcher />
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=notifications')}
+                aria-label={tt('Varsler', 'Notifications')}
+                sx={{ color: 'rgba(237,240,247,0.75)' }}
+              >
                 <NotificationsNone fontSize="small" />
               </IconButton>
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=messages')}
+                aria-label={tt('Meldinger', 'Messages')}
+                sx={{ color: 'rgba(237,240,247,0.75)' }}
+              >
                 <MailOutline fontSize="small" />
               </IconButton>
-              <Avatar sx={{ width: 34, height: 34, bgcolor: '#f8b321', color: '#111' }}>N</Avatar>
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=profile')}
+                aria-label={tt('Profil', 'Profile')}
+                sx={{ p: 0 }}
+              >
+                <Avatar sx={{ width: 34, height: 34, bgcolor: '#f8b321', color: '#111' }}>N</Avatar>
+              </IconButton>
             </Stack>
           </Box>
 
@@ -595,7 +1464,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
               flex: 1,
               minHeight: 0,
               display: 'grid',
-              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 360px' },
+              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) var(--academy-right-panel-width, 390px)' },
               gap: 2,
               px: 2,
               py: 2,
@@ -608,26 +1477,45 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                 justifyContent="space-between"
                 alignItems={{ xs: 'stretch', md: 'center' }}
               >
-                <Stack direction="row" spacing={1.2} alignItems="center">
-                  <Typography sx={{ fontSize: 30, fontWeight: 600, letterSpacing: '0.02em' }}>
+                <Stack direction="row" spacing={1.2} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Typography sx={{ fontSize: 'clamp(1.35rem, 1rem + 0.9vw, 1.9rem)', fontWeight: 600, letterSpacing: '0.02em' }}>
                     {activeCourse?.title || 'Directing Masterclass'}
                   </Typography>
-                  <Chip label={tt('Utkast', 'Draft')} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }} />
                 </Stack>
 
-                <Stack direction="row" spacing={1}>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  flexWrap="nowrap"
+                  useFlexGap
+                  sx={{
+                    minWidth: 0,
+                    justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+                    overflowX: 'auto',
+                    pb: 0.2,
+                    '& > *': { flexShrink: 0 },
+                    '&::-webkit-scrollbar': { height: 6 },
+                    '&::-webkit-scrollbar-thumb': {
+                      backgroundColor: 'rgba(255,255,255,0.18)',
+                      borderRadius: 999,
+                    },
+                  }}
+                >
                   <Button
                     variant="outlined"
-                    startIcon={<PlayArrow />}
-                    onClick={togglePlayback}
+                    startIcon={isPlaying ? <Visibility /> : <VisibilityOff />}
+                    onClick={toggleStudentPreview}
                     sx={{
                       textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
+                      borderColor: isPlaying ? 'rgba(248,179,33,0.45)' : 'rgba(255,255,255,0.2)',
+                      color: isPlaying ? '#f8d675' : '#edf0f7',
+                      bgcolor: isPlaying ? 'rgba(248,179,33,0.12)' : 'transparent',
                       borderRadius: 1,
                     }}
                   >
-                    {tt('Forhåndsvis', 'Preview')}
+                    {isPlaying
+                      ? tt('Forhåndsvisning på', 'Preview on')
+                      : tt('Forhåndsvis (student)', 'Preview (learner)')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -658,18 +1546,30 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                   <Button
                     variant="outlined"
                     startIcon={<Campaign />}
-                    onClick={() => setLocation('/academy/cta-overlay')}
+                    onClick={() => {
+                      const query = new URLSearchParams();
+                      if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
+                      if (activeLesson?.id) query.set('lessonId', String(activeLesson.id));
+                      const suffix = query.toString();
+                      setLocation(suffix ? `/academy/cta-overlay?${suffix}` : '/academy/cta-overlay');
+                    }}
                     sx={{
                       textTransform: 'none',
                       borderColor: 'rgba(255,255,255,0.2)',
                       color: '#edf0f7',
                       borderRadius: 1,
                     }}
-                  >{tt('CTA-overlegg', 'CTA Overlay')}</Button>
+                  >{tt('CTA-Studio', 'CTA Studio')}</Button>
                   <Button
                     variant="outlined"
                     startIcon={<Subtitles />}
-                    onClick={() => setLocation('/academy/lower-thirds')}
+                    onClick={() => {
+                      const query = new URLSearchParams();
+                      if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
+                      if (activeLesson?.id) query.set('lessonId', String(activeLesson.id));
+                      const suffix = query.toString();
+                      setLocation(suffix ? `/academy/lower-thirds?${suffix}` : '/academy/lower-thirds');
+                    }}
                     sx={{
                       textTransform: 'none',
                       borderColor: 'rgba(255,255,255,0.2)',
@@ -677,7 +1577,26 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       borderRadius: 1,
                     }}
                   >
-                    {tt('Nedre tredeler', 'Lower Thirds')}
+                    {tt('Supring Studio', 'Lower Thirds Studio')}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<Slideshow />}
+                    onClick={() => {
+                      const query = new URLSearchParams();
+                      if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
+                      if (activeLesson?.id) query.set('lessonId', String(activeLesson.id));
+                      const suffix = query.toString();
+                      setLocation(suffix ? `/academy/presentation-overlay?${suffix}` : '/academy/presentation-overlay');
+                    }}
+                    sx={{
+                      textTransform: 'none',
+                      borderColor: 'rgba(255,255,255,0.2)',
+                      color: '#edf0f7',
+                      borderRadius: 1,
+                    }}
+                  >
+                    {tt('Presentasjon', 'Presentation')}
                   </Button>
                   <Button
                     variant="contained"
@@ -697,14 +1616,403 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
               </Stack>
 
               <Box sx={{ ...cinematicPanelSx, p: 1, position: 'relative' }}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      lg: isSplitScreenPresentationActive ? splitScreenPlayerColumns : '1fr',
+                    },
+                    gap: isSplitScreenPresentationActive ? 1 : 0,
+                    alignItems: 'stretch',
+                  }}
+                >
                 <AcademyPlayerStudio
-                  src={activeLesson?.videoUrl || activeCourse?.videoUrl || VIDEO_PLACEHOLDER}
+                  src={effectiveVideoUrl}
+                  poster={activeLesson?.thumbnail || activeCourse?.thumbnail || undefined}
+                  posterZoom={
+                    typeof activeLesson?.thumbnailZoom === 'number' && Number.isFinite(activeLesson.thumbnailZoom)
+                      ? Math.max(100, Math.min(220, activeLesson.thumbnailZoom))
+                      : 100
+                  }
+                  objectPosition={`${activeLesson?.thumbnailFocalX ?? 50}% ${activeLesson?.thumbnailFocalY ?? 50}%`}
                   videoRef={videoRef}
                   onLoadedMetadata={handleLoadedMetadata}
                   onTimeUpdate={handleTimeUpdate}
                   onPlay={() => setIsPlaying(true)}
                   onPause={() => setIsPlaying(false)}
+                  objectFit={isSplitScreenPresentationActive ? 'contain' : 'cover'}
+                  containerSx={
+                    isSplitScreenPresentationActive
+                      ? {
+                          minHeight: { xs: 220, md: 360 },
+                          height: '100%',
+                          aspectRatio: 'auto',
+                          bgcolor: '#000',
+                        }
+                      : undefined
+                  }
+                  videoStyle={isSplitScreenPresentationActive ? { backgroundColor: '#000' } : undefined}
                 >
+                  {activeAnnotationOverlays.map((annotation) => {
+                    const left = clamp(Number(annotation.position?.x ?? 12), 0, 100);
+                    const top = clamp(Number(annotation.position?.y ?? 12), 0, 100);
+                    const maxWidth = Math.max(8, 100 - left);
+                    const maxHeight = Math.max(8, 100 - top);
+                    const width = clamp(Number(annotation.size?.width ?? 26), 8, maxWidth);
+                    const height = clamp(Number(annotation.size?.height ?? 13), 8, maxHeight);
+                    const backgroundColor = String(annotation.style?.backgroundColor || 'rgba(248,179,33,0.22)');
+                    const textColor = String(annotation.style?.textColor || '#f7f8fb');
+                    const borderColor = String(annotation.style?.borderColor || '#f8b321');
+                    const borderWidth = clamp(Number(annotation.style?.borderWidth ?? 2), 1, 8);
+                    const borderRadius = clamp(Number(annotation.style?.borderRadius ?? 10), 0, 30);
+                    const opacity = clamp(Number(annotation.style?.opacity ?? 0.95), 0.1, 1);
+
+                    return (
+                      <Box
+                        key={`${annotation.scope}:${annotation.id}`}
+                        sx={{
+                          position: 'absolute',
+                          left: `${left}%`,
+                          top: `${top}%`,
+                          width: `${width}%`,
+                          minHeight: `${height}%`,
+                          borderRadius: `${borderRadius}px`,
+                          border: `${borderWidth}px solid ${borderColor}`,
+                          background: backgroundColor,
+                          color: textColor,
+                          opacity,
+                          p: 1,
+                          zIndex: 3,
+                          boxShadow: '0 12px 28px rgba(0,0,0,0.3)',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <Stack spacing={0.4}>
+                          <Typography sx={{ fontWeight: 700, lineHeight: 1.15, fontSize: 'clamp(0.78rem, 0.66rem + 0.28vw, 1rem)' }}>
+                            {annotation.title}
+                          </Typography>
+                          <Typography sx={{ color: alpha(textColor, 0.92), lineHeight: 1.25, fontSize: 'clamp(0.7rem, 0.6rem + 0.24vw, 0.9rem)' }}>
+                            {annotation.content}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    );
+                  })}
+
+                  {activeAssignmentOverlay && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        ...(activeAssignmentOverlay.placement === 'top-right'
+                          ? { top: 22, right: 22, '--assignment-overlay-x': '0', '--assignment-overlay-y': '0' }
+                          : activeAssignmentOverlay.placement === 'center'
+                            ? {
+                                top: '50%',
+                                left: '50%',
+                                '--assignment-overlay-x': '-50%',
+                                '--assignment-overlay-y': '-50%',
+                                transform: 'translate(var(--assignment-overlay-x), var(--assignment-overlay-y))',
+                              }
+                            : activeAssignmentOverlay.placement === 'bottom-center'
+                              ? {
+                                  left: '50%',
+                                  bottom: 142,
+                                  '--assignment-overlay-x': '-50%',
+                                  '--assignment-overlay-y': '0',
+                                  transform: 'translate(var(--assignment-overlay-x), var(--assignment-overlay-y))',
+                                }
+                              : { right: 22, bottom: 142, '--assignment-overlay-x': '0', '--assignment-overlay-y': '0' }),
+                        width:
+                          activeAssignmentOverlay.placement === 'center' ||
+                          activeAssignmentOverlay.placement === 'bottom-center'
+                            ? 'min(86%, 520px)'
+                            : 'min(76%, 420px)',
+                        borderRadius: `${activeAssignmentOverlay.overlayRadius || 16}px`,
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.56)',
+                        background: activeAssignmentOverlay.overlayBackground || 'rgba(10,15,25,0.84)',
+                        p: 1.2,
+                        zIndex: 4,
+                        opacity: activeAssignmentOverlay.overlayOpacity || 1,
+                        fontFamily: activeAssignmentOverlay.overlayFontFamily || 'Barlow Condensed, "Manrope", sans-serif',
+                        boxShadow: '0 14px 34px rgba(0,0,0,0.42)',
+                        ...activeAssignmentOverlayAnimationSx,
+                      }}
+                    >
+                      <Stack spacing={0.7}>
+                        <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Chip
+                            label={tt('Oppgave', 'Assignment')}
+                            size="small"
+                            sx={{ bgcolor: 'rgba(248,179,33,0.2)', color: activeAssignmentOverlay.overlayTextColor || '#f5f1e7' }}
+                          />
+                          <Chip
+                            label={`${formatTime(Number(activeAssignmentOverlay.triggerAt || 0))}-${formatTime(Number(activeAssignmentOverlay.endAt || 0))}`}
+                            size="small"
+                            sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: activeAssignmentOverlay.overlayTextColor || '#f5f1e7' }}
+                          />
+                        </Stack>
+                        <Typography
+                          sx={{
+                            fontSize: `clamp(0.98rem, 0.72rem + 0.6vw, ${Math.max(18, Number(activeAssignmentOverlay.overlayTitleSize || 32))}px)`,
+                            color: activeAssignmentOverlay.overlayTextColor || '#f5f1e7',
+                            fontWeight: 700,
+                            lineHeight: 1.12,
+                          }}
+                        >
+                          {activeAssignmentOverlay.title || tt('Ny oppgave', 'New assignment')}
+                        </Typography>
+                        <Typography sx={{ color: activeAssignmentOverlay.overlayTextColor || '#f5f1e7', opacity: 0.86, fontSize: 13 }}>
+                          {activeAssignmentOverlay.subtitle || tt('Vises til studenten som in-video oppgave.', 'Shown to learner as an in-video assignment.')}
+                        </Typography>
+                        <Stack direction="row" spacing={0.8} justifyContent="flex-end">
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              setDismissedAssignmentIds((prev) =>
+                                prev.includes(String(activeAssignmentOverlay.id))
+                                  ? prev
+                                  : [...prev, String(activeAssignmentOverlay.id)],
+                              );
+                            }}
+                            sx={{
+                              textTransform: 'none',
+                              color: activeAssignmentOverlay.overlayTextColor || '#f5f1e7',
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
+                            }}
+                          >
+                            {tt('Senere', 'Later')}
+                          </Button>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              const query = new URLSearchParams();
+                              if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
+                              query.set('assignmentId', String(activeAssignmentOverlay.id));
+                              if (activeLesson?.id) query.set('lessonId', String(activeLesson.id));
+                              setLocation(`/academy/assignments?${query.toString()}`);
+                            }}
+                            sx={{
+                              textTransform: 'none',
+                              color: activeAssignmentOverlay.overlayPrimaryButtonTextColor || '#1a1306',
+                              background: activeAssignmentOverlay.overlayPrimaryButtonColor || '#d99622',
+                              fontWeight: 700,
+                              '&:hover': { filter: 'brightness(1.08)' },
+                            }}
+                          >
+                            {tt('Se oppgave', 'Open assignment')}
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {!isSplitScreenPresentationActive && activePresentationOverlay && (
+                    <Box sx={activePresentationOverlaySx}>
+                      <Stack spacing={0.8} sx={{ p: 1.1, height: '100%' }}>
+                        <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Chip
+                            size="small"
+                            label={tt('Presentasjon', 'Presentation')}
+                            sx={{ bgcolor: 'rgba(248,179,33,0.2)', color: '#f5f1e7' }}
+                          />
+                          <Chip
+                            size="small"
+                            label={`${formatTime(Number(activePresentationOverlay.startTime || 0))}-${formatTime(Number(activePresentationOverlay.endTime || 0))}`}
+                            sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: '#f5f1e7' }}
+                          />
+                          <Chip
+                            size="small"
+                            label={activePresentationOverlay.scope === 'skill' ? tt('Ferdighet', 'Skill') : tt('Kurs', 'Course')}
+                            sx={{ bgcolor: 'rgba(79,195,247,0.18)', color: '#d7f3ff' }}
+                          />
+                        </Stack>
+
+                        <Box
+                          sx={{
+                            flex: 1,
+                            minHeight: 0,
+                            borderRadius: 1,
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                            background:
+                              'linear-gradient(145deg, rgba(22,29,42,0.95), rgba(9,13,20,0.98)), radial-gradient(circle at 82% 16%, rgba(248,179,33,0.18), rgba(0,0,0,0))',
+                            p: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          {activePresentationOverlay.slideImageUrl && (
+                            <Box
+                              sx={{
+                                borderRadius: 0.7,
+                                overflow: 'hidden',
+                                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
+                                mb: 0.8,
+                              }}
+                            >
+                              <Box
+                                component="img"
+                                src={activePresentationOverlay.slideImageUrl}
+                                alt={activePresentationOverlay.slideTitle}
+                                sx={{ width: '100%', height: 152, objectFit: 'cover', display: 'block' }}
+                              />
+                            </Box>
+                          )}
+                          <Stack direction="row" spacing={0.8} alignItems="center">
+                            <Slideshow sx={{ color: '#f8d56f' }} />
+                            <Typography sx={{ fontWeight: 700, color: '#f5f1e7' }}>
+                              {activePresentationOverlay.slideTitle}
+                            </Typography>
+                          </Stack>
+
+                          <Typography sx={{ color: alpha('#f5f1e7', 0.9), fontSize: 13 }}>
+                            {activePresentationOverlay.deckName} · #{activePresentationOverlay.sourceSlideNumber}
+                          </Typography>
+
+                          <Typography sx={{ color: alpha('#f5f1e7', 0.76), fontSize: 12 }}>
+                            {activePresentationOverlay.sourceName || activePresentationOverlay.template}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {activeCtaOverlay && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        top: 22,
+                        right: 22,
+                        width: 'min(74%, 430px)',
+                        borderRadius: 1.2,
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.56)',
+                        background: 'linear-gradient(180deg, rgba(13,16,24,0.92), rgba(8,11,18,0.95))',
+                        boxShadow: '0 14px 34px rgba(0,0,0,0.42)',
+                        p: 1.2,
+                        zIndex: 3,
+                      }}
+                    >
+                      <Stack spacing={0.7}>
+                        <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Chip
+                            size="small"
+                            label={tt('CTA', 'CTA')}
+                            sx={{ bgcolor: 'rgba(248,179,33,0.2)', color: '#f5f1e7' }}
+                          />
+                          <Chip
+                            size="small"
+                            label={`${formatTime(activeCtaOverlay.triggerAt)}-${formatTime(activeCtaOverlay.endAt)}`}
+                            sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: '#f5f1e7' }}
+                          />
+                          <Chip
+                            size="small"
+                            label={activeCtaOverlay.scope === 'skill' ? tt('Ferdighet', 'Skill') : tt('Kurs', 'Course')}
+                            sx={{ bgcolor: 'rgba(79,195,247,0.18)', color: '#d7f3ff' }}
+                          />
+                        </Stack>
+                        <Typography
+                          sx={{
+                            fontSize: 'clamp(1rem, 0.74rem + 0.64vw, 1.7rem)',
+                            color: '#f5f1e7',
+                            fontWeight: 700,
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          {activeCtaOverlay.title}
+                        </Typography>
+                        <Typography sx={{ color: alpha('#f5f1e7', 0.9), fontSize: 13 }}>
+                          {activeCtaOverlay.subtitle || activeCtaOverlay.name}
+                        </Typography>
+                        <Stack direction="row" spacing={0.8} justifyContent="flex-end">
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              if (
+                                activeCtaOverlay.url &&
+                                activeCtaOverlay.url !== '#' &&
+                                typeof window !== 'undefined'
+                              ) {
+                                window.open(activeCtaOverlay.url, '_blank', 'noopener,noreferrer');
+                              }
+                              analytics.trackEvent('academy_cta_overlay_clicked', {
+                                courseId: activeCourse?.id || null,
+                                lessonId: activeLesson?.id || null,
+                                overlayId: activeCtaOverlay.id,
+                                scope: activeCtaOverlay.scope,
+                                timestamp: Date.now(),
+                              });
+                            }}
+                            sx={{
+                              textTransform: 'none',
+                              color: '#1a1306',
+                              background: '#d99622',
+                              fontWeight: 700,
+                              '&:hover': { filter: 'brightness(1.08)' },
+                            }}
+                          >
+                            {activeCtaOverlay.primaryLabel || tt('Åpne', 'Open')}
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {activeLowerThird && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        left: 24,
+                        bottom: 142,
+                        width: 'min(68%, 560px)',
+                        zIndex: 2,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          borderRadius: 1.1,
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.22)',
+                          background: 'linear-gradient(180deg, rgba(10,14,22,0.94), rgba(8,11,18,0.96))',
+                          p: 1.2,
+                          pl: 1.6,
+                          boxShadow: '0 14px 30px rgba(0,0,0,0.4)',
+                          position: 'relative',
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            left: 8,
+                            top: 8,
+                            bottom: 8,
+                            width: 4,
+                            borderRadius: 1,
+                            bgcolor: '#f8b321',
+                          }}
+                        />
+                        <Typography
+                          sx={{
+                            color: '#f5f1e7',
+                            fontWeight: 700,
+                            fontSize: 'clamp(1rem, 0.72rem + 0.8vw, 1.55rem)',
+                            lineHeight: 1.08,
+                          }}
+                        >
+                          {activeLowerThird.title}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            color: alpha('#f5f1e7', 0.9),
+                            fontSize: 13,
+                            mt: 0.2,
+                          }}
+                        >
+                          {activeLowerThird.subtitle || activeLowerThird.name}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
 
                   <Box
                     sx={{
@@ -793,6 +2101,98 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                     </Stack>
                   </Box>
                 </AcademyPlayerStudio>
+
+                {isSplitScreenPresentationActive && activePresentationOverlay && (
+                  <Box
+                    sx={{
+                      borderRadius: 1,
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.48)',
+                      background:
+                        'linear-gradient(160deg, rgba(16,22,33,0.96), rgba(8,12,19,0.98)), radial-gradient(circle at 84% 14%, rgba(248,179,33,0.2), rgba(0,0,0,0))',
+                      minHeight: { xs: 220, md: 360 },
+                      maxHeight: { lg: 'calc(100vh - 360px)' },
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}
+                  >
+                    <Stack spacing={0.9} sx={{ p: 1.1, height: '100%', minHeight: 0 }}>
+                      <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Chip
+                          size="small"
+                          label={tt('Presentasjon', 'Presentation')}
+                          sx={{ bgcolor: 'rgba(248,179,33,0.2)', color: '#f5f1e7' }}
+                        />
+                        <Chip
+                          size="small"
+                          label={tt('Split-skjerm', 'Split screen')}
+                          sx={{ bgcolor: 'rgba(120,187,255,0.2)', color: '#d8ecff' }}
+                        />
+                        <Chip
+                          size="small"
+                          label={`${formatTime(Number(activePresentationOverlay.startTime || 0))}-${formatTime(Number(activePresentationOverlay.endTime || 0))}`}
+                          sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: '#f5f1e7' }}
+                        />
+                      </Stack>
+
+                      <Box
+                        sx={{
+                          borderRadius: 0.9,
+                          overflow: 'hidden',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                          bgcolor: '#ffffff',
+                          minHeight: 160,
+                        }}
+                      >
+                        {activePresentationOverlay.slideImageUrl ? (
+                          <Box
+                            component="img"
+                            src={activePresentationOverlay.slideImageUrl}
+                            alt={activePresentationOverlay.slideTitle}
+                            sx={{
+                              width: '100%',
+                              height: '100%',
+                              minHeight: { xs: 160, md: 240 },
+                              maxHeight: { lg: 420 },
+                              objectFit: 'contain',
+                              objectPosition: 'center center',
+                              display: 'block',
+                              bgcolor: '#ffffff',
+                            }}
+                          />
+                        ) : (
+                          <Box
+                            sx={{
+                              display: 'grid',
+                              placeItems: 'center',
+                              minHeight: { xs: 160, md: 240 },
+                              color: alpha('#f5f1e7', 0.74),
+                              fontSize: 13,
+                            }}
+                          >
+                            {tt('Ingen slide-preview tilgjengelig', 'No slide preview available')}
+                          </Box>
+                        )}
+                      </Box>
+
+                      <Stack spacing={0.45}>
+                        <Stack direction="row" spacing={0.8} alignItems="center">
+                          <Slideshow sx={{ color: '#f8d56f' }} />
+                          <Typography sx={{ fontWeight: 700, color: '#f5f1e7' }}>
+                            {activePresentationOverlay.slideTitle}
+                          </Typography>
+                        </Stack>
+                        <Typography sx={{ color: alpha('#f5f1e7', 0.9), fontSize: 13 }}>
+                          {activePresentationOverlay.deckName} · #{activePresentationOverlay.sourceSlideNumber}
+                        </Typography>
+                        <Typography sx={{ color: alpha('#f5f1e7', 0.75), fontSize: 12 }}>
+                          {activePresentationOverlay.sourceName || activePresentationOverlay.template}
+                        </Typography>
+                      </Stack>
+                    </Stack>
+                  </Box>
+                )}
+                </Box>
 
                 <Box sx={{ mt: 1.1, ...cinematicPanelSx, p: 0.9 }}>
                   <Stack direction="row" spacing={0.8} alignItems="center">
@@ -917,7 +2317,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                         border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                       }}
                     >
-                      Quiz
+                      Quiz Studio
                     </Button>
                   </Stack>
                 </Box>
@@ -1157,7 +2557,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                     border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  Quiz
+                  Quiz Studio
                 </Button>
                 <Button
                   onClick={() => {

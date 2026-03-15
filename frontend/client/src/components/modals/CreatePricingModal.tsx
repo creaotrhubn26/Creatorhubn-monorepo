@@ -43,13 +43,15 @@ interface CreatePricingModalProps {
   onClose: () => void;
   editData?: any;
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  onPricingSaved?: (savedPricing: Record<string, unknown>) => void;
 }
 
 const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
   open,
   onClose,
   editData,
-  profession = 'photographer'
+  profession = 'photographer',
+  onPricingSaved
 }) => {
   const [formData, setFormData] = useState({
     name:  ',',
@@ -138,7 +140,7 @@ const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
 }, [editData]);
 
   const createPricingMutation = useMutation({
-    mutationFn: async (pricingData: any) => {
+    mutationFn: async (pricingData: Record<string, unknown>) => {
       const url = editData 
         ? `/api/price-administration/pricing/${editData.d}`
         : '/api/price-administration/pricing';
@@ -152,7 +154,19 @@ const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
       if (!response.ok) throw new Error('Failed to save pricing');
       return response.json();
   },
-    onSuccess: () => {
+    onSuccess: (savedPricingResponse: unknown, pricingData: Record<string, unknown>) => {
+      const isRecord = (value: unknown): value is Record<string, unknown> =>
+        typeof value === 'object' && value !== null && !Array.isArray(value);
+
+      const savedPricing = isRecord(savedPricingResponse)
+        ? (isRecord(savedPricingResponse.data)
+            ? savedPricingResponse.data
+            : (isRecord(savedPricingResponse.pricing) ? savedPricingResponse.pricing : savedPricingResponse))
+        : pricingData;
+
+      if (onPricingSaved) {
+        onPricingSaved(savedPricing);
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/price-administration/pricing', ],});
       handleClose();
   },

@@ -26,9 +26,15 @@ import authSessionService from '../services/authSessionService';
 import { TeamIcon as GroupsIcon } from './icons/CastingIcons';
 import { motion, AnimatePresence } from 'framer-motion';
 
+export type CastingProfessionCategory = 'foto' | 'video' | 'felles' | 'admin';
+export type CastingProfessionSelection = {
+  categoryId: CastingProfessionCategory;
+  roleId: string;
+};
+
 interface CastingProfessionDialogProps {
   open: boolean;
-  onSelect: (profession: 'foto' | 'video' | 'felles' | 'admin') => void;
+  onSelect: (selection: CastingProfessionSelection) => void;
 }
 
 const professionCategories = [
@@ -57,6 +63,7 @@ const professionCategories = [
     glowColor: 'rgba(16, 185, 129, 0.4)',
     roles: [
       { id: 'photographer', label: 'Fotograf', description: 'Leder fotoshoots', icon: PhotoCameraIcon },
+      { id: 'film_photographer', label: 'Innholdsprodusent', description: 'Storyboard, manus og leveranser', icon: MovieIcon },
       { id: 'photo_director', label: 'Fotodirektør', description: 'Kreativ ledelse for foto', icon: CameraAltIcon },
       { id: 'photo_assistant', label: 'Fotoassistent', description: 'Støttefunksjon', icon: PersonIcon },
     ],
@@ -113,12 +120,12 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
     setExpandedCategory(expandedCategory === categoryId ? null : categoryId);
   };
 
-  const handleRoleSelect = (categoryId: 'foto' | 'video' | 'felles' | 'admin', roleId: string) => {
+  const handleRoleSelect = (categoryId: CastingProfessionCategory, roleId: string) => {
     setSelectedRole(roleId);
     void authSessionService.setSelectedProfession(roleId);
     if (selectTimerRef.current) clearTimeout(selectTimerRef.current);
     selectTimerRef.current = setTimeout(() => {
-      onSelect(categoryId);
+      onSelect({ categoryId, roleId });
     }, 200);
   };
 
@@ -436,7 +443,5 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
     </Dialog>
   );
 }
-
-
 
 

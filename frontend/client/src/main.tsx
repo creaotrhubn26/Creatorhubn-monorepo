@@ -10,6 +10,10 @@ import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
 import './styles/academy-responsive.css';
 
 declare global {
+  interface Performance {
+    startTiming?: (operation: string) => () => void;
+  }
+
   interface Window {
     __creatorhubFetchNormalized?: boolean;
   }
@@ -41,6 +45,22 @@ function installFetchNormalization() {
   window.__creatorhubFetchNormalized = true;
 }
 
+function installPerformanceTimingFallback() {
+  const perf = window.performance as Performance;
+  if (!perf || typeof perf.startTiming === 'function') return;
+
+  const noopStartTiming = () => () => {};
+  try {
+    Object.defineProperty(perf, 'startTiming', {
+      configurable: true,
+      writable: true,
+      value: noopStartTiming,
+    });
+  } catch {
+    perf.startTiming = noopStartTiming;
+  }
+}
+
 // #region agent log
 console.log('[main.tsx] All imports loaded at', new Date().toISOString());
 console.log('[main.tsx] React:', typeof React);
@@ -57,6 +77,7 @@ try {
 }
 
 installFetchNormalization();
+installPerformanceTimingFallback();
 
 // #region agent log
 console.log('[main.tsx] Getting root element');

@@ -403,7 +403,7 @@ Jeg har laget et nytt kurs og vil gjerne ha tilbakemelding på det!`;
         <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
           <Box display="flex" alignItems="center" gap={1.25} sx={{ minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              {React.cloneElement(professionIcon as any, {
+              {React.cloneElement(professionIcon, {
                 sx: { color: professionColor, fontSize: 26 }
               })}
             </Box>
@@ -578,7 +578,7 @@ Jeg har laget et nytt kurs og vil gjerne ha tilbakemelding på det!`;
                     </Typography>
                     <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
                       <Chip
-                        icon={getCourseLevelIcon(selectedCourse.level) as any}
+                        icon={getCourseLevelIcon(selectedCourse.level)}
                         label={selectedCourse.level}
                         size="small"
                       />

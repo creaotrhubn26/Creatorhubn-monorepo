@@ -64,7 +64,9 @@ const mapRoleType = (roleType: UserRoleType): 'admin' | 'editor' | 'viewer' => {
       return 'admin';
     case 'casting_director':
     case 'production_manager':
+    case 'content_producer':
       return 'editor';
+    case 'client_reviewer':
     case 'camera_team':
     case 'agency':
     default:
@@ -97,12 +99,15 @@ export function SharingPanel({
       return [];
     }
     
-    return project.userRoles.map((userRole: UserRole) => ({
-      id: userRole.id,
-      name: getDisplayName(userRole.userId),
-      email: userRole.userId,
-      role: mapRoleType(userRole.role),
-    }));
+    return project.userRoles.map((userRole: UserRole) => {
+      const resolvedUserId = userRole.userId || userRole.email || 'ukjent@creatorhub.local';
+      return {
+        id: userRole.id,
+        name: getDisplayName(resolvedUserId),
+        email: resolvedUserId,
+        role: mapRoleType(userRole.role),
+      };
+    });
   }, [project?.userRoles]);
 
   const getRoleColor = (role: string) => {

@@ -1,10 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Avatar,
   Box,
   Button,
   Chip,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   LinearProgress,
   MenuItem,
@@ -13,30 +18,32 @@ import {
   Switch,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Add,
   Assessment,
-  Campaign,
   Download,
   Edit,
   MailOutline,
-  MonetizationOn,
   MoreHoriz,
   NotificationsNone,
-  PeopleAlt,
   Publish,
   Save,
   Search,
-  Subtitles,
-  TrendingUp,
-} from '@mui/icons-material';
-import { useLocation } from 'wouter';
-import { useAcademy, type Course, type Enrollment } from '@/contexts/AcademyContext';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
-import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
-import { useAcademyLocale } from './academyLocale';
-import AcademyBrandMark from './AcademyBrandMark';
+} from "@mui/icons-material";
+import { useLocation } from "wouter";
+import {
+  useAcademy,
+  type Course,
+  type Enrollment,
+} from "@/contexts/AcademyContext";
+import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
+import { withUniversalIntegration } from "@/integration/UniversalIntegrationHOC";
+import { academyPdfExportService } from "@/services/academyPdfExportService";
+import { apiRequest } from "@/lib/queryClient";
+import { useAcademyLocale } from "./academyLocale";
+import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
+import AcademyLeftSidebar from "./AcademyLeftSidebar";
 
 interface AcademyEnrollmentStudioProps {
   courseId?: string;
@@ -44,12 +51,13 @@ interface AcademyEnrollmentStudioProps {
   onCancel?: () => void;
 }
 
-type RangeFilter = '7d' | '30d' | '90d';
-type CompletionFilter = 'all' | 'high' | 'mid' | 'low';
+type RangeFilter = "7d" | "30d" | "90d";
+type CompletionFilter = "all" | "high" | "mid" | "low";
 
 interface StudentEnrollmentItem {
   id: string;
   name: string;
+  email?: string;
   role: string;
   primaryCohort: string;
   primaryCourseId: string;
@@ -60,7 +68,11 @@ interface StudentEnrollmentItem {
   tags: string[];
   avatarTheme: number;
   enrolledAt: string;
+  subscriptionPlanId?: string;
+  subscriptionPlanName?: string;
+  subscriptionPlanPrice?: number;
   isManual?: boolean;
+  inviteRequestId?: string;
 }
 
 interface ActivityItem {
@@ -71,6 +83,15 @@ interface ActivityItem {
   timestamp: string;
 }
 
+interface AddStudentFormState {
+  name: string;
+  email: string;
+  role: string;
+  courseId: string;
+  tags: string;
+  subscriptionPlanId: string;
+}
+
 interface TopCohortItem {
   id: string;
   name: string;
@@ -79,237 +100,81 @@ interface TopCohortItem {
   imageTheme: number;
 }
 
+interface InviteRequestItem {
+  id: string;
+  profession?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  email: string;
+  business?: string | null;
+  status?: string | null;
+  requestDate?: string | null;
+  processedDate?: string | null;
+  selectedPlan?: string | null;
+  planName?: string | null;
+  planPrice?: number | null;
+  source?: string | null;
+}
+
+interface SubscriptionPlanOption {
+  id: string;
+  labelNo: string;
+  labelEn: string;
+  monthlyPriceNok: number | null;
+}
+
 const panelSx = {
   borderRadius: 1.4,
-  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
-  background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
+  border: "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+  background:
+    "linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))",
 };
 
 const placeholderBackgrounds = [
-  'linear-gradient(145deg, rgba(24,30,42,0.92), rgba(12,16,24,0.98)), radial-gradient(circle at 85% 16%, rgba(245,166,35,0.34), rgba(0,0,0,0))',
-  'linear-gradient(145deg, rgba(18,23,34,0.95), rgba(10,14,21,0.98)), radial-gradient(circle at 12% 82%, rgba(245,166,35,0.24), rgba(0,0,0,0))',
-  'linear-gradient(145deg, rgba(17,21,31,0.94), rgba(8,12,18,0.98)), radial-gradient(circle at 72% 10%, rgba(114,158,225,0.2), rgba(0,0,0,0))',
-  'linear-gradient(145deg, rgba(19,24,36,0.93), rgba(11,14,22,0.98)), radial-gradient(circle at 70% 22%, rgba(248,179,33,0.22), rgba(0,0,0,0))',
-];
-
-const fallbackCourses: Course[] = [
-  {
-    id: 'enrollment-course-1',
-    title: 'Directing Masterclass',
-    description: 'Premium directing education with mentor check-ins.',
-    instructor: {
-      id: 'enrollment-instructor-1',
-      name: 'Norwedfilm',
-      avatar: '',
-      bio: 'Film director',
-      profession: 'videographer',
-    },
-    thumbnail: '',
-    videoUrl: '/assets/academy/intro-video.mp4',
-    duration: 336,
-    level: 'advanced',
-    category: 'videography',
-    tags: ['directing', 'enrollment'],
-    price: 36984,
-    isFree: false,
-    isPublished: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    rating: 4.8,
-    studentCount: 232,
-    lessons: [],
-    prerequisites: [],
-    learningOutcomes: [],
-    resources: [],
-  },
-  {
-    id: 'enrollment-course-2',
-    title: 'Advanced Cinematography',
-    description: 'Cinematic workflows from prep to final grade.',
-    instructor: {
-      id: 'enrollment-instructor-2',
-      name: 'CreatorHub Academy',
-      avatar: '',
-      bio: 'Academy editorial team',
-      profession: 'videographer',
-    },
-    thumbnail: '',
-    videoUrl: '/assets/academy/intro-video.mp4',
-    duration: 480,
-    level: 'advanced',
-    category: 'videography',
-    tags: ['cinematography', 'enrollment'],
-    price: 28740,
-    isFree: false,
-    isPublished: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    rating: 4.7,
-    studentCount: 145,
-    lessons: [],
-    prerequisites: [],
-    learningOutcomes: [],
-    resources: [],
-  },
-  {
-    id: 'enrollment-course-3',
-    title: 'Drone Cinematography Bootcamp',
-    description: 'Flight-safe cinematic framing and pacing.',
-    instructor: {
-      id: 'enrollment-instructor-3',
-      name: 'CreatorHub Academy',
-      avatar: '',
-      bio: 'Drone production team',
-      profession: 'videographer',
-    },
-    thumbnail: '',
-    videoUrl: '/assets/academy/intro-video.mp4',
-    duration: 420,
-    level: 'intermediate',
-    category: 'videography',
-    tags: ['drone', 'enrollment'],
-    price: 24990,
-    isFree: false,
-    isPublished: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    rating: 4.6,
-    studentCount: 88,
-    lessons: [],
-    prerequisites: [],
-    learningOutcomes: [],
-    resources: [],
-  },
-];
-
-const defaultStudents = (): StudentEnrollmentItem[] => [
-  {
-    id: 'student-1',
-    name: 'Sarah Johnson',
-    role: 'Vocal Producer',
-    primaryCohort: 'Vocal Production Pros',
-    primaryCourseId: 'enrollment-course-1',
-    courseIds: ['enrollment-course-1', 'enrollment-course-2'],
-    sourceCount: 9,
-    completionRate: 95,
-    enrolledScore: 950,
-    tags: ['Core', 'Mentor'],
-    avatarTheme: 0,
-    enrolledAt: '2026-03-02T09:00:00.000Z',
-  },
-  {
-    id: 'student-2',
-    name: 'Adrian Berglund',
-    role: 'Cinematographer',
-    primaryCohort: 'Cinematic Filmmaking 2',
-    primaryCourseId: 'enrollment-course-2',
-    courseIds: ['enrollment-course-2'],
-    sourceCount: 6,
-    completionRate: 84,
-    enrolledScore: 548,
-    tags: ['Invite Only'],
-    avatarTheme: 1,
-    enrolledAt: '2026-02-28T12:30:00.000Z',
-  },
-  {
-    id: 'student-3',
-    name: 'Lisa Holden',
-    role: 'Drone Pilot',
-    primaryCohort: 'Drone Cinematography',
-    primaryCourseId: 'enrollment-course-3',
-    courseIds: ['enrollment-course-3', 'enrollment-course-1'],
-    sourceCount: 8,
-    completionRate: 82,
-    enrolledScore: 823,
-    tags: ['Early Access'],
-    avatarTheme: 2,
-    enrolledAt: '2026-02-20T08:00:00.000Z',
-  },
-  {
-    id: 'student-4',
-    name: 'Jonas Ek',
-    role: 'Video Editor',
-    primaryCohort: 'Color Grading Workshop',
-    primaryCourseId: 'enrollment-course-2',
-    courseIds: ['enrollment-course-2', 'enrollment-course-1', 'enrollment-course-3'],
-    sourceCount: 8,
-    completionRate: 79,
-    enrolledScore: 630,
-    tags: ['Fast Track'],
-    avatarTheme: 3,
-    enrolledAt: '2026-02-18T16:45:00.000Z',
-  },
-  {
-    id: 'student-5',
-    name: 'Nadia Antonsen',
-    role: 'Street Photographer',
-    primaryCohort: 'Photography Mastery',
-    primaryCourseId: 'enrollment-course-1',
-    courseIds: ['enrollment-course-1'],
-    sourceCount: 8,
-    completionRate: 76,
-    enrolledScore: 369,
-    tags: ['Core'],
-    avatarTheme: 0,
-    enrolledAt: '2026-02-12T10:15:00.000Z',
-  },
-  {
-    id: 'student-6',
-    name: 'Even Midtskogen',
-    role: 'Film Director',
-    primaryCohort: 'Directing Masterclass 1',
-    primaryCourseId: 'enrollment-course-1',
-    courseIds: ['enrollment-course-1', 'enrollment-course-2'],
-    sourceCount: 6,
-    completionRate: 74,
-    enrolledScore: 746,
-    tags: ['Closed'],
-    avatarTheme: 1,
-    enrolledAt: '2026-02-04T13:25:00.000Z',
-  },
-];
-
-const defaultActivities = (): ActivityItem[] => [
-  {
-    id: 'activity-1',
-    author: 'Jonas Ek',
-    course: 'Directing Masterclass',
-    action: 'completed Chapter 3',
-    timestamp: '32m ago',
-  },
-  {
-    id: 'activity-2',
-    author: 'Erika Holmstad',
-    course: 'Photography Mastery',
-    action: 'joined Students room',
-    timestamp: '5h ago',
-  },
-  {
-    id: 'activity-3',
-    author: 'Lars Eriksen',
-    course: 'Cinematic Filmmaking 2',
-    action: 'submitted assignment',
-    timestamp: '5h ago',
-  },
+  "linear-gradient(145deg, rgba(24,30,42,0.92), rgba(12,16,24,0.98)), radial-gradient(circle at 85% 16%, rgba(245,166,35,0.34), rgba(0,0,0,0))",
+  "linear-gradient(145deg, rgba(18,23,34,0.95), rgba(10,14,21,0.98)), radial-gradient(circle at 12% 82%, rgba(245,166,35,0.24), rgba(0,0,0,0))",
+  "linear-gradient(145deg, rgba(17,21,31,0.94), rgba(8,12,18,0.98)), radial-gradient(circle at 72% 10%, rgba(114,158,225,0.2), rgba(0,0,0,0))",
+  "linear-gradient(145deg, rgba(19,24,36,0.93), rgba(11,14,22,0.98)), radial-gradient(circle at 70% 22%, rgba(248,179,33,0.22), rgba(0,0,0,0))",
 ];
 
 const toNok = (value: number): string =>
-  new Intl.NumberFormat('nb-NO', {
-    style: 'currency',
-    currency: 'NOK',
+  new Intl.NumberFormat("nb-NO", {
+    style: "currency",
+    currency: "NOK",
     maximumFractionDigits: 0,
   }).format(Math.max(0, value));
 
 const toCompactNumber = (value: number): string =>
-  new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Math.max(0, value));
+  new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(Math.max(0, value));
+
+const isLandingEnrollmentSource = (source: string | null | undefined): boolean => {
+  if (!source) return true;
+  const normalized = String(source).toLowerCase();
+  return normalized.includes("landing") || normalized.includes("academy");
+};
+
+const displayNameFromInviteRequest = (
+  request: InviteRequestItem,
+  fallbackIndex: number,
+): string => {
+  const fullName = `${request.firstName || ""} ${request.lastName || ""}`.trim();
+  if (fullName.length > 0) return fullName;
+  if (request.email) return displayNameFromStudentId(request.email, fallbackIndex);
+  return `Applicant ${fallbackIndex + 1}`;
+};
 
 const displayNameFromStudentId = (studentId: string, index: number): string => {
-  const normalized = String(studentId || '').trim();
+  const normalized = String(studentId || "").trim();
   if (!normalized) return `Student ${index + 1}`;
-  const beforeAt = normalized.includes('@') ? normalized.split('@')[0] : normalized;
+  const beforeAt = normalized.includes("@")
+    ? normalized.split("@")[0]
+    : normalized;
   const parts = beforeAt
-    .replace(/[_.]+/g, '-')
-    .split('-')
+    .replace(/[_.]+/g, "-")
+    .split("-")
     .map((part) => part.trim())
     .filter(Boolean);
 
@@ -317,16 +182,29 @@ const displayNameFromStudentId = (studentId: string, index: number): string => {
   return parts
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+    .join(" ");
 };
 
+const parseTagList = (value: string): string[] =>
+  value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
 const progressFromEnrollment = (enrollment: Enrollment): number => {
-  if (!Array.isArray(enrollment.progress) || enrollment.progress.length === 0) return 0;
-  const total = enrollment.progress.reduce((sum, item) => sum + Number(item?.progress || 0), 0);
+  if (!Array.isArray(enrollment.progress) || enrollment.progress.length === 0)
+    return 0;
+  const total = enrollment.progress.reduce(
+    (sum, item) => sum + Number(item?.progress || 0),
+    0,
+  );
   return Math.round(total / enrollment.progress.length);
 };
 
-const buildStudentsFromEnrollments = (enrollments: Enrollment[], courses: Course[]): StudentEnrollmentItem[] => {
+const buildStudentsFromEnrollments = (
+  enrollments: Enrollment[],
+  courses: Course[],
+): StudentEnrollmentItem[] => {
   const grouped = new Map<
     string,
     {
@@ -346,10 +224,12 @@ const buildStudentsFromEnrollments = (enrollments: Enrollment[], courses: Course
       enrolledAt: enrollment?.enrolledAt || new Date().toISOString(),
     };
 
-    const courseId = String(enrollment?.courseId || '');
+    const courseId = String(enrollment?.courseId || "");
     if (courseId && !entry.courseIds.includes(courseId)) {
       entry.courseIds.push(courseId);
-      const matchingCourse = courses.find((course) => String(course.id) === courseId);
+      const matchingCourse = courses.find(
+        (course) => String(course.id) === courseId,
+      );
       if (matchingCourse?.title) {
         entry.cohortNames.push(matchingCourse.title);
       }
@@ -357,7 +237,10 @@ const buildStudentsFromEnrollments = (enrollments: Enrollment[], courses: Course
 
     entry.progressValues.push(progressFromEnrollment(enrollment));
 
-    if (new Date(enrollment?.enrolledAt || 0).getTime() > new Date(entry.enrolledAt).getTime()) {
+    if (
+      new Date(enrollment?.enrolledAt || 0).getTime() >
+      new Date(entry.enrolledAt).getTime()
+    ) {
       entry.enrolledAt = enrollment.enrolledAt;
     }
 
@@ -368,124 +251,361 @@ const buildStudentsFromEnrollments = (enrollments: Enrollment[], courses: Course
     const completionRate =
       entry.progressValues.length === 0
         ? 0
-        : Math.round(entry.progressValues.reduce((sum, value) => sum + value, 0) / entry.progressValues.length);
+        : Math.round(
+            entry.progressValues.reduce((sum, value) => sum + value, 0) /
+              entry.progressValues.length,
+          );
 
-    const primaryCourseId = entry.courseIds[0] || String(courses[0]?.id || `course-${index}`);
-    const primaryCourse = courses.find((course) => String(course.id) === String(primaryCourseId));
+    const primaryCourseId =
+      entry.courseIds[0] || String(courses[0]?.id || `course-${index}`);
+    const primaryCourse = courses.find(
+      (course) => String(course.id) === String(primaryCourseId),
+    );
 
     return {
       id: `academy-enrollment-${studentId}`,
       name: displayNameFromStudentId(studentId, index),
-      role: primaryCourse?.level ? `${primaryCourse.level.charAt(0).toUpperCase()}${primaryCourse.level.slice(1)} Learner` : 'Learner',
-      primaryCohort: primaryCourse?.title || entry.cohortNames[0] || 'Academy Cohort',
+      email: studentId.includes("@") ? studentId : "",
+      role: primaryCourse?.level
+        ? `${primaryCourse.level.charAt(0).toUpperCase()}${primaryCourse.level.slice(1)} Learner`
+        : "Learner",
+      primaryCohort:
+        primaryCourse?.title || entry.cohortNames[0] || "Academy Cohort",
       primaryCourseId: String(primaryCourseId),
       courseIds: entry.courseIds,
       sourceCount: Math.max(1, entry.courseIds.length * 2),
       completionRate,
-      enrolledScore: Math.max(80, completionRate * Math.max(1, entry.courseIds.length)),
-      tags: completionRate >= 85 ? ['Top Performer'] : completionRate >= 65 ? ['Active'] : ['Needs Follow-up'],
+      enrolledScore: Math.max(
+        80,
+        completionRate * Math.max(1, entry.courseIds.length),
+      ),
+      tags:
+        completionRate >= 85
+          ? ["Top Performer"]
+          : completionRate >= 65
+            ? ["Active"]
+            : ["Needs Follow-up"],
       avatarTheme: index % placeholderBackgrounds.length,
       enrolledAt: entry.enrolledAt,
     };
   });
 };
 
-function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollmentStudioProps) {
-  const [, setLocation] = useLocation();
-  const { state, getCourse, updateCourse } = useAcademy();
+function AcademyEnrollmentStudio({
+  courseId,
+  onSave,
+}: AcademyEnrollmentStudioProps) {
+  const [location, setLocation] = useLocation();
+  const { state, getCourse, updateCourse, setCurrentCourse } = useAcademy();
   const { analytics, debugging } = useEnhancedMasterIntegration();
-  
-  const { navLabel, tt } = useAcademyLocale();
 
-  const [leftNav, setLeftNav] = useState('enrollment');
-  const [selectedCourseId, setSelectedCourseId] = useState(courseId || 'all');
-  const [rangeFilter, setRangeFilter] = useState<RangeFilter>('30d');
-  const [completionFilter, setCompletionFilter] = useState<CompletionFilter>('all');
-  const [searchValue, setSearchValue] = useState('');
-  const [saveMessage, setSaveMessage] = useState('');
+  const { navLabel, tt, language } = useAcademyLocale();
 
-  const [fallbackStudentItems] = useState<StudentEnrollmentItem[]>(defaultStudents);
-  const [manualStudents, setManualStudents] = useState<StudentEnrollmentItem[]>([]);
-  const [activityFeed, setActivityFeed] = useState<ActivityItem[]>(defaultActivities);
+  const [leftNav, setLeftNav] = useState("enrollment");
+  const [selectedCourseId, setSelectedCourseId] = useState(courseId || "all");
+  const [rangeFilter, setRangeFilter] = useState<RangeFilter>("30d");
+  const [completionFilter, setCompletionFilter] =
+    useState<CompletionFilter>("all");
+  const [searchValue, setSearchValue] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
+
+  const [manualStudents, setManualStudents] = useState<StudentEnrollmentItem[]>(
+    [],
+  );
+  const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false);
+  const [addStudentForm, setAddStudentForm] = useState<AddStudentFormState>({
+    name: "",
+    email: "",
+    role: "",
+    courseId: "",
+    tags: "",
+    subscriptionPlanId: "",
+  });
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [studentOverrides, setStudentOverrides] = useState<
+    Record<string, Partial<StudentEnrollmentItem>>
+  >({});
+  const [hiddenStudentIds, setHiddenStudentIds] = useState<string[]>([]);
+  const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
   const [featureFlags, setFeatureFlags] = useState({
     earlyAccess: true,
     invitationOnly: true,
     closed: false,
     dripRelease: false,
   });
+  const [processingInviteRequestId, setProcessingInviteRequestId] = useState<
+    string | null
+  >(null);
+  const queryClient = useQueryClient();
 
   const courseItems = useMemo(() => {
     if (Array.isArray(state?.courses) && state.courses.length > 0) {
       return state.courses;
     }
-    return fallbackCourses;
+    return [];
   }, [state?.courses]);
+
+  const subscriptionPlanOptions = useMemo<SubscriptionPlanOption[]>(
+    () => [
+      {
+        id: "basic",
+        labelNo: "Basic Creator",
+        labelEn: "Basic Creator",
+        monthlyPriceNok: 299,
+      },
+      {
+        id: "pro",
+        labelNo: "Pro Creator",
+        labelEn: "Pro Creator",
+        monthlyPriceNok: 599,
+      },
+      {
+        id: "enterprise",
+        labelNo: "Creator Teams",
+        labelEn: "Creator Teams",
+        monthlyPriceNok: 1499,
+      },
+    ],
+    [],
+  );
 
   const academyEnrollments = useMemo(
     () => (Array.isArray(state?.enrollments) ? state.enrollments : []),
     [state?.enrollments],
   );
 
+  const { data: inviteRequests = [], isLoading: inviteRequestsLoading } =
+    useQuery<InviteRequestItem[]>({
+      queryKey: ["academy-enrollment-invite-requests"],
+      queryFn: async () => {
+        const result = await apiRequest("/api/invite-requests");
+        return Array.isArray(result) ? (result as InviteRequestItem[]) : [];
+      },
+      staleTime: 30_000,
+    });
+
+  const landingInviteRequests = useMemo(
+    () => inviteRequests.filter((request) => isLandingEnrollmentSource(request.source)),
+    [inviteRequests],
+  );
+
+  const pendingInviteRequests = useMemo(
+    () =>
+      landingInviteRequests.filter(
+        (request) => String(request.status || "").toLowerCase() === "pending",
+      ),
+    [landingInviteRequests],
+  );
+
+  const approvedInviteRequests = useMemo(
+    () =>
+      landingInviteRequests.filter(
+        (request) => String(request.status || "").toLowerCase() === "approved",
+      ),
+    [landingInviteRequests],
+  );
+
   const activeCourse = useMemo(() => {
     const fromParam = courseId ? getCourse(courseId) : null;
     if (fromParam) return fromParam;
 
-    if (selectedCourseId !== 'all') {
-      const fromSelected = courseItems.find((course) => String(course.id) === String(selectedCourseId));
+    if (selectedCourseId !== "all") {
+      const fromSelected = courseItems.find(
+        (course) => String(course.id) === String(selectedCourseId),
+      );
       if (fromSelected) return fromSelected;
     }
 
-    return state.currentCourse || courseItems[0] || fallbackCourses[0];
+    return state.currentCourse || courseItems[0] || null;
   }, [courseId, courseItems, getCourse, selectedCourseId, state.currentCourse]);
+
+  const syncCourseIdInRoute = useCallback(
+    (nextCourseId: string) => {
+      const normalizedCourseId = String(nextCourseId || "").trim();
+      const [pathname, rawQuery = ""] = location.split("?");
+      const params = new URLSearchParams(rawQuery);
+
+      if (normalizedCourseId && normalizedCourseId !== "all") {
+        params.set("courseId", normalizedCourseId);
+      } else {
+        params.delete("courseId");
+      }
+      params.delete("course_id");
+
+      const suffix = params.toString();
+      setLocation(suffix ? `${pathname}?${suffix}` : pathname);
+    },
+    [location, setLocation],
+  );
+
+  useEffect(() => {
+    const nextCourseId = String(courseId || "").trim();
+    if (!nextCourseId) return;
+    setSelectedCourseId((previousCourseId) =>
+      previousCourseId === nextCourseId ? previousCourseId : nextCourseId,
+    );
+  }, [courseId]);
+
+  useEffect(() => {
+    if (!activeCourse?.id) return;
+    const inState = state.courses.some(
+      (course) => String(course.id) === String(activeCourse.id),
+    );
+    if (!inState) return;
+    if (String(state.currentCourse?.id || "") === String(activeCourse.id))
+      return;
+    setCurrentCourse(activeCourse);
+  }, [activeCourse, setCurrentCourse, state.courses, state.currentCourse?.id]);
 
   const enrollmentStudents = useMemo(
     () => buildStudentsFromEnrollments(academyEnrollments, courseItems),
     [academyEnrollments, courseItems],
   );
 
+  const approvedInviteStudents = useMemo(() => {
+    const fallbackCourseId =
+      selectedCourseId !== "all"
+        ? String(selectedCourseId)
+        : String(activeCourse?.id || courseItems[0]?.id || "academy-landing");
+    const fallbackCourseTitle =
+      courseItems.find((course) => String(course.id) === fallbackCourseId)?.title ||
+      activeCourse?.title ||
+      tt("Landingpåmelding", "Landing Enrollment");
+
+    return approvedInviteRequests.map((request, index) => {
+      const planLabel =
+        request.planName ||
+        request.selectedPlan ||
+        tt("Abonnement ikke valgt", "No subscription selected");
+
+      return {
+        id: `landing-approved-${request.id}`,
+        name: displayNameFromInviteRequest(request, index),
+        email: request.email,
+        role:
+          request.profession && String(request.profession).trim().length > 0
+            ? navLabel(request.profession)
+            : tt("Deltaker", "Learner"),
+        primaryCohort: fallbackCourseTitle,
+        primaryCourseId: fallbackCourseId,
+        courseIds: [fallbackCourseId],
+        sourceCount: 1,
+        completionRate: 0,
+        enrolledScore: 0,
+        tags: [tt("Landing", "Landing"), planLabel],
+        avatarTheme: index % placeholderBackgrounds.length,
+        enrolledAt:
+          request.processedDate ||
+          request.requestDate ||
+          new Date().toISOString(),
+        subscriptionPlanId: request.selectedPlan || undefined,
+        subscriptionPlanName: request.planName || request.selectedPlan || undefined,
+        subscriptionPlanPrice:
+          typeof request.planPrice === "number" ? request.planPrice : undefined,
+        inviteRequestId: request.id,
+      } as StudentEnrollmentItem;
+    });
+  }, [
+    activeCourse?.id,
+    activeCourse?.title,
+    approvedInviteRequests,
+    courseItems,
+    navLabel,
+    selectedCourseId,
+    tt,
+  ]);
+
   const baseStudents = useMemo(() => {
-    const source = enrollmentStudents.length > 0 ? enrollmentStudents : fallbackStudentItems;
-    return [...source, ...manualStudents];
-  }, [enrollmentStudents, fallbackStudentItems, manualStudents]);
+    const merged = [...approvedInviteStudents, ...enrollmentStudents, ...manualStudents];
+    const seen = new Set<string>();
+    return merged
+      .filter((student) => {
+        if (seen.has(student.id)) return false;
+        seen.add(student.id);
+        return !hiddenStudentIds.includes(student.id);
+      })
+      .map((student) => {
+        const override = studentOverrides[student.id];
+        if (!override) return student;
+        return {
+          ...student,
+          ...override,
+          tags: Array.isArray(override.tags) ? override.tags : student.tags,
+          courseIds:
+            Array.isArray(override.courseIds) && override.courseIds.length > 0
+              ? override.courseIds
+              : student.courseIds,
+          subscriptionPlanId:
+            typeof override.subscriptionPlanId === "string"
+              ? override.subscriptionPlanId
+              : student.subscriptionPlanId,
+          subscriptionPlanName:
+            typeof override.subscriptionPlanName === "string"
+              ? override.subscriptionPlanName
+              : student.subscriptionPlanName,
+          subscriptionPlanPrice:
+            typeof override.subscriptionPlanPrice === "number"
+              ? override.subscriptionPlanPrice
+              : student.subscriptionPlanPrice,
+        };
+      });
+  }, [
+    approvedInviteStudents,
+    enrollmentStudents,
+    hiddenStudentIds,
+    manualStudents,
+    studentOverrides,
+  ]);
 
   useEffect(() => {
-    analytics.trackEvent('academy_enrollment_studio_opened', {
+    analytics.trackEvent("academy_enrollment_studio_opened", {
       courseId: activeCourse?.id || null,
       studentCount: baseStudents.length,
       enrollmentCount: academyEnrollments.length,
       timestamp: Date.now(),
     });
 
-    debugging.logIntegration('info', 'AcademyEnrollmentStudio opened', {
+    debugging.logIntegration("info", "AcademyEnrollmentStudio opened", {
       courseId: activeCourse?.id || null,
       studentCount: baseStudents.length,
       enrollmentCount: academyEnrollments.length,
     });
-  }, [academyEnrollments.length, activeCourse?.id, analytics, baseStudents.length, debugging]);
+  }, [
+    academyEnrollments.length,
+    activeCourse?.id,
+    analytics,
+    baseStudents.length,
+    debugging,
+  ]);
 
   const visibleStudents = useMemo(() => {
     const now = Date.now();
-    const rangeDays = rangeFilter === '7d' ? 7 : rangeFilter === '30d' ? 30 : 90;
+    const rangeDays =
+      rangeFilter === "7d" ? 7 : rangeFilter === "30d" ? 30 : 90;
     const since = now - rangeDays * 24 * 60 * 60 * 1000;
     const query = searchValue.trim().toLowerCase();
 
     return baseStudents.filter((student) => {
       const enrolledAtTime = new Date(student.enrolledAt).getTime();
-      const inRange = Number.isNaN(enrolledAtTime) ? true : enrolledAtTime >= since;
+      const inRange = Number.isNaN(enrolledAtTime)
+        ? true
+        : enrolledAtTime >= since;
       if (!inRange) return false;
 
       const matchesCourse =
-        selectedCourseId === 'all'
+        selectedCourseId === "all"
           ? true
-          : student.courseIds.some((id) => String(id) === String(selectedCourseId));
+          : student.courseIds.some(
+              (id) => String(id) === String(selectedCourseId),
+            );
       if (!matchesCourse) return false;
 
       const matchesCompletion =
-        completionFilter === 'all'
+        completionFilter === "all"
           ? true
-          : completionFilter === 'high'
+          : completionFilter === "high"
             ? student.completionRate >= 85
-            : completionFilter === 'mid'
+            : completionFilter === "mid"
               ? student.completionRate >= 65 && student.completionRate < 85
               : student.completionRate < 65;
       if (!matchesCompletion) return false;
@@ -498,17 +618,34 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
         student.tags.some((tag) => tag.toLowerCase().includes(query))
       );
     });
-  }, [baseStudents, completionFilter, rangeFilter, searchValue, selectedCourseId]);
+  }, [
+    baseStudents,
+    completionFilter,
+    rangeFilter,
+    searchValue,
+    selectedCourseId,
+  ]);
 
   const totals = useMemo(() => {
     const totalStudents = baseStudents.length;
     const avgCompletion =
       totalStudents === 0
         ? 0
-        : Math.round(baseStudents.reduce((sum, student) => sum + student.completionRate, 0) / totalStudents);
-    const enrolledTotal = baseStudents.reduce((sum, student) => sum + student.enrolledScore, 0);
-    const avgEnrollScore = totalStudents === 0 ? 0 : Math.round(enrolledTotal / totalStudents);
-    const activeCount = baseStudents.filter((student) => student.completionRate >= 75).length;
+        : Math.round(
+            baseStudents.reduce(
+              (sum, student) => sum + student.completionRate,
+              0,
+            ) / totalStudents,
+          );
+    const enrolledTotal = baseStudents.reduce(
+      (sum, student) => sum + student.enrolledScore,
+      0,
+    );
+    const avgEnrollScore =
+      totalStudents === 0 ? 0 : Math.round(enrolledTotal / totalStudents);
+    const activeCount = baseStudents.filter(
+      (student) => student.completionRate >= 75,
+    ).length;
 
     return {
       totalStudents,
@@ -519,14 +656,18 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
   }, [baseStudents]);
 
   const distribution = useMemo(() => {
-    const excellent = baseStudents.filter((student) => student.completionRate >= 90).length;
+    const excellent = baseStudents.filter(
+      (student) => student.completionRate >= 90,
+    ).length;
     const healthy = baseStudents.filter(
       (student) => student.completionRate >= 75 && student.completionRate < 90,
     ).length;
     const improving = baseStudents.filter(
       (student) => student.completionRate >= 60 && student.completionRate < 75,
     ).length;
-    const atRisk = baseStudents.filter((student) => student.completionRate < 60).length;
+    const atRisk = baseStudents.filter(
+      (student) => student.completionRate < 60,
+    ).length;
 
     const total = Math.max(1, excellent + healthy + improving + atRisk);
 
@@ -549,28 +690,204 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
     const atRiskDeg = distribution.atRiskPct * 3.6;
 
     return `conic-gradient(#f8b321 0deg ${excellentDeg}deg, #8ea6d6 ${excellentDeg}deg ${excellentDeg + healthyDeg}deg, #9acd6f ${excellentDeg + healthyDeg}deg ${excellentDeg + healthyDeg + improvingDeg}deg, #c56f58 ${excellentDeg + healthyDeg + improvingDeg}deg ${excellentDeg + healthyDeg + improvingDeg + atRiskDeg}deg, rgba(255,255,255,0.1) ${excellentDeg + healthyDeg + improvingDeg + atRiskDeg}deg 360deg)`;
-  }, [distribution.excellentPct, distribution.healthyPct, distribution.improvingPct, distribution.atRiskPct]);
+  }, [
+    distribution.excellentPct,
+    distribution.healthyPct,
+    distribution.improvingPct,
+    distribution.atRiskPct,
+  ]);
 
   const topCohorts = useMemo(() => {
-    const grouped = new Map<string, { students: number; completionTotal: number }>();
+    const grouped = new Map<
+      string,
+      { students: number; completionTotal: number }
+    >();
 
     baseStudents.forEach((student) => {
-      const entry = grouped.get(student.primaryCohort) || { students: 0, completionTotal: 0 };
+      const entry = grouped.get(student.primaryCohort) || {
+        students: 0,
+        completionTotal: 0,
+      };
       entry.students += 1;
       entry.completionTotal += student.completionRate;
       grouped.set(student.primaryCohort, entry);
     });
 
-    const items: TopCohortItem[] = Array.from(grouped.entries()).map(([name, values], index) => ({
-      id: `cohort-insight-${index}`,
-      name,
-      students: values.students,
-      avgCompletion: Math.round(values.completionTotal / Math.max(values.students, 1)),
-      imageTheme: index % placeholderBackgrounds.length,
-    }));
+    const items: TopCohortItem[] = Array.from(grouped.entries()).map(
+      ([name, values], index) => ({
+        id: `cohort-insight-${index}`,
+        name,
+        students: values.students,
+        avgCompletion: Math.round(
+          values.completionTotal / Math.max(values.students, 1),
+        ),
+        imageTheme: index % placeholderBackgrounds.length,
+      }),
+    );
 
     return items.sort((a, b) => b.students - a.students).slice(0, 3);
   }, [baseStudents]);
+
+  const handleExport = useCallback(async () => {
+    if (visibleStudents.length === 0) {
+      setSaveMessage(
+        tt("Ingen studentdata å eksportere.", "No student data to export."),
+      );
+      return;
+    }
+
+    const courseLabel =
+      selectedCourseId === "all"
+        ? tt("Alle kompetanser", "All competencies")
+        : String(
+            courseItems.find(
+              (course) => String(course.id) === String(selectedCourseId),
+            )?.title || selectedCourseId,
+          );
+
+    await academyPdfExportService.exportReport({
+      fileName: `academy-enrollment-${new Date().toISOString().slice(0, 10)}.pdf`,
+      title: tt("Studentpåmelding", "Student Enrollment"),
+      subtitle: tt(
+        "Påmeldingsstatus, aktivitet og fremdrift",
+        "Enrollment status, activity, and progress",
+      ),
+      courseLabel,
+      locale: language === "no" ? "nb-NO" : "en-US",
+      sections: [
+        {
+          title: tt("Oversikt", "Overview"),
+          metrics: [
+            {
+              label: tt("Totale studenter", "Total students"),
+              value: totals.totalStudents,
+            },
+            {
+              label: tt("Aktive studenter", "Active students"),
+              value: totals.activeCount,
+            },
+            {
+              label: tt("Gj.sn. fullføring", "Avg completion"),
+              value: `${totals.avgCompletion}%`,
+            },
+            {
+              label: tt("Gj.sn. score", "Avg score"),
+              value: totals.avgEnrollScore,
+            },
+          ],
+        },
+        {
+          title: tt("Fullføringsfordeling", "Completion Distribution"),
+          table: {
+            columns: [
+              tt("Kategori", "Category"),
+              tt("Antall", "Count"),
+              tt("Andel", "Share"),
+            ],
+            rows: [
+              [
+                tt("Utmerket", "Excellent"),
+                distribution.excellent,
+                `${distribution.excellentPct}%`,
+              ],
+              [
+                tt("Sunn fremdrift", "Healthy"),
+                distribution.healthy,
+                `${distribution.healthyPct}%`,
+              ],
+              [
+                tt("Forbedrer seg", "Improving"),
+                distribution.improving,
+                `${distribution.improvingPct}%`,
+              ],
+              [
+                tt("Risiko", "At Risk"),
+                distribution.atRisk,
+                `${distribution.atRiskPct}%`,
+              ],
+            ],
+          },
+        },
+        {
+          title: tt("Studentliste", "Student List"),
+          table: {
+            columns: [
+              tt("Navn", "Name"),
+              tt("Rolle", "Role"),
+              tt("Kohort", "Cohort"),
+              tt("Fullføring", "Completion"),
+              tt("Score", "Score"),
+              tt("Tagger", "Tags"),
+            ],
+            rows: visibleStudents.map((student) => [
+              student.name,
+              student.role,
+              student.primaryCohort,
+              `${student.completionRate}%`,
+              student.enrolledScore,
+              student.tags.join(", ") || "-",
+            ]),
+          },
+        },
+        {
+          title: tt("Toppkohorter", "Top Cohorts"),
+          table: {
+            columns: [
+              tt("Kohort", "Cohort"),
+              tt("Studenter", "Students"),
+              tt("Gj.sn. fullføring", "Avg completion"),
+            ],
+            rows: topCohorts.map((cohort) => [
+              cohort.name,
+              cohort.students,
+              `${cohort.avgCompletion}%`,
+            ]),
+          },
+        },
+      ],
+    });
+
+    analytics.trackEvent("academy_enrollment_export_clicked", {
+      courseId: selectedCourseId,
+      visibleStudents: visibleStudents.length,
+      timestamp: Date.now(),
+    });
+    setSaveMessage(
+      tt(
+        "Påmeldingsrapport eksportert som PDF.",
+        "Enrollment report exported as PDF.",
+      ),
+    );
+  }, [
+    analytics,
+    courseItems,
+    distribution.atRisk,
+    distribution.atRiskPct,
+    distribution.excellent,
+    distribution.excellentPct,
+    distribution.healthy,
+    distribution.healthyPct,
+    distribution.improving,
+    distribution.improvingPct,
+    language,
+    selectedCourseId,
+    topCohorts,
+    totals.activeCount,
+    totals.avgCompletion,
+    totals.avgEnrollScore,
+    totals.totalStudents,
+    tt,
+    visibleStudents,
+  ]);
+
+  const handleReports = useCallback(async () => {
+    analytics.trackEvent("academy_enrollment_reports_clicked", {
+      courseId: selectedCourseId,
+      visibleStudents: visibleStudents.length,
+      timestamp: Date.now(),
+    });
+    await handleExport();
+  }, [analytics, handleExport, selectedCourseId, visibleStudents.length]);
 
   const enrollmentCards = useMemo(() => {
     return courseItems.slice(0, 2).map((course, index) => {
@@ -580,7 +897,12 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
       const avgCompletion =
         forCourse.length === 0
           ? 0
-          : Math.round(forCourse.reduce((sum, student) => sum + student.completionRate, 0) / forCourse.length);
+          : Math.round(
+              forCourse.reduce(
+                (sum, student) => sum + student.completionRate,
+                0,
+              ) / forCourse.length,
+            );
 
       return {
         id: String(course.id),
@@ -588,32 +910,209 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
         cohortCount: forCourse.length,
         avgCompletion,
         imageTheme: index % placeholderBackgrounds.length,
-        sources: Math.max(0, forCourse.reduce((sum, student) => sum + student.sourceCount, 0)),
+        sources: Math.max(
+          0,
+          forCourse.reduce((sum, student) => sum + student.sourceCount, 0),
+        ),
       };
     });
   }, [baseStudents, courseItems]);
 
-  const addStudent = useCallback(() => {
+  const openAddStudentModal = useCallback(() => {
+    const preferredCourseId =
+      selectedCourseId !== "all"
+        ? selectedCourseId
+        : String(activeCourse?.id || courseItems[0]?.id || "");
+
+    setEditingStudentId(null);
+    setAddStudentForm({
+      name: "",
+      email: "",
+      role: tt("Deltaker", "Learner"),
+      courseId: preferredCourseId,
+      tags: "",
+      subscriptionPlanId: "",
+    });
+    setIsAddStudentModalOpen(true);
+  }, [activeCourse?.id, courseItems, selectedCourseId, tt]);
+
+  const openEditStudentModal = useCallback(
+    (student: StudentEnrollmentItem) => {
+      const courseId =
+        student.primaryCourseId ||
+        student.courseIds[0] ||
+        String(activeCourse?.id || courseItems[0]?.id || "");
+      setEditingStudentId(student.id);
+      setAddStudentForm({
+        name: student.name,
+        email: student.email || "",
+        role: student.role,
+        courseId,
+        tags: student.tags.join(", "),
+        subscriptionPlanId: student.subscriptionPlanId || "",
+      });
+      setIsAddStudentModalOpen(true);
+    },
+    [activeCourse?.id, courseItems],
+  );
+
+  const closeStudentModal = useCallback(() => {
+    setIsAddStudentModalOpen(false);
+    setEditingStudentId(null);
+  }, []);
+
+  const handleMessageStudent = useCallback(
+    (student: StudentEnrollmentItem) => {
+      const recipient = (student.email || "").trim();
+      if (!recipient || !recipient.includes("@")) {
+        setSaveMessage(
+          tt(
+            "Denne studenten har ingen registrert e-post ennå.",
+            "This student has no email registered yet.",
+          ),
+        );
+        return;
+      }
+
+      const subject = encodeURIComponent(
+        `${tt("Oppfølging", "Follow-up")}: ${student.name}`,
+      );
+      window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${subject}`;
+    },
+    [tt],
+  );
+
+  const handleRemoveStudent = useCallback(
+    (student: StudentEnrollmentItem) => {
+      if (student.isManual) {
+        setManualStudents((prev) => prev.filter((item) => item.id !== student.id));
+      } else {
+        setHiddenStudentIds((prev) =>
+          prev.includes(student.id) ? prev : [...prev, student.id],
+        );
+      }
+      setSaveMessage(
+        tt("Student fjernet fra visning.", "Student removed from view."),
+      );
+    },
+    [tt],
+  );
+
+  const handleManageCourseCard = useCallback(
+    (courseCardId: string) => {
+      setSelectedCourseId(courseCardId);
+      setSearchValue("");
+      const matchingCourse = courseItems.find(
+        (course) => String(course.id) === String(courseCardId),
+      );
+      setSaveMessage(
+        tt("Filter satt til", "Filter set to") +
+          `: ${matchingCourse?.title || courseCardId}`,
+      );
+    },
+    [courseItems, tt],
+  );
+
+  const handleOpenCourseBuilder = useCallback(
+    (courseCardId: string) => {
+      setLocation(`/academy/course-creator?courseId=${encodeURIComponent(courseCardId)}`);
+    },
+    [setLocation],
+  );
+
+  const submitAddStudent = useCallback(() => {
+    const name = addStudentForm.name.trim();
+    if (!name) {
+      setSaveMessage(
+        tt("Fyll ut studentnavn før du lagrer.", "Fill in student name."),
+      );
+      return;
+    }
+
+    const tags = parseTagList(addStudentForm.tags);
+    const normalizedEmail = addStudentForm.email.trim();
+    const resolvedRole = addStudentForm.role.trim() || tt("Deltaker", "Learner");
+    const selectedPlan = subscriptionPlanOptions.find(
+      (plan) => plan.id === addStudentForm.subscriptionPlanId,
+    );
+    const selectedPlanName = selectedPlan
+      ? language === "no"
+        ? selectedPlan.labelNo
+        : selectedPlan.labelEn
+      : "";
+    const fallbackCourseId = String(
+      addStudentForm.courseId ||
+        activeCourse?.id ||
+        courseItems[0]?.id ||
+        `manual-course-${Date.now()}`,
+    );
+    const targetCourse = courseItems.find(
+      (course) => String(course.id) === String(fallbackCourseId),
+    );
+    const resolvedPrimaryCohort =
+      targetCourse?.title || tt("Akademikohort", "Academy Cohort");
+
+    if (editingStudentId) {
+      setStudentOverrides((prev) => ({
+        ...prev,
+        [editingStudentId]: {
+          name,
+          email: normalizedEmail,
+          role: resolvedRole,
+          primaryCourseId: fallbackCourseId,
+          primaryCohort: resolvedPrimaryCohort,
+          courseIds: [fallbackCourseId],
+          tags: tags.length > 0 ? tags : [tt("Oppdatert", "Updated")],
+          subscriptionPlanId: selectedPlan?.id,
+          subscriptionPlanName: selectedPlanName || undefined,
+          subscriptionPlanPrice:
+            typeof selectedPlan?.monthlyPriceNok === "number"
+              ? selectedPlan.monthlyPriceNok
+              : undefined,
+        },
+      }));
+      setActivityFeed((prev) => [
+        {
+          id: `activity-edit-${editingStudentId}-${Date.now()}`,
+          author: name,
+          course: resolvedPrimaryCohort,
+          action: "student updated",
+          timestamp: tt("nå", "now"),
+        },
+        ...prev,
+      ]);
+      setSaveMessage(tt("Student oppdatert.", "Student updated."));
+      closeStudentModal();
+      return;
+    }
+
     const index = baseStudents.length + 1;
     const now = new Date().toISOString();
-    const targetCourseId =
-      selectedCourseId !== 'all' ? selectedCourseId : String(activeCourse?.id || courseItems[0]?.id || 'enrollment-course-1');
-
-    const targetCourse = courseItems.find((course) => String(course.id) === String(targetCourseId));
+    const idSeed = (normalizedEmail || name)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
 
     const newStudent: StudentEnrollmentItem = {
-      id: `manual-student-${Date.now()}`,
-      name: `Guest Student ${index}`,
-      role: 'Academy Guest',
-      primaryCohort: targetCourse?.title || 'Academy Cohort',
-      primaryCourseId: targetCourseId,
-      courseIds: [targetCourseId],
+      id: `manual-student-${idSeed || Date.now()}-${Date.now()}`,
+      name,
+      email: normalizedEmail,
+      role: resolvedRole,
+      primaryCohort: resolvedPrimaryCohort,
+      primaryCourseId: fallbackCourseId,
+      courseIds: [fallbackCourseId],
       sourceCount: 1,
       completionRate: 0,
       enrolledScore: 0,
-      tags: ['New'],
+      tags: tags.length > 0 ? tags : [tt("Ny", "New")],
       avatarTheme: index % placeholderBackgrounds.length,
       enrolledAt: now,
+      subscriptionPlanId: selectedPlan?.id,
+      subscriptionPlanName: selectedPlanName || undefined,
+      subscriptionPlanPrice:
+        typeof selectedPlan?.monthlyPriceNok === "number"
+          ? selectedPlan.monthlyPriceNok
+          : undefined,
       isManual: true,
     };
 
@@ -623,12 +1122,125 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
         id: `activity-${Date.now()}`,
         author: newStudent.name,
         course: newStudent.primaryCohort,
-        action: 'added to enrollment',
-        timestamp: 'now',
+        action: "added to enrollment",
+        timestamp: tt("nå", "now"),
       },
       ...prev,
     ]);
-  }, [activeCourse?.id, baseStudents.length, courseItems, selectedCourseId]);
+    setSaveMessage(tt("Student lagt til.", "Student added."));
+    analytics.trackEvent("academy_enrollment_student_added", {
+      courseId: fallbackCourseId,
+      studentName: newStudent.name,
+      timestamp: Date.now(),
+    });
+    closeStudentModal();
+  }, [
+    closeStudentModal,
+    activeCourse?.id,
+    addStudentForm.courseId,
+    addStudentForm.email,
+    addStudentForm.name,
+    addStudentForm.role,
+    addStudentForm.subscriptionPlanId,
+    addStudentForm.tags,
+    analytics,
+    baseStudents.length,
+    courseItems,
+    editingStudentId,
+    language,
+    subscriptionPlanOptions,
+    tt,
+  ]);
+
+  const processInviteRequestMutation = useMutation({
+    mutationFn: async ({
+      requestId,
+      status,
+    }: {
+      requestId: string;
+      status: "approved" | "rejected";
+    }) =>
+      apiRequest(`/api/invite-requests/${requestId}/process`, {
+        method: "POST",
+        body: {
+          status,
+        },
+      }),
+    onSuccess: async (_response, variables) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["academy-enrollment-invite-requests"],
+      });
+      analytics.trackEvent("academy_enrollment_request_processed", {
+        requestId: variables.requestId,
+        status: variables.status,
+        timestamp: Date.now(),
+      });
+      setSaveMessage(
+        variables.status === "approved"
+          ? tt(
+              "Studentforespørsel godkjent og tilgang aktivert.",
+              "Enrollment request approved and access granted.",
+            )
+          : tt(
+              "Studentforespørsel avvist.",
+              "Enrollment request rejected.",
+            ),
+      );
+    },
+    onError: (error) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : tt(
+              "Kunne ikke oppdatere forespørsel.",
+              "Failed to process enrollment request.",
+            );
+      setSaveMessage(message);
+    },
+  });
+
+  const handleProcessInviteRequest = useCallback(
+    async (request: InviteRequestItem, status: "approved" | "rejected") => {
+      setProcessingInviteRequestId(request.id);
+      try {
+        await processInviteRequestMutation.mutateAsync({
+          requestId: request.id,
+          status,
+        });
+
+        const planLabel =
+          request.planName ||
+          request.selectedPlan ||
+          tt("Uten abonnement", "No subscription");
+        setActivityFeed((prev) => [
+          {
+            id: `invite-request-${request.id}-${Date.now()}`,
+            author: displayNameFromInviteRequest(request, 0),
+            course: planLabel,
+            action:
+              status === "approved"
+                ? "access approved"
+                : "access rejected",
+            timestamp: tt("nå", "now"),
+          },
+          ...prev,
+        ]);
+      } catch (error) {
+        debugging.logIntegration(
+          "error",
+          "Failed to process academy enrollment invite request",
+          {
+            requestId: request.id,
+            status,
+            message: error instanceof Error ? error.message : String(error),
+          },
+        );
+      } finally {
+        setProcessingInviteRequestId(null);
+      }
+    },
+    [debugging, processInviteRequestMutation, tt],
+  );
 
   const toggleFeatureFlag = useCallback((key: keyof typeof featureFlags) => {
     setFeatureFlags((prev) => ({
@@ -656,8 +1268,16 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
       };
 
       try {
-        if (activeCourse?.id && Array.isArray(state?.courses) && state.courses.some((course) => String(course.id) === String(activeCourse.id))) {
-          const nextTags = Array.from(new Set([...(activeCourse.tags || []), 'enrollment']));
+        if (
+          activeCourse?.id &&
+          Array.isArray(state?.courses) &&
+          state.courses.some(
+            (course) => String(course.id) === String(activeCourse.id),
+          )
+        ) {
+          const nextTags = Array.from(
+            new Set([...(activeCourse.tags || []), "enrollment"]),
+          );
           await updateCourse({
             ...activeCourse,
             tags: nextTags,
@@ -668,21 +1288,36 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
 
         setSaveMessage(
           publish
-            ? tt('Påmeldingsoppdateringer publisert.', 'Enrollment updates published.')
-            : tt('Påmeldingsoppdateringer lagret.', 'Enrollment updates saved.'),
+            ? tt(
+                "Påmeldingsoppdateringer publisert.",
+                "Enrollment updates published.",
+              )
+            : tt(
+                "Påmeldingsoppdateringer lagret.",
+                "Enrollment updates saved.",
+              ),
         );
         onSave?.(payload);
 
-        analytics.trackEvent(publish ? 'academy_enrollment_publish' : 'academy_enrollment_save', {
-          courseId: activeCourse?.id || null,
-          studentCount: totals.totalStudents,
-          publish,
-          timestamp: Date.now(),
-        });
+        analytics.trackEvent(
+          publish ? "academy_enrollment_publish" : "academy_enrollment_save",
+          {
+            courseId: activeCourse?.id || null,
+            studentCount: totals.totalStudents,
+            publish,
+            timestamp: Date.now(),
+          },
+        );
       } catch (error) {
-        const message = error instanceof Error ? error.message : tt('Kunne ikke lagre påmeldingsinnstillinger.', 'Failed to save enrollment settings.');
+        const message =
+          error instanceof Error
+            ? error.message
+            : tt(
+                "Kunne ikke lagre påmeldingsinnstillinger.",
+                "Failed to save enrollment settings.",
+              );
         setSaveMessage(message);
-        debugging.logIntegration('error', 'Academy enrollment save failed', {
+        debugging.logIntegration("error", "Academy enrollment save failed", {
           courseId: activeCourse?.id || null,
           message,
         });
@@ -707,154 +1342,141 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
     ],
   );
 
-  const leftNavItems = [
-    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
-    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
-    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
-    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
-    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
-    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
-    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
-    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
-    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
-    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
-    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
-    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
-  ];
-
   return (
     <Box
       sx={{
-        minHeight: '100vh',
-        color: '#edf0f7',
-        bgcolor: '#06080d',
+        minHeight: "100vh",
+        color: "#edf0f7",
+        bgcolor: "#06080d",
         fontFamily: '"Manrope", "Barlow", "Segoe UI", sans-serif',
-        position: 'relative',
-        overflow: 'hidden',
+        position: "relative",
+        overflow: "hidden",
       }}
     >
       <Box
         sx={{
-          position: 'absolute',
+          position: "absolute",
           inset: 0,
-          pointerEvents: 'none',
+          pointerEvents: "none",
           background:
-            'radial-gradient(circle at 76% 14%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 14% 80%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 30%)',
+            "radial-gradient(circle at 74% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%)",
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", lg: "row" },
+          minHeight: "100vh",
+          position: "relative",
+          zIndex: 1,
+          width: "min(100%, var(--academy-shell-max-width, 1920px))",
+          mx: "auto",
+        }}
+      >
+        <AcademyLeftSidebar
+          activeNav={leftNav}
+          onNavigate={(navId, route) => {
+            setLeftNav(navId);
+            setLocation(route);
+          }}
+          onCreateCourse={() => {
+            setLeftNav("curriculum");
+            setLocation("/academy/curriculum?createCompetency=1");
+          }}
+          tt={tt}
+          navLabel={navLabel}
+          bottomAction={{
+            label: tt("Legg til student", "Add Student"),
+            onClick: openAddStudentModal,
+          }}
+        />
+
         <Box
-          component="aside"
           sx={{
-            width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
-            background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
-            display: 'flex',
-            flexDirection: 'column',
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <AcademyBrandMark />
-            <Button
-              variant="outlined"
-              startIcon={<Add />}
-              onClick={() => setLocation('/academy/course-creator')}
-              sx={{
-                justifyContent: 'flex-start',
-                borderColor: 'rgba(248,179,33,0.55)',
-                color: '#f8d56f',
-                borderRadius: 1,
-                textTransform: 'none',
-                fontWeight: 600,
-              }}
-            >
-              {tt('Opprett nytt kurs', 'Create New Course')}
-            </Button>
-          </Stack>
-
-          <Stack spacing={0.5} sx={{ px: 1.5 }}>
-            {leftNavItems.map((item) => {
-              const active = item.id === leftNav;
-              return (
-                <Button
-                  key={item.id}
-                  onClick={() => {
-                    setLeftNav(item.id);
-                    setLocation(item.route);
-                  }}
-                  sx={{
-                    justifyContent: 'flex-start',
-                    color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
-                    borderRadius: 1,
-                    textTransform: 'none',
-                    px: 2,
-                    py: 1.15,
-                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
-                    background: active
-                      ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
-                      : 'transparent',
-                  }}
-                >
-                  {item.label}
-                </Button>
-              );
-            })}
-          </Stack>
-
-          <Box sx={{ mt: 'auto', p: 2 }}>
-            <Button
-              variant="text"
-              startIcon={<Add />}
-              onClick={addStudent}
-              sx={{
-                width: '100%',
-                justifyContent: 'flex-start',
-                color: '#edf0f7',
-                textTransform: 'none',
-                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
-                borderRadius: 1,
-              }}
-            >
-              {tt('Legg til student', 'Add Student')}
-            </Button>
-          </Box>
-        </Box>
-
-        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Box
             sx={{
               height: 74,
               px: 3,
-              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'linear-gradient(180deg, rgba(13,16,25,0.95), rgba(10,13,20,0.9))',
+              borderBottom:
+                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              background:
+                "linear-gradient(180deg, rgba(13,16,25,0.95), rgba(10,13,20,0.9))",
             }}
           >
             <Stack direction="row" spacing={2} alignItems="center">
-              <Typography sx={{ letterSpacing: '0.22em', fontSize: 15, color: 'rgba(237,240,247,0.82)' }}>
+              <Typography
+                sx={{
+                  letterSpacing: "0.22em",
+                  fontSize: 15,
+                  color: "rgba(237,240,247,0.82)",
+                }}
+              >
                 CREATOR STUDIO
               </Typography>
               <Chip
-                label={activeCourse?.isPublished ? tt('Publisert', 'Published') : tt('Utkast', 'Draft')}
+                label={
+                  activeCourse?.isPublished
+                    ? tt("Publisert", "Published")
+                    : tt("Utkast", "Draft")
+                }
                 size="small"
-                sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7', fontWeight: 600 }}
+                sx={{
+                  bgcolor: "rgba(255,255,255,0.08)",
+                  color: "#edf0f7",
+                  fontWeight: 600,
+                }}
               />
             </Stack>
 
             <Stack direction="row" spacing={1.2} alignItems="center">
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <AcademyLocaleSwitcher />
+              <IconButton
+                size="small"
+                onClick={() =>
+                  setLocation("/academy/settings?tab=notifications")
+                }
+                aria-label={tt("Varsler", "Notifications")}
+                sx={{ color: "rgba(237,240,247,0.75)" }}
+              >
                 <NotificationsNone fontSize="small" />
               </IconButton>
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <IconButton
+                size="small"
+                onClick={() => setLocation("/academy/settings?tab=messages")}
+                aria-label={tt("Meldinger", "Messages")}
+                sx={{ color: "rgba(237,240,247,0.75)" }}
+              >
                 <MailOutline fontSize="small" />
               </IconButton>
-              <Avatar sx={{ width: 34, height: 34, bgcolor: '#f8b321', color: '#111' }}>
-                {String(activeCourse?.instructor?.name || 'N').charAt(0).toUpperCase()}
-              </Avatar>
+              <IconButton
+                size="small"
+                onClick={() => setLocation("/academy/settings?tab=profile")}
+                aria-label={tt("Profil", "Profile")}
+                sx={{ p: 0 }}
+              >
+                <Avatar
+                  sx={{
+                    width: 34,
+                    height: 34,
+                    bgcolor: "#f8b321",
+                    color: "#111",
+                  }}
+                >
+                  {String(activeCourse?.instructor?.name || "N")
+                    .charAt(0)
+                    .toUpperCase()}
+                </Avatar>
+              </IconButton>
             </Stack>
           </Box>
 
@@ -862,62 +1484,77 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
             sx={{
               flex: 1,
               minHeight: 0,
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1fr) 390px' },
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", xl: "minmax(0, 1fr) 390px" },
               gap: 2,
               px: 2,
               py: 2,
             }}
           >
-            <Box sx={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 1.4 }}>
+            <Box
+              sx={{
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: 1.4,
+              }}
+            >
               <Stack
-                direction={{ xs: 'column', lg: 'row' }}
+                direction={{ xs: "column", lg: "row" }}
                 spacing={1.2}
                 justifyContent="space-between"
-                alignItems={{ xs: 'stretch', lg: 'center' }}
+                alignItems={{ xs: "stretch", lg: "center" }}
               >
-                <Typography sx={{ fontSize: 38, fontWeight: 600, letterSpacing: '0.02em' }}>
-                  {tt('Studentpåmelding', 'Student Enrollment')}
+                <Typography
+                  sx={{
+                    fontSize: 26,
+                    fontWeight: 600,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {tt("Studentpåmelding", "Student Enrollment")}
                 </Typography>
 
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                   <Button
                     variant="outlined"
                     startIcon={<Download />}
+                    onClick={handleExport}
                     sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
+                      textTransform: "none",
+                      borderColor: "rgba(255,255,255,0.2)",
+                      color: "#edf0f7",
                       borderRadius: 1,
                     }}
                   >
-                    {tt('Eksporter', 'Export')}
+                    {tt("Eksporter", "Export")}
                   </Button>
                   <Button
                     variant="outlined"
                     startIcon={<Assessment />}
+                    onClick={handleReports}
                     sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
+                      textTransform: "none",
+                      borderColor: "rgba(255,255,255,0.2)",
+                      color: "#edf0f7",
                       borderRadius: 1,
                     }}
                   >
-                    {tt('Rapporter', 'Reports')}
+                    {tt("Rapporter", "Reports")}
                   </Button>
                   <Button
                     variant="contained"
                     startIcon={<Add />}
-                    onClick={addStudent}
+                    onClick={openAddStudentModal}
                     sx={{
-                      textTransform: 'none',
+                      textTransform: "none",
                       borderRadius: 1,
-                      color: '#0f0f0f',
-                      background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                      boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
+                      color: "#0f0f0f",
+                      background: "linear-gradient(180deg, #ffd44e, #f2a616)",
+                      boxShadow: "0 10px 24px rgba(248,179,33,0.25)",
                     }}
                   >
-                    {tt('Legg til student', 'Add Student')}
+                    {tt("Legg til student", "Add Student")}
                   </Button>
                 </Stack>
               </Stack>
@@ -928,36 +1565,239 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     px: 1.2,
                     py: 0.85,
                     borderRadius: 1,
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)',
-                    color: '#f8d56f',
-                    bgcolor: 'rgba(248,179,33,0.08)',
+                    border:
+                      "var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)",
+                    color: "#f8d56f",
+                    bgcolor: "rgba(248,179,33,0.08)",
                   }}
                 >
                   {saveMessage}
                 </Typography>
               )}
 
+              {(inviteRequestsLoading || pendingInviteRequests.length > 0) && (
+                <Box sx={{ ...panelSx, p: 1.1 }}>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    spacing={1}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                    sx={{ mb: 0.9 }}
+                  >
+                    <Typography sx={{ fontSize: 18, fontWeight: 600 }}>
+                      {tt(
+                        "Påmeldingsforespørsler fra landingsside",
+                        "Enrollment requests from landing",
+                      )}
+                    </Typography>
+                    <Chip
+                      label={inviteRequestsLoading
+                        ? tt("Laster...", "Loading...")
+                        : `${pendingInviteRequests.length} ${tt("venter", "pending")}`}
+                      size="small"
+                      sx={{
+                        color: "#edf0f7",
+                        bgcolor: "rgba(255,255,255,0.08)",
+                      }}
+                    />
+                  </Stack>
+
+                  <Stack spacing={0.8}>
+                    {inviteRequestsLoading ? (
+                      <Typography
+                        sx={{
+                          color: "rgba(237,240,247,0.68)",
+                          fontSize: 13,
+                        }}
+                      >
+                        {tt(
+                          "Henter påmeldingsforespørsler...",
+                          "Fetching enrollment requests...",
+                        )}
+                      </Typography>
+                    ) : (
+                      pendingInviteRequests
+                        .slice(0, 8)
+                        .map((request, requestIndex) => {
+                          const requesterName = displayNameFromInviteRequest(
+                            request,
+                            requestIndex,
+                          );
+                          const planLabel =
+                            request.planName ||
+                            request.selectedPlan ||
+                            tt("Uten abonnement", "No subscription");
+                          const planPrice =
+                            typeof request.planPrice === "number"
+                              ? toNok(request.planPrice)
+                              : null;
+                          const isProcessing =
+                            processingInviteRequestId === request.id;
+                          const requestDateLabel = request.requestDate
+                            ? new Date(request.requestDate).toLocaleString(
+                                language === "no" ? "nb-NO" : "en-US",
+                                { dateStyle: "medium", timeStyle: "short" },
+                              )
+                            : tt("Ukjent dato", "Unknown date");
+
+                          return (
+                            <Box
+                              key={request.id}
+                              sx={{
+                                px: 1,
+                                py: 0.9,
+                                borderRadius: 1,
+                                border:
+                                  "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                                bgcolor: "rgba(10,14,22,0.7)",
+                              }}
+                            >
+                              <Stack
+                                direction={{ xs: "column", md: "row" }}
+                                spacing={1}
+                                justifyContent="space-between"
+                                alignItems={{ xs: "flex-start", md: "center" }}
+                              >
+                                <Box>
+                                  <Typography sx={{ fontWeight: 700 }}>
+                                    {requesterName}
+                                  </Typography>
+                                  <Typography
+                                    sx={{
+                                      color: "rgba(237,240,247,0.7)",
+                                      fontSize: 12.5,
+                                    }}
+                                  >
+                                    {request.email} ·{" "}
+                                    {request.profession
+                                      ? navLabel(request.profession)
+                                      : tt("Deltaker", "Learner")}
+                                  </Typography>
+                                  <Typography
+                                    sx={{
+                                      color: "rgba(237,240,247,0.58)",
+                                      fontSize: 12,
+                                    }}
+                                  >
+                                    {(request.business || tt("Firma ikke oppgitt", "No company provided"))}
+                                    {" · "}
+                                    {tt("Sendt", "Submitted")}: {requestDateLabel}
+                                  </Typography>
+                                  <Stack
+                                    direction="row"
+                                    spacing={0.8}
+                                    flexWrap="wrap"
+                                    useFlexGap
+                                    sx={{ mt: 0.6 }}
+                                  >
+                                    <Chip
+                                      size="small"
+                                      label={planLabel}
+                                      sx={{
+                                        color: "#edf0f7",
+                                        bgcolor: "rgba(248,179,33,0.18)",
+                                      }}
+                                    />
+                                    {planPrice && (
+                                      <Chip
+                                        size="small"
+                                        label={planPrice}
+                                        sx={{
+                                          color: "#edf0f7",
+                                          bgcolor: "rgba(142,166,214,0.2)",
+                                        }}
+                                      />
+                                    )}
+                                  </Stack>
+                                </Box>
+
+                                <Stack direction="row" spacing={0.8}>
+                                  <Button
+                                    size="small"
+                                    disabled={isProcessing}
+                                    onClick={() =>
+                                      void handleProcessInviteRequest(
+                                        request,
+                                        "rejected",
+                                      )
+                                    }
+                                    sx={{
+                                      minWidth: 84,
+                                      textTransform: "none",
+                                      color: "#edf0f7",
+                                      border:
+                                        "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                                    }}
+                                  >
+                                    {tt("Avvis", "Reject")}
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    disabled={isProcessing}
+                                    onClick={() =>
+                                      void handleProcessInviteRequest(
+                                        request,
+                                        "approved",
+                                      )
+                                    }
+                                    sx={{
+                                      minWidth: 108,
+                                      textTransform: "none",
+                                      color: "#0f0f0f",
+                                      fontWeight: 700,
+                                      background:
+                                        "linear-gradient(180deg, #ffd44e, #f2a616)",
+                                    }}
+                                  >
+                                    {isProcessing
+                                      ? tt("Behandler...", "Processing...")
+                                      : tt("Godkjenn tilgang", "Approve access")}
+                                  </Button>
+                                </Stack>
+                              </Stack>
+                            </Box>
+                          );
+                        })
+                    )}
+                  </Stack>
+                </Box>
+              )}
+
               <Box sx={{ ...panelSx, p: 1.2 }}>
                 <Stack
-                  direction={{ xs: 'column', md: 'row' }}
+                  direction={{ xs: "column", md: "row" }}
                   spacing={1}
                   justifyContent="space-between"
-                  alignItems={{ xs: 'stretch', md: 'center' }}
-                  sx={{ mb: 1 }}
+                  alignItems={{ xs: "stretch", md: "center" }}
+                  sx={{ mb: 1, flexWrap: "wrap", rowGap: 1 }}
                 >
-                  <Stack direction="row" spacing={1}>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    flexWrap="wrap"
+                    useFlexGap
+                    sx={{ minWidth: 0 }}
+                  >
                     <Select
                       size="small"
                       value={selectedCourseId}
-                      onChange={(event) => setSelectedCourseId(String(event.target.value))}
+                      onChange={(event) => {
+                        const nextCourseId = String(event.target.value);
+                        setSelectedCourseId(nextCourseId);
+                        syncCourseIdInRoute(nextCourseId);
+                      }}
                       sx={{
-                        minWidth: 180,
-                        color: '#edf0f7',
-                        bgcolor: 'rgba(255,255,255,0.05)',
-                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
+                        minWidth: { xs: 150, sm: 180 },
+                        color: "#edf0f7",
+                        bgcolor: "rgba(255,255,255,0.05)",
+                        "& .MuiOutlinedInput-notchedOutline": {
+                          borderColor: "rgba(255,255,255,0.16)",
+                        },
                       }}
                     >
-                      <MenuItem value="all">{tt('Alle kurs', 'All Courses')}</MenuItem>
+                      <MenuItem value="all">
+                        {tt("Alle kompetanser", "All competencies")}
+                      </MenuItem>
                       {courseItems.map((course) => (
                         <MenuItem key={course.id} value={course.id}>
                           {course.title}
@@ -968,64 +1808,80 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     <Select
                       size="small"
                       value={rangeFilter}
-                      onChange={(event) => setRangeFilter(event.target.value as RangeFilter)}
+                      onChange={(event) =>
+                        setRangeFilter(event.target.value as RangeFilter)
+                      }
                       sx={{
-                        minWidth: 140,
-                        color: '#edf0f7',
-                        bgcolor: 'rgba(255,255,255,0.05)',
-                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
+                        minWidth: { xs: 130, sm: 140 },
+                        color: "#edf0f7",
+                        bgcolor: "rgba(255,255,255,0.05)",
+                        "& .MuiOutlinedInput-notchedOutline": {
+                          borderColor: "rgba(255,255,255,0.16)",
+                        },
                       }}
                     >
-                      <MenuItem value="7d">{tt('Siste 7 dager', 'Last 7 days')}</MenuItem>
-                      <MenuItem value="30d">{tt('Siste 30 dager', 'Last 30 days')}</MenuItem>
-                      <MenuItem value="90d">{tt('Siste 90 dager', 'Last 90 days')}</MenuItem>
+                      <MenuItem value="7d">
+                        {tt("Siste 7 dager", "Last 7 days")}
+                      </MenuItem>
+                      <MenuItem value="30d">
+                        {tt("Siste 30 dager", "Last 30 days")}
+                      </MenuItem>
+                      <MenuItem value="90d">
+                        {tt("Siste 90 dager", "Last 90 days")}
+                      </MenuItem>
                     </Select>
 
                     <Select
                       size="small"
                       value={completionFilter}
-                      onChange={(event) => setCompletionFilter(event.target.value as CompletionFilter)}
+                      onChange={(event) =>
+                        setCompletionFilter(
+                          event.target.value as CompletionFilter,
+                        )
+                      }
                       sx={{
-                        minWidth: 150,
-                        color: '#edf0f7',
-                        bgcolor: 'rgba(255,255,255,0.05)',
-                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
+                        minWidth: { xs: 140, sm: 150 },
+                        color: "#edf0f7",
+                        bgcolor: "rgba(255,255,255,0.05)",
+                        "& .MuiOutlinedInput-notchedOutline": {
+                          borderColor: "rgba(255,255,255,0.16)",
+                        },
                       }}
                     >
-                      <MenuItem value="all">{tt('Alle fullføringsnivåer', 'All Completion')}</MenuItem>
-                      <MenuItem value="high">{tt('Høy (85%+)', 'High (85%+)')}</MenuItem>
-                      <MenuItem value="mid">{tt('Middels (65-84%)', 'Mid (65-84%)')}</MenuItem>
-                      <MenuItem value="low">{tt('Lav (<65%)', 'Low (<65%)')}</MenuItem>
+                      <MenuItem value="all">
+                        {tt("Alle fullføringsnivåer", "All Completion")}
+                      </MenuItem>
+                      <MenuItem value="high">
+                        {tt("Høy (85%+)", "High (85%+)")}
+                      </MenuItem>
+                      <MenuItem value="mid">
+                        {tt("Middels (65-84%)", "Mid (65-84%)")}
+                      </MenuItem>
+                      <MenuItem value="low">
+                        {tt("Lav (<65%)", "Low (<65%)")}
+                      </MenuItem>
                     </Select>
                   </Stack>
-
-                  <Button
-                    startIcon={<Add />}
-                    onClick={addStudent}
-                    sx={{
-                      textTransform: 'none',
-                      color: '#0f0f0f',
-                      background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {tt('Legg til student', 'Add Student')}
-                  </Button>
                 </Stack>
 
                 <TextField
                   value={searchValue}
                   onChange={(event) => setSearchValue(event.target.value)}
-                  placeholder={tt('Søk studenter...', 'Search students...')}
+                  placeholder={tt("Søk studenter...", "Search students...")}
                   size="small"
                   InputProps={{
-                    startAdornment: <Search fontSize="small" sx={{ mr: 0.7, color: 'rgba(237,240,247,0.6)' }} />,
+                    startAdornment: (
+                      <Search
+                        fontSize="small"
+                        sx={{ mr: 0.7, color: "rgba(237,240,247,0.6)" }}
+                      />
+                    ),
                   }}
                   sx={{
-                    width: '100%',
-                    '& .MuiInputBase-root': {
-                      bgcolor: 'rgba(11,14,22,0.8)',
-                      color: '#edf0f7',
+                    width: "100%",
+                    "& .MuiInputBase-root": {
+                      bgcolor: "rgba(11,14,22,0.8)",
+                      color: "#edf0f7",
                     },
                   }}
                 />
@@ -1033,47 +1889,101 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                 <Box
                   sx={{
                     mt: 1.1,
-                    display: 'grid',
+                    display: "grid",
                     gridTemplateColumns: {
-                      xs: '1fr',
-                      sm: 'repeat(2, minmax(0, 1fr))',
-                      lg: 'repeat(4, minmax(0, 1fr))',
+                      xs: "1fr",
+                      sm: "repeat(2, minmax(0, 1fr))",
+                      lg: "repeat(4, minmax(0, 1fr))",
                     },
                     gap: 1,
                   }}
                 >
-                  <Box sx={{ ...panelSx, p: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
-                    <Typography sx={{ fontSize: 42, fontWeight: 700, lineHeight: 1 }}>
+                  <Box
+                    sx={{
+                      ...panelSx,
+                      p: 1,
+                      borderColor: "rgba(255,255,255,0.1)",
+                    }}
+                  >
+                    <Typography
+                      sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}
+                    >
                       {toCompactNumber(totals.totalStudents)}
                     </Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>{tt('Studenter', 'Students')}</Typography>
-                    <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.64)' }}>
-                      {tt('Side 1 av', 'Page 1 of')} {Math.max(1, Math.ceil(Math.max(totals.totalStudents, 1) / 50))}
+                    <Typography sx={{ color: "rgba(237,240,247,0.8)" }}>
+                      {tt("Studenter", "Students")}
+                    </Typography>
+                    <Typography
+                      sx={{ fontSize: 12, color: "rgba(237,240,247,0.64)" }}
+                    >
+                      {tt("Side 1 av", "Page 1 of")}{" "}
+                      {Math.max(
+                        1,
+                        Math.ceil(Math.max(totals.totalStudents, 1) / 50),
+                      )}
                     </Typography>
                   </Box>
 
-                  <Box sx={{ ...panelSx, p: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
-                    <Typography sx={{ fontSize: 42, fontWeight: 700, lineHeight: 1 }}>
+                  <Box
+                    sx={{
+                      ...panelSx,
+                      p: 1,
+                      borderColor: "rgba(255,255,255,0.1)",
+                    }}
+                  >
+                    <Typography
+                      sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}
+                    >
                       {totals.activeCount}
                     </Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>{tt('Aktive deltakere', 'Active Learners')}</Typography>
-                    <Typography sx={{ fontSize: 12, color: '#95d57e' }}>{tt('Fullføring ≥ 75%', 'Completion ≥ 75%')}</Typography>
+                    <Typography sx={{ color: "rgba(237,240,247,0.8)" }}>
+                      {tt("Aktive deltakere", "Active Learners")}
+                    </Typography>
+                    <Typography sx={{ fontSize: 12, color: "#95d57e" }}>
+                      {tt("Fullføring ≥ 75%", "Completion ≥ 75%")}
+                    </Typography>
                   </Box>
 
-                  <Box sx={{ ...panelSx, p: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
-                    <Typography sx={{ fontSize: 42, fontWeight: 700, lineHeight: 1 }}>
+                  <Box
+                    sx={{
+                      ...panelSx,
+                      p: 1,
+                      borderColor: "rgba(255,255,255,0.1)",
+                    }}
+                  >
+                    <Typography
+                      sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}
+                    >
                       {totals.avgCompletion}%
                     </Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>{tt('Gj.sn. fullføring', 'Avg Completion')}</Typography>
-                    <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.64)' }}>{tt('Alle kohorter', 'All cohorts')}</Typography>
+                    <Typography sx={{ color: "rgba(237,240,247,0.8)" }}>
+                      {tt("Gj.sn. fullføring", "Avg Completion")}
+                    </Typography>
+                    <Typography
+                      sx={{ fontSize: 12, color: "rgba(237,240,247,0.64)" }}
+                    >
+                      {tt("Alle kohorter", "All cohorts")}
+                    </Typography>
                   </Box>
 
-                  <Box sx={{ ...panelSx, p: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
-                    <Typography sx={{ fontSize: 42, fontWeight: 700, lineHeight: 1 }}>
+                  <Box
+                    sx={{
+                      ...panelSx,
+                      p: 1,
+                      borderColor: "rgba(255,255,255,0.1)",
+                    }}
+                  >
+                    <Typography
+                      sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}
+                    >
                       {totals.avgEnrollScore}
                     </Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>{tt('Påmeldingsindeks', 'Enrolled Index')}</Typography>
-                    <Typography sx={{ fontSize: 12, color: '#95d57e' }}>{tt('Operativ helse', 'Operational health')}</Typography>
+                    <Typography sx={{ color: "rgba(237,240,247,0.8)" }}>
+                      {tt("Påmeldingsindeks", "Enrolled Index")}
+                    </Typography>
+                    <Typography sx={{ fontSize: 12, color: "#95d57e" }}>
+                      {tt("Operativ helse", "Operational health")}
+                    </Typography>
                   </Box>
                 </Box>
 
@@ -1081,27 +1991,54 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                   sx={{
                     mt: 1.1,
                     borderRadius: 1,
-                    overflowX: 'auto',
-                    overflowY: 'hidden',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.09)',
+                    overflowX: "auto",
+                    overflowY: "hidden",
+                    border:
+                      "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.09)",
                   }}
                 >
                   <Box
                     sx={{
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(260px, 1.5fr) minmax(220px, 1fr) 0.7fr 0.55fr 0.45fr',
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(260px, 1.5fr) minmax(220px, 1fr) 0.7fr 0.55fr 0.45fr",
                       minWidth: 980,
                       px: 1,
                       py: 0.8,
-                      background: 'rgba(255,255,255,0.04)',
-                      borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
+                      background: "rgba(255,255,255,0.04)",
+                      borderBottom:
+                        "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
                     }}
                   >
-                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>Name</Typography>
-                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>Primary Cohort</Typography>
-                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>{tt('Fullføring', 'Completion')}</Typography>
-                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>Enrolled</Typography>
-                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)', textAlign: 'right' }}>Actions</Typography>
+                    <Typography
+                      sx={{ fontSize: 13, color: "rgba(237,240,247,0.7)" }}
+                    >
+                      Name
+                    </Typography>
+                    <Typography
+                      sx={{ fontSize: 13, color: "rgba(237,240,247,0.7)" }}
+                    >
+                      Primary Cohort
+                    </Typography>
+                    <Typography
+                      sx={{ fontSize: 13, color: "rgba(237,240,247,0.7)" }}
+                    >
+                      {tt("Fullføring", "Completion")}
+                    </Typography>
+                    <Typography
+                      sx={{ fontSize: 13, color: "rgba(237,240,247,0.7)" }}
+                    >
+                      Enrolled
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontSize: 13,
+                        color: "rgba(237,240,247,0.7)",
+                        textAlign: "right",
+                      }}
+                    >
+                      Actions
+                    </Typography>
                   </Box>
 
                   <Stack spacing={0}>
@@ -1109,27 +2046,40 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                       <Box
                         key={student.id}
                         sx={{
-                          display: 'grid',
-                          gridTemplateColumns: 'minmax(260px, 1.5fr) minmax(220px, 1fr) 0.7fr 0.55fr 0.45fr',
+                          display: "grid",
+                          gridTemplateColumns:
+                            "minmax(260px, 1.5fr) minmax(220px, 1fr) 0.7fr 0.55fr 0.45fr",
                           minWidth: 980,
                           px: 1,
                           py: 1,
                           gap: 1,
-                          background: 'rgba(8,11,18,0.6)',
-                          borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
-                          '&:hover': {
-                            background: 'linear-gradient(90deg, rgba(248,179,33,0.12), rgba(255,255,255,0.02))',
+                          background: "rgba(8,11,18,0.6)",
+                          borderBottom:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+                          "&:hover": {
+                            background:
+                              "linear-gradient(90deg, rgba(248,179,33,0.12), rgba(255,255,255,0.02))",
                           },
                         }}
                       >
-                        <Stack direction="row" spacing={1} alignItems="center" minWidth={0}>
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          alignItems="center"
+                          minWidth={0}
+                        >
                           <Avatar
                             sx={{
                               width: 42,
                               height: 42,
-                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
-                              bgcolor: 'rgba(248,179,33,0.32)',
-                              backgroundImage: placeholderBackgrounds[student.avatarTheme % placeholderBackgrounds.length],
+                              border:
+                                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)",
+                              bgcolor: "rgba(248,179,33,0.32)",
+                              backgroundImage:
+                                placeholderBackgrounds[
+                                  student.avatarTheme %
+                                    placeholderBackgrounds.length
+                                ],
                             }}
                           >
                             {student.name.charAt(0).toUpperCase()}
@@ -1138,11 +2088,28 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                             <Typography sx={{ fontWeight: 600 }} noWrap>
                               {student.name}
                             </Typography>
-                            <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.66)' }} noWrap>
-                              {student.role} · {student.courseIds.length}{' '}
-                              {tt('kurs', student.courseIds.length === 1 ? 'course' : 'courses')}
+                            <Typography
+                              sx={{
+                                fontSize: 12,
+                                color: "rgba(237,240,247,0.66)",
+                              }}
+                              noWrap
+                            >
+                              {student.role} · {student.courseIds.length}{" "}
+                              {tt(
+                                "kurs",
+                                student.courseIds.length === 1
+                                  ? "course"
+                                  : "courses",
+                              )}
                             </Typography>
-                            <Stack direction="row" spacing={0.6} sx={{ mt: 0.4 }} flexWrap="wrap" useFlexGap>
+                            <Stack
+                              direction="row"
+                              spacing={0.6}
+                              sx={{ mt: 0.4 }}
+                              flexWrap="wrap"
+                              useFlexGap
+                            >
                               {student.tags.slice(0, 2).map((tag) => (
                                 <Chip
                                   key={`${student.id}-${tag}`}
@@ -1150,8 +2117,8 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                                   size="small"
                                   sx={{
                                     height: 20,
-                                    color: '#edf0f7',
-                                    bgcolor: 'rgba(255,255,255,0.1)',
+                                    color: "#edf0f7",
+                                    bgcolor: "rgba(255,255,255,0.1)",
                                     fontSize: 11,
                                   }}
                                 />
@@ -1164,43 +2131,84 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                           <Typography sx={{ fontWeight: 600 }} noWrap>
                             {student.primaryCohort}
                           </Typography>
-                          <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.64)' }}>
-                            {student.sourceCount} sources
-                          </Typography>
-                        </Box>
+                            <Typography
+                              sx={{
+                                fontSize: 12,
+                                color: "rgba(237,240,247,0.64)",
+                              }}
+                            >
+                              {student.sourceCount} sources
+                            </Typography>
+                            {student.subscriptionPlanName && (
+                              <Typography
+                                sx={{
+                                  fontSize: 12,
+                                  color: "rgba(237,240,247,0.64)",
+                                }}
+                              >
+                                {tt("Abonnement", "Subscription")}:{" "}
+                                {student.subscriptionPlanName}
+                                {typeof student.subscriptionPlanPrice === "number"
+                                  ? ` · ${toNok(student.subscriptionPlanPrice)}`
+                                  : ""}
+                              </Typography>
+                            )}
+                          </Box>
 
                         <Box>
-                          <Typography sx={{ color: '#95d57e', fontWeight: 700 }}>
+                          <Typography
+                            sx={{ color: "#95d57e", fontWeight: 700 }}
+                          >
                             {student.completionRate}%
                           </Typography>
                           <LinearProgress
                             variant="determinate"
-                            value={Math.min(100, Math.max(0, student.completionRate))}
+                            value={Math.min(
+                              100,
+                              Math.max(0, student.completionRate),
+                            )}
                             sx={{
                               mt: 0.4,
                               height: 5,
                               borderRadius: 999,
-                              bgcolor: 'rgba(255,255,255,0.14)',
-                              '& .MuiLinearProgress-bar': {
+                              bgcolor: "rgba(255,255,255,0.14)",
+                              "& .MuiLinearProgress-bar": {
                                 borderRadius: 999,
-                                background: 'linear-gradient(90deg, #8ecf76 0%, #f8b321 100%)',
+                                background:
+                                  "linear-gradient(90deg, #8ecf76 0%, #f8b321 100%)",
                               },
                             }}
                           />
                         </Box>
 
-                        <Typography sx={{ color: '#f8d56f', fontWeight: 700 }}>
+                        <Typography sx={{ color: "#f8d56f", fontWeight: 700 }}>
                           {student.enrolledScore}
                         </Typography>
 
-                        <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                          <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)' }}>
+                        <Stack
+                          direction="row"
+                          spacing={0.5}
+                          justifyContent="flex-end"
+                        >
+                          <IconButton
+                            size="small"
+                            onClick={() => handleMessageStudent(student)}
+                            sx={{ color: "rgba(237,240,247,0.68)" }}
+                          >
                             <MailOutline fontSize="small" />
                           </IconButton>
-                          <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)' }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => openEditStudentModal(student)}
+                            sx={{ color: "rgba(237,240,247,0.68)" }}
+                          >
                             <Edit fontSize="small" />
                           </IconButton>
-                          <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)' }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleRemoveStudent(student)}
+                            sx={{ color: "rgba(237,240,247,0.68)" }}
+                          >
                             <MoreHoriz fontSize="small" />
                           </IconButton>
                         </Stack>
@@ -1208,22 +2216,32 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     ))}
 
                     {visibleStudents.length === 0 && (
-                      <Box sx={{ px: 1.2, py: 2.5, bgcolor: 'rgba(8,11,18,0.6)' }}>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.66)' }}>
-                          {tt('Ingen studenter samsvarer med gjeldende filter.', 'No students match current filters.')}
+                      <Box
+                        sx={{ px: 1.2, py: 2.5, bgcolor: "rgba(8,11,18,0.6)" }}
+                      >
+                        <Typography sx={{ color: "rgba(237,240,247,0.66)" }}>
+                          {tt(
+                            "Ingen studenter samsvarer med gjeldende filter.",
+                            "No students match current filters.",
+                          )}
                         </Typography>
                       </Box>
                     )}
                   </Stack>
                 </Box>
 
-                <Typography sx={{ mt: 1.3, fontSize: 32, fontWeight: 600 }}>{tt('Studentpåmelding', 'Student Enrollment')}</Typography>
+                <Typography sx={{ mt: 1.3, fontSize: 26, fontWeight: 600 }}>
+                  {tt("Studentpåmelding", "Student Enrollment")}
+                </Typography>
 
                 <Box
                   sx={{
                     mt: 1,
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                    display: "grid",
+                    gridTemplateColumns: {
+                      xs: "1fr",
+                      md: "repeat(2, minmax(0, 1fr))",
+                    },
                     gap: 1,
                   }}
                 >
@@ -1233,7 +2251,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                       sx={{
                         ...panelSx,
                         p: 1,
-                        borderColor: 'rgba(255,255,255,0.1)',
+                        borderColor: "rgba(255,255,255,0.1)",
                       }}
                     >
                       <Stack direction="row" spacing={1}>
@@ -1242,8 +2260,13 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                             width: 120,
                             height: 72,
                             borderRadius: 1,
-                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                            background: placeholderBackgrounds[(card.imageTheme + index) % placeholderBackgrounds.length],
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                            background:
+                              placeholderBackgrounds[
+                                (card.imageTheme + index) %
+                                  placeholderBackgrounds.length
+                              ],
                             flexShrink: 0,
                           }}
                         />
@@ -1251,24 +2274,50 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                           <Typography sx={{ fontWeight: 600 }} noWrap>
                             {card.title}
                           </Typography>
-                          <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.64)' }} noWrap>
-                            {card.cohortCount} {tt('studenter', 'students')} · {card.sources} {tt('kilder', 'sources')}
+                          <Typography
+                            sx={{
+                              fontSize: 12,
+                              color: "rgba(237,240,247,0.64)",
+                            }}
+                            noWrap
+                          >
+                            {card.cohortCount} {tt("studenter", "students")} ·{" "}
+                            {card.sources} {tt("kilder", "sources")}
                           </Typography>
-                          <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.64)', mt: 0.4 }}>
-                            {tt('Gj.sn. fullføring', 'Avg completion')} {card.avgCompletion}%
+                          <Typography
+                            sx={{
+                              fontSize: 12,
+                              color: "rgba(237,240,247,0.64)",
+                              mt: 0.4,
+                            }}
+                          >
+                            {tt("Gj.sn. fullføring", "Avg completion")}{" "}
+                            {card.avgCompletion}%
                           </Typography>
                           <Stack direction="row" spacing={0.8} sx={{ mt: 0.8 }}>
                             <Button
                               size="small"
-                              sx={{ textTransform: 'none', color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}
+                              onClick={() => handleManageCourseCard(card.id)}
+                              sx={{
+                                textTransform: "none",
+                                color: "#edf0f7",
+                                border:
+                                  "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                              }}
                             >
-                              {tt('Administrer', 'Manage')}
+                              {tt("Administrer", "Manage")}
                             </Button>
                             <Button
                               size="small"
-                              sx={{ textTransform: 'none', color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}
+                              onClick={() => handleOpenCourseBuilder(card.id)}
+                              sx={{
+                                textTransform: "none",
+                                color: "#edf0f7",
+                                border:
+                                  "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                              }}
                             >
-                              {tt('Mesterklasse', 'Masterclass')}
+                              {tt("Mesterklasse", "Masterclass")}
                             </Button>
                           </Stack>
                         </Box>
@@ -1277,57 +2326,89 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                   ))}
                 </Box>
 
-                <Typography sx={{ mt: 1, color: 'rgba(237,240,247,0.66)' }}>
-                  {toCompactNumber(totals.totalStudents)} {tt('studenter', 'students')} · {tt('gj.sn. score', 'avg score')} {totals.avgEnrollScore}
+                <Typography sx={{ mt: 1, color: "rgba(237,240,247,0.66)" }}>
+                  {toCompactNumber(totals.totalStudents)}{" "}
+                  {tt("studenter", "students")} ·{" "}
+                  {tt("gj.sn. score", "avg score")} {totals.avgEnrollScore}
                 </Typography>
               </Box>
             </Box>
 
-            <Box sx={{ ...panelSx, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-              <Box sx={{ p: 1.2, borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }}>
-                <Typography sx={{ fontSize: 34, fontWeight: 600 }}>{tt('Studentinnsikt', 'Student Insights')}</Typography>
+            <Box
+              sx={{
+                ...panelSx,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <Box
+                sx={{
+                  p: 1.2,
+                  borderBottom:
+                    "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <Typography sx={{ fontSize: 22, fontWeight: 600 }}>
+                  {tt("Studentinnsikt", "Student Insights")}
+                </Typography>
 
-                <Stack direction="row" spacing={0.8} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+                <Stack
+                  direction="row"
+                  spacing={0.8}
+                  sx={{ mt: 1 }}
+                  flexWrap="wrap"
+                  useFlexGap
+                >
                   <Chip
-                    label={tt('Tidlig tilgang', 'Early Access')}
-                    onClick={() => toggleFeatureFlag('earlyAccess')}
-                    color={featureFlags.earlyAccess ? 'warning' : 'default'}
-                    sx={{ color: '#edf0f7' }}
+                    label={tt("Tidlig tilgang", "Early Access")}
+                    onClick={() => toggleFeatureFlag("earlyAccess")}
+                    color={featureFlags.earlyAccess ? "warning" : "default"}
+                    sx={{ color: "#edf0f7" }}
                   />
                   <Chip
-                    label={tt('Kun invitasjon', 'Invitation Only')}
-                    onClick={() => toggleFeatureFlag('invitationOnly')}
-                    color={featureFlags.invitationOnly ? 'warning' : 'default'}
-                    sx={{ color: '#edf0f7' }}
+                    label={tt("Kun invitasjon", "Invitation Only")}
+                    onClick={() => toggleFeatureFlag("invitationOnly")}
+                    color={featureFlags.invitationOnly ? "warning" : "default"}
+                    sx={{ color: "#edf0f7" }}
                   />
                   <Chip
-                    label={tt('Lukket', 'Closed')}
-                    onClick={() => toggleFeatureFlag('closed')}
-                    color={featureFlags.closed ? 'warning' : 'default'}
-                    sx={{ color: '#edf0f7' }}
+                    label={tt("Lukket", "Closed")}
+                    onClick={() => toggleFeatureFlag("closed")}
+                    color={featureFlags.closed ? "warning" : "default"}
+                    sx={{ color: "#edf0f7" }}
                   />
                   <Chip
-                    label={tt('Dryppslipp', 'Drip Release')}
-                    onClick={() => toggleFeatureFlag('dripRelease')}
-                    color={featureFlags.dripRelease ? 'warning' : 'default'}
-                    sx={{ color: '#edf0f7' }}
+                    label={tt("Dryppslipp", "Drip Release")}
+                    onClick={() => toggleFeatureFlag("dripRelease")}
+                    color={featureFlags.dripRelease ? "warning" : "default"}
+                    sx={{ color: "#edf0f7" }}
                   />
                 </Stack>
               </Box>
 
-              <Box sx={{ p: 1.2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Box
+                sx={{
+                  p: 1.2,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 1,
+                }}
+              >
                 <Box sx={{ ...panelSx, p: 1 }}>
-                  <Typography sx={{ fontSize: 28, fontWeight: 600, mb: 0.8 }}>{tt('Oversikt over innsendinger', 'Submissions Overview')}</Typography>
+                  <Typography sx={{ fontSize: 22, fontWeight: 600, mb: 0.8 }}>
+                    {tt("Oversikt over innsendinger", "Submissions Overview")}
+                  </Typography>
 
                   <Stack direction="row" spacing={1.2} alignItems="center">
                     <Box
                       sx={{
                         width: 122,
                         height: 122,
-                        borderRadius: '50%',
+                        borderRadius: "50%",
                         background: donutStyle,
-                        display: 'grid',
-                        placeItems: 'center',
+                        display: "grid",
+                        placeItems: "center",
                         flexShrink: 0,
                       }}
                     >
@@ -1335,21 +2416,29 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                         sx={{
                           width: 84,
                           height: 84,
-                          borderRadius: '50%',
-                          bgcolor: '#0f1420',
-                          display: 'grid',
-                          placeItems: 'center',
-                          textAlign: 'center',
+                          borderRadius: "50%",
+                          bgcolor: "#0f1420",
+                          display: "grid",
+                          placeItems: "center",
+                          textAlign: "center",
                         }}
                       >
-                        <Typography sx={{ fontSize: 24, fontWeight: 700 }}>{totals.totalStudents}</Typography>
-                        <Typography sx={{ fontSize: 11, color: 'rgba(237,240,247,0.62)' }}>{tt('Studenter', 'Students')}</Typography>
+                        <Typography sx={{ fontSize: 20, fontWeight: 700 }}>
+                          {totals.totalStudents}
+                        </Typography>
+                        <Typography
+                          sx={{ fontSize: 11, color: "rgba(237,240,247,0.62)" }}
+                        >
+                          {tt("Studenter", "Students")}
+                        </Typography>
                       </Box>
                     </Box>
 
                     <Stack spacing={0.5} sx={{ flex: 1 }}>
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Fremragende', 'Excellent')}</Typography>
+                        <Typography sx={{ color: "rgba(237,240,247,0.72)" }}>
+                          {tt("Fremragende", "Excellent")}
+                        </Typography>
                         <Typography>{distribution.excellentPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1358,13 +2447,15 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                         sx={{
                           height: 6,
                           borderRadius: 999,
-                          bgcolor: 'rgba(255,255,255,0.1)',
-                          '& .MuiLinearProgress-bar': { background: '#f8b321' },
+                          bgcolor: "rgba(255,255,255,0.1)",
+                          "& .MuiLinearProgress-bar": { background: "#f8b321" },
                         }}
                       />
 
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('God utvikling', 'Healthy')}</Typography>
+                        <Typography sx={{ color: "rgba(237,240,247,0.72)" }}>
+                          {tt("God utvikling", "Healthy")}
+                        </Typography>
                         <Typography>{distribution.healthyPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1373,13 +2464,15 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                         sx={{
                           height: 6,
                           borderRadius: 999,
-                          bgcolor: 'rgba(255,255,255,0.1)',
-                          '& .MuiLinearProgress-bar': { background: '#8ea6d6' },
+                          bgcolor: "rgba(255,255,255,0.1)",
+                          "& .MuiLinearProgress-bar": { background: "#8ea6d6" },
                         }}
                       />
 
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Forbedres', 'Improving')}</Typography>
+                        <Typography sx={{ color: "rgba(237,240,247,0.72)" }}>
+                          {tt("Forbedres", "Improving")}
+                        </Typography>
                         <Typography>{distribution.improvingPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1388,13 +2481,15 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                         sx={{
                           height: 6,
                           borderRadius: 999,
-                          bgcolor: 'rgba(255,255,255,0.1)',
-                          '& .MuiLinearProgress-bar': { background: '#9acd6f' },
+                          bgcolor: "rgba(255,255,255,0.1)",
+                          "& .MuiLinearProgress-bar": { background: "#9acd6f" },
                         }}
                       />
 
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('I risikosonen', 'At Risk')}</Typography>
+                        <Typography sx={{ color: "rgba(237,240,247,0.72)" }}>
+                          {tt("I risikosonen", "At Risk")}
+                        </Typography>
                         <Typography>{distribution.atRiskPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1403,8 +2498,8 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                         sx={{
                           height: 6,
                           borderRadius: 999,
-                          bgcolor: 'rgba(255,255,255,0.1)',
-                          '& .MuiLinearProgress-bar': { background: '#c56f58' },
+                          bgcolor: "rgba(255,255,255,0.1)",
+                          "& .MuiLinearProgress-bar": { background: "#c56f58" },
                         }}
                       />
                     </Stack>
@@ -1412,7 +2507,9 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                 </Box>
 
                 <Box sx={{ ...panelSx, p: 1 }}>
-                  <Typography sx={{ fontSize: 30, fontWeight: 600, mb: 0.8 }}>{tt('Toppkohorter', 'Top Cohorts')}</Typography>
+                  <Typography sx={{ fontSize: 20, fontWeight: 600, mb: 0.8 }}>
+                    {tt("Toppkohorter", "Top Cohorts")}
+                  </Typography>
                   <Stack spacing={0.8}>
                     {topCohorts.map((cohort) => (
                       <Stack
@@ -1424,8 +2521,9 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                           px: 0.8,
                           py: 0.8,
                           borderRadius: 1,
-                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                          bgcolor: 'rgba(10,14,22,0.7)',
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                          bgcolor: "rgba(10,14,22,0.7)",
                         }}
                       >
                         <Box
@@ -1433,8 +2531,13 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                             width: 44,
                             height: 44,
                             borderRadius: 1,
-                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                            background: placeholderBackgrounds[cohort.imageTheme % placeholderBackgrounds.length],
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                            background:
+                              placeholderBackgrounds[
+                                cohort.imageTheme %
+                                  placeholderBackgrounds.length
+                              ],
                             flexShrink: 0,
                           }}
                         />
@@ -1442,11 +2545,17 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                           <Typography noWrap sx={{ fontWeight: 600 }}>
                             {cohort.name}
                           </Typography>
-                          <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.64)' }} noWrap>
-                            {cohort.students} {tt('studenter', 'students')}
+                          <Typography
+                            sx={{
+                              fontSize: 12,
+                              color: "rgba(237,240,247,0.64)",
+                            }}
+                            noWrap
+                          >
+                            {cohort.students} {tt("studenter", "students")}
                           </Typography>
                         </Box>
-                        <Typography sx={{ color: '#f8d56f', fontWeight: 700 }}>
+                        <Typography sx={{ color: "#f8d56f", fontWeight: 700 }}>
                           {cohort.avgCompletion}%
                         </Typography>
                       </Stack>
@@ -1455,7 +2564,9 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                 </Box>
 
                 <Box sx={{ ...panelSx, p: 1 }}>
-                  <Typography sx={{ fontSize: 30, fontWeight: 600, mb: 0.8 }}>{tt('Aktivitetsfeed', 'Activity Feed')}</Typography>
+                  <Typography sx={{ fontSize: 20, fontWeight: 600, mb: 0.8 }}>
+                    {tt("Aktivitetsfeed", "Activity Feed")}
+                  </Typography>
                   <Stack spacing={0.8}>
                     {activityFeed.map((item, index) => (
                       <Stack
@@ -1467,21 +2578,39 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                           px: 0.8,
                           py: 0.8,
                           borderRadius: 1,
-                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                          bgcolor: index === 0 ? 'rgba(248,179,33,0.08)' : 'rgba(10,14,22,0.7)',
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                          bgcolor:
+                            index === 0
+                              ? "rgba(248,179,33,0.08)"
+                              : "rgba(10,14,22,0.7)",
                         }}
                       >
-                        <Avatar sx={{ width: 30, height: 30, bgcolor: 'rgba(248,179,33,0.78)', color: '#111' }}>
+                        <Avatar
+                          sx={{
+                            width: 30,
+                            height: 30,
+                            bgcolor: "rgba(248,179,33,0.78)",
+                            color: "#111",
+                          }}
+                        >
                           {item.author.charAt(0).toUpperCase()}
                         </Avatar>
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Typography sx={{ fontWeight: 700 }} noWrap>
                             {item.author}
                           </Typography>
-                          <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>
+                          <Typography sx={{ color: "rgba(237,240,247,0.72)" }}>
                             {navLabel(item.action)} · {item.course}
                           </Typography>
-                          <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.58)' }}>{item.timestamp}</Typography>
+                          <Typography
+                            sx={{
+                              fontSize: 12,
+                              color: "rgba(237,240,247,0.58)",
+                            }}
+                          >
+                            {item.timestamp}
+                          </Typography>
                         </Box>
                       </Stack>
                     ))}
@@ -1489,61 +2618,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                 </Box>
               </Box>
 
-              <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
-
-              <Stack direction="row" spacing={1} sx={{ p: 1.1 }}>
-                <Button
-                  startIcon={<Campaign />}
-                  onClick={() => setLocation('/academy/cta-overlay')}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
-                  }}
-                >
-                  CTA
-                </Button>
-                <Button
-                  startIcon={<Subtitles />}
-                  onClick={() => setLocation('/academy/lower-thirds')}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
-                  }}
-                >
-                  {tt('LowerThirds', 'LowerThirds')}
-                </Button>
-              </Stack>
-
-              <Stack direction="row" spacing={1} sx={{ p: 1.1, pt: 0 }}>
-                <Button
-                  startIcon={<PeopleAlt />}
-                  onClick={addStudent}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                  }}
-                >
-                  {tt('Legg til student', 'Add Student')}
-                </Button>
-                <Button
-                  startIcon={<MonetizationOn />}
-                  onClick={() => setLocation('/academy/monetization')}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                  }}
-                >
-                  {tt('Monetisering', 'Monetization')}
-                </Button>
-              </Stack>
+              <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
 
               <Stack direction="row" spacing={1} sx={{ p: 1.1, pt: 0 }}>
                 <Button
@@ -1551,78 +2626,60 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                   onClick={() => void saveEnrollmentSettings(false)}
                   sx={{
                     flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                    textTransform: "none",
+                    color: "#edf0f7",
+                    border:
+                      "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
                   }}
                 >
-                  {tt('Lagre', 'Save')}
+                  {tt("Lagre", "Save")}
                 </Button>
                 <Button
                   startIcon={<Publish />}
                   onClick={() => void saveEnrollmentSettings(true)}
                   sx={{
                     minWidth: 118,
-                    textTransform: 'none',
-                    color: '#0f0f0f',
-                    background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                    textTransform: "none",
+                    color: "#0f0f0f",
+                    background: "linear-gradient(180deg, #ffd44e, #f2a616)",
                     fontWeight: 700,
                   }}
                 >
-                  {tt('Publiser', 'Publish')}
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (onCancel) {
-                      onCancel();
-                    } else {
-                      setLocation('/academy/course-creator');
-                    }
-                  }}
-                  sx={{
-                    textTransform: 'none',
-                    color: 'rgba(237,240,247,0.78)',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                  }}
-                >
-                  {tt('Lukk', 'Close')}
+                  {tt("Publiser", "Publish")}
                 </Button>
               </Stack>
 
               <Stack direction="row" spacing={1} sx={{ p: 1.1, pt: 0 }}>
                 <Button
-                  startIcon={<TrendingUp />}
-                  onClick={() => setLocation('/academy/analytics')}
+                  onClick={() => setLocation("/academy/cohort-settings")}
                   sx={{
                     flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                    textTransform: "none",
+                    color: "#edf0f7",
+                    border:
+                      "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
                   }}
                 >
-                  {tt('Analyser', 'Analytics')}
-                </Button>
-                <Button
-                  onClick={() => setLocation('/academy/cohort-settings')}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                  }}
-                >
-                  {tt('Kohorter', 'Cohorts')}
+                  {tt("Kohorter", "Cohorts")}
                 </Button>
               </Stack>
 
-              <Stack direction="row" spacing={1} sx={{ p: 1.1, pt: 0 }} alignItems="center">
-                <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 12 }}>
-                  {tt('Inntektsprognose', 'Revenue projection')}: {toNok(totals.avgEnrollScore * totals.totalStudents)}
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ p: 1.1, pt: 0 }}
+                alignItems="center"
+              >
+                <Typography
+                  sx={{ color: "rgba(237,240,247,0.62)", fontSize: 12 }}
+                >
+                  {tt("Inntektsprognose", "Revenue projection")}:{" "}
+                  {toNok(totals.avgEnrollScore * totals.totalStudents)}
                 </Typography>
-                <Box sx={{ ml: 'auto' }}>
+                <Box sx={{ ml: "auto" }}>
                   <Switch
                     checked={featureFlags.dripRelease}
-                    onChange={() => toggleFeatureFlag('dripRelease')}
+                    onChange={() => toggleFeatureFlag("dripRelease")}
                     size="small"
                   />
                 </Box>
@@ -1631,14 +2688,209 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
           </Box>
         </Box>
       </Box>
+
+      <Dialog
+        open={isAddStudentModalOpen}
+        onClose={closeStudentModal}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            borderRadius: 1.5,
+            border: "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+            background:
+              "linear-gradient(145deg, rgba(20,24,36,0.95), rgba(11,14,22,0.98))",
+            color: "#edf0f7",
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          {editingStudentId
+            ? tt("Rediger student", "Edit student")
+            : tt("Legg til student", "Add Student")}
+        </DialogTitle>
+        <DialogContent sx={{ pt: "8px !important" }}>
+          <Stack spacing={1}>
+            <TextField
+              size="small"
+              label={tt("Studentnavn", "Student name")}
+              value={addStudentForm.name}
+              onChange={(event) =>
+                setAddStudentForm((prev) => ({
+                  ...prev,
+                  name: event.target.value,
+                }))
+              }
+              autoFocus
+              fullWidth
+              sx={{
+                "& .MuiInputBase-root": {
+                  color: "#edf0f7",
+                  bgcolor: "rgba(255,255,255,0.03)",
+                },
+              }}
+            />
+            <TextField
+              size="small"
+              label={tt("E-post (valgfritt)", "Email (optional)")}
+              value={addStudentForm.email}
+              onChange={(event) =>
+                setAddStudentForm((prev) => ({
+                  ...prev,
+                  email: event.target.value,
+                }))
+              }
+              fullWidth
+              sx={{
+                "& .MuiInputBase-root": {
+                  color: "#edf0f7",
+                  bgcolor: "rgba(255,255,255,0.03)",
+                },
+              }}
+            />
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+              <TextField
+                size="small"
+                label={tt("Rolle", "Role")}
+                value={addStudentForm.role}
+                onChange={(event) =>
+                  setAddStudentForm((prev) => ({
+                    ...prev,
+                    role: event.target.value,
+                  }))
+                }
+                fullWidth
+                sx={{
+                  "& .MuiInputBase-root": {
+                    color: "#edf0f7",
+                    bgcolor: "rgba(255,255,255,0.03)",
+                  },
+                }}
+              />
+              <TextField
+                size="small"
+                select
+                label={tt("Kompetanse", "Competency")}
+                value={addStudentForm.courseId}
+                onChange={(event) =>
+                  setAddStudentForm((prev) => ({
+                    ...prev,
+                    courseId: String(event.target.value),
+                  }))
+                }
+                fullWidth
+                sx={{
+                  "& .MuiInputBase-root": {
+                    color: "#edf0f7",
+                    bgcolor: "rgba(255,255,255,0.03)",
+                  },
+                }}
+              >
+                {courseItems.length > 0 ? (
+                  courseItems.map((course) => (
+                    <MenuItem key={String(course.id)} value={String(course.id)}>
+                      {course.title}
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem value="">
+                    {tt("Ingen kompetanser tilgjengelig", "No competencies available")}
+                  </MenuItem>
+                )}
+              </TextField>
+            </Stack>
+            <TextField
+              size="small"
+              label={tt("Tagger (kommaseparert)", "Tags (comma-separated)")}
+              value={addStudentForm.tags}
+              onChange={(event) =>
+                setAddStudentForm((prev) => ({
+                  ...prev,
+                  tags: event.target.value,
+                }))
+              }
+              fullWidth
+              sx={{
+                "& .MuiInputBase-root": {
+                  color: "#edf0f7",
+                  bgcolor: "rgba(255,255,255,0.03)",
+                },
+              }}
+            />
+            <TextField
+              size="small"
+              select
+              label={tt("Abonnement", "Subscription")}
+              value={addStudentForm.subscriptionPlanId}
+              onChange={(event) =>
+                setAddStudentForm((prev) => ({
+                  ...prev,
+                  subscriptionPlanId: String(event.target.value),
+                }))
+              }
+              fullWidth
+              sx={{
+                "& .MuiInputBase-root": {
+                  color: "#edf0f7",
+                  bgcolor: "rgba(255,255,255,0.03)",
+                },
+              }}
+            >
+              <MenuItem value="">
+                {tt("Ingen abonnement", "No subscription")}
+              </MenuItem>
+              {subscriptionPlanOptions.map((plan) => (
+                <MenuItem key={plan.id} value={plan.id}>
+                  {(language === "no" ? plan.labelNo : plan.labelEn) +
+                    (typeof plan.monthlyPriceNok === "number"
+                      ? ` · ${toNok(plan.monthlyPriceNok)}`
+                      : "")}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            onClick={closeStudentModal}
+            sx={{
+              textTransform: "none",
+              color: "rgba(237,240,247,0.78)",
+              border: "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+            }}
+          >
+            {tt("Avbryt", "Cancel")}
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={editingStudentId ? <Edit /> : <Add />}
+            onClick={submitAddStudent}
+            sx={{
+              textTransform: "none",
+              color: "#0f0f0f",
+              background: "linear-gradient(180deg, #ffd44e, #f2a616)",
+              fontWeight: 700,
+            }}
+          >
+            {editingStudentId
+              ? tt("Lagre endringer", "Save changes")
+              : tt("Legg til student", "Add Student")}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
 
 export default withUniversalIntegration(AcademyEnrollmentStudio, {
-  componentId: 'academy-enrollment-studio',
-  componentName: 'Academy Enrollment Studio',
-  componentType: 'manager',
-  componentCategory: 'academy',
-  featureIds: ['enrollment', 'student-management', 'enrollment-analytics', 'academy-cohorts'],
+  componentId: "academy-enrollment-studio",
+  componentName: "Academy Enrollment Studio",
+  componentType: "manager",
+  componentCategory: "academy",
+  featureIds: [
+    "enrollment",
+    "student-management",
+    "enrollment-analytics",
+    "academy-cohorts",
+  ],
 });

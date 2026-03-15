@@ -60,7 +60,7 @@ const panelOptions = [
   { value: 1, label: 'Roller' },
   { value: 2, label: 'Kandidater' },
   { value: 3, label: 'Team' },
-  { value: 4, label: 'Steder' },
+  { value: 4, label: 'Lokasjoner' },
   { value: 5, label: 'Utstyr' },
   { value: 6, label: 'Kalender' },
   { value: 7, label: 'Shot-list' },

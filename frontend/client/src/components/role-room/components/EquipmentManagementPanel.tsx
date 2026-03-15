@@ -135,6 +135,8 @@ import equipPng from './icons/Keep/roleroom_equip.png';
 import WarehouseInventoryDialog, { type WarehouseDialogItem } from './shared/WarehouseInventoryDialog';
 import warehouseInventoryService from '../services/warehouseInventoryService';
 import QrCameraScanner from './shared/QrCameraScanner';
+import globalTagService from '../services/globalTagService';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 const TOUCH_TARGET_SIZE = 44;
 
@@ -143,6 +145,18 @@ const focusVisibleStyles = {
     outline: '3px solid #9333ea',
     outlineOffset: 2,
   },
+};
+
+const formatEquipmentNoteTimestamp = (value: unknown): string => {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleString('nb-NO', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
 const OPEN_PROP_CREATE_MODAL_EVENT = 'role-room:open-prop-create-modal';
@@ -794,9 +808,18 @@ const buildVendorCategoryCounts = (links: VendorLink[]): { category: string; cou
 interface EquipmentManagementPanelProps {
   projectId: string;
   onUpdate?: () => void;
+  externalCreateSignal?: number;
+  onExternalCreated?: (equipment: Equipment) => void;
+  onExternalCreateCancelled?: () => void;
 }
 
-export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManagementPanelProps) {
+export function EquipmentManagementPanel({
+  projectId,
+  onUpdate,
+  externalCreateSignal,
+  onExternalCreated,
+  onExternalCreateCancelled,
+}: EquipmentManagementPanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
@@ -821,6 +844,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [filterOpen, setFilterOpen] = useState(false);
   
   const [dialogOpen, setDialogOpen] = useState(false);
+  const externalCreateSignalRef = useRef(0);
+  const externalCreatePendingRef = useRef(false);
   const [createTypeDialogOpen, setCreateTypeDialogOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
   const [formData, setFormData] = useState({
@@ -834,6 +859,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     condition: 'good' as Equipment['condition'],
     primaryLocationId: '',
     notes: '',
+    notesAuthorName: '',
+    notesAuthorId: '',
+    notesUpdatedAt: '',
     imageUrl: '',
     status: 'available' as Equipment['status'],
     isGlobal: false, // If true, equipment is available across all projects
@@ -863,6 +891,48 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
   const [crewMembers, setCrewMembers] = useState<CastingCrew[]>([]);
   const [locations, setLocations] = useState<CastingLocation[]>([]);
+  const mentionCandidates = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...crewMembers.map((member) => member.name),
+            ...locations.map((location) => location.name),
+            ...equipment.map((item) => item.name),
+            formData.brand,
+            formData.model,
+          ]
+            .filter((value): value is string => typeof value === 'string')
+            .map((value) => value.trim())
+            .filter((value) => value.length >= 2),
+        ),
+      ),
+    [crewMembers, equipment, formData.brand, formData.model, locations],
+  );
+  const applyMentionSuggestion = useCallback((sourceText: string | undefined, name: string): string => {
+    const current = typeof sourceText === 'string' ? sourceText : '';
+    if (!current.trim()) return name;
+    const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+    return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+  }, []);
+  const seedGlobalMentions = useCallback(
+    (texts: Array<string | undefined>, extraTags: string[] = []) => {
+      const seed = [
+        ...extraTags,
+        ...texts.flatMap((text) =>
+          typeof text === 'string' ? globalTagService.parseExplicitMentions(text) : [],
+        ),
+      ]
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter((value) => value.length >= 2);
+      if (seed.length === 0) return;
+      void globalTagService.add(seed).catch((error) => {
+        console.warn('Kunne ikke oppdatere globalt mention-register for utstyr:', error);
+      });
+    },
+    [],
+  );
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedEquipmentForAssign, setSelectedEquipmentForAssign] = useState<Equipment | null>(null);
   const [selectedCrewId, setSelectedCrewId] = useState('');
@@ -974,6 +1044,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
   // Catalog bridge — browse manufacturer catalog and import items into this project
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const noteActorLabel = useMemo(() => {
+    const raw = user?.displayName ?? user?.name ?? user?.email;
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
+  }, [user]);
+  const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
   const hasProtectedRoleRoomAccess = Boolean(projectId) && isAuthenticated && !authLoading;
   const [roleRoomApiUnavailable, setRoleRoomApiUnavailable] = useState(false);
   const [vendorLinksUnavailable, setVendorLinksUnavailable] = useState(false);
@@ -2317,6 +2392,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         condition: eq.condition || 'good',
         primaryLocationId: eq.primary_location_id || '',
         notes: eq.notes || '',
+        notesAuthorName: eq.notes_author_name || eq.notesAuthorName || '',
+        notesAuthorId: eq.notes_author_id || eq.notesAuthorId || '',
+        notesUpdatedAt: eq.notes_updated_at || eq.notesUpdatedAt || '',
         imageUrl: eq.image_url || '',
         status: eq.status || 'available',
         isGlobal: eq.is_global || !eq.project_id, // Global if no project_id or is_global flag
@@ -2334,6 +2412,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         condition: 'good',
         primaryLocationId: '',
         notes: '',
+        notesAuthorName: '',
+        notesAuthorId: '',
+        notesUpdatedAt: '',
         imageUrl: '',
         status: 'available',
         isGlobal: false,
@@ -2342,6 +2423,23 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     }
     setDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (!externalCreateSignal || externalCreateSignal === externalCreateSignalRef.current) {
+      return;
+    }
+    externalCreateSignalRef.current = externalCreateSignal;
+    externalCreatePendingRef.current = true;
+    handleOpenDialog();
+  }, [externalCreateSignal]);
+
+  const handleCloseMainDialog = useCallback(() => {
+    if (externalCreatePendingRef.current) {
+      externalCreatePendingRef.current = false;
+      onExternalCreateCancelled?.();
+    }
+    setDialogOpen(false);
+  }, [onExternalCreateCancelled]);
 
   const handleOpenCreateTypeDialog = () => {
     blurFocusedElement();
@@ -2382,6 +2480,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             .map(([k, v]) => `${k}: ${v}`)
             .join('\n')
         : '',
+      notesAuthorName: '',
+      notesAuthorId: '',
+      notesUpdatedAt: '',
       imageUrl: item.imageUrl || (item.images?.[0] ?? ''),
       status: 'available',
       isGlobal: false,
@@ -2407,6 +2508,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       notes: item.currentPrice
         ? `Markedspris: ${parseFloat(item.currentPrice).toLocaleString('nb-NO')} kr`
         : '',
+      notesAuthorName: '',
+      notesAuthorId: '',
+      notesUpdatedAt: '',
       imageUrl: '',
       status: 'available',
       isGlobal: false,
@@ -2438,6 +2542,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         lens.imageStabilization && 'Bildestabilisering: Ja',
         lens.weatherSealing && 'Værtetting: Ja',
       ].filter(Boolean).join('\n'),
+      notesAuthorName: '',
+      notesAuthorId: '',
+      notesUpdatedAt: '',
       imageUrl: '',
       status: 'available',
       isGlobal: false,
@@ -2477,6 +2584,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       condition: 'good',
       primaryLocationId: '',
       notes: [...detailLines, ...specsLines].join('\n'),
+      notesAuthorName: '',
+      notesAuthorId: '',
+      notesUpdatedAt: '',
       imageUrl: '',
       status: 'available',
       isGlobal: false,
@@ -2509,6 +2619,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       ]
         .filter(Boolean)
         .join('\n'),
+      notesAuthorName: '',
+      notesAuthorId: '',
+      notesUpdatedAt: '',
       imageUrl: '',
       status: 'available',
       isGlobal: false,
@@ -2545,6 +2658,26 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       return;
     }
 
+    const normalizedNotes = typeof formData.notes === 'string' ? formData.notes.trim() : '';
+    const existingNotes = typeof editingEquipment?.notes === 'string' ? editingEquipment.notes.trim() : '';
+    const shouldRefreshNoteMeta = Boolean(normalizedNotes) && (!editingEquipment || normalizedNotes !== existingNotes);
+    const nowIso = new Date().toISOString();
+    const noteAuthorName = normalizedNotes
+      ? shouldRefreshNoteMeta
+        ? noteActorLabel
+        : formData.notesAuthorName || noteActorLabel
+      : '';
+    const noteAuthorId = normalizedNotes
+      ? shouldRefreshNoteMeta
+        ? noteActorId ?? ''
+        : formData.notesAuthorId || noteActorId || ''
+      : '';
+    const noteUpdatedAt = normalizedNotes
+      ? shouldRefreshNoteMeta
+        ? nowIso
+        : formData.notesUpdatedAt || nowIso
+      : '';
+
     const payload = {
       name: formData.name,
       description: formData.description,
@@ -2555,7 +2688,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       quantity: formData.quantity,
       condition: formData.condition,
       primary_location_id: formData.primaryLocationId || undefined,
-      notes: formData.notes,
+      notes: normalizedNotes ? formData.notes : '',
+      notes_author_name: noteAuthorName,
+      notes_author_id: noteAuthorId,
+      notes_updated_at: noteUpdatedAt,
       image_url: formData.imageUrl,
       status: formData.status,
       project_id: formData.isGlobal ? undefined : projectId, // undefined = global equipment
@@ -2563,14 +2699,20 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     } satisfies Partial<Equipment>;
 
     try {
+      let createdEquipment: Equipment | null = null;
       if (editingEquipment) {
         await equipmentApi.update(editingEquipment.id, payload);
         showSuccess('Utstyr oppdatert');
       } else {
-        await equipmentApi.create(payload);
+        createdEquipment = await equipmentApi.create(payload);
         showSuccess('Utstyr opprettet');
       }
-      setDialogOpen(false);
+      seedGlobalMentions([formData.notes], [formData.name, formData.brand, formData.model]);
+      if (createdEquipment) {
+        externalCreatePendingRef.current = false;
+        onExternalCreated?.(createdEquipment);
+      }
+      handleCloseMainDialog();
       loadEquipment();
       onUpdate?.();
     } catch (error) {
@@ -2663,6 +2805,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       condition: eq.condition || 'good',
       primaryLocationId: eq.primary_location_id || '',
       notes: eq.notes || '',
+      notesAuthorName: eq.notes_author_name || eq.notesAuthorName || '',
+      notesAuthorId: eq.notes_author_id || eq.notesAuthorId || '',
+      notesUpdatedAt: eq.notes_updated_at || eq.notesUpdatedAt || '',
       imageUrl: eq.image_url || '',
       status: 'available', // Reset status for new item
       isGlobal: eq.is_global || false, // Preserve global status
@@ -3111,6 +3256,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       if (new Date(maintenanceForm.scheduledDate) <= new Date()) {
         await equipmentApi.update(selectedEquipmentMaintenance.id, { status: 'maintenance' });
       }
+      seedGlobalMentions([maintenanceForm.notes], [selectedEquipmentMaintenance.name]);
       showSuccess('Vedlikehold planlagt');
       setMaintenanceDialogOpen(false);
       loadEquipment();
@@ -3152,6 +3298,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         notes: bookingForm.notes,
         status: 'pending',
       });
+      seedGlobalMentions([bookingForm.notes, bookingForm.purpose], [selectedEquipmentBookings.name]);
       showSuccess('Booking opprettet');
       setBookingConflicts([]);
       setCreateBookingDialogOpen(false);
@@ -3275,6 +3422,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         condition: checkinForm.condition,
         notes: checkinForm.notes || undefined,
       });
+      seedGlobalMentions([checkinForm.notes], [checkinEquipment.name]);
       showSuccess(`${checkinEquipment.name} levert inn`);
       setCheckinDialogOpen(false);
       loadEquipment();
@@ -5612,7 +5760,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
       <Dialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={handleCloseMainDialog}
         maxWidth="md"
         fullWidth
         TransitionComponent={Grow}
@@ -5642,7 +5790,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Box>
           </Box>
           <IconButton 
-            onClick={() => setDialogOpen(false)} 
+            onClick={handleCloseMainDialog} 
             sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
@@ -6325,6 +6473,31 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
               />
+              <GlobalMentionHelper
+                text={typeof formData.notes === 'string' ? formData.notes : ''}
+                localCandidates={mentionCandidates}
+                onApplySuggestion={(name) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    notes: applyMentionSuggestion(prev.notes, name),
+                  }))
+                }
+              />
+              {formData.notes.trim().length > 0 && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    mt: 0.75,
+                    display: 'block',
+                    color: 'rgba(255,255,255,0.65)',
+                  }}
+                >
+                  Skrevet av: {formData.notesAuthorName || 'Ikke registrert'}
+                  {formatEquipmentNoteTimestamp(formData.notesUpdatedAt)
+                    ? ` • ${formatEquipmentNoteTimestamp(formData.notesUpdatedAt)}`
+                    : ''}
+                </Typography>
+              )}
             </Box>
             
             {/* Global Equipment Toggle */}
@@ -6545,7 +6718,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           background: 'linear-gradient(0deg, rgba(0,0,0,0.2) 0%, transparent 100%)',
         }}>
           <Button
-            onClick={() => setDialogOpen(false)}
+            onClick={handleCloseMainDialog}
             startIcon={<CancelIcon />}
             sx={{ 
               color: 'rgba(255,255,255,0.87)', 
@@ -8381,6 +8554,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
               }}
             />
+            <GlobalMentionHelper
+              text={typeof maintenanceForm.notes === 'string' ? maintenanceForm.notes : ''}
+              localCandidates={[
+                ...mentionCandidates,
+                selectedEquipmentMaintenance?.name ?? '',
+              ]}
+              onApplySuggestion={(name) =>
+                setMaintenanceForm((prev) => ({
+                  ...prev,
+                  notes: applyMentionSuggestion(prev.notes, name),
+                }))
+              }
+            />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
@@ -8520,6 +8706,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
               }}
             />
+            <GlobalMentionHelper
+              text={typeof bookingForm.notes === 'string' ? bookingForm.notes : ''}
+              localCandidates={[
+                ...mentionCandidates,
+                selectedEquipmentBookings?.name ?? '',
+              ]}
+              onApplySuggestion={(name) =>
+                setBookingForm((prev) => ({
+                  ...prev,
+                  notes: applyMentionSuggestion(prev.notes, name),
+                }))
+              }
+            />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
@@ -8608,6 +8807,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </FormControl>
             <TextField label="Merknader" multiline rows={2} value={checkinForm.notes} onChange={(e) => setCheckinForm(f => ({ ...f, notes: e.target.value }))} fullWidth
               sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }} />
+            <GlobalMentionHelper
+              text={typeof checkinForm.notes === 'string' ? checkinForm.notes : ''}
+              localCandidates={[
+                ...mentionCandidates,
+                checkinEquipment?.name ?? '',
+              ]}
+              onApplySuggestion={(name) =>
+                setCheckinForm((prev) => ({
+                  ...prev,
+                  notes: applyMentionSuggestion(prev.notes, name),
+                }))
+              }
+            />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
@@ -8770,6 +8982,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>{eq.name}</Typography>
                         <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.72)' }}>{eq.notes ?? 'Ingen merknader'}</Typography>
+                        {eq.notes?.trim() && (
+                          <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.88)', display: 'block', mt: 0.25 }}>
+                            Skrevet av: {eq.notes_author_name || eq.notesAuthorName || 'Ikke registrert'}
+                            {formatEquipmentNoteTimestamp(eq.notes_updated_at || eq.notesUpdatedAt)
+                              ? ` • ${formatEquipmentNoteTimestamp(eq.notes_updated_at || eq.notesUpdatedAt)}`
+                              : ''}
+                          </Typography>
+                        )}
                       </Box>
                       <Chip label={CONDITION_LABELS[eq.condition]} size="small" sx={{ bgcolor: `${CONDITION_COLORS[eq.condition]}20`, color: CONDITION_COLORS[eq.condition], border: `1px solid ${CONDITION_COLORS[eq.condition]}55`, fontSize: '0.65rem' }} />
                     </Box>

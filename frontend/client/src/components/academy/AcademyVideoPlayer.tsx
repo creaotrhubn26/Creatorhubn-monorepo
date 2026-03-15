@@ -106,8 +106,7 @@ import {
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useTheming } from '../../utils/theming-helper';
-import type { CastingDevice } from '../../services/CastingService';
-import CastingService from '../../services/CastingService';
+import CastingService, { type CastingDevice } from '../../services/CastingService';
 
 interface AcademyVideoPlayerProps {
 	  course: any;
@@ -118,6 +117,14 @@ interface AcademyVideoPlayerProps {
 	  onPreviousLesson?: () => void;
 	  onChapterSelect?: (chapter: any) => void;
 }
+
+type CastCompatibleWindow = Window & {
+  chrome?: {
+    cast?: {
+      isAvailable?: boolean;
+    };
+  };
+};
 
 function AcademyVideoPlayer({
   course,
@@ -965,11 +972,9 @@ function AcademyVideoPlayer({
           navigator.userAgent.includes('iPad') ||
           (videoRef.current && 'webkitAirplay' in videoRef.current);
 
-        const hasChromecast =
-          typeof window !== 'undefined' &&
-          (window as any).chrome &&
-          (window as any).chrome.cast &&
-          (window as any).chrome.cast.isAvailable;
+        const castWindow =
+          typeof window !== 'undefined' ? (window as CastCompatibleWindow) : undefined;
+        const hasChromecast = Boolean(castWindow?.chrome?.cast?.isAvailable);
 
         setAirPlayAvailable(!!hasAirPlay);
         setChromecastAvailable(!!hasChromecast);
@@ -1777,7 +1782,17 @@ function AcademyVideoPlayer({
               <InputLabel>Quality</InputLabel>
               <Select
                 value={state.settings.quality}
-                onChange={(e) => updateSettings({ quality: e.target.value as any })}
+                onChange={(e) => {
+                  const selectedQuality = e.target.value as string;
+                  if (
+                    selectedQuality === '360p' ||
+                    selectedQuality === '720p' ||
+                    selectedQuality === '1080p' ||
+                    selectedQuality === '4k'
+                  ) {
+                    updateSettings({ quality: selectedQuality });
+                  }
+                }}
                 label="Quality"
               >
                 <MenuItem value="360p">360p</MenuItem>

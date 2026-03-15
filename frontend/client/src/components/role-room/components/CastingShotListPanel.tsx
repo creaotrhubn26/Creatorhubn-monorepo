@@ -127,6 +127,7 @@ const ShotPlannerPanel = lazy(() =>
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import scenesPng from './icons/Keep/roleroom_scenes.png';
 import MemoryCardBackupControlDialog from './MemoryCardBackupControlDialog';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
 const TOUCH_TARGET_SIZE = 44;
@@ -167,6 +168,13 @@ const STORYBOARD_TEMPLATE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'romantic', label: 'Romantisk - Myk stemning' },
   { value: 'sci_fi', label: 'Sci-Fi - Futuristisk' },
 ];
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 interface SortableShotItemProps {
   id: string;
@@ -615,6 +623,8 @@ export function CastingShotListPanel({
       casting_director: 'Castingansvarlig',
       production_manager: 'Produsentleder',
       camera_team: 'Kamerateam',
+      content_producer: 'Innholdsprodusent',
+      client_reviewer: 'Klient-revisor',
       agency: 'Byrå',
       writer: 'Forfatter',
       script_editor: 'Manusredaktor',
@@ -625,7 +635,19 @@ export function CastingShotListPanel({
 
   const formatRoleLabel = (role?: string | null): string => {
     if (!role) return 'Ukjent rolle';
-    if (role in { director: true, producer: true, casting_director: true, production_manager: true, camera_team: true, agency: true, writer: true, script_editor: true, reader: true }) {
+    if (role in {
+      director: true,
+      producer: true,
+      casting_director: true,
+      production_manager: true,
+      camera_team: true,
+      content_producer: true,
+      client_reviewer: true,
+      agency: true,
+      writer: true,
+      script_editor: true,
+      reader: true,
+    }) {
       return getUserRoleLabel(role as UserRoleType);
     }
     return role
@@ -683,6 +705,23 @@ export function CastingShotListPanel({
     if (typeof comment.text === 'string' && comment.text.trim()) return comment.text;
     return typeof comment.message === 'string' ? comment.message : '';
   };
+
+  const mentionCandidates = useMemo(() => {
+    const pool = new Set<string>();
+    if (typeof user?.name === 'string' && user.name.trim()) pool.add(user.name.trim());
+    if (typeof user?.email === 'string' && user.email.trim()) pool.add(user.email.split('@')[0]);
+    crewMembers.forEach((member) => {
+      if (typeof member.name === 'string' && member.name.trim()) pool.add(member.name.trim());
+      if (typeof member.role === 'string' && member.role.trim()) pool.add(member.role.trim());
+    });
+    roles.forEach((role) => {
+      if (typeof role.name === 'string' && role.name.trim()) pool.add(role.name.trim());
+    });
+    availableScenes.forEach((scene) => {
+      if (typeof scene.name === 'string' && scene.name.trim()) pool.add(scene.name.trim());
+    });
+    return Array.from(pool);
+  }, [availableScenes, crewMembers, roles, user?.email, user?.name]);
 
   const formatOptionalDate = (value?: string): string => {
     return value ? new Date(value).toLocaleDateString('nb-NO') : '—';
@@ -2695,7 +2734,7 @@ export function CastingShotListPanel({
               }}
             >
               <StorageIcon />
-              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Kortkontroll</Box>}
+              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Backup kontroll</Box>}
             </Button>
           </Tooltip>
 
@@ -2720,22 +2759,6 @@ export function CastingShotListPanel({
           </Tooltip>
         </Box>
       </Box>
-
-      {/* Info if no scenes from Scene Composer */}
-      {availableScenes.length === 0 && (
-        <Alert
-          severity="info"
-          sx={{
-            mb: 2,
-            bgcolor: 'rgba(33,150,243,0.1)',
-            color: '#64b5f6',
-            border: '1px solid rgba(33,150,243,0.3)',
-            '& .MuiAlert-icon': { color: '#64b5f6' },
-          }}
-        >
-          Du kan opprette shot lists med egne scenenavn, eller koble til Scene Composer for å velge scener derfra.
-        </Alert>
-      )}
 
       {/* Statistics Panel - Responsive */}
       <Collapse in={showStats}>
@@ -2795,18 +2818,27 @@ export function CastingShotListPanel({
           </Box>
           {/* Status breakdown */}
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+              <ScheduleIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#78909c' }} />
+            </Box>
             <Typography variant="h4" sx={{ color: '#78909c', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.byStatus.not_started}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Venter</Typography>
           </Box>
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+              <RefreshIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9333ea' }} />
+            </Box>
             <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.byStatus.in_progress}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Pågår</Typography>
           </Box>
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+              <ResolvedIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#4caf50' }} />
+            </Box>
             <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.byStatus.completed}
             </Typography>
@@ -5177,6 +5209,18 @@ export function CastingShotListPanel({
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                     }}
                   />
+                  <GlobalMentionHelper
+                    text={shotFormData.notes || ''}
+                    localCandidates={mentionCandidates}
+                    onApplySuggestion={(name) =>
+                      setShotFormData((prev) => ({
+                        ...prev,
+                        notes: applyMentionSuggestion(prev.notes, name),
+                      }))
+                    }
+                    autoTagTitle="Auto-tagget i notater"
+                    suggestionTitle="Mener du?"
+                  />
                 </Box>
               </Box>
             </Box>
@@ -5417,20 +5461,29 @@ export function CastingShotListPanel({
                 )}
               </Stack>
               <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 1 }}>
-                <TextField
-                  label="Ny kommentar"
-                  value={commentDraft}
-                  onChange={(e) => setCommentDraft(e.target.value)}
-                  fullWidth
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      color: '#fff',
-                      '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                      '&.Mui-focused fieldset': { borderColor: '#e91e63' },
-                    },
-                    '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                  }}
-                />
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    label="Ny kommentar"
+                    value={commentDraft}
+                    onChange={(e) => setCommentDraft(e.target.value)}
+                    fullWidth
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        color: '#fff',
+                        '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                        '&.Mui-focused fieldset': { borderColor: '#e91e63' },
+                      },
+                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                    }}
+                  />
+                  <GlobalMentionHelper
+                    text={commentDraft}
+                    localCandidates={mentionCandidates}
+                    onApplySuggestion={(name) => setCommentDraft((prev) => applyMentionSuggestion(prev, name))}
+                    autoTagTitle="Auto-tagget i kommentar"
+                    suggestionTitle="Mener du?"
+                  />
+                </Box>
                 <Button
                   variant="outlined"
                   onClick={handleAddComment}

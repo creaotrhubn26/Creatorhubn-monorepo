@@ -18,7 +18,7 @@ if [[ -f "${ROOT_DIR}/.env.local" ]]; then
   set +a
 fi
 
-export PORT="${PYANNOTE_PORT:-5501}"
+export PORT="${PYANNOTE_PORT:-5502}"
 
 resolve_python_bin() {
   if [[ -n "${PYANNOTE_PYTHON_BIN:-}" ]]; then

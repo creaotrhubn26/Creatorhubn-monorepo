@@ -32,6 +32,8 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import StarIcon from '@mui/icons-material/Star';
 import type { WorkflowStatus } from '../services/castingApiService';
+import globalTagService from '../services/globalTagService';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 const WORKFLOW_STEPS: { status: WorkflowStatus; label: string; icon: ReactNode; color: string }[] = [
   { status: 'pending', label: 'Venter', icon: <PersonSearchIcon />, color: '#9ca3af' },
@@ -132,6 +134,18 @@ export const CandidateWorkflowStatus: FC<CandidateWorkflowStatusProps> = ({
   const handleAuditionDialogSubmit = () => {
     if (onAuditionResultUpdate) {
       onAuditionResultUpdate(candidateId, rating, notes);
+    }
+    const mentionSeed = [
+      candidateName,
+      ...globalTagService.parseExplicitMentions(typeof notes === 'string' ? notes : ''),
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter((value) => value.length >= 2);
+    if (mentionSeed.length > 0) {
+      void globalTagService.add(mentionSeed).catch((error) => {
+        console.warn('Kunne ikke oppdatere globalt mention-register fra audition-vurdering:', error);
+      });
     }
     setAuditionDialogOpen(false);
   };
@@ -246,6 +260,19 @@ export const CandidateWorkflowStatus: FC<CandidateWorkflowStatusProps> = ({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Beskriv kandidatens prestasjon..."
+            />
+            <GlobalMentionHelper
+              text={typeof notes === 'string' ? notes : ''}
+              localCandidates={[candidateName]}
+              onApplySuggestion={(name) => {
+                const current = typeof notes === 'string' ? notes : '';
+                if (!current.trim()) {
+                  setNotes(name);
+                  return;
+                }
+                const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+                setNotes(replaced !== current ? replaced : `${current.trimEnd()} ${name}`);
+              }}
             />
           </DialogContent>
           <DialogActions>

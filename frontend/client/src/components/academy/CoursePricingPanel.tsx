@@ -77,7 +77,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
     currentPriceOre ? oreToNok(currentPriceOre) : 499,
   );
   const [expectedStudents, setExpectedStudents] = useState<number>(30);
-  const [showSuggestion, setShowSuggestion] = useState<boolean>(false);
+  const [showSuggestion, setShowSuggestion] = useState<boolean>(!currentPriceOre);
 
   // Calculate suggested price
   const suggestion = suggestCoursePrice(
@@ -105,6 +105,9 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
 
   const handlePriceChange = (value: number) => {
     setPriceNOK(value);
+    if (Math.abs(value - suggestion.suggestedPriceNOK) > 100) {
+      setShowSuggestion(true);
+    }
     analytics.trackEvent('course_price_adjusted,', {
       courseId,
       newPrice: value,
@@ -227,30 +230,43 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
               />
 
               {/* AI Suggestion */}
-              <Paper
-                sx={{ p: 2, bgcolor: 'info.light', border: 'var(--academy-hairline-width, 1px) solid', borderColor: 'info.main' }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <AutoAwesome sx={{ color: 'info.dark', mr: 1 }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'info.dark' }}>
-                    AI Prisanbefaling
-                  </Typography>
-                </Box>
-                <Typography variant="body2" sx={{ color: 'info.dark', mb: 1 }}>
-                  Basert på kursinnhold: <strong>{suggestion.suggestedPriceNOK} NOK</strong>
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'info.dark', display: 'block', mb: 2 }}>
-                  {suggestion.reasoning}
-                </Typography>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={handleUseSuggestion}
-                  sx={{ borderColor: 'info.dark', color: 'info.dark' }}
+              <FormControlLabel
+                sx={{ mb: 1 }}
+                control={
+                  <Switch
+                    checked={showSuggestion}
+                    onChange={(event) => setShowSuggestion(event.target.checked)}
+                  />
+                }
+                label="Vis AI-prisanbefaling"
+              />
+
+              {showSuggestion && (
+                <Paper
+                  sx={{ p: 2, bgcolor: 'info.light', border: 'var(--academy-hairline-width, 1px) solid', borderColor: 'info.main' }}
                 >
-                  Bruk anbefalt pris
-                </Button>
-              </Paper>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <AutoAwesome sx={{ color: 'info.dark', mr: 1 }} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'info.dark' }}>
+                      AI Prisanbefaling
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" sx={{ color: 'info.dark', mb: 1 }}>
+                    Basert på kursinnhold: <strong>{suggestion.suggestedPriceNOK} NOK</strong>
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'info.dark', display: 'block', mb: 2 }}>
+                    {suggestion.reasoning}
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={handleUseSuggestion}
+                    sx={{ borderColor: 'info.dark', color: 'info.dark' }}
+                  >
+                    Bruk anbefalt pris
+                  </Button>
+                </Paper>
+              )}
 
               {/* Expected Students */}
               <Typography variant="body2" gutterBottom color="text.secondary" sx={{ mt: 3 }}>

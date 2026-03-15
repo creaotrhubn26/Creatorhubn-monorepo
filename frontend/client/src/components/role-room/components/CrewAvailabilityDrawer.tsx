@@ -39,6 +39,7 @@ import {
 } from '@mui/icons-material';
 import type { CrewAvailability, CrewConflict } from '../services/castingApiService';
 import { crewAvailabilityApi, crewConflictsApi } from '../services/castingApiService';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface CrewAvailabilityDrawerProps {
   open: boolean;
@@ -52,6 +53,13 @@ const statusConfig = {
   available: { label: 'Tilgjengelig', color: '#22c55e', icon: AvailableIcon },
   unavailable: { label: 'Utilgjengelig', color: '#ef4444', icon: UnavailableIcon },
   tentative: { label: 'Usikker', color: '#f59e0b', icon: TentativeIcon },
+};
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
 };
 
 export default function CrewAvailabilityDrawer({
@@ -375,6 +383,18 @@ export default function CrewAvailabilityDrawer({
                 },
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
               }}
+            />
+            <GlobalMentionHelper
+              text={newEntry.notes}
+              localCandidates={[crewName]}
+              onApplySuggestion={(name) =>
+                setNewEntry((prev) => ({
+                  ...prev,
+                  notes: applyMentionSuggestion(prev.notes, name),
+                }))
+              }
+              autoTagTitle="Auto-tagget i notater"
+              suggestionTitle="Mener du?"
             />
             <FormControlLabel
               control={

@@ -3,6 +3,8 @@
  * Centralized service for managing external data (fuel prices, tax rates, tolls, vehicle data)
  */
 
+import { useMemo } from 'react';
+
 import { apiRequest } from '@/lib/queryClient';
 
 export interface VehicleData {
@@ -397,6 +399,7 @@ class ExternalDataService {
     property: 'unknown',
     elevation: 'unknown',
   };
+  private brregEndpointStatus: 'unknown' | 'available' | 'unavailable' = 'unknown';
   private cacheStats = {
     hits: 0,
     misses: 0,
@@ -857,6 +860,10 @@ class ExternalDataService {
    * Get company data from BRREG
    */
   async getBRREGCompanyData(organizationNumber: string): Promise<BRREGCompanyData> {
+    if (this.brregEndpointStatus === 'unavailable') {
+      return this.getFallbackBRREGCompanyData(organizationNumber);
+    }
+
     const cacheKey = `brreg_company_${organizationNumber}`;
     const cached = this.getCachedData(cacheKey);
     
@@ -868,12 +875,16 @@ class ExternalDataService {
       const response = await apiRequest(`/api/price-administration/brreg/company/${organizationNumber}`);
       
       if (response.success) {
+        this.brregEndpointStatus = 'available';
         this.setCachedData(cacheKey, response);
         return response;
     } else {
         throw new Error(response.error || 'Failed to fetch company data');
     }
   } catch (error) {
+      if (this.isEndpointNotImplementedError(error)) {
+        this.brregEndpointStatus = 'unavailable';
+      }
       console.warn('Failed to fetch BRREG company data:', error);
       return this.getFallbackBRREGCompanyData(organizationNumber);
   }
@@ -886,6 +897,10 @@ class ExternalDataService {
     name: string;
     limit?: number;
 }): Promise<BRREGSearchResults> {
+    if (this.brregEndpointStatus === 'unavailable') {
+      return this.getFallbackBRREGSearchResults(params.name, params.limit || 10);
+    }
+
     const cacheKey = `brreg_search_${JSON.stringify(params)}`;
     const cached = this.getCachedData(cacheKey);
     
@@ -900,12 +915,16 @@ class ExternalDataService {
       const response = await apiRequest(url);
       
       if (response.success) {
+        this.brregEndpointStatus = 'available';
         this.setCachedData(cacheKey, response);
         return response;
     } else {
         throw new Error(response.error || 'Failed to search companies');
     }
   } catch (error) {
+      if (this.isEndpointNotImplementedError(error)) {
+        this.brregEndpointStatus = 'unavailable';
+      }
       console.warn('Failed to search BRREG companies:', error);
       return this.getFallbackBRREGSearchResults(params.name, params.limit || 10);
   }
@@ -915,6 +934,10 @@ class ExternalDataService {
    * Get vehicle data from BRREG
    */
   async getBRREGVehicleData(registrationNumber: string): Promise<BRREGVehicleData> {
+    if (this.brregEndpointStatus === 'unavailable') {
+      return this.getFallbackBRREGVehicleData(registrationNumber);
+    }
+
     const cacheKey = `brreg_vehicle_${registrationNumber}`;
     const cached = this.getCachedData(cacheKey);
     
@@ -926,12 +949,16 @@ class ExternalDataService {
       const response = await apiRequest(`/api/price-administration/brreg/vehicle/${registrationNumber}`);
       
       if (response.success) {
+        this.brregEndpointStatus = 'available';
         this.setCachedData(cacheKey, response);
         return response;
     } else {
         throw new Error(response.error || 'Failed to fetch vehicle data');
     }
   } catch (error) {
+      if (this.isEndpointNotImplementedError(error)) {
+        this.brregEndpointStatus = 'unavailable';
+      }
       console.warn('Failed to fetch BRREG vehicle data:', error);
       return this.getFallbackBRREGVehicleData(registrationNumber);
   }
@@ -944,6 +971,10 @@ class ExternalDataService {
     type?: string;
     limit?: number;
 }): Promise<BRREGNotices> {
+    if (this.brregEndpointStatus === 'unavailable') {
+      return this.getFallbackBRREGNotices(params.type, params.limit || 20);
+    }
+
     const cacheKey = `brreg_notices_${JSON.stringify(params)}`;
     const cached = this.getCachedData(cacheKey);
     
@@ -962,12 +993,16 @@ class ExternalDataService {
       const response = await apiRequest(url);
       
       if (response.success) {
+        this.brregEndpointStatus = 'available';
         this.setCachedData(cacheKey, response);
         return response;
     } else {
         throw new Error(response.error || 'Failed to fetch legal notices');
     }
   } catch (error) {
+      if (this.isEndpointNotImplementedError(error)) {
+        this.brregEndpointStatus = 'unavailable';
+      }
       console.warn('Failed to fetch BRREG notices:', error);
       return this.getFallbackBRREGNotices(params.type, params.limit || 20);
   }
@@ -1070,7 +1105,13 @@ class ExternalDataService {
   private isEndpointNotImplementedError(error: unknown): boolean {
     if (!(error instanceof Error)) return false;
     const message = error.message.toLowerCase();
-    return message.includes('404') && message.includes('endpoint not implemented');
+    if (message.includes('endpoint not implemented')) {
+      return true;
+    }
+    if (!message.includes('404')) {
+      return false;
+    }
+    return message.includes('/api/price-administration/brreg/');
   }
 
   /**
@@ -2348,7 +2389,7 @@ export const externalDataService = new ExternalDataService();
 
 // Export React hook for easy integration
 export function useExternalData() {
-  return {
+  return useMemo(() => ({
     getVehicleData: externalDataService.getVehicleData.bind(externalDataService),
     calculateTollCosts: externalDataService.calculateTollCosts.bind(externalDataService),
     calculateTravelCosts: externalDataService.calculateTravelCosts.bind(externalDataService),
@@ -2386,8 +2427,8 @@ export function useExternalData() {
     clearCache: externalDataService.clearCache.bind(externalDataService),
     getCacheStats: externalDataService.getCacheStats.bind(externalDataService),
     preloadFrequentData: externalDataService.preloadFrequentData.bind(externalDataService),
-    warmupCache: externalDataService.warmupCache.bind(externalDataService)
-};
+    warmupCache: externalDataService.warmupCache.bind(externalDataService),
+  }), []);
 }
 
 export default externalDataService;

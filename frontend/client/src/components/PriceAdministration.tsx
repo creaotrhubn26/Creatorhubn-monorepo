@@ -883,7 +883,7 @@ const removeExtraDestination = (_index: number) => {
   }, [dataFlow, packagesData, pricingData, categoriesData, quotesData, discountsData, costsData, travelLogsData]);
 
   // Enhanced handlers with integration broadcasting
-  const _handlePackageCreated = (packageData: any) => {
+  const handlePackageCreated = (packageData: any) => {
     console.log('💰 Package Created:', packageData);
     
     // Broadcast to other components (UniversalDashboard, UniversalShowcase, etc.)
@@ -906,7 +906,7 @@ const removeExtraDestination = (_index: number) => {
     queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages'] });
   };
 
-  const _handlePricingCreated = (pricingCreatedData: any) => {
+  const handlePricingCreated = (pricingCreatedData: any) => {
     console.log('💰 Pricing Created:', pricingCreatedData);
     
     // Broadcast to other components
@@ -929,7 +929,7 @@ const removeExtraDestination = (_index: number) => {
     queryClient.invalidateQueries({ queryKey: ['/api/price-administration/pricing'] });
   };
 
-  const _handleCategoryCreated = (categoryData: any) => {
+  const handleCategoryCreated = (categoryData: any) => {
     console.log('💰 Category Created:', categoryData);
     
     // Broadcast to other components
@@ -949,7 +949,7 @@ const removeExtraDestination = (_index: number) => {
     dataFlow.syncData('price-administration:categories', categoriesData ? [...(Array.isArray(categoriesData) ? categoriesData : []), categoryData] : [categoryData]);
   };
 
-  const _handleQuoteGenerated = (quoteData: any) => {
+  const handleQuoteGenerated = (quoteData: any) => {
     console.log('💰 Quote Generated:', quoteData);
     
     // Broadcast to other components - important for ContractHub, ClientManagement
@@ -2612,6 +2612,7 @@ const removeExtraDestination = (_index: number) => {
         }}
         editData={selectedItem}
         categories={(Array.isArray(categoriesData) ? categoriesData : ((categoriesData as any)?.categories)) || []}
+        onPackageSaved={handlePackageCreated}
       />
 
       <CreatePricingModal
@@ -2621,11 +2622,13 @@ const removeExtraDestination = (_index: number) => {
           setSelectedItem(null);
         }}
         editData={selectedItem}
+        onPricingSaved={handlePricingCreated}
       />
 
       <CreateCategoryModal
         open={createCategoryOpen}
         onClose={() => setCreateCategoryOpen(false)}
+        onCategoryCreated={handleCategoryCreated}
       />
 
       <QuoteGeneratorModal
@@ -2635,6 +2638,7 @@ const removeExtraDestination = (_index: number) => {
         pricing={(Array.isArray(pricingData) ? pricingData : ((pricingData as any)?.pricing)) || []}
         additionalCosts={(Array.isArray(costsData) ? costsData : ((costsData as any)?.costs)) || []}
         discounts={(Array.isArray(discountsData) ? discountsData : ((discountsData as any)?.discounts)) || []}
+        onQuoteGenerated={handleQuoteGenerated}
       />
 
       {/* Manual Travel Log Entry Dialog */}

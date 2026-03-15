@@ -11,6 +11,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import {
+  Alert,
   Box,
   Paper,
   Typography,
@@ -21,8 +22,6 @@ import {
   TextField,
   Button,
   Chip,
-  ToggleButtonGroup,
-  ToggleButton,
   Slider,
   Switch,
   FormControlLabel,
@@ -32,39 +31,20 @@ import {
   DialogContent,
   DialogActions,
   InputAdornment,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-  Badge,
-  Grid,
 } from '@mui/material';
 import {
-  AspectRatio,
+  Search,
   Movie,
   Tv,
   Smartphone,
-  CropSquare,
-  CropLandscape,
-  CropPortrait,
   GridOn,
-  GridOff,
   GridView,
   Add,
   Check,
-  Edit,
   Delete,
-  Save,
-  FolderOpen,
   Star,
   StarBorder,
-  ContentCopy,
-  Info,
   Settings,
-  Visibility,
-  VisibilityOff,
-  Lock,
-  LockOpen,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -86,6 +66,10 @@ export interface AspectRatioPreset {
   icon?: React.ReactNode;
   color?: string;
   popular?: boolean;
+  defaultGuideType?: GuideType;
+  defaultGuidesEnabled?: boolean;
+  defaultActionSafe?: boolean;
+  defaultTitleSafe?: boolean;
 }
 
 export interface FrameGuides {
@@ -322,6 +306,39 @@ const CATEGORY_LABELS: Record<AspectRatioCategory, string> = {
   custom: 'Custom',
 };
 
+const CATEGORY_DEFAULT_GUIDES: Record<AspectRatioCategory, Partial<FrameGuides>> = {
+  film: {
+    type: 'thirds',
+    enabled: true,
+    showActionSafe: false,
+    showTitleSafe: false,
+  },
+  tv: {
+    type: 'safe',
+    enabled: true,
+    showActionSafe: true,
+    showTitleSafe: true,
+  },
+  social: {
+    type: 'center',
+    enabled: true,
+    showActionSafe: false,
+    showTitleSafe: false,
+  },
+  web: {
+    type: 'diagonal',
+    enabled: true,
+    showActionSafe: false,
+    showTitleSafe: false,
+  },
+  custom: {
+    type: 'thirds',
+    enabled: true,
+    showActionSafe: false,
+    showTitleSafe: false,
+  },
+};
+
 // =============================================================================
 // Styled Components
 // =============================================================================
@@ -329,15 +346,20 @@ const CATEGORY_LABELS: Record<AspectRatioCategory, string> = {
 const TemplateCard = styled(Paper, {
   shouldForwardProp: (prop) => prop !== 'selected',
 })<{ selected?: boolean }>(({ selected }) => ({
-  padding: 12,
+  padding: 14,
   cursor: 'pointer',
-  backgroundColor: selected ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 30, 40, 0.6)',
-  border: selected ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid transparent',
-  borderRadius: 8,
+  background: selected
+    ? 'linear-gradient(135deg, rgba(56, 189, 248, 0.18) 0%, rgba(37, 99, 235, 0.16) 100%)'
+    : 'linear-gradient(145deg, rgba(18, 24, 40, 0.95) 0%, rgba(11, 16, 30, 0.95) 100%)',
+  border: selected ? '1px solid rgba(56, 189, 248, 0.7)' : '1px solid rgba(99, 102, 241, 0.22)',
   transition: 'all 0.2s ease',
+  minHeight: 128,
+  boxShadow: selected
+    ? '0 14px 30px rgba(14, 165, 233, 0.25)'
+    : '0 10px 24px rgba(4, 8, 22, 0.55)',
   '&:hover': {
-    backgroundColor: selected ? 'rgba(59, 130, 246, 0.2)' : 'rgba(40, 40, 50, 0.8)',
-    transform: 'translateY(-2px)',
+    borderColor: selected ? 'rgba(56, 189, 248, 0.85)' : 'rgba(99, 102, 241, 0.38)',
+    transform: 'translateY(-2px) scale(1.01)',
   },
 }));
 
@@ -354,15 +376,6 @@ const AspectPreview = styled(Box, {
   maxHeight: 80,
 }));
 
-const GuideOverlay = styled(Box)({
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  pointerEvents: 'none',
-});
-
 const CategoryChip = styled(Chip, {
   shouldForwardProp: (prop) => prop !== 'categoryColor',
 })<{ categoryColor?: string }>(({ categoryColor }) => ({
@@ -372,6 +385,14 @@ const CategoryChip = styled(Chip, {
   fontSize: 10,
   height: 20,
 }));
+
+const TemplateSection = styled(Paper)({
+  padding: 14,
+  borderRadius: 12,
+  border: '1px solid rgba(99, 102, 241, 0.22)',
+  background: 'linear-gradient(145deg, rgba(8, 14, 28, 0.95) 0%, rgba(8, 12, 24, 0.95) 100%)',
+  boxShadow: '0 12px 26px rgba(2, 6, 23, 0.45)',
+});
 
 // =============================================================================
 // Helper Functions
@@ -396,9 +417,21 @@ export const getFrameDimensions = (
 };
 
 export const formatAspectRatio = (width: number, height: number): string => {
+  const isNearlyInteger = (value: number): boolean => Math.abs(value - Math.round(value)) < 1e-9;
+  const trimDecimals = (value: number): string => {
+    if (isNearlyInteger(value)) return String(Math.round(value));
+    return value.toFixed(2).replace(/\.?0+$/, '');
+  };
+
+  if (!isNearlyInteger(width) || !isNearlyInteger(height)) {
+    return `${trimDecimals(width)}:${trimDecimals(height)}`;
+  }
+
   const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-  const divisor = gcd(width, height);
-  return `${width / divisor}:${height / divisor}`;
+  const intWidth = Math.round(width);
+  const intHeight = Math.round(height);
+  const divisor = gcd(intWidth, intHeight);
+  return `${intWidth / divisor}:${intHeight / divisor}`;
 };
 
 export const drawGuides = (
@@ -416,7 +449,7 @@ export const drawGuides = (
   ctx.setLineDash([]);
   
   switch (guides.type) {
-    case 'thirds':
+    case 'thirds': {
       // Rule of thirds
       const thirdW = width / 3;
       const thirdH = height / 3;
@@ -432,8 +465,9 @@ export const drawGuides = (
       ctx.lineTo(width, thirdH * 2);
       ctx.stroke();
       break;
-      
-    case 'golden':
+    }
+
+    case 'golden': {
       // Golden ratio (1.618)
       const phi = 1.618033988749;
       const goldenW = width / phi;
@@ -450,7 +484,8 @@ export const drawGuides = (
       ctx.lineTo(width, goldenH);
       ctx.stroke();
       break;
-      
+    }
+
     case 'diagonal':
       // Diagonal lines
       ctx.beginPath();
@@ -460,7 +495,7 @@ export const drawGuides = (
       ctx.lineTo(0, height);
       ctx.stroke();
       break;
-      
+
     case 'center':
       // Center crosshairs
       ctx.beginPath();
@@ -475,8 +510,8 @@ export const drawGuides = (
       ctx.arc(width / 2, height / 2, Math.min(width, height) * 0.1, 0, Math.PI * 2);
       ctx.stroke();
       break;
-      
-    case 'safe':
+
+    case 'safe': {
       // TV safe zones
       const actionSafe = 0.93;
       const titleSafe = 0.9;
@@ -501,6 +536,7 @@ export const drawGuides = (
       ctx.strokeStyle = '#4ecdc4';
       ctx.strokeRect(titleX, titleY, titleW, titleH);
       break;
+    }
   }
   
   // Additional safe zones if enabled
@@ -533,13 +569,23 @@ export const createTemplateFromPreset = (
   const aspectRatio = calculateAspectRatio(preset.width, preset.height);
   const { width, height } = getFrameDimensions(aspectRatio, canvasWidth, canvasHeight);
   
+  const categoryDefaults = CATEGORY_DEFAULT_GUIDES[preset.category] ?? {};
+  const guideDefaults: FrameGuides = {
+    ...DEFAULT_GUIDES,
+    ...categoryDefaults,
+    type: preset.defaultGuideType ?? categoryDefaults.type ?? DEFAULT_GUIDES.type,
+    enabled: preset.defaultGuidesEnabled ?? categoryDefaults.enabled ?? DEFAULT_GUIDES.enabled,
+    showActionSafe: preset.defaultActionSafe ?? categoryDefaults.showActionSafe ?? DEFAULT_GUIDES.showActionSafe,
+    showTitleSafe: preset.defaultTitleSafe ?? categoryDefaults.showTitleSafe ?? DEFAULT_GUIDES.showTitleSafe,
+  };
+
   return {
     id: `template-${preset.id}-${Date.now()}`,
     name: preset.name,
     aspectRatio: preset,
     frameWidth: Math.round(width),
     frameHeight: Math.round(height),
-    guides: { ...DEFAULT_GUIDES },
+    guides: guideDefaults,
     backgroundColor: '#1a1a2e',
     borderColor: '#333344',
     borderWidth: 2,
@@ -625,10 +671,62 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
   const [customName, setCustomName] = useState('Custom Template');
   const [searchQuery, setSearchQuery] = useState('');
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
+  const [favoritePresetIds, setFavoritePresetIds] = useState<Set<string>>(
+    () => new Set(ASPECT_RATIO_PRESETS.filter((preset) => preset.popular).map((preset) => preset.id))
+  );
+  const safeCustomWidth = Number.isFinite(customWidth) && customWidth > 0 ? customWidth : 16;
+  const safeCustomHeight = Number.isFinite(customHeight) && customHeight > 0 ? customHeight : 9;
+  const safeCustomAspectRatio = safeCustomWidth / safeCustomHeight;
+  const sanitizedCustomName = customName.trim() || 'Custom Template';
+
+  const presetIntegrity = useMemo(() => {
+    const seenIds = new Set<string>();
+    const duplicateIds = new Set<string>();
+    const invalidDimensionIds: string[] = [];
+    const valid: AspectRatioPreset[] = [];
+
+    ASPECT_RATIO_PRESETS.forEach((preset) => {
+      const hasValidDimensions = Number.isFinite(preset.width)
+        && Number.isFinite(preset.height)
+        && preset.width > 0
+        && preset.height > 0;
+
+      if (!hasValidDimensions) {
+        invalidDimensionIds.push(preset.id);
+        return;
+      }
+
+      if (seenIds.has(preset.id)) {
+        duplicateIds.add(preset.id);
+        return;
+      }
+
+      seenIds.add(preset.id);
+      valid.push(preset);
+    });
+
+    return {
+      valid,
+      duplicateIds: Array.from(duplicateIds),
+      invalidDimensionIds,
+    };
+  }, []);
+
+  const togglePresetFavorite = useCallback((presetId: string) => {
+    setFavoritePresetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(presetId)) {
+        next.delete(presetId);
+      } else {
+        next.add(presetId);
+      }
+      return next;
+    });
+  }, []);
   
   // Filter presets
   const filteredPresets = useMemo(() => {
-    let presets = ASPECT_RATIO_PRESETS;
+    let presets = presetIntegrity.valid;
     
     if (selectedCategory !== 'all') {
       presets = presets.filter(p => p.category === selectedCategory);
@@ -641,9 +739,32 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
         p.description.toLowerCase().includes(query)
       );
     }
+
+    if (showOnlyFavorites) {
+      presets = presets.filter((preset) => favoritePresetIds.has(preset.id));
+    }
     
     return presets;
-  }, [selectedCategory, searchQuery]);
+  }, [selectedCategory, searchQuery, showOnlyFavorites, favoritePresetIds, presetIntegrity.valid]);
+
+  const filteredCustomTemplates = useMemo(() => {
+    let templates = customTemplates;
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      templates = templates.filter((template) => (
+        template.name.toLowerCase().includes(query)
+        || template.aspectRatio.description.toLowerCase().includes(query)
+      ));
+    }
+    if (showOnlyFavorites) {
+      templates = templates.filter((template) => template.isFavorite);
+    }
+    return templates;
+  }, [customTemplates, searchQuery, showOnlyFavorites]);
+
+  const favoritePresets = useMemo(() => (
+    presetIntegrity.valid.filter((preset) => favoritePresetIds.has(preset.id))
+  ), [favoritePresetIds, presetIntegrity.valid]);
   
   // Group presets by category
   const groupedPresets = useMemo(() => {
@@ -670,11 +791,11 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
   const handleCreateCustom = useCallback(() => {
     const customPreset: AspectRatioPreset = {
       id: `custom-${Date.now()}`,
-      name: customName,
+      name: sanitizedCustomName,
       category: 'custom',
-      width: customWidth,
-      height: customHeight,
-      description: `Custom ${customWidth}:${customHeight}`,
+      width: safeCustomWidth,
+      height: safeCustomHeight,
+      description: `Custom ${safeCustomWidth}:${safeCustomHeight}`,
       color: '#8b5cf6',
     };
     
@@ -684,7 +805,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
     onTemplateCreate?.(template);
     onTemplateSelect(template);
     setShowCustomDialog(false);
-  }, [customName, customWidth, customHeight, canvasWidth, canvasHeight, onTemplateCreate, onTemplateSelect]);
+  }, [sanitizedCustomName, safeCustomWidth, safeCustomHeight, canvasWidth, canvasHeight, onTemplateCreate, onTemplateSelect]);
   
   const handleGuideChange = useCallback((updates: Partial<FrameGuides>) => {
     if (selectedTemplate) {
@@ -695,89 +816,184 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
       onTemplateSelect(updated);
     }
   }, [selectedTemplate, onTemplateSelect]);
+
+  const templateCardItemSx = {
+    flex: '1 1 172px',
+    minWidth: 172,
+    maxWidth: '100%',
+  } as const;
+  const popularCardItemSx = {
+    flex: '1 1 156px',
+    minWidth: 156,
+    maxWidth: '100%',
+  } as const;
   
   return (
-    <Box sx={{ p: 2 }}>
+    <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
       {/* Header */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
-        <Typography variant="subtitle1" fontWeight={600}>
-          Storyboard Templates
-        </Typography>
-        <Stack direction="row" gap={1}>
-          <Tooltip title="Show favorites only">
-            <IconButton
-              size="small"
-              onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
-              sx={{ color: showOnlyFavorites ? '#f59e0b' : 'inherit' }}
+      <TemplateSection>
+        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={1.75} gap={1.25}>
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700}>
+              Storyboard Templates
+            </Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                maxWidth: 280,
+                lineHeight: 1.45,
+                mt: 0.25,
+              }}
             >
-              {showOnlyFavorites ? <Star /> : <StarBorder />}
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Create custom template">
-            <IconButton
-              size="small"
-              onClick={() => setShowCustomDialog(true)}
-              sx={{ color: '#8b5cf6' }}
-            >
-              <Add />
-            </IconButton>
-          </Tooltip>
+              Cinematic ratios, social formats, and custom frame guides
+            </Typography>
+          </Box>
+          <Stack direction="row" gap={1}>
+            <Tooltip title="Show favorites only">
+              <IconButton
+                size="small"
+                onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
+                sx={{ color: showOnlyFavorites ? '#f59e0b' : 'inherit' }}
+              >
+                {showOnlyFavorites ? <Star /> : <StarBorder />}
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Create custom template">
+              <IconButton
+                size="small"
+                onClick={() => setShowCustomDialog(true)}
+                sx={{ color: '#8b5cf6' }}
+              >
+                <Add />
+              </IconButton>
+            </Tooltip>
+          </Stack>
         </Stack>
-      </Stack>
-      
-      {/* Search */}
-      <TextField
-        fullWidth
-        size="small"
-        placeholder="Search templates..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        sx={{
-          mb: 2,
-          '& .MuiOutlinedInput-root': {
-            backgroundColor: 'rgba(0,0,0,0.2)',
-            fontSize: 12,
-          },
-        }}
-      />
-      
-      {/* Category Filter */}
-      <Stack direction="row" gap={0.5} flexWrap="wrap" mb={2}>
-        <Chip
-          label="All"
+
+        {(presetIntegrity.duplicateIds.length > 0 || presetIntegrity.invalidDimensionIds.length > 0) && (
+          <Alert
+            severity="warning"
+            sx={{
+              mb: 1.25,
+              borderRadius: 2,
+              py: 0.5,
+              bgcolor: 'rgba(161, 98, 7, 0.14)',
+              border: '1px solid rgba(234, 179, 8, 0.35)',
+              '& .MuiAlert-message': { fontSize: 12 },
+            }}
+          >
+            Template validation: {presetIntegrity.valid.length} gyldige.
+            {presetIntegrity.duplicateIds.length > 0 ? ` Duplikat-IDer: ${presetIntegrity.duplicateIds.join(', ')}.` : ''}
+            {presetIntegrity.invalidDimensionIds.length > 0 ? ` Ugyldige dimensjoner: ${presetIntegrity.invalidDimensionIds.join(', ')}.` : ''}
+          </Alert>
+        )}
+
+        {selectedTemplate && (
+          <Paper
+            sx={{
+              p: 1.5,
+              mb: 1.75,
+              borderRadius: 2,
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              background: 'linear-gradient(135deg, rgba(6, 24, 46, 0.92) 0%, rgba(15, 23, 42, 0.92) 100%)',
+            }}
+          >
+            <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
+              <Box>
+                <Typography variant="caption" sx={{ color: '#67e8f9', fontWeight: 700 }}>
+                  AKTIV TEMPLATE
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {selectedTemplate.name}
+                </Typography>
+              </Box>
+              <Stack direction="row" gap={0.5} flexWrap="wrap" justifyContent="flex-end">
+                <Chip
+                  size="small"
+                  label={`${presetIntegrity.valid.length} presets`}
+                  sx={{ height: 22 }}
+                />
+                <Chip
+                  size="small"
+                  label={formatAspectRatio(selectedTemplate.aspectRatio.width, selectedTemplate.aspectRatio.height)}
+                  sx={{ height: 22 }}
+                />
+                <Chip
+                  size="small"
+                  label={selectedTemplate.guides.enabled ? 'Guides ON' : 'Guides OFF'}
+                  color={selectedTemplate.guides.enabled ? 'success' : 'default'}
+                  sx={{ height: 22 }}
+                />
+              </Stack>
+            </Stack>
+          </Paper>
+        )}
+
+        <TextField
+          fullWidth
           size="small"
-          variant={selectedCategory === 'all' ? 'filled' : 'outlined'}
-          onClick={() => setSelectedCategory('all')}
-          sx={{ fontSize: 11 }}
+          placeholder="Search templates..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search sx={{ fontSize: 16, color: 'rgba(125, 211, 252, 0.85)' }} />
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            mb: 1.5,
+            '& .MuiOutlinedInput-root': {
+              backgroundColor: 'rgba(3, 11, 24, 0.7)',
+              fontSize: 13,
+            },
+          }}
         />
-        {(Object.keys(CATEGORY_LABELS) as AspectRatioCategory[]).map(cat => (
+        
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
           <Chip
-            key={cat}
-            icon={CATEGORY_ICONS[cat] as React.ReactElement}
-            label={CATEGORY_LABELS[cat]}
+            label="All"
             size="small"
-            variant={selectedCategory === cat ? 'filled' : 'outlined'}
-            onClick={() => setSelectedCategory(cat)}
-            sx={{ fontSize: 11, '& .MuiChip-icon': { fontSize: 14 } }}
+            variant={selectedCategory === 'all' ? 'filled' : 'outlined'}
+            onClick={() => setSelectedCategory('all')}
+            sx={{ fontSize: 11 }}
           />
-        ))}
-      </Stack>
+          {(Object.keys(CATEGORY_LABELS) as AspectRatioCategory[]).map(cat => (
+            <Chip
+              key={cat}
+              icon={CATEGORY_ICONS[cat] as React.ReactElement}
+              label={CATEGORY_LABELS[cat]}
+              size="small"
+              variant={selectedCategory === cat ? 'filled' : 'outlined'}
+              onClick={() => setSelectedCategory(cat)}
+              sx={{ fontSize: 11, '& .MuiChip-icon': { fontSize: 14 }, maxWidth: '100%' }}
+            />
+          ))}
+        </Box>
+      </TemplateSection>
       
       {/* Popular Templates */}
-      {selectedCategory === 'all' && !searchQuery && (
-        <>
+      {selectedCategory === 'all' && !searchQuery && favoritePresets.length > 0 && (
+        <TemplateSection>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            Popular Templates
+            {showOnlyFavorites ? 'Favoritter' : 'Popular Templates'}
           </Typography>
-          <Grid container spacing={1} sx={{ mb: 2 }}>
-            {ASPECT_RATIO_PRESETS.filter(p => p.popular).map(preset => {
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+            {favoritePresets.map((preset) => {
               const isSelected = selectedTemplate?.aspectRatio.id === preset.id;
               const aspectRatio = calculateAspectRatio(preset.width, preset.height);
+              const isFavorite = favoritePresetIds.has(preset.id);
               
               return (
-                <Grid size={6} key={preset.id}>
+                <Box key={preset.id} sx={popularCardItemSx}>
                   <TemplateCard selected={isSelected} onClick={() => handlePresetClick(preset)}>
-                    <Box sx={{ position: 'relative', mb: 1 }}>
+                    <Box sx={{ position: 'relative', mb: 1.1 }}>
                       <AspectPreview aspectRatio={aspectRatio}>
                         <Box
                           sx={{
@@ -791,17 +1007,24 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                           {isSelected && <Check sx={{ color: '#3b82f6', fontSize: 20 }} />}
                         </Box>
                       </AspectPreview>
-                      {preset.popular && (
-                        <Star
-                          sx={{
-                            position: 'absolute',
-                            top: -4,
-                            right: -4,
-                            fontSize: 14,
-                            color: '#f59e0b',
-                          }}
-                        />
-                      )}
+                      <IconButton
+                        size="small"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          togglePresetFavorite(preset.id);
+                        }}
+                        sx={{
+                          position: 'absolute',
+                          top: -8,
+                          right: -8,
+                          bgcolor: 'rgba(2, 6, 23, 0.72)',
+                          border: '1px solid rgba(99, 102, 241, 0.35)',
+                        }}
+                      >
+                        {isFavorite
+                          ? <Star sx={{ fontSize: 14, color: '#f59e0b' }} />
+                          : <StarBorder sx={{ fontSize: 14, color: 'rgba(255,255,255,0.76)' }} />}
+                      </IconButton>
                     </Box>
                     <Typography variant="caption" fontWeight={500} display="block" noWrap>
                       {preset.name}
@@ -810,12 +1033,11 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                       {formatAspectRatio(preset.width, preset.height)}
                     </Typography>
                   </TemplateCard>
-                </Grid>
+                </Box>
               );
             })}
-          </Grid>
-          <Divider sx={{ my: 2 }} />
-        </>
+          </Box>
+        </TemplateSection>
       )}
       
       {/* Grouped Templates */}
@@ -824,7 +1046,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
         if (presets.length === 0) return null;
         
         return (
-          <Box key={category} sx={{ mb: 2 }}>
+          <TemplateSection key={category}>
             <Stack direction="row" alignItems="center" gap={1} mb={1}>
               {CATEGORY_ICONS[category]}
               <Typography variant="caption" color="text.secondary" fontWeight={500}>
@@ -833,27 +1055,48 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               <Chip label={presets.length} size="small" sx={{ height: 16, fontSize: 10 }} />
             </Stack>
             
-            <Grid container spacing={1}>
-              {presets.map(preset => {
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+            {presets.map((preset) => {
                 const isSelected = selectedTemplate?.aspectRatio.id === preset.id;
                 const aspectRatio = calculateAspectRatio(preset.width, preset.height);
+                const isFavorite = favoritePresetIds.has(preset.id);
                 
                 return (
-                  <Grid size={{ xs: 6, sm: 4 }} key={preset.id}>
+                  <Box key={preset.id} sx={templateCardItemSx}>
                     <TemplateCard selected={isSelected} onClick={() => handlePresetClick(preset)}>
-                      <AspectPreview aspectRatio={aspectRatio}>
-                        <Box
+                      <Box sx={{ position: 'relative' }}>
+                        <AspectPreview aspectRatio={aspectRatio}>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              inset: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {isSelected && <Check sx={{ color: '#3b82f6', fontSize: 16 }} />}
+                          </Box>
+                        </AspectPreview>
+                        <IconButton
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            togglePresetFavorite(preset.id);
+                          }}
                           sx={{
                             position: 'absolute',
-                            inset: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
+                            top: -8,
+                            right: -8,
+                            bgcolor: 'rgba(2, 6, 23, 0.72)',
+                            border: '1px solid rgba(99, 102, 241, 0.35)',
                           }}
                         >
-                          {isSelected && <Check sx={{ color: '#3b82f6', fontSize: 16 }} />}
-                        </Box>
-                      </AspectPreview>
+                          {isFavorite
+                            ? <Star sx={{ fontSize: 14, color: '#f59e0b' }} />
+                            : <StarBorder sx={{ fontSize: 14, color: 'rgba(255,255,255,0.76)' }} />}
+                        </IconButton>
+                      </Box>
                       <Typography variant="caption" fontWeight={500} display="block" noWrap sx={{ mt: 0.5 }}>
                         {preset.name}
                       </Typography>
@@ -869,17 +1112,17 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                         />
                       </Stack>
                     </TemplateCard>
-                  </Grid>
+                  </Box>
                 );
               })}
-            </Grid>
-          </Box>
+            </Box>
+          </TemplateSection>
         );
       })}
       
       {/* Custom Templates */}
-      {customTemplates.length > 0 && (
-        <Box sx={{ mb: 2 }}>
+      {filteredCustomTemplates.length > 0 && (
+        <TemplateSection>
           <Stack direction="row" alignItems="center" gap={1} mb={1}>
             <Settings fontSize="small" />
             <Typography variant="caption" color="text.secondary" fontWeight={500}>
@@ -887,8 +1130,8 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
             </Typography>
           </Stack>
           
-          <Grid container spacing={1}>
-            {customTemplates.map(template => {
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+            {filteredCustomTemplates.map((template) => {
               const isSelected = selectedTemplate?.id === template.id;
               const aspectRatio = calculateAspectRatio(
                 template.aspectRatio.width,
@@ -896,7 +1139,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               );
               
               return (
-                <Grid size={6} key={template.id}>
+                <Box key={template.id} sx={templateCardItemSx}>
                   <TemplateCard selected={isSelected} onClick={() => onTemplateSelect(template)}>
                     <Stack direction="row" alignItems="start" justifyContent="space-between">
                       <Box sx={{ flex: 1 }}>
@@ -932,11 +1175,22 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                       {formatAspectRatio(template.aspectRatio.width, template.aspectRatio.height)}
                     </Typography>
                   </TemplateCard>
-                </Grid>
+                </Box>
               );
             })}
-          </Grid>
-        </Box>
+          </Box>
+        </TemplateSection>
+      )}
+
+      {filteredPresets.length === 0 && filteredCustomTemplates.length === 0 && (
+        <TemplateSection>
+          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+            Ingen templates funnet
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Prøv et annet søk, slå av favoritt-filter, eller opprett en custom template.
+          </Typography>
+        </TemplateSection>
       )}
       
       {/* Selected Template Settings */}
@@ -970,9 +1224,9 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
                 Guide Type
               </Typography>
-              <Grid container spacing={0.5} sx={{ mb: 2 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
                 {(['thirds', 'golden', 'diagonal', 'center', 'safe'] as GuideType[]).map(type => (
-                  <Grid size={4} key={type}>
+                  <Box key={type} sx={{ width: 'calc(33.333% - 6px)' }}>
                     <Paper
                       onClick={() => handleGuideChange({ type })}
                       sx={{
@@ -999,9 +1253,9 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                         {type.charAt(0).toUpperCase() + type.slice(1)}
                       </Typography>
                     </Paper>
-                  </Grid>
+                  </Box>
                 ))}
-              </Grid>
+              </Box>
               
               <Typography variant="caption" color="text.secondary">
                 Opacity
@@ -1070,8 +1324,11 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               <TextField
                 label="Width"
                 type="number"
-                value={customWidth}
-                onChange={(e) => setCustomWidth(Number(e.target.value))}
+                value={Number.isFinite(customWidth) ? customWidth : ''}
+                onChange={(e) => {
+                  const next = Number.parseFloat(e.target.value);
+                  setCustomWidth(Number.isFinite(next) ? next : Number.NaN);
+                }}
                 size="small"
                 inputProps={{ min: 1 }}
               />
@@ -1079,8 +1336,11 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               <TextField
                 label="Height"
                 type="number"
-                value={customHeight}
-                onChange={(e) => setCustomHeight(Number(e.target.value))}
+                value={Number.isFinite(customHeight) ? customHeight : ''}
+                onChange={(e) => {
+                  const next = Number.parseFloat(e.target.value);
+                  setCustomHeight(Number.isFinite(next) ? next : Number.NaN);
+                }}
                 size="small"
                 inputProps={{ min: 1 }}
               />
@@ -1091,10 +1351,10 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                 Preview
               </Typography>
               <Box sx={{ mt: 1, maxWidth: 200 }}>
-                <AspectPreview aspectRatio={customWidth / customHeight} />
+                <AspectPreview aspectRatio={safeCustomAspectRatio} />
               </Box>
               <Typography variant="caption" color="text.secondary">
-                {formatAspectRatio(customWidth, customHeight)} • {(customWidth / customHeight).toFixed(2)}:1
+                {formatAspectRatio(safeCustomWidth, safeCustomHeight)} • {safeCustomAspectRatio.toFixed(2)}:1
               </Typography>
             </Box>
             

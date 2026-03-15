@@ -45,6 +45,8 @@ import {
   FullscreenExit as FullscreenExitIcon,
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import type { Candidate, Role } from '../models/casting';
 
 // 7-Tier Responsive Hook
 type ScreenTier = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '4k';
@@ -139,8 +141,11 @@ interface ScreenplayEditorProps {
   onChange: (value: string) => void;
   characters?: string[];
   locations?: string[];
+  roles?: Role[];
+  candidates?: Candidate[];
   onCharacterAdd?: (name: string) => void;
   onLocationAdd?: (name: string) => void;
+  onCharacterProfileOpen?: (payload: { characterName: string; role: Role | null; candidate: Candidate | null }) => void;
   readOnly?: boolean;
   showLineNumbers?: boolean;
   onCursorChange?: (line: number, column: number, element: FountainElement | null) => void;
@@ -184,7 +189,151 @@ const COMMON_TRANSITIONS = [
 /** Returns true if `partial` (no spaces, trimmed, UPPERCASE) is a leading
  *  substring of one of the scene-heading prefixes — e.g. "I", "IN", "INT". */
 const isScenePrefixPartial = (partial: string) =>
-  SCENE_PREFIXES.some(p => p.startsWith(partial));
+  partial.length > 0 && SCENE_PREFIXES.some(p => p.startsWith(partial));
+
+const toTrimmedStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+};
+
+const normalizeCharacterKey = (value: string): string =>
+  value.replace(/^@/, '').replace(/\s*\(.*\)\s*$/, '').trim().toUpperCase();
+
+const AUTO_ROLE_SYNC_BLOCKLIST = new Set([
+  'I',
+  'IN',
+  'INT',
+  'INT.',
+  'E',
+  'EX',
+  'EXT',
+  'EXT.',
+  'EST',
+  'EST.',
+  'I/E',
+  'INT/EXT',
+  'INT./EXT',
+  'INT./EXT.',
+  'INT/EXT.',
+]);
+
+const normalizeCharacterNameForRoleSync = (value: string): string =>
+  value.replace(/^@/, '').replace(/\s*\(.*\)\s*$/, '').trim();
+
+const isValidCharacterNameForRoleSync = (value: string): boolean => {
+  const cleaned = normalizeCharacterNameForRoleSync(value);
+  if (!cleaned) return false;
+  const upper = cleaned.toUpperCase();
+  if (AUTO_ROLE_SYNC_BLOCKLIST.has(upper)) return false;
+  if (SCENE_HEADING_PATTERN.test(upper)) return false;
+  return true;
+};
+
+const TIME_OF_DAY_TOKENS = new Set([
+  'DAY',
+  'NIGHT',
+  'DAWN',
+  'DUSK',
+  'CONTINUOUS',
+  'LATER',
+  'MORNING',
+  'EVENING',
+  'SAME',
+]);
+
+const PARTIAL_TIME_OF_DAY_TOKENS = new Set([
+  'D', 'DA', 'DAW', 'DAWN', 'DU', 'DUS', 'DUSK', 'DAY',
+  'N', 'NI', 'NIG', 'NIGH', 'NIGHT',
+  'M', 'MO', 'MOR', 'MORN', 'MORNI', 'MORNIN', 'MORNING',
+  'E', 'EV', 'EVE', 'EVEN', 'EVENI', 'EVENIN', 'EVENING',
+  'L', 'LA', 'LAT', 'LATE', 'LATER',
+  'C', 'CO', 'CON', 'CONT', 'CONTI', 'CONTIN', 'CONTINU', 'CONTINUO', 'CONTINUOU', 'CONTINUOUS',
+  'S', 'SA', 'SAM', 'SAME',
+]);
+
+const AUTO_LOCATION_SYNC_BLOCKLIST = new Set([
+  ...AUTO_ROLE_SYNC_BLOCKLIST,
+  ...TIME_OF_DAY_TOKENS,
+]);
+
+const normalizeLocationNameForSync = (value: string): string => {
+  let cleaned = value.replace(/\s+/g, ' ').trim();
+  const partialTimeMatch = cleaned.match(/^(.*?)(?:\s*-\s*([A-ZÆØÅ]+))$/u);
+  if (partialTimeMatch) {
+    const base = partialTimeMatch[1]?.trim() ?? '';
+    const suffix = partialTimeMatch[2]?.trim().toUpperCase() ?? '';
+    if (base && PARTIAL_TIME_OF_DAY_TOKENS.has(suffix)) {
+      cleaned = base;
+    }
+  }
+  cleaned = cleaned.replace(/^[–—:;,./\s-]+|[–—:;,./\s-]+$/g, '').trim();
+  return cleaned;
+};
+
+const isValidLocationNameForSync = (value: string): boolean => {
+  const cleaned = normalizeLocationNameForSync(value);
+  if (!cleaned) return false;
+  if (!/[A-Za-zÆØÅæøå]/.test(cleaned)) return false;
+  const upper = cleaned.toUpperCase();
+  if (AUTO_LOCATION_SYNC_BLOCKLIST.has(upper)) return false;
+  if (SCENE_HEADING_PATTERN.test(upper)) return false;
+  if (/^[-–—]+$/.test(cleaned)) return false;
+  return true;
+};
+
+const extractCandidateRoleIds = (candidate: Candidate): string[] => {
+  const ids = new Set<string>();
+  if (typeof candidate.roleId === 'string' && candidate.roleId.trim()) ids.add(candidate.roleId.trim());
+  if (typeof candidate.role_id === 'string' && candidate.role_id.trim()) ids.add(candidate.role_id.trim());
+
+  const candidateRecord = candidate as Record<string, unknown>;
+  toTrimmedStringArray(candidateRecord.assignedRoles).forEach((roleId) => ids.add(roleId));
+  toTrimmedStringArray(candidateRecord.assignedRoleIds).forEach((roleId) => ids.add(roleId));
+  toTrimmedStringArray(candidateRecord.roleIds).forEach((roleId) => ids.add(roleId));
+
+  return Array.from(ids);
+};
+
+const extractRoleCandidateIds = (role: Role): string[] => {
+  const roleRecord = role as Record<string, unknown>;
+  const ids = new Set<string>();
+  toTrimmedStringArray(roleRecord.candidateIds).forEach((candidateId) => ids.add(candidateId));
+  toTrimmedStringArray(roleRecord.candidate_ids).forEach((candidateId) => ids.add(candidateId));
+
+  const directCandidateIds = [
+    roleRecord.primaryCandidateId,
+    roleRecord.selectedCandidateId,
+    roleRecord.candidateId,
+    roleRecord.candidate_id,
+  ];
+  directCandidateIds.forEach((candidateId) => {
+    if (typeof candidateId === 'string' && candidateId.trim()) ids.add(candidateId.trim());
+  });
+
+  return Array.from(ids);
+};
+
+const candidateStatusRank = (candidate: Candidate): number => {
+  const status = typeof candidate.status === 'string' ? candidate.status.toLowerCase() : '';
+  if (status === 'confirmed' || status === 'booked' || status === 'cast' || status === 'hired' || status === 'offer_accepted') return 5;
+  if (status === 'selected' || status === 'shortlist' || status === 'approved') return 4;
+  if (status === 'callback' || status === 'in_progress') return 3;
+  if (status === 'pending' || status === 'new') return 2;
+  return 1;
+};
+
+const resolveCandidateProfileUrl = (candidate: Candidate): string | null => {
+  const candidateRecord = candidate as Record<string, unknown>;
+  const urlCandidate = [
+    candidateRecord.profileUrl,
+    candidateRecord.profile_url,
+    candidateRecord.publicProfileUrl,
+    candidateRecord.public_profile_url,
+    candidateRecord.url,
+  ].find((value) => typeof value === 'string' && value.trim().length > 0);
+
+  return typeof urlCandidate === 'string' ? urlCandidate.trim() : null;
+};
 
 // ── Element-cycle order (TAB forward, SHIFT+TAB backward) ─────────────────
 // The cycle mirrors Final Draft's Tab behaviour in the most common flow:
@@ -249,8 +398,11 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   onChange,
   characters = [],
   locations = [],
+  roles = [],
+  candidates = [],
   onCharacterAdd,
   onLocationAdd,
+  onCharacterProfileOpen,
   readOnly = false,
   showLineNumbers = true,
   onCursorChange,
@@ -308,6 +460,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isEditorFocused, setIsEditorFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ── One-pass Fountain parser ────────────────────────────────────────────────
@@ -470,7 +623,10 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         // Extract location from scene heading
         const match = line.content.match(/(?:INT|EXT|INT\.?\/EXT|I\/E)\.?\s*(.+?)(?:\s*-\s*(?:DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME))?$/i);
         if (match && match[1]) {
-          locs.add(match[1].trim());
+          const cleaned = normalizeLocationNameForSync(match[1]);
+          if (isValidLocationNameForSync(cleaned)) {
+            locs.add(cleaned);
+          }
         }
       }
     });
@@ -482,64 +638,234 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     return Array.from(new Set([...characters, ...extractedCharacters])).sort();
   }, [characters, extractedCharacters]);
 
+  const roleCharacterNames = useMemo(() => {
+    const names = roles
+      .map((role) => (typeof role.name === 'string' ? role.name.trim() : ''))
+      .filter((name) => name.length > 0);
+    return Array.from(new Set(names)).sort((left, right) => left.localeCompare(right, 'no-NO'));
+  }, [roles]);
+
   // All available locations
   const allLocations = useMemo(() => {
     return Array.from(new Set([...locations, ...extractedLocations])).sort();
   }, [locations, extractedLocations]);
 
-  // Sync extracted characters to parent via callback
-  const prevExtractedCharsRef = useRef<Set<string>>(new Set());
+  type CharacterAssignment = { characterName: string; role: Role | null; candidate: Candidate | null };
+
+  const characterAssignmentsByName = useMemo(() => {
+    const assignmentMap = new Map<string, CharacterAssignment>();
+    if (roles.length === 0) return assignmentMap;
+
+    const candidateById = new Map<string, Candidate>();
+    candidates.forEach((candidate) => {
+      if (candidate.id) candidateById.set(candidate.id, candidate);
+    });
+
+    const candidatesByRoleId = new Map<string, Candidate[]>();
+    candidates.forEach((candidate) => {
+      extractCandidateRoleIds(candidate).forEach((roleId) => {
+        const existing = candidatesByRoleId.get(roleId) ?? [];
+        existing.push(candidate);
+        candidatesByRoleId.set(roleId, existing);
+      });
+    });
+
+    const pickBestCandidate = (roleCandidates: Candidate[]): Candidate | null => {
+      const deduped = new Map<string, Candidate>();
+      roleCandidates.forEach((candidate) => {
+        if (candidate.id && !deduped.has(candidate.id)) deduped.set(candidate.id, candidate);
+      });
+
+      let bestCandidate: Candidate | null = null;
+      let bestScore = -1;
+
+      Array.from(deduped.values()).forEach((candidate) => {
+        const score = candidateStatusRank(candidate);
+        if (score > bestScore) {
+          bestScore = score;
+          bestCandidate = candidate;
+        }
+      });
+
+      return bestCandidate;
+    };
+
+    roles.forEach((role) => {
+      const roleNameKey = normalizeCharacterKey(role.name ?? '');
+      if (!roleNameKey) return;
+
+      const directRoleCandidates: Candidate[] = [];
+      extractRoleCandidateIds(role).forEach((candidateId) => {
+        const candidate = candidateById.get(candidateId);
+        if (candidate) directRoleCandidates.push(candidate);
+      });
+
+      const candidatesFromRoleIds = candidatesByRoleId.get(role.id) ?? [];
+      const candidate = pickBestCandidate([...directRoleCandidates, ...candidatesFromRoleIds]);
+
+      assignmentMap.set(roleNameKey, {
+        characterName: roleNameKey,
+        role,
+        candidate,
+      });
+    });
+
+    return assignmentMap;
+  }, [roles, candidates]);
+
+  const characterAssignmentByLine = useMemo(() => {
+    const assignmentByLine = new Map<number, CharacterAssignment>();
+    parsedLines.forEach((line, index) => {
+      if (line.type !== 'character') return;
+      const characterKey = normalizeCharacterKey(line.content);
+      if (!characterKey) return;
+      const assignment = characterAssignmentsByName.get(characterKey);
+      if (!assignment) return;
+      assignmentByLine.set(index, assignment);
+    });
+    return assignmentByLine;
+  }, [parsedLines, characterAssignmentsByName]);
+
+  // Sync extracted characters to parent via callback (stable + filtered)
+  const existingCharacterNamesRef = useRef<Set<string>>(new Set());
+  const emittedCharacterNamesRef = useRef<Set<string>>(new Set());
+  const pendingCharacterAddsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const AUTO_ROLE_SYNC_DELAY_MS = 900;
+
+  useEffect(() => {
+    existingCharacterNamesRef.current = new Set(characters.map((name) => normalizeCharacterKey(name)));
+  }, [characters]);
+
+  useEffect(() => {
+    return () => {
+      pendingCharacterAddsRef.current.forEach((timerId) => clearTimeout(timerId));
+      pendingCharacterAddsRef.current.clear();
+    };
+  }, []);
+
   useEffect(() => {
     if (!onCharacterAdd) return;
-    
-    const existingChars = new Set(characters.map(c => c.toUpperCase()));
-    const prevChars = prevExtractedCharsRef.current;
-    
-    extractedCharacters.forEach(char => {
-      const upperChar = char.toUpperCase();
-      // Only call callback for truly new characters (not in props AND not previously extracted)
-      if (!existingChars.has(upperChar) && !prevChars.has(upperChar)) {
-        onCharacterAdd(char);
+
+    const extractedByUpper = new Map<string, string>();
+    extractedCharacters.forEach((characterName) => {
+      if (!isValidCharacterNameForRoleSync(characterName)) return;
+      const cleaned = normalizeCharacterNameForRoleSync(characterName);
+      const upper = cleaned.toUpperCase();
+      if (!extractedByUpper.has(upper)) extractedByUpper.set(upper, cleaned);
+    });
+
+    // Cancel pending timers for names that are no longer present.
+    pendingCharacterAddsRef.current.forEach((timerId, upper) => {
+      if (!extractedByUpper.has(upper)) {
+        clearTimeout(timerId);
+        pendingCharacterAddsRef.current.delete(upper);
       }
     });
-    
-    // Update ref with current extracted chars
-    prevExtractedCharsRef.current = new Set(extractedCharacters.map(c => c.toUpperCase()));
-  }, [extractedCharacters, characters, onCharacterAdd]);
 
-  // Sync extracted locations to parent via callback
-  const prevExtractedLocsRef = useRef<Set<string>>(new Set());
+    extractedByUpper.forEach((displayName, upper) => {
+      if (existingCharacterNamesRef.current.has(upper)) {
+        emittedCharacterNamesRef.current.add(upper);
+        return;
+      }
+      if (emittedCharacterNamesRef.current.has(upper)) return;
+      if (pendingCharacterAddsRef.current.has(upper)) return;
+
+      const timerId = setTimeout(() => {
+        pendingCharacterAddsRef.current.delete(upper);
+
+        if (existingCharacterNamesRef.current.has(upper)) {
+          emittedCharacterNamesRef.current.add(upper);
+          return;
+        }
+        if (emittedCharacterNamesRef.current.has(upper)) return;
+
+        emittedCharacterNamesRef.current.add(upper);
+        onCharacterAdd(displayName);
+      }, AUTO_ROLE_SYNC_DELAY_MS);
+
+      pendingCharacterAddsRef.current.set(upper, timerId);
+    });
+  }, [extractedCharacters, onCharacterAdd]);
+
+  // Sync extracted locations to parent via callback (stable + filtered)
+  const existingLocationNamesRef = useRef<Set<string>>(new Set());
+  const emittedLocationNamesRef = useRef<Set<string>>(new Set());
+  const pendingLocationAddsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const AUTO_LOCATION_SYNC_DELAY_MS = 1200;
+
+  useEffect(() => {
+    existingLocationNamesRef.current = new Set(
+      locations.map((name) => normalizeLocationNameForSync(name).toUpperCase()).filter(Boolean),
+    );
+  }, [locations]);
+
+  useEffect(() => {
+    return () => {
+      pendingLocationAddsRef.current.forEach((timerId) => clearTimeout(timerId));
+      pendingLocationAddsRef.current.clear();
+    };
+  }, []);
+
   useEffect(() => {
     if (!onLocationAdd) return;
-    
-    const existingLocs = new Set(locations.map(l => l.toUpperCase()));
-    const prevLocs = prevExtractedLocsRef.current;
-    
-    extractedLocations.forEach(loc => {
-      const upperLoc = loc.toUpperCase();
-      // Only call callback for truly new locations (not in props AND not previously extracted)
-      if (!existingLocs.has(upperLoc) && !prevLocs.has(upperLoc)) {
-        onLocationAdd(loc);
+
+    const extractedByUpper = new Map<string, string>();
+    extractedLocations.forEach((locationName) => {
+      if (!isValidLocationNameForSync(locationName)) return;
+      const cleaned = normalizeLocationNameForSync(locationName);
+      const upper = cleaned.toUpperCase();
+      if (!extractedByUpper.has(upper)) extractedByUpper.set(upper, cleaned);
+    });
+
+    pendingLocationAddsRef.current.forEach((timerId, upper) => {
+      if (!extractedByUpper.has(upper)) {
+        clearTimeout(timerId);
+        pendingLocationAddsRef.current.delete(upper);
       }
     });
-    
-    // Update ref with current extracted locations
-    prevExtractedLocsRef.current = new Set(extractedLocations.map(l => l.toUpperCase()));
-  }, [extractedLocations, locations, onLocationAdd]);
+
+    extractedByUpper.forEach((displayName, upper) => {
+      if (existingLocationNamesRef.current.has(upper)) {
+        emittedLocationNamesRef.current.add(upper);
+        return;
+      }
+      if (emittedLocationNamesRef.current.has(upper)) return;
+      if (pendingLocationAddsRef.current.has(upper)) return;
+
+      const timerId = setTimeout(() => {
+        pendingLocationAddsRef.current.delete(upper);
+
+        if (existingLocationNamesRef.current.has(upper)) {
+          emittedLocationNamesRef.current.add(upper);
+          return;
+        }
+        if (emittedLocationNamesRef.current.has(upper)) return;
+
+        emittedLocationNamesRef.current.add(upper);
+        onLocationAdd(displayName);
+      }, AUTO_LOCATION_SYNC_DELAY_MS);
+
+      pendingLocationAddsRef.current.set(upper, timerId);
+    });
+  }, [extractedLocations, onLocationAdd]);
 
   // ── Batched history: snapshot only after 400 ms of typing inactivity ───────
   const HISTORY_MAX = 200;
   const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingHistoryValueRef = useRef<string | null>(null);
 
+  function pushHistorySnapshot(nextValue: string) {
+    const prev = historyRef.current.slice(0, historyIndexRef.current + 1);
+    const next = [...prev, nextValue].slice(-HISTORY_MAX);
+    historyRef.current = next;
+    historyIndexRef.current = next.length - 1;
+  }
+
   const flushHistory = useCallback(() => {
     const v = pendingHistoryValueRef.current;
     if (v === null) return;
     pendingHistoryValueRef.current = null;
-    const prev = historyRef.current.slice(0, historyIndexRef.current + 1);
-    const next = [...prev, v].slice(-HISTORY_MAX);
-    historyRef.current = next;
-    historyIndexRef.current = next.length - 1;
+    pushHistorySnapshot(v);
   }, []);
 
   // Handle text change - update internal state immediately, notify parent asynchronously
@@ -720,6 +1046,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     // Update internal state immediately
     setInternalValue(newText);
     lastInternalValueRef.current = newText;
+    pushHistorySnapshot(newText);
     
     // Notify parent asynchronously
     requestAnimationFrame(() => {
@@ -754,10 +1081,20 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         setSelectedAutocompleteIndex(prev => Math.max(prev - 1, 0));
         return;
       }
-      if (e.key === 'Enter' || e.key === 'Tab') {
+      if (e.key === 'Tab') {
         e.preventDefault();
         applyAutocomplete(autocompleteOptions[selectedAutocompleteIndex]);
         return;
+      }
+      if (e.key === 'Enter') {
+        // Keep Enter as newline/flow for scene headings/locations.
+        // Use Tab/click to explicitly accept those suggestions.
+        if (autocompleteType === 'character' || autocompleteType === 'transition') {
+          e.preventDefault();
+          applyAutocomplete(autocompleteOptions[selectedAutocompleteIndex]);
+          return;
+        }
+        setShowAutocomplete(false);
       }
       if (e.key === 'Escape') {
         setShowAutocomplete(false);
@@ -769,6 +1106,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     if (e.ctrlKey || e.metaKey) {
       if (e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
+        flushHistory();
         if (historyIndexRef.current > 0) {
           historyIndexRef.current -= 1;
           const newValue = historyRef.current[historyIndexRef.current];
@@ -870,6 +1208,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     // Update internal state immediately
     setInternalValue(newValue);
     lastInternalValueRef.current = newValue;
+    pushHistorySnapshot(newValue);
     
     // Notify parent asynchronously
     requestAnimationFrame(() => {
@@ -891,10 +1230,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const commitValue = useCallback((newText: string, newCursorPos: number) => {
     setInternalValue(newText);
     lastInternalValueRef.current = newText;
-    // Batch into history (same debounce as normal typing)
-    pendingHistoryValueRef.current = newText;
-    if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-    historyTimerRef.current = setTimeout(flushHistory, 400);
+    // Command-style edits (Tab/Smart Enter/autocomplete) should be immediately undoable.
+    pushHistorySnapshot(newText);
     // Propagate to parent
     requestAnimationFrame(() => { onChangeRef.current(newText); });
     // Restore cursor after React re-render
@@ -904,7 +1241,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         editorRef.current.focus();
       }
     }, 0);
-  }, [flushHistory]);
+  }, []);
 
   // Insert screenplay element
   const insertElement = (type: FountainElement) => {
@@ -972,6 +1309,82 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
       onCursorChangeRef.current?.(line, column, pl[line - 1].type);
     }
   }, []); // empty deps — stable for the component lifetime
+
+  const currentLineContext = useMemo(() => {
+    const lineIndex = Math.max(0, cursorPosition.line - 1);
+    const lines = internalValue.split('\n');
+    const text = lines[lineIndex] ?? '';
+    const previousLine = lineIndex > 0 ? lines[lineIndex - 1] ?? '' : '';
+    const type = parsedLines[lineIndex]?.type ?? null;
+
+    return {
+      lineIndex,
+      text,
+      previousLine,
+      type,
+    };
+  }, [cursorPosition.line, internalValue, parsedLines]);
+
+  const isCharacterLineContext = useMemo(() => {
+    if (currentLineContext.type === 'character') return true;
+    const trimmed = currentLineContext.text.trim();
+    if (!trimmed) return false;
+    if (currentLineContext.previousLine.trim() !== '') return false;
+    return /^[A-ZÆØÅ][A-ZÆØÅ0-9 ]*$/.test(trimmed);
+  }, [currentLineContext]);
+
+  const applyCharacterMentionSuggestion = useCallback((name: string) => {
+    const cleanedName = name.trim();
+    if (!cleanedName) return;
+
+    const lines = internalValue.split('\n');
+    if (currentLineContext.lineIndex < 0 || currentLineContext.lineIndex >= lines.length) return;
+
+    const nextLineValue = cleanedName.toUpperCase();
+    lines[currentLineContext.lineIndex] = nextLineValue;
+    const newText = lines.join('\n');
+
+    const cursorOffset =
+      lines.slice(0, currentLineContext.lineIndex).reduce((sum, line) => sum + line.length + 1, 0) + nextLineValue.length;
+
+    commitValue(newText, cursorOffset);
+
+    const assignment = characterAssignmentsByName.get(normalizeCharacterKey(cleanedName));
+    if (assignment) {
+      onCharacterProfileOpen?.({
+        characterName: assignment.characterName,
+        role: assignment.role,
+        candidate: assignment.candidate,
+      });
+    }
+  }, [characterAssignmentsByName, commitValue, currentLineContext.lineIndex, internalValue, onCharacterProfileOpen]);
+
+  const handleCharacterProfileOpen = useCallback((assignment: CharacterAssignment) => {
+    onCharacterProfileOpen?.({
+      characterName: assignment.characterName,
+      role: assignment.role,
+      candidate: assignment.candidate,
+    });
+
+    if (onCharacterProfileOpen) return;
+
+    if (!assignment.candidate) return;
+
+    const profileUrl = resolveCandidateProfileUrl(assignment.candidate);
+    if (profileUrl) {
+      window.open(profileUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    if (!assignment.candidate.id) return;
+    window.dispatchEvent(new CustomEvent('role-room:open-candidate-profile', {
+      detail: {
+        candidateId: assignment.candidate.id,
+        roleId: assignment.role?.id,
+        characterName: assignment.characterName,
+      },
+    }));
+  }, [onCharacterProfileOpen]);
 
   // Sync scroll between textarea and highlight overlay
   const handleScroll = () => {
@@ -1157,6 +1570,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
               <IconButton 
                 size={responsive.buttonSize}
                 onClick={() => {
+                  flushHistory();
                   if (historyIndexRef.current > 0) {
                     historyIndexRef.current -= 1;
                     const newValue = historyRef.current[historyIndexRef.current];
@@ -1381,19 +1795,43 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
             fontFamily: 'Courier Prime, Courier New, monospace',
             fontSize: responsive.fontSize,
             lineHeight: '1.5',
+            opacity: isEditorFocused ? 0 : 1,
           }}
         >
-          {parsedLines.map((line, index) => (
-            <Box
-              key={index}
-              sx={{
-                ...elementStyles[line.type],
-                minHeight: '1.5em',
-              }}
-            >
-              {line.content || '\u00A0'}
-            </Box>
-          ))}
+          {parsedLines.map((line, index) => {
+            const assignment = characterAssignmentByLine.get(index);
+            const clickableAssignment = !isEditorFocused ? assignment : undefined;
+
+            return (
+              <Box
+                key={index}
+                onMouseDown={clickableAssignment ? (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleCharacterProfileOpen(clickableAssignment);
+                } : undefined}
+                sx={{
+                  ...elementStyles[line.type],
+                  minHeight: '1.5em',
+                  ...(clickableAssignment ? {
+                    pointerEvents: 'auto',
+                    cursor: 'pointer',
+                    textDecoration: 'underline dotted rgba(96, 165, 250, 0.75)',
+                    textUnderlineOffset: '0.16em',
+                  } : {}),
+                }}
+                title={
+                  clickableAssignment
+                    ? (clickableAssignment.candidate
+                        ? `Åpne rolleprofil for ${clickableAssignment.role?.name ?? clickableAssignment.characterName} (${clickableAssignment.candidate.name})`
+                        : `Åpne rolleprofil for ${clickableAssignment.role?.name ?? clickableAssignment.characterName}`)
+                    : undefined
+                }
+              >
+                {line.content || '\u00A0'}
+              </Box>
+            );
+          })}
         </Box>
 
         {/* Line Numbers */}
@@ -1443,6 +1881,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           onClick={handleCursorUpdate}
           onKeyUp={handleCursorUpdate}
           onScroll={handleScroll}
+          onFocus={() => setIsEditorFocused(true)}
+          onBlur={() => setIsEditorFocused(false)}
           readOnly={readOnly}
           spellCheck={spellCheck}
           sx={{
@@ -1459,7 +1899,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
             fontFamily: 'Courier Prime, Courier New, monospace',
             fontSize: responsive.fontSize,
             lineHeight: '1.5',
-            color: 'transparent',
+            color: isEditorFocused ? '#e5e5e5' : 'transparent',
             caretColor: '#a78bfa',
             bgcolor: 'transparent',
             border: 'none',
@@ -1513,6 +1953,18 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           </ClickAwayListener>
         )}
       </Box>
+
+      {!readOnly && isCharacterLineContext && (
+        <Box sx={{ px: responsive.padding, pt: 1 }}>
+          <GlobalMentionHelper
+            text={currentLineContext.text}
+            localCandidates={roleCharacterNames.length > 0 ? roleCharacterNames : allCharacters}
+            onApplySuggestion={applyCharacterMentionSuggestion}
+            autoTagTitle="Global character tags"
+            suggestionTitle="Mener du denne karakteren?"
+          />
+        </Box>
+      )}
 
       {/* Stats Footer */}
       <Paper sx={{ p: isMobile ? 0.75 : 1, mt: isMobile ? 0.5 : 1 }}>

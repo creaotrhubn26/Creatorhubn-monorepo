@@ -390,3 +390,92 @@ export const equipmentTemplates = pgTable('equipment_templates', {
 }, (table) => [
   index('idx_equipment_templates_project').using('btree', table.projectId),
 ]);
+
+// ── Producer Workflow (Content Producer + Client Reviewer) ────────────────
+
+export const roleRoomPhaseTimelineItems = pgTable('role_room_phase_timeline_items', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  phase: varchar('phase', { length: 32 }).notNull(), // preproduction | production | postproduction
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  ownerUserId: varchar('owner_user_id', { length: 255 }),
+  dueAt: timestamp('due_at', { withTimezone: true, mode: 'string' }),
+  status: varchar('status', { length: 32 }).default('planned').notNull(),
+  linkedEntityType: varchar('linked_entity_type', { length: 100 }),
+  linkedEntityId: varchar('linked_entity_id', { length: 255 }),
+  sortOrder: integer('sort_order').default(0).notNull(),
+  metadata: jsonb('metadata').default({}).notNull(),
+  createdBy: varchar('created_by', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_rr_phase_timeline_project').using('btree', table.projectId),
+  index('idx_rr_phase_timeline_phase').using('btree', table.phase),
+  index('idx_rr_phase_timeline_status').using('btree', table.status),
+]);
+
+export const roleRoomBudgetItems = pgTable('role_room_budget_items', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  phase: varchar('phase', { length: 32 }).notNull(), // preproduction | production | postproduction
+  category: varchar('category', { length: 120 }).notNull(),
+  itemName: varchar('item_name', { length: 255 }).notNull(),
+  description: text('description'),
+  estimate: numeric('estimate', { precision: 12, scale: 2 }).default('0'),
+  approved: numeric('approved', { precision: 12, scale: 2 }).default('0'),
+  actual: numeric('actual', { precision: 12, scale: 2 }).default('0'),
+  currency: varchar('currency', { length: 10 }).default('NOK').notNull(),
+  status: varchar('status', { length: 32 }).default('draft').notNull(),
+  clientVisible: boolean('client_visible').default(true).notNull(),
+  linkedEntityType: varchar('linked_entity_type', { length: 100 }),
+  linkedEntityId: varchar('linked_entity_id', { length: 255 }),
+  sortOrder: integer('sort_order').default(0).notNull(),
+  metadata: jsonb('metadata').default({}).notNull(),
+  createdBy: varchar('created_by', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_rr_budget_project').using('btree', table.projectId),
+  index('idx_rr_budget_phase').using('btree', table.phase),
+  index('idx_rr_budget_status').using('btree', table.status),
+]);
+
+export const roleRoomClientReviews = pgTable('role_room_client_reviews', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  reviewType: varchar('review_type', { length: 80 }).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  targetEntityType: varchar('target_entity_type', { length: 100 }),
+  targetEntityId: varchar('target_entity_id', { length: 255 }),
+  requestedByUserId: varchar('requested_by_user_id', { length: 255 }),
+  requestedAt: timestamp('requested_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  dueAt: timestamp('due_at', { withTimezone: true, mode: 'string' }),
+  status: varchar('status', { length: 40 }).default('pending').notNull(), // pending | approved | rejected | changes_requested
+  decisionByUserId: varchar('decision_by_user_id', { length: 255 }),
+  decisionAt: timestamp('decision_at', { withTimezone: true, mode: 'string' }),
+  decisionReason: text('decision_reason'),
+  metadata: jsonb('metadata').default({}).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_rr_client_reviews_project').using('btree', table.projectId),
+  index('idx_rr_client_reviews_status').using('btree', table.status),
+  index('idx_rr_client_reviews_type').using('btree', table.reviewType),
+]);
+
+export const roleRoomClientReviewComments = pgTable('role_room_client_review_comments', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  reviewId: uuid('review_id').notNull().references(() => roleRoomClientReviews.id, { onDelete: 'cascade' }),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  authorUserId: varchar('author_user_id', { length: 255 }),
+  authorRole: varchar('author_role', { length: 80 }),
+  commentText: text('comment_text').notNull(),
+  timestampSeconds: integer('timestamp_seconds'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_rr_review_comments_project').using('btree', table.projectId),
+  index('idx_rr_review_comments_review').using('btree', table.reviewId),
+]);

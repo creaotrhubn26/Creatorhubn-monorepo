@@ -554,6 +554,7 @@ export const GestureShortcuts: React.FC<GestureShortcutsProps> = ({
                         {binding.description}
                       </Typography>
                     }
+                    secondaryTypographyProps={{ component: 'div' }}
                     secondary={
                       <Chip
                         size="small"

@@ -27,6 +27,10 @@ import {
   ViewList as ListViewIcon,
   PersonOff as UnassignedIcon,
   Person as MineIcon,
+  HourglassEmpty as WaitingIcon,
+  Autorenew as InProgressIcon,
+  CheckCircle as CompletedIcon,
+  ListAlt as AllStatusIcon,
 } from '@mui/icons-material';
 
 import type {
@@ -83,6 +87,28 @@ export function ShotListFilterBar({
   };
 
   const menuItemSx = { fontSize: '0.78rem' };
+  const statusMeta: Record<StatusFilter, { label: string; icon: React.ReactElement; color: string }> = {
+    all: {
+      label: 'Alle statuser',
+      icon: <AllStatusIcon sx={{ fontSize: 16 }} />,
+      color: 'rgba(255,255,255,0.75)',
+    },
+    not_started: {
+      label: 'Venter',
+      icon: <WaitingIcon sx={{ fontSize: 16 }} />,
+      color: '#94a3b8',
+    },
+    in_progress: {
+      label: 'Pågår',
+      icon: <InProgressIcon sx={{ fontSize: 16 }} />,
+      color: '#f59e0b',
+    },
+    completed: {
+      label: 'Fullført',
+      icon: <CompletedIcon sx={{ fontSize: 16 }} />,
+      color: '#22c55e',
+    },
+  };
 
   return (
     <Box
@@ -140,15 +166,35 @@ export function ShotListFilterBar({
           value={filters.status}
           onChange={(e) => onChange({ status: e.target.value as StatusFilter })}
           displayEmpty
+          renderValue={(value) => {
+            const meta = statusMeta[(value as StatusFilter) || 'all'];
+            return (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <Box component="span" sx={{ display: 'inline-flex', color: meta.color, lineHeight: 0 }}>
+                  {meta.icon}
+                </Box>
+                <Box component="span">{meta.label}</Box>
+              </Box>
+            );
+          }}
           sx={selectSx}
           MenuProps={{
             PaperProps: { sx: { bgcolor: '#1e1e2e', border: '1px solid rgba(255,255,255,0.1)' } },
           }}
         >
-          <MenuItem value="all" sx={menuItemSx}>All status</MenuItem>
-          <MenuItem value="not_started" sx={menuItemSx}>Not started</MenuItem>
-          <MenuItem value="in_progress" sx={menuItemSx}>In progress</MenuItem>
-          <MenuItem value="completed" sx={menuItemSx}>Completed</MenuItem>
+          {(Object.keys(statusMeta) as StatusFilter[]).map((statusValue) => {
+            const meta = statusMeta[statusValue];
+            return (
+              <MenuItem key={statusValue} value={statusValue} sx={menuItemSx}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box component="span" sx={{ display: 'inline-flex', color: meta.color, lineHeight: 0 }}>
+                    {meta.icon}
+                  </Box>
+                  <Box component="span">{meta.label}</Box>
+                </Box>
+              </MenuItem>
+            );
+          })}
         </Select>
       </FormControl>
 

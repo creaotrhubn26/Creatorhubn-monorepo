@@ -62,6 +62,7 @@ import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import {
   type BrandingSettings,
   DEFAULT_BRANDING_SETTINGS,
+  ROLE_ROOM_BRAND_ASSETS,
   fetchBrandingSettings,
   getBrandingSettings,
   saveBrandingSettings,
@@ -1993,8 +1994,8 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     { key: 'productionExitFullscreen', label: 'Production Exit Fullscreen' },
     { key: 'productionEnterFullscreen', label: 'Production Enter Fullscreen' },
     { key: 'productionCancelLabel', label: 'Production Cancel Label' },
-    { key: 'storyArcStudio', label: 'Story Arc Studio' },
-    { key: 'storyArcTagline', label: 'Story Arc Tagline' },
+    { key: 'storyArcStudio', label: 'Role Room Studio' },
+    { key: 'storyArcTagline', label: 'Role Room Studio Tagline' },
     { key: 'storyLogicChip', label: 'Story Logic Chip' },
     { key: 'storyWriterTitle', label: 'Story Writer Title' },
     { key: 'storyWriterSubtitle', label: 'Story Writer Subtitle' },
@@ -2004,10 +2005,9 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
   ];
 
   const logoOptions = [
-    { label: 'The Role Room Logo Tagline', value: '/TheRoleRoom_Logo_Tagline.png' },
-    { label: 'The Role Room Logo', value: '/TheRoleRoom_Logo.png' },
-    { label: 'The Role Room App Logo', value: '/TheRoleRoom_App_Logo.png' },
-    { label: 'The Role Room and Tagline', value: '/TheRoleRoom_and_Tagline.png' },
+    { label: 'The Role Room Mark (Anbefalt)', value: ROLE_ROOM_BRAND_ASSETS.mark },
+    { label: 'The Role Room Wordmark', value: ROLE_ROOM_BRAND_ASSETS.wordmark },
+    { label: 'The Role Room App Logo', value: ROLE_ROOM_BRAND_ASSETS.appLogo },
   ];
 
   const fabIconOptions = [

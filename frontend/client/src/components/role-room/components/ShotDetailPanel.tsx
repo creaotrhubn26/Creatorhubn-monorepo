@@ -36,6 +36,7 @@ import {
 } from '@mui/icons-material';
 import type { SceneBreakdown } from '../models/casting';
 import { useToast } from './ToastStack';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface ShotDetailPanelProps {
   scene: SceneBreakdown;
@@ -87,6 +88,13 @@ interface ShotNote {
   resolved: boolean;
   createdAt: string;
 }
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 export const ShotDetailPanel: React.FC<ShotDetailPanelProps> = ({ scene, onUpdate }) => {
   const { showSuccess } = useToast();
@@ -413,6 +421,18 @@ const CameraTab: React.FC<{ data: ShotCamera; onChange: (data: ShotCamera) => vo
             fullWidth
             placeholder="Spesielle instruksjoner, referanser, etc."
           />
+          <GlobalMentionHelper
+            text={data.notes || ''}
+            localCandidates={[data.shotNumber, 'Regi', 'Foto', 'Lys', 'VFX']}
+            onApplySuggestion={(name) =>
+              onChange({
+                ...data,
+                notes: applyMentionSuggestion(data.notes, name),
+              })
+            }
+            autoTagTitle="Auto-tagget i notater"
+            suggestionTitle="Mener du?"
+          />
         </Grid>
       </Grid>
     </Stack>
@@ -634,6 +654,18 @@ const AudioTab: React.FC<{ data: ShotAudio; onChange: (data: ShotAudio) => void 
             rows={3}
             fullWidth
           />
+          <GlobalMentionHelper
+            text={data.notes || ''}
+            localCandidates={[data.shotNumber, 'Lyd', 'Regi', 'Boom', 'Lav']}
+            onApplySuggestion={(name) =>
+              onChange({
+                ...data,
+                notes: applyMentionSuggestion(data.notes, name),
+              })
+            }
+            autoTagTitle="Auto-tagget i notater"
+            suggestionTitle="Mener du?"
+          />
         </Grid>
       </Grid>
     </Stack>
@@ -642,6 +674,11 @@ const AudioTab: React.FC<{ data: ShotAudio; onChange: (data: ShotAudio) => void 
 
 const NotesTab: React.FC<{ notes: ShotNote[]; onChange: (notes: ShotNote[]) => void }> = ({ notes, onChange }) => {
   const [newNote, setNewNote] = useState({ category: 'Director', content: '', priority: 'medium' as const });
+  const mentionCandidates = Array.from(
+    new Set(
+      notes.flatMap((note) => [note.category, note.assignedTo || '']).filter((value): value is string => Boolean(value?.trim()))
+    )
+  );
 
   const handleAddNote = () => {
     if (!newNote.content.trim()) return;
@@ -705,6 +742,18 @@ const NotesTab: React.FC<{ notes: ShotNote[]; onChange: (notes: ShotNote[]) => v
               multiline
               rows={2}
               fullWidth
+            />
+            <GlobalMentionHelper
+              text={newNote.content}
+              localCandidates={mentionCandidates}
+              onApplySuggestion={(name) =>
+                setNewNote((prev) => ({
+                  ...prev,
+                  content: applyMentionSuggestion(prev.content, name),
+                }))
+              }
+              autoTagTitle="Auto-tagget i notater"
+              suggestionTitle="Mener du?"
             />
             <Button variant="contained" onClick={handleAddNote} startIcon={<AddIcon />}>
               Legg til Notat

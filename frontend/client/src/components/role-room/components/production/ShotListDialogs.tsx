@@ -41,6 +41,8 @@ import {
 import type { ShotList, ProductionContext } from '../../models/casting';
 import type { Person } from '../../models/casting';
 import type { ShotListSummary } from '../../models/derivedState';
+import globalTagService from '../../services/globalTagService';
+import GlobalMentionHelper from '../shared/GlobalMentionHelper';
 
 // ─── Shared dialog paper styles ───────────────────────────────────────────────
 const PAPER_SX = {
@@ -111,6 +113,21 @@ export function CreateEditShotListDialog({
 
   const isValid = Boolean(form.sceneName?.trim() || form.sceneId?.trim());
 
+  const handleSubmit = () => {
+    const rawNotes = typeof form.notes === 'string' ? form.notes : '';
+    if (rawNotes.trim().length > 0) {
+      void globalTagService
+        .add([
+          ...(typeof form.sceneName === 'string' ? [form.sceneName] : []),
+          ...globalTagService.parseExplicitMentions(rawNotes),
+        ])
+        .catch((error) => {
+          console.warn('Kunne ikke oppdatere globalt tag-register fra shotlist-notater:', error);
+        });
+    }
+    onSubmit(form);
+  };
+
   return (
     <Dialog open={open} onClose={loading ? undefined : onClose} maxWidth="sm" fullWidth PaperProps={{ sx: PAPER_SX }}>
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
@@ -180,6 +197,18 @@ export function CreateEditShotListDialog({
           value={form.notes ?? ''}
           onChange={(e) => set({ notes: e.target.value })}
         />
+        <GlobalMentionHelper
+          text={typeof form.notes === 'string' ? form.notes : ''}
+          onApplySuggestion={(name) => {
+            const current = typeof form.notes === 'string' ? form.notes : '';
+            if (!current.trim()) {
+              set({ notes: name });
+              return;
+            }
+            const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+            set({ notes: replaced !== current ? replaced : `${current.trimEnd()} ${name}` });
+          }}
+        />
       </DialogContent>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
@@ -190,7 +219,7 @@ export function CreateEditShotListDialog({
         <Button
           variant="contained"
           disabled={!isValid || loading}
-          onClick={() => onSubmit(form)}
+          onClick={handleSubmit}
           startIcon={loading ? <CircularProgress size={14} /> : undefined}
           sx={{ bgcolor: '#e91e63', '&:hover': { bgcolor: '#c2185b' }, textTransform: 'none', fontWeight: 600 }}
         >

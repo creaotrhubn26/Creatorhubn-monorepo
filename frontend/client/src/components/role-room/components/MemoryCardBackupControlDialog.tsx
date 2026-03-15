@@ -65,6 +65,7 @@ import {
 import { apiRequest } from '../../../lib/queryClient';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
 import netflixWordmark from '../../../assets/brands/netflix-wordmark.svg';
+import globalTagService from '../services/globalTagService';
 import {
   memoryCardControlApi,
   type MemoryCardControlEntry,
@@ -73,6 +74,7 @@ import {
   type MemoryCardBackupTargets,
   type MemoryCardLifecycleStage,
 } from '../services/castingApiService';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 type BackupStage = keyof MemoryCardBackupTargets;
 type ShotListOption = { id: string; scene?: string; title?: string };
@@ -483,6 +485,28 @@ export function MemoryCardBackupControlDialog({
       ),
     [crewOptions]
   );
+  const mentionCandidates = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...crewOptions.map((crew) => crew.name),
+            ...cameras.map((camera) => `${camera.brand} ${camera.model}`),
+            ...controlState.entries.map((entry) => entry.cardLabel),
+          ]
+            .filter((value): value is string => typeof value === 'string')
+            .map((value) => value.trim())
+            .filter((value) => value.length >= 2),
+        ),
+      ),
+    [cameras, controlState.entries, crewOptions],
+  );
+  const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+    const current = typeof sourceText === 'string' ? sourceText : '';
+    if (!current.trim()) return name;
+    const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+    return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+  };
 
   const visibleCameras = useMemo(
     () => (netflixOnly ? cameras.filter((camera) => camera.isNetflixCertified === true) : cameras),
@@ -1087,6 +1111,19 @@ export function MemoryCardBackupControlDialog({
       ...prev,
       entries: [deriveEntryStatus(nextEntry), ...prev.entries],
     }));
+    const mentionSeed = [
+      nextEntry.cardLabel,
+      nextEntry.assignedCrewName,
+      ...globalTagService.parseExplicitMentions(typeof draft.note === 'string' ? draft.note : ''),
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter((value) => value.length >= 2);
+    if (mentionSeed.length > 0) {
+      void globalTagService.add(mentionSeed).catch((error) => {
+        console.warn('Kunne ikke oppdatere globalt mention-register fra backup-kontroll:', error);
+      });
+    }
     setSelectedEntryId(nextEntry.id);
     setDraft((prev) => ({
       ...createEmptyDraft(),
@@ -1893,6 +1930,16 @@ export function MemoryCardBackupControlDialog({
                       gridColumn: { xs: '1 / -1' },
                       '& .MuiInputBase-root': { color: textPrimary, bgcolor: alpha(textPrimary, 0.04) },
                     }}
+                  />
+                  <GlobalMentionHelper
+                    text={typeof draft.note === 'string' ? draft.note : ''}
+                    localCandidates={mentionCandidates}
+                    onApplySuggestion={(name) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        note: applyMentionSuggestion(prev.note, name),
+                      }))
+                    }
                   />
 
                   <TextField

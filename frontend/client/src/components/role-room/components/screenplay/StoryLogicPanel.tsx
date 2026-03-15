@@ -34,7 +34,6 @@ import {
   Divider,
   Card,
   CardContent,
-  Grid,
   Fade,
   Collapse,
 } from '@mui/material';
@@ -55,12 +54,18 @@ import {
   Download as DownloadIcon,
   History as HistoryIcon,
   School as SchoolIcon,
-  ContentCopy as CopyIcon,
   ArrowForward as ArrowForwardIcon,
   GpsFixed as GpsFixedIcon,
   ReportProblem as ContradictionIcon,
 } from '@mui/icons-material';
+import jsPDF from 'jspdf';
+import { useBrandingSettings } from '../../hooks/useBrandingSettings';
 import { storyLogicService } from '../../services/storyLogicService';
+import {
+  CONTENT_PRODUCER_DEMO_PROJECT_ID,
+  PRODUCER_DEMO_CLIENT_COMPANY,
+  containsLegacyProducerDemoMarker,
+} from '../../constants/producerDemo';
 
 // ============================================================================
 // Energy-Aware UX Helpers
@@ -68,18 +73,18 @@ import { storyLogicService } from '../../services/storyLogicService';
 
 // Mentor-tone status labels — no "Error", no "Incomplete" (#3 energy-aware)
 const STATUS_LABELS: Record<string, string> = {
-  incomplete: 'Not clear yet',
-  weak: 'Let\u2019s sharpen this',
-  ready: 'Ready',
+  incomplete: 'Ikke tydelig ennå',
+  weak: 'La oss spisse dette',
+  ready: 'Klar',
 };
 
 // Confidence tier labels — "Story Engine Confidence" not percentages (#4)
 function getConfidenceTier(score: number): { label: string; color: string } {
-  if (score >= 80) return { label: 'High', color: '#10b981' };
-  if (score >= 60) return { label: 'Growing', color: '#60a5fa' };
-  if (score >= 40) return { label: 'Medium', color: '#f59e0b' };
-  if (score >= 20) return { label: 'Emerging', color: '#fb923c' };
-  return { label: 'Just started', color: '#9ca3af' };
+  if (score >= 80) return { label: 'Høy', color: '#10b981' };
+  if (score >= 60) return { label: 'På vei opp', color: '#60a5fa' };
+  if (score >= 40) return { label: 'Middels', color: '#f59e0b' };
+  if (score >= 20) return { label: 'Tidlig fase', color: '#fb923c' };
+  return { label: 'Nettopp startet', color: '#9ca3af' };
 }
 
 // Energy-aware colors — no red when score is low, use neutral/warm tones (#3)
@@ -89,12 +94,119 @@ function getEnergyColor(score: number): string {
   return '#9ca3af'; // neutral gray, NOT red
 }
 
-// Reality Check Prompts — human questions after each phase (#6)
-const REALITY_CHECK_PROMPTS: Record<string, string> = {
-  concept: 'If a friend asked "What is your movie about?" — could you answer in one breath?',
-  logline: 'If someone asked "Why should I care?" — what would you answer in one sentence?',
-  theme: 'If the audience leaves the cinema — what\'s the one feeling they carry home?',
+function hexToRgb(hex: string, fallback: [number, number, number]): [number, number, number] {
+  if (!hex) return fallback;
+  const normalized = hex.trim().replace('#', '');
+  const value = normalized.length === 3
+    ? normalized.split('').map((char) => char + char).join('')
+    : normalized;
+  if (!/^[0-9a-fA-F]{6}$/.test(value)) return fallback;
+  const int = Number.parseInt(value, 16);
+  if (Number.isNaN(int)) return fallback;
+  return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error('Unable to convert blob to data URL'));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Unable to read blob'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function readImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      } else {
+        reject(new Error('Invalid image dimensions'));
+      }
+    };
+    img.onerror = () => reject(new Error('Unable to read image dimensions'));
+    img.src = dataUrl;
+  });
+}
+
+const phaseRoadmapGridSx = {
+  display: 'grid',
+  gap: 1.5,
+  gridTemplateColumns: {
+    xs: '1fr',
+    md: 'repeat(3, minmax(0, 1fr))',
+  },
 };
+
+const phaseFormGridSx = {
+  display: 'grid',
+  gap: 2,
+  gridTemplateColumns: {
+    xs: '1fr',
+    md: 'repeat(2, minmax(0, 1fr))',
+  },
+};
+
+const phaseFullSpanSx = {
+  gridColumn: '1 / -1',
+};
+
+const starterCardsGridSx = {
+  display: 'grid',
+  gap: 1.5,
+  gridTemplateColumns: {
+    xs: '1fr',
+    sm: 'repeat(2, minmax(0, 1fr))',
+    lg: 'repeat(3, minmax(0, 1fr))',
+  },
+};
+
+const templateCardsGridSx = {
+  display: 'grid',
+  gap: 1,
+  mt: 1,
+  gridTemplateColumns: {
+    xs: '1fr',
+    sm: 'repeat(2, minmax(0, 1fr))',
+    lg: 'repeat(3, minmax(0, 1fr))',
+  },
+};
+
+type StoryPhaseKey = 'concept' | 'logline' | 'theme';
+
+// Reality Check Prompts — human questions after each phase (#6)
+const REALITY_CHECK_PROMPTS: Record<StoryPhaseKey, string[]> = {
+  concept: [
+    'Hvis en venn spør "Hva handler filmen om?" — kan du svare i én setning?',
+    'Kan du forklare premisset uten å avsløre vendinger eller slutt?',
+    'Vil noen forstå kjerneideen på under 10 sekunder?',
+  ],
+  logline: [
+    'Hvis noen spør "Hvorfor skal jeg bry meg?" — hva svarer du i én setning?',
+    'Er protagonist, mål, motkraft og stakes tydelig i én linje?',
+    'Kunne en produsent pitchet loglinen etter å ha hørt den én gang?',
+  ],
+  theme: [
+    'Når publikum går ut av kinosalen — hvilken følelse tar de med seg hjem?',
+    'Beviser karakterbuen temaet ditt, eller bare sier den det?',
+    'Hvis noen er uenig i temapåstanden, står historien fortsatt støtt?',
+  ],
+};
+
+function getStableRealityCheckPrompt(phase: StoryPhaseKey, seedSource: string): string {
+  const prompts = REALITY_CHECK_PROMPTS[phase];
+  if (!prompts.length) return '';
+
+  const seed = Array.from(seedSource).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return prompts[seed % prompts.length];
+}
 
 // Project templates for quick-start (#9)
 interface StoryTemplate {
@@ -108,7 +220,7 @@ const STORY_TEMPLATES: StoryTemplate[] = [
   {
     id: 'thriller',
     name: 'Thriller',
-    description: 'High-stakes tension with a ticking clock',
+    description: 'Høye stakes og stigende tidspress',
     data: {
       concept: { corePremise: '', genre: 'Thriller', subGenre: 'Psychological', tone: ['Suspenseful', 'Dark'], targetAudience: '', audienceAge: 'Adult (26-45)', whyNow: '', uniqueAngle: '', marketComparables: '' },
       logline: { protagonist: '', protagonistTrait: '', goal: '', antagonisticForce: '', stakes: '', fullLogline: '', loglineScore: 0 },
@@ -117,8 +229,8 @@ const STORY_TEMPLATES: StoryTemplate[] = [
   },
   {
     id: 'character-drama',
-    name: 'Character-Driven Drama',
-    description: 'Internal transformation and emotional depth',
+    name: 'Karakterdrevet drama',
+    description: 'Indre transformasjon og emosjonell dybde',
     data: {
       concept: { corePremise: '', genre: 'Drama', subGenre: 'Family Drama', tone: ['Serious', 'Melancholic'], targetAudience: '', audienceAge: 'Adult (26-45)', whyNow: '', uniqueAngle: '', marketComparables: '' },
       logline: { protagonist: '', protagonistTrait: '', goal: '', antagonisticForce: '', stakes: '', fullLogline: '', loglineScore: 0 },
@@ -127,8 +239,8 @@ const STORY_TEMPLATES: StoryTemplate[] = [
   },
   {
     id: 'commercial-pitch',
-    name: 'Commercial Pitch',
-    description: 'High-concept with clear market positioning',
+    name: 'Kommersiell pitch',
+    description: 'High-concept med tydelig markedsposisjon',
     data: {
       concept: { corePremise: '', genre: 'Action', subGenre: 'Superhero', tone: ['Intense', 'Hopeful'], targetAudience: '', audienceAge: 'Young Adult (18-25)', whyNow: '', uniqueAngle: '', marketComparables: '' },
       logline: { protagonist: '', protagonistTrait: '', goal: '', antagonisticForce: '', stakes: '', fullLogline: '', loglineScore: 0 },
@@ -137,10 +249,10 @@ const STORY_TEMPLATES: StoryTemplate[] = [
   },
   {
     id: 'indie-arthouse',
-    name: 'Indie Arthouse',
-    description: 'Atmospheric, ambiguous, visually driven',
+    name: 'Indie arthouse',
+    description: 'Atmosfærisk, tvetydig og visuelt drevet',
     data: {
-      concept: { corePremise: '', genre: 'Drama', subGenre: '', tone: ['Surreal', 'Melancholic'], targetAudience: 'Cinephiles and festival audiences', audienceAge: 'Adult (26-45)', whyNow: '', uniqueAngle: '', marketComparables: '' },
+      concept: { corePremise: '', genre: 'Drama', subGenre: '', tone: ['Surreal', 'Melancholic'], targetAudience: 'Cinefile og festivalpublikum', audienceAge: 'Adult (26-45)', whyNow: '', uniqueAngle: '', marketComparables: '' },
       logline: { protagonist: '', protagonistTrait: '', goal: '', antagonisticForce: '', stakes: '', fullLogline: '', loglineScore: 0 },
       theme: { centralTheme: '', themeStatement: '', protagonistFlaw: '', flawOrigin: '', whatMustChange: '', transformationArc: '', emotionalJourney: ['Sadness', 'Anticipation', 'Surprise', 'Despair'], moralArgument: '' },
     },
@@ -150,9 +262,15 @@ const STORY_TEMPLATES: StoryTemplate[] = [
 // Start-with modes for non-linear entry (#10)
 type StartMode = 'idea' | 'character' | 'theme';
 const START_MODES: { id: StartMode; label: string; icon: string; description: string; initialPhase: number }[] = [
-  { id: 'idea', label: 'Start with Idea', icon: '💡', description: 'I have a concept or premise', initialPhase: 0 },
-  { id: 'character', label: 'Start with Character', icon: '🎭', description: 'I have a character in mind', initialPhase: 1 },
-  { id: 'theme', label: 'Start with Theme', icon: '🧠', description: 'I know the message first', initialPhase: 2 },
+  { id: 'idea', label: 'Start med idé', icon: '💡', description: 'Jeg har et konsept eller premiss', initialPhase: 0 },
+  { id: 'character', label: 'Start med karakter', icon: '🎭', description: 'Jeg har en karakter i tankene', initialPhase: 1 },
+  { id: 'theme', label: 'Start med tema', icon: '🧠', description: 'Jeg vet budskapet først', initialPhase: 2 },
+];
+
+const PHASE_META: Array<{ key: StoryPhaseKey; index: number; title: string }> = [
+  { key: 'concept', index: 0, title: 'Konsept' },
+  { key: 'logline', index: 1, title: 'Logline' },
+  { key: 'theme', index: 2, title: 'Tema og karakterintensjon' },
 ];
 
 // ============================================================================
@@ -275,15 +393,177 @@ const _TONES = [
 
 // Grouped tones for semantic selection (#7)
 const TONE_GROUPS: { label: string; tones: string[] }[] = [
-  { label: 'Mood', tones: ['Dark', 'Light', 'Melancholic', 'Hopeful', 'Nostalgic'] },
-  { label: 'Energy', tones: ['Intense', 'Suspenseful', 'Gritty', 'Whimsical', 'Surreal'] },
-  { label: 'Style', tones: ['Serious', 'Comedic', 'Satirical', 'Romantic', 'Cynical', 'Inspirational'] },
+  { label: 'Stemning', tones: ['Dark', 'Light', 'Melancholic', 'Hopeful', 'Nostalgic'] },
+  { label: 'Energi', tones: ['Intense', 'Suspenseful', 'Gritty', 'Whimsical', 'Surreal'] },
+  { label: 'Stil', tones: ['Serious', 'Comedic', 'Satirical', 'Romantic', 'Cynical', 'Inspirational'] },
 ];
 
 const AUDIENCE_AGES = [
   'Children (Under 12)', 'Teen (13-17)', 'Young Adult (18-25)',
   'Adult (26-45)', 'Mature Adult (46-65)', 'Senior (65+)', 'All Ages'
 ];
+
+const GENRE_LABELS_NB: Record<string, string> = {
+  Drama: 'Drama',
+  Comedy: 'Komedie',
+  Action: 'Action',
+  Thriller: 'Thriller',
+  Horror: 'Horror',
+  'Sci-Fi': 'Sci-fi',
+  Fantasy: 'Fantasy',
+  Romance: 'Romantikk',
+  Mystery: 'Mysterium',
+  Crime: 'Krim',
+  Documentary: 'Dokumentar',
+  Animation: 'Animasjon',
+  Musical: 'Musikal',
+  Western: 'Western',
+  War: 'Krig',
+  Biography: 'Biografi',
+};
+
+const SUB_GENRE_LABELS_NB: Record<string, string> = {
+  'Family Drama': 'Familiedrama',
+  'Legal Drama': 'Rettsdrama',
+  'Medical Drama': 'Medisinsk drama',
+  'Political Drama': 'Politisk drama',
+  'Sports Drama': 'Sportsdrama',
+  'Romantic Comedy': 'Romantisk komedie',
+  'Dark Comedy': 'Svart komedie',
+  Satire: 'Satire',
+  Slapstick: 'Slapstick',
+  Parody: 'Parodi',
+  'Martial Arts': 'Kampsport',
+  'Spy Action': 'Spionaction',
+  Heist: 'Kupp',
+  Disaster: 'Katastrofe',
+  Superhero: 'Superhelt',
+  Psychological: 'Psykologisk',
+  Political: 'Politisk',
+  Legal: 'Juridisk',
+  Techno: 'Tekno',
+  Conspiracy: 'Konspirasjon',
+  Supernatural: 'Overnaturlig',
+  Slasher: 'Slasher',
+  'Body Horror': 'Body horror',
+  'Found Footage': 'Found footage',
+  'Space Opera': 'Space opera',
+  Cyberpunk: 'Cyberpunk',
+  'Post-Apocalyptic': 'Postapokalyptisk',
+  'Time Travel': 'Tidsreise',
+  'Alien Invasion': 'Alieninvasjon',
+  'Epic Fantasy': 'Episk fantasy',
+  'Urban Fantasy': 'Urban fantasy',
+  'Dark Fantasy': 'Mørk fantasy',
+  'Fairy Tale': 'Eventyr',
+  Mythological: 'Mytologisk',
+  'Period Romance': 'Historisk romantikk',
+  Contemporary: 'Samtidsromantikk',
+  'Paranormal Romance': 'Paranormal romantikk',
+  'Tragic Romance': 'Tragisk romantikk',
+  Whodunit: 'Hvem gjorde det',
+  Noir: 'Noir',
+  'Cozy Mystery': 'Koselig mysterium',
+  Procedural: 'Prosedyre',
+  Gangster: 'Gangster',
+  'True Crime': 'True crime',
+  'Neo-Noir': 'Neo-noir',
+};
+
+const TONE_LABELS_NB: Record<string, string> = {
+  Dark: 'Mørk',
+  Light: 'Lett',
+  Serious: 'Alvorlig',
+  Comedic: 'Komedisk',
+  Suspenseful: 'Spenningsfylt',
+  Hopeful: 'Håpefull',
+  Melancholic: 'Melankolsk',
+  Satirical: 'Satirisk',
+  Gritty: 'Rå',
+  Whimsical: 'Eventyrlig',
+  Intense: 'Intens',
+  Romantic: 'Romantisk',
+  Cynical: 'Kynisk',
+  Inspirational: 'Inspirerende',
+  Surreal: 'Surrealistisk',
+  Nostalgic: 'Nostalgisk',
+};
+
+const AUDIENCE_AGE_LABELS_NB: Record<string, string> = {
+  'Children (Under 12)': 'Barn (under 12)',
+  'Teen (13-17)': 'Ungdom (13-17)',
+  'Young Adult (18-25)': 'Unge voksne (18-25)',
+  'Adult (26-45)': 'Voksne (26-45)',
+  'Mature Adult (46-65)': 'Modne voksne (46-65)',
+  'Senior (65+)': 'Senior (65+)',
+  'All Ages': 'Alle aldre',
+};
+
+const EMOTION_LABELS_NB: Record<string, string> = {
+  Hope: 'Håp',
+  Fear: 'Frykt',
+  Joy: 'Glede',
+  Sadness: 'Sorg',
+  Anger: 'Sinne',
+  Surprise: 'Overraskelse',
+  Disgust: 'Avsky',
+  Trust: 'Tillit',
+  Anticipation: 'Forventning',
+  Love: 'Kjærlighet',
+  Shame: 'Skam',
+  Pride: 'Stolthet',
+  Guilt: 'Skyld',
+  Relief: 'Lettelse',
+  Despair: 'Fortvilelse',
+  Triumph: 'Triumf',
+  Skepticism: 'Skepsis',
+  Wonder: 'Undring',
+  Determination: 'Besluttsomhet',
+  Grief: 'Savn',
+};
+
+function nbLabel(value: string, labels: Record<string, string>): string {
+  return labels[value] || value;
+}
+
+function normalizeLegacyLookup(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[’`]/g, '\'')
+    .replace(/[–—]/g, '-')
+    .replace(/[^a-z0-9æøå\-'\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getFieldLabelNb(fieldId: string): string {
+  const map: Record<string, string> = {
+    corePremise: 'Kjernepremiss',
+    genre: 'Sjanger',
+    subGenre: 'Undersjanger',
+    tone: 'Tone',
+    targetAudience: 'Målgruppe',
+    audienceAge: 'Aldersgruppe',
+    whyNow: 'Hvorfor nå',
+    uniqueAngle: 'Unik vinkel',
+    marketComparables: 'Markedssammenligninger',
+    protagonist: 'Hovedperson',
+    protagonistTrait: 'Definerende trekk',
+    goal: 'Mål',
+    antagonisticForce: 'Antagonistisk kraft',
+    stakes: 'Konsekvenser',
+    fullLogline: 'Komplett logline',
+    centralTheme: 'Sentralt tema',
+    themeStatement: 'Temapåstand',
+    protagonistFlaw: 'Protagonistens kjernefeil',
+    flawOrigin: 'Opprinnelse til feil',
+    whatMustChange: 'Hva må endres',
+    transformationArc: 'Transformasjonsbue',
+    emotionalJourney: 'Emosjonell reise',
+    moralArgument: 'Moralsk argument',
+  };
+  return map[fieldId] || fieldId;
+}
 
 const LEGACY_SUBGENRE_MAP: Record<string, string> = {
   'Monster/Creature Feature': 'Mythological',
@@ -292,6 +572,147 @@ const LEGACY_SUBGENRE_MAP: Record<string, string> = {
 const LEGACY_AUDIENCE_AGE_MAP: Record<string, string> = {
   '12+': 'Teen (13-17)',
 };
+
+const LEGACY_TROLL_TEXT_NB_MAP: Record<string, string> = {
+  'An ancient troll awakens in modern Norway, forcing a paleontologist to bridge the gap between myth and reality before the military destroys the last remnant of Norse legend.':
+    'Et urgammelt troll våkner i moderne Norge og tvinger en paleontolog til å bygge bro mellom myte og virkelighet før militæret utsletter den siste resten av norrøn legende.',
+  'Families and fantasy enthusiasts who love Nordic mythology':
+    'Familier og fantasy-entusiaster som elsker nordisk mytologi',
+  'Rising interest in Scandinavian mythology (Vikings, God of War), climate anxiety awakening dormant threats, and the universal theme of humanity\'s relationship with nature and forgotten traditions.':
+    'Økt interesse for skandinavisk mytologi (Vikings, God of War), klimaangst som vekker sovende trusler, og et universelt tema om menneskets forhold til naturen og glemte tradisjoner.',
+  'Unlike typical monster movies where creatures are purely antagonistic, the troll is a sympathetic being seeking home - making the real conflict about preservation vs. destruction of cultural heritage.':
+    'I motsetning til typiske monsterfilmer der skapningen bare er fienden, er trollet et sympatisk vesen som søker hjemmet sitt. Konflikten handler derfor om bevaring kontra ødeleggelse av kulturarv.',
+  'Godzilla (2014) meets The Water Horse, with themes similar to Princess Mononoke. Norwegian kaiju with heart.':
+    'Godzilla (2014) møter The Water Horse, med tematiske likheter til Princess Mononoke. Norsk kaiju med hjerte.',
+  'brilliant but skeptical':
+    'briljant, men skeptisk',
+  'must protect and guide the ancient troll back to Dovre':
+    'må beskytte og lede det urgamle trollet tilbake til Dovre',
+  'a military determined to destroy it and her own disbelief in folklore':
+    'et militær som er fast bestemt på å ødelegge det, samt hennes egen vantro til folketro',
+  'lose the last living connection to Norway\'s mythological past forever':
+    'miste den siste levende forbindelsen til Norges mytologiske fortid for alltid',
+  'When a brilliant but skeptical paleontologist Nora Tidemann must protect and guide the ancient troll back to Dovre, she faces a military determined to destroy it and her own disbelief in folklore—or else lose the last living connection to Norway\'s mythological past forever.':
+    'Når den briljante, men skeptiske paleontologen Nora Tidemann må beskytte og lede det urgamle trollet tilbake til Dovre, møter hun et militær som vil ødelegge det og sin egen vantro til folketro — ellers mister hun den siste levende forbindelsen til Norges mytologiske fortid for alltid.',
+  'Reconnecting with cultural heritage and the power of belief':
+    'Gjenforbindelse med kulturarv og troens kraft',
+  'Only by embracing the wisdom of our ancestors can we find our way home.':
+    'Først når vi omfavner visdommen fra våre forfedre, kan vi finne veien hjem.',
+  'Rational skepticism that blinds her to wonder and her estranged relationship with her father who believed in folklore':
+    'Rasjonell skepsis som gjør henne blind for undring, og et brutt forhold til faren som trodde på folketro',
+  'Nora rejected her father\'s stories about trolls as a child, choosing science over tradition, leading to years of distance between them.':
+    'Nora avviste farens historier om troll som barn og valgte vitenskap over tradisjon, noe som skapte år med avstand mellom dem.',
+  'She must reconcile scientific rationalism with folkloric wisdom, and heal her relationship with her father before it\'s too late.':
+    'Hun må forene vitenskapelig rasjonalitet med folkelig visdom, og reparere forholdet til faren før det er for sent.',
+  'From dismissive skeptic who mocks tradition → to reluctant believer who witnesses the impossible → to active protector who bridges past and present':
+    'Fra avvisende skeptiker som håner tradisjon → til nølende troende som er vitne til det umulige → til aktiv beskytter som bygger bro mellom fortid og nåtid',
+  'The film argues that progress without respect for the past leads to destruction, while embracing our heritage gives us the wisdom to face the future.':
+    'Filmen argumenterer for at fremskritt uten respekt for fortiden fører til ødeleggelse, mens omfavnelse av kulturarven gir oss visdommen til å møte fremtiden.',
+  'Cinephiles and festival audiences':
+    'Cinefile og festivalpublikum',
+};
+
+const LEGACY_TROLL_TEXT_NB_NORMALIZED_MAP: Record<string, string> = Object.entries(LEGACY_TROLL_TEXT_NB_MAP)
+  .reduce<Record<string, string>>((acc, [english, norwegian]) => {
+    acc[normalizeLegacyLookup(english)] = norwegian;
+    return acc;
+  }, {});
+
+const LEGACY_TROLL_TEXT_NB_FALLBACK_FRAGMENTS: Array<{ fragment: string; translation: string }> = [
+  {
+    fragment: 'ancient troll awakens in modern norway',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['An ancient troll awakens in modern Norway, forcing a paleontologist to bridge the gap between myth and reality before the military destroys the last remnant of Norse legend.'],
+  },
+  {
+    fragment: 'families and fantasy enthusiasts who love nordic mythology',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['Families and fantasy enthusiasts who love Nordic mythology'],
+  },
+  {
+    fragment: 'rising interest in scandinavian mythology',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['Rising interest in Scandinavian mythology (Vikings, God of War), climate anxiety awakening dormant threats, and the universal theme of humanity\'s relationship with nature and forgotten traditions.'],
+  },
+  {
+    fragment: 'unlike typical monster movies where creatures are purely antagonistic',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['Unlike typical monster movies where creatures are purely antagonistic, the troll is a sympathetic being seeking home - making the real conflict about preservation vs. destruction of cultural heritage.'],
+  },
+  {
+    fragment: 'godzilla (2014) meets the water horse',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['Godzilla (2014) meets The Water Horse, with themes similar to Princess Mononoke. Norwegian kaiju with heart.'],
+  },
+  {
+    fragment: 'brilliant but skeptical',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['brilliant but skeptical'],
+  },
+  {
+    fragment: 'must protect and guide the ancient troll back to dovre',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['must protect and guide the ancient troll back to Dovre'],
+  },
+  {
+    fragment: 'a military determined to destroy it and her own disbelief in folklore',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['a military determined to destroy it and her own disbelief in folklore'],
+  },
+  {
+    fragment: 'lose the last living connection to norway',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['lose the last living connection to Norway\'s mythological past forever'],
+  },
+  {
+    fragment: 'when a brilliant but skeptical paleontologist nora tidemann must protect and guide the ancient troll back to dovre',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['When a brilliant but skeptical paleontologist Nora Tidemann must protect and guide the ancient troll back to Dovre, she faces a military determined to destroy it and her own disbelief in folklore—or else lose the last living connection to Norway\'s mythological past forever.'],
+  },
+  {
+    fragment: 'reconnecting with cultural heritage and the power of belief',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['Reconnecting with cultural heritage and the power of belief'],
+  },
+  {
+    fragment: 'only by embracing the wisdom of our ancestors can we find our way home',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['Only by embracing the wisdom of our ancestors can we find our way home.'],
+  },
+  {
+    fragment: 'rational skepticism that blinds her to wonder',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['Rational skepticism that blinds her to wonder and her estranged relationship with her father who believed in folklore'],
+  },
+  {
+    fragment: 'nora rejected her father\'s stories about trolls as a child',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['Nora rejected her father\'s stories about trolls as a child, choosing science over tradition, leading to years of distance between them.'],
+  },
+  {
+    fragment: 'she must reconcile scientific rationalism with folkloric wisdom',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['She must reconcile scientific rationalism with folkloric wisdom, and heal her relationship with her father before it\'s too late.'],
+  },
+  {
+    fragment: 'from dismissive skeptic who mocks tradition',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['From dismissive skeptic who mocks tradition → to reluctant believer who witnesses the impossible → to active protector who bridges past and present'],
+  },
+  {
+    fragment: 'the film argues that progress without respect for the past leads to destruction',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['The film argues that progress without respect for the past leads to destruction, while embracing our heritage gives us the wisdom to face the future.'],
+  },
+  {
+    fragment: 'cinephiles and festival audiences',
+    translation: LEGACY_TROLL_TEXT_NB_MAP['Cinephiles and festival audiences'],
+  },
+];
+
+function translateLegacyTextToNb(value: string): string {
+  if (!value) return value;
+
+  const trimmed = value.trim();
+  const exact = LEGACY_TROLL_TEXT_NB_MAP[trimmed];
+  if (exact) return exact;
+
+  const normalized = normalizeLegacyLookup(trimmed);
+  const normalizedHit = LEGACY_TROLL_TEXT_NB_NORMALIZED_MAP[normalized];
+  if (normalizedHit) return normalizedHit;
+
+  const lowered = normalized;
+  for (const item of LEGACY_TROLL_TEXT_NB_FALLBACK_FRAGMENTS) {
+    if (lowered.includes(item.fragment)) {
+      return item.translation;
+    }
+  }
+
+  return value;
+}
 
 function normalizeConceptSelections(concept: ConceptData): ConceptData {
   const normalizedGenre = GENRES.includes(concept.genre) ? concept.genre : '';
@@ -310,9 +731,36 @@ function normalizeConceptSelections(concept: ConceptData): ConceptData {
 }
 
 function normalizeStoryLogicState(input: StoryLogicState): StoryLogicState {
+  const concept = normalizeConceptSelections(input.concept);
+
   return {
     ...input,
-    concept: normalizeConceptSelections(input.concept),
+    concept: {
+      ...concept,
+      corePremise: translateLegacyTextToNb(concept.corePremise),
+      targetAudience: translateLegacyTextToNb(concept.targetAudience),
+      whyNow: translateLegacyTextToNb(concept.whyNow),
+      uniqueAngle: translateLegacyTextToNb(concept.uniqueAngle),
+      marketComparables: translateLegacyTextToNb(concept.marketComparables),
+    },
+    logline: {
+      ...input.logline,
+      protagonistTrait: translateLegacyTextToNb(input.logline.protagonistTrait),
+      goal: translateLegacyTextToNb(input.logline.goal),
+      antagonisticForce: translateLegacyTextToNb(input.logline.antagonisticForce),
+      stakes: translateLegacyTextToNb(input.logline.stakes),
+      fullLogline: translateLegacyTextToNb(input.logline.fullLogline),
+    },
+    theme: {
+      ...input.theme,
+      centralTheme: translateLegacyTextToNb(input.theme.centralTheme),
+      themeStatement: translateLegacyTextToNb(input.theme.themeStatement),
+      protagonistFlaw: translateLegacyTextToNb(input.theme.protagonistFlaw),
+      flawOrigin: translateLegacyTextToNb(input.theme.flawOrigin),
+      whatMustChange: translateLegacyTextToNb(input.theme.whatMustChange),
+      transformationArc: translateLegacyTextToNb(input.theme.transformationArc),
+      moralArgument: translateLegacyTextToNb(input.theme.moralArgument),
+    },
   };
 }
 
@@ -324,67 +772,67 @@ const _EMOTIONAL_JOURNEY_BEATS = [
 
 // Grouped emotions by story act (#7)
 const EMOTION_GROUPS: { label: string; emotions: string[] }[] = [
-  { label: 'Act 1 — Setup', emotions: ['Hope', 'Fear', 'Anticipation', 'Trust'] },
-  { label: 'Act 2 — Conflict', emotions: ['Anger', 'Sadness', 'Surprise', 'Shame', 'Guilt', 'Disgust'] },
-  { label: 'Act 3 — Resolution', emotions: ['Joy', 'Love', 'Pride', 'Relief', 'Triumph', 'Despair'] },
+  { label: 'Akt 1 — Oppsett', emotions: ['Hope', 'Fear', 'Anticipation', 'Trust'] },
+  { label: 'Akt 2 — Konflikt', emotions: ['Anger', 'Sadness', 'Surprise', 'Shame', 'Guilt', 'Disgust'] },
+  { label: 'Akt 3 — Løsning', emotions: ['Joy', 'Love', 'Pride', 'Relief', 'Triumph', 'Despair'] },
 ];
 
 // Genre-specific examples library (#4)
 const FIELD_EXAMPLES: Record<string, Record<string, string[]>> = {
   uniqueAngle: {
     Drama: [
-      'Told entirely through security camera footage',
-      'The antagonist is the narrator — and unreliable',
-      'Set in a single room over one night',
+      'Fortalt kun gjennom opptak fra overvåkningskamera',
+      'Antagonisten er fortelleren — og upålitelig',
+      'Satt til ett rom i løpet av én natt',
     ],
     Thriller: [
-      'The detective IS the killer — revealed through dual timelines',
-      'Entire story unfolds in real-time during a 2-hour flight',
-      'Victim and captor switch perspectives each chapter',
+      'Etterforskeren ER morderen — avslørt gjennom to tidslinjer',
+      'Hele historien skjer i sanntid under en to timers flytur',
+      'Offer og fangevokter bytter perspektiv i hvert kapittel',
     ],
     Comedy: [
-      'A mockumentary about the worst wedding planner alive',
-      'Told backwards — we see the mess before the setup',
-      'Every character believes they\'re the main character',
+      'En mockumentary om verdens verste bryllupsplanlegger',
+      'Fortalt baklengs — vi ser kaoset før oppbygningen',
+      'Alle karakterene tror de er hovedpersonen',
     ],
     Fantasy: [
-      'Magic has an economic cost — spells cause inflation',
-      'The "chosen one" is a fraud, the sidekick is the real hero',
-      'Dragons are sentient diplomats, not beasts',
+      'Magi har en økonomisk kostnad — trylleformularer skaper inflasjon',
+      '"Den utvalgte" er en svindler, mens sidekarakteren er den ekte helten',
+      'Drager er bevisste diplomater, ikke monstre',
     ],
     _default: [
-      'Subvert expectations by changing WHO tells the story',
-      'Use an unconventional structure (non-linear, epistolary)',
-      'Combine genres that rarely mix (e.g., horror + romance)',
+      'Bryt forventningene ved å endre HVEM som forteller historien',
+      'Bruk en ukonvensjonell struktur (ikke-lineær, brevform)',
+      'Kombiner sjangre som sjelden blandes (f.eks. horror + romantikk)',
     ],
   },
   whyNow: {
     Drama: [
-      'Post-pandemic isolation redefines family bonds',
-      'AI-driven job loss mirrors Industrial Revolution anxieties',
+      'Isolasjon etter pandemien redefinerer familiebånd',
+      'AI-drevet jobbfortrengning speiler frykten fra den industrielle revolusjon',
     ],
     Thriller: [
-      'Deepfakes make identity theft a universal fear',
-      'Surveillance capitalism gives "being watched" new meaning',
+      'Deepfakes gjør identitetstyveri til en universell frykt',
+      'Overvåkningskapitalisme gir "å bli overvåket" ny betydning',
     ],
     _default: [
-      'Connect to a social movement or trending concern',
-      'Reference a technological shift changing daily life',
-      'Tie to a generational experience (Gen Z burnout, boomer legacy)',
+      'Knytt historien til en sosial bevegelse eller aktuell bekymring',
+      'Vis til et teknologisk skifte som påvirker hverdagen',
+      'Koble til en generasjonserfaring (Gen Z-utbrenthet, boomer-arv)',
     ],
   },
   themeStatement: {
     Drama: [
-      'This story argues that forgiveness is not for the offender — it\'s liberation for the wounded.',
-      'True strength isn\'t endurance — it\'s knowing when to ask for help.',
+      'Denne historien argumenterer for at tilgivelse ikke er for overgriperen, men frigjøring for den sårede.',
+      'Ekte styrke er ikke utholdenhet alene, men å vite når man må be om hjelp.',
     ],
     Thriller: [
-      'This story argues that obsession with justice becomes indistinguishable from the crime itself.',
-      'The safest lies are the ones we tell ourselves.',
+      'Denne historien argumenterer for at besettelse av rettferdighet kan bli uatskillelig fra selve forbrytelsen.',
+      'De tryggeste løgnene er dem vi forteller oss selv.',
     ],
     _default: [
-      'This story argues that [BELIEF] only leads to [CONSEQUENCE], and true [VALUE] requires [SACRIFICE].',
-      'Frame as: "The film argues that…" to keep it active and debatable.',
+      'Denne historien argumenterer for at [TRO] fører til [KONSEKVENS], og at ekte [VERDI] krever [OFFER].',
+      'Formuler som: "Filmen argumenterer for at …" for å gjøre påstanden aktiv og diskuterbar.',
     ],
   },
 };
@@ -398,16 +846,16 @@ function detectContradictions(concept: ConceptData, theme: ThemeData): string[] 
   const genre = concept.genre.toLowerCase();
 
   if (isChildren && (genre === 'horror' || tones.includes('gritty') || tones.includes('dark'))) {
-    contradictions.push('Target audience "Children" conflicts with dark/gritty tone or Horror genre — reconsider audience or tone.');
+    contradictions.push('Målgruppen "Barn" kolliderer med mørk/rå tone eller horrorsjanger — vurder målgruppe eller tone på nytt.');
   }
   if (isChildren && tones.includes('cynical')) {
-    contradictions.push('Cynical tone is unusual for children\'s content — intentional subversion or mismatch?');
+    contradictions.push('Kynisk tone er uvanlig for innhold rettet mot barn — bevisst brudd eller mismatch?');
   }
   if (concept.whyNow.length > 20 && concept.uniqueAngle.length > 10) {
     const whyGeneric = /relevant|important|timely/i.test(concept.whyNow) && !/because|specifically|unlike/i.test(concept.whyNow);
     const angleGeneric = /unique|different|special|new/i.test(concept.uniqueAngle) && concept.uniqueAngle.length < 40;
     if (whyGeneric && angleGeneric) {
-      contradictions.push('"Why Now" and "Unique Angle" are both generic — add specifics to at least one.');
+      contradictions.push('"Hvorfor nå" og "Unik vinkel" er begge for generiske — gjør minst én av dem mer konkret.');
     }
   }
   if (theme.themeStatement.length > 20 && theme.moralArgument.length > 20) {
@@ -415,7 +863,7 @@ function detectContradictions(concept: ConceptData, theme: ThemeData): string[] 
     const moralWords = new Set(theme.moralArgument.toLowerCase().split(/\s+/));
     const overlap = [...themeWords].filter(w => moralWords.has(w) && w.length > 4).length;
     if (overlap < 2) {
-      contradictions.push('Theme statement and moral argument seem disconnected — they should reinforce each other.');
+      contradictions.push('Temapåstand og moralsk argument virker frakoblet — de bør forsterke hverandre.');
     }
   }
   return contradictions;
@@ -464,34 +912,34 @@ const GENRE_EMOTION_PRESETS: Record<string, string[]> = {
 // TROLL Demo Data for Story Logic
 const TROLL_DEMO_STATE: StoryLogicState = {
   concept: {
-    corePremise: 'An ancient troll awakens in modern Norway, forcing a paleontologist to bridge the gap between myth and reality before the military destroys the last remnant of Norse legend.',
+    corePremise: 'Et urgammelt troll våkner i moderne Norge og tvinger en paleontolog til å bygge bro mellom myte og virkelighet før militæret utsletter den siste resten av norrøn legende.',
     genre: 'Fantasy',
     subGenre: 'Mythological',
     tone: ['Intense', 'Suspenseful', 'Nostalgic'],
-    targetAudience: 'Families and fantasy enthusiasts who love Nordic mythology',
+    targetAudience: 'Familier og fantasy-entusiaster som elsker nordisk mytologi',
     audienceAge: 'Teen (13-17)',
-    whyNow: 'Rising interest in Scandinavian mythology (Vikings, God of War), climate anxiety awakening dormant threats, and the universal theme of humanity\'s relationship with nature and forgotten traditions.',
-    uniqueAngle: 'Unlike typical monster movies where creatures are purely antagonistic, the troll is a sympathetic being seeking home - making the real conflict about preservation vs. destruction of cultural heritage.',
-    marketComparables: 'Godzilla (2014) meets The Water Horse, with themes similar to Princess Mononoke. Norwegian kaiju with heart.',
+    whyNow: 'Økt interesse for skandinavisk mytologi (Vikings, God of War), klimaangst som vekker sovende trusler, og et universelt tema om menneskets forhold til naturen og glemte tradisjoner.',
+    uniqueAngle: 'I motsetning til typiske monsterfilmer der skapningen bare er fienden, er trollet et sympatisk vesen som søker hjemmet sitt. Konflikten handler derfor om bevaring kontra ødeleggelse av kulturarv.',
+    marketComparables: 'Godzilla (2014) møter The Water Horse, med tematiske likheter til Princess Mononoke. Norsk kaiju med hjerte.',
   },
   logline: {
     protagonist: 'Nora Tidemann',
-    protagonistTrait: 'brilliant but skeptical',
-    goal: 'must protect and guide the ancient troll back to Dovre',
-    antagonisticForce: 'a military determined to destroy it and her own disbelief in folklore',
-    stakes: 'lose the last living connection to Norway\'s mythological past forever',
-    fullLogline: 'When a brilliant but skeptical paleontologist Nora Tidemann must protect and guide the ancient troll back to Dovre, she faces a military determined to destroy it and her own disbelief in folklore—or else lose the last living connection to Norway\'s mythological past forever.',
+    protagonistTrait: 'briljant, men skeptisk',
+    goal: 'må beskytte og lede det urgamle trollet tilbake til Dovre',
+    antagonisticForce: 'et militær som er fast bestemt på å ødelegge det, samt hennes egen vantro til folketro',
+    stakes: 'miste den siste levende forbindelsen til Norges mytologiske fortid for alltid',
+    fullLogline: 'Når den briljante, men skeptiske paleontologen Nora Tidemann må beskytte og lede det urgamle trollet tilbake til Dovre, møter hun et militær som vil ødelegge det og sin egen vantro til folketro — ellers mister hun den siste levende forbindelsen til Norges mytologiske fortid for alltid.',
     loglineScore: 85,
   },
   theme: {
-    centralTheme: 'Reconnecting with cultural heritage and the power of belief',
-    themeStatement: 'Only by embracing the wisdom of our ancestors can we find our way home.',
-    protagonistFlaw: 'Rational skepticism that blinds her to wonder and her estranged relationship with her father who believed in folklore',
-    flawOrigin: 'Nora rejected her father\'s stories about trolls as a child, choosing science over tradition, leading to years of distance between them.',
-    whatMustChange: 'She must reconcile scientific rationalism with folkloric wisdom, and heal her relationship with her father before it\'s too late.',
-    transformationArc: 'From dismissive skeptic who mocks tradition → to reluctant believer who witnesses the impossible → to active protector who bridges past and present',
+    centralTheme: 'Gjenforbindelse med kulturarv og troens kraft',
+    themeStatement: 'Først når vi omfavner visdommen fra våre forfedre, kan vi finne veien hjem.',
+    protagonistFlaw: 'Rasjonell skepsis som gjør henne blind for undring, og et brutt forhold til faren som trodde på folketro',
+    flawOrigin: 'Nora avviste farens historier om troll som barn og valgte vitenskap over tradisjon, noe som skapte år med avstand mellom dem.',
+    whatMustChange: 'Hun må forene vitenskapelig rasjonalitet med folkelig visdom, og reparere forholdet til faren før det er for sent.',
+    transformationArc: 'Fra avvisende skeptiker som håner tradisjon → til nølende troende som er vitne til det umulige → til aktiv beskytter som bygger bro mellom fortid og nåtid',
     emotionalJourney: ['Skepticism', 'Fear', 'Wonder', 'Determination', 'Grief', 'Hope', 'Triumph'],
-    moralArgument: 'The film argues that progress without respect for the past leads to destruction, while embracing our heritage gives us the wisdom to face the future.',
+    moralArgument: 'Filmen argumenterer for at fremskritt uten respekt for fortiden fører til ødeleggelse, mens omfavnelse av kulturarven gir oss visdommen til å møte fremtiden.',
   },
   currentPhase: 2,
   phaseStatus: {
@@ -546,6 +994,58 @@ const DEFAULT_STATE: StoryLogicState = {
   versions: [],
 };
 
+const CONTENT_PRODUCER_DEMO_STATE: StoryLogicState = {
+  concept: {
+    corePremise: `Et produksjonsteam utvikler en filmserie for ${PRODUCER_DEMO_CLIENT_COMPANY} og må gjøre kompliserte HMS-rutiner konkrete, menneskelige og godkjennbare uten å miste tempoet i leveransen.`,
+    genre: 'Corporate',
+    subGenre: 'Industrial Training Drama',
+    tone: ['Confident', 'Grounded', 'Professional'],
+    targetAudience: 'Nye teknikere, skiftledere og HR-/HMS-ansvarlige som trenger tydelig opplæring med høy troverdighet.',
+    audienceAge: 'Adult (25-44)',
+    whyNow: 'Industri- og energibedrifter må kombinere rask onboarding, sikkerhetskultur og rekruttering i samme innholdspakke.',
+    uniqueAngle: 'Prosjektet forteller en konkret første arbeidsdag og gjør prosedyrene filmatiske uten å miste faglig presisjon.',
+    marketComparables: 'Moderne onboarding-filmer, HMS-kampanjer og employer-branding med dokumentarisk troverdighet.',
+  },
+  logline: {
+    protagonist: 'En ny tekniker',
+    protagonistTrait: 'fokusert, men uerfaren offshore-ansatt',
+    goal: 'må forstå sikker oppstart, kommunikasjon og avvikshåndtering før første skift',
+    antagonisticForce: 'tidspress, ukjente rutiner og et miljø der små feil kan få store konsekvenser',
+    stakes: 'skape utrygghet i teamet, bryte kritiske rutiner og miste tillit på første arbeidsdag',
+    fullLogline: 'Når en fokusert, men uerfaren tekniker skal gjennom sin første oppstart hos Northwind Drilling, må hun mestre sikker oppstart, kommunikasjon og avvikshåndtering før første skift, mens tidspress, ukjente rutiner og et risikofylt miljø truer med å gjøre små feil kostbare.',
+    loglineScore: 86,
+  },
+  theme: {
+    centralTheme: 'Tydelige rutiner skaper trygg handling',
+    themeStatement: 'Når komplekse prosedyrer oversettes til konkrete valg, blir sikkerhetskultur noe folk faktisk kan leve ut i arbeidshverdagen.',
+    protagonistFlaw: 'Hun tror fart er viktigere enn å stoppe opp og dobbeltsjekke.',
+    flawOrigin: 'Tidligere har hun blitt premiert for rask levering og antar at samme logikk gjelder i et høy-risiko-miljø.',
+    whatMustChange: 'Hun må forstå at profesjonell trygghet handler om presisjon, kommunikasjon og å be om bekreftelse i tide.',
+    transformationArc: 'Fra å ville bevise at hun er rask nok → til å forstå at hun blir verdifull når hun arbeider sikkert og tydelig sammen med andre.',
+    emotionalJourney: ['Anticipation', 'Pressure', 'Uncertainty', 'Clarity', 'Trust', 'Readiness'],
+    moralArgument: 'God opplæring handler ikke om å informere mest mulig, men om å gjøre riktige valg enkle å forstå og huske.',
+  },
+  currentPhase: 2,
+  phaseStatus: {
+    concept: 'ready',
+    logline: 'ready',
+    theme: 'ready',
+  },
+  lastSaved: new Date().toISOString(),
+  locks: { concept: false, logline: false, theme: false },
+  versions: [],
+};
+
+function looksLikeLegacyContentProducerStoryLogicState(state: StoryLogicState): boolean {
+  return containsLegacyProducerDemoMarker(
+    state.concept.corePremise,
+    state.logline.protagonist,
+    state.logline.fullLogline,
+    state.theme.themeStatement,
+    state.theme.transformationArc
+  );
+}
+
 // ============================================================================
 // Validation Functions
 // ============================================================================
@@ -563,36 +1063,36 @@ function validateConcept(concept: ConceptData): ValidationResult {
     const hasCharacter = /\b(a|an|the)\s+\w+/i.test(concept.corePremise);
     const hasConflict = /\b(must|forces?|against|between|struggle|threat|discover|secrets?|hidden)\b/i.test(concept.corePremise);
     if (concept.corePremise.length < 50 || (!hasCharacter && !hasConflict)) {
-      suggestions.push('Expand your core premise to include a character and a central conflict.');
+      suggestions.push('Utvid kjernepremisset så det inkluderer en karakter og en tydelig hovedkonflikt.');
     }
   } else {
-    warnings.push({ message: 'Core premise is too short or missing.', fieldId: 'corePremise', impact: 'Without a premise, there is no story to develop.', pointsLost: 1 });
+    warnings.push({ message: 'Kjernepremisset er for kort eller mangler.', fieldId: 'corePremise', impact: 'Uten premiss har du ingen historie å utvikle.', pointsLost: 1 });
   }
 
   // Genre
   if (concept.genre) {
     score += 1;
   } else {
-    warnings.push({ message: 'Select a primary genre.', fieldId: 'genre', impact: 'Genre defines audience expectations and market positioning.', pointsLost: 1 });
+    warnings.push({ message: 'Velg en hovedsjanger.', fieldId: 'genre', impact: 'Sjanger styrer publikumsforventning og markedsposisjonering.', pointsLost: 1 });
   }
 
   // Tone
   if (concept.tone.length > 0) {
     score += 1;
     if (concept.tone.length > 3) {
-      suggestions.push('Consider narrowing your tones to 2-3 for a more focused story.');
+      suggestions.push('Vurder å snevre inn tonevalget til 2-3 for en mer fokusert historie.');
     }
   } else {
-    warnings.push({ message: 'Select at least one tone for your story.', fieldId: 'tone', impact: 'Tone guides every creative decision — dialogue, visuals, pacing.', pointsLost: 1 });
+    warnings.push({ message: 'Velg minst én tone for historien.', fieldId: 'tone', impact: 'Tone styrer alle kreative valg: dialog, visuelt uttrykk og tempo.', pointsLost: 1 });
   }
 
   // Target audience — signal check for specificity
   if (concept.targetAudience.length > 10) {
     score += 1;
     const isGeneric = /everyone|all people|general audience/i.test(concept.targetAudience);
-    if (isGeneric) suggestions.push('"Everyone" is not an audience. Be specific: who will champion this story?');
+    if (isGeneric) suggestions.push('"Alle" er ikke en målgruppe. Vær konkret: hvem kommer til å heie frem denne historien?');
   } else {
-    warnings.push({ message: 'Define your target audience more specifically.', fieldId: 'targetAudience', impact: 'Vague audience = unfocused marketing = no traction.', pointsLost: 1 });
+    warnings.push({ message: 'Definer målgruppen mer presist.', fieldId: 'targetAudience', impact: 'Utydelig målgruppe gir ufokusert markedsføring og lav effekt.', pointsLost: 1 });
   }
 
   // Why now — signal check for concrete references
@@ -600,11 +1100,11 @@ function validateConcept(concept: ConceptData): ValidationResult {
     score += 2;
     const hasConcreteRef = /\b(20\d{2}|pandemic|AI|climate|social media|movement|generation|trend|technology|law|election)\b/i.test(concept.whyNow);
     if (concept.whyNow.length < 50 || !hasConcreteRef) {
-      suggestions.push('"Why Now" should reference specific cultural moments, trends, or events.');
+      suggestions.push('"Hvorfor nå" bør vise til konkrete kulturelle øyeblikk, trender eller hendelser.');
     }
   } else {
-    warnings.push({ message: '"Why this story now?" needs more thought.', fieldId: 'whyNow', impact: 'Without timely relevance, gatekeepers ask "why should I care?"', pointsLost: 2 });
-    coaching.push({ example: 'Climate anxiety + Gen Z activism gives eco-thrillers urgency.', template: 'Because of [CURRENT EVENT/TREND], audiences are primed for stories about [YOUR THEME].', avoid: 'Avoid "it\'s always been relevant" — that\'s a non-answer.' });
+    warnings.push({ message: '"Hvorfor denne historien nå?" trenger mer presisjon.', fieldId: 'whyNow', impact: 'Uten tidsrelevans spør beslutningstakere: "hvorfor skal jeg bry meg?"', pointsLost: 2 });
+    coaching.push({ example: 'Klimaangst + Gen Z-aktivisme gir økothriller høy relevans.', template: 'På grunn av [AKTUELL HENDELSE/TREND] er publikum ekstra åpne for historier om [DITT TEMA].', avoid: 'Unngå "det har alltid vært relevant" — det svarer ikke på spørsmålet.' });
   }
 
   // Unique angle — signal check for specificity (not just "different")
@@ -612,34 +1112,34 @@ function validateConcept(concept: ConceptData): ValidationResult {
     score += 2;
     const isGenericAngle = /^(it'?s )?(?:unique|different|special|new|fresh|original)\b/i.test(concept.uniqueAngle.trim());
     if (isGenericAngle) {
-      suggestions.push('Your unique angle starts with a generic claim. Show HOW it\'s different, don\'t just say it.');
+      suggestions.push('Unik vinkel starter for generisk. Vis HVORDAN den er annerledes, ikke bare si at den er det.');
     }
   } else {
-    warnings.push({ message: 'What makes YOUR take unique? This is essential.', fieldId: 'uniqueAngle', impact: 'Without a clear differentiator, your story drowns in similar projects.', pointsLost: 2 });
-    coaching.push({ example: 'Unlike typical heist films, the crew is all senior citizens with nothing to lose.', template: 'Unlike [CONVENTIONAL APPROACH], this story [SPECIFIC DIFFERENCE] which creates [UNIQUE RESULT].', avoid: 'Avoid "it\'s a unique take" — that tells us nothing.' });
+    warnings.push({ message: 'Hva gjør DIN versjon unik? Dette er avgjørende.', fieldId: 'uniqueAngle', impact: 'Uten en tydelig differensiator drukner historien blant lignende prosjekter.', pointsLost: 2 });
+    coaching.push({ example: 'I motsetning til klassiske kuppfilmer består teamet av pensjonister uten noe å tape.', template: 'I motsetning til [KONVENSJONELL TILNÆRMING] gjør denne historien [SPESIFIKK FORSKJELL], som skaper [UNIKT RESULTAT].', avoid: 'Unngå "det er en unik take" — det sier ingenting konkret.' });
   }
 
   // Market comparables — signal check for "X meets Y" pattern
   if (concept.marketComparables.length > 10) {
     score += 1;
     const hasPattern = /\b(meets?|cross|like|but|with|plus|×|x)\b/i.test(concept.marketComparables);
-    if (!hasPattern) suggestions.push('Use the "X meets Y" formula for comparables (e.g., "Inception meets The Office").');
+    if (!hasPattern) suggestions.push('Bruk "X møter Y"-formelen for sammenligninger (f.eks. "Inception møter The Office").');
   } else {
-    warnings.push({ message: 'Add market comparables to position your story.', fieldId: 'marketComparables', impact: 'Comparables help producers instantly understand your pitch.', pointsLost: 1 });
+    warnings.push({ message: 'Legg til markedssammenligninger for å posisjonere historien.', fieldId: 'marketComparables', impact: 'Sammenligninger hjelper produsenter å forstå pitchen umiddelbart.', pointsLost: 1 });
   }
 
   const pct = Math.round((score / maxScore) * 100);
   const isValid = score >= 6;
   const affirmations: string[] = [];
   if (isValid) {
-    if (concept.marketComparables.length > 10) affirmations.push('Comparables help position your story in the market.');
-    if (concept.whyNow.length >= 50) affirmations.push('"Why Now" is well-articulated — strong relevance angle.');
-    if (concept.uniqueAngle.length >= 50) affirmations.push('Unique angle is clearly defined — great differentiator.');
+    if (concept.marketComparables.length > 10) affirmations.push('Sammenligninger posisjonerer historien godt i markedet.');
+    if (concept.whyNow.length >= 50) affirmations.push('"Hvorfor nå" er tydelig formulert med sterk relevansvinkel.');
+    if (concept.uniqueAngle.length >= 50) affirmations.push('Den unike vinkelen er tydelig definert og skiller seg godt ut.');
   }
 
   // Next best action: pick the warning with highest pointsLost
   const sorted = [...warnings].sort((a, b) => b.pointsLost - a.pointsLost);
-  const nextBestAction = sorted.length > 0 ? `Strengthen: ${sorted[0].fieldId === 'whyNow' ? 'Why Now' : sorted[0].fieldId === 'uniqueAngle' ? 'Unique Angle' : sorted[0].fieldId === 'corePremise' ? 'Core Premise' : sorted[0].fieldId === 'marketComparables' ? 'Market Comparables' : sorted[0].fieldId}` : null;
+  const nextBestAction = sorted.length > 0 ? `Forsterk: ${getFieldLabelNb(sorted[0].fieldId)}` : null;
 
   return { isValid, score: pct, warnings, suggestions, affirmations, coaching, contradictions: [], nextBestAction };
 }
@@ -655,34 +1155,34 @@ function validateLogline(logline: LoglineData): ValidationResult {
   if (logline.protagonist.length > 5) {
     score += 1;
   } else {
-    warnings.push({ message: 'Define your protagonist.', fieldId: 'protagonist', impact: 'No protagonist = no one to root for.', pointsLost: 1 });
+    warnings.push({ message: 'Definer protagonisten.', fieldId: 'protagonist', impact: 'Ingen protagonist betyr ingen å heie på.', pointsLost: 1 });
   }
 
   // Goal — signal check for action verb
   if (logline.goal.length > 10) {
     score += 1;
     const hasActionVerb = /\b(stop|save|escape|expose|find|destroy|protect|prevent|recover|solve|uncover|survive|win|defeat|rescue|build|prove|convince)\b/i.test(logline.goal);
-    if (!hasActionVerb) suggestions.push('Goal should start with an action verb (stop, save, escape, expose, protect…).');
+    if (!hasActionVerb) suggestions.push('Målet bør starte med et handlingsverb (stoppe, redde, rømme, avsløre, beskytte …).');
   } else {
-    warnings.push({ message: 'What does your protagonist want?', fieldId: 'goal', impact: 'Without a clear goal, the story has no engine.', pointsLost: 1 });
-    coaching.push({ example: '"must expose the corruption before the election"', template: 'must [ACTION VERB] the [SPECIFIC OBJECTIVE] before [DEADLINE]', avoid: 'Avoid vague goals like "find themselves" or "figure things out".' });
+    warnings.push({ message: 'Hva vil protagonisten oppnå?', fieldId: 'goal', impact: 'Uten et tydelig mål mangler historien fremdriftsmotor.', pointsLost: 1 });
+    coaching.push({ example: '"må avsløre korrupsjonen før valget"', template: 'må [HANDLINGSVERB] [KONKRET MÅL] før [DEADLINE]', avoid: 'Unngå vage mål som "finne seg selv" eller "finne ut av ting".' });
   }
 
   // Antagonistic force
   if (logline.antagonisticForce.length > 5) {
     score += 1;
   } else {
-    warnings.push({ message: 'Define the antagonistic force.', fieldId: 'antagonisticForce', impact: 'No opposition = no tension = boring story.', pointsLost: 1 });
+    warnings.push({ message: 'Definer den antagonistiske kraften.', fieldId: 'antagonisticForce', impact: 'Ingen motstand gir ingen spenning.', pointsLost: 1 });
   }
 
   // Stakes — signal check for concrete consequences
   if (logline.stakes.length > 10) {
     score += 1.5;
     const hasConcrete = /\b(die|death|lose|destroy|war|prison|homeless|alone|fired|betray|forgotten|extinct|collapse)\b/i.test(logline.stakes);
-    if (!hasConcrete) suggestions.push('Stakes feel abstract. Name the specific loss: life, love, freedom, identity?');
+    if (!hasConcrete) suggestions.push('Konsekvensene oppleves abstrakte. Navngi konkret tap: liv, kjærlighet, frihet eller identitet.');
   } else {
-    warnings.push({ message: 'What happens if the protagonist fails?', fieldId: 'stakes', impact: 'Stakes missing → tension engine collapses.', pointsLost: 1.5 });
-    coaching.push({ example: '"or else the entire village will be destroyed"', template: 'or else [SPECIFIC PERSON/THING] will [IRREVERSIBLE CONSEQUENCE]', avoid: 'Avoid "bad things will happen" — name the consequence.' });
+    warnings.push({ message: 'Hva skjer hvis protagonisten feiler?', fieldId: 'stakes', impact: 'Uten stakes kollapser spenningsmotoren.', pointsLost: 1.5 });
+    coaching.push({ example: '"ellers blir hele landsbyen utslettet"', template: 'ellers vil [KONKRET PERSON/OBJEKT] [IRREVERSIBEL KONSEKVENS]', avoid: 'Unngå "det skjer noe dårlig" — navngi konsekvensen.' });
   }
 
   // Full logline quality
@@ -691,11 +1191,11 @@ function validateLogline(logline: LoglineData): ValidationResult {
     const hasWhen = /when|after|before/i.test(logline.fullLogline);
     const hasMust = /must|needs to|has to|tries to/i.test(logline.fullLogline);
     const hasOr = /or else|otherwise|before|unless/i.test(logline.fullLogline);
-    if (!hasWhen) suggestions.push('Start with "When…" to set up the inciting incident.');
-    if (!hasMust) suggestions.push('Include what the protagonist "must" do.');
-    if (!hasOr) suggestions.push('Add stakes: "or else…" / "before…" to raise tension.');
+    if (!hasWhen) suggestions.push('Start med "Når …" for å etablere utløsende hendelse.');
+    if (!hasMust) suggestions.push('Inkluder hva protagonisten "må" gjøre.');
+    if (!hasOr) suggestions.push('Legg inn stakes: "ellers …" / "før …" for å øke spenningen.');
   } else {
-    warnings.push({ message: 'Write your complete logline (25-50 words).', fieldId: 'fullLogline', impact: 'The logline IS your pitch. No logline = no greenlight.', pointsLost: 1.5 });
+    warnings.push({ message: 'Skriv komplett logline (25-50 ord).', fieldId: 'fullLogline', impact: 'Loglinen ER pitchen din. Uten logline blir det ingen greenlight.', pointsLost: 1.5 });
   }
 
   const pct = Math.round((score / maxScore) * 100);
@@ -705,11 +1205,11 @@ function validateLogline(logline: LoglineData): ValidationResult {
     const allBeats = /when|after|before/i.test(logline.fullLogline)
       && /must|needs to|has to|tries to/i.test(logline.fullLogline)
       && /or else|otherwise|before|unless/i.test(logline.fullLogline);
-    if (allBeats) affirmations.push('Logline hits all structural beats — strong foundation.');
+    if (allBeats) affirmations.push('Loglinen treffer alle strukturelle beats og gir et sterkt grunnlag.');
   }
 
   const sorted = [...warnings].sort((a, b) => b.pointsLost - a.pointsLost);
-  const nextBestAction = sorted.length > 0 ? `Add: ${sorted[0].fieldId === 'fullLogline' ? 'Complete Logline' : sorted[0].fieldId === 'antagonisticForce' ? 'Antagonistic Force' : sorted[0].fieldId.charAt(0).toUpperCase() + sorted[0].fieldId.slice(1)}` : null;
+  const nextBestAction = sorted.length > 0 ? `Legg til: ${getFieldLabelNb(sorted[0].fieldId)}` : null;
 
   return { isValid, score: pct, warnings, suggestions, affirmations, coaching, contradictions: [], nextBestAction };
 }
@@ -724,57 +1224,57 @@ function validateTheme(theme: ThemeData): ValidationResult {
   if (theme.centralTheme.length > 5) {
     score += 1;
   } else {
-    warnings.push({ message: 'Define your central theme.', fieldId: 'centralTheme', impact: 'Theme is the soul — without it, scenes feel random.', pointsLost: 1 });
+    warnings.push({ message: 'Definer sentralt tema.', fieldId: 'centralTheme', impact: 'Tema er historiens sjel — uten det føles scener tilfeldige.', pointsLost: 1 });
   }
 
   if (theme.themeStatement.length > 20) {
     score += 1.5;
     if (!theme.themeStatement.includes('...') && !/argues? that/i.test(theme.themeStatement)) {
-      suggestions.push('Frame as: "This story argues that…" to keep it active and debatable.');
+      suggestions.push('Formuler som: "Denne historien argumenterer for at …" for å gjøre den aktiv og diskuterbar.');
     }
   } else {
-    warnings.push({ message: 'Write a theme statement.', fieldId: 'themeStatement', impact: 'Without a thesis, the story has no argument.', pointsLost: 1.5 });
-    coaching.push({ example: 'This story argues that true courage is admitting vulnerability, not hiding it.', template: 'This story argues that [BELIEF] is/requires [INSIGHT], not [COMMON ASSUMPTION].', avoid: 'Avoid platitudes like "love conquers all" — make it debatable.' });
+    warnings.push({ message: 'Skriv en temapåstand.', fieldId: 'themeStatement', impact: 'Uten en tydelig tese mangler historien argument.', pointsLost: 1.5 });
+    coaching.push({ example: 'Denne historien argumenterer for at ekte mot er å vise sårbarhet, ikke skjule den.', template: 'Denne historien argumenterer for at [TRO] er/krever [INNSIKT], ikke [VANLIG ANTAGELSE].', avoid: 'Unngå klisjeer som "kjærlighet overvinner alt" — gjør påstanden diskuterbar.' });
   }
 
   if (theme.protagonistFlaw.length > 10) {
     score += 1.5;
   } else {
-    warnings.push({ message: 'Define protagonist\'s core flaw.', fieldId: 'protagonistFlaw', impact: 'No flaw = no growth = flat character.', pointsLost: 1.5 });
+    warnings.push({ message: 'Definer protagonistens kjernefeil.', fieldId: 'protagonistFlaw', impact: 'Ingen feil gir ingen vekst og en flat karakter.', pointsLost: 1.5 });
   }
 
   if (theme.whatMustChange.length > 15) {
     score += 1.5;
   } else {
-    warnings.push({ message: 'Clarify what must change.', fieldId: 'whatMustChange', impact: 'Transformation is the payoff — audience needs to see the shift.', pointsLost: 1.5 });
-    coaching.push({ example: 'She must stop blaming others and take ownership of her choices.', template: 'The protagonist must abandon [OLD BELIEF] and embrace [NEW TRUTH].', avoid: 'Avoid "they need to grow" — specify WHAT changes.' });
+    warnings.push({ message: 'Presiser hva som må endres.', fieldId: 'whatMustChange', impact: 'Transformasjon er utbetalingen — publikum må se skiftet.', pointsLost: 1.5 });
+    coaching.push({ example: 'Hun må slutte å skylde på andre og ta ansvar for egne valg.', template: 'Protagonisten må forlate [GAMMEL TRO] og omfavne [NY SANNHET].', avoid: 'Unngå "de må vokse" — spesifiser HVA som endres.' });
   }
 
   if (theme.transformationArc.length > 20) {
     score += 1.5;
     // Signal check: look for progression markers
     const hasProgression = /→|to|from|becomes|evolves|realizes|learns/i.test(theme.transformationArc);
-    if (!hasProgression) suggestions.push('Show the arc as "From [X] → to [Y]" to make the transformation concrete.');
+    if (!hasProgression) suggestions.push('Vis buen som "Fra [X] → til [Y]" for å gjøre transformasjonen konkret.');
   } else {
-    warnings.push({ message: 'Describe the transformation arc.', fieldId: 'transformationArc', impact: 'Without a clear arc, the ending feels unearned.', pointsLost: 1.5 });
+    warnings.push({ message: 'Beskriv transformasjonsbuen.', fieldId: 'transformationArc', impact: 'Uten en tydelig bue føles slutten ufortjent.', pointsLost: 1.5 });
   }
 
   if (theme.emotionalJourney.length >= 3) {
     score += 1;
   } else {
-    suggestions.push('Map at least 3-5 key emotional beats in your story.');
+    suggestions.push('Kartlegg minst 3-5 sentrale emosjonelle beats i historien.');
   }
 
   const pct = Math.round((score / maxScore) * 100);
   const isValid = score >= 6;
   const affirmations: string[] = [];
   if (isValid) {
-    if (theme.transformationArc.length > 50) affirmations.push('Transformation arc is detailed — character journey is clear.');
-    if (theme.emotionalJourney.length >= 4) affirmations.push('Rich emotional journey mapped — story will resonate deeply.');
+    if (theme.transformationArc.length > 50) affirmations.push('Transformasjonsbuen er detaljert og karakterreisen tydelig.');
+    if (theme.emotionalJourney.length >= 4) affirmations.push('Den emosjonelle reisen er godt kartlagt og gir dyp resonans.');
   }
 
   const sorted = [...warnings].sort((a, b) => b.pointsLost - a.pointsLost);
-  const nextBestAction = sorted.length > 0 ? `Clarify: ${sorted[0].fieldId === 'whatMustChange' ? 'What Must Change' : sorted[0].fieldId === 'protagonistFlaw' ? 'Protagonist Flaw' : sorted[0].fieldId === 'themeStatement' ? 'Theme Statement' : sorted[0].fieldId === 'transformationArc' ? 'Transformation Arc' : sorted[0].fieldId}` : null;
+  const nextBestAction = sorted.length > 0 ? `Avklar: ${getFieldLabelNb(sorted[0].fieldId)}` : null;
 
   return { isValid, score: pct, warnings, suggestions, affirmations, coaching, contradictions: [], nextBestAction };
 }
@@ -827,7 +1327,7 @@ const PhaseHeader: React.FC<PhaseHeaderProps> = ({ number, title, purpose, icon,
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600 }}>
-            Phase {number}: {title}
+            Fase {number}: {title}
           </Typography>
           <Chip
             size="small"
@@ -840,7 +1340,7 @@ const PhaseHeader: React.FC<PhaseHeaderProps> = ({ number, title, purpose, icon,
             }}
           />
           {locked && (
-            <Chip size="small" icon={<LockIcon sx={{ fontSize: 14 }} />} label="Locked" sx={{ bgcolor: '#f59e0b20', color: '#f59e0b', '& .MuiChip-icon': { color: '#f59e0b' } }} />
+            <Chip size="small" icon={<LockIcon sx={{ fontSize: 14 }} />} label="Låst" sx={{ bgcolor: '#f59e0b20', color: '#f59e0b', '& .MuiChip-icon': { color: '#f59e0b' } }} />
           )}
           {nextBestAction && !locked && status !== 'ready' && (
             <Chip
@@ -855,12 +1355,12 @@ const PhaseHeader: React.FC<PhaseHeaderProps> = ({ number, title, purpose, icon,
           {purpose}
         </Typography>
       </Box>
-      <Tooltip title={locked ? `Unlock ${title}` : status === 'ready' ? `Lock ${title} (ready)` : `Lock ${title}`}>
+      <Tooltip title={locked ? `Lås opp ${title}` : status === 'ready' ? `Lås ${title} (klar)` : `Lås ${title}`}>
         <Box
           component="span"
           role="button"
           tabIndex={0}
-          aria-label={locked ? `Unlock ${title}` : `Lock ${title}`}
+          aria-label={locked ? `Lås opp ${title}` : `Lås ${title}`}
           onClick={(e) => {
             e.stopPropagation();
             onToggleLock();
@@ -925,7 +1425,7 @@ const ValidationDisplay: React.FC<ValidationDisplayProps> = ({ result, title, on
       {/* Confidence header — mentor tone, not judge (#4) */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
         <Typography variant="subtitle2" sx={{ color: '#d4d4d8' }}>
-          {title} Confidence
+          {title} selvtillit
         </Typography>
         <Chip
           size="small"
@@ -959,7 +1459,7 @@ const ValidationDisplay: React.FC<ValidationDisplayProps> = ({ result, title, on
             <Typography sx={{ fontSize: '1.1rem', mt: 0.25 }}>🔍</Typography>
             <Box sx={{ flex: 1 }}>
               <Typography variant="caption" sx={{ color: '#9ca3af', fontWeight: 600, letterSpacing: 0.5 }}>
-                BIGGEST OPPORTUNITY
+                STØRSTE MULIGHET
               </Typography>
               <Typography variant="body2" sx={{ color: '#e5e7eb', fontWeight: 500, mt: 0.25 }}>
                 {topWarning.message}
@@ -969,7 +1469,7 @@ const ValidationDisplay: React.FC<ValidationDisplayProps> = ({ result, title, on
               </Typography>
             </Box>
             {onJumpToField && (
-              <Tooltip title={`Go to ${topWarning.fieldId}`}>
+              <Tooltip title={`Gå til ${getFieldLabelNb(topWarning.fieldId)}`}>
                 <IconButton size="small" onClick={() => onJumpToField(topWarning.fieldId)} sx={{ color: '#60a5fa' }}>
                   <GpsFixedIcon fontSize="small" />
                 </IconButton>
@@ -988,7 +1488,7 @@ const ValidationDisplay: React.FC<ValidationDisplayProps> = ({ result, title, on
             endIcon={showAllFeedback ? <ExpandLessIcon /> : <ExpandMoreIcon />}
             sx={{ color: '#6b7280', textTransform: 'none', fontSize: '0.75rem' }}
           >
-            {showAllFeedback ? 'Focus mode' : `See all feedback (${remainingCount})`}
+            {showAllFeedback ? 'Fokusmodus' : `Vis all tilbakemelding (${remainingCount})`}
           </Button>
           <Collapse in={showAllFeedback}>
             <Box sx={{ mt: 0.5 }}>
@@ -1068,17 +1568,17 @@ const ValidationDisplay: React.FC<ValidationDisplayProps> = ({ result, title, on
             endIcon={showCoaching ? <ExpandLessIcon /> : <ExpandMoreIcon />}
             sx={{ color: '#a78bfa', textTransform: 'none', fontSize: '0.75rem' }}
           >
-            {showCoaching ? 'Hide' : 'Show'} mentor tips ({result.coaching.length})
+            {showCoaching ? 'Skjul' : 'Vis'} mentor-tips ({result.coaching.length})
           </Button>
           <Collapse in={showCoaching}>
             <Box sx={{ mt: 1, p: 1.5, bgcolor: 'rgba(139, 92, 246, 0.06)', borderRadius: 1.5, border: '1px solid rgba(139, 92, 246, 0.15)' }}>
               {result.coaching.map((tip, idx) => (
                 <Box key={idx} sx={{ mb: idx < result.coaching.length - 1 ? 2 : 0 }}>
-                  <Typography variant="caption" sx={{ color: '#c084fc', fontWeight: 600 }}>Example:</Typography>
+                  <Typography variant="caption" sx={{ color: '#c084fc', fontWeight: 600 }}>Eksempel:</Typography>
                   <Typography variant="body2" sx={{ color: '#d4d4d8', mb: 0.5, fontStyle: 'italic' }}>"{tip.example}"</Typography>
-                  <Typography variant="caption" sx={{ color: '#c084fc', fontWeight: 600 }}>Template:</Typography>
+                  <Typography variant="caption" sx={{ color: '#c084fc', fontWeight: 600 }}>Mal:</Typography>
                   <Typography variant="body2" sx={{ color: '#d4d4d8', mb: 0.5 }}>{tip.template}</Typography>
-                  <Typography variant="caption" sx={{ color: '#a78bfa', fontWeight: 600 }}>Watch out:</Typography>
+                  <Typography variant="caption" sx={{ color: '#a78bfa', fontWeight: 600 }}>Pass på:</Typography>
                   <Typography variant="body2" sx={{ color: '#a1a1aa' }}>{tip.avoid}</Typography>
                 </Box>
               ))}
@@ -1105,6 +1605,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   onSave,
   initialData,
 }) => {
+  const branding = useBrandingSettings();
   const [state, setState] = useState<StoryLogicState>(initialData || DEFAULT_STATE);
   const [expandedPhase, setExpandedPhase] = useState<number>(0);
   const [showValidation, _setShowValidation] = useState<boolean>(true);
@@ -1162,6 +1663,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     const loadData = async () => {
       setIsLoading(true);
       try {
+        const normalizedProjectId = projectId.toLowerCase();
+        const isTrollDemoProject = normalizedProjectId.includes('troll');
+        const isContentProducerDemoProject = normalizedProjectId === CONTENT_PRODUCER_DEMO_PROJECT_ID;
         const savedData = await storyLogicService.getStoryLogic(projectId);
         if (savedData) {
           // Migrate old isLocked → locks if needed
@@ -1171,11 +1675,33 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             versions: savedData.versions || [],
           };
           const normalized = normalizeStoryLogicState(migrated);
-          setState(normalized);
-          lastSavedSnapshot.current = JSON.stringify(normalized);
-          setSaveStatus('saved');
-          console.log('✓ Loaded story logic from database for project:', projectId);
-        } else if (projectId.toLowerCase().includes('troll')) {
+          const looksLikeLegacyTrollProducerState = isContentProducerDemoProject && (
+            normalized.concept.corePremise.toLowerCase().includes('troll') ||
+            normalized.logline.fullLogline.toLowerCase().includes('troll')
+          );
+          const looksLikeLegacyProducerRoleState = isContentProducerDemoProject &&
+            looksLikeLegacyContentProducerStoryLogicState(normalized);
+
+          if (looksLikeLegacyTrollProducerState || looksLikeLegacyProducerRoleState) {
+            const normalizedProducerDemo = normalizeStoryLogicState(CONTENT_PRODUCER_DEMO_STATE);
+            setState(normalizedProducerDemo);
+            await storyLogicService.saveStoryLogic(projectId, normalizedProducerDemo);
+            lastSavedSnapshot.current = JSON.stringify(normalizedProducerDemo);
+            setSaveStatus('saved');
+            console.log('🧹 Replaced legacy producer demo story logic with business project data');
+          } else {
+            setState(normalized);
+            lastSavedSnapshot.current = JSON.stringify(normalized);
+            setSaveStatus('saved');
+            console.log('✓ Loaded story logic from database for project:', projectId);
+          }
+        } else if (isContentProducerDemoProject) {
+          const normalizedProducerDemo = normalizeStoryLogicState(CONTENT_PRODUCER_DEMO_STATE);
+          setState(normalizedProducerDemo);
+          await storyLogicService.saveStoryLogic(projectId, normalizedProducerDemo);
+          lastSavedSnapshot.current = JSON.stringify(normalizedProducerDemo);
+          console.log('🎬 Initialized producer story logic demo data');
+        } else if (isTrollDemoProject) {
           const normalizedDemo = normalizeStoryLogicState(TROLL_DEMO_STATE);
           setState(normalizedDemo);
           await storyLogicService.saveStoryLogic(projectId, normalizedDemo);
@@ -1229,7 +1755,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
       const overlap = [...prevWords].filter(w => currWords.has(w)).length;
       const total = Math.max(prevWords.size, currWords.size);
       if (total > 0 && overlap / total < 0.5) {
-        setPremiseChangeAlert('You changed your core premise significantly. Save as a new version?');
+        setPremiseChangeAlert('Du har endret kjernepremisset betydelig. Vil du lagre en ny versjon?');
       }
     }
     prevPremiseRef.current = curr;
@@ -1251,8 +1777,8 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   // Apply template (#9)
   const applyTemplate = useCallback((template: StoryTemplate) => {
     if (state.concept.corePremise.length > 20) {
-      if (!window.confirm('This will overwrite your current setup with the template. Continue?')) return;
-      saveVersion('Before template');
+      if (!window.confirm('Dette overskriver nåværende oppsett med malen. Fortsette?')) return;
+      saveVersion('Før mal');
     }
     setState(prev => ({
       ...prev,
@@ -1263,12 +1789,21 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     setShowTemplates(false);
   }, [state.concept.corePremise, saveVersion]);
 
+  const goToPhase = useCallback((phaseIndex: number) => {
+    setExpandedPhase(phaseIndex);
+    setState(prev => (
+      prev.currentPhase === phaseIndex
+        ? prev
+        : { ...prev, currentPhase: phaseIndex }
+    ));
+  }, []);
+
   // Handle start mode selection (#10 non-linear start)
   const handleStartMode = useCallback((mode: StartMode) => {
     setStartMode(mode);
     const modeConfig = START_MODES.find(m => m.id === mode);
-    if (modeConfig) setExpandedPhase(modeConfig.initialPhase);
-  }, []);
+    if (modeConfig) goToPhase(modeConfig.initialPhase);
+  }, [goToPhase]);
 
   // Save to database
   const saveToStorage = useCallback(async () => {
@@ -1318,12 +1853,112 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   // Track missing logline fields for best-effort generation feedback (D)
   const missingLoglineFields = useMemo(() => {
     const missing: string[] = [];
-    if (!state.logline.protagonist) missing.push('Protagonist');
-    if (!state.logline.goal) missing.push('Goal');
-    if (!state.logline.antagonisticForce) missing.push('Antagonistic Force');
-    if (!state.logline.stakes) missing.push('Stakes');
+    if (!state.logline.protagonist) missing.push('Hovedperson');
+    if (!state.logline.goal) missing.push('Mål');
+    if (!state.logline.antagonisticForce) missing.push('Antagonistisk kraft');
+    if (!state.logline.stakes) missing.push('Konsekvenser');
     return missing;
   }, [state.logline.protagonist, state.logline.goal, state.logline.antagonisticForce, state.logline.stakes]);
+
+  const missingConceptFields = useMemo(() => {
+    const missing: string[] = [];
+    if (state.concept.corePremise.trim().length < 20) missing.push('Kjernepremiss');
+    if (!state.concept.genre) missing.push('Sjanger');
+    if (state.concept.tone.length === 0) missing.push('Tone');
+    if (state.concept.targetAudience.trim().length < 10) missing.push('Målgruppe');
+    if (state.concept.whyNow.trim().length < 20) missing.push('Hvorfor nå');
+    if (state.concept.uniqueAngle.trim().length < 20) missing.push('Unik vinkel');
+    if (state.concept.marketComparables.trim().length < 10) missing.push('Sammenligninger');
+    return missing;
+  }, [
+    state.concept.corePremise,
+    state.concept.genre,
+    state.concept.tone,
+    state.concept.targetAudience,
+    state.concept.whyNow,
+    state.concept.uniqueAngle,
+    state.concept.marketComparables,
+  ]);
+
+  const missingThemeFields = useMemo(() => {
+    const missing: string[] = [];
+    if (state.theme.centralTheme.trim().length < 5) missing.push('Sentralt tema');
+    if (state.theme.themeStatement.trim().length < 20) missing.push('Temapåstand');
+    if (state.theme.protagonistFlaw.trim().length < 10) missing.push('Karakterfeil');
+    if (state.theme.whatMustChange.trim().length < 15) missing.push('Hva må endres');
+    if (state.theme.transformationArc.trim().length < 20) missing.push('Transformasjonsbue');
+    return missing;
+  }, [
+    state.theme.centralTheme,
+    state.theme.themeStatement,
+    state.theme.protagonistFlaw,
+    state.theme.whatMustChange,
+    state.theme.transformationArc,
+  ]);
+
+  const missingLoglineRoadmapFields = useMemo(() => {
+    const missing = [...missingLoglineFields];
+    if (state.logline.fullLogline.trim().length < 25) missing.push('Komplett logline');
+    return missing;
+  }, [missingLoglineFields, state.logline.fullLogline]);
+
+  const conceptRealityPrompt = useMemo(() => getStableRealityCheckPrompt(
+    'concept',
+    `${state.concept.corePremise}|${state.concept.whyNow}|${state.concept.uniqueAngle}`
+  ), [state.concept.corePremise, state.concept.whyNow, state.concept.uniqueAngle]);
+
+  const loglineRealityPrompt = useMemo(() => getStableRealityCheckPrompt(
+    'logline',
+    `${state.logline.protagonist}|${state.logline.goal}|${state.logline.stakes}|${state.logline.fullLogline}`
+  ), [state.logline.protagonist, state.logline.goal, state.logline.stakes, state.logline.fullLogline]);
+
+  const themeRealityPrompt = useMemo(() => getStableRealityCheckPrompt(
+    'theme',
+    `${state.theme.centralTheme}|${state.theme.themeStatement}|${state.theme.transformationArc}`
+  ), [state.theme.centralTheme, state.theme.themeStatement, state.theme.transformationArc]);
+
+  const phaseRoadmap = useMemo(() => (
+    PHASE_META.map((phase) => {
+      if (phase.key === 'concept') {
+        return {
+          ...phase,
+          status: state.phaseStatus.concept,
+          score: conceptValidation.score,
+          missingFields: missingConceptFields,
+          nextBestAction: conceptValidation.nextBestAction,
+        };
+      }
+      if (phase.key === 'logline') {
+        return {
+          ...phase,
+          status: state.phaseStatus.logline,
+          score: loglineValidation.score,
+          missingFields: missingLoglineRoadmapFields,
+          nextBestAction: loglineValidation.nextBestAction,
+        };
+      }
+      return {
+        ...phase,
+        status: state.phaseStatus.theme,
+        score: themeValidation.score,
+        missingFields: missingThemeFields,
+        nextBestAction: themeValidation.nextBestAction,
+      };
+    })
+  ), [
+    state.phaseStatus.concept,
+    state.phaseStatus.logline,
+    state.phaseStatus.theme,
+    conceptValidation.score,
+    conceptValidation.nextBestAction,
+    loglineValidation.score,
+    loglineValidation.nextBestAction,
+    themeValidation.score,
+    themeValidation.nextBestAction,
+    missingConceptFields,
+    missingLoglineRoadmapFields,
+    missingThemeFields,
+  ]);
 
   const loglineHasPlaceholders = state.logline.fullLogline.includes('[');
 
@@ -1357,12 +1992,12 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     if (state.locks.logline) return;
     setState(prev => {
       const { protagonist, protagonistTrait, goal, antagonisticForce, stakes } = prev.logline;
-      const prot = protagonist || '[PROTAGONIST]';
-      const g = goal || '[DEFINE GOAL]';
-      const ant = antagonisticForce || '[ANTAGONISTIC FORCE]';
-      const st = stakes || '[DEFINE STAKES]';
-      const trait = protagonistTrait ? `a ${protagonistTrait} ` : '';
-      const generated = `When ${trait}${prot} must ${g}, they face ${ant}—or else ${st}.`;
+      const prot = protagonist || '[HOVEDPERSON]';
+      const g = goal || '[DEFINER MÅL]';
+      const ant = antagonisticForce || '[ANTAGONISTISK KRAFT]';
+      const st = stakes || '[DEFINER KONSEKVENSER]';
+      const trait = protagonistTrait ? `${protagonistTrait} ` : '';
+      const generated = `Når ${trait}${prot} må ${g}, møter hen ${ant} — ellers ${st}.`;
       return {
         ...prev,
         logline: { ...prev.logline, fullLogline: generated },
@@ -1404,68 +2039,332 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
   // Restore version (#11)
   const restoreVersion = useCallback((version: StoryVersion) => {
-    if (!window.confirm(`Restore "${version.label}"? Current work will be saved as a version first.`)) return;
-    saveVersion('Before restore');
+    if (!window.confirm(`Gjenopprette "${version.label}"? Nåværende arbeid lagres først som egen versjon.`)) return;
+    saveVersion('Før gjenoppretting');
     try {
       const snap = JSON.parse(version.snapshot);
       setState(prev => ({ ...prev, concept: snap.concept, logline: snap.logline, theme: snap.theme }));
     } catch { /* invalid snapshot */ }
   }, [saveVersion]);
 
-  // Export as JSON (#10)
-  const exportJSON = useCallback(() => {
-    const data = { concept: state.concept, logline: state.logline, theme: state.theme, exportedAt: new Date().toISOString() };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'story-logic.json'; a.click();
-    URL.revokeObjectURL(url);
-  }, [state.concept, state.logline, state.theme]);
+  const loadBrandImageAsset = useCallback(async (source?: string): Promise<{ dataUrl: string; width: number; height: number } | null> => {
+    if (!source || typeof window === 'undefined') return null;
+    try {
+      const resolved = source.startsWith('http://') || source.startsWith('https://')
+        ? source
+        : new URL(source, window.location.origin).toString();
+      const response = await fetch(resolved, { cache: 'force-cache' });
+      if (!response.ok) return null;
+      const imageBlob = await response.blob();
+      const dataUrl = await blobToDataUrl(imageBlob);
+      const dimensions = await readImageDimensions(dataUrl);
+      return { dataUrl, width: dimensions.width, height: dimensions.height };
+    } catch (error) {
+      console.warn('Could not load branding logo for story logic PDF export:', error);
+      return null;
+    }
+  }, []);
 
-  // Export as Markdown writer's card (#10)
-  const exportMarkdown = useCallback(() => {
-    const md = [
-      '# Story Logic — Writer\'s Card',
-      '',
-      `**Genre:** ${state.concept.genre} ${state.concept.subGenre ? `(${state.concept.subGenre})` : ''}`,
-      `**Tone:** ${state.concept.tone.join(', ')}`,
-      `**Audience:** ${state.concept.targetAudience} (${state.concept.audienceAge})`,
-      '',
-      '## Concept',
-      state.concept.corePremise,
-      '',
-      `**Why Now:** ${state.concept.whyNow}`,
-      `**Unique Angle:** ${state.concept.uniqueAngle}`,
-      `**Comparables:** ${state.concept.marketComparables}`,
-      '',
-      '## Logline',
-      `> ${state.logline.fullLogline}`,
-      '',
-      `**Protagonist:** ${state.logline.protagonist} (${state.logline.protagonistTrait})`,
-      `**Goal:** ${state.logline.goal}`,
-      `**Antagonist:** ${state.logline.antagonisticForce}`,
-      `**Stakes:** ${state.logline.stakes}`,
-      '',
-      '## Theme & Character',
-      `**Theme:** ${state.theme.centralTheme}`,
-      `**Statement:** ${state.theme.themeStatement}`,
-      `**Moral Argument:** ${state.theme.moralArgument}`,
-      `**Flaw:** ${state.theme.protagonistFlaw} (${state.theme.flawOrigin})`,
-      `**Must Change:** ${state.theme.whatMustChange}`,
-      `**Arc:** ${state.theme.transformationArc}`,
-      `**Emotional Journey:** ${state.theme.emotionalJourney.join(' → ')}`,
-      '',
-      `---`,
-      `*Exported ${new Date().toLocaleString()}*`,
-    ].join('\n');
-    const blob = new Blob([md], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'story-logic-card.md'; a.click();
-    URL.revokeObjectURL(url);
-  }, [state.concept, state.logline, state.theme]);
+  // Export as PDF
+  const exportPDF = useCallback(async () => {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    const contentWidth = pageWidth - margin * 2;
+    const lineHeight = 5;
+    const now = new Date();
+    const projectLabel = projectId || 'Ikke satt';
+
+    const primaryRgb = hexToRgb(branding.colors.primary, [59, 130, 246]);
+    const secondaryRgb = hexToRgb(branding.colors.secondary, [30, 64, 175]);
+    const backgroundRgb = hexToRgb(branding.colors.background, [12, 17, 28]);
+    const surfaceRgb = hexToRgb(branding.colors.surface, [248, 250, 252]);
+    const borderRgb = hexToRgb(branding.colors.border, [203, 213, 225]);
+
+    let y = 18;
+    const logoAsset = await loadBrandImageAsset(branding.logoUrl || branding.iconUrl);
+
+    doc.setProperties({
+      title: 'Storylogikk rapport',
+      subject: 'Story Logic',
+      creator: branding.appName,
+      author: branding.appName,
+      keywords: 'storylogikk, manus, rolle room, eksport',
+    });
+
+    const safeValue = (value: string) => (value && value.trim().length > 0 ? value : '—');
+    const ensureSpace = (needed = 10) => {
+      if (y + needed <= pageHeight - margin) return;
+      doc.addPage();
+      y = 24;
+      doc.setDrawColor(borderRgb[0], borderRgb[1], borderRgb[2]);
+      doc.line(margin, 16, pageWidth - margin, 16);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+      doc.text('Storylogikk rapport', margin, 12);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(107, 114, 128);
+      doc.text(`${branding.appName} • ${projectLabel}`, pageWidth - margin, 12, { align: 'right' });
+    };
+
+    const addHeading = (text: string) => {
+      ensureSpace(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(17);
+      doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+      doc.text(text, margin, y);
+      y += 8;
+    };
+
+    const addSection = (title: string, subtitle?: string) => {
+      ensureSpace(subtitle ? 15 : 11);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(17, 24, 39);
+      doc.text(title, margin, y);
+      y += 6;
+      if (subtitle) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139);
+        const lines = doc.splitTextToSize(subtitle, contentWidth);
+        doc.text(lines, margin, y);
+        y += lines.length * 4.2 + 1;
+      }
+      doc.setDrawColor(borderRgb[0], borderRgb[1], borderRgb[2]);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 4;
+    };
+
+    const addBodyText = (text: string, indent = 0) => {
+      const lines = doc.splitTextToSize(text, contentWidth - indent);
+      ensureSpace(lines.length * lineHeight + 2);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(31, 41, 55);
+      doc.text(lines, margin + indent, y);
+      y += lines.length * lineHeight + 1.5;
+    };
+
+    const addField = (label: string, value: string, indent = 0) => {
+      ensureSpace(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(label, margin + indent, y);
+      y += 4.8;
+      addBodyText(safeValue(value), indent + 1);
+    };
+
+    const drawMetricCard = (x: number, cardY: number, width: number, height: number, label: string, value: string, status: string) => {
+      doc.setFillColor(surfaceRgb[0], surfaceRgb[1], surfaceRgb[2]);
+      doc.setDrawColor(borderRgb[0], borderRgb[1], borderRgb[2]);
+      doc.roundedRect(x, cardY, width, height, 2, 2, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(71, 85, 105);
+      doc.text(label, x + 4, cardY + 6.5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+      doc.text(value, x + 4, cardY + 14.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(status, x + 4, cardY + 20.5);
+    };
+
+    const addLogo = (x: number, logoY: number, width: number, height: number) => {
+      if (!logoAsset) return;
+      const naturalAspect = logoAsset.width / logoAsset.height;
+      let drawWidth = width;
+      let drawHeight = drawWidth / naturalAspect;
+      if (drawHeight > height) {
+        drawHeight = height;
+        drawWidth = drawHeight * naturalAspect;
+      }
+      const drawX = x + (width - drawWidth) / 2;
+      const drawY = logoY + (height - drawHeight) / 2;
+      try {
+        doc.addImage(logoAsset.dataUrl, 'PNG', drawX, drawY, drawWidth, drawHeight, undefined, 'SLOW');
+      } catch {
+        try {
+          doc.addImage(logoAsset.dataUrl, 'JPEG', drawX, drawY, drawWidth, drawHeight, undefined, 'SLOW');
+        } catch {
+          // Ignore logo format errors and continue export.
+        }
+      }
+    };
+
+    // Cover page
+    doc.setFillColor(backgroundRgb[0], backgroundRgb[1], backgroundRgb[2]);
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+    doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.rect(0, 0, pageWidth, 58, 'F');
+    doc.setFillColor(secondaryRgb[0], secondaryRgb[1], secondaryRgb[2]);
+    doc.rect(0, 58, pageWidth, 4, 'F');
+
+    // Cover logo card: strong contrast + larger area for better readability.
+    const coverLogoCardW = 140;
+    const coverLogoCardH = 40;
+    const coverLogoCardX = (pageWidth - coverLogoCardW) / 2;
+    const coverLogoCardY = 7;
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(coverLogoCardX, coverLogoCardY, coverLogoCardW, coverLogoCardH, 2.5, 2.5, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(coverLogoCardX, coverLogoCardY, coverLogoCardW, coverLogoCardH, 2.5, 2.5, 'S');
+    addLogo(coverLogoCardX + 4, coverLogoCardY + 4, coverLogoCardW - 8, coverLogoCardH - 8);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(28);
+    doc.setTextColor(255, 255, 255);
+    doc.text('Storylogikk', margin, 82);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(15);
+    doc.text('Presentasjonsrapport', margin, 92);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11.5);
+    doc.setTextColor(226, 232, 240);
+    doc.text(`Prosjekt: ${projectLabel}`, margin, 106);
+    doc.text(`Eksportert: ${now.toLocaleString('nb-NO')}`, margin, 113);
+    doc.text(`Generert av: ${branding.appName}`, margin, 120);
+
+    const cardsY = 136;
+    const cardGap = 4;
+    const cardWidth = (contentWidth - cardGap * 2) / 3;
+    drawMetricCard(margin, cardsY, cardWidth, 24, 'Konsept', `${conceptValidation.score}%`, STATUS_LABELS[state.phaseStatus.concept]);
+    drawMetricCard(margin + cardWidth + cardGap, cardsY, cardWidth, 24, 'Logline', `${loglineValidation.score}%`, STATUS_LABELS[state.phaseStatus.logline]);
+    drawMetricCard(margin + (cardWidth + cardGap) * 2, cardsY, cardWidth, 24, 'Tema', `${themeValidation.score}%`, STATUS_LABELS[state.phaseStatus.theme]);
+
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(margin, 168, contentWidth, 28, 2, 2, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(51, 65, 85);
+    doc.text('Samlet progresjon', margin + 4, 176);
+    doc.setFontSize(22);
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.text(`${overallProgress}%`, margin + 4, 189);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Basert på konsept, logline og tema/karakterintensjon.', margin + 34, 189);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(203, 213, 225);
+    doc.text('Konfidensiell arbeidsrapport for kreativ utvikling.', margin, pageHeight - 14);
+
+    // Content pages
+    doc.addPage();
+    y = 24;
+    doc.setDrawColor(borderRgb[0], borderRgb[1], borderRgb[2]);
+    doc.line(margin, 16, pageWidth - margin, 16);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+    doc.text('Storylogikk rapport', margin, 12);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(107, 114, 128);
+    doc.text(`${branding.appName} • ${projectLabel}`, pageWidth - margin, 12, { align: 'right' });
+
+    // Header logo card on content pages.
+    const headerLogoCardW = 72;
+    const headerLogoCardH = 16;
+    const headerLogoCardX = (pageWidth - headerLogoCardW) / 2;
+    const headerLogoCardY = 16.5;
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(headerLogoCardX, headerLogoCardY, headerLogoCardW, headerLogoCardH, 1.8, 1.8, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(headerLogoCardX, headerLogoCardY, headerLogoCardW, headerLogoCardH, 1.8, 1.8, 'S');
+    addLogo(headerLogoCardX + 2, headerLogoCardY + 2, headerLogoCardW - 4, headerLogoCardH - 4);
+
+    addHeading('Storylogikk - Skrivekort');
+    addBodyText(`Eksportert: ${now.toLocaleString('nb-NO')}`);
+    y += 1;
+
+    addSection('Konsept', 'Fase 1 • Validerer ideen før skriving.');
+    addField(
+      'Sjanger',
+      `${nbLabel(state.concept.genre, GENRE_LABELS_NB)}${state.concept.subGenre ? ` (${nbLabel(state.concept.subGenre, SUB_GENRE_LABELS_NB)})` : ''}`
+    );
+    addField('Tone', state.concept.tone.map((tone) => nbLabel(tone, TONE_LABELS_NB)).join(', '));
+    addField(
+      'Målgruppe',
+      `${safeValue(state.concept.targetAudience)}${state.concept.audienceAge ? ` (${nbLabel(state.concept.audienceAge, AUDIENCE_AGE_LABELS_NB)})` : ''}`
+    );
+    addField('Kjernepremiss', state.concept.corePremise);
+    addField('Hvorfor nå', state.concept.whyNow);
+    addField('Unik vinkel', state.concept.uniqueAngle);
+    addField('Markedssammenligninger', state.concept.marketComparables);
+    y += 1;
+
+    addSection('Logline', 'Fase 2 • Definerer historiens DNA i én sterk pitchlinje.');
+    addField('Komplett logline', state.logline.fullLogline);
+    addField('Hovedperson', `${safeValue(state.logline.protagonist)} (${safeValue(state.logline.protagonistTrait)})`);
+    addField('Mål', state.logline.goal);
+    addField('Antagonistisk kraft', state.logline.antagonisticForce);
+    addField('Konsekvenser', state.logline.stakes);
+    y += 1;
+
+    addSection('Tema og karakterintensjon', 'Fase 3 • Sikrer emosjonell og tematisk retning.');
+    addField('Sentralt tema', state.theme.centralTheme);
+    addField('Temapåstand', state.theme.themeStatement);
+    addField('Moralsk argument', state.theme.moralArgument);
+    addField('Protagonistens kjernefeil', state.theme.protagonistFlaw);
+    addField('Opprinnelse til feil', state.theme.flawOrigin);
+    addField('Hva må endres', state.theme.whatMustChange);
+    addField('Transformasjonsbue', state.theme.transformationArc);
+    addField(
+      'Emosjonell reise',
+      state.theme.emotionalJourney.map((emotion) => nbLabel(emotion, EMOTION_LABELS_NB)).join(' -> ')
+    );
+
+    const totalPages = doc.getNumberOfPages();
+    for (let page = 1; page <= totalPages; page += 1) {
+      doc.setPage(page);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(120, 131, 148);
+      doc.text(`${branding.appName} • Side ${page}/${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
+    }
+
+    doc.save(`storylogikk-rapport-${now.toISOString().split('T')[0]}.pdf`);
+  }, [
+    branding.appName,
+    branding.colors.background,
+    branding.colors.border,
+    branding.colors.primary,
+    branding.colors.secondary,
+    branding.colors.surface,
+    branding.iconUrl,
+    branding.logoUrl,
+    conceptValidation.score,
+    loglineValidation.score,
+    overallProgress,
+    projectId,
+    state.concept,
+    state.logline,
+    state.phaseStatus.concept,
+    state.phaseStatus.logline,
+    state.phaseStatus.theme,
+    state.theme,
+    themeValidation.score,
+    loadBrandImageAsset,
+  ]);
 
   // Reset all data
   const resetAll = async () => {
-    if (window.confirm('Are you sure you want to reset all Story Logic data?')) {
+    if (window.confirm('Er du sikker på at du vil nullstille all storylogikkdata?')) {
       setState(DEFAULT_STATE);
       if (projectId) {
         await storyLogicService.deleteStoryLogic(projectId);
@@ -1479,16 +2378,16 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
           <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700 }}>
-            Story Logic System
+            Storylogikk-system
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
             <Typography variant="body2" sx={{ color: '#9ca3af' }}>
-              Validate your story foundation before writing
+              Valider historiefundamentet før du begynner å skrive
             </Typography>
             {/* Save status indicator (#5) */}
             <Chip
               size="small"
-              label={saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : 'Offline'}
+              label={saveStatus === 'saved' ? 'Lagret' : saveStatus === 'saving' ? 'Lagrer…' : saveStatus === 'unsaved' ? 'Ulagret' : 'Frakoblet'}
               sx={{
                 height: 20, fontSize: '0.65rem',
                 bgcolor: saveStatus === 'saved' ? 'rgba(16,185,129,0.15)' : saveStatus === 'saving' ? 'rgba(59,130,246,0.15)' : saveStatus === 'unsaved' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
@@ -1499,7 +2398,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
           {/* Version history (#11) */}
-          <Tooltip title="Version history">
+          <Tooltip title="Versjonshistorikk">
             <IconButton
               onClick={() => setShowVersionHistory(!showVersionHistory)}
               sx={{ color: '#6b7280' }}
@@ -1509,18 +2408,13 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
               </Badge>
             </IconButton>
           </Tooltip>
-          {/* Export buttons (#10) */}
-          <Tooltip title="Export as Markdown">
-            <IconButton onClick={exportMarkdown} sx={{ color: '#6b7280' }}>
+          {/* Export button */}
+          <Tooltip title="Eksporter som PDF">
+            <IconButton onClick={exportPDF} sx={{ color: '#6b7280' }}>
               <DownloadIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Export as JSON">
-            <IconButton onClick={exportJSON} sx={{ color: '#6b7280' }}>
-              <CopyIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Reset all">
+          <Tooltip title="Nullstill alt">
             <span>
               <IconButton onClick={resetAll} sx={{ color: '#6b7280' }}>
                 <RefreshIcon />
@@ -1537,7 +2431,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
               '&:hover': { bgcolor: '#2563eb' },
             }}
           >
-            {isSaving ? 'Saving...' : 'Save'}
+            {isSaving ? 'Lagrer...' : 'Lagre'}
           </Button>
         </Box>
       </Box>
@@ -1546,13 +2440,13 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
       <Collapse in={showVersionHistory}>
         <Paper sx={{ p: 2, mb: 2, bgcolor: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-            <Typography variant="subtitle2" sx={{ color: '#fff' }}>Version History</Typography>
+            <Typography variant="subtitle2" sx={{ color: '#fff' }}>Versjonshistorikk</Typography>
             <Button size="small" onClick={() => saveVersion()} startIcon={<SaveIcon />} sx={{ color: '#60a5fa', textTransform: 'none' }}>
-              Save Snapshot
+              Lagre øyeblikksbilde
             </Button>
           </Box>
           {state.versions.length === 0 ? (
-            <Typography variant="caption" sx={{ color: '#6b7280' }}>No versions saved yet.</Typography>
+            <Typography variant="caption" sx={{ color: '#6b7280' }}>Ingen versjoner lagret ennå.</Typography>
           ) : (
             <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
               {[...state.versions].reverse().map((v) => (
@@ -1562,7 +2456,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     <Typography variant="caption" sx={{ color: '#6b7280' }}>{new Date(v.timestamp).toLocaleString()}</Typography>
                   </Box>
                   <Button size="small" onClick={() => restoreVersion(v)} sx={{ color: '#a78bfa', textTransform: 'none', fontSize: '0.7rem' }}>
-                    Restore
+                    Gjenopprett
                   </Button>
                 </Box>
               ))}
@@ -1577,8 +2471,8 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
           severity="info"
           onClose={() => setPremiseChangeAlert(null)}
           action={
-            <Button size="small" onClick={() => { saveVersion('Before premise change'); setPremiseChangeAlert(null); }} sx={{ color: '#60a5fa', textTransform: 'none' }}>
-              Save version
+            <Button size="small" onClick={() => { saveVersion('Før premissendring'); setPremiseChangeAlert(null); }} sx={{ color: '#60a5fa', textTransform: 'none' }}>
+              Lagre versjon
             </Button>
           }
           sx={{ mb: 2, bgcolor: 'rgba(59,130,246,0.08)', color: '#93c5fd', '& .MuiAlert-icon': { color: '#3b82f6' } }}
@@ -1591,9 +2485,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
       {!startMode && overallProgress < 10 && (
         <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2 }}>
           <Typography variant="subtitle2" sx={{ color: '#d4d4d8', mb: 1.5 }}>
-            Where do you want to begin?
+            Hvor vil du starte?
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+          <Box sx={starterCardsGridSx}>
             {START_MODES.map((mode) => (
               <Button
                 key={mode.id}
@@ -1605,6 +2499,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   textTransform: 'none',
                   flexDirection: 'column',
                   alignItems: 'flex-start',
+                  justifyContent: 'flex-start',
+                  width: '100%',
+                  minHeight: 92,
                   px: 2, py: 1.5,
                   '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(59,130,246,0.05)' },
                 }}
@@ -1620,10 +2517,10 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             endIcon={showTemplates ? <ExpandLessIcon /> : <ExpandMoreIcon />}
             sx={{ color: '#a78bfa', textTransform: 'none', mt: 1.5, fontSize: '0.8rem' }}
           >
-            Or start from a template
+            Eller start fra en mal
           </Button>
           <Collapse in={showTemplates}>
-            <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+            <Box sx={templateCardsGridSx}>
               {STORY_TEMPLATES.map((tpl) => (
                 <Chip
                   key={tpl.id}
@@ -1635,6 +2532,8 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     bgcolor: 'rgba(139,92,246,0.08)',
                     color: '#c084fc',
                     border: '1px solid rgba(139,92,246,0.2)',
+                    width: '100%',
+                    justifyContent: 'space-between',
                     '&:hover': { bgcolor: 'rgba(139,92,246,0.15)' },
                   }}
                 />
@@ -1656,7 +2555,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
       >
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
           <Typography variant="subtitle1" sx={{ color: '#d4d4d8' }}>
-            Story Engine Confidence
+            Historie-selvtillit
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Chip
@@ -1684,7 +2583,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
         />
         <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
           <Chip
-            label={`Concept: ${STATUS_LABELS[state.phaseStatus.concept]}`}
+            label={`Konsept: ${STATUS_LABELS[state.phaseStatus.concept]}`}
             size="small"
             sx={{
               bgcolor: `${state.phaseStatus.concept === 'ready' ? '#10b981' : state.phaseStatus.concept === 'weak' ? '#f59e0b' : '#9ca3af'}15`,
@@ -1700,7 +2599,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             }}
           />
           <Chip
-            label={`Theme: ${STATUS_LABELS[state.phaseStatus.theme]}`}
+            label={`Tema: ${STATUS_LABELS[state.phaseStatus.theme]}`}
             size="small"
             sx={{
               bgcolor: `${state.phaseStatus.theme === 'ready' ? '#10b981' : state.phaseStatus.theme === 'weak' ? '#f59e0b' : '#9ca3af'}15`,
@@ -1720,15 +2619,93 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
         )}
         {state.lastSaved && (
           <Typography variant="caption" sx={{ color: '#6b7280', mt: 1, display: 'block' }}>
-            Last saved: {new Date(state.lastSaved).toLocaleString()}
+            Sist lagret: {new Date(state.lastSaved).toLocaleString()}
           </Typography>
         )}
       </Paper>
 
-      {/* Phase 1: Concept */}
+      {/* Phase roadmap: clearer structure across all phases */}
+      <Paper
+        sx={{
+          p: 2,
+          mb: 2,
+          bgcolor: 'rgba(0,0,0,0.35)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 2,
+        }}
+      >
+        <Typography variant="subtitle1" sx={{ color: '#f4f4f5', mb: 1.5, fontWeight: 600 }}>
+          Faseoversikt
+        </Typography>
+        <Box sx={phaseRoadmapGridSx}>
+          {phaseRoadmap.map((phase) => (
+            <Box key={phase.key}>
+              <Card
+                sx={{
+                  bgcolor: expandedPhase === phase.index ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)',
+                  border: expandedPhase === phase.index ? '1px solid rgba(59,130,246,0.45)' : '1px solid rgba(255,255,255,0.09)',
+                  height: '100%',
+                }}
+              >
+                <CardContent sx={{ pb: '16px !important' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600 }}>
+                      Fase {phase.index + 1}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={STATUS_LABELS[phase.status]}
+                      sx={{
+                        bgcolor: `${phase.status === 'ready' ? '#10b981' : phase.status === 'weak' ? '#f59e0b' : '#9ca3af'}20`,
+                        color: phase.status === 'ready' ? '#10b981' : phase.status === 'weak' ? '#f59e0b' : '#9ca3af',
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="body2" sx={{ color: '#d4d4d8', mb: 1 }}>
+                    {phase.title}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block' }}>
+                    Selvtillit: {phase.score}%
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block', mb: 1.25 }}>
+                    Mangler: {phase.missingFields.length}
+                    {phase.missingFields.length > 0 ? ` (${phase.missingFields.slice(0, 2).join(', ')})` : ''}
+                  </Typography>
+                  {phase.nextBestAction && phase.status !== 'ready' && (
+                    <Typography variant="caption" sx={{ color: '#93c5fd', display: 'block', mb: 1.25 }}>
+                      Neste: {phase.nextBestAction}
+                    </Typography>
+                  )}
+                  <Button
+                    size="small"
+                    variant={expandedPhase === phase.index ? 'contained' : 'outlined'}
+                    onClick={() => goToPhase(phase.index)}
+                    sx={{
+                      textTransform: 'none',
+                      ...(expandedPhase === phase.index
+                        ? { bgcolor: '#2563eb', '&:hover': { bgcolor: '#1d4ed8' } }
+                        : { color: '#93c5fd', borderColor: 'rgba(147,197,253,0.5)' }),
+                    }}
+                  >
+                    Åpne fase
+                  </Button>
+                </CardContent>
+              </Card>
+            </Box>
+          ))}
+        </Box>
+      </Paper>
+
+      {/* Fase 1: Konsept */}
       <Accordion
         expanded={expandedPhase === 0}
-        onChange={() => setExpandedPhase(expandedPhase === 0 ? -1 : 0)}
+        onChange={(_, isExpanded) => {
+          if (isExpanded) {
+            goToPhase(0);
+            return;
+          }
+          setExpandedPhase(-1);
+        }}
         sx={{
           bgcolor: 'rgba(0,0,0,0.3)',
           border: '1px solid rgba(255,255,255,0.1)',
@@ -1740,8 +2717,8 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
         <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
           <PhaseHeader
             number={1}
-            title="Concept"
-            purpose="Validate the idea before any writing. Is this worth months of work?"
+            title="Konsept"
+            purpose="Valider ideen før skriving. Er dette verdt måneders arbeid?"
             icon={<LightbulbIcon sx={{ color: '#fbbf24' }} />}
             status={state.phaseStatus.concept}
             locked={state.locks.concept}
@@ -1750,20 +2727,20 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
           />
         </AccordionSummary>
         <AccordionDetails>
-          <Grid container spacing={2}>
-            {/* Core Premise */}
-            <Grid size={12}>
+          <Box sx={phaseFormGridSx}>
+            {/* Kjernepremiss */}
+            <Box sx={phaseFullSpanSx}>
               <Box ref={registerFieldRef('corePremise')} sx={{ ...getFieldHighlightSx('corePremise') }}>
               <TextField
                 fullWidth
                 multiline
                 rows={3}
-                label="Core Premise"
-                placeholder="What is your story about in 2-3 sentences? The fundamental idea."
+                label="Kjernepremiss"
+                placeholder="Hva handler historien om i 2-3 setninger? Den grunnleggende ideen."
                 value={state.concept.corePremise}
                 onChange={(e) => updateConcept('corePremise', e.target.value)}
                 disabled={state.locks.concept}
-                inputProps={{ 'aria-label': 'Core Premise' }}
+                inputProps={{ 'aria-label': 'Kjernepremiss' }}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
@@ -1775,15 +2752,15 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                 }}
               />
               </Box>
-            </Grid>
+            </Box>
 
-            {/* Genre & Sub-Genre */}
-            <Grid size={{ xs: 12, md: 6 }}>
+            {/* Sjanger og undersjanger */}
+            <Box>
               <FormControl fullWidth>
-                <InputLabel sx={{ color: '#9ca3af' }}>Primary Genre</InputLabel>
+                <InputLabel sx={{ color: '#9ca3af' }}>Hovedsjanger</InputLabel>
                 <Select
                   value={state.concept.genre}
-                  label="Primary Genre"
+                  label="Hovedsjanger"
                   onChange={(e) => {
                     updateConcept('genre', e.target.value);
                     updateConcept('subGenre', '');
@@ -1797,17 +2774,17 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   }}
                 >
                   {GENRES.map((genre) => (
-                    <MenuItem key={genre} value={genre}>{genre}</MenuItem>
+                    <MenuItem key={genre} value={genre}>{nbLabel(genre, GENRE_LABELS_NB)}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            </Box>
+            <Box>
               <FormControl fullWidth>
-                <InputLabel sx={{ color: '#9ca3af' }}>Sub-Genre</InputLabel>
+                <InputLabel sx={{ color: '#9ca3af' }}>Undersjanger</InputLabel>
                 <Select
                   value={safeSubGenreValue}
-                  label="Sub-Genre"
+                  label="Undersjanger"
                   onChange={(e) => updateConcept('subGenre', e.target.value)}
                   disabled={state.locks.concept || !state.concept.genre}
                   sx={{
@@ -1818,28 +2795,28 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   }}
                 >
                   {availableSubGenres.map((sub) => (
-                    <MenuItem key={sub} value={sub}>{sub}</MenuItem>
+                    <MenuItem key={sub} value={sub}>{nbLabel(sub, SUB_GENRE_LABELS_NB)}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
+            </Box>
 
             {/* Tone Selection */}
-            <Grid size={12}>
+            <Box sx={phaseFullSpanSx}>
               <Typography variant="subtitle2" sx={{ color: '#9ca3af', mb: 1 }}>
-                Tone (select 1-3)
+                Tone (velg 1-3)
               </Typography>
               {/* Genre-based tone presets (C) */}
               {state.concept.genre && GENRE_TONE_PRESETS[state.concept.genre] && (
                 <Box sx={{ mb: 1.5 }}>
                   <Typography variant="caption" sx={{ color: '#6b7280', display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                    <AutoAwesomeIcon sx={{ fontSize: 14 }} /> Suggested for {state.concept.genre}:
+                    <AutoAwesomeIcon sx={{ fontSize: 14 }} /> Forslag for {nbLabel(state.concept.genre, GENRE_LABELS_NB)}:
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1 }}>
                     {GENRE_TONE_PRESETS[state.concept.genre].map((combo, i) => (
                       <Chip
                         key={i}
-                        label={combo.join(' + ')}
+                        label={combo.map((tone) => nbLabel(tone, TONE_LABELS_NB)).join(' + ')}
                         size="small"
                         icon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />}
                         onClick={() => {
@@ -1868,7 +2845,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     {group.tones.map((tone) => (
                       <Chip
                         key={tone}
-                        label={tone}
+                        label={nbLabel(tone, TONE_LABELS_NB)}
                         tabIndex={0}
                         role="checkbox"
                         aria-checked={state.concept.tone.includes(tone)}
@@ -1909,14 +2886,14 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   </Box>
                 </Box>
               ))}
-            </Grid>
+            </Box>
 
-            {/* Target Audience */}
-            <Grid size={{ xs: 12, md: 6 }}>
+            {/* Målgruppe */}
+            <Box>
               <TextField
                 fullWidth
-                label="Target Audience"
-                placeholder="Who is this story for? Be specific."
+                label="Målgruppe"
+                placeholder="Hvem er historien for? Vær konkret."
                 value={state.concept.targetAudience}
                 onChange={(e) => updateConcept('targetAudience', e.target.value)}
                 disabled={state.locks.concept}
@@ -1928,13 +2905,13 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            </Box>
+            <Box>
               <FormControl fullWidth>
-                <InputLabel sx={{ color: '#9ca3af' }}>Audience Age Range</InputLabel>
+                <InputLabel sx={{ color: '#9ca3af' }}>Aldersgruppe</InputLabel>
                 <Select
                   value={safeAudienceAgeValue}
-                  label="Audience Age Range"
+                  label="Aldersgruppe"
                   onChange={(e) => updateConcept('audienceAge', e.target.value)}
                   disabled={state.locks.concept}
                   sx={{
@@ -1943,21 +2920,21 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   }}
                 >
                   {AUDIENCE_AGES.map((age) => (
-                    <MenuItem key={age} value={age}>{age}</MenuItem>
+                    <MenuItem key={age} value={age}>{nbLabel(age, AUDIENCE_AGE_LABELS_NB)}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
+            </Box>
 
             {/* Why Now — with field ref and genre examples (#4) */}
-            <Grid size={12}>
+            <Box sx={phaseFullSpanSx}>
               <Box ref={registerFieldRef('whyNow')} sx={{ ...getFieldHighlightSx('whyNow') }}>
               <TextField
                 fullWidth
                 multiline
                 rows={3}
-                label="Why This Story Now?"
-                placeholder="What makes this story relevant today? Why should audiences care RIGHT NOW?"
+                label="Hvorfor denne historien nå?"
+                placeholder="Hva gjør historien relevant i dag? Hvorfor skal publikum bry seg NÅ?"
                 value={state.concept.whyNow}
                 onChange={(e) => updateConcept('whyNow', e.target.value)}
                 disabled={state.locks.concept}
@@ -1972,17 +2949,17 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                 }}
               />
               </Box>
-            </Grid>
+            </Box>
 
-            {/* Unique Angle — with field ref and genre examples (#4) */}
-            <Grid size={12}>
+            {/* Unik vinkel — med feltreferanse og sjangereksempler (#4) */}
+            <Box sx={phaseFullSpanSx}>
               <Box ref={registerFieldRef('uniqueAngle')} sx={{ ...getFieldHighlightSx('uniqueAngle') }}>
               <TextField
                 fullWidth
                 multiline
                 rows={2}
-                label="Unique Angle"
-                placeholder="What makes YOUR take on this concept different from everything else?"
+                label="Unik vinkel"
+                placeholder="Hva gjør DIN versjon av dette konseptet annerledes enn alt annet?"
                 value={state.concept.uniqueAngle}
                 onChange={(e) => updateConcept('uniqueAngle', e.target.value)}
                 disabled={state.locks.concept}
@@ -1997,14 +2974,14 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                 }}
               />
               </Box>
-            </Grid>
+            </Box>
 
-            {/* Market Comparables */}
-            <Grid size={12}>
+            {/* Markedssammenligninger */}
+            <Box sx={phaseFullSpanSx}>
               <TextField
                 fullWidth
-                label="Market Comparables"
-                placeholder="e.g., 'Inception meets The Matrix' or 'Breaking Bad in the fashion industry'"
+                label="Markedssammenligninger"
+                placeholder="f.eks. 'Inception møter The Matrix' eller 'Breaking Bad i motebransjen'"
                 value={state.concept.marketComparables}
                 onChange={(e) => updateConcept('marketComparables', e.target.value)}
                 disabled={state.locks.concept}
@@ -2016,26 +2993,60 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
 
-          {showValidation && <ValidationDisplay result={conceptValidation} title="Concept" onJumpToField={jumpToField} />}
+          {showValidation && <ValidationDisplay result={conceptValidation} title="Konsept" onJumpToField={jumpToField} />}
+
+          <Box
+            sx={{
+              mt: 2,
+              p: 1.5,
+              borderRadius: 2,
+              border: '1px solid rgba(255,255,255,0.12)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 1,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+              Fase 1 har {missingConceptFields.length} nøkkelfelt igjen.
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              endIcon={<ArrowForwardIcon />}
+              onClick={() => goToPhase(1)}
+              sx={{ textTransform: 'none', color: '#93c5fd', borderColor: 'rgba(147,197,253,0.45)' }}
+            >
+              Neste: Logline
+            </Button>
+          </Box>
 
           {/* Reality Check Prompt — concept (#6) */}
           {conceptValidation.score >= 20 && conceptValidation.score < 70 && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(139,92,246,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(139,92,246,0.3)' }}>
               <Typography variant="caption" sx={{ color: '#a78bfa', fontStyle: 'italic' }}>
-                🧠 {REALITY_CHECK_PROMPTS.concept[Math.floor(Math.random() * REALITY_CHECK_PROMPTS.concept.length) % REALITY_CHECK_PROMPTS.concept.length]}
+                🧠 {conceptRealityPrompt}
               </Typography>
             </Box>
           )}
         </AccordionDetails>
       </Accordion>
 
-      {/* Phase 2: Logline */}
+      {/* Fase 2: Logline */}
       <Accordion
         expanded={expandedPhase === 1}
-        onChange={() => setExpandedPhase(expandedPhase === 1 ? -1 : 1)}
+        onChange={(_, isExpanded) => {
+          if (isExpanded) {
+            goToPhase(1);
+            return;
+          }
+          setExpandedPhase(-1);
+        }}
         sx={{
           bgcolor: 'rgba(0,0,0,0.3)',
           border: '1px solid rgba(255,255,255,0.1)',
@@ -2048,7 +3059,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
           <PhaseHeader
             number={2}
             title="Logline"
-            purpose="Define story DNA in one sentence. If it's weak, do not proceed."
+            purpose="Definer historiens DNA i én setning. Er den svak, bør du ikke gå videre."
             icon={<CreateIcon sx={{ color: '#60a5fa' }} />}
             status={state.phaseStatus.logline}
             locked={state.locks.logline}
@@ -2066,21 +3077,21 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
               '& .MuiAlert-icon': { color: '#3b82f6' },
             }}
           >
-            <strong>Logline Formula:</strong> When [PROTAGONIST] must [GOAL], they face [ANTAGONISTIC FORCE]—or else [STAKES].
+            <strong>Logline-formel:</strong> Når [HOVEDPERSON] må [MÅL], møter hen [ANTAGONISTISK KRAFT] — ellers [KONSEKVENSER].
           </Alert>
 
-          <Grid container spacing={2}>
-            {/* Protagonist */}
-            <Grid size={{ xs: 12, md: 6 }}>
+          <Box sx={phaseFormGridSx}>
+            {/* Hovedperson */}
+            <Box>
               <TextField
                 fullWidth
-                label="Protagonist"
-                placeholder="Who is your main character? (role/occupation)"
+                label="Hovedperson"
+                placeholder="Hvem er hovedkarakteren? (rolle/yrke)"
                 value={state.logline.protagonist}
                 onChange={(e) => updateLogline('protagonist', e.target.value)}
                 disabled={state.locks.logline}
                 error={loglineHasPlaceholders && !state.logline.protagonist}
-                helperText={loglineHasPlaceholders && !state.logline.protagonist ? 'Required for complete logline' : undefined}
+                helperText={loglineHasPlaceholders && !state.logline.protagonist ? 'Påkrevd for komplett logline' : undefined}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
@@ -2089,12 +3100,12 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            </Box>
+            <Box>
               <TextField
                 fullWidth
-                label="Defining Trait"
-                placeholder="e.g., 'burnt-out', 'naive', 'ruthless'"
+                label="Definerende trekk"
+                placeholder="f.eks. 'utbrent', 'naiv', 'nådeløs'"
                 value={state.logline.protagonistTrait}
                 onChange={(e) => updateLogline('protagonistTrait', e.target.value)}
                 disabled={state.locks.logline}
@@ -2106,19 +3117,19 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
+            </Box>
 
             {/* Goal */}
-            <Grid size={12}>
+            <Box sx={phaseFullSpanSx}>
               <TextField
                 fullWidth
-                label="Goal"
-                placeholder="What must the protagonist achieve? (action verb + objective)"
+                label="Mål"
+                placeholder="Hva må protagonisten oppnå? (handlingsverb + mål)"
                 value={state.logline.goal}
                 onChange={(e) => updateLogline('goal', e.target.value)}
                 disabled={state.locks.logline}
                 error={loglineHasPlaceholders && !state.logline.goal}
-                helperText={loglineHasPlaceholders && !state.logline.goal ? 'Required for complete logline' : undefined}
+                helperText={loglineHasPlaceholders && !state.logline.goal ? 'Påkrevd for komplett logline' : undefined}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
@@ -2127,19 +3138,19 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
+            </Box>
 
             {/* Antagonistic Force */}
-            <Grid size={12}>
+            <Box sx={phaseFullSpanSx}>
               <TextField
                 fullWidth
-                label="Antagonistic Force"
-                placeholder="Person, system, internal struggle, or force of nature"
+                label="Antagonistisk kraft"
+                placeholder="Person, system, indre konflikt eller naturkraft"
                 value={state.logline.antagonisticForce}
                 onChange={(e) => updateLogline('antagonisticForce', e.target.value)}
                 disabled={state.locks.logline}
                 error={loglineHasPlaceholders && !state.logline.antagonisticForce}
-                helperText={loglineHasPlaceholders && !state.logline.antagonisticForce ? 'Required for complete logline' : undefined}
+                helperText={loglineHasPlaceholders && !state.logline.antagonisticForce ? 'Påkrevd for komplett logline' : undefined}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
@@ -2148,19 +3159,19 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
+            </Box>
 
             {/* Stakes */}
-            <Grid size={12}>
+            <Box sx={phaseFullSpanSx}>
               <TextField
                 fullWidth
-                label="Stakes"
-                placeholder="What happens if the protagonist fails? (consequences)"
+                label="Konsekvenser"
+                placeholder="Hva skjer hvis protagonisten feiler? (konsekvenser)"
                 value={state.logline.stakes}
                 onChange={(e) => updateLogline('stakes', e.target.value)}
                 disabled={state.locks.logline}
                 error={loglineHasPlaceholders && !state.logline.stakes}
-                helperText={loglineHasPlaceholders && !state.logline.stakes ? 'Required for complete logline' : undefined}
+                helperText={loglineHasPlaceholders && !state.logline.stakes ? 'Påkrevd for komplett logline' : undefined}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
@@ -2169,10 +3180,10 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
+            </Box>
 
-            {/* Generate Button */}
-            <Grid size={12}>
+            {/* Generer-knapp */}
+            <Box sx={phaseFullSpanSx}>
               <Button
                 variant="outlined"
                 startIcon={<AutoAwesomeIcon />}
@@ -2187,29 +3198,29 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   },
                 }}
               >
-                Generate Logline from Components
+                Generer logline fra komponenter
               </Button>
-            </Grid>
+            </Box>
 
             {/* Full Logline */}
-            <Grid size={12}>
+            <Box sx={phaseFullSpanSx}>
               <TextField
                 fullWidth
                 multiline
                 rows={3}
-                label="Complete Logline"
-                placeholder="Write your complete logline here (25-50 words ideal)"
+                label="Komplett logline"
+                placeholder="Skriv komplett logline her (ideelt 25-50 ord)"
                 value={state.logline.fullLogline}
                 onChange={(e) => updateLogline('fullLogline', e.target.value)}
                 disabled={state.locks.logline}
                 helperText={(() => {
                   const wordCount = state.logline.fullLogline.split(/\s+/).filter((w: string) => w).length;
                   const inRange = wordCount >= 25 && wordCount <= 45;
-                  const rangeLabel = inRange ? '✓ ideal range' : wordCount < 25 ? 'keep going' : 'consider trimming';
+                  const rangeLabel = inRange ? '✓ ideelt område' : wordCount < 25 ? 'fortsett' : 'vurder å korte ned';
                   const missing = missingLoglineFields.length > 0 && loglineHasPlaceholders
-                    ? ` — Missing: ${missingLoglineFields.join(', ')}`
+                    ? ` — Mangler: ${missingLoglineFields.join(', ')}`
                     : '';
-                  return `${wordCount} words (ideal: 25–45 · ${rangeLabel})${missing}`;
+                  return `${wordCount} ord (ideelt: 25–45 · ${rangeLabel})${missing}`;
                 })()}
                 sx={{
                   '& .MuiOutlinedInput-root': {
@@ -2227,13 +3238,13 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   },
                 }}
               />
-            </Grid>
+            </Box>
 
             {/* Logline Score */}
-            <Grid size={12}>
+            <Box sx={phaseFullSpanSx}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Typography variant="subtitle2" sx={{ color: '#9ca3af' }}>
-                  Logline Strength:
+                  Logline-styrke:
                 </Typography>
                 <Rating
                   value={Math.round(loglineValidation.score / 20)}
@@ -2245,26 +3256,60 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   ({loglineValidation.score}%)
                 </Typography>
               </Box>
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
 
           {showValidation && <ValidationDisplay result={loglineValidation} title="Logline" onJumpToField={jumpToField} />}
+
+          <Box
+            sx={{
+              mt: 2,
+              p: 1.5,
+              borderRadius: 2,
+              border: '1px solid rgba(255,255,255,0.12)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 1,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+              Fase 2 har {missingLoglineRoadmapFields.length} nøkkelfelt igjen.
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              endIcon={<ArrowForwardIcon />}
+              onClick={() => goToPhase(2)}
+              sx={{ textTransform: 'none', color: '#93c5fd', borderColor: 'rgba(147,197,253,0.45)' }}
+            >
+              Neste: Tema
+            </Button>
+          </Box>
 
           {/* Reality Check Prompt — logline (#6) */}
           {loglineValidation.score >= 20 && loglineValidation.score < 70 && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(139,92,246,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(139,92,246,0.3)' }}>
               <Typography variant="caption" sx={{ color: '#a78bfa', fontStyle: 'italic' }}>
-                🧠 {REALITY_CHECK_PROMPTS.logline[Math.floor(Math.random() * REALITY_CHECK_PROMPTS.logline.length) % REALITY_CHECK_PROMPTS.logline.length]}
+                🧠 {loglineRealityPrompt}
               </Typography>
             </Box>
           )}
         </AccordionDetails>
       </Accordion>
 
-      {/* Phase 3: Theme & Character Intent */}
+      {/* Fase 3: Tema og karakterintensjon */}
       <Accordion
         expanded={expandedPhase === 2}
-        onChange={() => setExpandedPhase(expandedPhase === 2 ? -1 : 2)}
+        onChange={(_, isExpanded) => {
+          if (isExpanded) {
+            goToPhase(2);
+            return;
+          }
+          setExpandedPhase(-1);
+        }}
         sx={{
           bgcolor: 'rgba(0,0,0,0.3)',
           border: '1px solid rgba(255,255,255,0.1)',
@@ -2276,8 +3321,8 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
         <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
           <PhaseHeader
             number={3}
-            title="Theme & Character Intent"
-            purpose="Give the story meaning. This prevents hollow or episodic scripts."
+            title="Tema og karakterintensjon"
+            purpose="Gi historien mening. Dette hindrer at manuset blir hult eller episodisk."
             icon={<PsychologyIcon sx={{ color: '#a78bfa' }} />}
             status={state.phaseStatus.theme}
             locked={state.locks.theme}
@@ -2286,13 +3331,13 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
           />
         </AccordionSummary>
         <AccordionDetails>
-          <Grid container spacing={2}>
-            {/* Central Theme */}
-            <Grid size={{ xs: 12, md: 6 }}>
+          <Box sx={phaseFormGridSx}>
+            {/* Sentralt tema */}
+            <Box>
               <TextField
                 fullWidth
-                label="Central Theme"
-                placeholder="e.g., redemption, identity, power, love, sacrifice"
+                label="Sentralt tema"
+                placeholder="f.eks. forsoning, identitet, makt, kjærlighet, offer"
                 value={state.theme.centralTheme}
                 onChange={(e) => updateTheme('centralTheme', e.target.value)}
                 disabled={state.locks.theme}
@@ -2304,12 +3349,12 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            </Box>
+            <Box>
               <TextField
                 fullWidth
-                label="Moral Argument"
-                placeholder="What is the story's stance on the theme?"
+                label="Moralsk argument"
+                placeholder="Hva er historiens standpunkt til temaet?"
                 value={state.theme.moralArgument}
                 onChange={(e) => updateTheme('moralArgument', e.target.value)}
                 disabled={state.locks.theme}
@@ -2321,17 +3366,17 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
+            </Box>
 
-            {/* Theme Statement — with field ref and genre examples (#4) */}
-            <Grid size={12}>
+            {/* Temapåstand — med feltreferanse og sjangereksempler (#4) */}
+            <Box sx={phaseFullSpanSx}>
               <Box ref={registerFieldRef('themeStatement')} sx={{ ...getFieldHighlightSx('themeStatement') }}>
               <TextField
                 fullWidth
                 multiline
                 rows={2}
-                label="Theme Statement"
-                placeholder="This story argues that... (complete the sentence)"
+                label="Temapåstand"
+                placeholder="Denne historien argumenterer for at ... (fullfør setningen)"
                 value={state.theme.themeStatement}
                 onChange={(e) => updateTheme('themeStatement', e.target.value)}
                 disabled={state.locks.theme}
@@ -2346,21 +3391,21 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                 }}
               />
               </Box>
-            </Grid>
+            </Box>
 
-            <Grid size={12}>
+            <Box sx={phaseFullSpanSx}>
               <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', my: 1 }} />
               <Typography variant="subtitle1" sx={{ color: '#fff', mt: 1, mb: 1 }}>
-                Character Transformation
+                Karaktertransformasjon
               </Typography>
-            </Grid>
+            </Box>
 
             {/* Protagonist Flaw */}
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Box>
               <TextField
                 fullWidth
-                label="Protagonist's Core Flaw"
-                placeholder="What internal weakness holds them back?"
+                label="Protagonistens kjernefeil"
+                placeholder="Hvilken indre svakhet holder dem tilbake?"
                 value={state.theme.protagonistFlaw}
                 onChange={(e) => updateTheme('protagonistFlaw', e.target.value)}
                 disabled={state.locks.theme}
@@ -2372,12 +3417,12 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            </Box>
+            <Box>
               <TextField
                 fullWidth
-                label="Flaw Origin"
-                placeholder="Where did this flaw come from? (backstory)"
+                label="Opprinnelse til feil"
+                placeholder="Hvor kommer denne feilen fra? (bakgrunnshistorie)"
                 value={state.theme.flawOrigin}
                 onChange={(e) => updateTheme('flawOrigin', e.target.value)}
                 disabled={state.locks.theme}
@@ -2389,16 +3434,16 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
+            </Box>
 
             {/* What Must Change */}
-            <Grid size={12}>
+            <Box sx={phaseFullSpanSx}>
               <TextField
                 fullWidth
                 multiline
                 rows={2}
-                label="What Must Change by the End"
-                placeholder="What belief, behavior, or worldview must the protagonist abandon or embrace?"
+                label="Hva må endres innen slutten"
+                placeholder="Hvilken tro, atferd eller verdensforståelse må protagonisten forlate eller omfavne?"
                 value={state.theme.whatMustChange}
                 onChange={(e) => updateTheme('whatMustChange', e.target.value)}
                 disabled={state.locks.theme}
@@ -2410,16 +3455,16 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
+            </Box>
 
-            {/* Transformation Arc */}
-            <Grid size={12}>
+            {/* Transformasjonsbue */}
+            <Box sx={phaseFullSpanSx}>
               <TextField
                 fullWidth
                 multiline
                 rows={3}
-                label="Transformation Arc"
-                placeholder="Describe the journey from flawed beginning to transformed end. How do they change?"
+                label="Transformasjonsbue"
+                placeholder="Beskriv reisen fra mangelfull start til transformert slutt. Hvordan endrer de seg?"
                 value={state.theme.transformationArc}
                 onChange={(e) => updateTheme('transformationArc', e.target.value)}
                 disabled={state.locks.theme}
@@ -2431,21 +3476,21 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
               />
-            </Grid>
+            </Box>
 
             {/* Emotional Journey */}
-            <Grid size={12}>
+            <Box sx={phaseFullSpanSx}>
               <Typography variant="subtitle2" sx={{ color: '#9ca3af', mb: 1 }}>
-                Emotional Journey Beats (select 3-5 key emotions)
+                Emosjonell reise (velg 3-5 nøkkelfølelser)
               </Typography>
               {/* Genre-based emotion presets (C) */}
               {state.concept.genre && GENRE_EMOTION_PRESETS[state.concept.genre] && (
                 <Box sx={{ mb: 1.5 }}>
                   <Typography variant="caption" sx={{ color: '#6b7280', display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                    <AutoAwesomeIcon sx={{ fontSize: 14 }} /> Suggested arc for {state.concept.genre}:
+                    <AutoAwesomeIcon sx={{ fontSize: 14 }} /> Foreslått bue for {nbLabel(state.concept.genre, GENRE_LABELS_NB)}:
                   </Typography>
                   <Chip
-                    label={GENRE_EMOTION_PRESETS[state.concept.genre].join(' → ')}
+                    label={GENRE_EMOTION_PRESETS[state.concept.genre].map((emotion) => nbLabel(emotion, EMOTION_LABELS_NB)).join(' → ')}
                     size="small"
                     icon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />}
                     onClick={() => {
@@ -2472,7 +3517,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     {group.emotions.map((emotion) => (
                       <Chip
                         key={emotion}
-                        label={emotion}
+                        label={nbLabel(emotion, EMOTION_LABELS_NB)}
                         tabIndex={0}
                         role="checkbox"
                         aria-checked={state.theme.emotionalJourney.includes(emotion)}
@@ -2516,20 +3561,47 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
               {state.theme.emotionalJourney.length > 0 && (
                 <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(139, 92, 246, 0.1)', borderRadius: 2 }}>
                   <Typography variant="body2" sx={{ color: '#a78bfa' }}>
-                    Emotional Arc: {state.theme.emotionalJourney.join(' → ')}
+                    Emosjonell bue: {state.theme.emotionalJourney.map((emotion) => nbLabel(emotion, EMOTION_LABELS_NB)).join(' → ')}
                   </Typography>
                 </Box>
               )}
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
 
-          {showValidation && <ValidationDisplay result={themeValidation} title="Theme" onJumpToField={jumpToField} />}
+          {showValidation && <ValidationDisplay result={themeValidation} title="Tema" onJumpToField={jumpToField} />}
+
+          <Box
+            sx={{
+              mt: 2,
+              p: 1.5,
+              borderRadius: 2,
+              border: '1px solid rgba(255,255,255,0.12)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 1,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+              Fase 3 har {missingThemeFields.length} nøkkelfelt igjen.
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => goToPhase(0)}
+              sx={{ textTransform: 'none', color: '#93c5fd', borderColor: 'rgba(147,197,253,0.45)' }}
+            >
+              Se gjennom fase 1
+            </Button>
+          </Box>
 
           {/* Reality Check Prompt — theme (#6) */}
           {themeValidation.score >= 20 && themeValidation.score < 70 && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(139,92,246,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(139,92,246,0.3)' }}>
               <Typography variant="caption" sx={{ color: '#a78bfa', fontStyle: 'italic' }}>
-                🧠 {REALITY_CHECK_PROMPTS.theme[Math.floor(Math.random() * REALITY_CHECK_PROMPTS.theme.length) % REALITY_CHECK_PROMPTS.theme.length]}
+                🧠 {themeRealityPrompt}
               </Typography>
             </Box>
           )}
@@ -2551,10 +3623,10 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                 <CheckIcon sx={{ color: '#10b981', fontSize: 32 }} />
                 <Box>
                   <Typography variant="h6" sx={{ color: '#10b981' }}>
-                    Ready to Write
+                    Klar til å skrive
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#9ca3af' }}>
-                    You are unlikely to waste draft pages.
+                    Du er mindre utsatt for å kaste bort sider i førsteutkastet.
                   </Typography>
                 </Box>
               </Box>
@@ -2562,11 +3634,11 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
               {/* Exit-with-Confidence Checklist */}
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
                 {[
-                  { label: 'Conflict clear', check: (state.concept.antagonisticForce || '').length > 5 },
-                  { label: 'Stakes concrete', check: (state.logline.stakes || '').length > 10 },
-                  { label: 'Character arc defined', check: (state.theme.transformationArc || '').length > 20 },
-                  { label: 'Theme grounded', check: (state.theme.themeStatement || '').length > 20 },
-                  { label: 'Logline complete', check: (state.logline.fullLogline || '').length > 20 },
+                  { label: 'Konflikt er tydelig', check: (state.logline.antagonisticForce || '').length > 5 },
+                  { label: 'Konsekvenser er konkrete', check: (state.logline.stakes || '').length > 10 },
+                  { label: 'Karakterbue er definert', check: (state.theme.transformationArc || '').length > 20 },
+                  { label: 'Tema er forankret', check: (state.theme.themeStatement || '').length > 20 },
+                  { label: 'Logline er komplett', check: (state.logline.fullLogline || '').length > 20 },
                 ].map((item) => (
                   <Box key={item.label} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     {item.check ? (
@@ -2583,16 +3655,16 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
               <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', my: 2 }} />
               <Typography variant="subtitle2" sx={{ color: '#d4d4d8', mb: 1 }}>
-                Summary
+                Oppsummering
               </Typography>
               <Typography variant="body2" sx={{ color: '#9ca3af' }}>
-                <strong>Genre:</strong> {state.concept.genre} {state.concept.subGenre && `(${state.concept.subGenre})`}
+                <strong>Sjanger:</strong> {nbLabel(state.concept.genre, GENRE_LABELS_NB)} {state.concept.subGenre && `(${nbLabel(state.concept.subGenre, SUB_GENRE_LABELS_NB)})`}
               </Typography>
               <Typography variant="body2" sx={{ color: '#9ca3af' }}>
-                <strong>Tone:</strong> {state.concept.tone.join(', ')}
+                <strong>Tone:</strong> {state.concept.tone.map((tone) => nbLabel(tone, TONE_LABELS_NB)).join(', ')}
               </Typography>
               <Typography variant="body2" sx={{ color: '#9ca3af' }}>
-                <strong>Theme:</strong> {state.theme.centralTheme}
+                <strong>Tema:</strong> {state.theme.centralTheme}
               </Typography>
               {state.logline.fullLogline && (
                 <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 1 }}>
@@ -2601,25 +3673,16 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   </Typography>
                 </Box>
               )}
-              {/* Export & Handoff buttons (#10) */}
+              {/* Export button */}
               <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                 <Button
                   size="small"
                   startIcon={<DownloadIcon />}
-                  onClick={exportMarkdown}
+                  onClick={exportPDF}
                   sx={{ color: '#10b981', borderColor: '#10b981', textTransform: 'none' }}
                   variant="outlined"
                 >
-                  Writer's Card (.md)
-                </Button>
-                <Button
-                  size="small"
-                  startIcon={<CopyIcon />}
-                  onClick={exportJSON}
-                  sx={{ color: '#10b981', borderColor: '#10b981', textTransform: 'none' }}
-                  variant="outlined"
-                >
-                  Export JSON
+                  Eksporter PDF
                 </Button>
               </Box>
             </CardContent>

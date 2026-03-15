@@ -47,6 +47,7 @@ import {
 } from '@mui/icons-material';
 import type { SceneBreakdown} from '../models/casting';
 import { CastingShot } from '../models/casting';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 type VfxCategory = 'greenscreen' | 'tracking' | 'composite' | 'cgi' | 'cleanup' | 'animation' | 'matte_painting' | 'particle' | 'other';
 type VfxComplexity = 'simple' | 'medium' | 'complex' | 'hero';
@@ -87,6 +88,13 @@ interface VfxNotesProps {
   scenes: SceneBreakdown[];
   onNoteUpdate?: (note: VfxNote) => void;
 }
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 export const VfxNotes: React.FC<VfxNotesProps> = ({
   scenes,
@@ -664,6 +672,23 @@ export const VfxNotes: React.FC<VfxNotesProps> = ({
                 rows={2}
                 value={newNote.notes || ''}
                 onChange={(e) => setNewNote(prev => ({ ...prev, notes: e.target.value }))}
+              />
+              <GlobalMentionHelper
+                text={typeof newNote.notes === 'string' ? newNote.notes : ''}
+                localCandidates={[
+                  ...new Set(
+                    [
+                      ...scenes.map((scene) => `Scene ${scene.sceneNumber}`),
+                      ...notes.map((note) => note.assignedArtist || '').filter(Boolean),
+                    ].filter((value): value is string => typeof value === 'string' && value.trim().length >= 2),
+                  ),
+                ]}
+                onApplySuggestion={(name) =>
+                  setNewNote((prev) => ({
+                    ...prev,
+                    notes: applyMentionSuggestion(prev.notes, name),
+                  }))
+                }
               />
             </Grid>
           </Grid>

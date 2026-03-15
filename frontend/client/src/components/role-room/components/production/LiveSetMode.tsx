@@ -55,6 +55,7 @@ import {
   AvatarGroup,
   ToggleButtonGroup,
   ToggleButton,
+  useMediaQuery,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -92,22 +93,26 @@ import {
   ThumbUp as ThumbUpIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
-import type {
-  Take,
-  LiveSetStatus,
-  ShootingDay,
-  CameraId,
-  CameraMetadata} from '../../services/productionWorkflowService';
 import {
-  productionWorkflowService
+  productionWorkflowService,
+  type Take,
+  type LiveSetStatus,
+  type ShootingDay,
+  type CameraId,
+  type CameraMetadata,
 } from '../../services/productionWorkflowService';
-import type { LiveSetCan, LiveSetRole} from '../../services/liveSetPermissionsService';
-import { buildCan, ROLE_LABELS } from '../../services/liveSetPermissionsService';
+import { buildCan, ROLE_LABELS, type LiveSetCan, type LiveSetRole } from '../../services/liveSetPermissionsService';
 import * as Outbox from '../../services/liveSetOutboxService';
-import type { PresenceEntry, LiveSetWsMessage, LiveSetMsgType } from '../../services/liveSetRealtimeService';
-import { useLiveSetRealtime } from '../../services/liveSetRealtimeService';
-import type { ExportContext } from '../../services/liveSetExportService';
-import { exportDailyReportPdf, exportCirclePrintPdf, exportTakesCsv, exportNotesCsv } from '../../services/liveSetExportService';
+import { useLiveSetRealtime, type PresenceEntry, type LiveSetWsMessage, type LiveSetMsgType } from '../../services/liveSetRealtimeService';
+import {
+  exportDailyReportPdf,
+  exportCirclePrintPdf,
+  exportTakesCsv,
+  exportNotesCsv,
+  type ExportContext,
+} from '../../services/liveSetExportService';
+import globalTagService from '../../services/globalTagService';
+import GlobalMentionHelper from '../shared/GlobalMentionHelper';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -253,6 +258,27 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
     soundAlerts:   true,
   });
 
+  useEffect(() => {
+    if (!settings.darkMode) {
+      setSettings((previous) => ({ ...previous, darkMode: true }));
+    }
+  }, [settings.darkMode]);
+
+  // ── Responsive scaling (2K/4K/5K) ────────────────────────────────────────
+  const is2K = useMediaQuery('(min-width: 2048px)');
+  const is4K = useMediaQuery('(min-width: 3840px)');
+  const is5K = useMediaQuery('(min-width: 5120px)');
+  const liveSetShellMaxWidth = is5K ? 4700 : is4K ? 3900 : is2K ? 3000 : '100%';
+  const leftPanelWidth = is5K ? 430 : is4K ? 390 : is2K ? 340 : 280;
+  const rightPanelWidth = is5K ? 470 : is4K ? 410 : is2K ? 360 : 300;
+  const heroButtonHeight = is5K ? 104 : is4K ? 94 : is2K ? 84 : 76;
+  const heroButtonFontSize = is5K ? '2.35rem' : is4K ? '2.05rem' : is2K ? '1.9rem' : '1.75rem';
+  const heroButtonIconSize = is5K ? 44 : is4K ? 38 : is2K ? 34 : 32;
+  const dialSize = is5K ? 224 : is4K ? 202 : is2K ? 186 : 174;
+  const dialInnerSize = dialSize - 20;
+  const topBarPx = is5K ? 5 : is4K ? 4 : is2K ? 3 : 2.5;
+  const centerPadX = is5K ? 4 : is4K ? 3.5 : is2K ? 3 : 2.5;
+
   // ── Refs ──────────────────────────────────────────────────────────────────
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -314,6 +340,15 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
     onMessage: handleWsMessage,
     enabled:   true,
   });
+
+  const mentionCandidates = useMemo(
+    () => [
+      ...activeUsers.map((user) => user.userId),
+      ...continuityNotes.map((note) => note.createdBy),
+      userId,
+    ].filter((value): value is string => typeof value === 'string' && value.trim().length >= 2),
+    [activeUsers, continuityNotes, userId],
+  );
 
   // Sync outbox when connection established
   useEffect(() => {
@@ -437,6 +472,16 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
       synced:    false,
     };
     persistNotes([note, ...continuityNotes]);
+    if (label.trim().length > 0) {
+      void globalTagService
+        .add([
+          userId,
+          ...globalTagService.parseExplicitMentions(label),
+        ])
+        .catch((error) => {
+          console.warn('Kunne ikke oppdatere globalt tag-register fra live quick-note:', error);
+        });
+    }
     setSnack({ msg: `"${label}" loggført`, severity: 'info' });
   }, [liveStatus, userId, continuityNotes, persistNotes]);
 
@@ -588,6 +633,14 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
       synced:    false,
     };
     persistNotes([note, ...continuityNotes]);
+    void globalTagService
+      .add([
+        userId,
+        ...globalTagService.parseExplicitMentions(noteForm.note),
+      ])
+      .catch((error) => {
+        console.warn('Kunne ikke oppdatere globalt tag-register fra live notat:', error);
+      });
     setNoteForm({ type: 'general', note: '' });
     setShowNoteDialog(false);
     setSnack({ msg: 'Notat lagret lokalt', severity: 'success' });
@@ -669,6 +722,47 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
     : 0;
   const unsyncedCount = continuityNotes.filter(n => !n.synced).length;
   const outboxCount   = Outbox.pendingCount(projectId, shootingDayId);
+  const totalUnsynced = outboxCount + unsyncedCount;
+  const currentSceneId = liveStatus?.currentScene ?? '';
+  const currentSceneIndex = shootingDay?.scenes ? shootingDay.scenes.indexOf(currentSceneId) : -1;
+  const nextSceneId = currentSceneIndex >= 0 && shootingDay?.scenes
+    ? shootingDay.scenes[currentSceneIndex + 1] ?? null
+    : null;
+  const crewTotal = Object.keys(shootingDay?.crewCallTimes ?? {}).length;
+  const crewPresent = activeUsers.length;
+  const equipmentTotal = shootingDay?.equipmentNeeded?.length ?? 0;
+  const weatherCondition = shootingDay?.weather?.condition ?? null;
+  const weatherLabel = weatherCondition
+    ? ({
+        sunny: 'Sol',
+        cloudy: 'Skyet',
+        rain: 'Regn',
+        snow: 'Snø',
+        fog: 'Tåke',
+        wind: 'Vind',
+      } as const)[weatherCondition]
+    : 'Vær ukjent';
+  const weatherRiskLabel = weatherCondition
+    ? ({
+        sunny: 'Lav risiko',
+        cloudy: 'Lav risiko',
+        rain: 'Forhøyet risiko',
+        snow: 'Høy risiko',
+        fog: 'Middels risiko',
+        wind: 'Middels risiko',
+      } as const)[weatherCondition]
+    : 'Middels risiko';
+  const weatherRiskColor =
+    weatherRiskLabel === 'Høy risiko'
+      ? '#ef4444'
+      : weatherRiskLabel === 'Forhøyet risiko'
+        ? '#f59e0b'
+        : weatherRiskLabel === 'Middels risiko'
+          ? '#facc15'
+          : '#22c55e';
+  const shootingDayLabel = shootingDay?.date
+    ? new Intl.DateTimeFormat('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(shootingDay.date))
+    : null;
 
   // Studio: Unified activity feed — interleaved takes + notes ──────────────
   const activityFeed = useMemo(() => {
@@ -698,12 +792,11 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
   // Render
   // ─────────────────────────────────────────────────────────────────────────
 
-  const dark   = settings.darkMode;
-  const bg     = dark ? '#0d0d0d' : '#f5f5f5';
-  const panel  = dark ? '#1a1a1a' : '#ffffff';
-  const border = dark ? '#2a2a2a' : '#e0e0e0';
-  const text   = dark ? '#ffffff' : '#1a1a1a';
-  const muted  = dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)';
+  const bg     = '#0d0d0d';
+  const panel  = '#1a1a1a';
+  const border = '#2a2a2a';
+  const text   = '#ffffff';
+  const muted  = 'rgba(255,255,255,0.5)';
 
   return (
     <Box sx={{ position: 'fixed', inset: 0, bgcolor: bg, color: text, zIndex: 9999,
@@ -711,8 +804,9 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
 
       {/* ── Top bar ───────────────────────────────────────────────────────── */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                 px: 2.5, py: 1.25, borderBottom: `1px solid ${border}`, flexShrink: 0,
-                 bgcolor: dark ? '#111' : '#fff' }}>
+                 width: '100%', maxWidth: liveSetShellMaxWidth, mx: 'auto',
+                 px: topBarPx, py: is2K ? 1.5 : 1.25, borderBottom: `1px solid ${border}`, flexShrink: 0,
+                 bgcolor: '#111' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Typography variant="h6" fontWeight={900} sx={{ letterSpacing: '0.08em', fontSize: '1.1rem' }}>
             🎬 LIVE SET MODE
@@ -794,6 +888,133 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
         </Box>
       </Box>
 
+      {/* ── Ops overview rail (more structured at-a-glance info) ─────────── */}
+      <Box
+        sx={{
+          width: '100%',
+          maxWidth: liveSetShellMaxWidth,
+          mx: 'auto',
+          px: topBarPx,
+          py: is2K ? 1.15 : 0.95,
+          borderBottom: `1px solid ${border}`,
+          bgcolor: '#060d1f',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 0.85,
+          flexShrink: 0,
+        }}
+      >
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
+          <Chip
+            icon={<MovieIcon sx={{ fontSize: 14 }} />}
+            label={`Aktiv scene · ${currentSceneId ? `scene-${currentSceneId.replace('scene-', '')}` : 'ikke valgt'}`}
+            size="small"
+            sx={{
+              bgcolor: 'rgba(56,189,248,0.12)',
+              color: '#7dd3fc',
+              border: '1px solid rgba(56,189,248,0.35)',
+              height: is2K ? 26 : 24,
+              fontSize: is2K ? '0.78rem' : '0.73rem',
+            }}
+          />
+          <Chip
+            icon={<RecordIcon sx={{ fontSize: 12 }} />}
+            label={`Fase · ${isRolling ? 'Opptak' : 'Forberedelse'}`}
+            size="small"
+            sx={{
+              bgcolor: isRolling ? 'rgba(239,68,68,0.16)' : 'rgba(139,92,246,0.14)',
+              color: isRolling ? '#fca5a5' : '#c4b5fd',
+              border: isRolling ? '1px solid rgba(239,68,68,0.35)' : '1px solid rgba(139,92,246,0.35)',
+              height: is2K ? 26 : 24,
+              fontSize: is2K ? '0.78rem' : '0.73rem',
+            }}
+          />
+          <Chip
+            icon={totalUnsynced > 0 ? <RefreshIcon sx={{ fontSize: 12 }} /> : <OnlineIcon sx={{ fontSize: 12 }} />}
+            label={totalUnsynced > 0 ? `Shot List-synk pågår (${totalUnsynced})` : 'Shot List-synk klar'}
+            size="small"
+            sx={{
+              bgcolor: totalUnsynced > 0 ? 'rgba(245,158,11,0.14)' : 'rgba(16,185,129,0.14)',
+              color: totalUnsynced > 0 ? '#fcd34d' : '#6ee7b7',
+              border: totalUnsynced > 0 ? '1px solid rgba(245,158,11,0.35)' : '1px solid rgba(16,185,129,0.35)',
+              height: is2K ? 26 : 24,
+              fontSize: is2K ? '0.78rem' : '0.73rem',
+            }}
+          />
+          {nextSceneId && (
+            <Chip
+              icon={<NextSetupIcon sx={{ fontSize: 14 }} />}
+              label={`Neste · ${nextSceneId}`}
+              size="small"
+              sx={{
+                bgcolor: 'rgba(59,130,246,0.14)',
+                color: '#93c5fd',
+                border: '1px solid rgba(59,130,246,0.35)',
+                height: is2K ? 26 : 24,
+                fontSize: is2K ? '0.78rem' : '0.73rem',
+              }}
+            />
+          )}
+        </Box>
+
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
+          <Chip
+            icon={<PeopleIcon sx={{ fontSize: 14 }} />}
+            label={`Crew til stede ${crewPresent}/${crewTotal || '-'} `}
+            size="small"
+            sx={{
+              bgcolor: 'rgba(37,99,235,0.14)',
+              color: '#93c5fd',
+              border: '1px solid rgba(37,99,235,0.35)',
+              height: is2K ? 26 : 24,
+              fontSize: is2K ? '0.78rem' : '0.73rem',
+            }}
+          />
+          <Chip
+            icon={<CameraIcon sx={{ fontSize: 14 }} />}
+            label={`Utstyr klart ${progress.completedSetups}/${Math.max(progress.totalSetups, equipmentTotal || 1)}`}
+            size="small"
+            sx={{
+              bgcolor: 'rgba(16,185,129,0.14)',
+              color: '#6ee7b7',
+              border: '1px solid rgba(16,185,129,0.35)',
+              height: is2K ? 26 : 24,
+              fontSize: is2K ? '0.78rem' : '0.73rem',
+            }}
+          />
+          <Chip
+            icon={<LightbulbIcon sx={{ fontSize: 14 }} />}
+            label={`Vær · ${weatherLabel}${shootingDay?.weather?.temperature !== undefined ? ` ${shootingDay.weather.temperature}°C` : ''}`}
+            size="small"
+            sx={{
+              bgcolor: 'rgba(56,189,248,0.12)',
+              color: '#7dd3fc',
+              border: '1px solid rgba(56,189,248,0.35)',
+              height: is2K ? 26 : 24,
+              fontSize: is2K ? '0.78rem' : '0.73rem',
+            }}
+          />
+          <Chip
+            icon={<WarningIcon sx={{ fontSize: 14 }} />}
+            label={weatherRiskLabel}
+            size="small"
+            sx={{
+              bgcolor: `${weatherRiskColor}22`,
+              color: weatherRiskColor,
+              border: `1px solid ${weatherRiskColor}66`,
+              height: is2K ? 26 : 24,
+              fontSize: is2K ? '0.78rem' : '0.73rem',
+              fontWeight: 700,
+            }}
+          />
+          {shootingDayLabel && (
+            <Typography sx={{ ml: 0.35, color: muted, fontSize: is2K ? '0.76rem' : '0.7rem', fontWeight: 500 }}>
+              {shootingDayLabel}
+            </Typography>
+          )}
+        </Box>
+      </Box>
+
       {/* ── Error banner ──────────────────────────────────────────────────── */}
       {error && (
         <Alert severity="error" sx={{ borderRadius: 0, py: 0.5 }}
@@ -803,42 +1024,42 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
       )}
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
-      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', width: '100%', maxWidth: liveSetShellMaxWidth, mx: 'auto' }}>
 
         {/* ── Left panel ── */}
-        <Box sx={{ width: { xs: '100%', md: 280 }, flexShrink: 0,
+        <Box sx={{ width: { xs: '100%', md: leftPanelWidth }, flexShrink: 0,
                    display: 'flex', flexDirection: 'column', overflow: 'hidden',
-                   bgcolor: dark ? '#0a0a0a' : '#f0f0f0',
+                   bgcolor: '#0a0a0a',
                    borderRight: { md: `1px solid ${border}` } }}>
 
           {/* ── ROLL / CUT hero button ──────────────────────────────────── */}
           {!isRolling ? (
             <Button onClick={handleRoll} disabled={loading && liveStatus === null} fullWidth
-              sx={{ height: 76, borderRadius: 0, fontSize: '1.75rem', fontWeight: 900,
+              sx={{ height: heroButtonHeight, borderRadius: 0, fontSize: heroButtonFontSize, fontWeight: 900,
                     letterSpacing: '0.15em', flexShrink: 0, fontFamily: 'monospace',
                     bgcolor: '#c62828', color: '#fff', '&:hover': { bgcolor: '#b71c1c' },
                     borderBottom: '3px solid #8e0000' }}>
-              <PlayIcon sx={{ fontSize: 32, mr: 1 }} />
+              <PlayIcon sx={{ fontSize: heroButtonIconSize, mr: 1 }} />
               ROLL
             </Button>
           ) : (
             <Button onClick={() => openCutDialog('ok')} fullWidth
-              sx={{ height: 76, borderRadius: 0, fontSize: '1.75rem', fontWeight: 900,
+              sx={{ height: heroButtonHeight, borderRadius: 0, fontSize: heroButtonFontSize, fontWeight: 900,
                     letterSpacing: '0.15em', flexShrink: 0, fontFamily: 'monospace',
-                    bgcolor: dark ? '#1c1c1c' : '#e8e8e8', color: text,
+                    bgcolor: '#1c1c1c', color: text,
                     borderBottom: `3px solid ${border}`,
-                    '&:hover': { bgcolor: dark ? '#252525' : '#ddd' } }}>
-              <StopIcon sx={{ fontSize: 32, mr: 1 }} />
+                    '&:hover': { bgcolor: '#252525' } }}>
+              <StopIcon sx={{ fontSize: heroButtonIconSize, mr: 1 }} />
               CUT
             </Button>
           )}
 
-          <Box sx={{ px: 2, py: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5,
+          <Box sx={{ px: is2K ? 2.25 : 2, py: is2K ? 1.75 : 1.5, display: 'flex', flexDirection: 'column', gap: is2K ? 1.75 : 1.5,
                      flex: 1, overflowY: 'auto' }}>
 
             {/* ── Circular dial timer ─────────────────────────────────── */}
             {settings.showTimer && (
-              <Box sx={{ position: 'relative', width: 174, height: 174, borderRadius: '50%',
+              <Box sx={{ position: 'relative', width: dialSize, height: dialSize, borderRadius: '50%',
                          mx: 'auto', my: 0.5, flexShrink: 0,
                          border: `5px solid ${isRolling ? '#c62828' : '#2a2a2a'}`,
                          boxShadow: isRolling
@@ -846,15 +1067,13 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
                            : 'none',
                          display: 'flex', alignItems: 'center', justifyContent: 'center',
                          transition: 'border-color 0.4s, box-shadow 0.4s',
-                         background: dark
-                           ? 'radial-gradient(circle at 40% 40%, #1c1c1c 60%, #111 100%)'
-                           : 'radial-gradient(circle at 40% 40%, #fff 60%, #eee 100%)' }}>
-                <Box sx={{ position: 'absolute', width: 154, height: 154, borderRadius: '50%',
+                         background: 'radial-gradient(circle at 40% 40%, #1c1c1c 60%, #111 100%)' }}>
+                <Box sx={{ position: 'absolute', width: dialInnerSize, height: dialInnerSize, borderRadius: '50%',
                            border: `1px solid ${isRolling ? 'rgba(198,40,40,0.3)' : border}`,
                            transition: 'border-color 0.4s' }} />
                 <Box sx={{ zIndex: 1, textAlign: 'center' }}>
                   <Typography fontFamily="monospace" fontWeight={900} lineHeight={1}
-                    sx={{ fontSize: '2.5rem', color: isRolling ? '#ef5350' : '#c8a96e',
+                    sx={{ fontSize: is5K ? '3rem' : is4K ? '2.8rem' : is2K ? '2.65rem' : '2.5rem', color: isRolling ? '#ef5350' : '#c8a96e',
                           letterSpacing: '-0.02em', display: 'block' }}>
                     {formatTime(elapsedTime)}
                   </Typography>
@@ -873,7 +1092,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
                 { label: 'SCENE', value: liveStatus?.currentScene?.replace('scene-', '') || '--' },
                 { label: 'TAKE',  value: String(liveStatus?.currentTake ?? 1).padStart(2, '0') },
               ] as { label: string; value: string }[]).map(({ label, value }) => (
-                <Box key={label} sx={{ flex: 1, bgcolor: dark ? '#1a1a1a' : '#e4e4e4',
+                <Box key={label} sx={{ flex: 1, bgcolor: '#1a1a1a',
                                        borderRadius: 1.5, p: 1, textAlign: 'center',
                                        border: `1px solid ${border}` }}>
                   <Typography variant="caption"
@@ -934,7 +1153,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
                     startIcon={qn.icon}
                     sx={{ borderColor: border, color: text, justifyContent: 'flex-start',
                           fontSize: '0.68rem', py: 0.75, px: 1, textTransform: 'none',
-                          '&:hover': { bgcolor: dark ? '#1a1a1a' : '#e4e4e4', borderColor: '#555' } }}>
+                          '&:hover': { bgcolor: '#1a1a1a', borderColor: '#555' } }}>
                     {qn.label}
                   </Button>
                 ))}
@@ -967,7 +1186,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
                    borderRight: `1px solid ${border}`, overflowY: 'auto', minWidth: 0 }}>
 
           {/* Scene header */}
-          <Box sx={{ px: 2.5, pt: 2, pb: 1.5, borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
+          <Box sx={{ px: centerPadX, pt: is2K ? 2.25 : 2, pb: is2K ? 1.75 : 1.5, borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
             <Typography variant="overline"
               sx={{ color: muted, fontSize: '0.65rem', letterSpacing: '0.14em', display: 'block' }}>
               CURRENT SCENE
@@ -1000,16 +1219,16 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
           </Box>
 
           {/* Storyboard image grid — 1 large + 2 thumbnails */}
-          <Box sx={{ px: 2.5, pt: 2, pb: 1, flexShrink: 0 }}>
+          <Box sx={{ px: centerPadX, pt: is2K ? 2.25 : 2, pb: is2K ? 1.25 : 1, flexShrink: 0 }}>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 0.65fr',
                        gridTemplateRows: 'auto auto', gap: 0.75 }}>
               <Box sx={{ gridRow: '1 / 3', aspectRatio: '16/9',
-                         bgcolor: dark ? '#181818' : '#ddd',
+                         bgcolor: '#181818',
                          borderRadius: 1.5, border: `1px solid ${border}`,
                          display: 'flex', flexDirection: 'column',
                          alignItems: 'center', justifyContent: 'center',
-                         minHeight: 140, position: 'relative', overflow: 'hidden' }}>
-                <PhotoCameraIcon sx={{ color: muted, fontSize: 38, opacity: 0.6 }} />
+                         minHeight: is2K ? 176 : 140, position: 'relative', overflow: 'hidden' }}>
+                <PhotoCameraIcon sx={{ color: muted, fontSize: is2K ? 44 : 38, opacity: 0.6 }} />
                 <Typography variant="caption"
                   sx={{ color: muted, fontSize: '0.65rem', position: 'absolute', bottom: 8,
                         left: 0, right: 0, textAlign: 'center', letterSpacing: '0.06em' }}>
@@ -1019,7 +1238,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
                 </Typography>
               </Box>
               {[1, 2].map(i => (
-                <Box key={i} sx={{ aspectRatio: '16/9', bgcolor: dark ? '#141414' : '#e4e4e4',
+                <Box key={i} sx={{ aspectRatio: '16/9', bgcolor: '#141414',
                                    borderRadius: 1, border: `1px solid ${border}`,
                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                                    minHeight: 60 }}>
@@ -1030,7 +1249,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
           </Box>
 
           {/* Scene description + camera data bar */}
-          <Box sx={{ px: 2.5, pb: 1.5, flexShrink: 0 }}>
+          <Box sx={{ px: centerPadX, pb: is2K ? 1.75 : 1.5, flexShrink: 0 }}>
             <Typography variant="body2" sx={{ color: text, lineHeight: 1.7, mb: 1.25 }}>
               {shootingDay?.notes
                 ? shootingDay.notes
@@ -1066,8 +1285,8 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
           </Box>
 
           {/* ─ Next Scene separator bar ─ */}
-          <Box sx={{ px: 2, py: 0.75, display: 'flex', alignItems: 'center', gap: 1,
-                     borderBottom: `1px solid ${border}`, bgcolor: dark ? '#0f0f0f' : '#f2f2f2',
+          <Box sx={{ px: is2K ? 2.5 : 2, py: 0.75, display: 'flex', alignItems: 'center', gap: 1,
+                     borderBottom: `1px solid ${border}`, bgcolor: '#0f0f0f',
                      flexShrink: 0 }}>
             <NextSetupIcon sx={{ color: muted, fontSize: 18 }} />
             <Typography variant="body2" fontWeight={700}
@@ -1109,7 +1328,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
           </Box>
 
           {/* Collaborative activity feed */}
-          <Box sx={{ flex: 1, overflowY: 'auto', px: 2.5, py: 1.5 }}>
+          <Box sx={{ flex: 1, overflowY: 'auto', px: centerPadX, py: is2K ? 1.75 : 1.5 }}>
             {activityFeed.length === 0 && (
               <Typography variant="body2" sx={{ color: muted, textAlign: 'center', mt: 5 }}>
                 Ingen aktivitet ennå
@@ -1167,13 +1386,13 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
         </Box>
 
         {/* ── Right panel — Activity ────────────────────────────────────────── */}
-        <Box sx={{ width: { xs: '100%', md: 300 }, flexShrink: 0,
+        <Box sx={{ width: { xs: '100%', md: rightPanelWidth }, flexShrink: 0,
                    display: 'flex', flexDirection: 'column', overflow: 'hidden',
-                   bgcolor: dark ? '#0a0a0a' : '#fafafa',
+                   bgcolor: '#0a0a0a',
                    borderLeft: { md: `1px solid ${border}` } }}>
 
           {/* Header */}
-          <Box sx={{ px: 2, pt: 1.5, pb: 0.75, borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
+          <Box sx={{ px: is2K ? 2.4 : 2, pt: is2K ? 1.75 : 1.5, pb: 0.75, borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
               <Typography variant="subtitle2" fontWeight={900}
                 sx={{ fontSize: '0.82rem', letterSpacing: '0.12em' }}>
@@ -1232,11 +1451,10 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
                   onClick={() => setRightPanelTab(i as 0 | 1)}
                   sx={{ flex: 1, py: 0.4, fontSize: '0.68rem', fontWeight: 700,
                         letterSpacing: '0.06em', textTransform: 'none', borderRadius: 1,
-                        bgcolor: rightPanelTab === i
-                          ? (dark ? '#1e1e1e' : '#e4e4e4') : 'transparent',
+                        bgcolor: rightPanelTab === i ? '#1e1e1e' : 'transparent',
                         color: rightPanelTab === i ? text : muted,
                         border: rightPanelTab === i ? `1px solid ${border}` : 'none',
-                        '&:hover': { bgcolor: dark ? '#1e1e1e' : '#e4e4e4', color: text } }}>
+                        '&:hover': { bgcolor: '#1e1e1e', color: text } }}>
                   {label}
                 </Button>
               ))}
@@ -1391,7 +1609,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
 
           {/* ── Inline add note input ──────────────────────────────────────── */}
           <Box sx={{ borderTop: `1px solid ${border}`, flexShrink: 0,
-                     bgcolor: dark ? '#0f0f0f' : '#f5f5f5' }}>
+                     bgcolor: '#0f0f0f' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', px: 1.5, py: 0.75, gap: 0.75 }}>
               <AddIcon sx={{ color: muted, fontSize: 18, flexShrink: 0 }} />
               <TextField size="small" placeholder="Add a note…" fullWidth variant="standard"
@@ -1417,15 +1635,28 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
                 </IconButton>
               </Tooltip>
             </Box>
+            <Box sx={{ px: 1.5, pb: 0.25 }}>
+              <GlobalMentionHelper
+                text={inlineNoteText}
+                localCandidates={mentionCandidates}
+                onApplySuggestion={(name) => {
+                  setInlineNoteText((previous) => {
+                    if (!previous.trim()) return name;
+                    const replaced = previous.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+                    return replaced !== previous ? replaced : `${previous.trimEnd()} ${name}`;
+                  });
+                }}
+              />
+            </Box>
             {/* Quick action buttons — QUICK_NOTES constant wired here */}
             <Box sx={{ display: 'flex', justifyContent: 'space-around', px: 1, pb: 1, gap: 0.5 }}>
               {QUICK_NOTES.map((qn, i) => (
                 <Tooltip key={i} title={qn.label}>
                   <IconButton size="small"
                     onClick={() => { addQuickNote(qn.type, qn.label); setRightPanelTab(1); }}
-                    sx={{ color: muted, bgcolor: dark ? '#1a1a1a' : '#e8e8e8',
+                    sx={{ color: muted, bgcolor: '#1a1a1a',
                           borderRadius: 1, p: 0.75,
-                          '&:hover': { bgcolor: dark ? '#242424' : '#ddd' } }}>
+                          '&:hover': { bgcolor: '#242424' } }}>
                     {qn.icon}
                   </IconButton>
                 </Tooltip>
@@ -1532,6 +1763,23 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
             value={noteForm.note}
             onChange={e => setNoteForm({ ...noteForm, note: e.target.value })}
             placeholder="Beskriv notatet…" />
+          <GlobalMentionHelper
+            text={noteForm.note}
+            localCandidates={mentionCandidates}
+            onApplySuggestion={(name) => {
+              setNoteForm((previous) => {
+                const current = previous.note;
+                if (!current.trim()) {
+                  return { ...previous, note: name };
+                }
+                const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+                return {
+                  ...previous,
+                  note: replaced !== current ? replaced : `${current.trimEnd()} ${name}`,
+                };
+              });
+            }}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowNoteDialog(false)}>Avbryt</Button>
@@ -1546,9 +1794,9 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
         maxWidth="xs" fullWidth PaperProps={{ sx: { bgcolor: panel, color: text } }}>
         <DialogTitle>Live Set Innstillinger</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-          <FormControlLabel control={<Switch checked={settings.darkMode}
-            onChange={e => setSettings({ ...settings, darkMode: e.target.checked })} />}
-            label="Mørk modus" />
+          <Typography variant="body2" sx={{ color: muted, mb: 0.5 }}>
+            Live Set bruker kun mørk modus.
+          </Typography>
           <FormControlLabel control={<Switch checked={settings.showTimer}
             onChange={e => setSettings({ ...settings, showTimer: e.target.checked })} />}
             label="Vis timer" />

@@ -120,6 +120,9 @@ export interface AutoEditClipExplainability {
   cameraTag: string | null;
   speakerTag: string | null;
   feedback: AutoEditFeedbackValue | null;
+  requiresExternalBroll?: boolean;
+  externalBrollSuggestions?: string[];
+  fallbackMessage?: string | null;
   reasons: string[];
 }
 
@@ -981,6 +984,14 @@ function buildExplainability(
   const impactPhraseHits = Math.max(0, Math.round(clipSignal?.impactPhraseHits || 0));
   const fillerHits = Math.max(0, Math.round(clipSignal?.fillerHits || 0));
   const transcriptExcerpt = buildTranscriptExcerpt(sourceClip);
+  const metadata = isRecord(sourceClip.metadata) ? sourceClip.metadata : {};
+  const requiresExternalBroll = metadata.requiresExternalBroll === true;
+  const externalBrollSuggestions = Array.isArray(metadata.externalBrollSuggestions)
+    ? metadata.externalBrollSuggestions
+        .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        .slice(0, 8)
+    : [];
+  const fallbackMessage = readString(metadata.fallbackMessage);
 
   const reasons: string[] = [];
   if (goalMatch >= 0.62) {
@@ -1028,6 +1039,9 @@ function buildExplainability(
   if (feedback === 'rejected') {
     reasons.push('Penalized by prior human rejection.');
   }
+  if (requiresExternalBroll) {
+    reasons.push('No suitable internal B-roll found; contextual external B-roll suggestions are available.');
+  }
   if (reasons.length === 0) {
     reasons.push('Selected by weighted quality and pacing constraints.');
   }
@@ -1057,6 +1071,9 @@ function buildExplainability(
     cameraTag: resolveCameraTag(sourceClip),
     speakerTag: resolveSpeakerTag(sourceClip),
     feedback: feedback || null,
+    requiresExternalBroll,
+    externalBrollSuggestions,
+    fallbackMessage,
     reasons,
   };
 }

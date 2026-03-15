@@ -67,13 +67,12 @@ import {
   Rule as RuleIcon,
 } from '@mui/icons-material';
 import { StatsIcon } from '../icons/CastingIcons';
-import type {
-  GrammarError,
-  GrammarSuggestion,
-  GrammarCheckResult,
-  UserPreferences} from '../../services/grammarMLService';
 import {
-  grammarMLService
+  grammarMLService,
+  type GrammarError,
+  type GrammarSuggestion,
+  type GrammarCheckResult,
+  type UserPreferences,
 } from '../../services/grammarMLService';
 import { AggressivenessSlider, GrammarStatsWidget } from './GrammarSuggestionsOverlay';
 
@@ -159,7 +158,6 @@ export const GrammarCheckPanel: React.FC<GrammarCheckPanelProps> = ({
   onContentChange,
   isOpen = true,
   onClose,
-  darkMode = true,
 }) => {
   // State
   const [result, setResult] = useState<GrammarCheckResult | null>(null);
@@ -319,9 +317,9 @@ export const GrammarCheckPanel: React.FC<GrammarCheckPanelProps> = ({
   }, [result]);
 
   // Styles
-  const bgColor = darkMode ? 'rgba(20, 20, 35, 0.95)' : '#fff';
-  const textColor = darkMode ? '#fff' : '#000';
-  const borderColor = darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  const bgColor = 'rgba(20, 20, 35, 0.95)';
+  const textColor = '#fff';
+  const borderColor = 'rgba(255,255,255,0.1)';
 
   if (!isOpen) return null;
 
@@ -645,7 +643,6 @@ export const GrammarCheckPanel: React.FC<GrammarCheckPanelProps> = ({
             <AggressivenessSlider
               value={preferences.aggressiveness}
               onChange={(v) => handlePreferenceChange({ aggressiveness: v })}
-              darkMode={darkMode}
             />
 
             <Divider sx={{ my: 2 }} />
@@ -740,7 +737,7 @@ export const GrammarCheckPanel: React.FC<GrammarCheckPanelProps> = ({
         {/* Learning Tab */}
         {tabValue === 'learning' && (
           <Box sx={{ p: 2 }}>
-            <GrammarStatsWidget darkMode={darkMode} />
+            <GrammarStatsWidget />
 
             <Divider sx={{ my: 2 }} />
 
@@ -824,7 +821,7 @@ export const GrammarCheckPanel: React.FC<GrammarCheckPanelProps> = ({
               sx={{
                 mb: 2,
                 '& .MuiOutlinedInput-root': {
-                  bgcolor: darkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)',
+                  bgcolor: 'rgba(0,0,0,0.2)',
                 },
               }}
             />

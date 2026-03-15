@@ -43,12 +43,20 @@ import type { Consent, ConsentType, Candidate, ConsentInvitationStatus } from '.
 import { consentService } from '../services/consentService';
 import { castingService } from '../services/castingService';
 import { Z_INDEX } from '../config/zIndex';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface ConsentManagementPanelProps {
   projectId: string;
   candidateId: string;
   onUpdate?: () => void;
 }
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: ConsentManagementPanelProps) {
   const consentModalZIndex = Z_INDEX.dialog + 50;
@@ -639,6 +647,18 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                 },
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
               }}
+            />
+            <GlobalMentionHelper
+              text={formData.notes || ''}
+              localCandidates={candidate?.name ? [candidate.name] : []}
+              onApplySuggestion={(name) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  notes: applyMentionSuggestion(prev.notes, name),
+                }))
+              }
+              autoTagTitle="Auto-tagget i notater"
+              suggestionTitle="Mener du?"
             />
           </Stack>
           </Box>

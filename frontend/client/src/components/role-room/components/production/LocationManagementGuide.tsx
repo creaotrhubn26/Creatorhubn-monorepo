@@ -215,7 +215,7 @@ const STEPS: Step[] = [
         body: (
           <>
             <Typography variant="body2" sx={{ lineHeight: 1.8, mb: 1.2 }}>
-              Location Management er kontrollsenteret for alle produksjonssteder i prosjektet.
+              Location Management er kontrollsenteret for alle produksjonslokasjoner i prosjektet.
               Panelet samler lokasjonsdata, kapasitet, fasiliteter, kontaktinformasjon og koblinger
               til scener, shot list og storyboard i ett sted.
             </Typography>

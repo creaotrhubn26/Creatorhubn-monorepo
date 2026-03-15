@@ -2797,7 +2797,7 @@ function AuditionSchedulePanelInner({
               }}
               MenuProps={{ slotProps: { paper: { sx: { bgcolor: '#1c2128', color: '#fff' } } } }}
             >
-              <MenuItem value="all">Alle steder</MenuItem>
+              <MenuItem value="all">Alle lokasjoner</MenuItem>
               {uniqueLocations.map(loc => (
                 <MenuItem key={loc} value={loc} sx={{ fontSize: 13 }}>{loc}</MenuItem>
               ))}

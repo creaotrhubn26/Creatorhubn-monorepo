@@ -133,6 +133,46 @@ export interface CastingSchedule {
   updated_at?: string;
 }
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+
+const readFirstNonEmptyString = (...values: unknown[]): string | undefined => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+};
+
+const normalizeCrewMember = (crew: CastingCrew): CastingCrew => {
+  const source = asRecord(crew) ?? {};
+  const nested = asRecord(source.crew_data) ?? asRecord(source.crewData);
+  const role = readFirstNonEmptyString(
+    source.role,
+    source.crewRole,
+    source.crew_role,
+    source.position,
+    source.title,
+    source.jobTitle,
+    source.job_title,
+    nested?.role,
+    nested?.crewRole,
+    nested?.position,
+    nested?.title,
+    source.department,
+  ) || 'Crew-medlem';
+
+  if (crew.role === role) {
+    return crew;
+  }
+
+  return {
+    ...crew,
+    role,
+  };
+};
+
 export const favoritesApi = {
   get: async (projectId: string, favoriteType: string): Promise<string[]> => {
     try {
@@ -208,8 +248,29 @@ export const projectsApi = {
 
 export const candidatesApi = {
   getAll: async (projectId: string): Promise<CastingCandidate[]> => {
-    const result = await apiRequest<{ candidates: CastingCandidate[] }>(`/projects/${projectId}/candidates`);
-    return result.candidates;
+    const result = await apiRequest<{ candidates?: CastingCandidate[] } | CastingCandidate[]>(`/projects/${projectId}/candidates`);
+    if (Array.isArray(result)) return result;
+    return Array.isArray(result.candidates) ? result.candidates : [];
+  },
+
+  createForProject: async (
+    projectId: string,
+    payload: { name: string; email?: string; phone?: string; agency?: string; notes?: string }
+  ): Promise<CastingCandidate> => {
+    const result = await apiRequest<{ candidate?: CastingCandidate; id?: string; name?: string }>(
+      `/projects/${projectId}/candidates`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    );
+    if (result.candidate) return result.candidate;
+    return {
+      id: result.id || `candidate-${Date.now()}`,
+      project_id: projectId,
+      name: result.name || payload.name,
+      candidate_data: {},
+    };
   },
   
   save: async (candidate: Partial<CastingCandidate>): Promise<CastingCandidate> => {
@@ -249,8 +310,10 @@ export const rolesApi = {
 export const crewApi = {
   getAll: async (projectId: string): Promise<CastingCrew[]> => {
     const result = await apiRequest<{ crew?: CastingCrew[] } | CastingCrew[]>(`/projects/${projectId}/crew`);
-    if (Array.isArray(result)) return result;
-    return Array.isArray(result.crew) ? result.crew : [];
+    if (Array.isArray(result)) {
+      return result.map(normalizeCrewMember);
+    }
+    return Array.isArray(result.crew) ? result.crew.map(normalizeCrewMember) : [];
   },
   
   save: async (crew: Partial<CastingCrew>): Promise<CastingCrew> => {
@@ -258,7 +321,29 @@ export const crewApi = {
       method: 'POST',
       body: JSON.stringify(crew),
     });
-    return result.crew;
+    return normalizeCrewMember(result.crew);
+  },
+
+  createForProject: async (
+    projectId: string,
+    payload: { name: string; role?: string; email?: string; phone?: string; department?: string; rate?: string }
+  ): Promise<CastingCrew> => {
+    const result = await apiRequest<{ crew?: CastingCrew; id?: string; name?: string }>(
+      `/projects/${projectId}/crew`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    );
+    if (result.crew) return normalizeCrewMember(result.crew);
+    return normalizeCrewMember({
+      id: result.id || `crew-${Date.now()}`,
+      project_id: projectId,
+      name: result.name || payload.name,
+      role: payload.role,
+      department: payload.department,
+      crew_data: {},
+    });
   },
   
   delete: async (crewId: string): Promise<boolean> => {
@@ -369,7 +454,7 @@ export interface CalendarEvent {
   project_id: string;
   title: string;
   description?: string;
-  event_type: 'audition' | 'fitting' | 'rehearsal' | 'shooting' | 'general';
+  event_type: 'audition' | 'selection' | 'fitting' | 'rehearsal' | 'shooting' | 'general';
   start_time: string;
   end_time?: string;
   location_id?: string;
@@ -641,6 +726,12 @@ export interface Equipment {
   primary_location_id?: string;
   location_name?: string;
   notes?: string;
+  notes_author_name?: string;
+  notes_author_id?: string;
+  notes_updated_at?: string;
+  notesAuthorName?: string;
+  notesAuthorId?: string;
+  notesUpdatedAt?: string;
   image_url?: string;
   status: 'available' | 'in_use' | 'maintenance' | 'retired';
   is_global?: boolean;

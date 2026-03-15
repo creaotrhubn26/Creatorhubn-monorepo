@@ -184,7 +184,10 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
             <Box
               sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}
             >
-              <Typography variant="body1">Kurspris:</Typography>
+              <Typography variant="body1" sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                <AttachMoney fontSize="small" />
+                Kurspris:
+              </Typography>
               <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
                 {formatNOK(priceOre)}
               </Typography>
@@ -314,4 +317,3 @@ const CourseEnrollmentPaymentWithIntegration = withUniversalIntegration(CourseEn
 
 export { CourseEnrollmentPaymentWithIntegration as CourseEnrollmentPayment };
 export default CourseEnrollmentPaymentWithIntegration;
-

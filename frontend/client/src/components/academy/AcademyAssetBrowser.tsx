@@ -998,7 +998,7 @@ const AssetCardSkeleton = memo(() => (
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              {React.cloneElement(professionIcon as any, {
+              {React.cloneElement(professionIcon, {
                 sx: { color: professionColor, fontSize: 26 }
               })}
             </Box>
@@ -1052,16 +1052,16 @@ const AssetCardSkeleton = memo(() => (
       >
         <DialogTitle>Upload Academy Assets</DialogTitle>
         <DialogContent>
-          <UniversalFileUpload
-            onFilesSelected={handleAssetUpload}
-            maxFiles={20}
-            allowedTypes="all"
-            showFormatInfo={true}
-            enableGoogleDriveSync={true}
-            profession={currentProfession as any}
-            showStorageInfo={true}
-            onUploadComplete={() => setShowUploadModal(false)}
-          />
+            <UniversalFileUpload
+              onFilesSelected={handleAssetUpload}
+              maxFiles={20}
+              allowedTypes="all"
+              showFormatInfo={true}
+              enableGoogleDriveSync={true}
+              profession={currentProfession}
+              showStorageInfo={true}
+              onUploadComplete={() => setShowUploadModal(false)}
+            />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowUploadModal(false)}>Close</Button>

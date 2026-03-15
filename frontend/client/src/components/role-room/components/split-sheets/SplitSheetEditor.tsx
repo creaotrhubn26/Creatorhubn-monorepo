@@ -95,6 +95,7 @@ import {
 import SplitSheetSongFlowIntegration from './SplitSheetSongFlowIntegration';
 import SplitSheetPortalView from './SplitSheetPortalView';
 import PricingSelector from '../shared/PricingSelector';
+import GlobalMentionHelper from '../shared/GlobalMentionHelper';
 
 interface SplitSheetEditorProps {
   splitSheet?: SplitSheet | null;
@@ -107,6 +108,13 @@ interface SplitSheetEditorProps {
   onCancel: () => void;
   onSaveProject?: () => Promise<boolean>; // Called before saving split sheet to ensure project exists
 }
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 export default function SplitSheetEditor({
   splitSheet,
@@ -188,6 +196,15 @@ export default function SplitSheetEditor({
   const professionColor = getProfessionColor(profession);
   const professionDisplayName = getProfessionDisplayName(profession);
   const professionIcon = getProfessionIcon(profession);
+  const mentionCandidates = useMemo(() => {
+    const pool = new Set<string>();
+    contributors.forEach((contributor) => {
+      if (typeof contributor.name === 'string' && contributor.name.trim()) pool.add(contributor.name.trim());
+      if (typeof contributor.role === 'string' && contributor.role.trim()) pool.add(contributor.role.trim());
+    });
+    if (projectName?.trim()) pool.add(projectName.trim());
+    return Array.from(pool);
+  }, [contributors, projectName]);
   
   // Get profession-specific terminology for labels
   const getProfessionLabels = () => {
@@ -2354,6 +2371,19 @@ export default function SplitSheetEditor({
                                       }}
                                       helperText="Notater er kun synlig internt og deles ikke med bidragsyteren"
                                     />
+                                    <GlobalMentionHelper
+                                      text={contributor.custom_fields?.notes || ''}
+                                      localCandidates={mentionCandidates}
+                                      onApplySuggestion={(name) =>
+                                        handleCustomFieldChange(
+                                          index,
+                                          'notes',
+                                          applyMentionSuggestion(contributor.custom_fields?.notes, name)
+                                        )
+                                      }
+                                      autoTagTitle="Auto-tagget i notater"
+                                      suggestionTitle="Mener du?"
+                                    />
                                   </CardContent>
                                 </Card>
                               </Stack>
@@ -2517,7 +2547,6 @@ export default function SplitSheetEditor({
     </Box>
   );
 }
-
 
 
 

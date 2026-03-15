@@ -42,12 +42,9 @@ import {
   Build as FixIcon,
   NavigateBefore as GotoIcon,
 } from '@mui/icons-material';
-import type {
-  ScriptAnalysisResult} from '../services/scriptAnalysisService';
 import {
   analyzeScript,
-  CharacterConflict,
-  ConsistencyIssue,
+  type ScriptAnalysisResult,
 } from '../services/scriptAnalysisService';
 
 interface ScriptAnalysisPanelProps {
@@ -81,7 +78,6 @@ const getSeverityColor = (severity: 'error' | 'warning' | 'info') => {
 export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
   content,
   onGotoLine,
-  darkMode = true,
 }) => {
   const [expanded, setExpanded] = useState<string | false>('conflicts');
 
@@ -109,7 +105,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: darkMode ? '#1a1a2e' : '#f8f9fa',
+        bgcolor: '#1a1a2e',
         overflow: 'hidden',
       }}
     >
@@ -119,7 +115,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
         sx={{
           p: 2,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: darkMode ? 'rgba(30,30,50,0.9)' : 'rgba(255,255,255,0.95)',
+          bgcolor: 'rgba(30,30,50,0.9)',
         }}
       >
         <Stack direction="row" alignItems="center" spacing={2}>
@@ -181,7 +177,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'stats'}
           onChange={handleAccordionChange('stats')}
           sx={{
-            bgcolor: darkMode ? 'rgba(30,30,50,0.5)' : 'rgba(255,255,255,0.8)',
+            bgcolor: 'rgba(30,30,50,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}
@@ -270,7 +266,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'conflicts'}
           onChange={handleAccordionChange('conflicts')}
           sx={{
-            bgcolor: darkMode ? 'rgba(30,30,50,0.5)' : 'rgba(255,255,255,0.8)',
+            bgcolor: 'rgba(30,30,50,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}
@@ -361,7 +357,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'consistency'}
           onChange={handleAccordionChange('consistency')}
           sx={{
-            bgcolor: darkMode ? 'rgba(30,30,50,0.5)' : 'rgba(255,255,255,0.8)',
+            bgcolor: 'rgba(30,30,50,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}
@@ -452,7 +448,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'scenes'}
           onChange={handleAccordionChange('scenes')}
           sx={{
-            bgcolor: darkMode ? 'rgba(30,30,50,0.5)' : 'rgba(255,255,255,0.8)',
+            bgcolor: 'rgba(30,30,50,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}

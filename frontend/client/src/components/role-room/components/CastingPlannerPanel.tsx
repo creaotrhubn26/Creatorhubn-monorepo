@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, startTransition, memo, type FC, type MouseEvent, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
@@ -25,14 +26,10 @@ import {
   DialogContent,
   DialogActions,
   Divider,
-  Badge,
   useTheme,
   useMediaQuery,
   InputAdornment,
   Grow,
-  SpeedDial,
-  SpeedDialAction,
-  SpeedDialIcon,
   Stack,
   CircularProgress,
   Tooltip,
@@ -76,7 +73,6 @@ import {
   Build as BuildIcon,
   Note as NoteIcon,
   ContactEmergency as ContactEmergencyIcon,
-  Description as DescriptionIcon,
   AdminPanelSettings as AdminPanelSettingsIcon,
   Login as LoginIcon,
   Logout as LogoutIcon,
@@ -87,6 +83,17 @@ import {
   AccountTree as StoryLogicIcon,
   Create as StoryWriterIcon,
   CalendarMonth as CalendarMonthIcon,
+  Keyboard as KeyboardIcon,
+  HowToVote as SelectionTabIcon,
+  Casino as CasinoIcon,
+  NavigateBefore as NavigateBeforeIcon,
+  NavigateNext as NavigateNextIcon,
+  ViewCarousel as ViewCarouselIcon,
+  Search as SearchIcon,
+  AttachMoney as AttachMoneyIcon,
+  FactCheck as FactCheckIcon,
+  ImportExport as ImportExportIcon,
+  PermMedia as PermMediaIcon,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 
@@ -112,24 +119,9 @@ import {
   ConsentsIcon,
 } from './icons/CastingIcons';
 
-// PNG-based tab icons from /icons/Keep/
-import {
-  DashboardTabIcon,
-  RolesTabIcon,
-  CandidatesTabIcon,
-  AuditionsTabIcon,
-  TeamTabIcon,
-  LocationsTabIcon,
-  EquipmentTabIcon,
-  CalendarTabIcon,
-  ShotListTabIcon,
-  StoryArcTabIcon,
-  SharingTabIcon,
-  LiveSetTabIcon,
-} from './icons';
-
-import type { CastingProject, Role, Candidate, Schedule } from '../models/casting';
+import type { CastingProject, Role, Candidate, ContactInfo, Schedule, UserRoleType } from '../models/casting';
 import { RichTextEditor } from './RichTextEditor';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { AuditionSchedulePanel } from './AuditionSchedulePanel';
 import rolesBackdrop4 from './icons/Keep/roles_backdrop_4.png';
 import { storyLogicService, type StoryLogicState } from '../services/storyLogicService';
@@ -140,6 +132,7 @@ import { resetMockCastingData } from '../data/mockCastingData';
 import { sceneComposerService } from '../services/sceneComposerService';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
+import { useProducerAccess } from '../hooks/useProducerAccess';
 import type { Tutorial } from '../services/tutorialService';
 
 // Lazy load heavy panels for better performance
@@ -167,23 +160,31 @@ const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(
 const OffersContractsPanel = lazy(() => import('./OffersContractsPanel'));
 const ProductionCalendarPanel = lazy(() => import('./ProductionCalendarPanel'));
 const CrewCalendarPanel = lazy(() => import('./production/CrewCalendarPanel').then(m => ({ default: m.CrewCalendarPanel })));
+const ProducerTimelinePanel = lazy(() => import('./producer/ProducerTimelinePanel'));
+const ProducerEconomyPanel = lazy(() => import('./producer/ProducerEconomyPanel'));
+const ProducerClientReviewPanel = lazy(() => import('./producer/ProducerClientReviewPanel'));
+const ProducerMediaPanel = lazy(() => import('./producer/ProducerMediaPanel'));
+const ProducerExtrasPanel = lazy(() => import('./producer/ProducerExtrasPanel'));
 
 // Lazy load dialogs and modals for better initial load
 const AdminDashboard = lazy(() => import('./AdminDashboard'));
 const LoginDialog = lazy(() => import('./LoginDialog'));
 const CastingSharingDialog = lazy(() => import('./CastingSharingDialog').then(m => ({ default: m.CastingSharingDialog })));
 const CastingProfessionDialog = lazy(() => import('./CastingProfessionDialog').then(m => ({ default: m.CastingProfessionDialog })));
+import type { CastingProfessionSelection } from './CastingProfessionDialog';
 const ProfessionOnboardingDialog = lazy(() => import('./ProfessionOnboardingDialog').then(m => ({ default: m.ProfessionOnboardingDialog })));
 
 import { useProfessionOnboarding, type ProfessionType } from './ProfessionOnboardingDialog';
 import { useAuth } from '@/hooks/useAuth';
 import authSessionService from '../services/authSessionService';
 import settingsService from '../services/settingsService';
+import globalTagService from '../services/globalTagService';
 import { ProjectProvider } from '@/contexts/ProjectContext';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 import NewProjectCreationModal from './Planning/NewProjectCreationModal';
+import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
 
 interface CastingPlannerPanelProps {
   onClose?: () => void;
@@ -197,6 +198,7 @@ interface TabPanelProps {
   children?: ReactNode;
   index: number;
   value: number;
+  immersive?: boolean;
 }
 
 // Helper function to map CrewRole to Department for calendar
@@ -273,6 +275,14 @@ const KEYFRAMES_STYLES = {
     '50%': { transform: 'rotate(5deg) translateY(0px)' },
     '75%': { transform: 'rotate(0deg) translateY(2px)' },
   },
+  '@keyframes selectionCardReveal': {
+    '0%': { opacity: 0, transform: 'translateY(14px) scale(0.97)' },
+    '100%': { opacity: 1, transform: 'translateY(0) scale(1)' },
+  },
+  '@keyframes selectionCardSheen': {
+    '0%': { backgroundPosition: '130% 0' },
+    '100%': { backgroundPosition: '-30% 0' },
+  },
 } as const;
 
 interface CandidatePhotoFocalPoint {
@@ -286,22 +296,112 @@ const clampPercent = (value: number): number => Math.min(100, Math.max(0, value)
 
 const TAB_IDS = [
   'tabpanel-oversikt',
+  'tabpanel-story-arc-studio',
   'tabpanel-roller',
   'tabpanel-kandidater',
   'tabpanel-auditions',
-  'tabpanel-team',
+  'tabpanel-utvelgelse',
   'tabpanel-lokasjoner',
-  'tabpanel-rekvisitter',
   'tabpanel-produksjonsplan',
-  'tabpanel-shot-lists',
-  'tabpanel-story-arc-studio',
-  'tabpanel-deling',
+  'tabpanel-team',
+  'tabpanel-rekvisitter',
   'tabpanel-live-set',
+  'tabpanel-producer-media',
+  'tabpanel-producer-okonomi',
+  'tabpanel-producer-tidslinje',
+  'tabpanel-producer-reviews',
+  'tabpanel-producer-eksport',
 ];
-const TEAM_TAB_INDEX = 4;
-const SHOT_LIST_TAB_INDEX = 8;
+const STORY_ARC_TAB_INDEX = 1;
+const ROLES_TAB_INDEX = 2;
+const CANDIDATES_TAB_INDEX = 3;
+const AUDITIONS_TAB_INDEX = 4;
+const SELECTION_TAB_INDEX = 5;
+const LOCATIONS_TAB_INDEX = 6;
+const CALENDAR_TAB_INDEX = 7;
+const TEAM_TAB_INDEX = 8;
+const EQUIPMENT_TAB_INDEX = 9;
+// Legacy alias for opening Shot list from other modules; now redirected into Role Room Studio
+const SHOT_LIST_TAB_INDEX = 99;
+const LIVE_SET_TAB_INDEX = 10;
+const PRODUCER_MEDIA_TAB_INDEX = 11;
+const PRODUCER_ECONOMY_TAB_INDEX = 12;
+const PRODUCER_TIMELINE_TAB_INDEX = 13;
+const PRODUCER_REVIEWS_TAB_INDEX = 14;
+const PRODUCER_EXPORT_TAB_INDEX = 15;
+type SelectionPhaseFilter = 'screening' | 'callbacks' | 'final' | 'all';
+type SelectionStage = Exclude<SelectionPhaseFilter, 'all'>;
 
-const TabPanel = memo(function TabPanel({ children, value, index }: TabPanelProps) {
+interface OpenCandidateProfileEventDetail {
+  candidateId?: string;
+  roleId?: string;
+  characterName?: string;
+}
+
+interface SelectionDecisionLogEntry {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  action: string;
+  actor: string;
+  createdAt: string;
+}
+
+const SELECTION_STATUS_BY_STAGE: Record<SelectionStage, string> = {
+  screening: 'auditioned',
+  callbacks: 'awaiting_callback',
+  final: 'selected',
+};
+
+const SELECTION_LABEL_BY_STAGE: Record<SelectionStage, string> = {
+  screening: 'screening',
+  callbacks: 'callbacks',
+  final: 'final selection',
+};
+
+const MAX_SELECTION_COMPARE = 3;
+const MAX_SELECTION_DECISION_LOG_ENTRIES = 120;
+const SELECTION_SCORE_WEIGHTS = {
+  scenePerformance: 40,
+  chemistry: 25,
+  availability: 20,
+  risk: 15,
+} as const;
+const SELECTION_WEIGHT_TOTAL = Object.values(SELECTION_SCORE_WEIGHTS).reduce((sum, value) => sum + value, 0);
+
+function isSelectionDecisionLogEntry(value: unknown): value is SelectionDecisionLogEntry {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.id === 'string'
+    && typeof entry.candidateId === 'string'
+    && typeof entry.candidateName === 'string'
+    && typeof entry.action === 'string'
+    && typeof entry.actor === 'string'
+    && typeof entry.createdAt === 'string';
+}
+
+function normalizeSelectionDecisionLog(value: unknown): SelectionDecisionLogEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isSelectionDecisionLogEntry)
+    .slice(0, MAX_SELECTION_DECISION_LOG_ENTRIES);
+}
+
+const SELECTION_SHORTCUTS: Array<{
+  keys: string;
+  action: string;
+  scope: 'Utvelgelse';
+}> = [
+  { keys: 'J', action: 'Neste kandidatkort', scope: 'Utvelgelse' },
+  { keys: 'K', action: 'Forrige kandidatkort', scope: 'Utvelgelse' },
+  { keys: '1', action: 'Flytt kandidat til Screening', scope: 'Utvelgelse' },
+  { keys: '2', action: 'Flytt kandidat til Callbacks', scope: 'Utvelgelse' },
+  { keys: '3', action: 'Flytt kandidat til Final selection', scope: 'Utvelgelse' },
+  { keys: 'B', action: 'Åpne/lukk Casting board', scope: 'Utvelgelse' },
+  { keys: '?', action: 'Åpne denne snarvei-dialogen', scope: 'Utvelgelse' },
+];
+
+const TabPanel = memo(function TabPanel({ children, value, index, immersive = false }: TabPanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
@@ -321,7 +421,7 @@ const TabPanel = memo(function TabPanel({ children, value, index }: TabPanelProp
         flexDirection: 'column', 
         minHeight: 0, 
         width: '100%',
-        padding: isMobile ? '8px' : isTablet ? '12px' : '16px',
+        padding: immersive ? 0 : (isMobile ? '8px' : isTablet ? '12px' : '16px'),
       }}
     >
       {children}
@@ -370,9 +470,9 @@ const ConsentStatusSummary: FC<{ projectId: string; candidateId: string }> = ({ 
 };
 
 export function CastingPlannerPanel({
-  onClose,
-  isFullscreen = false,
-  onToggleFullscreen,
+  onClose: _onClose,
+  isFullscreen: _isFullscreen = false,
+  onToggleFullscreen: _onToggleFullscreen,
   isStandalone = false,
   isGuestMode = false,
 }: CastingPlannerPanelProps) {
@@ -387,6 +487,7 @@ export function CastingPlannerPanel({
   const quickTier5 = useMediaQuery('(min-width:1280px)');
   const quickTier6 = useMediaQuery('(min-width:1600px)');
   const quickTier7 = useMediaQuery('(min-width:2000px)');
+  const isHiDpi = useMediaQuery('(min-resolution: 2dppx), (min-resolution: 192dpi), (-webkit-min-device-pixel-ratio: 2)');
   const toast = useToast();
   const branding = useBrandingSettings();
   
@@ -403,6 +504,72 @@ export function CastingPlannerPanel({
     id: string;
     name: string;
   } | null>(null);
+
+  // Unified nav sizing for mobile -> 5K + HiDPI
+  const navIconSizePx = useMemo(() => {
+    let base = quickTier7 ? 26 : quickTier6 ? 24 : quickTier5 ? 22 : quickTier4 ? 21 : quickTier3 ? 20 : 18;
+    if (isHiDpi) base += 1;
+    return base;
+  }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi]);
+
+  const projectChipActionSizePx = useMemo(() => {
+    let base = quickTier7 ? 40 : quickTier6 ? 38 : quickTier5 ? 36 : quickTier4 ? 34 : quickTier3 ? 32 : 28;
+    if (isHiDpi) base += 1;
+    return base;
+  }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi]);
+
+  const navActionButtonSizePx = useMemo(() => {
+    let base = quickTier7 ? 46 : quickTier6 ? 44 : quickTier5 ? 40 : quickTier4 ? 38 : quickTier3 ? 36 : 32;
+    if (isHiDpi) base += 1;
+    return base;
+  }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi]);
+
+  const tabIconBoxSizePx = useMemo(() => {
+    let base = quickTier7 ? 32 : quickTier6 ? 30 : quickTier5 ? 28 : quickTier4 ? 26 : quickTier3 ? 24 : 20;
+    if (isHiDpi) base += 1;
+    return base;
+  }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi]);
+
+  const tabIconGlyphSizePx = useMemo(
+    () => Math.max(18, tabIconBoxSizePx - 2),
+    [tabIconBoxSizePx],
+  );
+
+  const navTabMinHeightPx = useMemo(() => {
+    let base = quickTier7 ? 76 : quickTier6 ? 72 : quickTier5 ? 68 : isDesktop ? 64 : isTablet ? 56 : 44;
+    if (isHiDpi && base < 72) base += 2;
+    return base;
+  }, [quickTier5, quickTier6, quickTier7, isDesktop, isTablet, isHiDpi]);
+
+  const navTabMinWidthPx = useMemo(() => {
+    if (!isDesktop) return isTablet ? 90 : 80;
+    return quickTier7 ? 152 : quickTier6 ? 142 : quickTier5 ? 132 : 120;
+  }, [isDesktop, isTablet, quickTier5, quickTier6, quickTier7]);
+
+  const navTabFontSizePx = useMemo(() => {
+    let base = quickTier7 ? 20 : quickTier6 ? 19 : quickTier5 ? 18 : isDesktop ? 18 : isTablet ? 14 : 12;
+    if (isHiDpi) base += 1;
+    return base;
+  }, [quickTier5, quickTier6, quickTier7, isDesktop, isTablet, isHiDpi]);
+
+  const navTabLabelFontSizePx = useMemo(
+    () => Math.max(14, navTabFontSizePx - 2),
+    [navTabFontSizePx],
+  );
+
+  const navTabMetaFontSizePx = useMemo(
+    () => Math.max(10, navTabFontSizePx - 8),
+    [navTabFontSizePx],
+  );
+
+  const navTabPadding = useMemo(() => {
+    if (quickTier7) return '18px 24px';
+    if (quickTier6) return '17px 22px';
+    if (quickTier5) return '16px 20px';
+    if (isDesktop) return '16px 20px';
+    if (isTablet) return '12px 16px';
+    return '8px 10px';
+  }, [quickTier5, quickTier6, quickTier7, isDesktop, isTablet]);
   
   // Shared TextField styling for dialogs with responsive font sizes - memoized
   // Responsive: xs (0.875rem), sm (1rem), md (0.95rem), lg (1.05rem), xl (1.125rem)
@@ -568,9 +735,26 @@ export function CastingPlannerPanel({
   }), [branding.tokens.labels]);
   
   const [activeTab, setActiveTab] = useState(0);
+  const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
+  const [isBrowserFullscreen, setIsBrowserFullscreen] = useState<boolean>(() => (
+    typeof document !== 'undefined' ? Boolean(document.fullscreenElement) : false
+  ));
   const [teamDashboardOpenSignal, setTeamDashboardOpenSignal] = useState(0);
   const [teamDashboardDefaultSegment, setTeamDashboardDefaultSegment] = useState<'all' | 'technical'>('all');
-  const [storyArcView, setStoryArcView] = useState<'main' | 'story-logic' | 'story-writer'>('main');
+  type StoryArcView = 'main' | 'story-logic' | 'story-writer' | 'shot-list';
+  const [storyArcView, setStoryArcView] = useState<StoryArcView>('main');
+  const [selectionPhaseFilter, setSelectionPhaseFilter] = useState<SelectionPhaseFilter>('screening');
+  const [selectedSelectionCandidateId, setSelectedSelectionCandidateId] = useState<string | null>(null);
+  const [selectionCompareCandidateIds, setSelectionCompareCandidateIds] = useState<string[]>([]);
+  const [selectionDecisionLog, setSelectionDecisionLog] = useState<SelectionDecisionLogEntry[]>([]);
+  const [selectionSelfTapeIndexByCandidate, setSelectionSelfTapeIndexByCandidate] = useState<Record<string, number>>({});
+  const [selectionBoardMode, setSelectionBoardMode] = useState(false);
+  const [selectionShortcutsOpen, setSelectionShortcutsOpen] = useState(false);
+  const [selectionNotesDraft, setSelectionNotesDraft] = useState('');
+  const [selectionNotesSaving, setSelectionNotesSaving] = useState(false);
+  const [selectionNotesTagExclusions, setSelectionNotesTagExclusions] = useState<string[]>([]);
+  const [globalTagRegistry, setGlobalTagRegistry] = useState<string[]>([]);
+  const [globalTagRegistryLoaded, setGlobalTagRegistryLoaded] = useState(false);
   const [storyLogicData, setStoryLogicData] = useState<StoryLogicState | null>(null);
   const [calendarViewMode, setCalendarViewMode] = useState<'production' | 'crew'>('production');
   const [projects, setProjects] = useState<CastingProject[]>([]);
@@ -582,7 +766,19 @@ export function CastingPlannerPanel({
 
   const [candidateDialogOpen, setCandidateDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [sharingModalOpen, setSharingModalOpen] = useState(false);
   const [sharingDialogOpen, setSharingDialogOpen] = useState(false);
+  const [calendarCreateIntent, setCalendarCreateIntent] = useState<null | 'location' | 'candidate' | 'crew' | 'equipment'>(null);
+  const [calendarReopenSignal, setCalendarReopenSignal] = useState(0);
+  const [calendarPreselectedFromCreate, setCalendarPreselectedFromCreate] = useState<{
+    locationId?: string;
+    candidateId?: string;
+    crewId?: string;
+    equipmentId?: string;
+  } | null>(null);
+  const [externalLocationCreateSignal, setExternalLocationCreateSignal] = useState(0);
+  const [externalCrewCreateSignal, setExternalCrewCreateSignal] = useState(0);
+  const [externalEquipmentCreateSignal, setExternalEquipmentCreateSignal] = useState(0);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showTutorialEditor, setShowTutorialEditor] = useState(false);
   const [previewTutorial, setPreviewTutorial] = useState<Tutorial | null>(null);
@@ -604,6 +800,9 @@ export function CastingPlannerPanel({
     canManageCrew: boolean;
     canManageLocations: boolean;
     canApprove: boolean;
+    canComment: boolean;
+    canRequestChanges: boolean;
+    canViewEconomy: boolean;
   }>({
     canViewAll: false,
     canEditCasting: false,
@@ -612,11 +811,24 @@ export function CastingPlannerPanel({
     canManageCrew: false,
     canManageLocations: false,
     canApprove: false,
+    canComment: false,
+    canRequestChanges: false,
+    canViewEconomy: false,
   });
-  const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const producerAccess = useProducerAccess(currentUserRole, permissions);
+  const [, setPermissionsLoading] = useState(false);
+  const [producerReviewQuickCreate, setProducerReviewQuickCreate] = useState<{
+    reviewType: string;
+    title: string;
+    description?: string;
+    targetEntityType?: string;
+    targetEntityId?: string;
+    nonce: number;
+  } | null>(null);
   
   // Ref to track current project ID for stale response detection
   const currentProjectIdRef = useRef<string | null>(null);
+  const currentProjectRef = useRef<CastingProject | null>(null);
   
   const [profession, setProfession] = useState<'photographer' | 'videographer' | null>(null);
   const [professionDialogOpen, setProfessionDialogOpen] = useState(false);
@@ -624,6 +836,14 @@ export function CastingPlannerPanel({
   // Map profession to onboarding profession type
   const getOnboardingProfession = (): ProfessionType | null => {
     if (!profession) return null;
+    const sessionAdminUser = authSessionService.getSessionSync().adminUser;
+    const normalizedLoginAs = String(sessionAdminUser?.loginAs || '').trim().toLowerCase();
+    const normalizedRequestedRole = String(sessionAdminUser?.requestedRole || '').trim().toLowerCase();
+    const normalizedRole = String(sessionAdminUser?.role || '').trim().toLowerCase();
+    const isProducerLogin = normalizedLoginAs === 'content_producer'
+      || normalizedRequestedRole === 'content_producer'
+      || normalizedRole === 'content_producer';
+    if (isProducerLogin) return 'producer';
     if (profession === 'photographer') return 'photographer';
     if (profession === 'videographer') return 'director';
     return 'general';
@@ -642,15 +862,24 @@ export function CastingPlannerPanel({
   const [sendConsentOnSave, setSendConsentOnSave] = useState(false);
   const [adminDashboardOpen, setAdminDashboardOpen] = useState(false);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
-  const normalizeAdminUser = (user?: { id: number | string; email: string; role: string; display_name: string } | null) => {
+  type RoleRoomAdminUser = {
+    id: number | string;
+    email: string;
+    role: string;
+    display_name: string;
+    name?: string;
+    loginAs?: string;
+    requestedRole?: string | null;
+  };
+  const normalizeAdminUser = (user?: RoleRoomAdminUser | null) => {
     if (!user) return null;
-    const parsedId = Number(user.id);
     return {
       ...user,
-      id: Number.isFinite(parsedId) ? parsedId : 0,
+      id: user.id,
+      display_name: user.display_name || user.name || user.email.split('@')[0],
     };
   };
-  const [adminUser, setAdminUser] = useState<{ id: number; email: string; role: string; display_name: string } | null>(
+  const [adminUser, setAdminUser] = useState<RoleRoomAdminUser | null>(
     () => normalizeAdminUser(authSessionService.getSessionSync().adminUser)
   );
   const [authLoaded, setAuthLoaded] = useState(false);
@@ -662,10 +891,15 @@ export function CastingPlannerPanel({
   const handleOpenTechnicalTeamDashboard = useCallback(() => {
     setTeamDashboardDefaultSegment('technical');
     setTeamDashboardOpenSignal((current) => current + 1);
-    setActiveTab(SHOT_LIST_TAB_INDEX);
+    setStoryArcView('shot-list');
+    setActiveTab(STORY_ARC_TAB_INDEX);
   }, []);
-  const [projectSelectorOpen, setProjectSelectorOpen] = useState(true); // Open by default to let user choose project
-  const [speedDialOpen, setSpeedDialOpen] = useState(false);
+  const [projectSelectorOpen, setProjectSelectorOpen] = useState(false);
+  const [projectSelectorQuery, setProjectSelectorQuery] = useState('');
+
+  useEffect(() => {
+    currentProjectRef.current = currentProject;
+  }, [currentProject]);
 
   // Preload lazily-rendered dialog modules after initial mount so first open
   // does not suspend during a synchronous user interaction.
@@ -673,6 +907,7 @@ export function CastingPlannerPanel({
     void Promise.allSettled([
       import('./CastingProfessionDialog'),
       import('./CastingSharingDialog'),
+      import('./SharingPanel'),
       import('./AdminDashboard'),
       import('./LoginDialog'),
       import('./CastingPlannerTutorial'),
@@ -691,9 +926,155 @@ export function CastingPlannerPanel({
     }
   }, []);
 
-  const navigateToTab = useCallback((tabIndex: number) => {
-    startTransition(() => setActiveTab(tabIndex));
+  const requestLiveSetFullscreen = useCallback(async () => {
+    if (typeof document === 'undefined') return;
+    if (document.fullscreenElement) {
+      setIsBrowserFullscreen(true);
+      return;
+    }
+    const root = document.documentElement as HTMLElement & { requestFullscreen?: () => Promise<void> };
+    if (typeof root.requestFullscreen !== 'function') return;
+    try {
+      await root.requestFullscreen();
+      setIsBrowserFullscreen(true);
+    } catch {
+      setIsBrowserFullscreen(Boolean(document.fullscreenElement));
+      toast.showInfo('Nettleseren blokkerte fullskjerm. Trykk fullskjerm-knappen igjen.');
+    }
+  }, [toast]);
+
+  const exitLiveSetFullscreen = useCallback(async () => {
+    if (typeof document === 'undefined') return;
+    if (!document.fullscreenElement) {
+      setIsBrowserFullscreen(false);
+      return;
+    }
+    try {
+      await document.exitFullscreen();
+    } catch {
+      // ignore fullscreen exit errors
+    } finally {
+      setIsBrowserFullscreen(Boolean(document.fullscreenElement));
+    }
   }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleFullscreenChange = () => {
+      setIsBrowserFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const navigateToTab = useCallback((tabIndex: number, options?: { storyArcView?: StoryArcView }) => {
+    const commitTab = (nextTab: number) => {
+      if (activeTab === LIVE_SET_TAB_INDEX && nextTab !== LIVE_SET_TAB_INDEX) {
+        void exitLiveSetFullscreen();
+        flushSync(() => setActiveTab(nextTab));
+        return;
+      }
+      setActiveTab(nextTab);
+    };
+
+    if (tabIndex === SHOT_LIST_TAB_INDEX) {
+      setStoryArcView('shot-list');
+      commitTab(STORY_ARC_TAB_INDEX);
+      return;
+    }
+    if (tabIndex === LIVE_SET_TAB_INDEX && !currentProject) {
+      setProjectSelectorOpen(true);
+      toast.showWarning('Velg prosjekt før du åpner Live Set.');
+      return;
+    }
+    if (tabIndex === LIVE_SET_TAB_INDEX) {
+      void requestLiveSetFullscreen();
+    }
+    if (tabIndex === STORY_ARC_TAB_INDEX) {
+      setStoryArcView(options?.storyArcView ?? 'main');
+    }
+    commitTab(tabIndex);
+  }, [activeTab, currentProject, exitLiveSetFullscreen, requestLiveSetFullscreen, toast]);
+
+  const queueProducerReviewCreate = useCallback((draft: {
+    reviewType: string;
+    title: string;
+    description?: string;
+    targetEntityType?: string;
+    targetEntityId?: string;
+  }) => {
+    setProducerReviewQuickCreate({ ...draft, nonce: Date.now() });
+    navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
+  }, [navigateToTab]);
+
+  useEffect(() => {
+    if (activeTab === LIVE_SET_TAB_INDEX && !currentProject) {
+      void exitLiveSetFullscreen();
+      setActiveTab(0);
+    }
+  }, [activeTab, currentProject, exitLiveSetFullscreen]);
+
+  useEffect(() => {
+    if (activeTab !== LIVE_SET_TAB_INDEX) {
+      setLastNonLiveTab(activeTab);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (projectSelectorOpen) {
+      setProjectSelectorQuery('');
+    }
+  }, [projectSelectorOpen]);
+
+  const getTabReturnLabel = useCallback((tabIndex: number): string => {
+    switch (tabIndex) {
+      case STORY_ARC_TAB_INDEX:
+        return 'Role Room Studio';
+      case ROLES_TAB_INDEX:
+        return branding.tokens.labels.roles;
+      case CANDIDATES_TAB_INDEX:
+        return branding.tokens.labels.candidates;
+      case AUDITIONS_TAB_INDEX:
+        return branding.tokens.labels.auditions;
+      case SELECTION_TAB_INDEX:
+        return 'Utvelgelse';
+      case LOCATIONS_TAB_INDEX:
+        return branding.tokens.labels.locations;
+      case CALENDAR_TAB_INDEX:
+        return branding.tokens.labels.schedule;
+      case TEAM_TAB_INDEX:
+        return branding.tokens.labels.team;
+      case EQUIPMENT_TAB_INDEX:
+        return branding.tokens.labels.equipment;
+      case PRODUCER_MEDIA_TAB_INDEX:
+        return 'Media';
+      case PRODUCER_ECONOMY_TAB_INDEX:
+        return 'Økonomi';
+      case PRODUCER_TIMELINE_TAB_INDEX:
+        return 'Tidslinje';
+      case PRODUCER_REVIEWS_TAB_INDEX:
+        return 'Kunde-review';
+      case PRODUCER_EXPORT_TAB_INDEX:
+        return 'Eksport';
+      case 0:
+      default:
+        return branding.tokens.labels.dashboard;
+    }
+  }, [branding.tokens.labels]);
+
+  const handleExitLiveSet = useCallback(() => {
+    const nextTab = lastNonLiveTab === LIVE_SET_TAB_INDEX ? 0 : lastNonLiveTab;
+    void exitLiveSetFullscreen();
+    if (nextTab === SHOT_LIST_TAB_INDEX) {
+      setStoryArcView('shot-list');
+      flushSync(() => setActiveTab(STORY_ARC_TAB_INDEX));
+      return;
+    }
+    if (nextTab === STORY_ARC_TAB_INDEX) {
+      setStoryArcView('main');
+    }
+    flushSync(() => setActiveTab(nextTab));
+  }, [exitLiveSetFullscreen, lastNonLiveTab]);
 
   const openRoleDialog = useCallback(() => {
     blurActiveElement();
@@ -705,9 +1086,34 @@ export function CastingPlannerPanel({
     startTransition(() => setCandidateDialogOpen(true));
   }, [blurActiveElement]);
 
+  useEffect(() => {
+    const handleOpenCandidateProfile = (event: Event) => {
+      const customEvent = event as CustomEvent<OpenCandidateProfileEventDetail>;
+      const candidateId = customEvent.detail?.candidateId;
+      if (!candidateId || !currentProject) return;
+
+      const candidate = currentProject.candidates.find((item) => item.id === candidateId);
+      if (!candidate) return;
+
+      navigateToTab(CANDIDATES_TAB_INDEX);
+      setSelectedCandidate(candidate);
+      openCandidateDialog();
+    };
+
+    window.addEventListener('role-room:open-candidate-profile', handleOpenCandidateProfile as EventListener);
+    return () => {
+      window.removeEventListener('role-room:open-candidate-profile', handleOpenCandidateProfile as EventListener);
+    };
+  }, [currentProject, navigateToTab, openCandidateDialog]);
+
   const openScheduleDialog = useCallback(() => {
     blurActiveElement();
     startTransition(() => setScheduleDialogOpen(true));
+  }, [blurActiveElement]);
+
+  const openSharingModal = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setSharingModalOpen(true));
   }, [blurActiveElement]);
 
   const openSharingDialog = useCallback(() => {
@@ -764,11 +1170,12 @@ export function CastingPlannerPanel({
 
   // Stable callback for manuscript changes
   const handleManuscriptChange = useCallback(async () => {
-    if (currentProject?.id) {
-      const updated = await castingService.getProject(currentProject.id);
+    const activeProjectId = currentProjectRef.current?.id;
+    if (activeProjectId) {
+      const updated = await castingService.getProject(activeProjectId);
       if (updated) setCurrentProject(updated);
     }
-  }, [currentProject?.id]);
+  }, []);
 
   // Story Logic → Manuscript sync: capture story logic data when saved
   const handleStoryLogicSave = useCallback((data: StoryLogicState) => {
@@ -784,14 +1191,33 @@ export function CastingPlannerPanel({
     }
   }, [currentProject?.id]);
   
-  // Sort projects by updatedAt (most recent first) and limit to 4 for header
-  const recentProjects = useMemo(() => {
-    return [...projects]
-      .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
-      .slice(0, 4);
+  // Sort and filter project lists used by the quick-switch header and selector dialog
+  const sortedProjects = useMemo(() => {
+    return [...projects].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
   }, [projects]);
-  
-  const hasMoreProjects = projects.length > 4;
+
+  const filteredProjectSelectorItems = useMemo(() => {
+    const query = projectSelectorQuery.trim().toLowerCase();
+    if (!query) return sortedProjects;
+    return sortedProjects.filter((project) => {
+      const name = (project.name || '').toLowerCase();
+      const id = (project.id || '').toLowerCase();
+      const description = (project.description || '').toLowerCase();
+      const client = (project.clientName || '').toLowerCase();
+      return (
+        name.includes(query) ||
+        id.includes(query) ||
+        description.includes(query) ||
+        client.includes(query)
+      );
+    });
+  }, [projectSelectorQuery, sortedProjects]);
+
+  const recentProjects = useMemo(() => {
+    return sortedProjects.slice(0, 4);
+  }, [sortedProjects]);
+
+  const hasMoreProjects = sortedProjects.length > 4;
   const { user } = useAuth();
 
   const getHeaderRoleLabel = (role?: string | null): string => {
@@ -805,11 +1231,47 @@ export function CastingPlannerPanel({
       production_manager: branding.tokens.labels.roleProductionManagerLabel,
       camera_team: branding.tokens.labels.roleCameraTeamLabel,
       agency: branding.tokens.labels.roleAgencyLabel,
+      content_producer: 'Innholdsprodusent',
+      client_reviewer: 'Klient-revisor',
+      client: 'Klient',
+      film_photographer: 'Innholdsprodusent',
     };
     return labels[role] || role;
   };
 
-  const mapAccountRoleToProjectRole = (role?: string | null): string | null => {
+  const mapAccountRoleToProjectRole = (
+    role?: string | null,
+    loginAs?: string | null,
+    requestedRole?: string | null,
+  ): UserRoleType | null => {
+    const normalizedLoginAs = (loginAs || '').trim().toLowerCase();
+    const normalizedRequestedRole = (requestedRole || '').trim().toLowerCase();
+
+    if (normalizedLoginAs === 'content_producer') {
+      return 'content_producer';
+    }
+    if (normalizedLoginAs === 'production_team' && normalizedRequestedRole) {
+      if (normalizedRequestedRole === 'client') {
+        return 'client_reviewer';
+      }
+      if (['film_photographer', 'photographer', 'photo_director', 'photo_assistant'].includes(normalizedRequestedRole)) {
+        return 'content_producer';
+      }
+      if ([
+        'director',
+        'producer',
+        'casting_director',
+        'production_manager',
+        'camera_team',
+        'writer',
+        'script_editor',
+        'reader',
+        'agency',
+      ].includes(normalizedRequestedRole)) {
+        return normalizedRequestedRole as UserRoleType;
+      }
+    }
+
     if (!role) return null;
     const normalized = role.trim().toLowerCase();
 
@@ -817,6 +1279,8 @@ export function CastingPlannerPanel({
     if (normalized === 'admin') return 'producer';
     if (normalized === 'director') return 'director';
     if (normalized === 'producer') return 'producer';
+    if (normalized === 'content_producer') return 'content_producer';
+    if (normalized === 'client_reviewer') return 'client_reviewer';
     if (normalized === 'casting_director') return 'casting_director';
     if (normalized === 'production_manager') return 'production_manager';
     if (normalized === 'camera_team' || normalized === 'camera_operator') return 'camera_team';
@@ -827,7 +1291,10 @@ export function CastingPlannerPanel({
 
     // Map photo/video account roles to the closest project-role permission set
     if (['photographer', 'film_photographer', 'photo_director', 'photo_assistant'].includes(normalized)) {
-      return 'camera_team';
+      return 'content_producer';
+    }
+    if (normalized === 'client') {
+      return 'client_reviewer';
     }
 
     return null;
@@ -838,7 +1305,61 @@ export function CastingPlannerPanel({
   const headerRoleLabel = projectRoleLabel && accountRoleLabel && projectRoleLabel !== accountRoleLabel
     ? `${accountRoleLabel} (konto) • ${projectRoleLabel} (prosjekt)`
     : projectRoleLabel || accountRoleLabel;
-  const headerProfessionLabel = profession ? PROFESSION_CONFIG[profession]?.name : '';
+  const mappedSessionProjectRole = useMemo(
+    () => mapAccountRoleToProjectRole(adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole),
+    [adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole],
+  );
+  const isContentProducerSession = mappedSessionProjectRole === 'content_producer';
+  const isClientReviewerSession = mappedSessionProjectRole === 'client_reviewer';
+  const isProducerWorkspaceSession = isContentProducerSession || isClientReviewerSession;
+  const headerProfessionLabel = isContentProducerSession
+    ? 'Innholdsprodusent'
+    : isClientReviewerSession
+      ? 'Klient'
+      : profession
+        ? PROFESSION_CONFIG[profession]?.name
+        : '';
+  const isContentProducerMode = isContentProducerSession || producerAccess.isContentProducerMode;
+  const isClientReviewerMode = isClientReviewerSession || producerAccess.isClientReviewerMode;
+  const canEditProducerWorkflow = isContentProducerMode || producerAccess.canEditProductionData;
+  const canCommentInProducerWorkflow = isContentProducerMode || isClientReviewerMode || producerAccess.canComment;
+  const canViewProducerEconomy = isContentProducerMode || producerAccess.canViewEconomy || permissions.canViewEconomy;
+  const canMakeProducerReviewDecision = isClientReviewerSession || producerAccess.canMakeReviewDecision;
+  const producerWorkspaceBadgeLabel = isClientReviewerMode ? 'Klient' : 'Innholdsprodusent';
+
+  const isTrollProject = useCallback((project: CastingProject): boolean => {
+    const projectId = String(project.id || '').trim().toLowerCase();
+    const projectName = String(project.name || '').trim().toLowerCase();
+    return projectId === 'troll-project-2026' || projectName === 'troll';
+  }, []);
+
+  const isContentProducerDemoProject = useCallback((project: CastingProject): boolean => {
+    const projectId = String(project.id || '').trim().toLowerCase();
+    return projectId === castingService.getContentProducerDemoProjectId();
+  }, []);
+
+  const filterProjectsForSession = useCallback((projectList: CastingProject[]): CastingProject[] => {
+    if (isProducerWorkspaceSession) {
+      return projectList.filter((project) => !isTrollProject(project));
+    }
+
+    return projectList.filter((project) => !isContentProducerDemoProject(project));
+  }, [isContentProducerDemoProject, isProducerWorkspaceSession, isTrollProject]);
+
+  const handleSelectProjectFromSelector = useCallback(async (project: CastingProject) => {
+    if (isProducerWorkspaceSession && isTrollProject(project)) {
+      toast.showWarning('TROLL-prosjektet er kun tilgjengelig for produksjonsteam.');
+      return;
+    }
+    const fullProject = await castingService.getProject(project.id);
+    if (fullProject) {
+      setCurrentProject(fullProject);
+    } else {
+      setCurrentProject(project);
+    }
+    setProjectSelectorOpen(false);
+    setProjectSelectorQuery('');
+  }, [isProducerWorkspaceSession, isTrollProject, toast]);
 
   // Get terminology helper (must be after profession state is defined)
   const getTerm = (key: string): string => {
@@ -856,99 +1377,139 @@ export function CastingPlannerPanel({
   // Tab colors and icons matching quick navigation design (will be adapted based on profession)
   const professionConfig = getProfessionConfig();
   const tabConfig = useMemo(() => [
-    { color: professionConfig?.color || '#8b5cf6', icon: DashboardTabIcon },
-    { color: '#f48fb1', icon: RolesTabIcon },
-    { color: professionConfig?.color || '#10b981', icon: CandidatesTabIcon },
-    { color: '#ffb800', icon: AuditionsTabIcon },
-    { color: '#00d4ff', icon: TeamTabIcon },
-    { color: '#4caf50', icon: LocationsTabIcon },
-    { color: '#9333ea', icon: EquipmentTabIcon },
-    { color: '#9c27b0', icon: CalendarTabIcon },
-    { color: professionConfig?.color || '#e91e63', icon: ShotListTabIcon },
-    { color: '#ec4899', icon: StoryArcTabIcon },
-    { color: '#06b6d4', icon: SharingTabIcon },
-    { color: '#ef4444', icon: LiveSetTabIcon },
+    { color: professionConfig?.color || '#8b5cf6', icon: _DashboardIcon },
+    { color: '#ec4899', icon: StoryArcIcon },
+    { color: '#f48fb1', icon: TheaterComedyIcon },
+    { color: professionConfig?.color || '#10b981', icon: RecentActorsIcon },
+    { color: '#ffb800', icon: _InterpreterModeIcon },
+    { color: '#14b8a6', icon: SelectionTabIcon },
+    { color: '#4caf50', icon: LocationIcon },
+    { color: '#9c27b0', icon: CalendarIcon },
+    { color: '#00d4ff', icon: GroupsIcon },
+    { color: '#9333ea', icon: EquipmentIcon },
+    { color: '#ef4444', icon: VideocamIcon },
+    { color: '#60a5fa', icon: PermMediaIcon },
+    { color: '#34d399', icon: AttachMoneyIcon },
+    { color: '#38bdf8', icon: TimelineIcon },
+    { color: '#c084fc', icon: FactCheckIcon },
+    { color: '#fbbf24', icon: ImportExportIcon },
   ], [professionConfig?.color]);
+  const visibleTabValues = useMemo<number[]>(() => {
+    if (isContentProducerMode) {
+      const producerTabs = [
+        STORY_ARC_TAB_INDEX,
+        CANDIDATES_TAB_INDEX,
+        LOCATIONS_TAB_INDEX,
+        EQUIPMENT_TAB_INDEX,
+        PRODUCER_MEDIA_TAB_INDEX,
+        PRODUCER_TIMELINE_TAB_INDEX,
+        PRODUCER_REVIEWS_TAB_INDEX,
+        PRODUCER_EXPORT_TAB_INDEX,
+      ];
+      if (canViewProducerEconomy) {
+        producerTabs.splice(5, 0, PRODUCER_ECONOMY_TAB_INDEX);
+      }
+      return producerTabs;
+    }
+
+    if (isClientReviewerMode) {
+      const reviewerTabs = [
+        PRODUCER_TIMELINE_TAB_INDEX,
+        PRODUCER_REVIEWS_TAB_INDEX,
+        PRODUCER_EXPORT_TAB_INDEX,
+      ];
+      if (canViewProducerEconomy) {
+        reviewerTabs.splice(1, 0, PRODUCER_ECONOMY_TAB_INDEX);
+      }
+      return reviewerTabs;
+    }
+
+    return [
+      0,
+      STORY_ARC_TAB_INDEX,
+      ROLES_TAB_INDEX,
+      CANDIDATES_TAB_INDEX,
+      AUDITIONS_TAB_INDEX,
+      SELECTION_TAB_INDEX,
+      LOCATIONS_TAB_INDEX,
+      CALENDAR_TAB_INDEX,
+      TEAM_TAB_INDEX,
+      EQUIPMENT_TAB_INDEX,
+      LIVE_SET_TAB_INDEX,
+    ];
+  }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode]);
+
+  useEffect(() => {
+    if (!visibleTabValues.includes(activeTab)) {
+      setActiveTab(visibleTabValues[0] ?? 0);
+    }
+  }, [activeTab, visibleTabValues]);
+
+  const displayedActiveTab = visibleTabValues.includes(activeTab)
+    ? activeTab
+    : (visibleTabValues[0] ?? 0);
+
+  // Producer workspace sessions must not stick to TROLL from previous state/session.
+  // Enforce a role-safe project selection and auto-initialize the producer demo if needed.
+  useEffect(() => {
+    if (!isProducerWorkspaceSession) return;
+
+    let cancelled = false;
+
+    const enforceContentProducerProject = async () => {
+      try {
+        await castingService.initializeContentProducerDemoData();
+        const loadedProjects = filterProjectsForSession(await castingService.getProjects());
+        if (cancelled) return;
+
+        setProjects(loadedProjects);
+
+        const activeProject = currentProjectRef.current;
+        const hasValidCurrentProject = Boolean(activeProject && !isTrollProject(activeProject));
+        if (hasValidCurrentProject) {
+          return;
+        }
+
+        const preferredProject =
+          loadedProjects.find((project) => isContentProducerDemoProject(project)) ||
+          loadedProjects[0] ||
+          null;
+
+        setCurrentProject((previous) => {
+          if ((previous?.id ?? null) === (preferredProject?.id ?? null)) {
+            return previous;
+          }
+          return preferredProject;
+        });
+      } catch (error) {
+        console.error('Failed to enforce producer workspace demo project:', error);
+      }
+    };
+
+    void enforceContentProducerProject();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    filterProjectsForSession,
+    isContentProducerDemoProject,
+    isProducerWorkspaceSession,
+    isTrollProject,
+  ]);
+
   const roleDialogAccentColor = '#b86bff';
   const roleDialogAccentSoftColor = alpha(roleDialogAccentColor, 0.2);
   const roleDialogBackdrop = `url(${rolesBackdrop4})`;
 
-  // Quick navigation links for SpeedDial - matching tabConfig icons and colors
-  // SpeedDial with direction="up" displays items from first to last (nearest to farthest from FAB)
-  // Tab order: 0-Oversikt, 1-Roller, 2-Kandidater, 3-Auditions, 4-Team, 5-Steder, 6-Utstyr, 7-Kalender, 8-Shot-list, 9-Deling
-  const quickNavigationLinks = useMemo(() => [
-    { 
-      title: branding.tokens.labels.newProjectTitle, 
-      description: branding.tokens.labels.overviewDescription, 
-      color: professionConfig?.color || '#8b5cf6', 
-      icon: AddIcon, 
-      tabIndex: -1, // Special action
-      action: openProjectCreationModal,
-      badge: null,
-    },
-    { 
-      title: branding.tokens.labels.team, 
-      description: branding.tokens.labels.teamDescription, 
-      color: tabConfig[4].color, // #00d4ff
-      icon: tabConfig[4].icon, // GroupsIcon
-      tabIndex: 4,
-      badge: currentProject?.crew?.length || 0,
-    },
-    { 
-      title: branding.tokens.labels.locations, 
-      description: branding.tokens.labels.locationsDescription, 
-      color: tabConfig[5].color, // #4caf50
-      icon: tabConfig[5].icon, // LocationIcon
-      tabIndex: 5,
-      badge: currentProject?.locations?.length || 0,
-    },
-    { 
-      title: branding.tokens.labels.equipment, 
-      description: branding.tokens.labels.equipmentDescription, 
-      color: tabConfig[6].color, // #9333ea
-      icon: tabConfig[6].icon, // PropIcon
-      tabIndex: 6,
-      badge: currentProject?.props?.length || 0,
-    },
-    { 
-      title: branding.tokens.labels.schedule, 
-      description: branding.tokens.labels.scheduleDescription, 
-      color: tabConfig[7].color, // #9c27b0
-      icon: tabConfig[7].icon, // CalendarIcon
-      tabIndex: 7,
-      badge: currentProject?.productionDays?.length || 0,
-    },
-    { 
-      title: profession ? (PROFESSION_CONFIG[profession]?.terminology.shotList || branding.tokens.labels.shotList) : branding.tokens.labels.shotList, 
-      description: profession === 'photographer'
-        ? branding.tokens.labels.shotListDescriptionPhoto
-        : branding.tokens.labels.shotListDescriptionVideo, 
-      color: tabConfig[8].color, // professionConfig?.color || '#e91e63'
-      icon: tabConfig[8].icon, // ShotListIcon
-      tabIndex: 8,
-      badge: currentProject?.shotLists?.length || 0,
-    },
-  ], [branding.tokens.labels, profession, professionConfig, tabConfig, currentProject, openProjectCreationModal]);
-
-  const fabIconKey = branding.tokens.labels.fabIcon;
-  const fabIconMap: Record<string, ReactElement> = {
-    speedDial: <SpeedDialIcon />,
-    add: <AddIcon />,
-    list: <ViewListIcon />,
-    home: <HomeIcon />,
-    work: <WorkIcon />,
-    schedule: <ScheduleIcon />,
-  };
-  const fabIcon = fabIconMap[fabIconKey] ?? <SpeedDialIcon />;
-
-  // Get user ID (fallback to 'default' if not available)
+  // Keep the UI fallback aligned with settingsService/castingService demo seeds.
   const getUserId = useCallback((): string => {
     const session = authSessionService.getSessionSync();
     if (session.currentUserId) return session.currentUserId;
     if (session.adminUser?.id !== undefined && session.adminUser?.id !== null) {
       return String(session.adminUser.id);
     }
-    return 'default';
+    return 'default-user';
   }, []);
 
   // Load profession from API or settings cache
@@ -1001,16 +1562,54 @@ export function CastingPlannerPanel({
     }
   }, [getUserId]);
 
-  // Handle profession selection
-  const handleProfessionSelect = async (prof: 'foto' | 'video' | 'felles' | 'admin') => {
-    // Map new profession types to internal types
-    const internalProf = prof === 'foto' ? 'photographer' : 
-                         prof === 'video' ? 'videographer' : 
-                         prof === 'felles' ? 'photographer' : 'photographer';
+  // Handle role/persona switching from the header dialog.
+  const handleProfessionSelect = useCallback(async ({ categoryId, roleId }: CastingProfessionSelection) => {
+    const normalizedRoleId = roleId.trim().toLowerCase();
+    const isPhotoRole = ['film_photographer', 'photographer', 'photo_director', 'photo_assistant'].includes(normalizedRoleId);
+    const internalProf =
+      categoryId === 'foto'
+        ? 'photographer'
+        : categoryId === 'video'
+          ? 'videographer'
+          : null;
+
+    const nextRole =
+      normalizedRoleId === 'camera_operator'
+        ? 'camera_team'
+        : normalizedRoleId === 'client'
+          ? 'client_reviewer'
+          : normalizedRoleId === 'agent'
+            ? 'agency'
+            : normalizedRoleId === 'talent'
+              ? 'reader'
+              : isPhotoRole
+                ? 'content_producer'
+                : normalizedRoleId;
+
+    const nextLoginAs =
+      normalizedRoleId === 'owner' || normalizedRoleId === 'admin'
+        ? undefined
+        : isPhotoRole
+          ? 'content_producer'
+          : 'production_team';
+
     setProfession(internalProf);
     setProfessionDialogOpen(false);
-    await saveProfession(internalProf);
-  };
+
+    await authSessionService.updateRoleContext({
+      role: nextRole,
+      loginAs: nextLoginAs,
+      requestedRole: normalizedRoleId,
+      selectedProfession: normalizedRoleId,
+    });
+
+    if (internalProf) {
+      await saveProfession(internalProf);
+    }
+
+    const updatedSession = await authSessionService.loadSession();
+    setAdminUser(normalizeAdminUser(updatedSession.adminUser));
+  }, [saveProfession]);
 
   // Authentication guard - redirect to landing page if not logged in
   useEffect(() => {
@@ -1021,12 +1620,51 @@ export function CastingPlannerPanel({
   }, []);
 
   useEffect(() => {
+    const handleAuthSessionUpdated = () => {
+      authSessionService.loadSession().then((session) => {
+        setAdminUser(normalizeAdminUser(session.adminUser));
+        setAuthLoaded(true);
+      });
+    };
+
+    window.addEventListener('auth-session-updated', handleAuthSessionUpdated);
+    return () => {
+      window.removeEventListener('auth-session-updated', handleAuthSessionUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!authLoaded) return;
     if (!adminUser && isStandalone) {
       // Only redirect if this is the standalone casting page — prevents redirect loops
       window.location.href = '/casting.html';
     }
   }, [adminUser, authLoaded, isStandalone]);
+
+  useEffect(() => {
+    if (!authLoaded || adminUser) return;
+    setCurrentProject(null);
+    setProjects([]);
+    setProjectSelectorOpen(false);
+    setProjectCreationModalOpen(false);
+    setProjectToEdit(null);
+    setCurrentProjectId(null);
+    setActiveTab(0);
+  }, [adminUser, authLoaded]);
+
+  const defaultProfessionForSession = useMemo<'photographer' | 'videographer' | null>(() => {
+    if (!adminUser) return null;
+    if (isProducerWorkspaceSession) return 'videographer';
+
+    const requestedRole = (adminUser.requestedRole || '').trim().toLowerCase();
+    if (['film_photographer', 'director', 'producer', 'casting_director', 'camera_team', 'camera_operator'].includes(requestedRole)) {
+      return 'videographer';
+    }
+    if (['photographer', 'photo_director', 'photo_assistant', 'client'].includes(requestedRole)) {
+      return 'photographer';
+    }
+    return null;
+  }, [adminUser, isProducerWorkspaceSession]);
 
   // Load profession on mount
   useEffect(() => {
@@ -1040,29 +1678,46 @@ export function CastingPlannerPanel({
       if (loadedProfession) {
         setProfession(loadedProfession);
       } else {
+        if (defaultProfessionForSession) {
+          setProfession(defaultProfessionForSession);
+          await saveProfession(defaultProfessionForSession);
+          setProfessionDialogOpen(false);
+          return;
+        }
         // Show dialog if profession not set
         openProfessionDialog();
       }
     };
     initProfession();
-  }, [adminUser, loadProfession, openProfessionDialog]);
+  }, [adminUser, defaultProfessionForSession, loadProfession, openProfessionDialog, saveProfession]);
 
   useEffect(() => {
-    // Load projects regardless of profession being set
-    // TROLL project should be accessible to all professions
-    // Initialize mock data (TROLL) regardless of profession
-    
+    if (!adminUser) return;
+
     // Use async function to handle async getProjects
     const initializeData = async () => {
       setProjectsLoading(true);
       try {
-        const projects = await castingService.getProjects();
+        const loadedProjectsRaw = await castingService.getProjects();
+        const projects = filterProjectsForSession(loadedProjectsRaw);
         
         let shouldInitializeMock = false;
         
         if (projects.length === 0) {
           shouldInitializeMock = true;
         } else {
+          if (!isProducerWorkspaceSession) {
+            const hasTrollDemo = projects.some((project) => isTrollProject(project));
+            if (!hasTrollDemo) {
+              shouldInitializeMock = true;
+            }
+          } else {
+            const hasContentProducerDemo = projects.some((project) => isContentProducerDemoProject(project));
+            if (!hasContentProducerDemo) {
+              shouldInitializeMock = true;
+            }
+          }
+
           // Check if the first project is empty (no candidates, roles, etc.)
           // Also check counts from backend (rolesCount, candidatesCount, etc.)
           const firstProject = projects[0];
@@ -1094,22 +1749,26 @@ export function CastingPlannerPanel({
         
         if (shouldInitializeMock) {
           try {
-            await castingService.initializeMockData();
-            
-            // Also initialize offers, contracts and consents for complete demo
-            try {
-              await fetch('/api/casting/demo/troll/offers-contracts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({})
-              });
-              // Offers initialized successfully
-            } catch (_e) {
-              // Offers/contracts may already exist or API unavailable
+            if (isProducerWorkspaceSession) {
+              await castingService.initializeContentProducerDemoData();
+            } else {
+              await castingService.initializeMockData();
+
+              // Also initialize offers, contracts and consents for complete demo
+              try {
+                await fetch('/api/casting/demo/troll/offers-contracts', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({})
+                });
+                // Offers initialized successfully
+              } catch (_e) {
+                // Offers/contracts may already exist or API unavailable
+              }
             }
             
             // Reload projects after mock data initialization
-            const mockProjects = await castingService.getProjects();
+            const mockProjects = filterProjectsForSession(await castingService.getProjects());
             if (mockProjects.length > 0) {
               setProjects(mockProjects);
               // DON'T auto-select project - let user choose from the selector
@@ -1132,8 +1791,14 @@ export function CastingPlannerPanel({
       }
     };
 
-    initializeData();
-  }, []); // Run on mount - TROLL project is available to all professions
+    void initializeData();
+  }, [
+    adminUser,
+    filterProjectsForSession,
+    isContentProducerDemoProject,
+    isProducerWorkspaceSession,
+    isTrollProject,
+  ]);
 
   const loadUserRole = useCallback(async () => {
     if (currentProject) {
@@ -1151,6 +1816,9 @@ export function CastingPlannerPanel({
         canManageCrew: false,
         canManageLocations: false,
         canApprove: false,
+        canComment: false,
+        canRequestChanges: false,
+        canViewEconomy: false,
       });
 
       // Guest bypass mode should have full tab access across the Role Room.
@@ -1169,6 +1837,9 @@ export function CastingPlannerPanel({
             canManageCrew: true,
             canManageLocations: true,
             canApprove: true,
+            canComment: true,
+            canRequestChanges: true,
+            canViewEconomy: true,
           },
           createdAt: now,
           updatedAt: now,
@@ -1181,9 +1852,50 @@ export function CastingPlannerPanel({
           canManageCrew: true,
           canManageLocations: true,
           canApprove: true,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: true,
         });
         setPermissionsLoading(false);
         return;
+      }
+
+      const sessionUserId = authSessionService.getSessionSync().currentUserId;
+      const isUnauthenticatedDemoSession = !adminUser && (!sessionUserId || sessionUserId === 'default' || sessionUserId === 'default-user');
+      if (isUnauthenticatedDemoSession && isContentProducerDemoProject(currentProject)) {
+        const seededProducerRole = (currentProject.userRoles ?? []).find((role) => role?.role === 'content_producer');
+        if (seededProducerRole) {
+          const normalizedUserId = String(seededProducerRole.userId ?? seededProducerRole.user_id ?? 'default-user');
+          const mergedPermissions = {
+            ...castingAuthService.getDefaultPermissions('content_producer'),
+            ...(seededProducerRole.permissions ?? {}),
+          };
+          const normalizedRole: UserRole = {
+            ...seededProducerRole,
+            userId: normalizedUserId,
+            projectId: projectIdForRequest,
+            permissions: mergedPermissions,
+            createdAt: seededProducerRole.createdAt || seededProducerRole.created_at || new Date().toISOString(),
+            updatedAt: seededProducerRole.updatedAt || seededProducerRole.updated_at || new Date().toISOString(),
+          };
+
+          setCurrentUserRole(normalizedRole);
+          setPermissions({
+            canViewAll: Boolean(mergedPermissions.canViewAll),
+            canEditCasting: Boolean(mergedPermissions.canEditCasting),
+            canEditProduction: Boolean(mergedPermissions.canEditProduction),
+            canEditShotLists: Boolean(mergedPermissions.canEditShotLists || mergedPermissions.canEditShots),
+            canManageCrew: Boolean(mergedPermissions.canManageCrew),
+            canManageLocations: Boolean(mergedPermissions.canManageLocations),
+            canApprove: Boolean(mergedPermissions.canApprove),
+            canComment: Boolean(mergedPermissions.canComment),
+            canRequestChanges: Boolean(mergedPermissions.canRequestChanges),
+            canViewEconomy: Boolean(mergedPermissions.canViewEconomy),
+          });
+          void authSessionService.setCurrentUserId(normalizedUserId);
+          setPermissionsLoading(false);
+          return;
+        }
       }
       
       try {
@@ -1202,6 +1914,9 @@ export function CastingPlannerPanel({
               canManageCrew: true,
               canManageLocations: true,
               canApprove: true,
+              canComment: true,
+              canRequestChanges: true,
+              canViewEconomy: true,
             },
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -1214,6 +1929,9 @@ export function CastingPlannerPanel({
             canManageCrew: true,
             canManageLocations: true,
             canApprove: true,
+            canComment: true,
+            canRequestChanges: true,
+            canViewEconomy: true,
           });
           setPermissionsLoading(false);
           return;
@@ -1221,32 +1939,38 @@ export function CastingPlannerPanel({
 
         // Standalone login sets an account role, but project userRoles may still be empty.
         // Auto-provision a project role from the logged-in account role so permission checks work.
-        if (adminUser) {
-          const mappedRole = mapAccountRoleToProjectRole(adminUser.role);
-          if (mappedRole) {
-            const userId = String(adminUser.id);
-            const userRoles = await castingService.getUserRoles(projectIdForRequest);
-            const existingRole = userRoles.find((ur) => String(ur.userId) === userId);
+        const resolvedUserId = adminUser?.id !== undefined && adminUser?.id !== null
+          ? String(adminUser.id)
+          : getUserId();
 
-            if (!existingRole) {
-              const now = new Date().toISOString();
-              await castingService.saveUserRole(
-                projectIdForRequest,
-                {
-                  id: `userrole-${userId}-${projectIdForRequest}`,
-                  userId,
-                  projectId: projectIdForRequest,
-                  role: mappedRole as any,
-                  permissions: castingAuthService.getDefaultPermissions(mappedRole as any),
-                  createdAt: now,
-                  updatedAt: now,
-                } as any,
-              );
+        if (adminUser) {
+          const mappedRole = mapAccountRoleToProjectRole(
+            adminUser.role,
+            adminUser.loginAs,
+            adminUser.requestedRole,
+          );
+          if (mappedRole) {
+            const userId = resolvedUserId;
+            const userRoles = await castingService.getUserRoles(projectIdForRequest);
+            const existingRole = userRoles.find((ur) => String(ur.userId ?? ur.user_id ?? '') === userId);
+
+            const now = new Date().toISOString();
+            const needsRoleUpdate = !existingRole || existingRole.role !== mappedRole;
+            if (needsRoleUpdate) {
+              await castingService.saveUserRole(projectIdForRequest, {
+                id: existingRole?.id || `userrole-${userId}-${projectIdForRequest}`,
+                userId,
+                projectId: projectIdForRequest,
+                role: mappedRole,
+                permissions: castingAuthService.getDefaultPermissions(mappedRole),
+                createdAt: existingRole?.createdAt || existingRole?.created_at || now,
+                updatedAt: now,
+              });
             }
           }
         }
-        
-        const role = await castingAuthService.getUserRole(projectIdForRequest);
+
+        const role = await castingAuthService.getUserRole(projectIdForRequest, resolvedUserId);
         
         // Check if the project has changed while we were fetching - discard stale response
         if (currentProjectIdRef.current !== projectIdForRequest) {
@@ -1263,15 +1987,21 @@ export function CastingPlannerPanel({
           canEditShotLists,
           canManageCrew,
           canManageLocations,
-          canApprove
+          canApprove,
+          canComment,
+          canRequestChanges,
+          canViewEconomy,
         ] = await Promise.all([
-          castingAuthService.canViewAll(projectIdForRequest),
-          castingAuthService.canEditCasting(projectIdForRequest),
-          castingAuthService.canEditProduction(projectIdForRequest),
-          castingAuthService.canEditShotLists(projectIdForRequest),
-          castingAuthService.canManageCrew(projectIdForRequest),
-          castingAuthService.canManageLocations(projectIdForRequest),
-          castingAuthService.canApprove(projectIdForRequest),
+          castingAuthService.canViewAll(projectIdForRequest, resolvedUserId),
+          castingAuthService.canEditCasting(projectIdForRequest, resolvedUserId),
+          castingAuthService.canEditProduction(projectIdForRequest, resolvedUserId),
+          castingAuthService.canEditShotLists(projectIdForRequest, resolvedUserId),
+          castingAuthService.canManageCrew(projectIdForRequest, resolvedUserId),
+          castingAuthService.canManageLocations(projectIdForRequest, resolvedUserId),
+          castingAuthService.canApprove(projectIdForRequest, resolvedUserId),
+          castingAuthService.canComment(projectIdForRequest, resolvedUserId),
+          castingAuthService.canRequestChanges(projectIdForRequest, resolvedUserId),
+          castingAuthService.canViewEconomy(projectIdForRequest, resolvedUserId),
         ]);
         
         // Check again after permissions fetch - discard stale response
@@ -1287,21 +2017,56 @@ export function CastingPlannerPanel({
           canManageCrew,
           canManageLocations,
           canApprove,
+          canComment,
+          canRequestChanges,
+          canViewEconomy,
         });
       } catch (error) {
         console.error('Error loading user role:', error);
         // Only update state if this is still the current project
         if (currentProjectIdRef.current === projectIdForRequest) {
-          setCurrentUserRole(null);
-          setPermissions({
-            canViewAll: false,
-            canEditCasting: false,
-            canEditProduction: false,
-            canEditShotLists: false,
-            canManageCrew: false,
-            canManageLocations: false,
-            canApprove: false,
-          });
+          const mappedRole = adminUser
+            ? mapAccountRoleToProjectRole(adminUser.role, adminUser.loginAs, adminUser.requestedRole)
+            : null;
+          if (mappedRole) {
+            const now = new Date().toISOString();
+            const fallbackPermissions = castingAuthService.getDefaultPermissions(mappedRole);
+            setCurrentUserRole({
+              id: `role-fallback-${mappedRole}-${projectIdForRequest}`,
+              userId: adminUser?.id !== undefined && adminUser?.id !== null ? String(adminUser.id) : getUserId(),
+              projectId: projectIdForRequest,
+              role: mappedRole,
+              permissions: fallbackPermissions,
+              createdAt: now,
+              updatedAt: now,
+            });
+            setPermissions({
+              canViewAll: Boolean(fallbackPermissions.canViewAll),
+              canEditCasting: Boolean(fallbackPermissions.canEditCasting),
+              canEditProduction: Boolean(fallbackPermissions.canEditProduction),
+              canEditShotLists: Boolean(fallbackPermissions.canEditShotLists || fallbackPermissions.canEditShots),
+              canManageCrew: Boolean(fallbackPermissions.canManageCrew),
+              canManageLocations: Boolean(fallbackPermissions.canManageLocations),
+              canApprove: Boolean(fallbackPermissions.canApprove),
+              canComment: Boolean(fallbackPermissions.canComment),
+              canRequestChanges: Boolean(fallbackPermissions.canRequestChanges),
+              canViewEconomy: Boolean(fallbackPermissions.canViewEconomy),
+            });
+          } else {
+            setCurrentUserRole(null);
+            setPermissions({
+              canViewAll: false,
+              canEditCasting: false,
+              canEditProduction: false,
+              canEditShotLists: false,
+              canManageCrew: false,
+              canManageLocations: false,
+              canApprove: false,
+              canComment: false,
+              canRequestChanges: false,
+              canViewEconomy: false,
+            });
+          }
         }
       } finally {
         // Only clear loading state if this is still the current project
@@ -1321,9 +2086,12 @@ export function CastingPlannerPanel({
         canManageCrew: false,
         canManageLocations: false,
         canApprove: false,
+        canComment: false,
+        canRequestChanges: false,
+        canViewEconomy: false,
       });
     }
-  }, [currentProject, adminUser, isGuestMode]);
+  }, [currentProject, adminUser, getUserId, isGuestMode]);
 
   const loadAvailableScenes = useCallback(async () => {
     // Load scenes from casting service
@@ -1411,6 +2179,31 @@ export function CastingPlannerPanel({
   }, [quickContactIds, currentProject?.id, quickContactsLoaded]);
 
   useEffect(() => {
+    let isMounted = true;
+    const loadGlobalTagRegistry = async () => {
+      try {
+        const tags = await globalTagService.load();
+        if (isMounted) {
+          setGlobalTagRegistry(tags);
+        }
+      } catch (error) {
+        console.warn('Kunne ikke laste global tag-register:', error);
+        if (isMounted) {
+          setGlobalTagRegistry([]);
+        }
+      } finally {
+        if (isMounted) {
+          setGlobalTagRegistryLoaded(true);
+        }
+      }
+    };
+    void loadGlobalTagRegistry();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!currentProject || quickContactIds.size === 0) return;
     const candidateIds = new Set(currentProject.candidates.map(candidate => candidate.id));
     const prunedIds = [...quickContactIds].filter((candidateId) => candidateIds.has(candidateId));
@@ -1421,31 +2214,48 @@ export function CastingPlannerPanel({
 
   const loadProjects = useCallback(async () => {
     try {
-      const loadedProjects = await castingService.getProjects();
+      const loadedProjects = filterProjectsForSession(await castingService.getProjects());
       setProjects(loadedProjects);
       
       // If we have a current project already selected, refresh its data
       // Otherwise, DON'T auto-select - let user choose from the project selector
-      const projectIdToLoad = currentProject?.id;
+      const projectIdToLoad = currentProjectRef.current?.id;
       
       if (loadedProjects.length > 0 && projectIdToLoad) {
         // Only refresh data if user already selected a project
         const targetProject = loadedProjects.find(p => p.id === projectIdToLoad);
+        const resolvedTargetProject =
+          targetProject && !isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
+            ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? targetProject
+            : targetProject;
         
-        if (targetProject) {
+        if (resolvedTargetProject) {
           // Fetch the full project with all nested data
-          const fullProject = await castingService.getProject(targetProject.id);
+          const fullProject = await castingService.getProject(resolvedTargetProject.id);
           if (fullProject) {
             setCurrentProject(fullProject);
           } else {
-            setCurrentProject(targetProject);
+            setCurrentProject(resolvedTargetProject);
           }
+        } else {
+          // Current project is no longer visible in this session (e.g. content producer + TROLL),
+          // switch to the best available project instead of keeping stale state.
+          const preferredProject = isProducerWorkspaceSession
+            ? loadedProjects.find((project) => String(project.id || '').trim().toLowerCase() === castingService.getContentProducerDemoProjectId())
+            : loadedProjects[0];
+          setCurrentProject(preferredProject ?? loadedProjects[0] ?? null);
         }
+      } else if (loadedProjects.length > 0 && !projectIdToLoad && isProducerWorkspaceSession) {
+        // In producer-workspace mode we select the producer demo automatically when no project is active.
+        const preferredProject = loadedProjects.find(
+          (project) => String(project.id || '').trim().toLowerCase() === castingService.getContentProducerDemoProjectId()
+        );
+        setCurrentProject(preferredProject ?? loadedProjects[0]);
       } else if (loadedProjects.length === 0) {
         // Only create empty project if mock data initialization didn't work
         const defaultProject: CastingProject = {
           id: `project-${Date.now()}`,
-          name: profession ? `${branding.tokens.labels.newProjectPrefix} ${getTerm('project')}` : branding.tokens.labels.newCastingProjectTitle,
+          name: profession ? `${branding.tokens.labels.newProjectPrefix} ${getTerm('project')}` : 'Nytt Role Room prosjekt',
           description: '',
           roles: [],
           candidates: [],
@@ -1467,21 +2277,32 @@ export function CastingPlannerPanel({
       console.error('Error loading projects:', error);
       // Fallback to sync version — wrap in try/catch to prevent double-throw
       try {
-        const loadedProjects = await castingService.getProjects();
+        const loadedProjects = filterProjectsForSession(await castingService.getProjects());
         setProjects(loadedProjects);
         if (loadedProjects.length > 0) {
-          // Maintain current project if possible
-          const targetProject = currentProject?.id 
-            ? loadedProjects.find(p => p.id === currentProject.id) || loadedProjects[0]
+          // Maintain current project if possible, otherwise choose a role-aware fallback.
+          const roleAwareFallback = isProducerWorkspaceSession
+            ? loadedProjects.find((project) => String(project.id || '').trim().toLowerCase() === castingService.getContentProducerDemoProjectId())
             : loadedProjects[0];
-          setCurrentProject(targetProject);
+          const activeProjectId = currentProjectRef.current?.id;
+          const targetProject = activeProjectId
+            ? loadedProjects.find(p => p.id === activeProjectId) || roleAwareFallback || loadedProjects[0]
+            : roleAwareFallback || loadedProjects[0];
+          const resolvedTargetProject =
+            targetProject && !isProducerWorkspaceSession && isContentProducerDemoProject(targetProject)
+              ? loadedProjects.find((project) => !isContentProducerDemoProject(project)) ?? targetProject
+              : targetProject;
+          setCurrentProject(resolvedTargetProject ?? null);
+        } else {
+          setCurrentProject(null);
         }
       } catch (fallbackError) {
         console.error('Fallback project load also failed:', fallbackError);
         setProjects([]);
+        setCurrentProject(null);
       }
     }
-  }, [profession, currentProject?.id]);
+  }, [profession, filterProjectsForSession, isProducerWorkspaceSession]);
 
   const handleQuickContactsChange = useCallback((ids: string[]) => {
     startTransition(() => {
@@ -1650,7 +2471,7 @@ export function CastingPlannerPanel({
       } else if (type === 'project') {
         await castingService.deleteProject(id);
         if (currentProject?.id === id) {
-          const remaining = await castingService.getProjects();
+          const remaining = filterProjectsForSession(await castingService.getProjects());
           setCurrentProject(remaining.length > 0 ? remaining[0] : null);
         }
       }
@@ -1673,7 +2494,7 @@ export function CastingPlannerPanel({
       setConfirmDeleteOpen(false);
       setConfirmDeleteContext(null);
     }
-  }, [currentProject, confirmDeleteContext, toast, branding.tokens.labels]);
+  }, [currentProject, confirmDeleteContext, toast, branding.tokens.labels, filterProjectsForSession]);
 
   const handleCreateCandidate = useCallback(() => {
     if (!currentProject) {
@@ -1697,6 +2518,83 @@ export function CastingPlannerPanel({
     openCandidateDialog();
   }, [currentProject, toast]);
 
+  const handleCalendarRequestLocationCreate = useCallback(() => {
+    if (!currentProject) return;
+    setCalendarCreateIntent('location');
+    setExternalLocationCreateSignal((current) => current + 1);
+  }, [currentProject]);
+
+  const handleCalendarRequestCandidateCreate = useCallback(() => {
+    if (!currentProject) return;
+    setCalendarCreateIntent('candidate');
+    handleCreateCandidate();
+  }, [currentProject, handleCreateCandidate]);
+
+  const handleCalendarRequestCrewCreate = useCallback(() => {
+    if (!currentProject) return;
+    setCalendarCreateIntent('crew');
+    setExternalCrewCreateSignal((current) => current + 1);
+  }, [currentProject]);
+
+  const handleCalendarRequestEquipmentCreate = useCallback(() => {
+    if (!currentProject) return;
+    setCalendarCreateIntent('equipment');
+    setExternalEquipmentCreateSignal((current) => current + 1);
+  }, [currentProject]);
+
+  const returnToCalendarWithSelection = useCallback((selection: {
+    locationId?: string;
+    candidateId?: string;
+    crewId?: string;
+    equipmentId?: string;
+  }) => {
+    setCalendarPreselectedFromCreate(selection);
+    setCalendarReopenSignal((current) => current + 1);
+    startTransition(() => setActiveTab(CALENDAR_TAB_INDEX));
+  }, []);
+
+  const handleExternalLocationCreated = useCallback((location: { id: string }) => {
+    if (calendarCreateIntent !== 'location') return;
+    setCalendarCreateIntent(null);
+    returnToCalendarWithSelection({ locationId: location.id });
+  }, [calendarCreateIntent, returnToCalendarWithSelection]);
+
+  const handleExternalLocationCreateCancelled = useCallback(() => {
+    if (calendarCreateIntent !== 'location') return;
+    setCalendarCreateIntent(null);
+  }, [calendarCreateIntent]);
+
+  const handleExternalCrewCreated = useCallback((crewMember: { id: string }) => {
+    if (calendarCreateIntent !== 'crew') return;
+    setCalendarCreateIntent(null);
+    returnToCalendarWithSelection({ crewId: crewMember.id });
+  }, [calendarCreateIntent, returnToCalendarWithSelection]);
+
+  const handleExternalCrewCreateCancelled = useCallback(() => {
+    if (calendarCreateIntent !== 'crew') return;
+    setCalendarCreateIntent(null);
+  }, [calendarCreateIntent]);
+
+  const handleExternalEquipmentCreated = useCallback((equipmentItem: { id: string }) => {
+    if (calendarCreateIntent !== 'equipment') return;
+    setCalendarCreateIntent(null);
+    returnToCalendarWithSelection({ equipmentId: equipmentItem.id });
+  }, [calendarCreateIntent, returnToCalendarWithSelection]);
+
+  const handleExternalEquipmentCreateCancelled = useCallback(() => {
+    if (calendarCreateIntent !== 'equipment') return;
+    setCalendarCreateIntent(null);
+  }, [calendarCreateIntent]);
+
+  const closeCandidateDialog = useCallback(() => {
+    setCandidateDialogOpen(false);
+    setSelectedCandidate(null);
+    setSendConsentOnSave(false);
+    if (calendarCreateIntent === 'candidate') {
+      setCalendarCreateIntent(null);
+    }
+  }, [calendarCreateIntent]);
+
   const handleSaveCandidate = useCallback(async () => {
     if (!currentProject || !selectedCandidate) return;
     
@@ -1706,38 +2604,85 @@ export function CastingPlannerPanel({
     }
     
     const isNewCandidate = !selectedCandidate.id || selectedCandidate.id.startsWith('candidate-');
-    const shouldSendConsent = isNewCandidate && sendConsentOnSave;
+    const createdFromCalendarEvent = calendarCreateIntent === 'candidate';
+    const shouldSendConsent = isNewCandidate && sendConsentOnSave && !createdFromCalendarEvent;
     
     try {
-      await castingService.saveCandidate(currentProject.id, selectedCandidate);
+      const nowIso = new Date().toISOString();
+      const existingCandidate = currentProject.candidates.find((candidate) => candidate.id === selectedCandidate.id);
+      const previousAuditionNotes = typeof existingCandidate?.auditionNotes === 'string' ? existingCandidate.auditionNotes : '';
+      const nextAuditionNotes = typeof selectedCandidate.auditionNotes === 'string' ? selectedCandidate.auditionNotes : '';
+      const auditionNotesChanged = nextAuditionNotes !== previousAuditionNotes;
+      const candidateToSave: Candidate = {
+        ...selectedCandidate,
+      };
+
+      if (auditionNotesChanged) {
+        candidateToSave.auditionNotesAuthorName = adminUser?.display_name || adminUser?.email || 'Crew';
+        if (adminUser?.id !== undefined && adminUser?.id !== null) {
+          candidateToSave.auditionNotesAuthorId = String(adminUser.id);
+        }
+        candidateToSave.auditionNotesUpdatedAt = nowIso;
+      }
+
+      await castingService.saveCandidate(currentProject.id, candidateToSave);
+
+      if (auditionNotesChanged) {
+        const globalSeed = [
+          selectedCandidate.name,
+          adminUser?.display_name,
+          adminUser?.email,
+          ...globalTagService.parseExplicitMentions(nextAuditionNotes),
+        ]
+          .filter((value): value is string => typeof value === 'string')
+          .map((value) => value.trim())
+          .filter((value) => value.length >= 2);
+        if (globalSeed.length > 0) {
+          try {
+            const updatedGlobalTags = await globalTagService.add(globalSeed);
+            setGlobalTagRegistry(updatedGlobalTags);
+          } catch (tagError) {
+            console.warn('Kunne ikke persistere globale tags fra audition-notater:', tagError);
+          }
+        }
+      }
+
       await loadProjects();
+      const refreshedProject = await castingService.getProject(currentProject.id);
+      const savedCandidate =
+        refreshedProject?.candidates.find((candidate) => candidate.id === candidateToSave.id) ??
+        refreshedProject?.candidates.find((candidate) => candidate.name === candidateToSave.name);
+
+      if (createdFromCalendarEvent) {
+        closeCandidateDialog();
+        if (savedCandidate?.id) {
+          returnToCalendarWithSelection({ candidateId: savedCandidate.id });
+        } else if (candidateToSave.id) {
+          returnToCalendarWithSelection({ candidateId: candidateToSave.id });
+        } else {
+          returnToCalendarWithSelection({});
+        }
+        return;
+      }
       
       // If user wanted to send consent, open the consent dialog after save
       if (shouldSendConsent) {
-        // Get the saved candidate to ensure we have the correct ID
-        const updatedProject = await castingService.getProject(currentProject.id);
-        const savedCandidate = updatedProject?.candidates.find(c => c.name === selectedCandidate.name);
-        
         if (savedCandidate) {
           setSelectedCandidate(savedCandidate);
           setCandidateDialogOpen(false);
           setSendConsentOnSave(false);
           openConsentContractDialog();
         } else {
-          setCandidateDialogOpen(false);
-          setSelectedCandidate(null);
-          setSendConsentOnSave(false);
+          closeCandidateDialog();
         }
       } else {
-        setCandidateDialogOpen(false);
-        setSelectedCandidate(null);
-        setSendConsentOnSave(false);
+        closeCandidateDialog();
       }
     } catch (error) {
       console.error('Error saving candidate:', error);
       toast.showError(branding.tokens.labels.candidateSaveError);
     }
-  }, [currentProject, selectedCandidate, toast, loadProjects, sendConsentOnSave]);
+  }, [adminUser, calendarCreateIntent, closeCandidateDialog, currentProject, loadProjects, openConsentContractDialog, returnToCalendarWithSelection, selectedCandidate, sendConsentOnSave, toast, branding.tokens.labels.candidateSaveError, branding.tokens.labels.candidateNameRequired]);
 
   const handleDeleteCandidate = useCallback(async (candidateId: string) => {
     if (!currentProject) return;
@@ -1789,10 +2734,71 @@ export function CastingPlannerPanel({
     setConfirmDeleteOpen(true);
   }, [currentProject]);
 
-  // Use data directly from currentProject instead of async service calls
-  const roles = currentProject?.roles || [];
-  const allCandidates = currentProject?.candidates || [];
+  // Use sanitized project data directly from currentProject instead of async service calls
+  const roles = useMemo(
+    () => (currentProject?.roles ?? []).filter((role): role is Role => (
+      !!role
+      && typeof role === 'object'
+      && typeof role.id === 'string'
+      && role.id.trim().length > 0
+      && typeof role.name === 'string'
+      && role.name.trim().length > 0
+    )),
+    [currentProject?.roles],
+  );
+  const allCandidates = useMemo(
+    () => (currentProject?.candidates ?? []).filter((candidate): candidate is Candidate => (
+      !!candidate
+      && typeof candidate === 'object'
+      && typeof candidate.id === 'string'
+      && candidate.id.trim().length > 0
+      && typeof candidate.name === 'string'
+      && candidate.name.trim().length > 0
+    )),
+    [currentProject?.candidates],
+  );
   const allSchedules = currentProject?.schedules || [];
+
+  const globalTagSeedList = useMemo(() => {
+    const deduped = new Set<string>();
+    [
+      ...allCandidates.map((candidate) => candidate.name),
+      ...(currentProject?.crew ?? []).map((crewMember) => crewMember?.name),
+      adminUser?.display_name,
+      adminUser?.email,
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter((value) => value.length >= 2)
+      .forEach((value) => deduped.add(value));
+    return Array.from(deduped);
+  }, [adminUser?.display_name, adminUser?.email, allCandidates, currentProject?.crew]);
+
+  const globalTagSeedKey = useMemo(
+    () =>
+      globalTagSeedList
+        .map((value) => value.toLocaleLowerCase('no-NO'))
+        .sort((left, right) => left.localeCompare(right, 'no-NO'))
+        .join('|'),
+    [globalTagSeedList],
+  );
+
+  useEffect(() => {
+    if (!globalTagRegistryLoaded || globalTagSeedList.length === 0) return;
+    void globalTagService
+      .add(globalTagSeedList)
+      .then((tags) => {
+        setGlobalTagRegistry((previous) => {
+          if (previous.length === tags.length && previous.every((value, index) => value === tags[index])) {
+            return previous;
+          }
+          return tags;
+        });
+      })
+      .catch((error) => {
+        console.warn('Kunne ikke oppdatere global tag-register fra utvelgelse:', error);
+      });
+  }, [globalTagRegistryLoaded, globalTagSeedKey]);
   
   // Memoized filtered candidates (using debounced search for performance)
   const candidates = useMemo(() => allCandidates.filter(c => {
@@ -1828,17 +2834,1040 @@ export function CastingPlannerPanel({
   
   const schedules = allSchedules;
 
-  const stats = useMemo(() => ({
-    totalRoles: roles.length,
-    openRoles: roles.filter(r => r.status === 'open' || r.status === 'casting').length,
-    totalCandidates: candidates.length,
-    upcomingSchedules: schedules.filter(s => s.status === 'scheduled' && new Date(s.date) >= new Date()).length,
-  }), [roles, candidates, schedules]);
+  const getCandidateAuditionRating = useCallback((candidate: Candidate): number | null => {
+    const candidateRecord = candidate as unknown as Record<string, unknown>;
+    const rawRating = candidateRecord.auditionRating ?? candidateRecord.rating ?? candidateRecord.score;
+    if (typeof rawRating !== 'number' || !Number.isFinite(rawRating)) return null;
+    const normalized = rawRating > 10 && rawRating <= 100 ? rawRating / 10 : rawRating;
+    return Math.max(1, Math.min(10, Math.round(normalized)));
+  }, []);
+
+  const getCandidateAuditionNotes = useCallback((candidate: Candidate): string => {
+    const candidateRecord = candidate as unknown as Record<string, unknown>;
+    if (typeof candidateRecord.auditionNotes === 'string') return candidateRecord.auditionNotes;
+    if (typeof candidate.notes === 'string') return candidate.notes;
+    return '';
+  }, []);
+
+  const getCandidateContactInfo = useCallback((candidate?: Candidate | null): ContactInfo => {
+    if (!candidate) {
+      return {};
+    }
+
+    const directContact = candidate.contactInfo;
+    const snakeCaseContact = candidate.contact_info;
+    const candidateRecord = candidate as unknown as Record<string, unknown>;
+    const directEmail = typeof directContact?.email === 'string' ? directContact.email : undefined;
+    const snakeCaseEmail = typeof snakeCaseContact?.email === 'string' ? snakeCaseContact.email : undefined;
+    const fallbackEmail = typeof candidateRecord.email === 'string' ? candidateRecord.email : undefined;
+    const directPhone = typeof directContact?.phone === 'string' ? directContact.phone : undefined;
+    const snakeCasePhone = typeof snakeCaseContact?.phone === 'string' ? snakeCaseContact.phone : undefined;
+    const fallbackPhone = typeof candidateRecord.phone === 'string' ? candidateRecord.phone : undefined;
+    const directAddress = typeof directContact?.address === 'string' ? directContact.address : undefined;
+    const snakeCaseAddress = typeof snakeCaseContact?.address === 'string' ? snakeCaseContact.address : undefined;
+    const fallbackAddress = typeof candidateRecord.address === 'string' ? candidateRecord.address : undefined;
+
+    return {
+      ...(directContact || {}),
+      ...(snakeCaseContact || {}),
+      email: directEmail ?? snakeCaseEmail ?? fallbackEmail,
+      phone: directPhone ?? snakeCasePhone ?? fallbackPhone,
+      address: directAddress ?? snakeCaseAddress ?? fallbackAddress,
+    };
+  }, []);
+
+  const getCandidateAssignedRoles = useCallback((candidate?: Candidate | null): string[] => {
+    if (!candidate) {
+      return [];
+    }
+
+    if (Array.isArray(candidate.assignedRoles)) {
+      return candidate.assignedRoles.filter((roleId): roleId is string => typeof roleId === 'string' && roleId.length > 0);
+    }
+
+    if (Array.isArray(candidate.assigned_roles)) {
+      return candidate.assigned_roles.filter((roleId): roleId is string => typeof roleId === 'string' && roleId.length > 0);
+    }
+
+    const fallbackRoleId = typeof candidate.roleId === 'string'
+      ? candidate.roleId
+      : typeof candidate.role_id === 'string'
+        ? candidate.role_id
+        : undefined;
+
+    return fallbackRoleId ? [fallbackRoleId] : [];
+  }, []);
+
+  const getCandidateDialogStatus = useCallback((candidate?: Candidate | null): Candidate['status'] => {
+    const rawStatus = typeof candidate?.status === 'string' ? candidate.status.toLowerCase() : '';
+    switch (rawStatus) {
+      case 'requested':
+      case 'shortlist':
+      case 'selected':
+      case 'confirmed':
+      case 'rejected':
+      case 'pending':
+        return rawStatus;
+      case 'available':
+      default:
+        return 'pending';
+    }
+  }, []);
+
+  const getCandidateSelectionStage = useCallback((candidate: Candidate): SelectionStage => {
+    const status = String(candidate.status || '').toLowerCase();
+    if (['selected', 'confirmed', 'offer_sent', 'contracted', 'production'].includes(status)) return 'final';
+    if (['awaiting_callback', 'callback', 'shortlist', 'requested'].includes(status)) return 'callbacks';
+    return 'screening';
+  }, []);
+
+  const auditionSchedulesByCandidate = useMemo(() => {
+    const map = new Map<string, Schedule[]>();
+    schedules.forEach((schedule) => {
+      const scheduleType = String(schedule.type || '').toLowerCase();
+      const scheduleTitle = String(schedule.title || '').toLowerCase();
+      const scheduleStatus = String(schedule.status || '').toLowerCase();
+      const isAuditionRelated =
+        scheduleType.includes('audition')
+        || scheduleType.includes('callback')
+        || scheduleTitle.includes('audition')
+        || scheduleTitle.includes('callback')
+        || scheduleStatus.includes('callback')
+        || scheduleStatus.includes('audition');
+
+      if (!isAuditionRelated) return;
+      const candidateId = schedule.candidateId || schedule.candidate_id;
+      if (!candidateId) return;
+      const existing = map.get(candidateId) || [];
+      existing.push(schedule);
+      map.set(candidateId, existing);
+    });
+    return map;
+  }, [schedules]);
+
+  const selectionCandidates = useMemo(() => {
+    const selectionStatuses = new Set([
+      'auditioned',
+      'awaiting_callback',
+      'shortlist',
+      'selected',
+      'confirmed',
+      'offer_sent',
+      'contracted',
+    ]);
+
+    return candidates
+      .filter((candidate) => {
+        const status = String(candidate.status || '').toLowerCase();
+        const hasAuditionNotes = getCandidateAuditionNotes(candidate).trim().length > 0;
+        const hasAuditionSchedules = (auditionSchedulesByCandidate.get(candidate.id)?.length || 0) > 0;
+        return hasAuditionNotes || hasAuditionSchedules || selectionStatuses.has(status);
+      })
+      .sort((a, b) => {
+        const ratingA = getCandidateAuditionRating(a) ?? 0;
+        const ratingB = getCandidateAuditionRating(b) ?? 0;
+        if (ratingA !== ratingB) return ratingB - ratingA;
+        return a.name.localeCompare(b.name, 'no');
+      });
+  }, [candidates, getCandidateAuditionNotes, auditionSchedulesByCandidate, getCandidateAuditionRating]);
+
+  const selectionCandidatesFiltered = useMemo(() => {
+    if (selectionPhaseFilter === 'all') return selectionCandidates;
+    return selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === selectionPhaseFilter);
+  }, [selectionCandidates, selectionPhaseFilter, getCandidateSelectionStage]);
+
+  const selectionMetrics = useMemo(
+    () => ({
+      screening: selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === 'screening').length,
+      callbacks: selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === 'callbacks').length,
+      final: selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === 'final').length,
+      total: selectionCandidates.length,
+    }),
+    [selectionCandidates, getCandidateSelectionStage],
+  );
+
+  const getCandidatePrimaryPhoto = useCallback((candidate: Candidate): string | null => {
+    const candidateRecord = candidate as unknown as Record<string, unknown>;
+    const photoArray = Array.isArray(candidate.photos)
+      ? candidate.photos
+      : Array.isArray(candidateRecord.photoUrls)
+        ? (candidateRecord.photoUrls as unknown[])
+        : [];
+    const firstPhoto = photoArray.find((photo) => typeof photo === 'string' && photo.trim().length > 0);
+    return typeof firstPhoto === 'string' ? firstPhoto : null;
+  }, []);
+
+  const getCandidateSelfTapes = useCallback((candidate: Candidate): string[] => {
+    const candidateRecord = candidate as unknown as Record<string, unknown>;
+    const sources: unknown[] = [];
+    if (Array.isArray(candidate.videos)) sources.push(...candidate.videos);
+    if (Array.isArray(candidateRecord.selfTapes)) sources.push(...(candidateRecord.selfTapes as unknown[]));
+    if (typeof candidateRecord.selfTapeUrl === 'string') sources.push(candidateRecord.selfTapeUrl);
+    if (typeof candidateRecord.showreel === 'string') sources.push(candidateRecord.showreel);
+    if (typeof candidateRecord.demoReel === 'string') sources.push(candidateRecord.demoReel);
+
+    const unique = new Set<string>();
+    sources.forEach((value) => {
+      if (typeof value === 'string' && value.trim().length > 0) unique.add(value);
+    });
+    return Array.from(unique);
+  }, []);
+
+  const getCandidateSelectionSignals = useCallback((candidate: Candidate) => {
+    const rating = getCandidateAuditionRating(candidate);
+    const notes = getCandidateAuditionNotes(candidate);
+    const schedulesForCandidate = auditionSchedulesByCandidate.get(candidate.id) || [];
+    const callbackCount = schedulesForCandidate.filter((schedule) => {
+      const status = String(schedule.status || '').toLowerCase();
+      const type = String(schedule.type || '').toLowerCase();
+      return status.includes('callback') || type.includes('callback');
+    }).length;
+    const status = String(candidate.status || '').toLowerCase();
+    const positiveMatches = (notes.match(/sterk|god|overbevisende|naturlig|fantastisk|karisma|kjemi/gi) || []).length;
+    const negativeMatches = (notes.match(/stiv|svak|usikker|mangler|uklar|risiko|tempo/gi) || []).length;
+
+    const scenePerformance = clampPercent((rating ?? 5.8) * 10 + callbackCount * 3 + positiveMatches * 2 - negativeMatches * 2);
+    const chemistry = clampPercent(58 + positiveMatches * 10 - negativeMatches * 11 + callbackCount * 5);
+
+    let availability = 72;
+    if (status.includes('unavailable')) availability = 28;
+    else if (status.includes('tentative')) availability = 52;
+    else if (status.includes('selected') || status.includes('confirmed')) availability = 86;
+    if (schedulesForCandidate.length > 0) availability = clampPercent(availability + 6);
+
+    const riskBase = 45 + negativeMatches * 12 - positiveMatches * 7;
+    const riskFromRating = rating === null ? 14 : rating <= 5 ? 18 : rating >= 8 ? -10 : 0;
+    const risk = clampPercent(riskBase + riskFromRating + (status.includes('unavailable') ? 25 : 0));
+
+    return {
+      scenePerformance,
+      chemistry,
+      availability,
+      risk,
+    };
+  }, [auditionSchedulesByCandidate, getCandidateAuditionNotes, getCandidateAuditionRating]);
+
+  const getCandidateSelectionScore = useCallback((candidate: Candidate): number => {
+    const signals = getCandidateSelectionSignals(candidate);
+    const weightedScore = (
+      signals.scenePerformance * SELECTION_SCORE_WEIGHTS.scenePerformance
+      + signals.chemistry * SELECTION_SCORE_WEIGHTS.chemistry
+      + signals.availability * SELECTION_SCORE_WEIGHTS.availability
+      + (100 - signals.risk) * SELECTION_SCORE_WEIGHTS.risk
+    ) / SELECTION_WEIGHT_TOTAL;
+    return Math.round(clampPercent(weightedScore));
+  }, [getCandidateSelectionSignals]);
+
+  const getSelectionReadiness = useCallback((score: number) => {
+    if (score >= 82) {
+      return {
+        label: 'Klar for finale',
+        description: 'Sterk kandidat for endelig beslutning.',
+        color: '#86efac',
+        bgcolor: 'rgba(22,101,52,0.28)',
+        border: '1px solid rgba(74,222,128,0.44)',
+      };
+    }
+    if (score >= 66) {
+      return {
+        label: 'Klar for callback',
+        description: 'Bør videre til neste runde.',
+        color: '#c4b5fd',
+        bgcolor: 'rgba(91,33,182,0.26)',
+        border: '1px solid rgba(167,139,250,0.44)',
+      };
+    }
+    return {
+      label: 'Trenger mer screening',
+      description: 'Samle mer vurderingsgrunnlag.',
+      color: '#fcd34d',
+      bgcolor: 'rgba(120,53,15,0.26)',
+      border: '1px solid rgba(251,191,36,0.42)',
+    };
+  }, []);
+
+  const selectionActorLabel = useMemo(
+    () => adminUser?.display_name || adminUser?.email || 'Crew',
+    [adminUser],
+  );
+
+  const selectionDecisionLogFromProject = useMemo(() => {
+    const source = currentProject as Record<string, unknown> | null;
+    return normalizeSelectionDecisionLog(
+      source?.selectionDecisionLog
+      ?? source?.selectionDecisionLogs
+      ?? source?.selectionLog,
+    );
+  }, [currentProject]);
+
+  const selectionDecisionLogSnapshot = useMemo(
+    () => JSON.stringify(selectionDecisionLog.slice(0, MAX_SELECTION_DECISION_LOG_ENTRIES)),
+    [selectionDecisionLog],
+  );
+  const selectionProjectLogSnapshot = useMemo(
+    () => JSON.stringify(selectionDecisionLogFromProject),
+    [selectionDecisionLogFromProject],
+  );
+
+  useEffect(() => {
+    if (!currentProject?.id) {
+      setSelectionDecisionLog([]);
+      return;
+    }
+    setSelectionDecisionLog(selectionDecisionLogFromProject);
+  }, [currentProject?.id]);
+
+  useEffect(() => {
+    if (!currentProject?.id) return;
+    if (selectionDecisionLogSnapshot === selectionProjectLogSnapshot) return;
+    if (typeof window === 'undefined') return;
+
+    let cancelled = false;
+    const timerId = window.setTimeout(async () => {
+      try {
+        const freshestProject = await castingService.getProject(currentProject.id);
+        if (!freshestProject) return;
+
+        const source = freshestProject as Record<string, unknown>;
+        const freshestLog = normalizeSelectionDecisionLog(
+          source.selectionDecisionLog
+          ?? source.selectionDecisionLogs
+          ?? source.selectionLog,
+        );
+        if (JSON.stringify(freshestLog) === selectionDecisionLogSnapshot) return;
+
+        const nextLog = normalizeSelectionDecisionLog(JSON.parse(selectionDecisionLogSnapshot));
+        const nextUpdatedAt = new Date().toISOString();
+        const nextProject: CastingProject = {
+          ...freshestProject,
+          selectionDecisionLog: nextLog,
+          updatedAt: nextUpdatedAt,
+        };
+        await castingService.saveProject(nextProject);
+        if (cancelled) return;
+
+        setProjects((previous) =>
+          previous.map((project) =>
+            project.id === nextProject.id
+              ? {
+                  ...project,
+                  selectionDecisionLog: nextLog,
+                  updatedAt: nextUpdatedAt,
+                }
+              : project,
+          ),
+        );
+        setCurrentProject((previous) => {
+          if (!previous || previous.id !== nextProject.id) return previous;
+          return {
+            ...previous,
+            selectionDecisionLog: nextLog,
+            updatedAt: nextUpdatedAt,
+          };
+        });
+      } catch (error) {
+        console.warn('Kunne ikke lagre utvelgelseslogg i database:', error);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timerId);
+    };
+  }, [
+    currentProject?.id,
+    selectionDecisionLogSnapshot,
+    selectionProjectLogSnapshot,
+  ]);
+
+  const appendSelectionDecisionLog = useCallback((candidate: Candidate, action: string) => {
+    const entry: SelectionDecisionLogEntry = {
+      id: `selection-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      candidateId: candidate.id,
+      candidateName: candidate.name || 'Ukjent kandidat',
+      action,
+      actor: selectionActorLabel,
+      createdAt: new Date().toISOString(),
+    };
+    setSelectionDecisionLog((prev) => [entry, ...prev].slice(0, MAX_SELECTION_DECISION_LOG_ENTRIES));
+  }, [selectionActorLabel]);
+
+  const selectionCompareCandidates = useMemo(
+    () => selectionCandidates.filter((candidate) => selectionCompareCandidateIds.includes(candidate.id)).slice(0, MAX_SELECTION_COMPARE),
+    [selectionCandidates, selectionCompareCandidateIds],
+  );
+  const selectionCandidateIdSignature = useMemo(
+    () => selectionCandidates.map((candidate) => candidate.id).join('|'),
+    [selectionCandidates],
+  );
+  const selectionCandidateIdSet = useMemo(
+    () => new Set(selectionCandidateIdSignature ? selectionCandidateIdSignature.split('|') : []),
+    [selectionCandidateIdSignature],
+  );
+
+  const handleToggleSelectionCompare = useCallback((candidate: Candidate) => {
+    const isCompared = selectionCompareCandidateIds.includes(candidate.id);
+    if (isCompared) {
+      setSelectionCompareCandidateIds((prev) => prev.filter((id) => id !== candidate.id));
+      appendSelectionDecisionLog(candidate, 'Fjernet fra sammenligning');
+      return;
+    }
+    if (selectionCompareCandidateIds.length >= MAX_SELECTION_COMPARE) {
+      toast.showInfo(`Du kan sammenligne maks ${MAX_SELECTION_COMPARE} kandidater samtidig.`, 3200);
+      return;
+    }
+    setSelectionCompareCandidateIds((prev) => [...prev, candidate.id]);
+    appendSelectionDecisionLog(candidate, 'Lagt til i sammenligning');
+  }, [appendSelectionDecisionLog, selectionCompareCandidateIds, toast]);
+
+  const handleSetSelectionSelfTapeIndex = useCallback((candidateId: string, index: number) => {
+    setSelectionSelfTapeIndexByCandidate((prev) => ({
+      ...prev,
+      [candidateId]: Math.max(0, index),
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (selectionCandidateIdSet.size === 0) {
+      setSelectionCompareCandidateIds((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    setSelectionCompareCandidateIds((prev) => {
+      const filtered = prev.filter((id) => selectionCandidateIdSet.has(id));
+      if (filtered.length === prev.length && filtered.every((id, idx) => id === prev[idx])) return prev;
+      return filtered.slice(0, MAX_SELECTION_COMPARE);
+    });
+  }, [selectionCandidateIdSet, selectionCandidateIdSignature]);
+
+  useEffect(() => {
+    if (selectionCandidatesFiltered.length === 0) {
+      if (selectedSelectionCandidateId !== null) setSelectedSelectionCandidateId(null);
+      return;
+    }
+    const stillExists = selectionCandidatesFiltered.some((candidate) => candidate.id === selectedSelectionCandidateId);
+    if (!stillExists) {
+      setSelectedSelectionCandidateId(selectionCandidatesFiltered[0].id);
+    }
+  }, [selectionCandidatesFiltered, selectedSelectionCandidateId]);
+
+  const selectedSelectionCandidate = useMemo(
+    () => selectionCandidatesFiltered.find((candidate) => candidate.id === selectedSelectionCandidateId) ?? null,
+    [selectionCandidatesFiltered, selectedSelectionCandidateId],
+  );
+
+  const selectedSelectionCandidateIndex = useMemo(() => {
+    if (!selectedSelectionCandidate) return -1;
+    return selectionCandidatesFiltered.findIndex((candidate) => candidate.id === selectedSelectionCandidate.id);
+  }, [selectedSelectionCandidate, selectionCandidatesFiltered]);
+
+  const handleStepSelectionCandidate = useCallback((direction: 1 | -1) => {
+    if (selectionCandidatesFiltered.length === 0) return;
+    const currentIndex = selectedSelectionCandidateIndex >= 0 ? selectedSelectionCandidateIndex : 0;
+    const nextIndex = (currentIndex + direction + selectionCandidatesFiltered.length) % selectionCandidatesFiltered.length;
+    const nextCandidate = selectionCandidatesFiltered[nextIndex];
+    if (!nextCandidate) return;
+    startTransition(() => setSelectedSelectionCandidateId(nextCandidate.id));
+  }, [selectedSelectionCandidateIndex, selectionCandidatesFiltered]);
+
+  const selectedSelectionCandidateSchedules = useMemo(() => {
+    if (!selectedSelectionCandidate) return [];
+    return auditionSchedulesByCandidate.get(selectedSelectionCandidate.id) || [];
+  }, [selectedSelectionCandidate, auditionSchedulesByCandidate]);
+
+  const selectedSelectionSummary = useMemo(() => {
+    if (!selectedSelectionCandidate) return null;
+
+    const rating = getCandidateAuditionRating(selectedSelectionCandidate);
+    const notes = getCandidateAuditionNotes(selectedSelectionCandidate);
+    const phase = getCandidateSelectionStage(selectedSelectionCandidate);
+    const assignedRoleIds = getCandidateAssignedRoles(selectedSelectionCandidate);
+    const assignedRoleNames = assignedRoleIds
+      .map((roleId) => roles.find((role) => role.id === roleId)?.name)
+      .filter((value): value is string => Boolean(value));
+
+    const strengths: string[] = [];
+    const risks: string[] = [];
+
+    if (rating !== null) {
+      if (rating >= 8) strengths.push(`Sterk audition-score (${rating}/10)`);
+      if (rating <= 5) risks.push(`Lav audition-score (${rating}/10)`);
+    } else {
+      risks.push('Ingen registrert audition-score');
+    }
+
+    if (notes.trim().length > 0) {
+      if (/(sterk|god|overbevisende|karismatisk|naturlig|perfekt|fantastisk)/i.test(notes)) {
+        strengths.push('Notater peker på sterk sceneleveranse');
+      }
+      if (/(stiv|usikker|svak|mangler|uklar|tempo|kjemi)/i.test(notes)) {
+        risks.push('Notater peker på forbedringspunkter i audition');
+      }
+    } else {
+      risks.push('Mangler detaljerte audition-notater');
+    }
+
+    if (assignedRoleNames.length > 0) {
+      strengths.push(`Tilknyttet rolle: ${assignedRoleNames.join(', ')}`);
+    } else {
+      risks.push('Ingen rolle-tilknytning satt');
+    }
+
+    if (selectedSelectionCandidateSchedules.length > 0) {
+      strengths.push(`${selectedSelectionCandidateSchedules.length} audition-/callback-økter registrert`);
+    } else {
+      risks.push('Ingen audition-økter registrert');
+    }
+
+    const recommendation =
+      phase === 'final'
+        ? 'Klar for endelig casting-beslutning.'
+        : phase === 'callbacks'
+          ? 'Aktiv callback-kandidat. Evaluer kjemi og tilgjengelighet før finalen.'
+          : 'Fortsett screening og vurder callback ved neste gjennomgang.';
+
+    return { rating, notes, phase, assignedRoleNames, strengths, risks, recommendation };
+  }, [
+    selectedSelectionCandidate,
+    getCandidateAuditionRating,
+    getCandidateAssignedRoles,
+    getCandidateAuditionNotes,
+    getCandidateSelectionStage,
+    roles,
+    selectedSelectionCandidateSchedules,
+  ]);
+
+  const selectedSelectionCandidateSelfTapes = useMemo(
+    () => (selectedSelectionCandidate ? getCandidateSelfTapes(selectedSelectionCandidate) : []),
+    [getCandidateSelfTapes, selectedSelectionCandidate],
+  );
+
+  const selectedCandidateContactInfo = useMemo(
+    () => getCandidateContactInfo(selectedCandidate),
+    [getCandidateContactInfo, selectedCandidate],
+  );
+
+  const selectedCandidateAssignedRoles = useMemo(
+    () => getCandidateAssignedRoles(selectedCandidate),
+    [getCandidateAssignedRoles, selectedCandidate],
+  );
+
+  const selectedCandidateDialogStatus = useMemo(
+    () => getCandidateDialogStatus(selectedCandidate),
+    [getCandidateDialogStatus, selectedCandidate],
+  );
+
+  const selectedSelectionCandidatePhoto = useMemo(
+    () => (selectedSelectionCandidate ? getCandidatePrimaryPhoto(selectedSelectionCandidate) : null),
+    [getCandidatePrimaryPhoto, selectedSelectionCandidate],
+  );
+
+  const selectedSelectionCandidateSelfTapeIndex = useMemo(() => {
+    if (!selectedSelectionCandidate) return 0;
+    const savedIndex = selectionSelfTapeIndexByCandidate[selectedSelectionCandidate.id] ?? 0;
+    const maxIndex = Math.max(selectedSelectionCandidateSelfTapes.length - 1, 0);
+    return Math.min(savedIndex, maxIndex);
+  }, [selectedSelectionCandidate, selectedSelectionCandidateSelfTapes.length, selectionSelfTapeIndexByCandidate]);
+
+  const selectedSelectionActiveSelfTape = useMemo(
+    () => selectedSelectionCandidateSelfTapes[selectedSelectionCandidateSelfTapeIndex] ?? null,
+    [selectedSelectionCandidateSelfTapeIndex, selectedSelectionCandidateSelfTapes],
+  );
+
+  const selectedSelectionSignals = useMemo(
+    () => (selectedSelectionCandidate ? getCandidateSelectionSignals(selectedSelectionCandidate) : null),
+    [getCandidateSelectionSignals, selectedSelectionCandidate],
+  );
+
+  const selectedSelectionScore = useMemo(
+    () => (selectedSelectionCandidate ? getCandidateSelectionScore(selectedSelectionCandidate) : 0),
+    [getCandidateSelectionScore, selectedSelectionCandidate],
+  );
+
+  const selectedSelectionReadiness = useMemo(
+    () => getSelectionReadiness(selectedSelectionScore),
+    [getSelectionReadiness, selectedSelectionScore],
+  );
+
+  const selectedSelectionDecisionLog = useMemo(() => {
+    if (!selectedSelectionCandidate) return selectionDecisionLog.slice(0, 10);
+    const scopedEntries = selectionDecisionLog.filter((entry) => entry.candidateId === selectedSelectionCandidate.id);
+    if (scopedEntries.length > 0) return scopedEntries.slice(0, 10);
+    return selectionDecisionLog.slice(0, 10);
+  }, [selectedSelectionCandidate, selectionDecisionLog]);
+
+  const formatOptionalNoteTimestamp = useCallback((value: unknown): string => {
+    if (typeof value !== 'string' || value.trim().length === 0) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('no-NO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }, []);
+
+  const selectedSelectionNotes = useMemo(() => {
+    if (!selectedSelectionCandidate) return '';
+    const candidateRecord = selectedSelectionCandidate as unknown as Record<string, unknown>;
+    const rawSelectionNotes =
+      candidateRecord.selectionNotes
+      ?? candidateRecord.selectionNote
+      ?? candidateRecord.selectionComment
+      ?? '';
+    return typeof rawSelectionNotes === 'string' ? rawSelectionNotes : '';
+  }, [selectedSelectionCandidate]);
+
+  const selectedSelectionTagExclusions = useMemo(() => {
+    if (!selectedSelectionCandidate) return [] as string[];
+    const candidateRecord = selectedSelectionCandidate as unknown as Record<string, unknown>;
+    const rawExclusions =
+      candidateRecord.selectionNotesTagExclusions
+      ?? candidateRecord.selectionNoteTagExclusions
+      ?? [];
+    if (Array.isArray(rawExclusions)) {
+      return rawExclusions
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+    }
+    if (typeof rawExclusions === 'string') {
+      return rawExclusions
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+    }
+    return [] as string[];
+  }, [selectedSelectionCandidate]);
+
+  const normalizeSelectionNoteToken = useCallback((value: string) => {
+    return value
+      .toLocaleLowerCase('no-NO')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9æøå\s-]/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }, []);
+
+  const normalizeSelectionTagKey = useCallback((values: string[]) => {
+    return values
+      .map((value) => normalizeSelectionNoteToken(value))
+      .filter((value) => value.length > 0)
+      .sort((a, b) => a.localeCompare(b, 'no-NO'))
+      .join('|');
+  }, [normalizeSelectionNoteToken]);
+
+  const selectionMentionCandidates = useMemo(() => {
+    const deduped = new Set<string>();
+    for (const candidate of allCandidates) {
+      if (candidate.name && candidate.name.trim().length > 0) {
+        deduped.add(candidate.name.trim());
+      }
+    }
+    for (const crewMember of currentProject?.crew ?? []) {
+      if (typeof crewMember.name === 'string' && crewMember.name.trim().length > 0) {
+        deduped.add(crewMember.name.trim());
+      }
+    }
+    if (adminUser?.display_name && adminUser.display_name.trim().length > 0) {
+      deduped.add(adminUser.display_name.trim());
+    }
+    for (const globalTag of globalTagRegistry) {
+      if (typeof globalTag === 'string' && globalTag.trim().length > 0) {
+        deduped.add(globalTag.trim());
+      }
+    }
+    return Array.from(deduped).sort((left, right) => left.localeCompare(right, 'no-NO'));
+  }, [adminUser?.display_name, allCandidates, currentProject?.crew, globalTagRegistry]);
+
+  const escapeSelectionRegex = useCallback((value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), []);
+
+  const doesSelectionNoteContainName = useCallback((noteText: string, name: string) => {
+    if (!noteText.trim() || !name.trim()) return false;
+    const escapedName = escapeSelectionRegex(name.trim());
+    const boundaryPattern = new RegExp(`(^|[^A-Za-z0-9ÆØÅæøå])${escapedName}([^A-Za-z0-9ÆØÅæøå]|$)`, 'i');
+    return boundaryPattern.test(noteText);
+  }, [escapeSelectionRegex]);
+
+  const selectionNotesDraftPlain = useMemo(
+    () => toPlainTextDescription(selectionNotesDraft),
+    [selectionNotesDraft, toPlainTextDescription],
+  );
+
+  const selectionTrailingToken = useMemo(() => {
+    const match = selectionNotesDraftPlain.match(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u);
+    return match?.[1] ?? '';
+  }, [selectionNotesDraftPlain]);
+
+  const levenshteinDistance = useCallback((left: string, right: string): number => {
+    if (left === right) return 0;
+    if (left.length === 0) return right.length;
+    if (right.length === 0) return left.length;
+    let previousRow = Array.from({ length: right.length + 1 }, (_, index) => index);
+    for (let i = 0; i < left.length; i += 1) {
+      const currentRow = [i + 1];
+      for (let j = 0; j < right.length; j += 1) {
+        const insertCost = currentRow[j] + 1;
+        const deleteCost = previousRow[j + 1] + 1;
+        const replaceCost = previousRow[j] + (left[i] === right[j] ? 0 : 1);
+        currentRow.push(Math.min(insertCost, deleteCost, replaceCost));
+      }
+      previousRow = currentRow;
+    }
+    return previousRow[right.length];
+  }, []);
+
+  const selectionDidYouMeanSuggestions = useMemo(() => {
+    const normalizedToken = normalizeSelectionNoteToken(selectionTrailingToken);
+    if (normalizedToken.length < 2) return [] as string[];
+    const rankedMatches = selectionMentionCandidates
+      .map((fullName) => {
+        const nameTokens = fullName
+          .split(/\s+/)
+          .map((token) => normalizeSelectionNoteToken(token))
+          .filter((token) => token.length >= 2);
+        if (nameTokens.length === 0) return null;
+        if (nameTokens.some((token) => token === normalizedToken)) return null;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        let hasPrefixMatch = false;
+        for (const token of nameTokens) {
+          hasPrefixMatch ||= token.startsWith(normalizedToken);
+          const distance = levenshteinDistance(normalizedToken, token);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+          }
+        }
+        if (!Number.isFinite(bestDistance)) return null;
+        if (!hasPrefixMatch && bestDistance > 2) return null;
+        if (doesSelectionNoteContainName(selectionNotesDraftPlain, fullName)) return null;
+        return { fullName, hasPrefixMatch, bestDistance };
+      })
+      .filter((value): value is { fullName: string; hasPrefixMatch: boolean; bestDistance: number } => value !== null)
+      .sort((left, right) => {
+        if (left.hasPrefixMatch !== right.hasPrefixMatch) {
+          return left.hasPrefixMatch ? -1 : 1;
+        }
+        if (left.bestDistance !== right.bestDistance) {
+          return left.bestDistance - right.bestDistance;
+        }
+        return left.fullName.localeCompare(right.fullName, 'no-NO');
+      });
+
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const match of rankedMatches) {
+      const normalizedName = normalizeSelectionNoteToken(match.fullName);
+      if (seen.has(normalizedName)) continue;
+      seen.add(normalizedName);
+      deduped.push(match.fullName);
+      if (deduped.length >= 4) break;
+    }
+    return deduped;
+  }, [
+    doesSelectionNoteContainName,
+    levenshteinDistance,
+    normalizeSelectionNoteToken,
+    selectionMentionCandidates,
+    selectionNotesDraftPlain,
+    selectionTrailingToken,
+  ]);
+
+  const selectionAutoTagChips = useMemo(() => {
+    if (!selectionNotesDraftPlain.trim()) return [] as string[];
+    const excluded = new Set(selectionNotesTagExclusions.map((value) => normalizeSelectionNoteToken(value)));
+    return selectionMentionCandidates.filter((name) => {
+      const normalizedName = normalizeSelectionNoteToken(name);
+      if (!normalizedName || excluded.has(normalizedName)) return false;
+      return doesSelectionNoteContainName(selectionNotesDraftPlain, name);
+    });
+  }, [
+    doesSelectionNoteContainName,
+    normalizeSelectionNoteToken,
+    selectionMentionCandidates,
+    selectionNotesDraftPlain,
+    selectionNotesTagExclusions,
+  ]);
+
+  const selectedSelectionTagExclusionsKey = useMemo(
+    () => normalizeSelectionTagKey(selectedSelectionTagExclusions),
+    [normalizeSelectionTagKey, selectedSelectionTagExclusions],
+  );
+
+  const selectionNotesTagExclusionsKey = useMemo(
+    () => normalizeSelectionTagKey(selectionNotesTagExclusions),
+    [normalizeSelectionTagKey, selectionNotesTagExclusions],
+  );
+
+  const selectionNotesHasChanges = useMemo(() => {
+    return selectionNotesDraft !== selectedSelectionNotes
+      || selectionNotesTagExclusionsKey !== selectedSelectionTagExclusionsKey;
+  }, [
+    selectedSelectionNotes,
+    selectedSelectionTagExclusionsKey,
+    selectionNotesDraft,
+    selectionNotesTagExclusionsKey,
+  ]);
+
+  const handleRemoveSelectionAutoTag = useCallback((name: string) => {
+    const normalizedName = normalizeSelectionNoteToken(name);
+    if (!normalizedName) return;
+    setSelectionNotesTagExclusions((previous) => {
+      const hasEntry = previous.some((entry) => normalizeSelectionNoteToken(entry) === normalizedName);
+      if (hasEntry) return previous;
+      return [...previous, name];
+    });
+  }, [normalizeSelectionNoteToken]);
+
+  const handleApplySelectionSuggestion = useCallback((suggestedName: string) => {
+    setSelectionNotesDraft((previous) => {
+      const plainDraft = toPlainTextDescription(previous);
+      if (!plainDraft.trim()) return toRichTextContent(suggestedName);
+      const replaced = plainDraft.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, suggestedName);
+      const nextPlain = replaced !== plainDraft ? replaced : `${plainDraft.trimEnd()} ${suggestedName}`;
+      return toRichTextContent(nextPlain);
+    });
+    const normalizedSuggestion = normalizeSelectionNoteToken(suggestedName);
+    setSelectionNotesTagExclusions((previous) => {
+      const next = previous.filter((entry) => normalizeSelectionNoteToken(entry) !== normalizedSuggestion);
+      return next.length === previous.length ? previous : next;
+    });
+  }, [normalizeSelectionNoteToken, toPlainTextDescription, toRichTextContent]);
+
+  const handleApplyAuditionSuggestion = useCallback((suggestedName: string) => {
+    setSelectedCandidate((previous) => {
+      if (!previous) return previous;
+      const plainDraft = toPlainTextDescription(
+        typeof previous.auditionNotes === 'string' ? previous.auditionNotes : '',
+      );
+      if (!plainDraft.trim()) {
+        return {
+          ...previous,
+          auditionNotes: suggestedName,
+        };
+      }
+      const replaced = plainDraft.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, suggestedName);
+      const nextPlain = replaced !== plainDraft ? replaced : `${plainDraft.trimEnd()} ${suggestedName}`;
+      return {
+        ...previous,
+        auditionNotes: nextPlain,
+      };
+    });
+  }, [toPlainTextDescription]);
+
+  const selectedAuditionNotesMeta = useMemo(() => {
+    if (!selectedSelectionCandidate) return { author: 'Ikke registrert', updatedAt: '' };
+    const candidateRecord = selectedSelectionCandidate as unknown as Record<string, unknown>;
+    const rawAuthor =
+      candidateRecord.auditionNotesAuthorName
+      ?? candidateRecord.auditionNotesAuthor
+      ?? candidateRecord.auditionNotesBy
+      ?? candidateRecord.auditionNotesUpdatedBy
+      ?? '';
+    const rawUpdatedAt =
+      candidateRecord.auditionNotesUpdatedAt
+      ?? candidateRecord.auditionNotesLastEditedAt
+      ?? candidateRecord.auditionNotesTimestamp
+      ?? '';
+    return {
+      author: typeof rawAuthor === 'string' && rawAuthor.trim().length > 0 ? rawAuthor : 'Ikke registrert',
+      updatedAt: formatOptionalNoteTimestamp(rawUpdatedAt),
+    };
+  }, [formatOptionalNoteTimestamp, selectedSelectionCandidate]);
+
+  const selectedSelectionNotesMeta = useMemo(() => {
+    if (!selectedSelectionCandidate) return { author: 'Ikke registrert', updatedAt: '' };
+    const candidateRecord = selectedSelectionCandidate as unknown as Record<string, unknown>;
+    const rawAuthor =
+      candidateRecord.selectionNotesAuthorName
+      ?? candidateRecord.selectionNotesAuthor
+      ?? candidateRecord.selectionNotesBy
+      ?? '';
+    const rawUpdatedAt =
+      candidateRecord.selectionNotesUpdatedAt
+      ?? candidateRecord.selectionNotesLastEditedAt
+      ?? candidateRecord.selectionNotesTimestamp
+      ?? '';
+    return {
+      author: typeof rawAuthor === 'string' && rawAuthor.trim().length > 0 ? rawAuthor : 'Ikke registrert',
+      updatedAt: formatOptionalNoteTimestamp(rawUpdatedAt),
+    };
+  }, [formatOptionalNoteTimestamp, selectedSelectionCandidate]);
+
+  useEffect(() => {
+    setSelectionNotesDraft(selectedSelectionNotes);
+    setSelectionNotesTagExclusions(selectedSelectionTagExclusions);
+  }, [selectedSelectionCandidate?.id, selectedSelectionNotes, selectedSelectionTagExclusions]);
+
+  useEffect(() => {
+    setSelectionNotesTagExclusions((previous) => {
+      if (previous.length === 0) return previous;
+      const next = previous.filter((entry) => doesSelectionNoteContainName(selectionNotesDraftPlain, entry));
+      return next.length === previous.length ? previous : next;
+    });
+  }, [doesSelectionNoteContainName, selectionNotesDraftPlain]);
+
+  const handleSaveSelectionNotes = useCallback(async () => {
+    if (!currentProject || !selectedSelectionCandidate) return;
+    if (!selectionNotesHasChanges) {
+      toast.showInfo('Ingen endringer i utvelgelsesnotatene.', 2500);
+      return;
+    }
+
+    setSelectionNotesSaving(true);
+    try {
+      const nowIso = new Date().toISOString();
+      await castingService.saveCandidate(currentProject.id, {
+        ...selectedSelectionCandidate,
+        selectionNotes: selectionNotesDraft,
+        selectionNotesTagExclusions: selectionNotesTagExclusions,
+        selectionNotesAuthorName: selectionActorLabel,
+        selectionNotesAuthorId:
+          adminUser?.id !== undefined && adminUser?.id !== null
+            ? String(adminUser.id)
+            : undefined,
+        selectionNotesUpdatedAt: nowIso,
+        updatedAt: nowIso,
+      });
+
+      const explicitMentions = globalTagService.parseExplicitMentions(selectionNotesDraftPlain);
+      const globalTagSeed = [
+        ...selectionAutoTagChips,
+        ...explicitMentions,
+        selectedSelectionCandidate.name,
+        selectionActorLabel,
+      ]
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter((value) => value.length >= 2);
+      if (globalTagSeed.length > 0) {
+        try {
+          const updatedGlobalTags = await globalTagService.add(globalTagSeed);
+          setGlobalTagRegistry(updatedGlobalTags);
+        } catch (tagError) {
+          console.warn('Kunne ikke persistere globale tags fra utvelgelsesnotater:', tagError);
+        }
+      }
+
+      appendSelectionDecisionLog(selectedSelectionCandidate, 'Oppdaterte utvelgelsesnotater');
+      toast.showSuccess('Utvelgelsesnotater lagret.', 2800);
+      await loadProjects();
+    } catch (error) {
+      console.error('Error saving selection notes:', error);
+      toast.showError('Kunne ikke lagre utvelgelsesnotater.');
+    } finally {
+      setSelectionNotesSaving(false);
+    }
+  }, [
+    adminUser,
+    appendSelectionDecisionLog,
+    currentProject,
+    loadProjects,
+    selectedSelectionCandidate,
+    selectionNotesHasChanges,
+    selectionActorLabel,
+    selectionAutoTagChips,
+    selectionNotesDraft,
+    selectionNotesDraftPlain,
+    selectionNotesTagExclusions,
+    toast,
+  ]);
+
+  const handleMoveCandidateToSelectionStage = useCallback(
+    async (candidate: Candidate, stage: SelectionStage) => {
+      if (!currentProject) return;
+      try {
+        await castingService.saveCandidate(currentProject.id, {
+          ...candidate,
+          status: SELECTION_STATUS_BY_STAGE[stage],
+          updatedAt: new Date().toISOString(),
+        });
+        appendSelectionDecisionLog(candidate, `Flyttet til ${SELECTION_LABEL_BY_STAGE[stage]}`);
+        toast.showSuccess(`${candidate.name} flyttet til ${SELECTION_LABEL_BY_STAGE[stage]}.`, 3500);
+        await loadProjects();
+        startTransition(() => {
+          setSelectionPhaseFilter(stage);
+          setSelectedSelectionCandidateId(candidate.id);
+        });
+      } catch (error) {
+        console.error('Error updating selection stage:', error);
+        toast.showError('Kunne ikke oppdatere utvelgelsesstatus.');
+      }
+    },
+    [appendSelectionDecisionLog, currentProject, loadProjects, toast],
+  );
+
+  useEffect(() => {
+    if (activeTab !== SELECTION_TAB_INDEX) return;
+    setSelectionBoardMode(false);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== SELECTION_TAB_INDEX) return;
+
+    const handleSelectionHotkeys = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isEditable =
+        target?.isContentEditable
+        || tagName === 'input'
+        || tagName === 'textarea'
+        || tagName === 'select';
+      if (isEditable) return;
+
+      const key = event.key.toLowerCase();
+      if (key === 'j' || key === 'k') {
+        if (selectionCandidatesFiltered.length === 0) return;
+        event.preventDefault();
+        const currentIndex = selectionCandidatesFiltered.findIndex((candidate) => candidate.id === selectedSelectionCandidateId);
+        const fallbackIndex = currentIndex >= 0 ? currentIndex : 0;
+        const delta = key === 'j' ? 1 : -1;
+        const nextIndex = (fallbackIndex + delta + selectionCandidatesFiltered.length) % selectionCandidatesFiltered.length;
+        const nextCandidate = selectionCandidatesFiltered[nextIndex];
+        startTransition(() => setSelectedSelectionCandidateId(nextCandidate.id));
+        return;
+      }
+
+      if (key === '?' || (key === '/' && event.shiftKey)) {
+        event.preventDefault();
+        startTransition(() => setSelectionShortcutsOpen(true));
+        return;
+      }
+
+      if (!selectedSelectionCandidate) return;
+
+      if (key === '1') {
+        event.preventDefault();
+        void handleMoveCandidateToSelectionStage(selectedSelectionCandidate, 'screening');
+      } else if (key === '2') {
+        event.preventDefault();
+        void handleMoveCandidateToSelectionStage(selectedSelectionCandidate, 'callbacks');
+      } else if (key === '3') {
+        event.preventDefault();
+        void handleMoveCandidateToSelectionStage(selectedSelectionCandidate, 'final');
+      } else if (key === 'b') {
+        event.preventDefault();
+        startTransition(() => setSelectionBoardMode((prev) => !prev));
+      }
+    };
+
+    window.addEventListener('keydown', handleSelectionHotkeys);
+    return () => window.removeEventListener('keydown', handleSelectionHotkeys);
+  }, [
+    activeTab,
+    handleMoveCandidateToSelectionStage,
+    selectedSelectionCandidate,
+    selectedSelectionCandidateId,
+    selectionCandidatesFiltered,
+  ]);
 
   const candidatePhotoFocalPoints = useMemo(
     () => getCandidatePhotoFocalPoints(selectedCandidate),
     [getCandidatePhotoFocalPoints, selectedCandidate],
   );
+  const isLiveSetImmersive = activeTab === LIVE_SET_TAB_INDEX && isBrowserFullscreen;
 
   return (
     <>
@@ -1856,11 +3885,14 @@ export function CastingPlannerPanel({
         sx={{
         ...KEYFRAMES_STYLES,
         width: '100%',
-        height: '100%',
+        minHeight: '100vh',
+        height: 'auto',
         bgcolor: '#0d1117',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
         // Responsive base font size: larger on desktop for better readability
         fontSize: isDesktop ? '16px' : isTablet ? '16px' : '14px', // Prevent zoom on iOS for tablet/mobile
         touchAction: 'pan-y',
@@ -1869,61 +3901,78 @@ export function CastingPlannerPanel({
     >
       {/* Project Selector Header */}
       <Box sx={{ 
+        display: isLiveSetImmersive ? 'none' : 'block',
         bgcolor: 'linear-gradient(180deg, #1c2128 0%, #161b22 100%)',
         background: 'linear-gradient(180deg, #1c2128 0%, #161b22 100%)',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
         px: { xs: 1.5, sm: 2, md: 3 },
-        py: { xs: 1, sm: 1.5 },
+        py: { xs: 0.75, sm: 1 },
+        position: 'relative',
       }}>
+        {/* Centered Role Room logo (overlay to avoid adding extra header height) */}
+        <Box
+          sx={{
+            position: 'absolute',
+            left: '50%',
+            top: { xs: -10, sm: -16 },
+            transform: 'translateX(-50%)',
+            zIndex: 2,
+            pointerEvents: 'none',
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              minWidth: { xs: 258, sm: 454 },
+              position: 'relative',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                inset: { xs: '-8px -10px', sm: '-10px -16px' },
+                borderRadius: 2,
+                background:
+                  'radial-gradient(ellipse at center, rgba(168,85,247,0.25) 0%, rgba(168,85,247,0.08) 42%, rgba(168,85,247,0) 72%)',
+                filter: 'blur(9px)',
+                pointerEvents: 'none',
+              },
+            }}
+          >
+            <Box
+              component="img"
+              src={branding.logoUrl || branding.iconUrl}
+              alt={branding.appName}
+              sx={{
+                width: { xs: 244, sm: 420 },
+                height: { xs: 90, sm: 132 },
+                objectFit: 'contain',
+                objectPosition: 'center',
+                display: 'block',
+                maxWidth: '100%',
+                imageRendering: 'auto',
+                transform: 'translateZ(0)',
+                filter:
+                  'contrast(1.24) saturate(1.18) brightness(1.22) drop-shadow(0 3px 12px rgba(0,0,0,0.45)) drop-shadow(0 0 18px rgba(168,85,247,0.42))',
+              }}
+            />
+          </Box>
+        </Box>
+
         {/* Project chips row */}
         <Box sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           gap: { xs: 0.75, sm: 1 },
           overflowX: 'auto',
-          pb: 0.5,
+          pt: { xs: 0.5, sm: 0.75 },
+          pb: { xs: 0.75, sm: 1 },
           WebkitOverflowScrolling: 'touch',
           scrollbarWidth: 'thin',
           '&::-webkit-scrollbar': { height: 4 },
           '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.2)', borderRadius: 2 },
         }}>
-          {/* The Role Room Logo */}
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: { xs: 0.5, sm: 1 },
-              mr: { xs: 0.5, sm: 1 },
-              flexShrink: 0,
-            }}
-          >
-            <img
-              src={branding.iconUrl}
-              alt={branding.appName}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                objectFit: 'cover',
-                boxShadow: '0 2px 8px rgba(139, 92, 246, 0.3)',
-              }}
-            />
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                color: 'rgba(255,255,255,0.87)', 
-                textTransform: 'uppercase', 
-                letterSpacing: 1,
-                fontSize: { xs: '0.6rem', sm: '0.65rem' },
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-                display: { xs: 'none', sm: 'block' },
-              }}
-            >
-              {branding.tokens.labels.projects}
-            </Typography>
-          </Box>
-          
           {recentProjects.map((project) => {
             const isActive = currentProject?.id === project.id;
             const candidateCount = project.candidates?.length || 0;
@@ -1950,7 +3999,7 @@ export function CastingPlannerPanel({
                   boxShadow: isActive 
                     ? '0 4px 20px rgba(0, 212, 255, 0.25), 0 0 0 1px rgba(0, 212, 255, 0.1), inset 0 1px 0 rgba(255,255,255,0.15)' 
                     : 'inset 0 1px 0 rgba(255,255,255,0.03)',
-                  transform: isActive ? 'scale(1.02)' : 'scale(1)',
+                  transform: 'scale(1)',
                   '&:hover, &:active': {
                     bgcolor: isActive 
                       ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.25) 0%, rgba(0, 180, 230, 0.2) 100%)'
@@ -1959,7 +4008,7 @@ export function CastingPlannerPanel({
                       ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.25) 0%, rgba(0, 180, 230, 0.2) 100%)'
                       : 'rgba(255,255,255,0.06)',
                     borderColor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.15)',
-                    transform: 'scale(1.02)',
+                    transform: 'scale(1)',
                   },
                   flexShrink: 0,
                   minHeight: { xs: 44, sm: 48 },
@@ -2064,14 +4113,14 @@ export function CastingPlannerPanel({
                       color: '#00d4ff',
                       bgcolor: 'rgba(0, 212, 255, 0.15)',
                     },
-                    width: { xs: 28, sm: 32 },
-                    height: { xs: 28, sm: 32 },
-                    minWidth: { xs: 28, sm: 32 },
+                    width: projectChipActionSizePx,
+                    height: projectChipActionSizePx,
+                    minWidth: projectChipActionSizePx,
                     p: 0,
                     borderRadius: 1.5,
                   }}
                 >
-                  <EditIcon sx={{ fontSize: { xs: 16, sm: 18 } }} />
+                  <EditIcon sx={{ fontSize: Math.max(16, navIconSizePx - 2) }} />
                 </IconButton>
                 {/* Delete button */}
                 <IconButton
@@ -2089,14 +4138,14 @@ export function CastingPlannerPanel({
                       color: '#ff4444',
                       bgcolor: 'rgba(255, 68, 68, 0.15)',
                     },
-                    width: { xs: 28, sm: 32 },
-                    height: { xs: 28, sm: 32 },
-                    minWidth: { xs: 28, sm: 32 },
+                    width: projectChipActionSizePx,
+                    height: projectChipActionSizePx,
+                    minWidth: projectChipActionSizePx,
                     p: 0,
                     borderRadius: 1.5,
                   }}
                 >
-                  <DeleteIcon sx={{ fontSize: { xs: 16, sm: 18 } }} />
+                  <DeleteIcon sx={{ fontSize: Math.max(16, navIconSizePx - 2) }} />
                 </IconButton>
               </Box>
             );
@@ -2139,9 +4188,9 @@ export function CastingPlannerPanel({
             aria-label={branding.tokens.labels.newProjectTitle}
             data-tutorial-target="create-project-button"
             sx={{
-              width: { xs: 32, sm: 36 },
-              height: { xs: 32, sm: 36 },
-              minWidth: { xs: 32, sm: 36 },
+              width: navActionButtonSizePx,
+              height: navActionButtonSizePx,
+              minWidth: navActionButtonSizePx,
               border: '1px dashed rgba(255,255,255,0.2)',
               borderRadius: { xs: 1.5, sm: 2 },
               color: 'rgba(255,255,255,0.87)',
@@ -2153,7 +4202,7 @@ export function CastingPlannerPanel({
               },
             }}
           >
-            <AddIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+            <AddIcon sx={{ fontSize: navIconSizePx }} />
           </IconButton>
 
           {/* Tutorial button */}
@@ -2163,9 +4212,9 @@ export function CastingPlannerPanel({
             aria-label={branding.tokens.labels.tutorialLabel}
             title={branding.tokens.labels.tutorialTitle}
             sx={{
-              width: { xs: 32, sm: 36 },
-              height: { xs: 32, sm: 36 },
-              minWidth: { xs: 32, sm: 36 },
+              width: navActionButtonSizePx,
+              height: navActionButtonSizePx,
+              minWidth: navActionButtonSizePx,
               border: '1px solid rgba(233, 30, 99, 0.3)',
               borderRadius: { xs: 1.5, sm: 2 },
               color: '#e91e63',
@@ -2177,7 +4226,7 @@ export function CastingPlannerPanel({
               },
             }}
           >
-            <TutorialIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+            <TutorialIcon sx={{ fontSize: navIconSizePx }} />
           </IconButton>
 
           <Box sx={{ flex: 1 }} />
@@ -2221,7 +4270,7 @@ export function CastingPlannerPanel({
                   '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' },
                 }}
               >
-                <SwapHorizIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+                <SwapHorizIcon sx={{ fontSize: navIconSizePx }} />
               </IconButton>
               {/* Admin Dashboard - kun for admin/owner */}
               {(adminUser.role === 'owner' || adminUser.role === 'admin') && (
@@ -2236,7 +4285,7 @@ export function CastingPlannerPanel({
                       '&:hover': { bgcolor: 'rgba(233,30,99,0.1)' },
                     }}
                   >
-                    <TutorialIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+                    <TutorialIcon sx={{ fontSize: navIconSizePx }} />
                   </IconButton>
                   <IconButton
                     size="small"
@@ -2248,7 +4297,7 @@ export function CastingPlannerPanel({
                       '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
                     }}
                   >
-                    <AdminPanelSettingsIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+                    <AdminPanelSettingsIcon sx={{ fontSize: navIconSizePx }} />
                   </IconButton>
                   <IconButton
                     size="small"
@@ -2263,7 +4312,7 @@ export function CastingPlannerPanel({
                       '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
                     }}
                   >
-                    <RefreshIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+                    <RefreshIcon sx={{ fontSize: navIconSizePx }} />
                   </IconButton>
                 </>
               )}
@@ -2283,15 +4332,21 @@ export function CastingPlannerPanel({
                   '&:hover': { bgcolor: 'rgba(255,184,0,0.1)' },
                 }}
               >
-                <PlayArrowIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+                <PlayArrowIcon sx={{ fontSize: navIconSizePx }} />
               </IconButton>
               <IconButton
                 size="small"
-                onClick={() => {
-                  authSessionService.clearSession().then(() => {
-                    setAdminUser(null);
-                    window.location.href = '/casting.html';
-                  });
+                onClick={async () => {
+                  await authSessionService.clearSession();
+                  setAdminUser(null);
+                  setCurrentProject(null);
+                  setProjects([]);
+                  setProjectSelectorOpen(false);
+                  setProjectCreationModalOpen(false);
+                  setProjectToEdit(null);
+                  setCurrentProjectId(null);
+                  setActiveTab(0);
+                  window.location.assign('/casting.html');
                 }}
                 aria-label={branding.tokens.labels.logoutLabel}
                 title={branding.tokens.labels.logoutLabel}
@@ -2300,7 +4355,7 @@ export function CastingPlannerPanel({
                   '&:hover': { color: '#ef4444', bgcolor: 'rgba(239,68,68,0.1)' },
                 }}
               >
-                <LogoutIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+                <LogoutIcon sx={{ fontSize: navIconSizePx }} />
               </IconButton>
             </Box>
           ) : (
@@ -2315,80 +4370,26 @@ export function CastingPlannerPanel({
                 '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
               }}
             >
-              <LoginIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+              <LoginIcon sx={{ fontSize: navIconSizePx }} />
             </IconButton>
           )}
         </Box>
 
-        {/* Current project info bar */}
-        {currentProject && (
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: { xs: 1, sm: 2 }, 
-            mt: { xs: 1.5, sm: 2 },
-            flexWrap: 'wrap',
-          }}>
-            {/* Stats summary chips */}
-            <Chip
-              icon={<TheaterComedyIcon sx={{ fontSize: 16 }} />}
-              label={branding.tokens.labels.rolesStatLabel
-                .replace('{total}', String(stats.totalRoles))
-                .replace('{open}', String(stats.openRoles))}
-              size="small"
-              sx={{ bgcolor: 'rgba(244,143,177,0.15)', color: '#f48fb1', border: '1px solid rgba(244,143,177,0.3)', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
-            />
-            <Chip
-              icon={<RecentActorsIcon sx={{ fontSize: 16 }} />}
-              label={branding.tokens.labels.candidatesStatLabel.replace('{count}', String(stats.totalCandidates))}
-              size="small"
-              sx={{ bgcolor: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
-            />
-            <Chip
-              icon={<CalendarIcon sx={{ fontSize: 16 }} />}
-              label={branding.tokens.labels.upcomingStatLabel.replace('{count}', String(stats.upcomingSchedules))}
-              size="small"
-              sx={{ bgcolor: 'rgba(156,39,176,0.15)', color: '#ce93d8', border: '1px solid rgba(156,39,176,0.3)', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
-            />
-            {permissionsLoading && (
-              <CircularProgress size={16} sx={{ color: 'rgba(255,255,255,0.5)', ml: 1 }} />
-            )}
-            <Box sx={{ flex: 1 }} />
-            {/* Panel controls: fullscreen toggle + close */}
-            {!isStandalone && onToggleFullscreen && (
-              <IconButton
-                size="small"
-                onClick={onToggleFullscreen}
-                aria-label={isFullscreen ? branding.tokens.labels.exitFullscreenLabel : branding.tokens.labels.enterFullscreenLabel}
-                title={isFullscreen ? branding.tokens.labels.exitFullscreenLabel : branding.tokens.labels.enterFullscreenLabel}
-                sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.1)' } }}
-              >
-                {isFullscreen ? <CloseIcon sx={{ fontSize: 18 }} /> : <DescriptionIcon sx={{ fontSize: 18 }} />}
-              </IconButton>
-            )}
-            {!isStandalone && onClose && (
-              <IconButton
-                size="small"
-                onClick={onClose}
-                aria-label={branding.tokens.labels.closePanelLabel}
-                title={branding.tokens.labels.closePanelLabel}
-                sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#ff4444', bgcolor: 'rgba(255,68,68,0.1)' } }}
-              >
-                <CloseIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            )}
-          </Box>
-        )}
       </Box>
 
       {/* Tabs */}
       <Box 
         role="navigation"
         aria-label={`${branding.appName} navigasjon`}
-        sx={{ borderBottom: '1px solid rgba(255,255,255,0.1)', bgcolor: '#1c2128', flexShrink: 0 }}
+        sx={{
+          display: isLiveSetImmersive ? 'none' : 'block',
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          bgcolor: '#1c2128',
+          flexShrink: 0,
+        }}
       >
         <Tabs
-          value={activeTab}
+          value={displayedActiveTab}
           onChange={(_: SyntheticEvent, v: number) => navigateToTab(v)}
           aria-label={`${branding.appName} faner`}
           variant="scrollable"
@@ -2396,12 +4397,12 @@ export function CastingPlannerPanel({
           allowScrollButtonsMobile
           sx={{
             '& .MuiTab-root': {
-              minHeight: isDesktop ? 64 : isTablet ? 56 : 44,
-              minWidth: isDesktop ? 120 : isTablet ? 80 : 'auto',
-              fontSize: isDesktop ? '18px' : isTablet ? '14px' : '12px',
+              minHeight: navTabMinHeightPx,
+              minWidth: isMobile ? 44 : navTabMinWidthPx,
+              fontSize: `${navTabFontSizePx}px`,
               fontWeight: 600,
               color: 'rgba(255,255,255,0.87)',
-              padding: isDesktop ? '16px 20px' : isTablet ? '12px 16px' : '8px 10px',
+              padding: navTabPadding,
               textTransform: 'none',
               flexShrink: 0,
               '&.Mui-selected': {
@@ -2420,8 +4421,8 @@ export function CastingPlannerPanel({
               display: 'none',
             },
             '& .MuiTabs-scrollButtons': {
-              minWidth: isMobile ? 36 : 44,
-              minHeight: isMobile ? 36 : 44,
+              minWidth: Math.max(36, navActionButtonSizePx),
+              minHeight: Math.max(36, navActionButtonSizePx),
               color: 'rgba(255,255,255,0.9)',
               bgcolor: 'rgba(255,255,255,0.05)',
               borderRadius: 1,
@@ -2437,7 +4438,7 @@ export function CastingPlannerPanel({
                 outlineOffset: '2px',
               },
               '& svg': {
-                fontSize: isMobile ? '1.5rem' : '1.75rem',
+                fontSize: `${Math.max(22, navIconSizePx + 6)}px`,
               },
             },
             '& .MuiTabs-flexContainer': {
@@ -2446,59 +4447,101 @@ export function CastingPlannerPanel({
           }}
         >
           {tabConfig.map((config, index) => {
+            const tabValues = [
+              0,
+              STORY_ARC_TAB_INDEX,
+              ROLES_TAB_INDEX,
+              CANDIDATES_TAB_INDEX,
+              AUDITIONS_TAB_INDEX,
+              SELECTION_TAB_INDEX,
+              LOCATIONS_TAB_INDEX,
+              CALENDAR_TAB_INDEX,
+              TEAM_TAB_INDEX,
+              EQUIPMENT_TAB_INDEX,
+              LIVE_SET_TAB_INDEX,
+              PRODUCER_MEDIA_TAB_INDEX,
+              PRODUCER_ECONOMY_TAB_INDEX,
+              PRODUCER_TIMELINE_TAB_INDEX,
+              PRODUCER_REVIEWS_TAB_INDEX,
+              PRODUCER_EXPORT_TAB_INDEX,
+            ];
             const IconComponent = config.icon;
-            const isSelected = activeTab === index;
+            const tabValue = tabValues[index];
+            if (!visibleTabValues.includes(tabValue)) {
+              return null;
+            }
+            const isSelected = displayedActiveTab === tabValue;
+            const isPreProductionTab = tabValue === STORY_ARC_TAB_INDEX;
+            const isCastingCoreTab = tabValue >= ROLES_TAB_INDEX && tabValue <= SELECTION_TAB_INDEX;
+            const isProductionPlanCoreTab = tabValue >= LOCATIONS_TAB_INDEX && tabValue <= CALENDAR_TAB_INDEX;
+            const isResourcesCoreTab = tabValue >= TEAM_TAB_INDEX && tabValue <= EQUIPMENT_TAB_INDEX;
+            const isLiveSetTab = tabValue === LIVE_SET_TAB_INDEX;
+            const isProducerCoreTab =
+              tabValue >= PRODUCER_MEDIA_TAB_INDEX && tabValue <= PRODUCER_EXPORT_TAB_INDEX;
             const tabLabels = [
               branding.tokens.labels.dashboard,
+              isContentProducerMode ? 'Storyboard' : 'Role Room Studio',
               branding.tokens.labels.roles,
-              branding.tokens.labels.candidates,
+              isContentProducerMode ? 'Statister/medvirkende' : branding.tokens.labels.candidates,
               branding.tokens.labels.auditions,
-              branding.tokens.labels.team,
+              'Utvelgelse',
               branding.tokens.labels.locations,
-              branding.tokens.labels.equipment,
               branding.tokens.labels.schedule,
-              profession ? getTerm('shotList') : branding.tokens.labels.shotList,
-              branding.tokens.labels.storyArcStudio,
-              branding.tokens.labels.sharing,
+              branding.tokens.labels.team,
+              isContentProducerMode ? 'Utstyr/rekvisitter' : branding.tokens.labels.equipment,
               'Live Set',
+              'Media',
+              'Økonomi',
+              'Tidslinje',
+              'Klientsamarbeid',
+              'Eksport',
             ];
             const tabIds = [
               'tab-oversikt',
+              'tab-story-arc-studio',
               'tab-roller',
               'tab-kandidater',
               'tab-auditions',
-              'tab-team',
+              'tab-utvelgelse',
               'tab-lokasjoner',
-              'tab-rekvisitter',
               'tab-produksjonsplan',
-              'tab-shot-lists',
-              'tab-story-arc-studio',
-              'tab-deling',
+              'tab-team',
+              'tab-rekvisitter',
               'tab-live-set',
+              'tab-producer-media',
+              'tab-producer-okonomi',
+              'tab-producer-tidslinje',
+              'tab-producer-reviews',
+              'tab-producer-eksport',
             ];
             const tabPanelIds = [
               'tabpanel-oversikt',
+              'tabpanel-story-arc-studio',
               'tabpanel-roller',
               'tabpanel-kandidater',
               'tabpanel-auditions',
-              'tabpanel-team',
+              'tabpanel-utvelgelse',
               'tabpanel-lokasjoner',
-              'tabpanel-rekvisitter',
               'tabpanel-produksjonsplan',
-              'tabpanel-shot-lists',
-              'tabpanel-story-arc-studio',
-              'tabpanel-deling',
+              'tabpanel-team',
+              'tabpanel-rekvisitter',
               'tabpanel-live-set',
+              'tabpanel-producer-media',
+              'tabpanel-producer-okonomi',
+              'tabpanel-producer-tidslinje',
+              'tabpanel-producer-reviews',
+              'tabpanel-producer-eksport',
             ];
             
             return (
               <Tab
-                key={index}
+                key={tabValue}
+                value={tabValue}
                 icon={
                   <Box
                     sx={{
-                      width: { xs: 18, sm: 20, md: 24 },
-                      height: { xs: 18, sm: 20, md: 24 },
+                      width: tabIconBoxSizePx,
+                      height: tabIconBoxSizePx,
                       borderRadius: 1,
                       bgcolor: isSelected ? `${config.color}20` : 'transparent',
                       display: 'flex',
@@ -2507,24 +4550,217 @@ export function CastingPlannerPanel({
                       transition: 'all 0.2s',
                     }}
                   >
-                    <IconComponent sx={{ fontSize: { xs: 16, sm: 18, md: 22 }, color: isSelected ? config.color : 'rgba(255,255,255,0.7)' }} />
+                    <IconComponent sx={{ fontSize: tabIconGlyphSizePx, color: isSelected ? config.color : 'rgba(255,255,255,0.7)' }} />
                   </Box>
                 }
                 iconPosition="start"
-                label={isMobile ? undefined : tabLabels[index]}
+                label={isMobile ? undefined : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.1 }}>
+                    <Box component="span" sx={{ fontWeight: 700, fontSize: `${navTabLabelFontSizePx}px` }}>
+                      {tabLabels[index]}
+                    </Box>
+                    {isCastingCoreTab && (
+                      <Box
+                        component="span"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          mt: 0.2,
+                          fontSize: `${navTabMetaFontSizePx}px`,
+                          lineHeight: 1,
+                          letterSpacing: 0.35,
+                          textTransform: 'uppercase',
+                          color: isSelected ? '#ffd36a' : 'rgba(255, 184, 0, 0.75)',
+                          fontWeight: 800,
+                        }}
+                      >
+                        <Box
+                          component="span"
+                          sx={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            bgcolor: '#ffb800',
+                            boxShadow: '0 0 10px rgba(255,184,0,0.6)',
+                          }}
+                        />
+                        Casting
+                      </Box>
+                    )}
+                    {isPreProductionTab && (
+                      <Box
+                        component="span"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          mt: 0.2,
+                          fontSize: `${navTabMetaFontSizePx}px`,
+                          lineHeight: 1,
+                          letterSpacing: 0.35,
+                          textTransform: 'uppercase',
+                          color: isSelected ? '#f9a8d4' : 'rgba(236, 72, 153, 0.78)',
+                          fontWeight: 800,
+                        }}
+                      >
+                        <Box
+                          component="span"
+                          sx={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            bgcolor: '#ec4899',
+                            boxShadow: '0 0 10px rgba(236,72,153,0.56)',
+                          }}
+                        />
+                        Pre-produksjon
+                      </Box>
+                    )}
+                    {isProductionPlanCoreTab && (
+                      <Box
+                        component="span"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          mt: 0.2,
+                          fontSize: `${navTabMetaFontSizePx}px`,
+                          lineHeight: 1,
+                          letterSpacing: 0.35,
+                          textTransform: 'uppercase',
+                          color: isSelected ? '#7dd3fc' : 'rgba(56, 189, 248, 0.78)',
+                          fontWeight: 800,
+                        }}
+                      >
+                        <Box
+                          component="span"
+                          sx={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            bgcolor: '#38bdf8',
+                            boxShadow: '0 0 10px rgba(56,189,248,0.56)',
+                          }}
+                        />
+                        Produksjonsplan
+                      </Box>
+                    )}
+                    {isResourcesCoreTab && (
+                      <Box
+                        component="span"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          mt: 0.2,
+                          fontSize: `${navTabMetaFontSizePx}px`,
+                          lineHeight: 1,
+                          letterSpacing: 0.35,
+                          textTransform: 'uppercase',
+                          color: isSelected ? '#d8b4fe' : 'rgba(192, 132, 252, 0.8)',
+                          fontWeight: 800,
+                        }}
+                      >
+                        <Box
+                          component="span"
+                          sx={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            bgcolor: '#a855f7',
+                            boxShadow: '0 0 10px rgba(168,85,247,0.56)',
+                          }}
+                        />
+                        Ressurser
+                      </Box>
+                    )}
+                    {isLiveSetTab && (
+                      <Box
+                        component="span"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          mt: 0.2,
+                          fontSize: `${navTabMetaFontSizePx}px`,
+                          lineHeight: 1,
+                          letterSpacing: 0.35,
+                          textTransform: 'uppercase',
+                          color: isSelected ? '#fca5a5' : 'rgba(239, 68, 68, 0.8)',
+                          fontWeight: 800,
+                        }}
+                      >
+                        <Box
+                          component="span"
+                          sx={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            bgcolor: '#ef4444',
+                            boxShadow: '0 0 10px rgba(239,68,68,0.56)',
+                          }}
+                        />
+                        Produksjon
+                      </Box>
+                    )}
+                    {isProducerCoreTab && (
+                      <Box
+                        component="span"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          mt: 0.2,
+                          fontSize: `${navTabMetaFontSizePx}px`,
+                          lineHeight: 1,
+                          letterSpacing: 0.35,
+                          textTransform: 'uppercase',
+                          color: isSelected ? '#bfdbfe' : 'rgba(96, 165, 250, 0.82)',
+                          fontWeight: 800,
+                        }}
+                      >
+                        <Box
+                          component="span"
+                          sx={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            bgcolor: '#60a5fa',
+                            boxShadow: '0 0 10px rgba(96,165,250,0.56)',
+                          }}
+                        />
+                        {producerWorkspaceBadgeLabel}
+                      </Box>
+                    )}
+                  </Box>
+                )}
                 aria-label={`${tabLabels[index]} fane`}
                 id={tabIds[index]}
                 aria-controls={tabPanelIds[index]}
                 sx={{
-                  bgcolor: isSelected ? `${config.color}15` : 'transparent',
+                  bgcolor: isSelected
+                    ? `${config.color}15`
+                    : isCastingCoreTab
+                      ? 'rgba(255,184,0,0.06)'
+                      : isProducerCoreTab
+                        ? 'rgba(96,165,250,0.08)'
+                      : 'transparent',
                   border: isSelected ? `1px solid ${config.color}30` : '1px solid transparent',
                   borderRadius: 1,
                   mx: { xs: 0.25, sm: 0.5 },
+                  ml: tabValue === ROLES_TAB_INDEX ? { xs: 0.75, sm: 1 } : undefined,
+                  mr: tabValue === SELECTION_TAB_INDEX ? { xs: 0.75, sm: 1 } : undefined,
                   mb: { xs: 0.5, sm: 1 },
                   mt: { xs: 0.5, sm: 1 },
-                  minHeight: isDesktop ? 64 : isTablet ? 56 : 40,
-                  minWidth: isMobile ? 40 : undefined,
+                  minHeight: navTabMinHeightPx,
+                  minWidth: isMobile ? 44 : navTabMinWidthPx,
                   px: isMobile ? 1.5 : undefined,
+                  boxShadow: isCastingCoreTab
+                    ? 'inset 0 -2px 0 rgba(255,184,0,0.22)'
+                    : isProducerCoreTab
+                      ? 'inset 0 -2px 0 rgba(96,165,250,0.22)'
+                      : 'none',
                   transition: 'all 0.2s',
                   '&:hover': {
                     bgcolor: isSelected ? `${config.color}20` : `${config.color}10`,
@@ -2554,6 +4790,75 @@ export function CastingPlannerPanel({
         ) : (
         <ErrorBoundary>
         <Suspense fallback={<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.87)' }}>{branding.tokens.labels.loadingLabel}</Box>}>
+        {isContentProducerMode && (
+          <Box
+            sx={{
+              px: { xs: 1.5, md: 2 },
+              pt: 1.5,
+              pb: 1,
+              borderBottom: '1px solid rgba(148,163,184,0.2)',
+              background: 'linear-gradient(90deg, rgba(30,41,59,0.32) 0%, rgba(2,6,23,0.2) 100%)',
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1}
+              alignItems={{ md: 'center' }}
+              justifyContent="space-between"
+              flexWrap="wrap"
+            >
+              <Typography sx={{ color: 'rgba(226,232,240,0.92)', fontWeight: 700 }}>
+                {`${producerWorkspaceBadgeLabel}-flyt`}
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<StoryArcIcon />}
+                  onClick={() => {
+                    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  Storyboard
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<StoryWriterIcon />}
+                  onClick={() => {
+                    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  Manus
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<ShotListIcon />}
+                  onClick={() => {
+                    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  Shotlist
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<NotesIcon />}
+                  onClick={() => {
+                    navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-logic' });
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                >
+                  Scene-notater
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+        )}
         <TabPanel value={activeTab} index={0}>
           <DashboardPanel
             project={currentProject}
@@ -2564,7 +4869,7 @@ export function CastingPlannerPanel({
             onCreateRole={handleCreateRole}
             onCreateCandidate={handleCreateCandidate}
             onCreateSchedule={handleCreateSchedule}
-            onOpenSharing={openSharingDialog}
+            onOpenSharing={openSharingModal}
             onUpdate={async () => {
               if (currentProject) {
                 const updated = await castingService.getProject(currentProject.id);
@@ -2582,7 +4887,7 @@ export function CastingPlannerPanel({
           />
         </TabPanel>
 
-        <TabPanel value={activeTab} index={1}>
+        <TabPanel value={activeTab} index={ROLES_TAB_INDEX}>
           <RoleManagementPanel
             projectId={currentProject?.id || ''}
             roles={roles}
@@ -2596,7 +4901,25 @@ export function CastingPlannerPanel({
           />
         </TabPanel>
 
-        <TabPanel value={activeTab} index={2}>
+        <TabPanel value={activeTab} index={CANDIDATES_TAB_INDEX}>
+          {isContentProducerMode ? (
+            <ProducerExtrasPanel>
+              <CandidateManagementPanel
+                projectId={currentProject?.id || ''}
+                candidates={candidates}
+                roles={roles}
+                onCandidatesChange={loadProjects}
+                onEditCandidate={(candidate) => {
+                  setSelectedCandidate(candidate);
+                  openCandidateDialog();
+                }}
+                onCreateCandidate={handleCreateCandidate}
+                profession={profession}
+                quickContactIds={quickContactIds}
+                onQuickContactsChange={handleQuickContactsChange}
+              />
+            </ProducerExtrasPanel>
+          ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {/* Candidate filters & view mode toolbar */}
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
@@ -2749,11 +5072,11 @@ export function CastingPlannerPanel({
                           {candidate.name}
                         </Typography>
                         <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.15 }}>
-                          {candidate.contactInfo?.email && (
-                            <Tooltip title={`${branding.tokens.labels.emailTooltipPrefix}${candidate.contactInfo.email}`}>
+                          {getCandidateContactInfo(candidate).email && (
+                            <Tooltip title={`${branding.tokens.labels.emailTooltipPrefix}${getCandidateContactInfo(candidate).email}`}>
                               <IconButton
                                 size="small"
-                                onClick={() => window.open(`mailto:${candidate.contactInfo.email}`, '_blank')}
+                                onClick={() => window.open(`mailto:${getCandidateContactInfo(candidate).email}`, '_blank')}
                                 sx={{
                                   color: '#8ce6ff',
                                   p: { xs: 0.35, sm: 0.4, md: 0.45, lg: 0.5, xl: 0.55 },
@@ -2763,11 +5086,11 @@ export function CastingPlannerPanel({
                               </IconButton>
                             </Tooltip>
                           )}
-                          {candidate.contactInfo?.phone && (
-                            <Tooltip title={`${branding.tokens.labels.callTooltipPrefix}${candidate.contactInfo.phone}`}>
+                          {getCandidateContactInfo(candidate).phone && (
+                            <Tooltip title={`${branding.tokens.labels.callTooltipPrefix}${getCandidateContactInfo(candidate).phone}`}>
                               <IconButton
                                 size="small"
-                                onClick={() => window.open(`tel:${candidate.contactInfo.phone}`, '_blank')}
+                                onClick={() => window.open(`tel:${getCandidateContactInfo(candidate).phone}`, '_blank')}
                                 sx={{
                                   color: '#8ce6ff',
                                   p: { xs: 0.35, sm: 0.4, md: 0.45, lg: 0.5, xl: 0.55 },
@@ -2831,9 +5154,10 @@ export function CastingPlannerPanel({
               </>
             )}
           </Box>
+          )}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={3}>
+        <TabPanel value={activeTab} index={AUDITIONS_TAB_INDEX}>
           <AuditionSchedulePanel
             projectId={currentProject?.id || ''}
             schedules={schedules}
@@ -2851,6 +5175,1118 @@ export function CastingPlannerPanel({
             userId={adminUser ? String(adminUser.id) : undefined}
             enableRoleRoomApi={!isGuestMode}
           />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={SELECTION_TAB_INDEX}>
+          {!currentProject ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                {branding.tokens.labels.noProjectSelected}
+              </Typography>
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2.25,
+                ...(selectionBoardMode
+                  ? {
+                      position: 'fixed',
+                      top: { xs: 8, sm: 14, md: 18 },
+                      right: { xs: 8, sm: 14, md: 18 },
+                      bottom: { xs: 8, sm: 14, md: 18 },
+                      left: { xs: 8, sm: 14, md: 18 },
+                      zIndex: Z_INDEX.dialog + 20,
+                      p: { xs: 1.25, sm: 2 },
+                      borderRadius: 2.8,
+                      border: '1px solid rgba(45,212,191,0.38)',
+                      bgcolor: 'rgba(2,6,23,0.96)',
+                      boxShadow: '0 24px 70px rgba(2,6,23,0.72)',
+                      backdropFilter: 'blur(8px)',
+                      overflow: 'auto',
+                    }
+                  : {}),
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1.5,
+                  px: { xs: 1.5, sm: 2 },
+                  py: { xs: 1.25, sm: 1.5 },
+                  borderRadius: 2.5,
+                  border: '1px solid rgba(20,184,166,0.32)',
+                  background: 'linear-gradient(120deg, rgba(20,184,166,0.2) 0%, rgba(56,189,248,0.1) 55%, rgba(15,23,42,0.22) 100%)',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                  <Box
+                    sx={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 1.5,
+                      background: 'linear-gradient(135deg, #14b8a6, #0ea5e9)',
+                      border: '1px solid rgba(153,246,228,0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 8px 20px rgba(20,184,166,0.3)',
+                    }}
+                  >
+                    <CasinoIcon sx={{ color: '#fff', fontSize: 18 }} />
+                  </Box>
+                  <Box>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>
+                      Utvelgelse
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
+                      Lightbox-screening med self-tapes
+                    </Typography>
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.85 }}>
+                  <Chip
+                    size="small"
+                    label="CASTING BOARD"
+                    sx={{
+                      bgcolor: 'rgba(14,116,144,0.24)',
+                      color: '#7dd3fc',
+                      border: '1px solid rgba(125,211,252,0.46)',
+                      fontWeight: 700,
+                    }}
+                  />
+                  <Button
+                    size="small"
+                    variant={selectionBoardMode ? 'contained' : 'outlined'}
+                    onClick={() => {
+                      startTransition(() => setSelectionBoardMode((prev) => !prev));
+                    }}
+                    sx={{
+                      textTransform: 'none',
+                      borderRadius: 999,
+                      fontWeight: 700,
+                      px: 1.4,
+                      borderColor: 'rgba(56,189,248,0.48)',
+                      bgcolor: selectionBoardMode ? 'rgba(14,116,144,0.82)' : 'transparent',
+                      color: '#e0f2fe',
+                    }}
+                  >
+                    {selectionBoardMode ? 'Lukk board' : 'Åpne board'}
+                  </Button>
+                  <Tooltip title="Tastatursnarveier (?)">
+                    <IconButton
+                      size="small"
+                      onClick={() => setSelectionShortcutsOpen(true)}
+                      aria-label="Åpne utvelgelse-snarveier"
+                      sx={{
+                        color: '#bae6fd',
+                        border: '1px solid rgba(125,211,252,0.46)',
+                        borderRadius: 1.4,
+                        width: 30,
+                        height: 30,
+                        bgcolor: 'rgba(14,116,144,0.24)',
+                      }}
+                    >
+                      <KeyboardIcon sx={{ fontSize: 17 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+                {([
+                  ['screening', `Screening (${selectionMetrics.screening})`],
+                  ['callbacks', `Callbacks (${selectionMetrics.callbacks})`],
+                  ['final', `Final selection (${selectionMetrics.final})`],
+                  ['all', `Alle (${selectionMetrics.total})`],
+                ] as const).map(([phase, label]) => (
+                  <Button
+                    key={phase}
+                    size="small"
+                    variant={selectionPhaseFilter === phase ? 'contained' : 'outlined'}
+                    onClick={() => {
+                      startTransition(() => setSelectionPhaseFilter(phase));
+                    }}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 999,
+                      px: 1.5,
+                      borderColor: 'rgba(20,184,166,0.48)',
+                      bgcolor: selectionPhaseFilter === phase ? 'rgba(20,184,166,0.3)' : 'transparent',
+                      color: selectionPhaseFilter === phase ? '#e0fdf4' : 'rgba(226,232,240,0.9)',
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </Box>
+
+              {selectionCandidatesFiltered.length === 0 ? (
+                <Box
+                  sx={{
+                    p: 3,
+                    borderRadius: 2.5,
+                    border: '1px dashed rgba(20,184,166,0.38)',
+                    bgcolor: 'rgba(6,95,70,0.18)',
+                    textAlign: 'center',
+                  }}
+                >
+                  <Typography sx={{ color: '#e2e8f0', fontWeight: 700, mb: 0.5 }}>
+                    Ingen kandidater klare for utvelgelse enda
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.75)' }}>
+                    Legg inn audition-notater eller planlegg auditions for å aktivere screening.
+                  </Typography>
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 1.5,
+                    ...(selectionBoardMode ? { flex: 1, minHeight: 0 } : {}),
+                  }}
+                >
+                  {selectionBoardMode ? (
+                    <Box
+                      sx={{
+                        p: { xs: 1.2, sm: 1.45 },
+                        borderRadius: 2.3,
+                        border: '1px solid rgba(56,189,248,0.42)',
+                        background:
+                          'radial-gradient(circle at 50% 0%, rgba(56,189,248,0.18), transparent 42%), linear-gradient(180deg, rgba(2,6,23,0.92), rgba(2,8,16,0.96))',
+                        boxShadow: '0 14px 40px rgba(2,6,23,0.6)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 1.15,
+                        flex: 1,
+                        minHeight: 0,
+                      }}
+                    >
+                      {!selectedSelectionCandidate || !selectedSelectionSummary ? (
+                        <Box
+                          sx={{
+                            p: 2.2,
+                            borderRadius: 2,
+                            border: '1px dashed rgba(56,189,248,0.45)',
+                            bgcolor: 'rgba(15,23,42,0.74)',
+                            textAlign: 'center',
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Typography sx={{ color: '#e0f2fe', fontWeight: 700, mb: 0.4 }}>
+                            Board er klart
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(186,230,253,0.86)', fontSize: '0.84rem' }}>
+                            Velg en kandidat for å starte gjennomgang av self-tapes og notater.
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.15, flex: 1, minHeight: 0 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                            <Button size="small" variant="outlined" onClick={() => handleStepSelectionCandidate(-1)} startIcon={<NavigateBeforeIcon />} sx={{ textTransform: 'none', borderRadius: 999, color: '#e0f2fe' }}>
+                              Forrige
+                            </Button>
+                            <Chip
+                              size="small"
+                              icon={<ViewCarouselIcon sx={{ color: '#bae6fd !important', fontSize: 14 }} />}
+                              label={`Kandidat ${Math.max(selectedSelectionCandidateIndex + 1, 1)} av ${selectionCandidatesFiltered.length}`}
+                              sx={{ bgcolor: 'rgba(14,116,144,0.22)', color: '#bae6fd', border: '1px solid rgba(125,211,252,0.44)', fontWeight: 700 }}
+                            />
+                            <Button size="small" variant="outlined" onClick={() => handleStepSelectionCandidate(1)} endIcon={<NavigateNextIcon />} sx={{ textTransform: 'none', borderRadius: 999, color: '#e0f2fe' }}>
+                              Neste
+                            </Button>
+                          </Box>
+
+                          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 1.2, flex: 1, minHeight: 0 }}>
+                            <Box sx={{ flex: { xs: '1 1 auto', md: '1 1 68%' }, p: 1.1, borderRadius: 1.8, border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(2,6,23,0.6)', display: 'flex', flexDirection: 'column', gap: 0.8, minHeight: 0 }}>
+                              <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+                                {selectedSelectionActiveSelfTape ? (
+                                  <Box
+                                    component="video"
+                                    src={selectedSelectionActiveSelfTape}
+                                    controls
+                                    preload="metadata"
+                                    sx={{
+                                      width: '100%',
+                                      aspectRatio: '16 / 9',
+                                      borderRadius: 1.6,
+                                      bgcolor: '#000',
+                                      border: '1px solid rgba(56,189,248,0.34)',
+                                      display: 'block',
+                                    }}
+                                  />
+                                ) : (
+                                  <Box
+                                    sx={{
+                                      width: '100%',
+                                      aspectRatio: '16 / 9',
+                                      borderRadius: 1.6,
+                                      border: '1px dashed rgba(56,189,248,0.42)',
+                                      bgcolor: 'rgba(15,23,42,0.74)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      textAlign: 'center',
+                                      p: 2,
+                                      boxSizing: 'border-box',
+                                    }}
+                                  >
+                                    <Typography sx={{ color: 'rgba(186,230,253,0.86)', fontSize: '0.82rem', maxWidth: 420 }}>
+                                      Ingen self-tape registrert. Legg video på kandidaten for komplett gjennomgang.
+                                    </Typography>
+                                  </Box>
+                                )}
+                              </Box>
+                              <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.92rem', lineHeight: 1.2, textAlign: 'left' }}>
+                                {selectedSelectionCandidate.name}
+                              </Typography>
+                              {selectedSelectionCandidateSelfTapes.length > 1 && (
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.55 }}>
+                                  {selectedSelectionCandidateSelfTapes.slice(0, 8).map((_, tapeIndex) => (
+                                    <Button
+                                      key={`board-tape-${selectedSelectionCandidate.id}-${tapeIndex}`}
+                                      size="small"
+                                      variant={selectedSelectionCandidateSelfTapeIndex === tapeIndex ? 'contained' : 'outlined'}
+                                      onClick={() => handleSetSelectionSelfTapeIndex(selectedSelectionCandidate.id, tapeIndex)}
+                                      sx={{ minWidth: 'auto', borderRadius: 999, textTransform: 'none', fontWeight: 700, px: 0.95, py: 0.2, fontSize: '0.68rem' }}
+                                    >
+                                      Tape {tapeIndex + 1}
+                                    </Button>
+                                  ))}
+                                </Box>
+                              )}
+                            </Box>
+
+                            <Box sx={{ flex: { xs: '1 1 auto', md: '1 1 32%' }, p: 1.05, borderRadius: 1.8, border: '1px solid rgba(148,163,184,0.24)', bgcolor: 'rgba(15,23,42,0.66)', display: 'flex', flexDirection: 'column', gap: 0.8, minHeight: 0, overflow: 'auto' }}>
+                              <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>
+                                Audition-notater
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.76rem', lineHeight: 1.45 }}>
+                                {selectedSelectionSummary.notes.trim() || 'Ingen detaljerte notater registrert.'}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.67rem' }}>
+                                Skrevet av (audition): {selectedAuditionNotesMeta.author}
+                                {selectedAuditionNotesMeta.updatedAt ? ` • ${selectedAuditionNotesMeta.updatedAt}` : ''}
+                              </Typography>
+
+                              <Divider sx={{ borderColor: 'rgba(148,163,184,0.24)' }} />
+
+                              <Typography sx={{ color: '#bae6fd', fontWeight: 700, fontSize: '0.8rem' }}>
+                                Utvelgelsesnotater
+                              </Typography>
+                              <Box
+                                sx={{
+                                  '& > .MuiBox-root': {
+                                    borderColor: 'rgba(56,189,248,0.24)',
+                                    bgcolor: 'rgba(2,6,23,0.52)',
+                                  },
+                                  '& > .MuiBox-root:focus-within': {
+                                    borderColor: 'rgba(56,189,248,0.8)',
+                                  },
+                                  '& .tiptap': {
+                                    color: '#e2e8f0',
+                                    fontSize: '0.82rem',
+                                    lineHeight: 1.55,
+                                    minHeight: { xs: 120, md: 140 },
+                                    p: 1.35,
+                                  },
+                                  '& .tiptap p.is-editor-empty:first-of-type::before': {
+                                    color: 'rgba(186,230,253,0.62)',
+                                  },
+                                  '& .MuiIconButton-root': {
+                                    color: '#bae6fd',
+                                  },
+                                }}
+                              >
+                                <RichTextEditor
+                                  value={toRichTextContent(selectionNotesDraft)}
+                                  onChange={setSelectionNotesDraft}
+                                  placeholder="Skriv ekstra notater fra utvelgelsen her..."
+                                  minHeight={{ xs: 120, md: 140 }}
+                                  accentColor="#38bdf8"
+                                />
+                              </Box>
+                              {selectionAutoTagChips.length > 0 && (
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+                                  <Typography sx={{ color: 'rgba(125,211,252,0.95)', fontSize: '0.66rem', fontWeight: 700 }}>
+                                    Taggede personer
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.4 }}>
+                                    {selectionAutoTagChips.map((name) => (
+                                      <Chip
+                                        key={`selection-tag-chip-board-${name}`}
+                                        label={`@${name}`}
+                                        size="small"
+                                        onDelete={() => handleRemoveSelectionAutoTag(name)}
+                                        sx={{
+                                          height: 22,
+                                          color: '#bae6fd',
+                                          bgcolor: 'rgba(14,116,144,0.2)',
+                                          border: '1px solid rgba(56,189,248,0.36)',
+                                          '& .MuiChip-deleteIcon': { color: 'rgba(186,230,253,0.9)' },
+                                        }}
+                                      />
+                                    ))}
+                                  </Box>
+                                </Box>
+                              )}
+                              {selectionDidYouMeanSuggestions.length > 0 && (
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.35 }}>
+                                  <Typography sx={{ color: 'rgba(251,191,36,0.95)', fontSize: '0.66rem', fontWeight: 700 }}>
+                                    Mener du?
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.4 }}>
+                                    {selectionDidYouMeanSuggestions.map((name) => (
+                                      <Chip
+                                        key={`selection-did-you-mean-board-${name}`}
+                                        label={name}
+                                        size="small"
+                                        clickable
+                                        onClick={() => handleApplySelectionSuggestion(name)}
+                                        sx={{
+                                          height: 22,
+                                          color: '#fde68a',
+                                          bgcolor: 'rgba(120,53,15,0.28)',
+                                          border: '1px solid rgba(251,191,36,0.45)',
+                                        }}
+                                      />
+                                    ))}
+                                  </Box>
+                                </Box>
+                              )}
+                              <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.67rem' }}>
+                                Skrevet av (utvelgelse): {selectedSelectionNotesMeta.author}
+                                {selectedSelectionNotesMeta.updatedAt ? ` • ${selectedSelectionNotesMeta.updatedAt}` : ''}
+                              </Typography>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                startIcon={selectionNotesSaving ? <CircularProgress size={12} color="inherit" /> : <SaveIcon sx={{ fontSize: 14 }} />}
+                                disabled={selectionNotesSaving || !selectionNotesHasChanges}
+                                onClick={() => {
+                                  void handleSaveSelectionNotes();
+                                }}
+                                sx={{
+                                  alignSelf: 'flex-start',
+                                  textTransform: 'none',
+                                  borderRadius: 999,
+                                  fontWeight: 700,
+                                  px: 1.25,
+                                  py: 0.35,
+                                  background: 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+                                  color: '#ecfeff',
+                                }}
+                              >
+                                Lagre utvelgelsesnotat
+                              </Button>
+                            </Box>
+                          </Box>
+
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8 }}>
+                            {([
+                              ['screening', 'Til screening', '#38bdf8'],
+                              ['callbacks', 'Send til callbacks', '#c084fc'],
+                              ['final', 'Marker som finalist', '#34d399'],
+                            ] as const).map(([stage, label, color]) => {
+                              const isCurrentStage = selectedSelectionSummary.phase === stage;
+                              return (
+                                <Button
+                                  key={`board-stage-${stage}`}
+                                  size="small"
+                                  variant={isCurrentStage ? 'contained' : 'outlined'}
+                                  disabled={isCurrentStage}
+                                  onClick={() => handleMoveCandidateToSelectionStage(selectedSelectionCandidate, stage)}
+                                  sx={{
+                                    textTransform: 'none',
+                                    fontWeight: 700,
+                                    borderRadius: 999,
+                                    px: 1.25,
+                                    borderColor: alpha(color, 0.45),
+                                    color: isCurrentStage ? '#001018' : color,
+                                    bgcolor: isCurrentStage ? alpha(color, 0.88) : 'transparent',
+                                  }}
+                                >
+                                  {label}
+                                </Button>
+                              );
+                            })}
+                          </Box>
+                        </Box>
+                      )}
+                    </Box>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.2 }}>
+                      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', xl: 'row' }, gap: 1.2 }}>
+                        <Box
+                          sx={{
+                            flex: { xs: '1 1 auto', xl: '1 1 62%' },
+                            p: 1.15,
+                            borderRadius: 1.8,
+                            border: '1px solid rgba(20,184,166,0.3)',
+                            bgcolor: 'rgba(2,6,23,0.58)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 0.9,
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                            <Typography sx={{ color: '#99f6e4', fontWeight: 700, fontSize: '0.8rem' }}>
+                              Standardvisning
+                            </Typography>
+                            <Typography sx={{ color: 'rgba(153,246,228,0.78)', fontSize: '0.67rem', fontWeight: 600 }}>
+                              Klikk kort for full vurdering
+                            </Typography>
+                          </Box>
+
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.85 }}>
+                            {selectionCandidatesFiltered.map((candidate) => {
+                              const score = getCandidateSelectionScore(candidate);
+                              const readiness = getSelectionReadiness(score);
+                              const phase = getCandidateSelectionStage(candidate);
+                              const isActive = selectedSelectionCandidateId === candidate.id;
+                              const isCompared = selectionCompareCandidateIds.includes(candidate.id);
+                              const auditionCount = auditionSchedulesByCandidate.get(candidate.id)?.length || 0;
+                              const candidatePhoto = getCandidatePrimaryPhoto(candidate);
+                              const assignedRoleIds = getCandidateAssignedRoles(candidate);
+                              const assignedRoleNames = assignedRoleIds
+                                .map((roleId) => roles.find((role) => role.id === roleId)?.name)
+                                .filter((value): value is string => Boolean(value));
+                              const roleLabel = assignedRoleNames[0] || 'Ingen rolle valgt';
+                              const notePreview = getCandidateAuditionNotes(candidate).trim() || 'Ingen audition-notater.';
+
+                              return (
+                                <Box
+                                  key={`selection-standard-${candidate.id}`}
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => {
+                                    startTransition(() => setSelectedSelectionCandidateId(candidate.id));
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault();
+                                      startTransition(() => setSelectedSelectionCandidateId(candidate.id));
+                                    }
+                                  }}
+                                  sx={{
+                                    flex: { xs: '1 1 100%', md: '1 1 calc(50% - 6px)' },
+                                    minWidth: 0,
+                                    borderRadius: 1.5,
+                                    border: isActive ? '1px solid rgba(94,234,212,0.84)' : '1px solid rgba(148,163,184,0.26)',
+                                    bgcolor: isActive ? 'rgba(6,95,70,0.33)' : 'rgba(15,23,42,0.66)',
+                                    p: 0.8,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 0.62,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.18s ease',
+                                    '&:hover': {
+                                      borderColor: 'rgba(94,234,212,0.66)',
+                                      bgcolor: isActive ? 'rgba(6,95,70,0.4)' : 'rgba(30,41,59,0.76)',
+                                      transform: 'translateY(-1px)',
+                                    },
+                                  }}
+                                >
+                                  <Box sx={{ position: 'relative', width: '100%', borderRadius: 1.15, overflow: 'hidden', border: '1px solid rgba(56,189,248,0.24)', bgcolor: 'rgba(2,6,23,0.9)', minHeight: 86 }}>
+                                    {candidatePhoto ? (
+                                      <Box
+                                        component="img"
+                                        src={candidatePhoto}
+                                        alt={`${candidate.name} profilbilde`}
+                                        sx={{ width: '100%', height: 86, objectFit: 'cover', display: 'block' }}
+                                      />
+                                    ) : (
+                                      <Box sx={{ width: '100%', height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(15,23,42,0.86)' }}>
+                                        <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.68rem', fontWeight: 700 }}>
+                                          Ingen bilde
+                                        </Typography>
+                                      </Box>
+                                    )}
+                                    <Chip
+                                      size="small"
+                                      label={`Score ${score}`}
+                                      sx={{
+                                        position: 'absolute',
+                                        top: 6,
+                                        left: 6,
+                                        height: 20,
+                                        fontSize: '0.63rem',
+                                        fontWeight: 800,
+                                        bgcolor: 'rgba(2,6,23,0.84)',
+                                        color: '#dbeafe',
+                                        border: '1px solid rgba(125,211,252,0.45)',
+                                      }}
+                                    />
+                                  </Box>
+
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.55 }}>
+                                    <Typography sx={{ color: '#fff', fontSize: '0.83rem', fontWeight: 700, lineHeight: 1.2 }}>
+                                      {candidate.name}
+                                    </Typography>
+                                    <Chip
+                                      size="small"
+                                      label={phase === 'final' ? 'Final selection' : phase === 'callbacks' ? 'Callbacks' : 'Screening'}
+                                      sx={{
+                                        height: 19,
+                                        fontSize: '0.62rem',
+                                        fontWeight: 700,
+                                        bgcolor:
+                                          phase === 'final'
+                                            ? 'rgba(16,185,129,0.22)'
+                                            : phase === 'callbacks'
+                                              ? 'rgba(192,132,252,0.2)'
+                                              : 'rgba(56,189,248,0.22)',
+                                        color:
+                                          phase === 'final'
+                                            ? '#6ee7b7'
+                                            : phase === 'callbacks'
+                                              ? '#d8b4fe'
+                                              : '#7dd3fc',
+                                        border: '1px solid rgba(148,163,184,0.32)',
+                                      }}
+                                    />
+                                  </Box>
+
+                                  <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.66rem' }}>
+                                    {roleLabel}
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(226,232,240,0.84)', fontSize: '0.67rem', lineHeight: 1.3 }}>
+                                    {notePreview.slice(0, 108)}
+                                    {notePreview.length > 108 ? '...' : ''}
+                                  </Typography>
+
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.6 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.55, flexWrap: 'wrap' }}>
+                                      <Chip
+                                        size="small"
+                                        label={readiness.label}
+                                        sx={{
+                                          height: 19,
+                                          fontSize: '0.61rem',
+                                          fontWeight: 700,
+                                          bgcolor: readiness.bgcolor,
+                                          color: readiness.color,
+                                          border: readiness.border,
+                                        }}
+                                      />
+                                      <Chip
+                                        size="small"
+                                        label={`${auditionCount} auditions`}
+                                        sx={{
+                                          height: 19,
+                                          fontSize: '0.6rem',
+                                          fontWeight: 700,
+                                          bgcolor: 'rgba(14,165,233,0.2)',
+                                          color: '#7dd3fc',
+                                          border: '1px solid rgba(56,189,248,0.44)',
+                                        }}
+                                      />
+                                    </Box>
+                                    <Button
+                                      size="small"
+                                      variant={isCompared ? 'contained' : 'outlined'}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleToggleSelectionCompare(candidate);
+                                      }}
+                                      sx={{
+                                        minWidth: 'auto',
+                                        px: 0.9,
+                                        py: 0.15,
+                                        textTransform: 'none',
+                                        borderRadius: 999,
+                                        fontSize: '0.63rem',
+                                        fontWeight: 700,
+                                        borderColor: 'rgba(148,163,184,0.46)',
+                                        color: isCompared ? '#0f172a' : 'rgba(226,232,240,0.88)',
+                                        bgcolor: isCompared ? 'rgba(186,230,253,0.92)' : 'transparent',
+                                      }}
+                                    >
+                                      {isCompared ? 'Sammenlignes' : 'Sammenlign'}
+                                    </Button>
+                                  </Box>
+                                </Box>
+                              );
+                            })}
+                          </Box>
+                        </Box>
+
+                        <Box
+                          sx={{
+                            flex: { xs: '1 1 auto', xl: '1 1 38%' },
+                            p: 1.1,
+                            borderRadius: 1.8,
+                            border: '1px solid rgba(56,189,248,0.28)',
+                            bgcolor: 'rgba(15,23,42,0.62)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 0.8,
+                          }}
+                        >
+                          {!selectedSelectionCandidate || !selectedSelectionSummary ? (
+                            <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.82rem' }}>
+                              Velg en kandidat for detaljer.
+                            </Typography>
+                          ) : (
+                            <>
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.7 }}>
+                                <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>
+                                  {selectedSelectionCandidate.name}
+                                </Typography>
+                                <Chip
+                                  size="small"
+                                  label={selectedSelectionSummary.phase === 'final' ? 'Final selection' : selectedSelectionSummary.phase === 'callbacks' ? 'Callbacks' : 'Screening'}
+                                  sx={{
+                                    height: 20,
+                                    fontSize: '0.63rem',
+                                    fontWeight: 700,
+                                    bgcolor:
+                                      selectedSelectionSummary.phase === 'final'
+                                        ? 'rgba(16,185,129,0.22)'
+                                        : selectedSelectionSummary.phase === 'callbacks'
+                                          ? 'rgba(192,132,252,0.2)'
+                                          : 'rgba(56,189,248,0.2)',
+                                    color:
+                                      selectedSelectionSummary.phase === 'final'
+                                        ? '#6ee7b7'
+                                        : selectedSelectionSummary.phase === 'callbacks'
+                                          ? '#d8b4fe'
+                                          : '#7dd3fc',
+                                    border: '1px solid rgba(148,163,184,0.3)',
+                                  }}
+                                />
+                              </Box>
+
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.6 }}>
+                                <Chip
+                                  size="small"
+                                  label={`Score ${selectedSelectionScore}/100`}
+                                  sx={{
+                                    height: 20,
+                                    fontSize: '0.62rem',
+                                    fontWeight: 800,
+                                    bgcolor: 'rgba(15,118,110,0.28)',
+                                    color: '#99f6e4',
+                                    border: '1px solid rgba(45,212,191,0.45)',
+                                  }}
+                                />
+                                <Chip
+                                  size="small"
+                                  label={selectedSelectionReadiness.label}
+                                  sx={{
+                                    height: 20,
+                                    fontSize: '0.61rem',
+                                    fontWeight: 700,
+                                    bgcolor: selectedSelectionReadiness.bgcolor,
+                                    color: selectedSelectionReadiness.color,
+                                    border: selectedSelectionReadiness.border,
+                                  }}
+                                />
+                                <Chip
+                                  size="small"
+                                  label={`${selectedSelectionCandidateSchedules.length} auditions`}
+                                  sx={{
+                                    height: 20,
+                                    fontSize: '0.61rem',
+                                    fontWeight: 700,
+                                    bgcolor: 'rgba(14,165,233,0.2)',
+                                    color: '#7dd3fc',
+                                    border: '1px solid rgba(56,189,248,0.44)',
+                                  }}
+                                />
+                              </Box>
+
+                              <Box
+                                sx={{
+                                  width: '100%',
+                                  borderRadius: 1.35,
+                                  border: '1px solid rgba(56,189,248,0.24)',
+                                  overflow: 'hidden',
+                                  minHeight: { xs: 220, md: 300 },
+                                  bgcolor: 'rgba(2,6,23,0.82)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                {selectedSelectionCandidatePhoto ? (
+                                  <Box
+                                    component="img"
+                                    src={selectedSelectionCandidatePhoto}
+                                    alt={`${selectedSelectionCandidate.name} profilbilde`}
+                                    sx={{ width: '100%', height: '100%', minHeight: { xs: 220, md: 300 }, objectFit: 'cover', display: 'block' }}
+                                  />
+                                ) : (
+                                  <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.72rem', fontWeight: 700 }}>
+                                    Ingen bilde tilgjengelig
+                                  </Typography>
+                                )}
+                              </Box>
+
+                              <Button
+                                fullWidth
+                                variant="contained"
+                                onClick={() => {
+                                  startTransition(() => setSelectionBoardMode(true));
+                                }}
+                                sx={{
+                                  textTransform: 'none',
+                                  borderRadius: 1.2,
+                                  fontWeight: 800,
+                                  py: 0.8,
+                                  background: 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+                                  color: '#ecfeff',
+                                  border: '1px solid rgba(125,211,252,0.45)',
+                                  '&:hover': {
+                                    background: 'linear-gradient(135deg, #0284c7, #0f766e)',
+                                  },
+                                }}
+                              >
+                                Se self-tape i Casting board
+                              </Button>
+                              {!selectedSelectionActiveSelfTape && (
+                                <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.67rem' }}>
+                                  Ingen self-tape registrert på kandidaten ennå.
+                                </Typography>
+                              )}
+                              {selectedSelectionCandidateSelfTapes.length > 1 && (
+                                <Typography sx={{ color: 'rgba(125,211,252,0.9)', fontSize: '0.66rem', fontWeight: 600 }}>
+                                  {selectedSelectionCandidateSelfTapes.length} self-tapes tilgjengelig
+                                </Typography>
+                              )}
+
+                              {selectedSelectionSignals && (
+                                <Box
+                                  sx={{
+                                    borderRadius: 1.3,
+                                    border: '1px solid rgba(56,189,248,0.24)',
+                                    bgcolor: 'rgba(2,6,23,0.65)',
+                                    p: 0.78,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 0.42,
+                                  }}
+                                >
+                                  <Typography sx={{ color: '#bae6fd', fontWeight: 700, fontSize: '0.69rem', mb: 0.1 }}>
+                                    Vurderingssignal
+                                  </Typography>
+                                  {([
+                                    ['Sceneleveranse', selectedSelectionSignals.scenePerformance, '#22d3ee'],
+                                    ['Kjemi', selectedSelectionSignals.chemistry, '#c084fc'],
+                                    ['Tilgjengelighet', selectedSelectionSignals.availability, '#4ade80'],
+                                    ['Risiko', selectedSelectionSignals.risk, '#fb7185'],
+                                  ] as const).map(([label, value, color]) => (
+                                    <Box key={`signal-${label}`} sx={{ display: 'flex', flexDirection: 'column', gap: 0.18 }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.45 }}>
+                                        <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.65rem' }}>{label}</Typography>
+                                        <Typography sx={{ color, fontSize: '0.63rem', fontWeight: 700 }}>{value}</Typography>
+                                      </Box>
+                                      <Box sx={{ width: '100%', height: 4.5, borderRadius: 999, bgcolor: 'rgba(51,65,85,0.66)', overflow: 'hidden' }}>
+                                        <Box sx={{ width: `${value}%`, height: '100%', borderRadius: 999, bgcolor: color }} />
+                                      </Box>
+                                    </Box>
+                                  ))}
+                                </Box>
+                              )}
+
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.55 }}>
+                                {([
+                                  ['screening', 'Til screening', '#38bdf8'],
+                                  ['callbacks', 'Send til callbacks', '#c084fc'],
+                                  ['final', 'Marker som finalist', '#34d399'],
+                                ] as const).map(([stage, label, color]) => {
+                                  const isCurrentStage = selectedSelectionSummary.phase === stage;
+                                  return (
+                                    <Button
+                                      key={`standard-stage-${stage}`}
+                                      size="small"
+                                      variant={isCurrentStage ? 'contained' : 'outlined'}
+                                      disabled={isCurrentStage}
+                                      onClick={() => handleMoveCandidateToSelectionStage(selectedSelectionCandidate, stage)}
+                                      sx={{
+                                        textTransform: 'none',
+                                        fontWeight: 700,
+                                        borderRadius: 999,
+                                        px: 1,
+                                        borderColor: alpha(color, 0.45),
+                                        color: isCurrentStage ? '#001018' : color,
+                                        bgcolor: isCurrentStage ? alpha(color, 0.88) : 'transparent',
+                                      }}
+                                    >
+                                      {label}
+                                    </Button>
+                                  );
+                                })}
+                              </Box>
+
+                              <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(148,163,184,0.24)', bgcolor: 'rgba(15,23,42,0.56)', p: 0.7 }}>
+                                <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.69rem', mb: 0.35 }}>
+                                  Audition-notater
+                                </Typography>
+                                <Typography sx={{ color: 'rgba(226,232,240,0.84)', fontSize: '0.69rem', lineHeight: 1.4 }}>
+                                  {selectedSelectionSummary.notes.trim() || 'Ingen detaljerte notater registrert.'}
+                                </Typography>
+                                <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.63rem', mt: 0.35 }}>
+                                  Skrevet av (audition): {selectedAuditionNotesMeta.author}
+                                  {selectedAuditionNotesMeta.updatedAt ? ` • ${selectedAuditionNotesMeta.updatedAt}` : ''}
+                                </Typography>
+                              </Box>
+
+                              <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(2,6,23,0.6)', p: 0.7, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                <Typography sx={{ color: '#7dd3fc', fontWeight: 700, fontSize: '0.69rem' }}>
+                                  Utvelgelsesnotater
+                                </Typography>
+                                <Box
+                                  sx={{
+                                    '& > .MuiBox-root': {
+                                      borderColor: 'rgba(56,189,248,0.24)',
+                                      bgcolor: 'rgba(15,23,42,0.58)',
+                                    },
+                                    '& > .MuiBox-root:focus-within': {
+                                      borderColor: 'rgba(56,189,248,0.8)',
+                                    },
+                                    '& .tiptap': {
+                                      color: '#e2e8f0',
+                                      fontSize: '0.76rem',
+                                      lineHeight: 1.52,
+                                      minHeight: { xs: 110, md: 130 },
+                                      p: 1.2,
+                                    },
+                                    '& .tiptap p.is-editor-empty:first-of-type::before': {
+                                      color: 'rgba(186,230,253,0.6)',
+                                    },
+                                    '& .MuiIconButton-root': {
+                                      color: '#bae6fd',
+                                    },
+                                  }}
+                                >
+                                  <RichTextEditor
+                                    value={toRichTextContent(selectionNotesDraft)}
+                                    onChange={setSelectionNotesDraft}
+                                    placeholder="Skriv ekstra notater for utvelgelse..."
+                                    minHeight={{ xs: 110, md: 130 }}
+                                    accentColor="#38bdf8"
+                                  />
+                                </Box>
+                                {selectionAutoTagChips.length > 0 && (
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.38 }}>
+                                    <Typography sx={{ color: 'rgba(125,211,252,0.95)', fontSize: '0.64rem', fontWeight: 700 }}>
+                                      Taggede personer
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.35 }}>
+                                      {selectionAutoTagChips.map((name) => (
+                                        <Chip
+                                          key={`selection-tag-chip-standard-${name}`}
+                                          label={`@${name}`}
+                                          size="small"
+                                          onDelete={() => handleRemoveSelectionAutoTag(name)}
+                                          sx={{
+                                            height: 21,
+                                            color: '#bae6fd',
+                                            bgcolor: 'rgba(14,116,144,0.2)',
+                                            border: '1px solid rgba(56,189,248,0.36)',
+                                            '& .MuiChip-deleteIcon': { color: 'rgba(186,230,253,0.9)' },
+                                          }}
+                                        />
+                                      ))}
+                                    </Box>
+                                  </Box>
+                                )}
+                                {selectionDidYouMeanSuggestions.length > 0 && (
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.35 }}>
+                                    <Typography sx={{ color: 'rgba(251,191,36,0.95)', fontSize: '0.64rem', fontWeight: 700 }}>
+                                      Mener du?
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.35 }}>
+                                      {selectionDidYouMeanSuggestions.map((name) => (
+                                        <Chip
+                                          key={`selection-did-you-mean-standard-${name}`}
+                                          label={name}
+                                          size="small"
+                                          clickable
+                                          onClick={() => handleApplySelectionSuggestion(name)}
+                                          sx={{
+                                            height: 21,
+                                            color: '#fde68a',
+                                            bgcolor: 'rgba(120,53,15,0.28)',
+                                            border: '1px solid rgba(251,191,36,0.45)',
+                                          }}
+                                        />
+                                      ))}
+                                    </Box>
+                                  </Box>
+                                )}
+                                <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.63rem' }}>
+                                  Skrevet av (utvelgelse): {selectedSelectionNotesMeta.author}
+                                  {selectedSelectionNotesMeta.updatedAt ? ` • ${selectedSelectionNotesMeta.updatedAt}` : ''}
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  startIcon={selectionNotesSaving ? <CircularProgress size={12} color="inherit" /> : <SaveIcon sx={{ fontSize: 14 }} />}
+                                  disabled={selectionNotesSaving || !selectionNotesHasChanges}
+                                  onClick={() => {
+                                    void handleSaveSelectionNotes();
+                                  }}
+                                  sx={{
+                                    alignSelf: 'flex-start',
+                                    textTransform: 'none',
+                                    borderRadius: 999,
+                                    fontWeight: 700,
+                                    px: 1.1,
+                                    py: 0.3,
+                                    background: 'linear-gradient(135deg, #0ea5e9, #14b8a6)',
+                                    color: '#ecfeff',
+                                  }}
+                                >
+                                  Lagre utvelgelsesnotat
+                                </Button>
+                              </Box>
+
+                              <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(34,197,94,0.3)', bgcolor: 'rgba(6,78,59,0.22)', p: 0.7 }}>
+                                <Typography sx={{ color: '#86efac', fontWeight: 700, fontSize: '0.69rem', mb: 0.35 }}>
+                                  Hva var bra
+                                </Typography>
+                                {selectedSelectionSummary.strengths.length === 0 ? (
+                                  <Typography sx={{ color: 'rgba(134,239,172,0.86)', fontSize: '0.68rem' }}>
+                                    Ingen styrker registrert ennå.
+                                  </Typography>
+                                ) : (
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.22 }}>
+                                    {selectedSelectionSummary.strengths.slice(0, 4).map((item, index) => (
+                                      <Typography key={`strength-${index}`} sx={{ color: 'rgba(134,239,172,0.9)', fontSize: '0.67rem', lineHeight: 1.35 }}>
+                                        • {item}
+                                      </Typography>
+                                    ))}
+                                  </Box>
+                                )}
+                              </Box>
+
+                              <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(251,113,133,0.3)', bgcolor: 'rgba(127,29,29,0.2)', p: 0.7 }}>
+                                <Typography sx={{ color: '#fda4af', fontWeight: 700, fontSize: '0.69rem', mb: 0.35 }}>
+                                  Hva var svakt / risiko
+                                </Typography>
+                                {selectedSelectionSummary.risks.length === 0 ? (
+                                  <Typography sx={{ color: 'rgba(253,164,175,0.88)', fontSize: '0.68rem' }}>
+                                    Ingen tydelige risikoflagg.
+                                  </Typography>
+                                ) : (
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.22 }}>
+                                    {selectedSelectionSummary.risks.slice(0, 4).map((item, index) => (
+                                      <Typography key={`risk-${index}`} sx={{ color: 'rgba(253,164,175,0.9)', fontSize: '0.67rem', lineHeight: 1.35 }}>
+                                        • {item}
+                                      </Typography>
+                                    ))}
+                                  </Box>
+                                )}
+                              </Box>
+
+                              <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(3,37,65,0.3)', p: 0.7 }}>
+                                <Typography sx={{ color: '#7dd3fc', fontWeight: 700, fontSize: '0.69rem', mb: 0.2 }}>
+                                  Anbefalt neste steg
+                                </Typography>
+                                <Typography sx={{ color: 'rgba(186,230,253,0.92)', fontSize: '0.69rem', lineHeight: 1.35 }}>
+                                  {selectedSelectionSummary.recommendation}
+                                </Typography>
+                              </Box>
+
+                              <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(148,163,184,0.24)', bgcolor: 'rgba(2,6,23,0.64)', p: 0.7 }}>
+                                <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.69rem', mb: 0.28 }}>
+                                  Beslutningslogg
+                                </Typography>
+                                {selectedSelectionDecisionLog.length === 0 ? (
+                                  <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.67rem' }}>
+                                    Ingen beslutningshendelser registrert ennå.
+                                  </Typography>
+                                ) : (
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.26 }}>
+                                    {selectedSelectionDecisionLog.slice(0, 5).map((entry) => (
+                                      <Box key={entry.id} sx={{ display: 'flex', flexDirection: 'column', gap: 0.05 }}>
+                                        <Typography sx={{ color: '#cbd5e1', fontSize: '0.65rem', lineHeight: 1.3 }}>
+                                          {entry.action}
+                                        </Typography>
+                                        <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.6rem', lineHeight: 1.2 }}>
+                                          {entry.actor} • {new Date(entry.createdAt).toLocaleString('no-NO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                        </Typography>
+                                      </Box>
+                                    ))}
+                                  </Box>
+                                )}
+                              </Box>
+                            </>
+                          )}
+                        </Box>
+                      </Box>
+
+                      {selectionCompareCandidates.length > 1 && (
+                        <Box
+                          sx={{
+                            p: 0.95,
+                            borderRadius: 1.7,
+                            border: '1px solid rgba(192,132,252,0.3)',
+                            bgcolor: 'rgba(46,16,101,0.2)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 0.68,
+                          }}
+                        >
+                          <Typography sx={{ color: '#e9d5ff', fontWeight: 700, fontSize: '0.74rem' }}>
+                            Side-by-side sammenligning ({selectionCompareCandidates.length})
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.7 }}>
+                            {selectionCompareCandidates.map((candidate) => {
+                              const signals = getCandidateSelectionSignals(candidate);
+                              const score = getCandidateSelectionScore(candidate);
+                              const readiness = getSelectionReadiness(score);
+                              return (
+                                <Box
+                                  key={`selection-compare-${candidate.id}`}
+                                  sx={{
+                                    flex: { xs: '1 1 100%', md: '1 1 calc(33.333% - 6px)' },
+                                    minWidth: 0,
+                                    borderRadius: 1.25,
+                                    border: '1px solid rgba(216,180,254,0.32)',
+                                    bgcolor: 'rgba(30,41,59,0.62)',
+                                    p: 0.7,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 0.32,
+                                  }}
+                                >
+                                  <Typography sx={{ color: '#fff', fontSize: '0.73rem', fontWeight: 700, lineHeight: 1.2 }}>
+                                    {candidate.name}
+                                  </Typography>
+                                  <Typography sx={{ color: readiness.color, fontSize: '0.63rem', fontWeight: 700 }}>
+                                    {readiness.label} • {score}/100
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.62rem' }}>
+                                    Scene: {signals.scenePerformance} • Kjemi: {signals.chemistry}
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.62rem' }}>
+                                    Tilgjengelighet: {signals.availability} • Risiko: {signals.risk}
+                                  </Typography>
+                                </Box>
+                              );
+                            })}
+                          </Box>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </Box>
+          )}
         </TabPanel>
 
         <TabPanel value={activeTab} index={TEAM_TAB_INDEX}>
@@ -2897,36 +6333,165 @@ export function CastingPlannerPanel({
                 onOpenTechnicalTeamDashboard={handleOpenTechnicalTeamDashboard}
                 productionDays={currentProject.productionDays || []}
                 scenes={currentProject.sceneBreakdowns || []}
+                externalCreateSignal={externalCrewCreateSignal}
+                onExternalCreated={handleExternalCrewCreated}
+                onExternalCreateCancelled={handleExternalCrewCreateCancelled}
               />
             </Box>
           )}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={5}>
+        <TabPanel value={activeTab} index={LOCATIONS_TAB_INDEX}>
           {!currentProject ? (
-            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
-              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+            <Box sx={{ p: 3, textAlign: 'center', color: branding.colors.textPrimary }}>
+              <Typography
+                variant="body1"
+                sx={{
+                  fontSize: { xs: '0.875rem', sm: '0.95rem', md: '1rem', lg: '1.1rem', xl: '1.15rem' },
+                  '@media (min-width: 2048px)': { fontSize: '1.25rem' },
+                  '@media (min-width: 3840px)': { fontSize: '1.4rem' },
+                  '@media (min-width: 5120px)': { fontSize: '1.5rem' },
+                }}
+              >
                 {branding.tokens.labels.noProjectSelected}
               </Typography>
             </Box>
           ) : !permissions.canManageLocations ? (
-            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
-              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+            <Box sx={{ p: 3, textAlign: 'center', color: branding.colors.textPrimary }}>
+              <Typography
+                variant="body1"
+                sx={{
+                  fontSize: { xs: '0.875rem', sm: '0.95rem', md: '1rem', lg: '1.1rem', xl: '1.15rem' },
+                  '@media (min-width: 2048px)': { fontSize: '1.25rem' },
+                  '@media (min-width: 3840px)': { fontSize: '1.4rem' },
+                  '@media (min-width: 5120px)': { fontSize: '1.5rem' },
+                }}
+              >
                 {branding.tokens.labels.noAccessLocations}
               </Typography>
             </Box>
           ) : (
-            <LocationManagementPanel
-              projectId={currentProject.id}
-              onUpdate={async () => {
-                const updated = await castingService.getProject(currentProject.id);
-                if (updated) setCurrentProject(updated);
+            <Box
+              sx={{
+                width: '100%',
+                mx: 'auto',
+                maxWidth: { xs: '100%', lg: 1560, xl: 1880 },
+                borderRadius: 2,
+                border: `1px solid ${branding.colors.border}`,
+                background: `linear-gradient(180deg, ${branding.colors.surface} 0%, ${branding.colors.background} 100%)`,
+                p: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 2 },
+                '@media (min-width: 1024px)': {
+                  p: 1.5,
+                },
+                '@media (min-width: 2048px)': {
+                  maxWidth: 2200,
+                  p: 2.25,
+                  borderRadius: 2.5,
+                },
+                '@media (min-width: 3840px)': {
+                  maxWidth: 3300,
+                  p: 2.75,
+                  borderRadius: 3,
+                },
+                '@media (min-width: 5120px)': {
+                  maxWidth: 4300,
+                  p: 3.25,
+                  borderRadius: 3.5,
+                },
+                '& .MuiPaper-root, & .MuiCard-root': {
+                  background: `${branding.colors.surface}cc`,
+                  borderColor: branding.colors.border,
+                  color: branding.colors.textPrimary,
+                },
+                '& .MuiTypography-root': {
+                  color: branding.colors.textPrimary,
+                  '@media (min-width: 2048px)': { fontSize: '1.03em' },
+                  '@media (min-width: 3840px)': { fontSize: '1.12em' },
+                  '@media (min-width: 5120px)': { fontSize: '1.2em' },
+                },
+                '& .MuiTypography-colorTextSecondary': {
+                  color: branding.colors.textSecondary,
+                },
+                '& .MuiInputBase-root': {
+                  color: branding.colors.textPrimary,
+                },
+                '& .MuiInputLabel-root': {
+                  color: branding.colors.textSecondary,
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: branding.colors.border,
+                },
+                '& .MuiButton-outlined': {
+                  borderColor: `${branding.colors.primary}66`,
+                  color: branding.colors.textPrimary,
+                },
+                '& .MuiButton-outlined:hover': {
+                  borderColor: branding.colors.primary,
+                  backgroundColor: `${branding.colors.primary}1a`,
+                },
+                '& .MuiButton-contained': {
+                  backgroundColor: branding.colors.primary,
+                  color: branding.colors.textPrimary,
+                },
+                '& .MuiButton-contained:hover': {
+                  backgroundColor: branding.colors.secondary,
+                },
+                '& .MuiButton-root': {
+                  '@media (min-width: 3840px)': {
+                    minHeight: 44,
+                    fontSize: '1rem',
+                  },
+                  '@media (min-width: 5120px)': {
+                    minHeight: 48,
+                    fontSize: '1.08rem',
+                  },
+                },
+                '& .MuiIconButton-root': {
+                  '@media (min-width: 5120px)': {
+                    width: 44,
+                    height: 44,
+                  },
+                },
+                '& .MuiTabs-indicator': {
+                  backgroundColor: branding.colors.primary,
+                },
+                '& .MuiTab-root': {
+                  color: branding.colors.textSecondary,
+                },
+                '& .MuiTab-root.Mui-selected': {
+                  color: branding.colors.textPrimary,
+                },
+                '& .MuiChip-root': {
+                  borderColor: branding.colors.border,
+                  '@media (min-width: 3840px)': {
+                    height: 32,
+                  },
+                  '@media (min-width: 5120px)': {
+                    height: 36,
+                  },
+                },
+                '& .MuiTableContainer-root': {
+                  maxHeight: { xs: '60vh', md: '66vh', xl: '70vh' },
+                  '@media (min-width: 2048px)': { maxHeight: '74vh' },
+                  '@media (min-width: 3840px)': { maxHeight: '76vh' },
+                },
               }}
-            />
+            >
+              <LocationManagementPanel
+                projectId={currentProject.id}
+                onUpdate={async () => {
+                  const updated = await castingService.getProject(currentProject.id);
+                  if (updated) setCurrentProject(updated);
+                }}
+                externalCreateSignal={externalLocationCreateSignal}
+                onExternalCreated={handleExternalLocationCreated}
+                onExternalCreateCancelled={handleExternalLocationCreateCancelled}
+              />
+            </Box>
           )}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={6}>
+        <TabPanel value={activeTab} index={EQUIPMENT_TAB_INDEX}>
           {!currentProject ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
@@ -2947,6 +6512,9 @@ export function CastingPlannerPanel({
                   const updated = await castingService.getProject(currentProject.id);
                   if (updated) setCurrentProject(updated);
                 }}
+                externalCreateSignal={externalEquipmentCreateSignal}
+                onExternalCreated={handleExternalEquipmentCreated}
+                onExternalCreateCancelled={handleExternalEquipmentCreateCancelled}
               />
               <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
               <Box>
@@ -2968,7 +6536,7 @@ export function CastingPlannerPanel({
           )}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={7}>
+        <TabPanel value={activeTab} index={CALENDAR_TAB_INDEX}>
           {!currentProject ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
@@ -3084,7 +6652,50 @@ export function CastingPlannerPanel({
               {/* Calendar Content */}
               {calendarViewMode === 'production' ? (
                 <>
-                  <ProductionCalendarPanel projectId={currentProject.id} />
+                  <ProductionCalendarPanel
+                    projectId={currentProject.id}
+                    candidates={(currentProject.candidates || []).map((candidate) => ({
+                      id: candidate.id,
+                      name: candidate.name,
+                    }))}
+                    crew={(currentProject.crew || []).map((member) => {
+                      const rawMember = member as Record<string, unknown>;
+                      const nested = (rawMember.crew_data as Record<string, unknown> | undefined)
+                        ?? (rawMember.crewData as Record<string, unknown> | undefined);
+                      const resolvedRoleCandidates = [
+                        rawMember.role,
+                        rawMember.crewRole,
+                        rawMember.crew_role,
+                        rawMember.position,
+                        rawMember.title,
+                        rawMember.jobTitle,
+                        rawMember.job_title,
+                        nested?.role,
+                        nested?.crewRole,
+                        nested?.position,
+                        nested?.title,
+                        rawMember.department,
+                      ];
+                      const resolvedRole = resolvedRoleCandidates.find(
+                        (value) => typeof value === 'string' && value.trim().length > 0,
+                      ) as string | undefined;
+                      return {
+                        id: member.id,
+                        name: member.name,
+                        role: resolvedRole?.trim() || 'Crew-medlem',
+                      };
+                    })}
+                    locations={(currentProject.locations || []).map((location) => ({
+                      id: location.id,
+                      name: location.name,
+                    }))}
+                    onRequestLocationCreate={handleCalendarRequestLocationCreate}
+                    onRequestCandidateCreate={handleCalendarRequestCandidateCreate}
+                    onRequestCrewCreate={handleCalendarRequestCrewCreate}
+                    onRequestEquipmentCreate={handleCalendarRequestEquipmentCreate}
+                    reopenDialogSignal={calendarReopenSignal}
+                    preselectedFromCreate={calendarPreselectedFromCreate}
+                  />
                   <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
                   <ProductionDayView
                     projectId={currentProject.id}
@@ -3139,21 +6750,9 @@ export function CastingPlannerPanel({
           )}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={SHOT_LIST_TAB_INDEX}>
-          {!currentProject ? (
-            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
-              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
-                {branding.tokens.labels.noProjectSelected}
-              </Typography>
-            </Box>
-          ) : !permissions.canEditShotLists ? (
-            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
-              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
-                {branding.tokens.labels.noAccessShotList}
-              </Typography>
-            </Box>
-          ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <TabPanel value={activeTab} index={STORY_ARC_TAB_INDEX}>
+          {storyArcView === 'main' ? (
+            <Box sx={{ p: { xs: 2, sm: 2.5, md: 3 }, display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 2.5 } }}>
               <Box
                 sx={{
                   display: 'flex',
@@ -3165,7 +6764,8 @@ export function CastingPlannerPanel({
                   py: { xs: 1.25, sm: 1.5 },
                   borderRadius: 2.5,
                   border: '1px solid rgba(148,163,184,0.24)',
-                  background: 'linear-gradient(120deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.22) 100%)',
+                  background:
+                    'linear-gradient(120deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.22) 100%)',
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -3182,14 +6782,14 @@ export function CastingPlannerPanel({
                       boxShadow: '0 8px 20px rgba(147,51,234,0.28)',
                     }}
                   >
-                    <ShotListIcon sx={{ color: '#fff', fontSize: 18 }} />
+                    <StoryArcIcon sx={{ color: '#fff', fontSize: 18 }} />
                   </Box>
                   <Box>
                     <Typography sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>
-                      Shot list
+                      Role Room Studio
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
-                      Role Room planlegging og progresjon
+                      {branding.tokens.labels.storyArcTagline}
                     </Typography>
                   </Box>
                 </Box>
@@ -3205,164 +6805,192 @@ export function CastingPlannerPanel({
                   }}
                 />
               </Box>
-              <CastingShotListPanel
-                projectId={currentProject.id}
-                onUpdate={async () => {
-                  const updated = await castingService.getProject(currentProject.id);
-                  if (updated) setCurrentProject(updated);
-                }}
-                profession={profession}
-                teamDashboardOpenSignal={teamDashboardOpenSignal}
-                teamDashboardDefaultSegment={teamDashboardDefaultSegment}
-              />
-            </Box>
-          )}
-        </TabPanel>
 
-        <TabPanel value={activeTab} index={9}>
-          {storyArcView === 'main' ? (
-            <Box sx={{ p: { xs: 2, sm: 2.5, md: 3 } }}>
-              {/* Story Arc Studio Header */}
-              <Box sx={{ mb: { xs: 3, sm: 4 }, textAlign: 'center' }}>
-                <Typography variant="h5" sx={{ 
-                  fontWeight: 700, 
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 1,
-                  mb: 1,
-                }}>
-                  <StoryArcIcon sx={{ color: '#ec4899', fontSize: 32 }} />
-                  {branding.tokens.labels.storyArcStudio}
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  {branding.tokens.labels.storyArcTagline}
-                </Typography>
-              </Box>
-
-              {/* Two Cards Grid */}
               <Box
                 sx={{
-                  maxWidth: { xs: '100%', sm: 900 },
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  justifyContent: 'center',
+                  alignItems: 'stretch',
+                  gap: { xs: 2, sm: 2.5, md: 3 },
+                  width: '100%',
+                  maxWidth: 980,
                   mx: 'auto',
-                  px: { xs: 0, sm: 1 },
                 }}
               >
-              <Grid
-                container
-                rowSpacing={{ xs: 2.5, sm: 3 }}
-                columnSpacing={{ xs: 2.5, sm: 4, md: 5 }}
-                justifyContent="center"
-              >
-                {/* Story Logic Card */}
-                <Grid size={{ xs: 12, sm: 6, md: 5 }} sx={{ display: 'flex', justifyContent: 'center' }}>
-                  <Card
-                    sx={{
-                      width: '100%',
-                      maxWidth: { xs: 420, sm: 360, md: 380 },
-                      bgcolor: 'rgba(139, 92, 246, 0.1)',
-                      border: '1px solid rgba(139, 92, 246, 0.3)',
-                      borderRadius: 3,
-                      cursor: 'pointer',
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        transform: 'translateY(-4px)',
-                        boxShadow: '0 8px 32px rgba(139, 92, 246, 0.3)',
-                        borderColor: '#8b5cf6',
-                      },
-                    }}
-                    onClick={() => {
-                      startTransition(() => setStoryArcView('story-logic'));
-                    }}
-                  >
-                    <CardContent sx={{ p: 3, textAlign: 'center' }}>
-                      <Box sx={{
-                        width: 80,
-                        height: 80,
+                <Card
+                  sx={{
+                    flex: '1 1 320px',
+                    minWidth: { xs: '100%', sm: 320 },
+                    maxWidth: 460,
+                    borderRadius: 3,
+                    cursor: 'pointer',
+                    background: 'linear-gradient(160deg, rgba(124,58,237,0.22) 0%, rgba(15,23,42,0.82) 100%)',
+                    border: '1px solid rgba(167,139,250,0.42)',
+                    boxShadow: '0 12px 32px rgba(76,29,149,0.32)',
+                    transition: 'all 0.28s ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      borderColor: 'rgba(196,181,253,0.82)',
+                      boxShadow: '0 18px 36px rgba(109,40,217,0.38)',
+                    },
+                  }}
+                  onClick={() => {
+                    startTransition(() => setStoryArcView('story-logic'));
+                  }}
+                >
+                  <CardContent sx={{ p: 3, textAlign: 'center' }}>
+                    <Box
+                      sx={{
+                        width: 76,
+                        height: 76,
                         borderRadius: '50%',
-                        bgcolor: 'rgba(139, 92, 246, 0.2)',
+                        bgcolor: 'rgba(139,92,246,0.22)',
+                        border: '1px solid rgba(167,139,250,0.5)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         mx: 'auto',
                         mb: 2,
-                      }}>
-                        <StoryLogicIcon sx={{ fontSize: 40, color: '#8b5cf6' }} />
-                      </Box>
-                      <Typography variant="h6" sx={{ fontWeight: 600, color: '#fff', mb: 1 }}>
-                        {branding.tokens.labels.storyArcLogicTitle}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
-                        {branding.tokens.labels.storyArcLogicSubtitle}
-                      </Typography>
-                      <Chip 
-                        label={branding.tokens.labels.storyLogicChip} 
-                        size="small" 
-                        sx={{ 
-                          bgcolor: 'rgba(139, 92, 246, 0.2)', 
-                          color: '#8b5cf6',
-                          fontSize: '0.75rem',
-                        }} 
-                      />
-                    </CardContent>
-                  </Card>
-                </Grid>
+                      }}
+                    >
+                      <StoryLogicIcon sx={{ fontSize: 38, color: '#c4b5fd' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+                      {branding.tokens.labels.storyArcLogicTitle}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.88)', mb: 2 }}>
+                      {branding.tokens.labels.storyArcLogicSubtitle}
+                    </Typography>
+                    <Chip
+                      label={branding.tokens.labels.storyLogicChip}
+                      size="small"
+                      sx={{
+                        bgcolor: 'rgba(139,92,246,0.24)',
+                        color: '#ddd6fe',
+                        border: '1px solid rgba(196,181,253,0.45)',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </CardContent>
+                </Card>
 
-                {/* Story Writer Card */}
-                <Grid size={{ xs: 12, sm: 6, md: 5 }} sx={{ display: 'flex', justifyContent: 'center' }}>
-                  <Card
-                    sx={{
-                      width: '100%',
-                      maxWidth: { xs: 420, sm: 360, md: 380 },
-                      bgcolor: 'rgba(236, 72, 153, 0.1)',
-                      border: '1px solid rgba(236, 72, 153, 0.3)',
-                      borderRadius: 3,
-                      cursor: 'pointer',
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        transform: 'translateY(-4px)',
-                        boxShadow: '0 8px 32px rgba(236, 72, 153, 0.3)',
-                        borderColor: '#ec4899',
-                      },
-                    }}
-                    onClick={() => {
-                      startTransition(() => setStoryArcView('story-writer'));
-                    }}
-                  >
-                    <CardContent sx={{ p: 3, textAlign: 'center' }}>
-                      <Box sx={{
-                        width: 80,
-                        height: 80,
+                <Card
+                  sx={{
+                    flex: '1 1 320px',
+                    minWidth: { xs: '100%', sm: 320 },
+                    maxWidth: 460,
+                    borderRadius: 3,
+                    cursor: 'pointer',
+                    background: 'linear-gradient(160deg, rgba(236,72,153,0.18) 0%, rgba(15,23,42,0.84) 100%)',
+                    border: '1px solid rgba(244,114,182,0.4)',
+                    boxShadow: '0 12px 32px rgba(131,24,67,0.28)',
+                    transition: 'all 0.28s ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      borderColor: 'rgba(251,207,232,0.82)',
+                      boxShadow: '0 18px 36px rgba(190,24,93,0.34)',
+                    },
+                  }}
+                  onClick={() => {
+                    startTransition(() => setStoryArcView('story-writer'));
+                  }}
+                >
+                  <CardContent sx={{ p: 3, textAlign: 'center' }}>
+                    <Box
+                      sx={{
+                        width: 76,
+                        height: 76,
                         borderRadius: '50%',
-                        bgcolor: 'rgba(236, 72, 153, 0.2)',
+                        bgcolor: 'rgba(236,72,153,0.22)',
+                        border: '1px solid rgba(244,114,182,0.5)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         mx: 'auto',
                         mb: 2,
-                      }}>
-                        <StoryWriterIcon sx={{ fontSize: 40, color: '#ec4899' }} />
-                      </Box>
-                      <Typography variant="h6" sx={{ fontWeight: 600, color: '#fff', mb: 1 }}>
-                        {branding.tokens.labels.storyWriterTitle}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
-                        {branding.tokens.labels.storyWriterSubtitle}
-                      </Typography>
-                      <Chip 
-                        label={branding.tokens.labels.storyWriterChip} 
-                        size="small" 
-                        sx={{ 
-                          bgcolor: 'rgba(236, 72, 153, 0.2)', 
-                          color: '#ec4899',
-                          fontSize: '0.75rem',
-                        }} 
-                      />
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
+                      }}
+                    >
+                      <StoryWriterIcon sx={{ fontSize: 38, color: '#f9a8d4' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+                      {branding.tokens.labels.storyWriterTitle}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.88)', mb: 2 }}>
+                      {branding.tokens.labels.storyWriterSubtitle}
+                    </Typography>
+                    <Chip
+                      label={branding.tokens.labels.storyWriterChip}
+                      size="small"
+                      sx={{
+                        bgcolor: 'rgba(236,72,153,0.24)',
+                        color: '#fbcfe8',
+                        border: '1px solid rgba(249,168,212,0.45)',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card
+                  sx={{
+                    flex: '1 1 320px',
+                    minWidth: { xs: '100%', sm: 320 },
+                    maxWidth: 460,
+                    borderRadius: 3,
+                    cursor: 'pointer',
+                    background: 'linear-gradient(160deg, rgba(14,165,233,0.2) 0%, rgba(15,23,42,0.86) 100%)',
+                    border: '1px solid rgba(56,189,248,0.42)',
+                    boxShadow: '0 12px 32px rgba(3,105,161,0.3)',
+                    transition: 'all 0.28s ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      borderColor: 'rgba(125,211,252,0.84)',
+                      boxShadow: '0 18px 36px rgba(2,132,199,0.34)',
+                    },
+                  }}
+                  onClick={() => {
+                    startTransition(() => setStoryArcView('shot-list'));
+                  }}
+                >
+                  <CardContent sx={{ p: 3, textAlign: 'center' }}>
+                    <Box
+                      sx={{
+                        width: 76,
+                        height: 76,
+                        borderRadius: '50%',
+                        bgcolor: 'rgba(14,165,233,0.22)',
+                        border: '1px solid rgba(56,189,248,0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        mx: 'auto',
+                        mb: 2,
+                      }}
+                    >
+                      <ShotListIcon sx={{ fontSize: 38, color: '#7dd3fc' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+                      {profession ? getTerm('shotList') : branding.tokens.labels.shotList}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.88)', mb: 2 }}>
+                      Role Room planlegging og progresjon per scene
+                    </Typography>
+                    <Chip
+                      label="SHOT LIST"
+                      size="small"
+                      sx={{
+                        bgcolor: 'rgba(14,165,233,0.24)',
+                        color: '#bae6fd',
+                        border: '1px solid rgba(125,211,252,0.45)',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </CardContent>
+                </Card>
               </Box>
             </Box>
           ) : storyArcView === 'story-logic' ? (
@@ -3402,32 +7030,77 @@ export function CastingPlannerPanel({
                 </Suspense>
               </Box>
             </Box>
+          ) : storyArcView === 'shot-list' ? (
+            <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderBottom: '1px solid rgba(255,255,255,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1.25,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Button
+                    startIcon={<CloseIcon />}
+                    onClick={() => {
+                      startTransition(() => setStoryArcView('main'));
+                    }}
+                    size="small"
+                    sx={{ color: 'rgba(255,255,255,0.87)' }}
+                  >
+                    {branding.tokens.labels.storyArcBackLabel}
+                  </Button>
+                  <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+                  <ShotListIcon sx={{ color: '#38bdf8' }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#fff' }}>
+                    {profession ? getTerm('shotList') : branding.tokens.labels.shotList}
+                  </Typography>
+                </Box>
+                <Chip
+                  size="small"
+                  label="PRO-VISNING"
+                  sx={{
+                    bgcolor: 'rgba(56,189,248,0.2)',
+                    color: '#bae6fd',
+                    border: '1px solid rgba(125,211,252,0.5)',
+                    fontWeight: 700,
+                    letterSpacing: 0.3,
+                  }}
+                />
+              </Box>
+              {!currentProject ? (
+                <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+                  <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                    {branding.tokens.labels.noProjectSelected}
+                  </Typography>
+                </Box>
+              ) : !permissions.canEditShotLists ? (
+                <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+                  <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                    {branding.tokens.labels.noAccessShotList}
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={{ flex: 1, overflow: 'hidden', pt: 1 }}>
+                  <CastingShotListPanel
+                    projectId={currentProject.id}
+                    onUpdate={async () => {
+                      const updated = await castingService.getProject(currentProject.id);
+                      if (updated) setCurrentProject(updated);
+                    }}
+                    profession={profession}
+                    teamDashboardOpenSignal={teamDashboardOpenSignal}
+                    teamDashboardDefaultSegment={teamDashboardDefaultSegment}
+                  />
+                </Box>
+              )}
+            </Box>
           ) : (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              {/* Back button header */}
-              <Box sx={{ 
-                p: 1.5, 
-                borderBottom: '1px solid rgba(255,255,255,0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-              }}>
-                <Button
-                  startIcon={<CloseIcon />}
-                  onClick={() => {
-                    startTransition(() => setStoryArcView('main'));
-                  }}
-                  size="small"
-                  sx={{ color: 'rgba(255,255,255,0.87)' }}
-                >
-                  {branding.tokens.labels.storyArcBackLabel}
-                </Button>
-                <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-                <StoryWriterIcon sx={{ color: '#ec4899' }} />
-                <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#fff' }}>
-                  {branding.tokens.labels.storyWriterHeader}
-                </Typography>
-              </Box>
               {/* Story Writer Content - ManuscriptPanel */}
               <Box sx={{ flex: 1, overflow: 'hidden' }}>
                 <ErrorBoundary>
@@ -3440,6 +7113,57 @@ export function CastingPlannerPanel({
                       projectId={currentProject?.id}
                       onManuscriptChange={handleManuscriptChange}
                       storyLogicData={storyLogicData}
+                      headerLeftContent={
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            minWidth: 0,
+                            px: 0.75,
+                            py: 0.25,
+                            borderRadius: 1.5,
+                            border: `1px solid ${branding.colors.border}`,
+                            background: `linear-gradient(90deg, ${branding.colors.gradientStart}1a 0%, ${branding.colors.gradientEnd}1a 100%)`,
+                          }}
+                        >
+                          <Button
+                            startIcon={<CloseIcon />}
+                            onClick={() => {
+                              startTransition(() => setStoryArcView('main'));
+                            }}
+                            size="small"
+                            sx={{
+                              color: branding.colors.textPrimary,
+                              whiteSpace: 'nowrap',
+                              '&:hover': {
+                                bgcolor: `${branding.colors.primary}1a`,
+                                color: branding.colors.primary,
+                              },
+                            }}
+                          >
+                            {branding.tokens.labels.storyArcBackLabel}
+                          </Button>
+                          <Divider
+                            orientation="vertical"
+                            flexItem
+                            sx={{ mx: 0.5, borderColor: branding.colors.border }}
+                          />
+                          <StoryWriterIcon sx={{ color: branding.colors.primary, flexShrink: 0 }} />
+                          <Typography
+                            variant="subtitle1"
+                            sx={{
+                              fontWeight: 600,
+                              color: branding.colors.textPrimary,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {branding.tokens.labels.storyWriterHeader}
+                          </Typography>
+                        </Box>
+                      }
                     />
                   </Suspense>
                 </ErrorBoundary>
@@ -3448,86 +7172,342 @@ export function CastingPlannerPanel({
           )}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={10}>
-          {!permissions.canApprove && currentProject ? (
+        <TabPanel value={activeTab} index={PRODUCER_MEDIA_TAB_INDEX}>
+          {!currentProject ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
-                {branding.tokens.labels.noAccessSharing}
+                {branding.tokens.labels.noProjectSelected}
               </Typography>
             </Box>
           ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 1.5,
-                  px: { xs: 1.5, sm: 2 },
-                  py: { xs: 1.25, sm: 1.5 },
-                  borderRadius: 2.5,
-                  border: '1px solid rgba(148,163,184,0.24)',
-                  background: 'linear-gradient(120deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.22) 100%)',
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-                  <Box
-                    sx={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 1.5,
-                      background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
-                      border: '1px solid rgba(233,213,255,0.34)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 8px 20px rgba(147,51,234,0.28)',
-                    }}
-                  >
-                    <_ShareIcon sx={{ color: '#fff', fontSize: 18 }} />
-                  </Box>
-                  <Box>
-                    <Typography sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>
-                      Deling
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
-                      Tilgang, lenker og samarbeid
-                    </Typography>
-                  </Box>
-                </Box>
-                <Chip
-                  size="small"
-                  label="PRO-VISNING"
-                  sx={{
-                    bgcolor: 'rgba(192,132,252,0.2)',
-                    color: '#f5d0fe',
-                    border: '1px solid rgba(192,132,252,0.45)',
-                    fontWeight: 700,
-                    letterSpacing: 0.4,
-                  }}
-                />
-              </Box>
-              <SharingPanel
-                project={currentProject}
-                onOpenSharingDialog={openSharingDialog}
-              />
-            </Box>
+            <ProducerMediaPanel
+              mediaCount={(currentProject.props?.length ?? 0) + (currentProject.shotLists?.length ?? 0)}
+              storyboardCount={currentProject.sceneBreakdowns?.length ?? 0}
+              shotCount={currentProject.shotLists?.length ?? 0}
+              onOpenStoryboard={() => {
+                navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
+              }}
+              onOpenManuscript={() => {
+                navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+              }}
+              onOpenShotList={() => {
+                navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+              }}
+              onOpenSceneNotes={() => {
+                navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-logic' });
+              }}
+              onSendStoryboardReview={() => {
+                queueProducerReviewCreate({
+                  reviewType: 'storyboard',
+                  title: 'Storyboard klar for klientgodkjenning',
+                  description: 'Vennligst gjennomgå storyboard og gi godkjenning eller endringsønsker.',
+                  targetEntityType: 'storyboard',
+                });
+              }}
+              onSendManuscriptReview={() => {
+                queueProducerReviewCreate({
+                  reviewType: 'manuscript',
+                  title: 'Manus klar for klientgodkjenning',
+                  description: 'Vennligst gjennomgå manus og gi godkjenning eller endringsønsker.',
+                  targetEntityType: 'manuscript',
+                });
+              }}
+              onSendShotListReview={() => {
+                queueProducerReviewCreate({
+                  reviewType: 'shotlist',
+                  title: 'Shotlist klar for klientgodkjenning',
+                  description: 'Vennligst gjennomgå shotlist og gi godkjenning eller endringsønsker.',
+                  targetEntityType: 'shotlist',
+                });
+              }}
+            />
           )}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={11}>
+        <TabPanel value={activeTab} index={PRODUCER_ECONOMY_TAB_INDEX}>
+          {!currentProject ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                {branding.tokens.labels.noProjectSelected}
+              </Typography>
+            </Box>
+          ) : (
+            <ProducerEconomyPanel
+              projectId={currentProject.id}
+              readOnly={!canEditProducerWorkflow}
+              onSendBudgetReview={() => {
+                queueProducerReviewCreate({
+                  reviewType: 'budget_package',
+                  title: 'Budsjettpakke klar for klientgodkjenning',
+                  description: 'Budsjettlinjer er oppdatert. Vennligst godkjenn eller be om endringer.',
+                  targetEntityType: 'economy',
+                });
+              }}
+              contractsPanel={(
+                <OffersContractsPanel
+                  projectId={currentProject.id}
+                  candidates={currentProject.candidates}
+                  roles={currentProject.roles}
+                  onCandidateStatusChange={async (candidateId, status) => {
+                    const candidate = currentProject.candidates.find((entry) => entry.id === candidateId);
+                    if (!candidate) return;
+                    await castingService.saveCandidate(currentProject.id, {
+                      ...candidate,
+                      status: status as Candidate['status'],
+                    });
+                    await loadProjects();
+                  }}
+                />
+              )}
+            />
+          )}
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={PRODUCER_TIMELINE_TAB_INDEX}>
+          {!currentProject ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                {branding.tokens.labels.noProjectSelected}
+              </Typography>
+            </Box>
+          ) : (
+            <ProducerTimelinePanel
+              projectId={currentProject.id}
+              readOnly={!canEditProducerWorkflow}
+            />
+          )}
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={PRODUCER_REVIEWS_TAB_INDEX}>
+          {!currentProject ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                {branding.tokens.labels.noProjectSelected}
+              </Typography>
+            </Box>
+          ) : (
+            <ProducerClientReviewPanel
+              projectId={currentProject.id}
+              canEdit={canEditProducerWorkflow}
+              canComment={canCommentInProducerWorkflow}
+              canDecide={canMakeProducerReviewDecision}
+              quickCreateRequest={producerReviewQuickCreate}
+            />
+          )}
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={PRODUCER_EXPORT_TAB_INDEX}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              p: { xs: 1.5, md: 2 },
+              borderRadius: 2,
+              border: '1px solid rgba(148,163,184,0.22)',
+              background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.82) 100%)',
+            }}
+          >
+            <Stack direction="row" spacing={1} alignItems="center">
+              <ImportExportIcon sx={{ color: '#fbbf24' }} />
+              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
+                Eksport & klientsending
+              </Typography>
+            </Stack>
+            <Typography sx={{ color: 'rgba(203,213,225,0.9)' }}>
+              Eksporter produksjonsgrunnlag eller send til klient for gjennomgang/godkjenning.
+            </Typography>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
+              <Button
+                variant="outlined"
+                startIcon={<StoryWriterIcon />}
+                onClick={() => {
+                  setStoryArcView('story-writer');
+                  navigateToTab(STORY_ARC_TAB_INDEX);
+                }}
+                sx={{ textTransform: 'none', fontWeight: 700 }}
+              >
+                Åpne manus for eksport
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<ShotListIcon />}
+                onClick={() => {
+                  setStoryArcView('shot-list');
+                  navigateToTab(STORY_ARC_TAB_INDEX);
+                }}
+                sx={{ textTransform: 'none', fontWeight: 700 }}
+              >
+                Åpne shotlist for eksport
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<ImportExportIcon />}
+                onClick={openSharingModal}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  bgcolor: '#fbbf24',
+                  color: '#111827',
+                  '&:hover': { bgcolor: '#f59e0b' },
+                }}
+              >
+                Send til klient
+              </Button>
+            </Stack>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={LIVE_SET_TAB_INDEX} immersive={isLiveSetImmersive}>
+          {!isLiveSetImmersive && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                flexWrap: 'wrap',
+                mb: 1,
+                px: { xs: 0.5, sm: 0.75 },
+              }}
+            >
+              <Chip
+                size="small"
+                label={`Live Set aktiv • Tilbake: ${getTabReturnLabel(lastNonLiveTab)}`}
+                sx={{
+                  color: '#fecaca',
+                  bgcolor: 'rgba(239,68,68,0.12)',
+                  border: '1px solid rgba(239,68,68,0.35)',
+                  fontWeight: 700,
+                }}
+              />
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  void requestLiveSetFullscreen();
+                }}
+                sx={{
+                  color: isBrowserFullscreen ? '#34d399' : '#93c5fd',
+                  borderColor: isBrowserFullscreen ? 'rgba(52,211,153,0.5)' : 'rgba(147,197,253,0.45)',
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  '&:hover': {
+                    borderColor: isBrowserFullscreen ? '#10b981' : '#60a5fa',
+                    bgcolor: isBrowserFullscreen ? 'rgba(16,185,129,0.14)' : 'rgba(59,130,246,0.14)',
+                  },
+                }}
+              >
+                {isBrowserFullscreen ? 'Fullskjerm aktiv' : 'Gå i fullskjerm'}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleExitLiveSet}
+                sx={{
+                  color: '#fff',
+                  borderColor: 'rgba(255,255,255,0.28)',
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  '&:hover': {
+                    borderColor: '#ef4444',
+                    bgcolor: 'rgba(239,68,68,0.14)',
+                  },
+                }}
+              >
+                Tilbake til The Role Room
+              </Button>
+            </Box>
+          )}
+          {isLiveSetImmersive && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleExitLiveSet}
+              sx={{
+                position: 'fixed',
+                top: 12,
+                right: 12,
+                zIndex: 3000,
+                color: '#fff',
+                borderColor: 'rgba(255,255,255,0.4)',
+                bgcolor: 'rgba(7,10,20,0.72)',
+                backdropFilter: 'blur(6px)',
+                textTransform: 'none',
+                fontWeight: 700,
+                '&:hover': {
+                  borderColor: '#ef4444',
+                  bgcolor: 'rgba(239,68,68,0.16)',
+                },
+              }}
+            >
+              Avslutt Live Set
+            </Button>
+          )}
           <LiveSetMode
             projectId={currentProject?.id ?? ''}
-            projectName={currentProject?.title ?? undefined}
+            projectName={
+              typeof currentProject?.title === 'string'
+                ? currentProject.title
+                : (typeof currentProject?.name === 'string' ? currentProject.name : undefined)
+            }
             shootingDay={new Date().toLocaleDateString('no-NO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            onExit={() => navigateToTab(0)}
+            onExit={handleExitLiveSet}
           />
         </TabPanel>
         </Suspense>
         </ErrorBoundary>
         )}
       </Box>
+
+      {currentProject && (
+        <Box sx={{ display: 'none' }} aria-hidden>
+          <ErrorBoundary>
+            <Suspense fallback={null}>
+              {calendarCreateIntent === 'location' && activeTab !== LOCATIONS_TAB_INDEX && (
+                <LocationManagementPanel
+                  projectId={currentProject.id}
+                  onUpdate={async () => {
+                    const updated = await castingService.getProject(currentProject.id);
+                    if (updated) setCurrentProject(updated);
+                  }}
+                  externalCreateSignal={externalLocationCreateSignal}
+                  onExternalCreated={handleExternalLocationCreated}
+                  onExternalCreateCancelled={handleExternalLocationCreateCancelled}
+                />
+              )}
+              {calendarCreateIntent === 'crew' && activeTab !== TEAM_TAB_INDEX && (
+                <CrewManagementPanel
+                  projectId={currentProject.id}
+                  onUpdate={async () => {
+                    const updated = await castingService.getProject(currentProject.id);
+                    if (updated) setCurrentProject(updated);
+                  }}
+                  profession={profession}
+                  onOpenTechnicalTeamDashboard={handleOpenTechnicalTeamDashboard}
+                  productionDays={currentProject.productionDays || []}
+                  scenes={currentProject.sceneBreakdowns || []}
+                  externalCreateSignal={externalCrewCreateSignal}
+                  onExternalCreated={handleExternalCrewCreated}
+                  onExternalCreateCancelled={handleExternalCrewCreateCancelled}
+                />
+              )}
+              {calendarCreateIntent === 'equipment' && activeTab !== EQUIPMENT_TAB_INDEX && (
+                <EquipmentManagementPanel
+                  projectId={currentProject.id}
+                  onUpdate={async () => {
+                    const updated = await castingService.getProject(currentProject.id);
+                    if (updated) setCurrentProject(updated);
+                  }}
+                  externalCreateSignal={externalEquipmentCreateSignal}
+                  onExternalCreated={handleExternalEquipmentCreated}
+                  onExternalCreateCancelled={handleExternalEquipmentCreateCancelled}
+                />
+              )}
+            </Suspense>
+          </ErrorBoundary>
+        </Box>
+      )}
 
 
       {/* Role Dialog - Optimized */}
@@ -4075,10 +8055,7 @@ export function CastingPlannerPanel({
       {/* Candidate Dialog */}
       <Dialog
         open={candidateDialogOpen}
-        onClose={() => {
-          setCandidateDialogOpen(false);
-          setSelectedCandidate(null);
-        }}
+        onClose={closeCandidateDialog}
         maxWidth="lg"
         fullWidth
         container={() => document.body}
@@ -4146,10 +8123,7 @@ export function CastingPlannerPanel({
             </Typography>
           </Box>
           <IconButton
-            onClick={() => {
-              setCandidateDialogOpen(false);
-              setSelectedCandidate(null);
-            }}
+            onClick={closeCandidateDialog}
             sx={{
               color: 'var(--dialog-text)',
               border: '1px solid var(--dialog-border-color)',
@@ -4195,10 +8169,10 @@ export function CastingPlannerPanel({
               
               <TextField
                 label={branding.tokens.labels.emailLabel}
-                value={selectedCandidate.contactInfo.email || ''}
+                value={selectedCandidateContactInfo.email || ''}
                 onChange={(e) => setSelectedCandidate({
                   ...selectedCandidate,
-                  contactInfo: { ...selectedCandidate.contactInfo, email: e.target.value },
+                  contactInfo: { ...selectedCandidateContactInfo, email: e.target.value },
                 })}
                 fullWidth
                 type="email"
@@ -4218,10 +8192,10 @@ export function CastingPlannerPanel({
               
               <TextField
                 label={branding.tokens.labels.phoneLabel}
-                value={selectedCandidate.contactInfo.phone || ''}
+                value={selectedCandidateContactInfo.phone || ''}
                 onChange={(e) => setSelectedCandidate({
                   ...selectedCandidate,
-                  contactInfo: { ...selectedCandidate.contactInfo, phone: e.target.value },
+                  contactInfo: { ...selectedCandidateContactInfo, phone: e.target.value },
                 })}
                 fullWidth
                 type="tel"
@@ -4241,10 +8215,10 @@ export function CastingPlannerPanel({
               
               <TextField
                 label={branding.tokens.labels.addressLabel}
-                value={selectedCandidate.contactInfo.address || ''}
+                value={selectedCandidateContactInfo.address || ''}
                 onChange={(e) => setSelectedCandidate({
                   ...selectedCandidate,
-                  contactInfo: { ...selectedCandidate.contactInfo, address: e.target.value },
+                  contactInfo: { ...selectedCandidateContactInfo, address: e.target.value },
                 })}
                 fullWidth
                 InputProps={{
@@ -4464,6 +8438,14 @@ export function CastingPlannerPanel({
                   ...textFieldStyles,
                 }}
               />
+
+              <GlobalMentionHelper
+                text={typeof selectedCandidate.auditionNotes === 'string' ? selectedCandidate.auditionNotes : ''}
+                localCandidates={selectionMentionCandidates}
+                autoTagTitle="Auto-tagget"
+                suggestionTitle="Mener du?"
+                onApplySuggestion={handleApplyAuditionSuggestion}
+              />
               
               <FormControl fullWidth size="small">
                 <InputLabel sx={inputLabelStyles}>
@@ -4471,11 +8453,12 @@ export function CastingPlannerPanel({
                 </InputLabel>
                 <Select
                   multiple
-                  value={selectedCandidate.assignedRoles}
+                  value={selectedCandidateAssignedRoles}
                   MenuProps={selectMenuProps}
                   onChange={(e) => setSelectedCandidate({
                     ...selectedCandidate,
                     assignedRoles: e.target.value as string[],
+                    assigned_roles: e.target.value as string[],
                   })}
                   renderValue={(selected) => (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -4508,7 +8491,7 @@ export function CastingPlannerPanel({
               <FormControl fullWidth size="small">
                 <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.statusLabel}</InputLabel>
                 <Select
-                  value={selectedCandidate.status}
+                  value={selectedCandidateDialogStatus}
                   MenuProps={selectMenuProps}
                   onChange={(e) => setSelectedCandidate({
                     ...selectedCandidate,
@@ -4700,10 +8683,7 @@ export function CastingPlannerPanel({
           background: 'linear-gradient(180deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.03) 100%)',
         }}>
           <Button
-            onClick={() => {
-              setCandidateDialogOpen(false);
-              setSelectedCandidate(null);
-            }}
+            onClick={closeCandidateDialog}
             startIcon={<CancelIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
             sx={{ 
               color: 'var(--dialog-text)',
@@ -4736,7 +8716,7 @@ export function CastingPlannerPanel({
           </Button>
           {selectedCandidate?.id && selectedCandidate.name && (
             <Button
-              onClick={() => { handleDeleteCandidate(selectedCandidate.id); setCandidateDialogOpen(false); setSelectedCandidate(null); }}
+              onClick={() => { handleDeleteCandidate(selectedCandidate.id); closeCandidateDialog(); }}
               startIcon={<DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               sx={{
                 color: '#ffffff',
@@ -5179,7 +9159,10 @@ export function CastingPlannerPanel({
       {/* Project Selector Dialog */}
       <Dialog
         open={projectSelectorOpen}
-        onClose={() => setProjectSelectorOpen(false)}
+        onClose={() => {
+          setProjectSelectorOpen(false);
+          setProjectSelectorQuery('');
+        }}
         maxWidth="sm"
         fullWidth
         PaperProps={{
@@ -5196,27 +9179,103 @@ export function CastingPlannerPanel({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            gap: 1,
             borderBottom: '1px solid rgba(255,255,255,0.1)',
             py: 2,
             px: 3,
             bgcolor: '#161b22',
           }}
         >
-          <Typography sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
-            {branding.tokens.labels.allProjectsLabel.replace('{count}', String(projects.length))}
-          </Typography>
-          <IconButton
-            onClick={() => setProjectSelectorOpen(false)}
-            sx={{ color: 'rgba(255,255,255,0.87)' }}
-          >
-            <CloseIcon />
-          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+            <RoleRoomBrandMark appearance="header" showLabel={false} sx={{ width: { xs: 68, sm: 84 } }} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: '1.05rem', lineHeight: 1.15 }}>
+                {branding.tokens.labels.allProjectsLabel.replace('{count}', String(projects.length))}
+              </Typography>
+              <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>
+                Finn riktig prosjekt raskt, eller opprett et nytt.
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Button
+              size="small"
+              startIcon={<AddIcon sx={{ fontSize: 16 }} />}
+              onClick={() => {
+                setProjectSelectorOpen(false);
+                setProjectSelectorQuery('');
+                setProjectToEdit(null);
+                openProjectCreationModal();
+              }}
+              sx={{
+                textTransform: 'none',
+                minHeight: 34,
+                px: 1.2,
+                bgcolor: 'rgba(0,212,255,0.14)',
+                border: '1px solid rgba(0,212,255,0.38)',
+                color: '#7dd3fc',
+                '&:hover': {
+                  bgcolor: 'rgba(0,212,255,0.22)',
+                  borderColor: '#22d3ee',
+                },
+              }}
+            >
+              Nytt
+            </Button>
+            <IconButton
+              onClick={() => {
+                setProjectSelectorOpen(false);
+                setProjectSelectorQuery('');
+              }}
+              aria-label={branding.tokens.labels.closeLabel}
+              sx={{ color: 'rgba(255,255,255,0.87)' }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
         </DialogTitle>
         <DialogContent sx={{ p: 0 }}>
+          <Box sx={{ px: 2, pt: 1.5, pb: 1.25, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <TextField
+              fullWidth
+              size="small"
+              value={projectSelectorQuery}
+              onChange={(e) => setProjectSelectorQuery(e.target.value)}
+              placeholder="Søk på prosjektnavn, ID eller klient"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.7)' }} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: '#fff',
+                  bgcolor: 'rgba(255,255,255,0.03)',
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.14)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.28)' },
+                  '&.Mui-focused fieldset': { borderColor: '#22d3ee' },
+                },
+                '& .MuiInputBase-input::placeholder': {
+                  color: 'rgba(255,255,255,0.58)',
+                  opacity: 1,
+                },
+              }}
+            />
+          </Box>
           <Box sx={{ maxHeight: '60vh', overflow: 'auto' }}>
-            {[...projects]
-              .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
-              .map((project) => {
+            {filteredProjectSelectorItems.length === 0 ? (
+              <Box sx={{ px: 3, py: 3.5 }}>
+                <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 600 }}>
+                  Ingen prosjekter matcher søket
+                </Typography>
+                <Typography sx={{ mt: 0.5, fontSize: '0.82rem', color: 'rgba(255,255,255,0.64)' }}>
+                  Prøv et annet søkeord, eller opprett et nytt prosjekt.
+                </Typography>
+              </Box>
+            ) : (
+              filteredProjectSelectorItems.map((project) => {
                 const isActive = currentProject?.id === project.id;
                 const candidateCount = project.candidatesCount ?? project.candidates?.length ?? 0;
                 const updatedDate = project.updatedAt 
@@ -5231,16 +9290,7 @@ export function CastingPlannerPanel({
                 return (
                   <Box
                     key={project.id}
-                    onClick={async () => {
-                      // Load full project data when user selects it
-                      const fullProject = await castingService.getProject(project.id);
-                      if (fullProject) {
-                        setCurrentProject(fullProject);
-                      } else {
-                        setCurrentProject(project);
-                      }
-                      setProjectSelectorOpen(false);
-                    }}
+                    onClick={() => { void handleSelectProjectFromSelector(project); }}
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
@@ -5282,6 +9332,11 @@ export function CastingPlannerPanel({
                       >
                         {branding.tokens.labels.lastUpdatedLabel} {updatedDate}
                       </Typography>
+                      {project.clientName ? (
+                        <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.64)' }}>
+                          Klient: {project.clientName}
+                        </Typography>
+                      ) : null}
                     </Box>
                     <Chip
                       size="small"
@@ -5294,6 +9349,24 @@ export function CastingPlannerPanel({
                       }}
                     />
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <Button
+                        size="small"
+                        onClick={(e: MouseEvent) => {
+                          e.stopPropagation();
+                          void handleSelectProjectFromSelector(project);
+                        }}
+                        sx={{
+                          textTransform: 'none',
+                          minHeight: 28,
+                          px: 1,
+                          color: '#7dd3fc',
+                          border: '1px solid rgba(125,211,252,0.32)',
+                          bgcolor: 'rgba(56,189,248,0.08)',
+                          '&:hover': { bgcolor: 'rgba(56,189,248,0.18)', borderColor: 'rgba(56,189,248,0.65)' },
+                        }}
+                      >
+                        Åpne
+                      </Button>
                       <IconButton
                         size="small"
                         onClick={(e: MouseEvent) => {
@@ -5301,6 +9374,7 @@ export function CastingPlannerPanel({
                           setProjectToEdit(project);
                           openProjectCreationModal();
                           setProjectSelectorOpen(false);
+                          setProjectSelectorQuery('');
                         }}
                         sx={{
                           color: 'rgba(255,255,255,0.87)',
@@ -5327,12 +9401,85 @@ export function CastingPlannerPanel({
                     </Box>
                   </Box>
                 );
-              })}
+              })
+            )}
           </Box>
         </DialogContent>
       </Dialog>
 
-      {/* Sharing Dialog */}
+      {/* Sharing Modal (from Overview + Deling tab) */}
+      <Dialog
+        open={sharingModalOpen}
+        onClose={() => setSharingModalOpen(false)}
+        maxWidth="xl"
+        fullWidth
+        fullScreen={isMobile}
+        container={() => document.body}
+        TransitionComponent={Grow}
+        PaperProps={{
+          sx: {
+            bgcolor: '#111827',
+            color: '#fff',
+            border: '1px solid rgba(168,85,247,0.28)',
+            borderRadius: isMobile ? 0 : 2,
+            overflow: 'hidden',
+            backgroundImage: 'linear-gradient(180deg, rgba(17,24,39,0.95) 0%, rgba(15,23,42,0.98) 100%)',
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            borderBottom: '1px solid rgba(148,163,184,0.2)',
+            py: 1.25,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <_ShareIcon sx={{ color: '#a855f7', fontSize: 22 }} />
+            <Typography sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.05rem' } }}>
+              Deling
+            </Typography>
+          </Box>
+          <IconButton
+            size="small"
+            onClick={() => setSharingModalOpen(false)}
+            aria-label={branding.tokens.labels.closePanelLabel}
+            sx={{
+              color: 'rgba(255,255,255,0.72)',
+              '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.08)' },
+            }}
+          >
+            <CloseIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          {currentProject ? (
+            <Box sx={{ minHeight: isMobile ? 'calc(100vh - 140px)' : 'min(78vh, 860px)', overflow: 'auto' }}>
+              <Suspense
+                fallback={(
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 280 }}>
+                    <CircularProgress size={28} sx={{ color: '#a855f7' }} />
+                  </Box>
+                )}
+              >
+                <SharingPanel
+                  project={currentProject}
+                  onOpenSharingDialog={openSharingDialog}
+                />
+              </Suspense>
+            </Box>
+          ) : (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.85)' }}>
+              <Typography variant="body1">{branding.tokens.labels.noProjectSelected}</Typography>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Sharing Invite Dialog */}
       {currentProject && sharingDialogOpen && (
         <Suspense fallback={null}>
           <CastingSharingDialog
@@ -5348,6 +9495,116 @@ export function CastingPlannerPanel({
           />
         </Suspense>
       )}
+
+      <Dialog
+        open={selectionShortcutsOpen}
+        onClose={() => setSelectionShortcutsOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: '#0f172a',
+            color: '#fff',
+            border: '1px solid rgba(125,211,252,0.3)',
+            borderRadius: 2,
+            backgroundImage: 'linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(3,7,18,0.98) 100%)',
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            borderBottom: '1px solid rgba(148,163,184,0.2)',
+            py: 1.25,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <KeyboardIcon sx={{ color: '#7dd3fc', fontSize: 21 }} />
+            <Typography sx={{ fontWeight: 700, fontSize: { xs: '0.96rem', sm: '1.02rem' } }}>
+              Utvelgelse-snarveier
+            </Typography>
+          </Box>
+          <IconButton
+            size="small"
+            onClick={() => setSelectionShortcutsOpen(false)}
+            aria-label={branding.tokens.labels.closePanelLabel}
+            sx={{
+              color: 'rgba(255,255,255,0.72)',
+              '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.08)' },
+            }}
+          >
+            <CloseIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: { xs: 1.2, sm: 1.4 }, mt: 0.6 }}>
+          <Typography sx={{ color: 'rgba(186,230,253,0.9)', fontSize: '0.78rem', mb: 1 }}>
+            Hurtigtaster for Utvelgelse og Casting board.
+          </Typography>
+          <Stack spacing={0.65}>
+            {SELECTION_SHORTCUTS.map((shortcut) => (
+              <Box
+                key={`${shortcut.scope}-${shortcut.keys}`}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 0.85,
+                  p: 0.7,
+                  borderRadius: 1.1,
+                  border: '1px solid rgba(125,211,252,0.22)',
+                  bgcolor: 'rgba(14,116,144,0.12)',
+                }}
+              >
+                <Chip
+                  size="small"
+                  label={shortcut.keys}
+                  sx={{
+                    bgcolor: 'rgba(56,189,248,0.16)',
+                    color: '#bae6fd',
+                    border: '1px solid rgba(125,211,252,0.48)',
+                    fontWeight: 700,
+                    minWidth: 52,
+                    '& .MuiChip-label': { px: 0.9 },
+                  }}
+                />
+                <Typography sx={{ color: 'rgba(226,232,240,0.92)', fontSize: '0.74rem', flex: 1 }}>
+                  {shortcut.action}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={shortcut.scope}
+                  sx={{
+                    bgcolor: 'rgba(20,184,166,0.16)',
+                    color: '#99f6e4',
+                    border: '1px solid rgba(45,212,191,0.44)',
+                    '& .MuiChip-label': { px: 0.7, fontSize: '0.64rem' },
+                  }}
+                />
+              </Box>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 1.6, pb: 1.3 }}>
+          <Button
+            onClick={() => setSelectionShortcutsOpen(false)}
+            variant="outlined"
+            sx={{
+              textTransform: 'none',
+              color: '#bae6fd',
+              borderColor: 'rgba(125,211,252,0.4)',
+              '&:hover': {
+                borderColor: 'rgba(125,211,252,0.7)',
+                bgcolor: 'rgba(14,116,144,0.16)',
+              },
+            }}
+          >
+            Lukk
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Project Creation Modal */}
       <Dialog
@@ -5402,17 +9659,27 @@ export function CastingPlannerPanel({
             gap: 1,
           }}
         >
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, flex: 1, minWidth: 0 }}>
-            <Typography
-              component="span"
-              sx={{
-                fontWeight: 700,
-                fontSize: { xs: '1.1rem', sm: '1.25rem' },
-                color: '#fff',
-              }}
-            >
-              {projectToEdit ? branding.tokens.labels.editProjectTitle : branding.tokens.labels.newCastingProjectTitle}
-            </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.85, flex: 1, minWidth: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+              <RoleRoomBrandMark appearance="header" showLabel={false} sx={{ width: { xs: 88, sm: 112 } }} />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography
+                  component="span"
+                  sx={{
+                    fontWeight: 700,
+                    fontSize: { xs: '1.1rem', sm: '1.25rem' },
+                    color: '#fff',
+                    display: 'block',
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {projectToEdit ? branding.tokens.labels.editProjectTitle : 'Nytt Role Room prosjekt'}
+                </Typography>
+                <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.68)' }}>
+                  The Role Room flyt: grunnlag, team, split sheet og lagring.
+                </Typography>
+              </Box>
+            </Box>
             {(projectToEdit?.id || currentProjectId) && (
               <Box sx={{
                 display: 'flex',
@@ -5489,6 +9756,7 @@ export function CastingPlannerPanel({
                       profession={profession || 'photographer'}
                       userId={user?.id}
                       isCastingPlanner={true}
+                      isContentProducerSession={isProducerWorkspaceSession}
                       getTerm={getTerm}
                       initialData={projectToEdit || undefined}
                       onProjectIdChange={handleProjectIdChange}
@@ -5527,7 +9795,7 @@ export function CastingPlannerPanel({
                           
                           // Reload projects list in the background to update the list
                           try {
-                            const loadedProjects = await castingService.getProjects();
+                            const loadedProjects = filterProjectsForSession(await castingService.getProjects());
                             setProjects(loadedProjects);
                             // Ensure the new project is still set as current (in case reload changed something)
                             const foundProject = loadedProjects.find(p => p.id === projectData.id);
@@ -5543,6 +9811,9 @@ export function CastingPlannerPanel({
                             // If reload fails, still use the returned project data
                             // Also try to update projects list with the new project
                             setProjects(prev => {
+                              if (isProducerWorkspaceSession && isTrollProject(projectWithCrew)) {
+                                return prev.filter((project) => !isTrollProject(project));
+                              }
                               const exists = prev.some(p => p.id === projectData.id);
                               if (exists) {
                                 return prev.map(p => {
@@ -5559,10 +9830,13 @@ export function CastingPlannerPanel({
                         } else {
                           // Fallback: reload projects if no project data
                           try {
-                            const loadedProjects = await castingService.getProjects();
+                            const loadedProjects = filterProjectsForSession(await castingService.getProjects());
                             setProjects(loadedProjects);
                             if (loadedProjects.length > 0) {
-                              setCurrentProject(loadedProjects[0]);
+                              const preferredProject = isProducerWorkspaceSession
+                                ? loadedProjects.find((project) => isContentProducerDemoProject(project)) || loadedProjects[0]
+                                : loadedProjects[0];
+                              setCurrentProject(preferredProject);
                             }
                           } catch (error) {
                             console.error('Failed to reload projects:', error);
@@ -5797,7 +10071,7 @@ export function CastingPlannerPanel({
                 await loadProjects();
                 // If we deleted the current project, select the first available one
                 if (currentProject?.id === projectToDelete.id) {
-                  const remainingProjects = await castingService.getProjects();
+                  const remainingProjects = filterProjectsForSession(await castingService.getProjects());
                   if (remainingProjects.length > 0) {
                     setCurrentProject(remainingProjects[0]);
                   } else {
@@ -5830,145 +10104,6 @@ export function CastingPlannerPanel({
         </DialogActions>
       </Dialog>
 
-      {/* Enhanced Quick Navigation SpeedDial FAB - 6-tier responsive optimized */}
-      <SpeedDial
-        ariaLabel={branding.tokens.labels.fabLabel}
-        direction="up"
-        sx={{
-          position: 'fixed',
-          bottom: { 
-            xs: 'calc(80px + max(16px, env(safe-area-inset-bottom, 16px)))', 
-            sm: 24, 
-            md: 32, 
-            lg: 40,
-            xl: 48,
-          },
-          right: { 
-            xs: 16, 
-            sm: 24, 
-            md: 32, 
-            lg: 40,
-            xl: 48,
-          },
-          zIndex: Z_INDEX.fab,
-          '& .MuiSpeedDial-fab': {
-            width: { xs: 64, sm: 64, md: 68, lg: 72, xl: 80 },
-            height: { xs: 64, sm: 64, md: 68, lg: 72, xl: 80 },
-            minWidth: { xs: 64, sm: 64, md: 68, lg: 72, xl: 80 },
-            minHeight: { xs: 64, sm: 64, md: 68, lg: 72, xl: 80 },
-            background: professionConfig
-              ? `linear-gradient(135deg, ${professionConfig.color} 0%, ${professionConfig.color}cc 100%)`
-              : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            boxShadow: professionConfig
-              ? `0 8px 32px ${professionConfig.color}60, 0 0 0 4px ${professionConfig.color}20`
-              : '0 8px 32px rgba(16, 185, 129, 0.5), 0 0 0 4px rgba(16, 185, 129, 0.15)',
-            border: '3px solid rgba(255, 255, 255, 0.2)',
-            '&:hover, &:active': {
-              background: professionConfig
-                ? `linear-gradient(135deg, ${professionConfig.color}dd 0%, ${professionConfig.color}aa 100%)`
-                : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-              boxShadow: professionConfig
-                ? `0 12px 40px ${professionConfig.color}70, 0 0 0 6px ${professionConfig.color}30`
-                : '0 12px 40px rgba(16, 185, 129, 0.6), 0 0 0 6px rgba(16, 185, 129, 0.25)',
-              transform: 'scale(1.08)',
-            },
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            '& .MuiSpeedDialIcon-icon': {
-              fontSize: { xs: '1.75rem', sm: '1.75rem', md: '2rem', lg: '2rem', xl: '2.25rem' },
-              color: '#fff',
-            },
-          },
-          '& .MuiSpeedDial-actions': {
-            paddingBottom: { xs: '16px', sm: '14px', md: '12px' },
-            gap: { xs: '14px', sm: '12px', md: '10px' },
-          },
-        }}
-        icon={
-          fabIconKey === 'speedDial'
-            ? fabIcon
-            : <SpeedDialIcon icon={fabIcon} openIcon={<CloseIcon />} />
-        }
-        onClose={() => setSpeedDialOpen(false)}
-        onOpen={() => setSpeedDialOpen(true)}
-        open={speedDialOpen}
-      >
-        {quickNavigationLinks.map((link, index) => {
-          const IconComponent = link.icon;
-          const hasBadge = link.badge !== null && link.badge > 0;
-          
-          return (
-            <SpeedDialAction
-              key={link.title}
-              icon={
-                <Badge 
-                  badgeContent={hasBadge ? link.badge : 0} 
-                  color="error"
-                  sx={{
-                    '& .MuiBadge-badge': {
-                      bgcolor: '#fff',
-                      color: link.color,
-                      fontWeight: 'bold',
-                      fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.8rem', lg: '0.85rem', xl: '0.9rem' },
-                      minWidth: { xs: '20px', sm: '22px', md: '24px', lg: '26px', xl: '28px' },
-                      height: { xs: '20px', sm: '22px', md: '24px', lg: '26px', xl: '28px' },
-                      padding: '0 5px',
-                      border: `2px solid ${link.color}`,
-                    },
-                  }}
-                >
-                  <IconComponent sx={{ fontSize: { xs: '1.5rem', sm: '1.5rem', md: '1.75rem', lg: '2rem', xl: '2.25rem' }, color: '#fff' }} />
-                </Badge>
-              }
-              tooltipTitle={link.title}
-              tooltipOpen={speedDialOpen && (isDesktop || isTablet)}
-              tooltipPlacement="left"
-              onClick={() => {
-                if (link.action) {
-                  link.action();
-                } else if (link.tabIndex >= 0) {
-                  navigateToTab(link.tabIndex);
-                }
-                setSpeedDialOpen(false);
-              }}
-              sx={{
-                color: '#fff',
-                bgcolor: link.color,
-                border: `3px solid rgba(255, 255, 255, 0.25)`,
-                width: { xs: 56, sm: 56, md: 60, lg: 64, xl: 72 },
-                height: { xs: 56, sm: 56, md: 60, lg: 64, xl: 72 },
-                minWidth: { xs: 56, sm: 56, md: 60, lg: 64, xl: 72 },
-                minHeight: { xs: 56, sm: 56, md: 60, lg: 64, xl: 72 },
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent',
-                boxShadow: `0 4px 20px ${link.color}50`,
-                '&:hover, &:active': {
-                  bgcolor: link.color,
-                  filter: 'brightness(1.15)',
-                  transform: 'scale(1.1)',
-                  boxShadow: `0 8px 28px ${link.color}70`,
-                },
-                transition: `all 0.2s cubic-bezier(0.4, 0, 0.2, 1) ${index * 30}ms`,
-                '& .MuiSpeedDialAction-staticTooltip': {
-                  bgcolor: '#1c2128',
-                  border: `2px solid ${link.color}60`,
-                  borderRadius: '10px',
-                  padding: { xs: '10px 14px', sm: '10px 14px', md: '12px 16px', lg: '12px 16px', xl: '14px 18px' },
-                  maxWidth: { xs: '140px', sm: '160px', md: '180px', lg: '200px', xl: '240px' },
-                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)',
-                },
-                '& .MuiSpeedDialAction-staticTooltipLabel': {
-                  bgcolor: 'transparent',
-                  color: '#fff',
-                  fontSize: { xs: '0.85rem', sm: '0.9rem', md: '0.9rem', lg: '0.95rem', xl: '1rem' },
-                  fontWeight: 600,
-                  padding: 0,
-                  whiteSpace: 'nowrap',
-                },
-              }}
-            />
-          );
-        })}
-      </SpeedDial>
     </Box>
 
       {adminDashboardOpen && (
@@ -5986,7 +10121,10 @@ export function CastingPlannerPanel({
           <LoginDialog
             open={loginDialogOpen}
             onClose={() => setLoginDialogOpen(false)}
-            onLoginSuccess={(user) => setAdminUser(user)}
+            onLoginSuccess={(user) => {
+              setAdminUser(normalizeAdminUser(user));
+              setLoginDialogOpen(false);
+            }}
           />
         </Suspense>
       )}

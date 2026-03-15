@@ -49,6 +49,7 @@ import { useToast } from './ToastStack';
 import { useKanbanRealtime } from './useKanbanRealtime';
 import { useAuth } from '../../../hooks/useAuth';
 import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
 const TOUCH_TARGET_SIZE = 44;
@@ -284,6 +285,13 @@ const STATUS_OPTIONS = KANBAN_COLUMNS.map(c => ({ value: c.status, label: c.labe
 
 const PAGE_SIZE = 8;
 
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
+
 // ─── AssignEventDialog ────────────────────────────────────────────────────────
 interface AssignEventDialogProps {
   open: boolean;
@@ -307,6 +315,16 @@ function AssignEventDialog({
   const [roleId, setRoleId] = useState(roles[0]?.id ?? '');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const mentionCandidates = useMemo(() => {
+    const pool = new Set<string>();
+    candidates.forEach((candidate) => {
+      if (typeof candidate.name === 'string' && candidate.name.trim()) pool.add(candidate.name.trim());
+    });
+    roles.forEach((role) => {
+      if (typeof role.name === 'string' && role.name.trim()) pool.add(role.name.trim());
+    });
+    return Array.from(pool);
+  }, [candidates, roles]);
 
   useEffect(() => {
     if (open) {
@@ -404,6 +422,13 @@ function AssignEventDialog({
         )}
         <TextField label="Notater (valgfri)" value={notes} onChange={e => setNotes(e.target.value)}
           fullWidth size="small" multiline rows={2} sx={inputSx} />
+        <GlobalMentionHelper
+          text={notes}
+          localCandidates={mentionCandidates}
+          onApplySuggestion={(name) => setNotes((prev) => applyMentionSuggestion(prev, name))}
+          autoTagTitle="Auto-tagget i notater"
+          suggestionTitle="Mener du?"
+        />
       </DialogContent>
 
       <DialogActions sx={{ px: 3, pb: 2, borderTop: '1px solid rgba(255,255,255,0.1)', pt: 2, gap: 1 }}>

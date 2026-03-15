@@ -43,6 +43,7 @@ interface CreatePackageModalProps {
   editData?: any;
   categories: any[];
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  onPackageSaved?: (savedPackage: Record<string, unknown>) => void;
 }
 
 const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
@@ -50,7 +51,8 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
   onClose,
   editData,
   categories,
-  profession = 'photographer'
+  profession = 'photographer',
+  onPackageSaved
 }) => {
   const [formData, setFormData] = useState({
     name:  ',',
@@ -119,7 +121,7 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
 }, [editData]);
 
   const createPackageMutation = useMutation({
-    mutationFn: async (packageData: any) => {
+    mutationFn: async (packageData: Record<string, unknown>) => {
       const url = editData 
         ? `/api/pricing/packages/${editData.id}`
         : '/api/pricing/packages';
@@ -133,7 +135,19 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
       if (!response.ok) throw new Error('Failed to save package');
       return response.json();
   },
-    onSuccess: () => {
+    onSuccess: (savedPackageResponse: unknown, packageData: Record<string, unknown>) => {
+      const isRecord = (value: unknown): value is Record<string, unknown> =>
+        typeof value === 'object' && value !== null && !Array.isArray(value);
+
+      const savedPackage = isRecord(savedPackageResponse)
+        ? (isRecord(savedPackageResponse.data)
+            ? savedPackageResponse.data
+            : (isRecord(savedPackageResponse.package) ? savedPackageResponse.package : savedPackageResponse))
+        : packageData;
+
+      if (onPackageSaved) {
+        onPackageSaved(savedPackage);
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages'] });
       handleClose();
   },

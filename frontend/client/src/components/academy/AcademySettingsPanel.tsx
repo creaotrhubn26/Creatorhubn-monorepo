@@ -563,6 +563,58 @@ interface AcademySettingsPanelProps {
   onClose?: () => void;
 }
 
+const ACADEMY_SETTINGS_PANEL_STORAGE_KEY = 'academy-settings';
+const ACADEMY_SETTINGS_PANEL_KV_KEY = 'academy_settings_panel_v1';
+
+const parseAcademySettings = (value: unknown): Partial<AcademySettings> | null => {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as Partial<AcademySettings>;
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === 'object') {
+    return value as Partial<AcademySettings>;
+  }
+  return null;
+};
+
+const readSettingsPanelFromDb = async (): Promise<Partial<AcademySettings> | null> => {
+  try {
+    const response = await fetch(`/api/user/kv/${encodeURIComponent(ACADEMY_SETTINGS_PANEL_KV_KEY)}`, {
+      credentials: 'include',
+    });
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null);
+    const value =
+      payload && typeof payload === 'object'
+        ? (payload.value ?? payload.data ?? null)
+        : null;
+    return parseAcademySettings(value);
+  } catch {
+    return null;
+  }
+};
+
+const writeSettingsPanelToDb = async (settings: AcademySettings): Promise<void> => {
+  try {
+    await fetch('/api/user/kv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        key: ACADEMY_SETTINGS_PANEL_KV_KEY,
+        value: settings,
+      }),
+    });
+  } catch {
+    // Keep local persistence when DB write fails.
+  }
+};
+
 export function AcademySettingsPanel({ onClose }: AcademySettingsPanelProps) {
   const { user } = useAuth();
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
@@ -580,7 +632,14 @@ export function AcademySettingsPanel({ onClose }: AcademySettingsPanelProps) {
   const [activeTab, setActiveTab] = useState(0);
   
   // Push notifications
-  const userId = user?.id ?? (user as any)?.sub;
+  const fallbackUserId =
+    user &&
+    typeof user === 'object' &&
+    'sub' in user &&
+    typeof (user as { sub?: unknown }).sub === 'string'
+      ? ((user as { sub?: string }).sub ?? '')
+      : '';
+  const userId = user?.id || fallbackUserId || undefined;
   const { pushEnabled, isSupported } = usePushNotifications(userId);
 
   // Master Integration Provider
@@ -616,17 +675,39 @@ export function AcademySettingsPanel({ onClose }: AcademySettingsPanelProps) {
     };
   }, [performance, debugging, pushEnabled, isSupported, isAIAssistanceEnabled, isVideoProcessingEnabled, isAnalyticsEnabled, isIntegrationEnabled]);
 
-  // Load settings from localStorage on mount
+  // Load settings from DB (fallback/migration from localStorage)
   useEffect(() => {
-    const savedSettings =
-      localStorage.getItem('academy-settings');
-    if (savedSettings) {
+    let cancelled = false;
+    const localSettings = (() => {
       try {
-        setSettings({ ...defaultSettings, ...JSON.parse(savedSettings) });
-      } catch (error) {
-        console.error('Failed to load academy settings: ', error);
+        return parseAcademySettings(localStorage.getItem(ACADEMY_SETTINGS_PANEL_STORAGE_KEY));
+      } catch {
+        return null;
       }
+    })();
+
+    if (localSettings) {
+      setSettings((prev) => ({ ...prev, ...localSettings }));
     }
+
+    void (async () => {
+      const dbSettings = await readSettingsPanelFromDb();
+      if (cancelled) return;
+
+      if (dbSettings) {
+        setSettings((prev) => ({ ...prev, ...dbSettings }));
+        try {
+          localStorage.setItem(
+            ACADEMY_SETTINGS_PANEL_STORAGE_KEY,
+            JSON.stringify({ ...defaultSettings, ...dbSettings }),
+          );
+        } catch {
+          // Ignore local cache write errors.
+        }
+      } else if (localSettings) {
+        void writeSettingsPanelToDb({ ...defaultSettings, ...localSettings });
+      }
+    })();
 
     // Track feature usage
     analytics.trackEvent('academy_settings_opened', {
@@ -634,27 +715,39 @@ export function AcademySettingsPanel({ onClose }: AcademySettingsPanelProps) {
       userId: user?.id,
       component: 'AcademySettingsPanel',
     });
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [analytics, user?.id]);
 
   // Generic change handler for settings
   const handleChange = <K extends keyof AcademySettings>(key: K, value: AcademySettings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  // Save settings to localStorage
+  // Save settings to localStorage + DB KV (+ legacy endpoint)
   const saveSettings = async () => {
     setLoading(true);
     try {
-      localStorage.setItem('academy-settings', JSON.stringify(settings));
+      localStorage.setItem(ACADEMY_SETTINGS_PANEL_STORAGE_KEY, JSON.stringify(settings));
+      await writeSettingsPanelToDb(settings);
 
-      // Also save to server if user is authenticated
+      // Legacy endpoint for compatibility with existing backend flows.
       if (user?.id) {
+        const legacyToken =
+          localStorage.getItem('creatorhub_auth_token') ||
+          localStorage.getItem('authToken') ||
+          '';
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (legacyToken) {
+          headers.Authorization = `Bearer ${legacyToken}`;
+        }
         await fetch('/api/user/settings/academy', {
           method: 'POST',
-          headers: {
-            'Content-Type' : 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('authToken')}`,
-          },
+          headers,
+          credentials: 'include',
           body: JSON.stringify({
             userId: user?.id,
             settings,
@@ -1074,7 +1167,7 @@ export function AcademySettingsPanel({ onClose }: AcademySettingsPanelProps) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {React.cloneElement(professionIcon as any, {
+            {React.cloneElement(professionIcon, {
               sx: { color: professionColor, fontSize: 28 },
             })}
           </Box>
@@ -3032,4 +3125,3 @@ export default withUniversalIntegration(AcademySettingsPanel, {
   componentCategory: 'academy',
   featureIds: ['settings-panel', 'academy-dashboard', 'video-player-academy'],
 });
-

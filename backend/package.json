@@ -8,10 +8,13 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "NODE_OPTIONS='--max-old-space-size=16384' tsx server/index.ts",
+    "dev": "NODE_OPTIONS='--max-old-space-size=16384' tsx watch server/index.ts",
     "dev:all": "concurrently -n \"node,python\" -c \"cyan,yellow\" \"npm run dev\" \"npm run ml:start\"",
-    "ml:start": "cd python_ml_service && python main.py",
-    "ml:install": "cd python_ml_service && pip install -r requirements.txt",
+    "pyannote:start": "bash scripts/start-pyannote-service.sh",
+    "whisperx:start": "bash scripts/start-whisperx-service.sh",
+    "ml:start": "concurrently -n \"pyannote,whisperx\" -c \"yellow,magenta\" \"npm run pyannote:start\" \"npm run whisperx:start\"",
+    "ml:install": "python3 -m pip install -r python-services/requirements.txt",
+    "ml:install:venv": "python-services/venv_py310/bin/pip install -r python-services/requirements.txt",
     "build": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --splitting --chunk-names=chunks/[name]-[hash] --target=node20",
     "start": "node server.js",
     "start:all": "concurrently -n \"node,python\" -c \"cyan,yellow\" \"npm start\" \"npm run ml:start\"",
@@ -93,8 +96,12 @@
     "storyarc:wedding:e2e": "tsx scripts/storyarc-wedding-e2e-from-url.ts",
     "storyarc:wedding:e2e:upload-r2": "node scripts/upload-storyarc-e2e-artifacts-r2.mjs",
     "storyarc:year-reel:from-cases": "tsx scripts/storyarc-year-reel-from-cases.ts",
-    "storyarc:v2:benchmark": "tsx scripts/storyarc-v2-golden-benchmark.ts --manifest scripts/storyarc-v2-golden.manifest.example.json --base-url http://127.0.0.1:3001",
-    "storyarc:v2:benchmark:nightly": "tsx scripts/storyarc-v2-golden-benchmark.ts --manifest scripts/storyarc-v2-golden.manifest.example.json --base-url http://127.0.0.1:3001 --nightly true --fail-on-regression true"
+    "storyarc:v2:warmup": "node -e \"const url=(process.env.STORYARC_BASE_URL||'http://127.0.0.1:3003').replace(/\\/$/, ''); fetch(`${url}/api/story-arc/v2/warmup`, {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({reason:'manual-cli'})}).then(async r=>{const body=await r.text(); if(!r.ok){throw new Error(body||`HTTP ${r.status}`);} console.log(body);}).catch(err=>{console.error(err instanceof Error ? err.message : err); process.exit(1);});\"",
+    "storyarc:v2:benchmark": "tsx scripts/storyarc-v2-golden-benchmark.ts --manifest scripts/storyarc-v2-golden.manifest.example.json --base-url http://127.0.0.1:3003",
+    "storyarc:v2:benchmark:nightly": "tsx scripts/storyarc-v2-golden-benchmark.ts --manifest scripts/storyarc-v2-golden.manifest.example.json --base-url http://127.0.0.1:3003 --nightly true --fail-on-regression true --compare-with-last-nightly true",
+    "ops:pm2:start": "pm2 start ecosystem.storyarc.config.cjs",
+    "ops:pm2:restart": "pm2 restart ecosystem.storyarc.config.cjs",
+    "ops:pm2:stop": "pm2 delete ecosystem.storyarc.config.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.928.0",

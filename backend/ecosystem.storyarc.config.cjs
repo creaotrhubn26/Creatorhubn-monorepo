@@ -1,0 +1,52 @@
+module.exports = {
+  apps: [
+    {
+      name: 'creatorhub-backend',
+      cwd: __dirname,
+      script: 'npm',
+      args: 'run dev',
+      autorestart: true,
+      max_restarts: 20,
+      min_uptime: '20s',
+      exp_backoff_restart_delay: 500,
+      kill_timeout: 10000,
+      env: {
+        NODE_ENV: 'development',
+        PORT: '3003',
+        PYANNOTE_DIARIZATION_URL: 'http://127.0.0.1:5502',
+        WHISPERX_TRANSCRIPTION_URL: 'http://127.0.0.1:5003',
+        STORY_ARC_V2_STARTUP_WARMUP_ENABLED: 'true',
+      },
+    },
+    {
+      name: 'storyarc-pyannote',
+      cwd: __dirname,
+      script: 'bash',
+      args: 'scripts/start-pyannote-service.sh',
+      autorestart: true,
+      max_restarts: 20,
+      min_uptime: '20s',
+      exp_backoff_restart_delay: 1000,
+      kill_timeout: 10000,
+      env: {
+        PYANNOTE_PORT: '5502',
+        PYANNOTE_WARMUP_ON_STARTUP: 'true',
+      },
+    },
+    {
+      name: 'storyarc-whisperx',
+      cwd: __dirname,
+      script: 'bash',
+      args: 'scripts/start-whisperx-service.sh',
+      autorestart: true,
+      max_restarts: 20,
+      min_uptime: '20s',
+      exp_backoff_restart_delay: 1000,
+      kill_timeout: 10000,
+      env: {
+        WHISPERX_PORT: '5003',
+        WHISPERX_WARMUP_ON_STARTUP: 'true',
+      },
+    },
+  ],
+};

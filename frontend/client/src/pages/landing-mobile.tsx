@@ -134,6 +134,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Chip,
+  Grid,
   Grid2,
 } from '@mui/material';
 import {
@@ -174,7 +176,6 @@ import {
   School,
   People,
 } from '@mui/icons-material';
-import { Chip } from '@mui/material';
 // PERFORMANCE: Lazy load non-critical components for faster initial load
 const LoginModal = React.lazy(() => import('@/components/auth/LoginModal'));
 const InviteRequestForm = React.lazy(() => import('@/components/InviteRequestForm'));
@@ -183,7 +184,6 @@ const SubscriptionSelectionFlow = React.lazy(() => import('@/components/subscrip
 // const SentryTestComponent = React.lazy(() => import('@/components/test/SentryTestComponent'));
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from "@/lib/queryClient";
-import { Grid } from '@mui/material';
 import { PrototypeTesterIcon } from '@/components/icons/PrototypeTesterIcon';
 import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
 
@@ -3640,6 +3640,7 @@ const LandingMobile: React.FC<LandingCustomizationProps> = ({
                 onClose={handleCloseModals}
                 selectedRole={modalState.selectedRole}
                 selectedPlan={modalState.selectedPlan}
+                source="landing-mobile"
                 onSuccess={handleCloseModals}
                 onCancel={handleCloseModals}
               />

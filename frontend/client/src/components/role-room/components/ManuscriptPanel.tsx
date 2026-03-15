@@ -18,7 +18,6 @@ import {
   Card,
   CardContent,
   Chip,
-  Grid,
   Divider,
   List,
   ListItem,
@@ -40,26 +39,66 @@ import {
   Drawer,
   ToggleButtonGroup,
   ToggleButton,
+  Slider,
   CircularProgress,
-  useTheme,
-  useMediaQuery,
 } from '@mui/material';
+
+// Keep lazy component identities stable across renders.
+const LazyScreenplayEditorWithNavigator = React.lazy(() => import('./ScreenplayEditorWithNavigator'));
+const LazyScreenplayPDFExport = React.lazy(() => import('./ScreenplayPDFExport'));
 
 // ===== 7-Tier Responsive System =====
 type ScreenTier = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '4k';
 
-const useScreenTier = (): { tier: ScreenTier; isMobile: boolean; isTablet: boolean; isDesktop: boolean; is4K: boolean } => {
-  const theme = useTheme();
-  const isXs = useMediaQuery(theme.breakpoints.down('sm'));      // < 600px
-  const isSm = useMediaQuery(theme.breakpoints.between('sm', 'md')); // 600-899px
-  const isMd = useMediaQuery(theme.breakpoints.between('md', 'lg')); // 900-1199px
-  const isLg = useMediaQuery(theme.breakpoints.between('lg', 'xl')); // 1200-1535px
-  const isXl = useMediaQuery(theme.breakpoints.between('xl', 1920)); // 1536-1919px
-  const isXxl = useMediaQuery('(min-width: 1920px) and (max-width: 2559px)'); // 1920-2559px
-  const is4K = useMediaQuery('(min-width: 2560px)'); // 2560px+
+const getViewportWidth = (): number => (
+  typeof window === 'undefined' ? 1280 : window.innerWidth
+);
 
-  const tier: ScreenTier = is4K ? '4k' : isXxl ? 'xxl' : isXl ? 'xl' : isLg ? 'lg' : isMd ? 'md' : isSm ? 'sm' : 'xs';
-  
+const getScreenTierForWidth = (width: number): ScreenTier => {
+  if (width >= 2560) return '4k';
+  if (width >= 1920) return 'xxl';
+  if (width >= 1536) return 'xl';
+  if (width >= 1200) return 'lg';
+  if (width >= 900) return 'md';
+  if (width >= 600) return 'sm';
+  return 'xs';
+};
+
+const useScreenTier = (): { tier: ScreenTier; isMobile: boolean; isTablet: boolean; isDesktop: boolean; is4K: boolean } => {
+  const [viewportWidth, setViewportWidth] = useState<number>(() => getViewportWidth());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    let frameId: number | null = null;
+
+    const syncViewportWidth = () => {
+      const nextWidth = window.innerWidth;
+      setViewportWidth((currentWidth) => (currentWidth === nextWidth ? currentWidth : nextWidth));
+    };
+
+    const handleResize = () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      frameId = window.requestAnimationFrame(syncViewportWidth);
+    };
+
+    syncViewportWidth();
+    window.addEventListener('resize', handleResize, { passive: true });
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  const tier = useMemo(() => getScreenTierForWidth(viewportWidth), [viewportWidth]);
+
   return {
     tier,
     isMobile: tier === 'xs' || tier === 'sm',
@@ -68,6 +107,58 @@ const useScreenTier = (): { tier: ScreenTier; isMobile: boolean; isTablet: boole
     is4K: tier === '4k',
   };
 };
+
+const stripHtmlTags = (value: string | undefined): string =>
+  (value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+type ManuscriptCoverFocalPoint = { x: number; y: number };
+
+const DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT: ManuscriptCoverFocalPoint = { x: 50, y: 50 };
+
+const clampCoverFocalPointValue = (value: number): number => Math.max(0, Math.min(100, value));
+const normalizeProjectKey = (value: string | null | undefined): string => String(value || '').trim().toLowerCase();
+
+const getManuscriptCoverFocalPoint = (manuscript: Manuscript | null | undefined): ManuscriptCoverFocalPoint => {
+  const raw = manuscript?.coverFocalPoint;
+  if (typeof raw !== 'object' || raw === null) {
+    return DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT;
+  }
+  const candidate = raw as Record<string, unknown>;
+  const x = typeof candidate.x === 'number' ? candidate.x : DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT.x;
+  const y = typeof candidate.y === 'number' ? candidate.y : DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT.y;
+  return {
+    x: clampCoverFocalPointValue(x),
+    y: clampCoverFocalPointValue(y),
+  };
+};
+
+const isExampleManuscriptProject = (manuscript: Manuscript): boolean => {
+  const dynamicFlags = manuscript as Record<string, unknown>;
+  if (typeof dynamicFlags.isExampleProject === 'boolean') {
+    return dynamicFlags.isExampleProject;
+  }
+  if (typeof dynamicFlags.isDemo === 'boolean') {
+    return dynamicFlags.isDemo;
+  }
+
+  const manuscriptId = normalizeProjectKey(manuscript.id);
+  const projectId = normalizeProjectKey(manuscript.projectId);
+  return (
+    projectId === 'troll-project-2026' ||
+    manuscriptId.startsWith('troll-demo-')
+  );
+};
+
+const manuscriptBelongsToProject = (manuscript: Manuscript, projectId: string | null | undefined): boolean => {
+  if (!projectId) return true;
+  return normalizeProjectKey(manuscript.projectId) === normalizeProjectKey(projectId);
+};
+
+const EXAMPLE_PROJECT_NOTICE =
+  'Dette er et eksempelprosjekt. Manuskriptet er fiktivt og brukes kun til demo/opplæring i The Role Room. Ikke publiser eller bruk innholdet kommersielt uten avklart rettighetsgrunnlag.';
 
 const getResponsiveValues = (tier: ScreenTier) => {
   const values = {
@@ -214,6 +305,80 @@ const getResponsiveValues = (tier: ScreenTier) => {
   };
   return values[tier];
 };
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
+const AUTO_ROLE_SYNC_BLOCKLIST = new Set([
+  'I',
+  'IN',
+  'INT',
+  'INT.',
+  'E',
+  'EX',
+  'EXT',
+  'EXT.',
+  'EST',
+  'EST.',
+  'I/E',
+  'INT/EXT',
+  'INT./EXT',
+  'INT./EXT.',
+  'INT/EXT.',
+]);
+const normalizeRoleNameFromScript = (value: string): string =>
+  value.replace(/^@/, '').replace(/\s*\(.*\)\s*$/, '').trim();
+const shouldAutoCreateRoleFromScript = (value: string): boolean => {
+  const cleaned = normalizeRoleNameFromScript(value);
+  if (!cleaned) return false;
+  const upper = cleaned.toUpperCase();
+  if (AUTO_ROLE_SYNC_BLOCKLIST.has(upper)) return false;
+  return true;
+};
+const AUTO_LOCATION_SYNC_BLOCKLIST = new Set([
+  ...AUTO_ROLE_SYNC_BLOCKLIST,
+  'DAY',
+  'NIGHT',
+  'DAWN',
+  'DUSK',
+  'CONTINUOUS',
+  'LATER',
+  'MORNING',
+  'EVENING',
+  'SAME',
+]);
+const PARTIAL_TIME_OF_DAY_TOKENS = new Set([
+  'D', 'DA', 'DAW', 'DAWN', 'DU', 'DUS', 'DUSK', 'DAY',
+  'N', 'NI', 'NIG', 'NIGH', 'NIGHT',
+  'M', 'MO', 'MOR', 'MORN', 'MORNI', 'MORNIN', 'MORNING',
+  'E', 'EV', 'EVE', 'EVEN', 'EVENI', 'EVENIN', 'EVENING',
+  'L', 'LA', 'LAT', 'LATE', 'LATER',
+  'C', 'CO', 'CON', 'CONT', 'CONTI', 'CONTIN', 'CONTINU', 'CONTINUO', 'CONTINUOU', 'CONTINUOUS',
+  'S', 'SA', 'SAM', 'SAME',
+]);
+const normalizeLocationNameFromScript = (value: string): string => {
+  let cleaned = value.replace(/\s+/g, ' ').trim();
+  const partialTimeMatch = cleaned.match(/^(.*?)(?:\s*-\s*([A-ZÆØÅ]+))$/u);
+  if (partialTimeMatch) {
+    const base = partialTimeMatch[1]?.trim() ?? '';
+    const suffix = partialTimeMatch[2]?.trim().toUpperCase() ?? '';
+    if (base && PARTIAL_TIME_OF_DAY_TOKENS.has(suffix)) {
+      cleaned = base;
+    }
+  }
+  cleaned = cleaned.replace(/^[–—:;,./\s-]+|[–—:;,./\s-]+$/g, '').trim();
+  return cleaned;
+};
+const shouldAutoCreateLocationFromScript = (value: string): boolean => {
+  const cleaned = normalizeLocationNameFromScript(value);
+  if (!cleaned) return false;
+  if (!/[A-Za-zÆØÅæøå]/.test(cleaned)) return false;
+  const upper = cleaned.toUpperCase();
+  if (AUTO_LOCATION_SYNC_BLOCKLIST.has(upper)) return false;
+  return true;
+};
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -228,8 +393,6 @@ import {
   History as HistoryIcon,
   Assessment as AssessmentIcon,
   Schedule as ScheduleIcon,
-  CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
   Visibility as VisibilityIcon,
   Code as CodeIcon,
   Preview as PreviewIcon,
@@ -240,17 +403,15 @@ import {
   ViewModule as ViewModuleIcon,
   FileDownload as FileDownloadIcon,
   FileUpload as FileUploadIcon,
-  ArrowBack as ArrowBackIcon,
   ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import { useToast } from './ToastStack';
-import type { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, ManuscriptExport, Role, Location } from '../models/casting';
+import type { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, ManuscriptExport, Role, Location, Candidate } from '../models/casting';
 import type { StoryLogicState } from '../services/storyLogicService';
 import { manuscriptService } from '../services/manuscriptService';
 import { RichTextEditor } from './RichTextEditor';
 import { ScriptDiffViewer } from './ScriptDiffViewer';
-import { ShotDetailPanel } from './ShotDetailPanel';
 import { TimelineView } from './TimelineView';
 import { ProductionControlPanel } from './ProductionControlPanel';
 import { DraggableSceneList } from './DraggableSceneList';
@@ -258,10 +419,12 @@ import { StoryboardIntegrationView } from './StoryboardIntegrationView';
 import { ScriptStoryboardSplitView } from './ScriptStoryboardSplitView';
 import { ImportManuscriptDialog } from './ImportManuscriptDialog';
 import { ManuscriptTemplatePanel } from './ManuscriptTemplatePanel';
+import useBrandingSettings from '../hooks/useBrandingSettings.ts';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
 import { manuscriptTemplateService } from '../services/manuscriptTemplateService';
 import { castingService } from '../services/castingService';
-import type { CharacterProfile as StoredCharacterProfile } from '../services/characterProfileService';
-import { characterProfileService } from '../services/characterProfileService';
+import { characterProfileService, type CharacterProfile as StoredCharacterProfile } from '../services/characterProfileService';
 import type { Template } from '../data/manuscriptTemplates';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
@@ -270,40 +433,26 @@ interface ManuscriptPanelProps {
   projectId?: string;
   onManuscriptChange?: (manuscript: Manuscript) => void;
   storyLogicData?: StoryLogicState | null;
+  headerLeftContent?: React.ReactNode;
 }
 
 type ManuscriptTabValue = 'editor' | 'acts' | 'scenes' | 'characters' | 'dialogue' | 'breakdown' | 'revisions' | 'timeline' | 'production' | 'productionview';
 
-const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, onManuscriptChange, storyLogicData }) => {
+const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
+  projectId,
+  onManuscriptChange,
+  storyLogicData,
+  headerLeftContent,
+}) => {
   const { showToast, showSuccess, showError, showWarning, showInfo } = useToast();
+  const branding = useBrandingSettings();
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // 7-tier responsive system
-  const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
+  const { tier, isMobile, isTablet: _isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
 
-  // Show empty state if no project is selected
-  if (!projectId) {
-    return (
-      <Box sx={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        height: '100%', 
-        minHeight: 400,
-        gap: responsive.spacing,
-        color: 'rgba(255,255,255,0.87)',
-        p: responsive.padding,
-      }}>
-        <DescriptionIcon sx={{ fontSize: is4K ? 80 : isDesktop ? 64 : 48, opacity: 0.3 }} />
-        <Typography variant="h6" sx={{ fontSize: responsive.headerFontSize }}>Velg et prosjekt</Typography>
-        <Typography variant="body2" sx={{ textAlign: 'center', maxWidth: 300, fontSize: responsive.bodyFontSize }}>
-          Velg eller opprett et prosjekt fra oversikten for å begynne å skrive manus.
-        </Typography>
-      </Box>
-    );
-  }
+  const hasProjectContext = Boolean(projectId);
   
   // Dirty tracking to prevent circular saves and unnecessary re-renders
   const isDirtyRef = useRef(false);
@@ -314,6 +463,12 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
   const pendingContentRef = useRef<string>(''); // Track content changes without re-render
   const selectedManuscriptRef = useRef<Manuscript | null>(null);
   const autoSaveAbortControllerRef = useRef<AbortController | null>(null); // Prevent memory leaks
+  const isMountedRef = useRef(true);
+  const castingDataLoadTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingCastingDataLoadRef = useRef(false);
+  const autoCreatedRoleNamesRef = useRef<Set<string>>(new Set());
+  const autoCreatedLocationNamesRef = useRef<Set<string>>(new Set());
+  const autoCreatedToastTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Cleanup function to prevent memory leaks
   useEffect(() => {
@@ -342,24 +497,49 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     const ids = scenes.map(s => s.locationId).filter((l): l is string => !!l);
     return ids.filter((l, i) => ids.indexOf(l) === i);
   }, [scenes]);
+  const productionSceneOptions = useMemo(() => {
+    return [...scenes].sort((left, right) => {
+      const leftNumber = Number(left.sceneNumber);
+      const rightNumber = Number(right.sceneNumber);
+      const safeLeft = Number.isFinite(leftNumber) ? leftNumber : Number.MAX_SAFE_INTEGER;
+      const safeRight = Number.isFinite(rightNumber) ? rightNumber : Number.MAX_SAFE_INTEGER;
+      if (safeLeft !== safeRight) return safeLeft - safeRight;
+      return String(left.sceneHeading || left.heading || left.locationName || '').localeCompare(
+        String(right.sceneHeading || right.heading || right.locationName || ''),
+        'nb'
+      );
+    });
+  }, [scenes]);
   const [isLoading, setIsLoading] = useState(false);
   const [manuscriptSaveStatus, setManuscriptSaveStatus] = useState<'saved' | 'unsaved' | 'saving' | 'error'>('saved');
   const [lastManuscriptSaved, setLastManuscriptSaved] = useState<Date | null>(null);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [_isOnline, setIsOnline] = useState(navigator.onLine);
   const [showNewManuscriptDialog, setShowNewManuscriptDialog] = useState(false);
   const [showSceneDialog, setShowSceneDialog] = useState(false);
   const [editingScene, setEditingScene] = useState<SceneBreakdown | null>(null);
+  const [sceneForm, setSceneForm] = useState({
+    sceneNumber: '',
+    sceneHeading: '',
+    intExt: 'INT' as 'INT' | 'EXT' | 'INT/EXT',
+    locationName: '',
+    timeOfDay: 'DAY' as 'DAY' | 'NIGHT' | 'DAWN' | 'DUSK' | 'CONTINUOUS' | 'LATER' | 'MORNING' | 'EVENING',
+    pageLength: '',
+    description: '',
+    status: 'not-scheduled',
+  });
   const [autoBreakdownEnabled, setAutoBreakdownEnabled] = useState(true);
   
   // Casting integration states
   const [castingRoles, setCastingRoles] = useState<Role[]>([]);
   const [castingLocations, setCastingLocations] = useState<Location[]>([]);
+  const [castingCandidates, setCastingCandidates] = useState<Candidate[]>([]);
   
   // New production control states
   const [selectedScene, setSelectedScene] = useState<SceneBreakdown | null>(null);
   const [selectedShot, setSelectedShot] = useState<string | null>(null);
   const [showProductionPanel, setShowProductionPanel] = useState(false);
   const [sceneViewMode, setSceneViewMode] = useState<'list' | 'drag' | 'storyboard'>('list');
+  const [productionWorkspaceMode, setProductionWorkspaceMode] = useState<'storyboard' | 'split'>('storyboard');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
 
@@ -380,24 +560,87 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     author: '',
     status: 'draft' as string,
   });
+  const [showExampleProjectDisclaimerDialog, setShowExampleProjectDisclaimerDialog] = useState(false);
+  const [pendingExampleManuscript, setPendingExampleManuscript] = useState<Manuscript | null>(null);
+
+  const editingCoverFocalPoint = useMemo(
+    () => getManuscriptCoverFocalPoint(editingManuscript),
+    [editingManuscript]
+  );
+
+  const setEditingCoverFocalPoint = useCallback((x: number, y: number) => {
+    setEditingManuscript((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        coverFocalPoint: {
+          x: clampCoverFocalPointValue(x),
+          y: clampCoverFocalPointValue(y),
+        },
+      };
+    });
+  }, []);
+
+  const handleEditCoverFocalPointClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!editingManuscript?.coverImage) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    setEditingCoverFocalPoint(x, y);
+  }, [editingManuscript?.coverImage, setEditingCoverFocalPoint]);
 
   // Load manuscripts on mount
   useEffect(() => {
-    loadManuscripts();
-    loadCastingData();
+    if (!projectId) {
+      setManuscripts([]);
+      setSelectedManuscript(null);
+      setActs([]);
+      setScenes([]);
+      setDialogueLines([]);
+      setRevisions([]);
+      selectedManuscriptRef.current = null;
+      lastSavedContentRef.current = '';
+      pendingContentRef.current = '';
+      isDirtyRef.current = false;
+      isInitialLoadRef.current = true;
+      return;
+    }
+    setSelectedManuscript(null);
+    setActs([]);
+    setScenes([]);
+    setDialogueLines([]);
+    setRevisions([]);
+    selectedManuscriptRef.current = null;
+    lastSavedContentRef.current = '';
+    pendingContentRef.current = '';
+    isDirtyRef.current = false;
+    isInitialLoadRef.current = true;
+    void loadManuscripts();
+    void loadCastingData();
   }, [projectId]);
 
   // Load casting roles and locations for autocomplete
   const loadCastingData = async () => {
+    if (!projectId) {
+      if (isMountedRef.current) {
+        setCastingRoles([]);
+        setCastingLocations([]);
+        setCastingCandidates([]);
+      }
+      return;
+    }
     try {
-      const [roles, locations] = await Promise.all([
+      const [roles, locations, candidates] = await Promise.all([
         castingService.getRoles(projectId),
         castingService.getLocations(projectId),
+        castingService.getCandidates(projectId),
       ]);
       if (isMountedRef.current) {
         setCastingRoles(roles);
         setCastingLocations(locations);
-        console.log(`Loaded ${roles.length} casting roles and ${locations.length} locations for autocomplete`);
+        setCastingCandidates(candidates);
+        console.log(`Loaded ${roles.length} casting roles, ${locations.length} locations and ${candidates.length} candidates for autocomplete`);
       }
     } catch (error) {
       console.error('Could not load casting data for autocomplete:', error);
@@ -426,8 +669,22 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     setIsLoading(true);
     try {
       const response = await manuscriptService.getManuscripts(projectId);
-      setManuscripts(response);
-      showInfo('Manuskripter lastet');
+      const manuscriptsForProject = response.filter((manuscript) => manuscriptBelongsToProject(manuscript, projectId));
+      setManuscripts(manuscriptsForProject);
+      setSelectedManuscript((currentSelection) => {
+        if (currentSelection) {
+          const matchingSelection = manuscriptsForProject.find((manuscript) => manuscript.id === currentSelection.id);
+          if (matchingSelection) {
+            return matchingSelection;
+          }
+        }
+        return manuscriptsForProject[0] ?? null;
+      });
+      showToast({
+        severity: 'info',
+        message: `Manuskripter lastet (${manuscriptsForProject.length})`,
+        duration: 2800,
+      });
     } catch (error) {
       showError('Feil ved lasting av manuskripter');
       console.error(error);
@@ -476,6 +733,31 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     }
   };
 
+  const openManuscriptWorkspace = (manuscript: Manuscript): void => {
+    setSelectedManuscript(manuscript);
+  };
+
+  const closeExampleProjectDisclaimerDialog = (): void => {
+    setShowExampleProjectDisclaimerDialog(false);
+    setPendingExampleManuscript(null);
+  };
+
+  const confirmOpenExampleProject = (): void => {
+    if (pendingExampleManuscript) {
+      openManuscriptWorkspace(pendingExampleManuscript);
+    }
+    closeExampleProjectDisclaimerDialog();
+  };
+
+  const requestOpenManuscript = (manuscript: Manuscript): void => {
+    if (isExampleManuscriptProject(manuscript)) {
+      setPendingExampleManuscript(manuscript);
+      setShowExampleProjectDisclaimerDialog(true);
+      return;
+    }
+    openManuscriptWorkspace(manuscript);
+  };
+
   // Online/offline detection
   useEffect(() => {
     const handleOnline = () => {
@@ -498,7 +780,14 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
 
   // Initialize refs when manuscript is selected (no auto-save here, it's handled in handleEditorContentChange)
   useEffect(() => {
-    if (!selectedManuscript) return;
+    if (!selectedManuscript) {
+      setScenes([]);
+      setActs([]);
+      setDialogueLines([]);
+      setRevisions([]);
+      selectedManuscriptRef.current = null;
+      return;
+    }
     
     // Always initialize refs when manuscript changes
     selectedManuscriptRef.current = selectedManuscript;
@@ -506,6 +795,16 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     pendingContentRef.current = selectedManuscript.content || '';
     isDirtyRef.current = false;
     isInitialLoadRef.current = false;
+    setManuscriptSaveStatus('saved');
+    setLastManuscriptSaved(
+      selectedManuscript.updatedAt ? new Date(selectedManuscript.updatedAt) : new Date()
+    );
+
+    const manuscriptId = selectedManuscript.id;
+    void loadScenes(manuscriptId);
+    void loadActs(manuscriptId);
+    void loadDialogue(manuscriptId);
+    void loadRevisions(manuscriptId);
     
     return () => {
       if (autoSaveTimerRef.current) {
@@ -513,6 +812,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
       }
     };
   }, [selectedManuscript?.id]);
+
+  useEffect(() => {
+    setSelectedShot(null);
+  }, [selectedScene?.id]);
 
   // Auto-save scenes when scenes array content actually changes
   useEffect(() => {
@@ -626,14 +929,34 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     if (!selectedManuscript) return;
 
     try {
-      await manuscriptService.updateManuscript(selectedManuscript);
+      setManuscriptSaveStatus('saving');
+      const persistedTimestamp = new Date().toISOString();
+      const contentToPersist = isDirtyRef.current
+        ? pendingContentRef.current
+        : selectedManuscript.content;
+      const manuscriptToPersist: Manuscript = {
+        ...selectedManuscript,
+        content: contentToPersist,
+        updatedAt: persistedTimestamp,
+      };
+      await manuscriptService.updateManuscript(manuscriptToPersist);
+      setSelectedManuscript(manuscriptToPersist);
+      setManuscripts((current) =>
+        current.map((entry) => (entry.id === manuscriptToPersist.id ? manuscriptToPersist : entry))
+      );
+      lastSavedContentRef.current = contentToPersist;
+      pendingContentRef.current = contentToPersist;
+      isDirtyRef.current = false;
+      setLastManuscriptSaved(new Date(persistedTimestamp));
+      setManuscriptSaveStatus('saved');
       
       showSuccess('Manuskript lagret');
       
       if (onManuscriptChange) {
-        onManuscriptChange(selectedManuscript);
+        onManuscriptChange(manuscriptToPersist);
       }
     } catch (error) {
+      setManuscriptSaveStatus('error');
       showError('Feil ved lagring av manuskript');
       console.error(error);
     }
@@ -641,6 +964,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
 
   const handleAutoBreakdown = async () => {
     if (!selectedManuscript) return;
+    if (!autoBreakdownEnabled) {
+      showWarning('Auto Breakdown er slått av. Aktiver bryteren for å kjøre.');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -836,13 +1163,36 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
       };
       
       setSelectedManuscript(updated);
-      showSuccess(`Mal "${template.name}\" satt inn`);
+      pendingContentRef.current = updatedContent;
+      isDirtyRef.current = true;
+      setManuscriptSaveStatus('unsaved');
+      showSuccess(`Mal "${template.name}" satt inn`);
     }
   };
-  // Ref to track if component is mounted to prevent state updates after unmount
-  const isMountedRef = useRef(true);
-  const castingDataLoadTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingCastingDataLoadRef = useRef(false);
+  const scheduleAutoCreatedEntitiesToast = useCallback(() => {
+    if (autoCreatedToastTimerRef.current) {
+      clearTimeout(autoCreatedToastTimerRef.current);
+    }
+
+    autoCreatedToastTimerRef.current = setTimeout(() => {
+      const roleNames = Array.from(autoCreatedRoleNamesRef.current);
+      const locationNames = Array.from(autoCreatedLocationNamesRef.current);
+      if (roleNames.length === 0 && locationNames.length === 0) return;
+
+      const messageParts: string[] = [];
+      if (roleNames.length > 0) {
+        messageParts.push(`Roller: ${roleNames.join(', ')}`);
+      }
+      if (locationNames.length > 0) {
+        messageParts.push(`Lokasjoner: ${locationNames.join(', ')}`);
+      }
+
+      showSuccess(`Auto-opprettet fra manus. ${messageParts.join(' | ')}`);
+      autoCreatedRoleNamesRef.current.clear();
+      autoCreatedLocationNamesRef.current.clear();
+      autoCreatedToastTimerRef.current = null;
+    }, 550);
+  }, [showSuccess]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -859,6 +1209,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
       if (castingDataLoadTimerRef.current) {
         clearTimeout(castingDataLoadTimerRef.current);
       }
+      if (autoCreatedToastTimerRef.current) {
+        clearTimeout(autoCreatedToastTimerRef.current);
+      }
     };
   }, []);
 
@@ -866,13 +1219,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
   const handleCharacterAdd = useCallback(async (name: string) => {
     // Auto-create a role in casting when new character is detected
     if (!projectId) return;
-    const existingRole = castingRoles.find(r => r.name.toUpperCase() === name.toUpperCase());
+    if (!shouldAutoCreateRoleFromScript(name)) return;
+    const normalizedName = normalizeRoleNameFromScript(name);
+    if (!normalizedName) return;
+
+    const existingRole = castingRoles.find(r => r.name.toUpperCase() === normalizedName.toUpperCase());
     if (existingRole) return; // Already exists
     
     try {
       const newRole: Role = {
         id: `role-${Date.now()}`,
-        name: name,
+        name: normalizedName,
         description: `Character from screenplay`,
         requirements: {},
         status: 'draft',
@@ -880,22 +1237,28 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
       await castingService.saveRole(projectId, newRole);
       // Schedule casting data reload (debounced to batch multiple creations)
       scheduleLoadCastingData();
-      console.log(`✓ Auto-created role "${name}" from screenplay`);
+      autoCreatedRoleNamesRef.current.add(normalizedName);
+      scheduleAutoCreatedEntitiesToast();
+      console.log(`✓ Auto-created role "${normalizedName}" from screenplay`);
     } catch (error) {
       console.warn('Failed to auto-create role from screenplay:', error);
     }
-  }, [projectId, castingRoles]);
+  }, [projectId, castingRoles, scheduleAutoCreatedEntitiesToast]);
 
   const handleLocationAdd = useCallback(async (name: string) => {
     // Auto-create a location in casting when new location is detected
     if (!projectId) return;
-    const existingLoc = castingLocations.find(l => l.name.toUpperCase() === name.toUpperCase());
+    if (!shouldAutoCreateLocationFromScript(name)) return;
+    const normalizedName = normalizeLocationNameFromScript(name);
+    if (!normalizedName) return;
+
+    const existingLoc = castingLocations.find(l => l.name.toUpperCase() === normalizedName.toUpperCase());
     if (existingLoc) return; // Already exists
     
     try {
       const newLocation: Location = {
         id: `location-${Date.now()}`,
-        name: name,
+        name: normalizedName,
         type: 'indoor', // Default
         address: '',
         notes: 'Location from screenplay',
@@ -907,18 +1270,20 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
       await castingService.saveLocation(projectId, newLocation);
       // Schedule casting data reload (debounced to batch multiple creations)
       scheduleLoadCastingData();
-      console.log(`✓ Auto-created location "${name}" from screenplay`);
+      autoCreatedLocationNamesRef.current.add(normalizedName);
+      scheduleAutoCreatedEntitiesToast();
+      console.log(`✓ Auto-created location "${normalizedName}" from screenplay`);
     } catch (error) {
       console.warn('Failed to auto-create location from screenplay:', error);
     }
-  }, [projectId, castingLocations]);
+  }, [projectId, castingLocations, scheduleAutoCreatedEntitiesToast]);
 
   // Stable callback for editor content changes
   const handleEditorContentChange = useCallback((content: string) => {
-    console.log('📝 handleEditorContentChange called, content length:', content.length);
     // Store in ref immediately (no re-render)
     pendingContentRef.current = content;
     isDirtyRef.current = true;
+    setManuscriptSaveStatus((previous) => (previous === 'unsaved' ? previous : 'unsaved'));
     
     // Debounce the save to avoid constant saves while typing
     if (autoSaveTimerRef.current) {
@@ -934,10 +1299,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
       
       const contentToSave = pendingContentRef.current;
       if (contentToSave === lastSavedContentRef.current) return;
-      
-      console.log('💾 Auto-saving manuscript...');
-      
+
       try {
+        if (isMountedRef.current) {
+          setManuscriptSaveStatus('saving');
+        }
         // Create new abort controller for this save request
         autoSaveAbortControllerRef.current = new AbortController();
         
@@ -955,24 +1321,30 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
         if (!autoSaveAbortControllerRef.current?.signal.aborted && isMountedRef.current) {
           lastSavedContentRef.current = contentToSave;
           isDirtyRef.current = false;
-          console.log('✅ Manuskript auto-lagret:', manuscript.title);
+          setLastManuscriptSaved(new Date());
+          setManuscriptSaveStatus('saved');
           // IMPORTANT: Do NOT call onManuscriptChange or setSelectedManuscript here
           // Auto-save should be completely transparent to parent
         }
       } catch (error) {
         // Ignore abort errors (component unmounted)
         if (error instanceof Error && error.name === 'AbortError') {
-          console.log('Auto-save cancelled (component unmounted)');
           return;
         }
         console.error('❌ Error during manuscript auto-save:', error);
-        // Do NOT update state on error - keep parent unaware of auto-save state
+        if (isMountedRef.current) {
+          setManuscriptSaveStatus('error');
+        }
       }
     }, 2000);
-  }, [projectId, selectedManuscript?.id]);
+  }, [selectedManuscript?.id]);
 
   // Memoized handler for parsing screenplay content to scenes
   const handleParseToScenes = useCallback((content: string) => {
+    if (!autoBreakdownEnabled) {
+      showWarning('Auto Breakdown er deaktivert. Aktiver bryteren først.');
+      return;
+    }
     // Parse Fountain content to create scenes
     const lines = content.split('\n');
     const newScenes: SceneBreakdown[] = [];
@@ -1010,7 +1382,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     
     lines.forEach((line, lineIndex) => {
       const trimmed = line.trim();
-      const sceneMatch = trimmed.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[\.\s]+(.+?)(?:\s*-\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME))?$/i);
+      const sceneMatch = trimmed.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*-\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME))?$/i);
       
       if (sceneMatch) {
         // Save previous scene
@@ -1030,7 +1402,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
         currentSceneData.lineCount++;
         
         // Check for character names (all caps followed by dialogue)
-        const characterMatch = trimmed.match(/^([A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]+)(\s*\(.*\))?$/);
+        const characterMatch = trimmed.match(/^([A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]+)(\s*\(.*\))?$/);
         if (characterMatch && lines[lineIndex + 1]?.trim() && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)) {
           const charName = characterMatch[1].replace(/\s*\(.*\)$/, '').trim();
           if (charName.length > 1 && charName.length < 40) {
@@ -1046,7 +1418,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     // Update scenes
     setScenes(newScenes);
     showSuccess(`Parsed ${newScenes.length} scenes from screenplay`);
-  }, [projectId, showSuccess]);
+  }, [autoBreakdownEnabled, projectId, showSuccess, showWarning]);
 
   const handleDeleteManuscript = async (manuscript: Manuscript) => {
     if (!confirm(`Er du sikker på at du vil slette "${manuscript.title}"?`)) return;
@@ -1065,7 +1437,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     }
   };
 
-  const estimatedRuntime = useMemo(() => {
+  const _estimatedRuntime = useMemo(() => {
     if (!selectedManuscript) return 0;
     // Industry standard: 1 page ≈ 1 minute
     return selectedManuscript.pageCount;
@@ -1087,45 +1459,271 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     return { intScenes, extScenes, dayScenes, nightScenes, total: scenes.length };
   }, [scenes]);
 
+  const nextSceneNumber = useMemo(() => {
+    const numericValues = scenes
+      .map((scene) => {
+        if (typeof scene.sceneNumber === 'number') return scene.sceneNumber;
+        const parsed = Number.parseInt(String(scene.sceneNumber ?? ''), 10);
+        return Number.isFinite(parsed) ? parsed : null;
+      })
+      .filter((value): value is number => value !== null);
+    const highest = numericValues.length > 0 ? Math.max(...numericValues) : scenes.length;
+    return highest + 1;
+  }, [scenes]);
+
+  const closeSceneDialog = useCallback(() => {
+    setShowSceneDialog(false);
+    setEditingScene(null);
+  }, []);
+
+  const openCreateSceneDialog = useCallback(() => {
+    setEditingScene(null);
+    setShowSceneDialog(true);
+  }, []);
+
+  const openEditSceneDialog = useCallback((scene: SceneBreakdown) => {
+    setEditingScene(scene);
+    setShowSceneDialog(true);
+  }, []);
+
+  useEffect(() => {
+    if (!showSceneDialog) return;
+
+    if (editingScene) {
+      setSceneForm({
+        sceneNumber: String(editingScene.sceneNumber ?? ''),
+        sceneHeading: String(editingScene.sceneHeading ?? editingScene.heading ?? ''),
+        intExt: (editingScene.intExt as 'INT' | 'EXT' | 'INT/EXT') || 'INT',
+        locationName: String(editingScene.locationName ?? ''),
+        timeOfDay: (editingScene.timeOfDay as 'DAY' | 'NIGHT' | 'DAWN' | 'DUSK' | 'CONTINUOUS' | 'LATER' | 'MORNING' | 'EVENING') || 'DAY',
+        pageLength: typeof editingScene.pageLength === 'number' ? String(editingScene.pageLength) : '',
+        description: String(editingScene.description ?? ''),
+        status: String(editingScene.status ?? 'not-scheduled'),
+      });
+      return;
+    }
+
+    setSceneForm({
+      sceneNumber: String(nextSceneNumber),
+      sceneHeading: '',
+      intExt: 'INT',
+      locationName: '',
+      timeOfDay: 'DAY',
+      pageLength: '',
+      description: '',
+      status: 'not-scheduled',
+    });
+  }, [editingScene, nextSceneNumber, showSceneDialog]);
+
+  const handleSaveScene = async () => {
+    if (!selectedManuscript) {
+      showWarning('Velg et manuskript først');
+      return;
+    }
+
+    const heading = sceneForm.sceneHeading.trim();
+    if (!heading) {
+      showWarning('Scene heading er påkrevd');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const parsedPageLength = Number.parseFloat(sceneForm.pageLength);
+    const pageLength = Number.isFinite(parsedPageLength) ? parsedPageLength : undefined;
+
+    const sceneToSave: SceneBreakdown = {
+      ...(editingScene || {}),
+      id: editingScene?.id ?? `scene-${Date.now()}`,
+      manuscriptId: selectedManuscript.id,
+      projectId: projectId || editingScene?.projectId,
+      sceneNumber: sceneForm.sceneNumber.trim() || String(nextSceneNumber),
+      sceneHeading: heading,
+      heading,
+      intExt: sceneForm.intExt,
+      locationName: sceneForm.locationName.trim(),
+      timeOfDay: sceneForm.timeOfDay,
+      pageLength,
+      description: sceneForm.description.trim(),
+      status: sceneForm.status,
+      characters: Array.isArray(editingScene?.characters) ? editingScene.characters : [],
+      propsNeeded: Array.isArray(editingScene?.propsNeeded) ? editingScene.propsNeeded : [],
+      createdAt: editingScene?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    const previousScenes = scenes;
+    const nextScenes = editingScene
+      ? scenes.map((scene) => (scene.id === sceneToSave.id ? sceneToSave : scene))
+      : [...scenes, sceneToSave];
+
+    setScenes(nextScenes);
+    if (!selectedScene || selectedScene.id === sceneToSave.id) {
+      setSelectedScene(sceneToSave);
+    }
+    closeSceneDialog();
+
+    try {
+      const persistedScene = await manuscriptService.saveScene(sceneToSave);
+      setScenes((current) =>
+        current.map((scene) =>
+          scene.id === sceneToSave.id
+            ? { ...sceneToSave, ...persistedScene }
+            : scene
+        )
+      );
+      if (!selectedScene || selectedScene.id === sceneToSave.id) {
+        setSelectedScene({ ...sceneToSave, ...persistedScene });
+      }
+      showSuccess(editingScene ? 'Scene oppdatert' : 'Scene opprettet');
+    } catch (error) {
+      console.error('Failed to save scene:', error);
+      setScenes(previousScenes);
+      showError('Kunne ikke lagre scene');
+    }
+  };
+
+  const handleDeleteScene = async () => {
+    if (!editingScene) return;
+    if (!window.confirm(`Er du sikker på at du vil slette scene ${editingScene.sceneNumber ?? ''}?`)) {
+      return;
+    }
+
+    const sceneId = editingScene.id;
+    const previousScenes = scenes;
+    const remainingScenes = scenes.filter((scene) => scene.id !== sceneId);
+
+    setScenes(remainingScenes);
+    if (selectedScene?.id === sceneId) {
+      setSelectedScene(remainingScenes[0] ?? null);
+    }
+    closeSceneDialog();
+
+    try {
+      await manuscriptService.deleteScene(sceneId);
+      showSuccess('Scene slettet');
+    } catch (error) {
+      console.error('Failed to delete scene:', error);
+      setScenes(previousScenes);
+      showError('Kunne ikke slette scene');
+    }
+  };
+
+  const selectedManuscriptIsExample = selectedManuscript
+    ? isExampleManuscriptProject(selectedManuscript)
+    : false;
+
+  if (!hasProjectContext) {
+    return (
+      <Box sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        minHeight: 400,
+        gap: responsive.spacing,
+        color: branding.colors.textPrimary,
+        p: responsive.padding,
+      }}>
+        <DescriptionIcon sx={{ fontSize: is4K ? 80 : isDesktop ? 64 : 48, opacity: 0.3 }} />
+        <Typography variant="h6" sx={{ fontSize: responsive.headerFontSize }}>Velg et prosjekt</Typography>
+        <Typography variant="body2" sx={{ textAlign: 'center', maxWidth: 300, fontSize: responsive.bodyFontSize }}>
+          Velg eller opprett et prosjekt fra oversikten for å begynne å skrive manus.
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box
+      sx={{
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+      }}
+    >
       {/* Header */}
-      <Box sx={{ p: responsive.headerPadding, borderBottom: 1, borderColor: 'divider' }}>
+      <Box
+        sx={{
+          p: responsive.headerPadding,
+          borderBottom: `1px solid ${branding.colors.border}`,
+          background: `linear-gradient(180deg, ${branding.colors.surface} 0%, ${branding.colors.background} 100%)`,
+        }}
+      >
         <Stack 
           direction={responsive.headerStackDirection} 
           spacing={responsive.spacing} 
           alignItems={isMobile ? 'stretch' : 'center'} 
           justifyContent="space-between"
         >
-          <Typography 
-            variant="h5" 
-            sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 1,
-              fontSize: responsive.headerFontSize,
-              fontWeight: 600,
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              minHeight: isMobile ? 34 : 40,
+              minWidth: 0,
             }}
           >
-            <DescriptionIcon sx={{ fontSize: responsive.iconSize }} />
-            {isMobile ? 'Manuskript' : 'Manuskript & Script'}
-          </Typography>
+            {headerLeftContent}
+          </Box>
           
           <Stack 
             direction="row" 
             spacing={isMobile ? 0.5 : 1} 
             flexWrap="wrap"
             justifyContent={isMobile ? 'flex-start' : 'flex-end'}
-            sx={{ gap: isMobile ? 0.5 : 1 }}
+            sx={{
+              gap: isMobile ? 0.5 : 1,
+              '& .MuiButton-outlined': {
+                borderColor: `${branding.colors.primary}66`,
+                color: branding.colors.textPrimary,
+                '&:hover': {
+                  borderColor: branding.colors.primary,
+                  bgcolor: `${branding.colors.primary}1a`,
+                },
+              },
+              '& .MuiButton-contained': {
+                bgcolor: branding.colors.primary,
+                color: branding.colors.textPrimary,
+                '&:hover': {
+                  bgcolor: branding.colors.secondary,
+                },
+              },
+            }}
           >
             {selectedManuscript && (
               <>
+                <ToggleButton
+                  value="auto-breakdown"
+                  selected={autoBreakdownEnabled}
+                  size={isMobile ? 'small' : 'medium'}
+                  onChange={(_, isEnabled) => {
+                    setAutoBreakdownEnabled(isEnabled);
+                    showInfo(isEnabled ? 'Auto Breakdown aktivert' : 'Auto Breakdown deaktivert');
+                  }}
+                  sx={{
+                    fontSize: responsive.captionFontSize,
+                    color: autoBreakdownEnabled ? branding.colors.accent : branding.colors.textSecondary,
+                    borderColor: autoBreakdownEnabled ? `${branding.colors.accent}88` : branding.colors.border,
+                    '&.Mui-selected': {
+                      color: branding.colors.accent,
+                      bgcolor: `${branding.colors.accent}22`,
+                      borderColor: `${branding.colors.accent}88`,
+                    },
+                  }}
+                >
+                  {autoBreakdownEnabled ? 'Auto Breakdown På' : 'Auto Breakdown Av'}
+                </ToggleButton>
                 <Button
                   variant="outlined"
                   startIcon={!isMobile ? <AutoFixHighIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
                   size={responsive.buttonSize}
                   onClick={handleAutoBreakdown}
-                  disabled={isLoading}
+                  disabled={isLoading || !autoBreakdownEnabled}
                   sx={{ fontSize: responsive.bodyFontSize }}
                 >
                   {isMobile ? 'Auto' : 'Auto Breakdown'}
@@ -1169,10 +1767,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
               size={responsive.buttonSize}
               onClick={() => setShowTemplatePanel(true)}
               sx={{ 
-                borderColor: '#00d4ff', 
-                color: '#00d4ff', 
+                borderColor: `${branding.colors.accent}aa`,
+                color: branding.colors.accent,
                 fontSize: responsive.bodyFontSize,
-                '&:hover': { borderColor: '#00b8e6', bgcolor: 'rgba(0,212,255,0.1)' } 
+                '&:hover': { borderColor: branding.colors.accent, bgcolor: `${branding.colors.accent}1a` } 
               }}
             >
               Maler
@@ -1188,6 +1786,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
             </Button>
           </Stack>
         </Stack>
+        {isLoading && selectedManuscript && (
+          <LinearProgress
+            sx={{
+              mt: responsive.spacing,
+              borderRadius: 999,
+              '& .MuiLinearProgress-bar': { borderRadius: 999 },
+            }}
+          />
+        )}
 
         {/* Manuscript Cards - shown when no manuscript is selected */}
         {!selectedManuscript && manuscripts.length > 0 && (
@@ -1196,28 +1803,41 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
               variant="h6" 
               sx={{ 
                 mb: responsive.spacing, 
-                color: '#fff', 
+                color: branding.colors.textPrimary, 
                 fontWeight: 600,
                 fontSize: responsive.titleFontSize,
               }}
             >
               Dine Manuskripter
             </Typography>
-            <Grid container spacing={responsive.cardSpacing}>
-              {manuscripts.map(manuscript => (
-                <Grid key={manuscript.id} size={responsive.cardGridSize}>
+            <Box
+              sx={{
+                display: 'grid',
+                gap: responsive.cardSpacing,
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  sm: 'repeat(2, minmax(0, 1fr))',
+                  md: 'repeat(3, minmax(0, 1fr))',
+                  lg: 'repeat(4, minmax(0, 1fr))',
+                },
+              }}
+            >
+              {manuscripts.map((manuscript) => {
+                const manuscriptCoverFocalPoint = getManuscriptCoverFocalPoint(manuscript);
+                const isExampleProject = isExampleManuscriptProject(manuscript);
+                return (
+                <Box key={manuscript.id}>
                   <Card 
                     sx={{ 
-                      bgcolor: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      background: `linear-gradient(165deg, ${branding.colors.surface} 0%, ${branding.colors.background} 100%)`,
+                      border: `1px solid ${branding.colors.border}`,
                       borderRadius: isMobile ? 2 : 3,
                       overflow: 'hidden',
                       transition: 'all 0.3s ease',
                       '&:hover': {
-                        bgcolor: 'rgba(255,255,255,0.05)',
-                        borderColor: '#9c27b0',
+                        borderColor: branding.colors.primary,
                         transform: isMobile ? 'none' : 'translateY(-4px)',
-                        boxShadow: '0 12px 40px rgba(156, 39, 176, 0.2)',
+                        boxShadow: `0 12px 40px ${branding.colors.primary}33`,
                       },
                     }}
                   >
@@ -1228,31 +1848,34 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                         height: responsive.cardImageHeight,
                         bgcolor: manuscript.coverImage 
                           ? 'transparent' 
-                          : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-                        background: manuscript.coverImage 
-                          ? `url(${manuscript.coverImage}) center/cover`
-                          : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+                          : `linear-gradient(135deg, ${branding.colors.gradientStart} 0%, ${branding.colors.gradientEnd} 55%, ${branding.colors.background} 100%)`,
+                        backgroundImage: manuscript.coverImage
+                          ? `url(${manuscript.coverImage})`
+                          : `linear-gradient(135deg, ${branding.colors.gradientStart} 0%, ${branding.colors.gradientEnd} 55%, ${branding.colors.background} 100%)`,
+                        backgroundSize: 'cover',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: manuscript.coverImage
+                          ? `${manuscriptCoverFocalPoint.x}% ${manuscriptCoverFocalPoint.y}%`
+                          : 'center',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         cursor: 'pointer',
                         overflow: 'hidden',
                       }}
-                      onClick={() => {
-                        setSelectedManuscript(manuscript);
-                        loadScenes(manuscript.id);
-                        loadActs(manuscript.id);
-                        loadDialogue(manuscript.id);
-                        loadRevisions(manuscript.id);
+                      onClick={(event) => {
+                        const target = event.target as HTMLElement;
+                        if (target.closest('[data-cover-upload-action="true"]')) return;
+                        requestOpenManuscript(manuscript);
                       }}
                     >
                       {!manuscript.coverImage && (
                         <Box sx={{ textAlign: 'center' }}>
-                          <MenuBookIcon sx={{ fontSize: is4K ? 80 : isDesktop ? 64 : 48, color: 'rgba(156, 39, 176, 0.4)', mb: 1 }} />
+                          <MenuBookIcon sx={{ fontSize: is4K ? 80 : isDesktop ? 64 : 48, color: `${branding.colors.primary}99`, mb: 1 }} />
                           <Typography 
                             variant="caption" 
                             sx={{ 
-                              color: 'rgba(255,255,255,0.6)',
+                              color: branding.colors.textSecondary,
                               display: 'block',
                               fontSize: responsive.captionFontSize,
                             }}
@@ -1264,6 +1887,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                       
                       {/* Cover Upload Overlay */}
                       <Box 
+                        data-cover-upload-action="true"
                         sx={{ 
                           position: 'absolute',
                           top: isMobile ? 4 : 8,
@@ -1274,19 +1898,28 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                           transition: 'opacity 0.2s',
                           '.MuiCard-root:hover &': { opacity: 1 },
                         }}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
                       >
                         <input
+                          data-cover-upload-action="true"
                           type="file"
                           accept="image/*"
                           id={`cover-upload-${manuscript.id}`}
                           style={{ display: 'none' }}
                           onChange={async (e) => {
+                            e.stopPropagation();
                             const file = e.target.files?.[0];
                             if (file) {
                               const reader = new FileReader();
                               reader.onload = async (event) => {
                                 const coverImage = event.target?.result as string;
-                                const updatedManuscript: Manuscript = { ...manuscript, coverImage };
+                                const updatedManuscript: Manuscript = {
+                                  ...manuscript,
+                                  coverImage,
+                                  coverFocalPoint: { ...DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT },
+                                };
                                 await manuscriptService.updateManuscript(updatedManuscript);
                                 loadManuscripts();
                                 showSuccess('Cover oppdatert');
@@ -1299,13 +1932,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                           <IconButton
                             size="small"
                             onClick={(e) => {
+                              e.preventDefault();
                               e.stopPropagation();
                               document.getElementById(`cover-upload-${manuscript.id}`)?.click();
                             }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            data-cover-upload-action="true"
                             sx={{ 
                               bgcolor: 'rgba(0,0,0,0.6)',
-                              color: '#fff',
-                              '&:hover': { bgcolor: 'rgba(156, 39, 176, 0.8)' },
+                              color: branding.colors.textPrimary,
+                              '&:hover': { bgcolor: `${branding.colors.primary}cc` },
                             }}
                           >
                             <FileUploadIcon sx={{ fontSize: responsive.iconSize - 4 }} />
@@ -1324,11 +1961,12 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                           position: 'absolute',
                           top: isMobile ? 8 : 12,
                           left: isMobile ? 8 : 12,
-                          bgcolor: manuscript.status === 'shooting' ? 'rgba(16, 185, 129, 0.9)' :
-                                   manuscript.status === 'approved' ? 'rgba(59, 130, 246, 0.9)' :
-                                   manuscript.status === 'completed' ? 'rgba(16, 185, 129, 0.9)' :
-                                   'rgba(100, 100, 100, 0.9)',
-                          color: '#fff',
+                          bgcolor: manuscript.status === 'shooting' ? `${branding.colors.primary}dd` :
+                                   manuscript.status === 'approved' ? `${branding.colors.accent}dd` :
+                                   manuscript.status === 'review' ? `${branding.colors.secondary}dd` :
+                                   manuscript.status === 'completed' ? `${branding.colors.primary}dd` :
+                                   `${branding.colors.surface}ee`,
+                          color: branding.colors.textPrimary,
                           fontWeight: 700,
                           fontSize: responsive.captionFontSize,
                           letterSpacing: '0.5px',
@@ -1342,7 +1980,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                         <Typography 
                           variant="h6" 
                           sx={{ 
-                            color: '#fff', 
+                            color: branding.colors.textPrimary, 
                             fontWeight: 700, 
                             fontSize: responsive.titleFontSize,
                             lineHeight: 1.3,
@@ -1367,8 +2005,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                               setShowEditManuscriptDialog(true);
                             }}
                             sx={{ 
-                              color: 'rgba(255,255,255,0.87)',
-                              '&:hover': { color: '#9c27b0', bgcolor: 'rgba(156, 39, 176, 0.1)' },
+                              color: branding.colors.textPrimary,
+                              '&:hover': { color: branding.colors.primary, bgcolor: `${branding.colors.primary}1a` },
                             }}
                           >
                             <EditIcon sx={{ fontSize: responsive.iconSize - 4 }} />
@@ -1376,12 +2014,40 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                         </Tooltip>
                       </Box>
 
+                      {isExampleProject && (
+                        <Box sx={{ mb: 1.25 }}>
+                          <Chip
+                            label="Eksempelprosjekt"
+                            size={responsive.chipSize}
+                            sx={{
+                              mb: 0.75,
+                              bgcolor: `${branding.colors.accent}22`,
+                              border: `1px solid ${branding.colors.accent}88`,
+                              color: branding.colors.accent,
+                              fontWeight: 700,
+                              letterSpacing: '0.2px',
+                            }}
+                          />
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              display: 'block',
+                              color: branding.colors.textSecondary,
+                              lineHeight: 1.35,
+                              fontSize: responsive.captionFontSize,
+                            }}
+                          >
+                            {EXAMPLE_PROJECT_NOTICE}
+                          </Typography>
+                        </Box>
+                      )}
+
                       {/* Subtitle */}
                       {manuscript.subtitle && (
                         <Typography 
                           variant="body2" 
                           sx={{ 
-                            color: 'rgba(255,255,255,0.87)', 
+                            color: branding.colors.textPrimary, 
                             mb: 1.5,
                             fontSize: responsive.bodyFontSize,
                           }}
@@ -1394,7 +2060,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                       <Typography 
                         variant="body2" 
                         sx={{ 
-                          color: 'rgba(255,255,255,0.87)', 
+                          color: branding.colors.textSecondary, 
                           mb: responsive.spacing,
                           fontSize: responsive.captionFontSize,
                           display: 'flex',
@@ -1413,25 +2079,26 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                         flexWrap: 'wrap',
                         py: isMobile ? 1 : 1.5,
                         px: isMobile ? 1 : 1.5,
-                        bgcolor: 'rgba(255,255,255,0.03)',
+                        bgcolor: `${branding.colors.surface}88`,
+                        border: `1px solid ${branding.colors.border}`,
                         borderRadius: 1.5,
                         mb: responsive.spacing,
                       }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <DescriptionIcon sx={{ fontSize: responsive.iconSize - 6, color: '#9c27b0' }} />
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontWeight: 500, fontSize: responsive.captionFontSize }}>
+                          <DescriptionIcon sx={{ fontSize: responsive.iconSize - 6, color: branding.colors.primary }} />
+                          <Typography variant="caption" sx={{ color: branding.colors.textSecondary, fontWeight: 500, fontSize: responsive.captionFontSize }}>
                             {manuscript.pageCount || 0} sider
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <ScheduleIcon sx={{ fontSize: responsive.iconSize - 6, color: '#9c27b0' }} />
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontWeight: 500, fontSize: responsive.captionFontSize }}>
+                          <ScheduleIcon sx={{ fontSize: responsive.iconSize - 6, color: branding.colors.primary }} />
+                          <Typography variant="caption" sx={{ color: branding.colors.textSecondary, fontWeight: 500, fontSize: responsive.captionFontSize }}>
                             v{manuscript.version || '1.0'}
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <SceneIcon sx={{ fontSize: responsive.iconSize - 6, color: '#9c27b0' }} />
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontWeight: 500, fontSize: responsive.captionFontSize }}>
+                          <SceneIcon sx={{ fontSize: responsive.iconSize - 6, color: branding.colors.primary }} />
+                          <Typography variant="caption" sx={{ color: branding.colors.textSecondary, fontWeight: 500, fontSize: responsive.captionFontSize }}>
                             {manuscript.wordCount || 0} ord
                           </Typography>
                         </Box>
@@ -1444,18 +2111,14 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                           variant="contained"
                           size={responsive.buttonSize}
                           onClick={() => {
-                            setSelectedManuscript(manuscript);
-                            loadScenes(manuscript.id);
-                            loadActs(manuscript.id);
-                            loadDialogue(manuscript.id);
-                            loadRevisions(manuscript.id);
+                            requestOpenManuscript(manuscript);
                           }}
                           sx={{
-                            bgcolor: '#9c27b0',
-                            color: '#fff',
+                            bgcolor: branding.colors.primary,
+                            color: branding.colors.textPrimary,
                             fontWeight: 600,
                             fontSize: responsive.bodyFontSize,
-                            '&:hover': { bgcolor: '#7b1fa2' },
+                            '&:hover': { bgcolor: branding.colors.secondary },
                           }}
                           endIcon={<ChevronRightIcon sx={{ fontSize: responsive.iconSize - 4 }} />}
                         >
@@ -1464,17 +2127,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                         <Tooltip title="Slett manuskript">
                           <IconButton
                             size="small"
-                            onClick={async (e) => {
+                            onClick={(e) => {
                               e.stopPropagation();
-                              if (confirm(`Er du sikker på at du vil slette "${manuscript.title}"?`)) {
-                                await manuscriptService.deleteManuscript(manuscript.id);
-                                loadManuscripts();
-                                showSuccess('Manuskript slettet');
-                              }
+                              void handleDeleteManuscript(manuscript);
                             }}
                             sx={{ 
-                              color: 'rgba(255,255,255,0.7)',
-                              border: '1px solid rgba(255,255,255,0.1)',
+                              color: branding.colors.textSecondary,
+                              border: `1px solid ${branding.colors.border}`,
                               '&:hover': { color: '#ef4444', borderColor: '#ef4444', bgcolor: 'rgba(239, 68, 68, 0.1)' },
                             }}
                           >
@@ -1484,9 +2143,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                       </Box>
                     </CardContent>
                   </Card>
-                </Grid>
-              ))}
-            </Grid>
+                </Box>
+                );
+              })}
+            </Box>
           </Box>
         )}
 
@@ -1496,15 +2156,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
             mt: responsive.cardSpacing, 
             textAlign: 'center',
             p: responsive.padding,
-            bgcolor: 'rgba(255,255,255,0.02)',
+            bgcolor: `${branding.colors.surface}66`,
             borderRadius: 2,
-            border: '1px dashed rgba(255,255,255,0.1)',
+            border: `1px dashed ${branding.colors.border}`,
           }}>
-            <DescriptionIcon sx={{ fontSize: is4K ? 80 : isDesktop ? 64 : 48, color: 'rgba(255,255,255,0.2)', mb: 2 }} />
-            <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, fontSize: responsive.titleFontSize }}>
+            <DescriptionIcon sx={{ fontSize: is4K ? 80 : isDesktop ? 64 : 48, color: `${branding.colors.textSecondary}99`, mb: 2 }} />
+            <Typography variant="h6" sx={{ color: branding.colors.textPrimary, mb: 1, fontSize: responsive.titleFontSize }}>
               Ingen manuskripter ennå
             </Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: responsive.spacing, fontSize: responsive.bodyFontSize }}>
+            <Typography variant="body2" sx={{ color: branding.colors.textSecondary, mb: responsive.spacing, fontSize: responsive.bodyFontSize }}>
               Opprett ditt første manuskript eller importer et eksisterende
             </Typography>
             <Button
@@ -1513,172 +2173,61 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
               size={responsive.buttonSize}
               onClick={() => setShowNewManuscriptDialog(true)}
               sx={{
-                bgcolor: '#9c27b0',
+                bgcolor: branding.colors.primary,
+                color: branding.colors.textPrimary,
                 fontSize: responsive.bodyFontSize,
-                '&:hover': { bgcolor: '#7b1fa2' },
+                '&:hover': { bgcolor: branding.colors.secondary },
               }}
             >
               Opprett nytt manuskript
             </Button>
           </Box>
         )}
-
-        {/* Back button and stats when manuscript is selected */}
-        {selectedManuscript && (
-          <Box sx={{ mt: 2 }}>
-            <Button
-              variant="outlined"
-              startIcon={<ArrowBackIcon sx={{ fontSize: responsive.iconSize - 4 }} />}
-              size={responsive.buttonSize}
-              onClick={() => setSelectedManuscript(null)}
-              sx={{ 
-                color: '#9c27b0',
-                borderColor: 'rgba(156, 39, 176, 0.5)',
-                mb: responsive.spacing,
-                fontSize: responsive.bodyFontSize,
-                '&:hover': { 
-                  bgcolor: 'rgba(156, 39, 176, 0.1)',
-                  borderColor: '#9c27b0',
-                },
-              }}
-            >
-              {isMobile ? '← Tilbake' : '← Tilbake til kortvisning'}
-            </Button>
-            <Box sx={{ display: 'flex', gap: isMobile ? 1 : 2, flexWrap: 'wrap', alignItems: 'center' }}>
-              <Typography 
-                variant="h6" 
-                sx={{ 
-                  color: '#fff', 
-                  fontWeight: 600,
-                  fontSize: responsive.titleFontSize,
-                  width: isMobile ? '100%' : 'auto',
-                }}
-              >
-                {selectedManuscript.title}
-              </Typography>
-              <Chip 
-                icon={<DescriptionIcon sx={{ fontSize: responsive.iconSize - 8 }} />} 
-                label={`${selectedManuscript.pageCount} sider`} 
-                size={responsive.chipSize}
-                sx={{ fontSize: responsive.captionFontSize }}
-              />
-              <Chip 
-                icon={<ScheduleIcon sx={{ fontSize: responsive.iconSize - 8 }} />} 
-                label={`~${estimatedRuntime} min`} 
-                size={responsive.chipSize}
-                sx={{ fontSize: responsive.captionFontSize }}
-              />
-              {!isMobile && (
-                <>
-                  <Chip 
-                    icon={<SceneIcon sx={{ fontSize: responsive.iconSize - 8 }} />} 
-                    label={`${sceneStats.total} scener`} 
-                    size={responsive.chipSize}
-                    sx={{ fontSize: responsive.captionFontSize }}
-                  />
-                  <Chip 
-                    icon={<PersonIcon sx={{ fontSize: responsive.iconSize - 8 }} />} 
-                    label={`${characterList.length} karakterer`} 
-                    size={responsive.chipSize}
-                    sx={{ fontSize: responsive.captionFontSize }}
-                  />
-                </>
-              )}
-              <Chip 
-                label={selectedManuscript.status.toUpperCase()} 
-                size={responsive.chipSize}
-                sx={{ fontSize: responsive.captionFontSize }}
-                color={
-                  selectedManuscript.status === 'approved' ? 'success' : 
-                  selectedManuscript.status === 'shooting' ? 'primary' : 
-                  'default'
-                }
-              />
-              
-              {/* Manuscript Save Status */}
-              {manuscriptSaveStatus === 'saved' && (
-                <Chip 
-                  icon={<CheckCircleIcon sx={{ fontSize: responsive.iconSize - 8 }} />}
-                  label={lastManuscriptSaved ? (isMobile ? 'Lagret' : `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`) : 'Lagret'} 
-                  size={responsive.chipSize}
-                  sx={{ 
-                    bgcolor: 'rgba(52, 211, 153, 0.2)',
-                    color: '#34d399',
-                    fontSize: responsive.captionFontSize,
-                  }}
-                />
-              )}
-              {manuscriptSaveStatus === 'saving' && (
-                <Chip 
-                  icon={<CircularProgress size={isMobile ? 12 : 16} />}
-                  label="Lagrer..." 
-                  size={responsive.chipSize}
-                  sx={{ 
-                    bgcolor: 'rgba(60, 165, 250, 0.2)',
-                    color: '#60a5fa',
-                    fontSize: responsive.captionFontSize,
-                  }}
-                />
-              )}
-              {manuscriptSaveStatus === 'unsaved' && (
-                <Chip 
-                  label={isMobile ? '● Ulagret' : '● Ulagret endringer'} 
-                  size={responsive.chipSize}
-                  sx={{ 
-                    bgcolor: 'rgba(251, 191, 36, 0.2)',
-                    color: '#fbbf24',
-                    fontSize: responsive.captionFontSize,
-                  }}
-                />
-              )}
-              {manuscriptSaveStatus === 'error' && (
-                <Tooltip title="Feil ved automatisk lagring - prøv manuell lagring">
-                  <Chip 
-                    icon={<WarningIcon sx={{ fontSize: responsive.iconSize - 8 }} />}
-                    label="Lagringsfeil" 
-                    size={responsive.chipSize}
-                    sx={{ 
-                      bgcolor: 'rgba(244, 63, 94, 0.2)',
-                      color: '#f43f5e',
-                      fontSize: responsive.captionFontSize,
-                    }}
-                  />
-                </Tooltip>
-              )}
-              
-              {/* Online Status */}
-              <Tooltip title={isOnline ? 'Tilkoblet nettverk' : 'Arbeider offline - endringer lagres lokalt'}>
-                <Box 
-                  sx={{ 
-                    width: isMobile ? 6 : 8, 
-                    height: isMobile ? 6 : 8, 
-                    borderRadius: '50%', 
-                    bgcolor: isOnline ? '#34d399' : '#fbbf24',
-                    display: 'inline-block',
-                  }}
-                />
-              </Tooltip>
-            </Box>
-          </Box>
-        )}
       </Box>
 
       {selectedManuscript && (
         <>
+          {selectedManuscriptIsExample && (
+            <Alert
+              severity="info"
+              sx={{
+                mx: responsive.padding,
+                mt: responsive.spacing,
+                mb: responsive.spacing,
+                bgcolor: `${branding.colors.accent}1a`,
+                border: `1px solid ${branding.colors.accent}66`,
+                color: branding.colors.textPrimary,
+                '& .MuiAlert-icon': {
+                  color: branding.colors.accent,
+                },
+              }}
+            >
+              <strong>Eksempelprosjekt:</strong> {EXAMPLE_PROJECT_NOTICE}
+            </Alert>
+          )}
+
           {/* Tabs */}
           <Tabs
             value={activeTab}
             onChange={(_, newValue) => setActiveTab(newValue)}
             sx={{ 
               borderBottom: 1, 
-              borderColor: 'divider', 
+              borderColor: branding.colors.border, 
+              background: `${branding.colors.surface}99`,
               px: responsive.padding,
               minHeight: isMobile ? 40 : 48,
+              '& .MuiTabs-indicator': {
+                bgcolor: branding.colors.primary,
+              },
               '& .MuiTab-root': {
                 minHeight: isMobile ? 40 : 48,
                 fontSize: responsive.tabFontSize,
                 minWidth: isMobile ? 'auto' : undefined,
                 px: isMobile ? 1 : 2,
+                color: branding.colors.textSecondary,
+                '&.Mui-selected': {
+                  color: branding.colors.textPrimary,
+                },
               },
             }}
             variant="scrollable"
@@ -1699,19 +2248,31 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
             <Tab 
               label={responsive.showTabLabels ? "Scener" : ""} 
               value="scenes" 
-              icon={<SceneIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
+              icon={
+                <Badge color="secondary" badgeContent={sceneStats.total} max={99}>
+                  <SceneIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                </Badge>
+              }
               iconPosition="start" 
             />
             <Tab 
               label={responsive.showTabLabels ? "Karakterer" : ""} 
               value="characters" 
-              icon={<PersonIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
+              icon={
+                <Badge color="secondary" badgeContent={characterList.length} max={99}>
+                  <PersonIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                </Badge>
+              }
               iconPosition="start" 
             />
             <Tab 
               label={responsive.showTabLabels ? "Dialog" : ""} 
               value="dialogue" 
-              icon={<ChatIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
+              icon={
+                <Badge color="secondary" badgeContent={dialogueLines.length} max={99}>
+                  <ChatIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                </Badge>
+              }
               iconPosition="start" 
             />
             <Tab 
@@ -1723,7 +2284,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
             <Tab 
               label={responsive.showTabLabels ? "Revisjoner" : ""} 
               value="revisions" 
-              icon={<HistoryIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
+              icon={
+                <Badge color="secondary" badgeContent={revisions.length} max={99}>
+                  <HistoryIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                </Badge>
+              }
               iconPosition="start" 
             />
             <Tab 
@@ -1733,7 +2298,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Produksjon" : ""} 
+              label={responsive.showTabLabels ? "Storyboard" : ""} 
               value="production" 
               icon={<ViewModuleIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
@@ -1747,7 +2312,16 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
           </Tabs>
 
           {/* Tab content */}
-          <Box sx={{ flex: 1, overflow: 'auto', p: responsive.padding }}>
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              WebkitOverflowScrolling: 'touch',
+              p: responsive.padding,
+            }}
+          >
             {/* Editor Tab */}
             {activeTab === 'editor' && (
               <EditorTab
@@ -1755,10 +2329,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                 scenes={scenes}
                 onContentChange={handleEditorContentChange}
                 onParseToScenes={handleParseToScenes}
+                manuscriptSaveStatus={manuscriptSaveStatus}
+                lastManuscriptSaved={lastManuscriptSaved}
                 characters={sceneCharactersMemo}
                 locations={sceneLocationsMemo}
                 castingRoles={castingRoles}
                 castingLocations={castingLocations}
+                castingCandidates={castingCandidates}
                 onCharacterAdd={handleCharacterAdd}
                 onLocationAdd={handleLocationAdd}
               />
@@ -1779,16 +2356,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                 scenes={scenes}
                 viewMode={sceneViewMode}
                 onViewModeChange={setSceneViewMode}
-                onAddScene={() => {
-                  setEditingScene(null);
-                  setShowSceneDialog(true);
-                }}
-                onEditScene={(scene) => {
-                  setEditingScene(scene);
-                  setShowSceneDialog(true);
-                }}
+                onAddScene={openCreateSceneDialog}
+                onEditScene={openEditSceneDialog}
                 onSelectScene={(scene) => {
                   setSelectedScene(scene);
+                  setSelectedShot(null);
                   setShowProductionPanel(true);
                 }}
                 onReorderScenes={setScenes}
@@ -1822,7 +2394,18 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
 
             {/* Breakdown Tab */}
             {activeTab === 'breakdown' && (
-              <BreakdownTab scenes={scenes} sceneStats={sceneStats} />
+              <BreakdownTab
+                scenes={scenes}
+                sceneStats={sceneStats}
+                onAddScene={openCreateSceneDialog}
+                onEditScene={openEditSceneDialog}
+                onSelectScene={(scene) => {
+                  setSelectedScene(scene);
+                  setSelectedShot(null);
+                  setShowProductionPanel(true);
+                }}
+                selectedScene={selectedScene || undefined}
+              />
             )}
 
             {/* Revisions Tab */}
@@ -1831,18 +2414,44 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                 revisions={revisions} 
                 manuscript={selectedManuscript}
                 onRevisionsChange={setRevisions}
-                onCreateRevision={async () => {
-                  // Could also trigger from parent
-                  const newRevision: ScriptRevision = {
-                    id: `rev-${Date.now()}`,
-                    manuscriptId: selectedManuscript.id,
-                    version: `${selectedManuscript.version || 1}.${revisions.length + 1}`,
-                    createdAt: new Date().toISOString(),
-                    changedBy: 'current-user',
-                    changesSummary: 'Automatisk lagret',
-                    content: selectedManuscript.content,
+                onCreateRevision={async (revision) => {
+                  const nextVersion = revision.version || selectedManuscript.version;
+                  const nowIso = new Date().toISOString();
+                  const updatedManuscript: Manuscript = {
+                    ...selectedManuscript,
+                    version: nextVersion,
+                    updatedAt: nowIso,
                   };
-                  setRevisions([...revisions, newRevision]);
+                  setSelectedManuscript(updatedManuscript);
+                  setManuscripts((current) =>
+                    current.map((entry) => (entry.id === updatedManuscript.id ? updatedManuscript : entry))
+                  );
+                  await manuscriptService.updateManuscript(updatedManuscript);
+                  setManuscriptSaveStatus('saved');
+                  setLastManuscriptSaved(new Date(nowIso));
+                  onManuscriptChange?.(updatedManuscript);
+                }}
+                onRestoreRevision={async (revision) => {
+                  const nowIso = new Date().toISOString();
+                  const restoredManuscript: Manuscript = {
+                    ...selectedManuscript,
+                    content: revision.content,
+                    version: revision.version || selectedManuscript.version,
+                    updatedAt: nowIso,
+                  };
+
+                  setSelectedManuscript(restoredManuscript);
+                  setManuscripts((current) =>
+                    current.map((entry) => (entry.id === restoredManuscript.id ? restoredManuscript : entry))
+                  );
+                  selectedManuscriptRef.current = restoredManuscript;
+                  pendingContentRef.current = revision.content;
+                  lastSavedContentRef.current = revision.content;
+                  isDirtyRef.current = false;
+                  setManuscriptSaveStatus('saved');
+                  setLastManuscriptSaved(new Date(nowIso));
+                  await manuscriptService.updateManuscript(restoredManuscript);
+                  onManuscriptChange?.(restoredManuscript);
                 }}
               />
             )}
@@ -1853,6 +2462,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                 scenes={scenes}
                 onSceneSelect={(scene) => {
                   setSelectedScene(scene);
+                  setSelectedShot(null);
                   setShowProductionPanel(true);
                 }}
                 selectedScene={selectedScene || undefined}
@@ -1860,56 +2470,186 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
             )}
 
             {/* Production Tab - with Script-Storyboard Integration */}
-            {activeTab === 'production' && selectedScene && (
-              <ScriptStoryboardProvider
-                initialState={{
-                  currentScene: {
-                    sceneId: selectedScene.id,
-                    sceneNumber: selectedScene.sceneNumber,
-                    sceneHeading: selectedScene.sceneHeading,
-                    sceneType: selectedScene.intExt,
-                    location: selectedScene.locationName,
-                    timeOfDay: selectedScene.timeOfDay,
-                    startLine: 0,
-                    endLine: 0,
-                  },
-                }}
-              >
-                <Box sx={{ display: 'flex', gap: 2, height: '100%' }}>
-                  <Box sx={{ flex: 1 }}>
-                    <StoryboardIntegrationView
-                      scene={selectedScene}
-                      onUpdate={(updatedScene) => {
-                        setScenes(scenes.map(s => s.id === updatedScene.id ? updatedScene : s));
-                        setSelectedScene(updatedScene);
-                      }}
-                      showScriptPanel={true}
-                      scriptContent={selectedManuscript?.content}
-                      onScriptChange={(content) => {
-                        if (selectedManuscript) {
-                          setSelectedManuscript(prev => prev ? { ...prev, content } : prev);
-                        }
-                      }}
-                    />
-                  </Box>
-                  <Box sx={{ width: 400 }}>
-                    <ShotDetailPanel
-                      scene={selectedScene}
-                      onUpdate={(updatedScene) => {
-                        setScenes(scenes.map(s => s.id === updatedScene.id ? updatedScene : s));
-                        setSelectedScene(updatedScene);
-                      }}
-                    />
-                  </Box>
-                </Box>
-              </ScriptStoryboardProvider>
-            )}
+            {activeTab === 'production' && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
+                <Paper sx={{ p: 2 }}>
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={1.5}
+                    alignItems={{ xs: 'stretch', md: 'center' }}
+                    justifyContent="space-between"
+                  >
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      Velg scene for storyboard
+                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mr: { xs: 0, md: 1 } }}>
+                      <ToggleButtonGroup
+                        size="small"
+                        value={productionWorkspaceMode}
+                        exclusive
+                        onChange={(_, nextValue: 'storyboard' | 'split' | null) => {
+                          if (!nextValue) return;
+                          setProductionWorkspaceMode(nextValue);
+                        }}
+                      >
+                        <ToggleButton value="storyboard">
+                          <Tooltip title="Storyboard-visning">
+                            <ViewModuleIcon sx={{ fontSize: responsive.iconSize - 6 }} />
+                          </Tooltip>
+                        </ToggleButton>
+                        <ToggleButton value="split">
+                          <Tooltip title="Script + Storyboard side ved side">
+                            <PreviewIcon sx={{ fontSize: responsive.iconSize - 6 }} />
+                          </Tooltip>
+                        </ToggleButton>
+                      </ToggleButtonGroup>
+                    </Stack>
+                    <FormControl size="small" sx={{ minWidth: { xs: '100%', md: 340 } }}>
+                      <InputLabel id="production-scene-select-label">Scene</InputLabel>
+                      <Select
+                        labelId="production-scene-select-label"
+                        value={selectedScene?.id || ''}
+                        label="Scene"
+                        onChange={(event) => {
+                          const nextSceneId = String(event.target.value);
+                          const nextScene = scenes.find((scene) => scene.id === nextSceneId) || null;
+                          setSelectedScene(nextScene);
+                        }}
+                      >
+                        {productionSceneOptions.map((scene) => (
+                          <MenuItem key={scene.id} value={scene.id}>
+                            Scene {scene.sceneNumber || '?'} · {scene.sceneHeading || scene.heading || scene.locationName || 'Uten tittel'}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                </Paper>
 
-            {activeTab === 'production' && !selectedScene && (
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Velg en scene fra Scener-tabben for å se produksjonsdetaljer
-                </Typography>
+                {selectedScene ? (
+                  <ScriptStoryboardProvider
+                    initialState={{
+                      currentScene: {
+                        sceneId: selectedScene.id,
+                        sceneNumber: selectedScene.sceneNumber,
+                        sceneHeading: selectedScene.sceneHeading,
+                        sceneType: selectedScene.intExt,
+                        location: selectedScene.locationName,
+                        timeOfDay: selectedScene.timeOfDay,
+                        startLine: 0,
+                        endLine: 0,
+                      },
+                    }}
+                  >
+                    <Box sx={{ flex: 1, minHeight: 0 }}>
+                      {productionWorkspaceMode === 'split' ? (
+                        <ScriptStoryboardSplitView
+                          scriptContent={selectedManuscript.content || ''}
+                          onScriptChange={(content) => {
+                            const updatedManuscript = {
+                              ...selectedManuscript,
+                              content,
+                              updatedAt: new Date().toISOString(),
+                            };
+                            setSelectedManuscript(updatedManuscript);
+                            setManuscripts((current) =>
+                              current.map((entry) => (entry.id === updatedManuscript.id ? updatedManuscript : entry))
+                            );
+                            handleEditorContentChange(content);
+                          }}
+                          scene={selectedScene}
+                          onSceneUpdate={(updatedScene) => {
+                            setScenes(scenes.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene)));
+                            setSelectedScene(updatedScene);
+                          }}
+                          renderScriptEditor={({ content, onChange }) => (
+                            <React.Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={20} /></Box>}>
+                              <LazyScreenplayEditorWithNavigator
+                                editorKey={`${selectedManuscript.id}-production-split`}
+                                value={content}
+                                onChange={onChange}
+                                scriptTitle={selectedManuscript.title}
+                                headerSummary={{
+                                  pages: selectedManuscript.pageCount || 0,
+                                  runtimeMinutes: Math.max(0, Math.round(selectedManuscript.pageCount || 0)),
+                                  sceneCount: scenes.length,
+                                  characterCount: sceneCharactersMemo.length,
+                                  statusLabel: selectedManuscript.status.toUpperCase(),
+                                  saveLabel:
+                                    manuscriptSaveStatus === 'saved'
+                                      ? (lastManuscriptSaved
+                                          ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`
+                                          : 'Lagret')
+                                      : manuscriptSaveStatus === 'saving'
+                                        ? 'Lagrer...'
+                                        : manuscriptSaveStatus === 'error'
+                                          ? 'Lagringsfeil'
+                                          : 'Ulagret',
+                                  saveState: manuscriptSaveStatus,
+                                }}
+                                characters={sceneCharactersMemo}
+                                locations={sceneLocationsMemo}
+                                roles={castingRoles}
+                                candidates={castingCandidates}
+                                scenes={scenes}
+                                onCharacterAdd={handleCharacterAdd}
+                                onLocationAdd={handleLocationAdd}
+                                showLineNumbers={false}
+                              />
+                            </React.Suspense>
+                          )}
+                          renderStoryboard={({ scene, onUpdate, activeFrameIndex, onFrameSelect }) => (
+                            <StoryboardIntegrationView
+                              scene={scene}
+                              onUpdate={onUpdate}
+                              storyboardOnly={true}
+                              activeFrameIndex={activeFrameIndex}
+                              onFrameSelect={(index) => {
+                                onFrameSelect(index);
+                                const shot =
+                                  scene.storyboardFrames?.[index]?.shotNumber ||
+                                  `Shot ${index + 1}`;
+                                setSelectedShot(shot);
+                                setShowProductionPanel(true);
+                              }}
+                            />
+                          )}
+                          onFrameSelect={(_, index) => {
+                            const shot =
+                              selectedScene.storyboardFrames?.[index]?.shotNumber ||
+                              `Shot ${index + 1}`;
+                            setSelectedShot(shot);
+                            setShowProductionPanel(true);
+                          }}
+                        />
+                      ) : (
+                        <StoryboardIntegrationView
+                          scene={selectedScene}
+                          onUpdate={(updatedScene) => {
+                            setScenes(scenes.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene)));
+                            setSelectedScene(updatedScene);
+                          }}
+                          storyboardOnly={true}
+                          onFrameSelect={(index) => {
+                            const shot =
+                              selectedScene.storyboardFrames?.[index]?.shotNumber ||
+                              `Shot ${index + 1}`;
+                            setSelectedShot(shot);
+                            setShowProductionPanel(true);
+                          }}
+                        />
+                      )}
+                    </Box>
+                  </ScriptStoryboardProvider>
+                ) : (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      {productionSceneOptions.length > 0
+                        ? 'Velg en scene i listen over for å åpne storyboard'
+                        : 'Ingen scener enda. Opprett en scene i Scener-fanen først.'}
+                    </Typography>
+                  </Box>
+                )}
               </Box>
             )}
 
@@ -1940,9 +2680,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                     // Update local state
                     const oldScenes = scenes;
                     setScenes(scenes.filter(s => s.id !== sceneId));
-                    // Note: manuscriptService doesn't have deleteScene, so we just update local state
-                    // The scene will be removed from manuscript when saved
                     try {
+                      await manuscriptService.deleteScene(sceneId);
                       showSuccess('Scene slettet');
                     } catch (error) {
                       console.error('Failed to delete scene:', error);
@@ -2024,6 +2763,180 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
         </>
       )}
 
+      {/* Scene Dialog */}
+      <Dialog
+        open={showSceneDialog}
+        onClose={closeSceneDialog}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>{editingScene ? 'Rediger scene' : 'Ny scene'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Scene heading"
+              fullWidth
+              required
+              value={sceneForm.sceneHeading}
+              onChange={(event) => setSceneForm((prev) => ({ ...prev, sceneHeading: event.target.value }))}
+            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Scene #"
+                value={sceneForm.sceneNumber}
+                onChange={(event) => setSceneForm((prev) => ({ ...prev, sceneNumber: event.target.value }))}
+                sx={{ minWidth: { xs: '100%', sm: 120 } }}
+              />
+              <FormControl fullWidth>
+                <InputLabel>INT/EXT</InputLabel>
+                <Select
+                  label="INT/EXT"
+                  value={sceneForm.intExt}
+                  onChange={(event) =>
+                    setSceneForm((prev) => ({ ...prev, intExt: event.target.value as 'INT' | 'EXT' | 'INT/EXT' }))
+                  }
+                >
+                  <MenuItem value="INT">INT</MenuItem>
+                  <MenuItem value="EXT">EXT</MenuItem>
+                  <MenuItem value="INT/EXT">INT/EXT</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl fullWidth>
+                <InputLabel>Tid på dagen</InputLabel>
+                <Select
+                  label="Tid på dagen"
+                  value={sceneForm.timeOfDay}
+                  onChange={(event) =>
+                    setSceneForm((prev) => ({
+                      ...prev,
+                      timeOfDay: event.target.value as 'DAY' | 'NIGHT' | 'DAWN' | 'DUSK' | 'CONTINUOUS' | 'LATER' | 'MORNING' | 'EVENING',
+                    }))
+                  }
+                >
+                  <MenuItem value="DAY">DAY</MenuItem>
+                  <MenuItem value="NIGHT">NIGHT</MenuItem>
+                  <MenuItem value="MORNING">MORNING</MenuItem>
+                  <MenuItem value="EVENING">EVENING</MenuItem>
+                  <MenuItem value="DAWN">DAWN</MenuItem>
+                  <MenuItem value="DUSK">DUSK</MenuItem>
+                  <MenuItem value="LATER">LATER</MenuItem>
+                  <MenuItem value="CONTINUOUS">CONTINUOUS</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Lokasjon"
+                fullWidth
+                value={sceneForm.locationName}
+                onChange={(event) => setSceneForm((prev) => ({ ...prev, locationName: event.target.value }))}
+              />
+              <TextField
+                label="Sidelengde"
+                type="number"
+                inputProps={{ min: 0, step: 0.1 }}
+                value={sceneForm.pageLength}
+                onChange={(event) => setSceneForm((prev) => ({ ...prev, pageLength: event.target.value }))}
+                sx={{ minWidth: { xs: '100%', sm: 150 } }}
+              />
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  label="Status"
+                  value={sceneForm.status}
+                  onChange={(event) => setSceneForm((prev) => ({ ...prev, status: String(event.target.value) }))}
+                >
+                  <MenuItem value="not-scheduled">Ikke planlagt</MenuItem>
+                  <MenuItem value="scheduled">Planlagt</MenuItem>
+                  <MenuItem value="in-progress">Pågår</MenuItem>
+                  <MenuItem value="completed">Fullført</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+
+            <TextField
+              label="Beskrivelse"
+              fullWidth
+              multiline
+              minRows={4}
+              value={sceneForm.description}
+              onChange={(event) => setSceneForm((prev) => ({ ...prev, description: event.target.value }))}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'space-between' }}>
+          <Box>
+            {editingScene && (
+              <Button color="error" onClick={handleDeleteScene} startIcon={<DeleteIcon />}>
+                Slett scene
+              </Button>
+            )}
+          </Box>
+          <Stack direction="row" spacing={1}>
+            <Button onClick={closeSceneDialog}>Avbryt</Button>
+            <Button onClick={handleSaveScene} variant="contained">
+              Lagre scene
+            </Button>
+          </Stack>
+        </DialogActions>
+      </Dialog>
+
+      {/* Example Project Disclaimer Dialog */}
+      <Dialog
+        open={showExampleProjectDisclaimerDialog}
+        onClose={closeExampleProjectDisclaimerDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: `linear-gradient(165deg, ${branding.colors.background} 0%, ${branding.colors.surface} 100%)`,
+            border: `1px solid ${branding.colors.border}`,
+            borderRadius: 2,
+            boxShadow: branding.layout.shadowStrong,
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: branding.colors.textPrimary, fontWeight: 700 }}>
+          Eksempelprosjekt
+        </DialogTitle>
+        <DialogContent>
+          <Alert
+            severity="warning"
+            sx={{
+              mt: 1,
+              bgcolor: `${branding.colors.accent}14`,
+              border: `1px solid ${branding.colors.accent}66`,
+              color: branding.colors.textPrimary,
+              '& .MuiAlert-icon': { color: branding.colors.accent },
+            }}
+          >
+            <Typography variant="body2" sx={{ color: 'inherit' }}>
+              {EXAMPLE_PROJECT_NOTICE}
+            </Typography>
+          </Alert>
+          <Typography variant="body2" sx={{ mt: 2, color: branding.colors.textSecondary }}>
+            Ved å åpne prosjektet bekrefter du at du forstår at innholdet kun er demo/fiktivt.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button onClick={closeExampleProjectDisclaimerDialog} sx={{ color: branding.colors.textSecondary }}>
+            Avbryt
+          </Button>
+          <Button
+            variant="contained"
+            onClick={confirmOpenExampleProject}
+            sx={{
+              bgcolor: branding.colors.primary,
+              color: branding.colors.textPrimary,
+              '&:hover': { bgcolor: branding.colors.secondary },
+            }}
+          >
+            Åpne Eksempelprosjekt
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* New Manuscript Dialog */}
       <Dialog open={showNewManuscriptDialog} onClose={() => setShowNewManuscriptDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nytt Manuskript</DialogTitle>
@@ -2091,23 +3004,49 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: '#1a1a2e',
-            border: '1px solid rgba(156, 39, 176, 0.3)',
-            borderRadius: 3,
+            background: `linear-gradient(165deg, ${branding.colors.background} 0%, ${branding.colors.surface} 100%)`,
+            border: `1px solid ${branding.colors.border}`,
+            borderRadius: { xs: 3, sm: 2.5 },
+            boxShadow: branding.layout.shadowStrong,
+            overflow: 'hidden',
           }
         }}
       >
-        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <EditIcon sx={{ color: '#9c27b0' }} />
-            Rediger Manuskript
-          </Box>
+        <DialogTitle
+          sx={{
+            color: branding.colors.textPrimary,
+            borderBottom: `1px solid ${branding.colors.border}`,
+            background: `linear-gradient(90deg, ${branding.colors.gradientStart}26 0%, ${branding.colors.gradientEnd}26 100%)`,
+          }}
+        >
+          <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1.5}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <EditIcon sx={{ color: branding.colors.primary }} />
+              <Box>
+                <Typography sx={{ fontWeight: 700, color: branding.colors.textPrimary }}>Rediger Manuskript</Typography>
+                <Typography variant="caption" sx={{ color: branding.colors.textSecondary }}>
+                  {branding.identity.appName}
+                </Typography>
+              </Box>
+            </Box>
+            <Box
+              sx={{
+                minWidth: { xs: 120, sm: 170 },
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <RoleRoomBrandMark appearance="header" showLabel={false} />
+            </Box>
+          </Stack>
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           <Stack spacing={2.5} sx={{ mt: 1 }}>
             {/* Cover Image Upload */}
             <Box>
-              <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
+              <Typography variant="subtitle2" sx={{ color: branding.colors.textPrimary, mb: 1 }}>
                 Cover-bilde
               </Typography>
               <Box sx={{ 
@@ -2118,21 +3057,41 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                 <Box sx={{ 
                   width: 100, 
                   height: 140, 
-                  bgcolor: 'rgba(255,255,255,0.05)',
+                  bgcolor: `${branding.colors.surface}cc`,
                   borderRadius: 2,
-                  border: '1px dashed rgba(255,255,255,0.2)',
+                  border: `1px dashed ${branding.colors.border}`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   overflow: 'hidden',
                   backgroundSize: 'cover',
-                  backgroundPosition: 'center',
+                  backgroundPosition: `${editingCoverFocalPoint.x}% ${editingCoverFocalPoint.y}%`,
                   backgroundImage: editingManuscript?.coverImage 
                     ? `url(${editingManuscript.coverImage})`
                     : 'none',
-                }}>
+                  cursor: editingManuscript?.coverImage ? 'crosshair' : 'default',
+                  position: 'relative',
+                }}
+                onClick={handleEditCoverFocalPointClick}
+                >
                   {!editingManuscript?.coverImage && (
-                    <MenuBookIcon sx={{ fontSize: 32, color: 'rgba(255,255,255,0.6)' }} />
+                    <MenuBookIcon sx={{ fontSize: 32, color: branding.colors.textSecondary }} />
+                  )}
+                  {editingManuscript?.coverImage && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        left: `calc(${editingCoverFocalPoint.x}% - 7px)`,
+                        top: `calc(${editingCoverFocalPoint.y}% - 7px)`,
+                        width: 14,
+                        height: 14,
+                        borderRadius: '50%',
+                        border: `2px solid ${branding.colors.textPrimary}`,
+                        background: `${branding.colors.primary}cc`,
+                        boxShadow: '0 0 0 2px rgba(0,0,0,0.35)',
+                        pointerEvents: 'none',
+                      }}
+                    />
                   )}
                 </Box>
                 <Box sx={{ flex: 1 }}>
@@ -2147,7 +3106,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                         const reader = new FileReader();
                         reader.onload = (event) => {
                           const coverImage = event.target?.result as string;
-                          setEditingManuscript({ ...editingManuscript, coverImage });
+                          setEditingManuscript({
+                            ...editingManuscript,
+                            coverImage,
+                            coverFocalPoint: { ...DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT },
+                          });
                         };
                         reader.readAsDataURL(file);
                       }
@@ -2159,10 +3122,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                     onClick={() => document.getElementById('edit-cover-upload')?.click()}
                     startIcon={<FileUploadIcon />}
                     sx={{
-                      borderColor: 'rgba(156, 39, 176, 0.5)',
-                      color: '#9c27b0',
+                      borderColor: `${branding.colors.primary}88`,
+                      color: branding.colors.primary,
                       mb: 1,
-                      '&:hover': { borderColor: '#9c27b0', bgcolor: 'rgba(156, 39, 176, 0.1)' },
+                      '&:hover': { borderColor: branding.colors.primary, bgcolor: `${branding.colors.primary}1a` },
                     }}
                   >
                     Last opp cover
@@ -2171,15 +3134,70 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                     <Button
                       size="small"
                       color="error"
-                      onClick={() => setEditingManuscript({ ...editingManuscript!, coverImage: undefined })}
+                      onClick={() =>
+                        setEditingManuscript({
+                          ...editingManuscript!,
+                          coverImage: undefined,
+                          coverFocalPoint: undefined,
+                        })
+                      }
                       sx={{ ml: 1 }}
                     >
                       Fjern
                     </Button>
                   )}
-                  <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,0.7)', mt: 0.5 }}>
+                  <Typography variant="caption" sx={{ display: 'block', color: branding.colors.textSecondary, mt: 0.5 }}>
                     Anbefalt størrelse: 600x900px
                   </Typography>
+                  {editingManuscript?.coverImage && (
+                    <Box sx={{ mt: 1.25 }}>
+                      <Typography variant="caption" sx={{ display: 'block', color: branding.colors.textSecondary, mb: 0.5 }}>
+                        Fokuser cover (klikk i bildet eller bruk sliders)
+                      </Typography>
+                      <Box sx={{ px: 0.5 }}>
+                        <Typography variant="caption" sx={{ color: branding.colors.textSecondary }}>
+                          Horisontal: {Math.round(editingCoverFocalPoint.x)}%
+                        </Typography>
+                        <Slider
+                          size="small"
+                          min={0}
+                          max={100}
+                          value={editingCoverFocalPoint.x}
+                          onChange={(_, value) => {
+                            const nextX = Array.isArray(value) ? value[0] : value;
+                            setEditingCoverFocalPoint(nextX, editingCoverFocalPoint.y);
+                          }}
+                          sx={{ color: branding.colors.primary, mt: 0.25 }}
+                        />
+                      </Box>
+                      <Box sx={{ px: 0.5, mt: 0.5 }}>
+                        <Typography variant="caption" sx={{ color: branding.colors.textSecondary }}>
+                          Vertikal: {Math.round(editingCoverFocalPoint.y)}%
+                        </Typography>
+                        <Slider
+                          size="small"
+                          min={0}
+                          max={100}
+                          value={editingCoverFocalPoint.y}
+                          onChange={(_, value) => {
+                            const nextY = Array.isArray(value) ? value[0] : value;
+                            setEditingCoverFocalPoint(editingCoverFocalPoint.x, nextY);
+                          }}
+                          sx={{ color: branding.colors.primary, mt: 0.25 }}
+                        />
+                      </Box>
+                      <Button
+                        size="small"
+                        onClick={() => setEditingCoverFocalPoint(
+                          DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT.x,
+                          DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT.y
+                        )}
+                        sx={{ mt: 0.5, color: branding.colors.textSecondary }}
+                      >
+                        Nullstill fokus
+                      </Button>
+                    </Box>
+                  )}
                 </Box>
               </Box>
             </Box>
@@ -2192,12 +3210,12 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
               onChange={(e) => setEditManuscriptForm({ ...editManuscriptForm, title: e.target.value })}
               sx={{
                 '& .MuiOutlinedInput-root': {
-                  color: '#fff',
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover fieldset': { borderColor: 'rgba(156, 39, 176, 0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#9c27b0' },
+                  color: branding.colors.textPrimary,
+                  '& fieldset': { borderColor: branding.colors.border },
+                  '&:hover fieldset': { borderColor: `${branding.colors.primary}88` },
+                  '&.Mui-focused fieldset': { borderColor: branding.colors.primary },
                 },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                '& .MuiInputLabel-root': { color: branding.colors.textSecondary },
               }}
             />
             <TextField
@@ -2207,12 +3225,12 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
               onChange={(e) => setEditManuscriptForm({ ...editManuscriptForm, subtitle: e.target.value })}
               sx={{
                 '& .MuiOutlinedInput-root': {
-                  color: '#fff',
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover fieldset': { borderColor: 'rgba(156, 39, 176, 0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#9c27b0' },
+                  color: branding.colors.textPrimary,
+                  '& fieldset': { borderColor: branding.colors.border },
+                  '&:hover fieldset': { borderColor: `${branding.colors.primary}88` },
+                  '&.Mui-focused fieldset': { borderColor: branding.colors.primary },
                 },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                '& .MuiInputLabel-root': { color: branding.colors.textSecondary },
               }}
             />
             <TextField
@@ -2222,25 +3240,25 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
               onChange={(e) => setEditManuscriptForm({ ...editManuscriptForm, author: e.target.value })}
               sx={{
                 '& .MuiOutlinedInput-root': {
-                  color: '#fff',
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover fieldset': { borderColor: 'rgba(156, 39, 176, 0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#9c27b0' },
+                  color: branding.colors.textPrimary,
+                  '& fieldset': { borderColor: branding.colors.border },
+                  '&:hover fieldset': { borderColor: `${branding.colors.primary}88` },
+                  '&.Mui-focused fieldset': { borderColor: branding.colors.primary },
                 },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                '& .MuiInputLabel-root': { color: branding.colors.textSecondary },
               }}
             />
             <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Status</InputLabel>
+              <InputLabel sx={{ color: branding.colors.textSecondary }}>Status</InputLabel>
               <Select
                 value={editManuscriptForm.status}
                 onChange={(e) => setEditManuscriptForm({ ...editManuscriptForm, status: e.target.value })}
                 label="Status"
                 sx={{
-                  color: '#fff',
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(156, 39, 176, 0.5)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#9c27b0' },
+                  color: branding.colors.textPrimary,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: branding.colors.border },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: `${branding.colors.primary}88` },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: branding.colors.primary },
                 }}
               >
                 <MenuItem value="draft">Utkast</MenuItem>
@@ -2252,10 +3270,22 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
             </FormControl>
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+        <DialogActions
+          sx={{
+            p: 2,
+            borderTop: `1px solid ${branding.colors.border}`,
+            gap: 1,
+            flexWrap: 'wrap',
+            justifyContent: { xs: 'stretch', sm: 'flex-end' },
+            '& .MuiButton-root': {
+              width: { xs: '100%', sm: 'auto' },
+              maxWidth: '100%',
+            },
+          }}
+        >
           <Button 
             onClick={() => setShowEditManuscriptDialog(false)}
-            sx={{ color: 'rgba(255,255,255,0.87)' }}
+            sx={{ color: branding.colors.textSecondary }}
           >
             Avbryt
           </Button>
@@ -2269,6 +3299,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                   author: editManuscriptForm.author,
                   status: editManuscriptForm.status as Manuscript['status'],
                   coverImage: editingManuscript.coverImage,
+                  coverFocalPoint: editingManuscript.coverFocalPoint,
                 };
                 await manuscriptService.updateManuscript(updated);
                 loadManuscripts();
@@ -2278,8 +3309,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
             }} 
             variant="contained"
             sx={{ 
-              bgcolor: '#9c27b0',
-              '&:hover': { bgcolor: '#7b1fa2' },
+              bgcolor: branding.colors.primary,
+              color: branding.colors.textPrimary,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+              whiteSpace: 'nowrap',
+              '&:hover': { bgcolor: branding.colors.secondary },
             }}
           >
             Lagre endringer
@@ -2295,35 +3329,43 @@ interface EditorTabProps {
   manuscript: Manuscript; 
   onContentChange: (content: string) => void;
   onParseToScenes?: (content: string) => void;
+  manuscriptSaveStatus?: 'saved' | 'unsaved' | 'saving' | 'error';
+  lastManuscriptSaved?: Date | null;
   characters?: string[];
   locations?: string[];
   castingRoles?: Role[];
   castingLocations?: Location[];
+  castingCandidates?: Candidate[];
   scenes?: SceneBreakdown[];
   onCharacterAdd?: (name: string) => void;
   onLocationAdd?: (name: string) => void;
+}
+
+interface CharacterProfileOpenPayload {
+  characterName: string;
+  role: Role | null;
+  candidate: Candidate | null;
 }
 
 const EditorTab: React.FC<EditorTabProps> = React.memo(({
   manuscript,
   onContentChange,
   onParseToScenes,
+  manuscriptSaveStatus = 'saved',
+  lastManuscriptSaved = null,
   characters = [],
   locations = [],
   castingRoles = [],
   castingLocations = [],
+  castingCandidates = [],
   scenes = [],
   onCharacterAdd,
   onLocationAdd,
 }) => {
-  const { showSuccess, showInfo } = useToast();
+  const { showSuccess } = useToast();
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(true);
   const [showParseDialog, setShowParseDialog] = useState(false);
-  
-  // DEBUG: Log every render
-  const renderCountRef = useRef(0);
-  renderCountRef.current++;
-  console.log(`🔄 EditorTab RENDER #${renderCountRef.current}, manuscript.id:`, manuscript.id);
+  const [selectedRoleMention, setSelectedRoleMention] = useState<CharacterProfileOpenPayload | null>(null);
   
   // Lokal state for editorinnhold - DENNE er source of truth for editoren
   // EditorTab manages its own content state independently from parent
@@ -2332,11 +3374,8 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
   const lastSyncedIdRef = useRef(manuscript.id);
   const lastChangeValueRef = useRef(manuscript.content || ''); // Track last value to prevent redundant updates
   
-  console.log('📊 EditorTab state - editorContent length:', editorContent.length, 'manuscript.content length:', manuscript.content?.length);
-  
   // Stable onChange callback for ScreenplayEditorWithNavigator - ONLY update parent, NOT local state
   const handleScreenplayChange = useCallback((val: string) => {
-    console.log('✏️ ScreenplayEditorWithNavigator onChange, length:', val.length);
     // Only update local state if value actually changed
     if (val !== lastChangeValueRef.current) {
       lastChangeValueRef.current = val;
@@ -2351,11 +3390,11 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
   // EditorTab content is the source of truth, not the parent's manuscript object
   useEffect(() => {
     if (manuscript.id !== lastSyncedIdRef.current) {
-      console.log('📄 EditorTab: Syncing to new manuscript:', manuscript.id);
       const newContent = manuscript.content || '';
       setEditorContent(newContent);
       lastChangeValueRef.current = newContent;
       lastSyncedIdRef.current = manuscript.id;
+      setSelectedRoleMention(null);
     }
   }, [manuscript.id]); // ONLY depend on ID, NOT content
   
@@ -2374,10 +3413,10 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
     const estimatedMinutes = Math.round(pages); // 1 page ≈ 1 minute
     
     // Count scene headings
-    const sceneHeadings = content.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[\.\s]/gim)?.length || 0;
+    const sceneHeadings = content.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/gim)?.length || 0;
     
     // Count characters (uppercase lines followed by dialogue)
-    const characterMatches = content.match(/^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/gm) || [];
+    const characterMatches = content.match(/^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/gm) || [];
     const uniqueCharacters = [...new Set(characterMatches.map(c => c.replace(/\s*\(.*\)$/, '').trim()))];
     
     return { words, characters, lines, pages, estimatedMinutes, sceneHeadings, uniqueCharacters };
@@ -2399,97 +3438,41 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
     return [...new Set([...castingLocs, ...sceneLocs])].sort();
   }, [JSON.stringify(locations), JSON.stringify(castingLocations.map(l => l.name))]);
 
-  const handleSceneSelect = useCallback((scene: any) => {
-    // Handle scene selection - scroll to scene in editor
-    console.log('Scene selected:', scene);
+  const handleSceneSelect = useCallback((_scene: any) => {}, []);
+
+  const handleCharacterProfileOpen = useCallback((payload: CharacterProfileOpenPayload) => {
+    if (!payload.role && !payload.candidate) {
+      setSelectedRoleMention(null);
+      return;
+    }
+    setSelectedRoleMention(payload);
   }, []);
+
+  const closeProfileDialogs = useCallback(() => {
+    setSelectedRoleMention(null);
+  }, []);
+
+  const roleDescription = useMemo(() => {
+    const raw = selectedRoleMention?.role?.description;
+    if (typeof raw !== 'string' || !raw.trim()) return '';
+    return raw
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }, [selectedRoleMention?.role?.description]);
 
   const handleParseToScenes = () => {
     if (onParseToScenes) {
-      onParseToScenes(manuscript.content);
+      onParseToScenes(editorContent);
       showSuccess(`Parsert ${contentStats.sceneHeadings} scener fra manuskriptet`);
     }
     setShowParseDialog(false);
   };
-  
-  // Lazy load ScreenplayEditor
-  const ScreenplayEditor = React.lazy(() => import('./ScreenplayEditor'));
-  const ScreenplayEditorWithNavigator = React.lazy(() => import('./ScreenplayEditorWithNavigator'));
-  const ScreenplayPDFExport = React.lazy(() => import('./ScreenplayPDFExport'));
-
-  // Stats bar component with responsive design
-  const StatsBar = () => (
-    <Paper sx={{ p: isMobile ? 1 : 1.5, mb: responsive.spacing, bgcolor: 'background.paper' }}>
-      <Stack 
-        direction={isMobile ? 'column' : 'row'} 
-        spacing={isMobile ? 1 : responsive.spacing} 
-        divider={!isMobile ? <Divider orientation="vertical" flexItem /> : undefined} 
-        flexWrap="wrap"
-        sx={{ gap: isMobile ? 0.5 : undefined }}
-      >
-        <Tooltip title="Antall sider (1 side ≈ 1 minutt)">
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-              Sider:
-            </Typography>
-            <Typography variant="body2" fontWeight={600} sx={{ fontSize: responsive.bodyFontSize }}>
-              {contentStats.pages}
-            </Typography>
-          </Stack>
-        </Tooltip>
-        <Tooltip title="Estimert spilletid">
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-              Varighet:
-            </Typography>
-            <Typography variant="body2" fontWeight={600} sx={{ fontSize: responsive.bodyFontSize }}>
-              ~{contentStats.estimatedMinutes} min
-            </Typography>
-          </Stack>
-        </Tooltip>
-        {!isMobile && (
-          <Tooltip title="Antall ord">
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-                Ord:
-              </Typography>
-              <Typography variant="body2" fontWeight={600} sx={{ fontSize: responsive.bodyFontSize }}>
-                {contentStats.words.toLocaleString()}
-              </Typography>
-            </Stack>
-          </Tooltip>
-        )}
-        <Tooltip title="Antall sceneoverskrifter funnet">
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-              Scener:
-            </Typography>
-            <Typography variant="body2" fontWeight={600} sx={{ fontSize: responsive.bodyFontSize }}>
-              {contentStats.sceneHeadings}
-            </Typography>
-          </Stack>
-        </Tooltip>
-        {!isMobile && (
-          <Tooltip title="Antall karakterer funnet i dialog">
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-                Karakterer:
-              </Typography>
-              <Typography variant="body2" fontWeight={600} sx={{ fontSize: responsive.bodyFontSize }}>
-                {contentStats.uniqueCharacters.length}
-              </Typography>
-            </Stack>
-          </Tooltip>
-        )}
-      </Stack>
-    </Paper>
-  );
 
   if (!showAdvancedEditor) {
     // Fallback to simple textarea
     return (
       <Box>
-        <StatsBar />
         <Stack 
           direction={isMobile ? 'column' : 'row'} 
           spacing={responsive.spacing} 
@@ -2553,9 +3536,6 @@ Anna går raskt gjennom regnet.
       height: isMobile ? 'calc(100vh - 350px)' : 'calc(100vh - 300px)', 
       minHeight: isMobile ? 350 : 500 
     }}>
-      {/* Stats Bar */}
-      <StatsBar />
-      
       <Stack 
         direction={isMobile ? 'column' : 'row'} 
         spacing={isMobile ? 1 : responsive.spacing} 
@@ -2590,7 +3570,7 @@ Anna går raskt gjennom regnet.
             </Button>
           )}
           <React.Suspense fallback={<CircularProgress size={isMobile ? 16 : 20} />}>
-            <ScreenplayPDFExport
+            <LazyScreenplayPDFExport
               content={manuscript.content}
               title={manuscript.title}
               author={manuscript.author}
@@ -2612,18 +3592,169 @@ Anna går raskt gjennom regnet.
           <CircularProgress size={is4K ? 48 : isDesktop ? 40 : 32} />
         </Box>
       }>
-          <ScreenplayEditorWithNavigator
+          <LazyScreenplayEditorWithNavigator
             editorKey={manuscript.id}
             value={editorContent}
             onChange={handleScreenplayChange}
+            scriptTitle={manuscript.title}
+            headerSummary={{
+              pages: manuscript.pageCount || 0,
+              runtimeMinutes: Math.max(0, Math.round(manuscript.pageCount || contentStats.estimatedMinutes)),
+              sceneCount: scenes.length,
+              characterCount: allCharacters.length,
+              statusLabel: manuscript.status.toUpperCase(),
+              saveLabel:
+                manuscriptSaveStatus === 'saved'
+                  ? (lastManuscriptSaved
+                      ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`
+                      : 'Lagret')
+                  : manuscriptSaveStatus === 'saving'
+                    ? 'Lagrer...'
+                    : manuscriptSaveStatus === 'error'
+                      ? 'Lagringsfeil'
+                      : 'Ulagret',
+              saveState: manuscriptSaveStatus,
+            }}
             characters={allCharacters}
             locations={allLocations}
+            roles={castingRoles}
+            candidates={castingCandidates}
             scenes={scenes}
             onCharacterAdd={onCharacterAdd}
             onLocationAdd={onLocationAdd}
+            onCharacterProfileOpen={handleCharacterProfileOpen}
             onSceneSelect={handleSceneSelect}
           />
       </React.Suspense>
+
+      <Dialog
+        open={Boolean(selectedRoleMention?.role)}
+        onClose={closeProfileDialogs}
+        fullScreen={isMobile}
+        hideBackdrop={!isMobile}
+        disableEnforceFocus
+        disableAutoFocus
+        PaperProps={{
+          sx: isMobile ? undefined : {
+            position: 'fixed',
+            top: '8vh',
+            left: '3vw',
+            m: 0,
+            width: '44vw',
+            maxWidth: 680,
+            maxHeight: '84vh',
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>
+          Rolleprofil: {selectedRoleMention?.role?.name || selectedRoleMention?.characterName}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mb: 1.5 }}>
+            <Chip
+              size={responsive.chipSize}
+              color="primary"
+              variant="outlined"
+              label={`Status: ${selectedRoleMention?.role?.status || 'ukjent'}`}
+              sx={{ fontSize: responsive.captionFontSize }}
+            />
+            {typeof selectedRoleMention?.role?.roleType === 'string' && selectedRoleMention.role.roleType.trim() && (
+              <Chip
+                size={responsive.chipSize}
+                variant="outlined"
+                label={`Type: ${selectedRoleMention.role.roleType}`}
+                sx={{ fontSize: responsive.captionFontSize }}
+              />
+            )}
+          </Stack>
+          {roleDescription ? (
+            <Typography sx={{ color: branding.colors.textPrimary, fontSize: responsive.bodyFontSize }}>
+              {roleDescription}
+            </Typography>
+          ) : (
+            <Typography color="text.secondary" sx={{ fontSize: responsive.bodyFontSize }}>
+              Ingen rollebeskrivelse tilgjengelig.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeProfileDialogs} size={responsive.buttonSize}>
+            Lukk
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(selectedRoleMention?.role)}
+        onClose={closeProfileDialogs}
+        fullScreen={isMobile}
+        hideBackdrop={!isMobile}
+        disableEnforceFocus
+        disableAutoFocus
+        PaperProps={{
+          sx: isMobile ? undefined : {
+            position: 'fixed',
+            top: '8vh',
+            right: '3vw',
+            m: 0,
+            width: '44vw',
+            maxWidth: 680,
+            maxHeight: '84vh',
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>
+          Kandidat for {selectedRoleMention?.role?.name || selectedRoleMention?.characterName}
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedRoleMention?.candidate ? (
+            <>
+              <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize, fontWeight: 700 }}>
+                {selectedRoleMention.candidate.name}
+              </Typography>
+              <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 1, mb: 1.5 }}>
+                <Chip
+                  size={responsive.chipSize}
+                  color="success"
+                  variant="outlined"
+                  label={`Status: ${selectedRoleMention.candidate.status || 'ukjent'}`}
+                  sx={{ fontSize: responsive.captionFontSize }}
+                />
+                {typeof selectedRoleMention.candidate.agency === 'string' && selectedRoleMention.candidate.agency.trim() && (
+                  <Chip
+                    size={responsive.chipSize}
+                    variant="outlined"
+                    label={selectedRoleMention.candidate.agency}
+                    sx={{ fontSize: responsive.captionFontSize }}
+                  />
+                )}
+              </Stack>
+              {(selectedRoleMention.candidate.email || selectedRoleMention.candidate.phone) ? (
+                <Typography sx={{ color: branding.colors.textPrimary, fontSize: responsive.bodyFontSize }}>
+                  {selectedRoleMention.candidate.email || ''}
+                  {selectedRoleMention.candidate.email && selectedRoleMention.candidate.phone ? ' • ' : ''}
+                  {selectedRoleMention.candidate.phone || ''}
+                </Typography>
+              ) : (
+                <Typography color="text.secondary" sx={{ fontSize: responsive.bodyFontSize }}>
+                  Ingen kontaktinfo registrert.
+                </Typography>
+              )}
+            </>
+          ) : (
+            <Alert severity="warning">
+              <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
+                Ingen kandidat er koblet til denne rollen ennå.
+              </Typography>
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeProfileDialogs} size={responsive.buttonSize}>
+            Lukk
+          </Button>
+        </DialogActions>
+      </Dialog>
       
       {/* Info about character sources */}
       {castingRoles.length > 0 && (
@@ -2726,6 +3857,9 @@ Anna går raskt gjennom regnet.
   
   // Check casting locations count
   if (prevProps.castingLocations?.length !== nextProps.castingLocations?.length) return false;
+
+  // Check casting candidates count
+  if (prevProps.castingCandidates?.length !== nextProps.castingCandidates?.length) return false;
   
   // Check scenes count
   if (prevProps.scenes?.length !== nextProps.scenes?.length) return false;
@@ -2740,6 +3874,7 @@ const ActsTab: React.FC<{
   onActsChange: (acts: Act[]) => void;
 }> = ({ acts, manuscriptId, onActsChange }) => {
   const { showSuccess, showError } = useToast();
+  const branding = useBrandingSettings();
   const [showDialog, setShowDialog] = useState(false);
   const [editingAct, setEditingAct] = useState<Act | null>(null);
   const [formData, setFormData] = useState({
@@ -2755,6 +3890,8 @@ const ActsTab: React.FC<{
   // 7-tier responsive system
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
+  const tableDensity: 'small' | 'medium' = isTablet ? 'small' : isDesktop ? 'medium' : 'small';
+  const dialogMaxWidth: 'sm' | 'md' = is4K ? 'md' : 'sm';
 
   const handleCreate = () => {
     setEditingAct(null);
@@ -2901,7 +4038,7 @@ const ActsTab: React.FC<{
         </Stack>
       ) : (
         <TableContainer component={Paper}>
-          <Table size={isTablet ? 'small' : 'medium'}>
+          <Table size={tableDensity}>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Akt #</TableCell>
@@ -2938,7 +4075,7 @@ const ActsTab: React.FC<{
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={showDialog} onClose={() => setShowDialog(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
+      <Dialog open={showDialog} onClose={() => setShowDialog(false)} maxWidth={dialogMaxWidth} fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>{editingAct ? 'Rediger Akt' : 'Ny Akt'}</DialogTitle>
         <DialogContent>
           <Stack spacing={responsive.spacing} sx={{ mt: 1 }}>
@@ -2995,7 +4132,7 @@ const ActsTab: React.FC<{
               label="Fargekode (hex)"
               value={formData.colorCode}
               onChange={(e) => setFormData({ ...formData, colorCode: e.target.value })}
-              placeholder="#FF5733"
+              placeholder={branding.colors.primary}
               fullWidth
               size={isMobile ? 'small' : 'medium'}
             />
@@ -3027,6 +4164,7 @@ const ScenesTab: React.FC<{
   // 7-tier responsive system
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
+  const sceneHeadingMaxWidth = isTablet ? 150 : is4K ? 420 : 300;
 
   return (
     <Box>
@@ -3057,12 +4195,27 @@ const ScenesTab: React.FC<{
           >
             <ToggleButton value="list">
               <FormatListNumberedIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+              {isDesktop && (
+                <Typography component="span" sx={{ ml: 0.75, fontSize: responsive.captionFontSize }}>
+                  Liste
+                </Typography>
+              )}
             </ToggleButton>
             <ToggleButton value="drag">
               <DragIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+              {isDesktop && (
+                <Typography component="span" sx={{ ml: 0.75, fontSize: responsive.captionFontSize }}>
+                  Dra
+                </Typography>
+              )}
             </ToggleButton>
             <ToggleButton value="storyboard">
               <ViewModuleIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+              {isDesktop && (
+                <Typography component="span" sx={{ ml: 0.75, fontSize: responsive.captionFontSize }}>
+                  Storyboard
+                </Typography>
+              )}
             </ToggleButton>
           </ToggleButtonGroup>
         </Stack>
@@ -3154,7 +4307,7 @@ const ScenesTab: React.FC<{
                   sx={{ cursor: 'pointer' }}
                 >
                   <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.sceneNumber}</TableCell>
-                  <TableCell sx={{ fontSize: responsive.bodyFontSize, maxWidth: isTablet ? 150 : 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>{scene.sceneHeading}</TableCell>
+                  <TableCell sx={{ fontSize: responsive.bodyFontSize, maxWidth: sceneHeadingMaxWidth, overflow: 'hidden', textOverflow: 'ellipsis' }}>{scene.sceneHeading}</TableCell>
                   <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.intExt}</TableCell>
                   {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.timeOfDay}</TableCell>}
                   <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.pageLength?.toFixed(2) || '-'}</TableCell>
@@ -3224,6 +4377,15 @@ const CharactersTab: React.FC<{
   // 7-tier responsive system
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
+  const characterGridColumns = isMobile
+    ? '1fr'
+    : isTablet
+      ? 'repeat(2, minmax(0, 1fr))'
+      : is4K
+        ? 'repeat(5, minmax(0, 1fr))'
+        : isDesktop
+          ? 'repeat(4, minmax(0, 1fr))'
+          : 'repeat(3, minmax(0, 1fr))';
 
   // Load character profiles from database/settings cache on mount
   useEffect(() => {
@@ -3241,6 +4403,7 @@ const CharactersTab: React.FC<{
         }
       } catch (error) {
         console.error('Error loading character profiles:', error);
+        showError('Kunne ikke laste karakterprofiler');
       } finally {
         if (mounted) {
           setIsLoading(false);
@@ -3263,6 +4426,7 @@ const CharactersTab: React.FC<{
         console.log('✓ Character profiles saved to database');
       } catch (error) {
         console.error('Error saving character profiles:', error);
+        showError('Kunne ikke lagre karakterprofiler');
       } finally {
         setIsSaving(false);
       }
@@ -3309,6 +4473,10 @@ const CharactersTab: React.FC<{
       c.description?.toLowerCase().includes(q)
     );
   }, [characterData, searchQuery]);
+
+  useEffect(() => {
+    onCharactersChange?.(characterData);
+  }, [characterData, onCharactersChange]);
 
   const handleEdit = (character: CharacterProfile) => {
     setEditingCharacter(character.name);
@@ -3373,13 +4541,24 @@ const CharactersTab: React.FC<{
         <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>
           Karakterer ({characters.length})
         </Typography>
-        <TextField
-          placeholder="Søk karakterer..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          size={isMobile ? 'small' : 'medium'}
-          sx={{ width: isMobile ? '100%' : 200 }}
-        />
+        <Stack direction={isMobile ? 'column' : 'row'} spacing={1} alignItems={isMobile ? 'stretch' : 'center'}>
+          {isSaving && (
+            <Chip
+              label="Lagrer profiler..."
+              color="info"
+              size={responsive.chipSize}
+              icon={<CircularProgress size={14} />}
+              sx={{ fontSize: responsive.captionFontSize }}
+            />
+          )}
+          <TextField
+            placeholder="Søk karakterer..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            size={isMobile ? 'small' : 'medium'}
+            sx={{ width: isMobile ? '100%' : isDesktop ? 280 : 220 }}
+          />
+        </Stack>
       </Stack>
 
       {/* Statistics */}
@@ -3413,9 +4592,15 @@ const CharactersTab: React.FC<{
           </Typography>
         </Alert>
       ) : (
-        <Grid container spacing={responsive.cardSpacing}>
+        <Box
+          sx={{
+            display: 'grid',
+            gap: responsive.cardSpacing,
+            gridTemplateColumns: characterGridColumns,
+          }}
+        >
           {filteredCharacters.map((character, index) => (
-            <Grid size={responsive.cardGridSize} key={`${character.name}-${index}`}>
+            <Box key={`${character.name}-${index}`}>
               <Card 
                 sx={{ 
                   cursor: 'pointer',
@@ -3452,7 +4637,8 @@ const CharactersTab: React.FC<{
                   
                   {character.description && (
                     <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic', fontSize: responsive.bodyFontSize }}>
-                      {character.description.substring(0, isMobile ? 60 : 100)}{character.description.length > (isMobile ? 60 : 100) ? '...' : ''}
+                      {character.description.substring(0, is4K ? 160 : isDesktop ? 120 : isMobile ? 60 : 100)}
+                      {character.description.length > (is4K ? 160 : isDesktop ? 120 : isMobile ? 60 : 100) ? '...' : ''}
                     </Typography>
                   )}
                   
@@ -3475,9 +4661,9 @@ const CharactersTab: React.FC<{
                   )}
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
           ))}
-        </Grid>
+        </Box>
       )}
 
       {/* Edit Dialog */}
@@ -3528,7 +4714,9 @@ const CharactersTab: React.FC<{
         </DialogContent>
         <DialogActions sx={{ p: responsive.padding }}>
           <Button onClick={() => setShowDialog(false)} size={responsive.buttonSize}>Avbryt</Button>
-          <Button variant="contained" onClick={handleSave} size={responsive.buttonSize}>Lagre</Button>
+          <Button variant="contained" onClick={handleSave} size={responsive.buttonSize} disabled={isSaving}>
+            Lagre
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -3547,8 +4735,10 @@ const DialogueTab: React.FC<{
   onDialogueChange,
 }) => {
   const { showSuccess, showError } = useToast();
+  const branding = useBrandingSettings();
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
+  const previewLimit = is4K ? 220 : isDesktop ? 160 : isTablet ? 120 : 80;
   const [showDialog, setShowDialog] = useState(false);
   const [editingLine, setEditingLine] = useState<DialogueLine | null>(null);
   const [filterCharacter, setFilterCharacter] = useState<string>('');
@@ -3653,8 +4843,24 @@ const DialogueTab: React.FC<{
   return (
     <Box>
       <Stack direction={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'stretch' : 'center'} spacing={isMobile ? 1 : 0} sx={{ mb: responsive.spacing }}>
-        <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>All Dialog ({filteredLines.length})</Typography>
-        <Button startIcon={<AddIcon />} variant="outlined" onClick={handleCreate} size={responsive.buttonSize} fullWidth={isMobile}>
+        <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize, color: branding.colors.textPrimary }}>
+          All Dialog ({filteredLines.length})
+        </Typography>
+        <Button
+          startIcon={<AddIcon />}
+          variant="outlined"
+          onClick={handleCreate}
+          size={responsive.buttonSize}
+          fullWidth={isMobile}
+          sx={{
+            color: branding.colors.textPrimary,
+            borderColor: `${branding.colors.primary}66`,
+            '&:hover': {
+              borderColor: branding.colors.primary,
+              bgcolor: `${branding.colors.primary}1a`,
+            },
+          }}
+        >
           Legg til Replikk
         </Button>
       </Stack>
@@ -3699,10 +4905,15 @@ const DialogueTab: React.FC<{
         <List dense={isMobile}>
           {filteredLines.map((line, index) => {
             const scene = scenes.find((s) => s.id === line.sceneId);
+            const previewText =
+              line.dialogueText.length > previewLimit
+                ? `${line.dialogueText.substring(0, previewLimit)}...`
+                : line.dialogueText;
             return (
               <React.Fragment key={line.id}>
                 {index > 0 && <Divider />}
                 <ListItem
+                  disablePadding
                   secondaryAction={
                     <Stack direction="row" spacing={0.5}>
                       <IconButton size="small" onClick={() => handleEdit(line)}>
@@ -3715,38 +4926,49 @@ const DialogueTab: React.FC<{
                   }
                   sx={{ pr: isMobile ? 8 : 12 }}
                 >
-                  <ListItemText
-                    primary={
-                      <Stack direction={isMobile ? 'column' : 'row'} spacing={isMobile ? 0.5 : 1} alignItems={isMobile ? 'flex-start' : 'center'}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', fontSize: responsive.bodyFontSize }}>
-                          {line.characterName}
-                        </Typography>
-                        <Stack direction="row" spacing={0.5}>
-                          {line.parenthetical && (
-                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: responsive.captionFontSize }}>
-                              ({line.parenthetical})
+                  <ListItemButton onClick={() => handleEdit(line)} sx={{ py: isMobile ? 0.75 : 1 }}>
+                    <ListItemIcon sx={{ minWidth: isMobile ? 34 : 40 }}>
+                      <Badge
+                        color="secondary"
+                        variant={line.emotionTag ? 'dot' : 'standard'}
+                        invisible={!line.emotionTag}
+                      >
+                        <ChatIcon sx={{ fontSize: responsive.iconSize - (is4K ? 0 : 3), color: 'primary.main' }} />
+                      </Badge>
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={
+                        <Stack direction={isMobile ? 'column' : 'row'} spacing={isMobile ? 0.5 : 1} alignItems={isMobile ? 'flex-start' : 'center'}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main', fontSize: responsive.bodyFontSize }}>
+                            {line.characterName}
+                          </Typography>
+                          <Stack direction="row" spacing={0.5}>
+                            {line.parenthetical && (
+                              <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: responsive.captionFontSize }}>
+                                ({line.parenthetical})
+                              </Typography>
+                            )}
+                            {line.emotionTag && (
+                              <Chip label={line.emotionTag} size={responsive.chipSize} variant="outlined" sx={{ fontSize: responsive.captionFontSize }} />
+                            )}
+                          </Stack>
+                        </Stack>
+                      }
+                      secondary={
+                        <>
+                          <Typography variant="body2" component="span" sx={{ fontStyle: 'italic', my: 0.5, display: 'block', fontSize: responsive.bodyFontSize }}>
+                            "{previewText}"
+                          </Typography>
+                          {scene && !isMobile && (
+                            <Typography variant="caption" component="span" color="text.secondary" sx={{ display: 'block', fontSize: responsive.captionFontSize }}>
+                              Scene {scene.sceneNumber}: {isDesktop ? scene.sceneHeading : scene.sceneHeading?.substring(0, 32)}
                             </Typography>
                           )}
-                          {line.emotionTag && (
-                            <Chip label={line.emotionTag} size={responsive.chipSize} variant="outlined" sx={{ fontSize: responsive.captionFontSize }} />
-                          )}
-                        </Stack>
-                      </Stack>
-                    }
-                    secondary={
-                      <>
-                        <Typography variant="body2" component="span" sx={{ fontStyle: 'italic', my: 0.5, display: 'block', fontSize: responsive.bodyFontSize }}>
-                          "{isMobile ? line.dialogueText.substring(0, 80) + (line.dialogueText.length > 80 ? '...' : '') : line.dialogueText}"
-                        </Typography>
-                        {scene && !isMobile && (
-                          <Typography variant="caption" component="span" color="text.secondary" sx={{ display: 'block', fontSize: responsive.captionFontSize }}>
-                            Scene {scene.sceneNumber}: {scene.sceneHeading}
-                          </Typography>
-                        )}
-                      </>
-                    }
-                    secondaryTypographyProps={{ component: 'div' }}
-                  />
+                        </>
+                      }
+                      secondaryTypographyProps={{ component: 'div' }}
+                    />
+                  </ListItemButton>
                 </ListItem>
               </React.Fragment>
             );
@@ -3841,19 +5063,54 @@ const DialogueTab: React.FC<{
   );
 };
 
-const BreakdownTab: React.FC<{ scenes: SceneBreakdown[]; sceneStats: any }> = ({ scenes, sceneStats }) => {
+const BreakdownTab: React.FC<{
+  scenes: SceneBreakdown[];
+  sceneStats: any;
+  onAddScene: () => void;
+  onEditScene: (scene: SceneBreakdown) => void;
+  onSelectScene: (scene: SceneBreakdown) => void;
+  selectedScene?: SceneBreakdown;
+}> = ({ scenes, sceneStats, onAddScene, onEditScene, onSelectScene, selectedScene }) => {
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
+  const statsGridColumns = isDesktop ? 'repeat(4, minmax(0, 1fr))' : 'repeat(2, minmax(0, 1fr))';
 
   return (
     <Box>
-      <Typography variant="h6" sx={{ mb: responsive.spacing, fontSize: responsive.titleFontSize }}>
-        Production Breakdown
-      </Typography>
+      <Stack
+        direction={isMobile ? 'column' : 'row'}
+        justifyContent="space-between"
+        alignItems={isMobile ? 'stretch' : 'center'}
+        spacing={responsive.spacing}
+        sx={{ mb: responsive.spacing }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center">
+          <LocationIcon sx={{ width: responsive.iconSize - 6, height: responsive.iconSize - 6 }} />
+          <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>
+            Production Breakdown
+          </Typography>
+        </Stack>
+        <Button
+          startIcon={<AddIcon sx={{ fontSize: responsive.iconSize - 4 }} />}
+          variant="outlined"
+          size={responsive.buttonSize}
+          onClick={onAddScene}
+          sx={{ fontSize: responsive.bodyFontSize }}
+        >
+          Legg til scene
+        </Button>
+      </Stack>
 
       {/* Statistics */}
-      <Grid container spacing={responsive.cardSpacing} sx={{ mb: responsive.spacing }}>
-        <Grid size={{ xs: 6, sm: 3 }}>
+      <Box
+        sx={{
+          mb: responsive.spacing,
+          display: 'grid',
+          gap: responsive.cardSpacing,
+          gridTemplateColumns: statsGridColumns,
+        }}
+      >
+        <Box>
           <Card>
             <CardContent sx={{ p: isMobile ? 1.5 : 2, '&:last-child': { pb: isMobile ? 1.5 : 2 } }}>
               <Typography variant="h4" sx={{ fontSize: is4K ? '2.5rem' : isMobile ? '1.5rem' : '2rem' }}>{sceneStats.total}</Typography>
@@ -3862,8 +5119,8 @@ const BreakdownTab: React.FC<{ scenes: SceneBreakdown[]; sceneStats: any }> = ({
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
-        <Grid size={{ xs: 6, sm: 3 }}>
+        </Box>
+        <Box>
           <Card>
             <CardContent sx={{ p: isMobile ? 1.5 : 2, '&:last-child': { pb: isMobile ? 1.5 : 2 } }}>
               <Typography variant="h4" sx={{ fontSize: is4K ? '2.5rem' : isMobile ? '1.5rem' : '2rem' }}>{sceneStats.intScenes}</Typography>
@@ -3872,8 +5129,8 @@ const BreakdownTab: React.FC<{ scenes: SceneBreakdown[]; sceneStats: any }> = ({
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
-        <Grid size={{ xs: 6, sm: 3 }}>
+        </Box>
+        <Box>
           <Card>
             <CardContent sx={{ p: isMobile ? 1.5 : 2, '&:last-child': { pb: isMobile ? 1.5 : 2 } }}>
               <Typography variant="h4" sx={{ fontSize: is4K ? '2.5rem' : isMobile ? '1.5rem' : '2rem' }}>{sceneStats.extScenes}</Typography>
@@ -3882,8 +5139,8 @@ const BreakdownTab: React.FC<{ scenes: SceneBreakdown[]; sceneStats: any }> = ({
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
-        <Grid size={{ xs: 6, sm: 3 }}>
+        </Box>
+        <Box>
           <Card>
             <CardContent sx={{ p: isMobile ? 1.5 : 2, '&:last-child': { pb: isMobile ? 1.5 : 2 } }}>
               <Typography variant="h4" sx={{ fontSize: is4K ? '2.5rem' : isMobile ? '1.5rem' : '2rem' }}>
@@ -3894,27 +5151,50 @@ const BreakdownTab: React.FC<{ scenes: SceneBreakdown[]; sceneStats: any }> = ({
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
 
       {/* Breakdown details */}
+      {scenes.length === 0 && (
+        <Alert severity="info">
+          <Typography sx={{ fontSize: responsive.bodyFontSize }}>
+            Ingen scener ennå. Bruk "Auto Breakdown" eller legg til en scene manuelt.
+          </Typography>
+        </Alert>
+      )}
+
       {scenes.length > 0 && (
         isMobile ? (
           <Stack spacing={1}>
             {scenes.map((scene) => (
-              <Card key={scene.id} sx={{ p: 1.5 }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+              <Card
+                key={scene.id}
+                sx={{
+                  p: 1.5,
+                  cursor: 'pointer',
+                  bgcolor: selectedScene?.id === scene.id ? 'action.selected' : undefined,
+                }}
+                onClick={() => onSelectScene(scene)}
+              >
+                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                   <Box>
                     <Typography variant="subtitle2" sx={{ fontSize: responsive.bodyFontSize }}>Scene {scene.sceneNumber}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
                       {scene.locationName}
                     </Typography>
                   </Box>
-                  <Stack direction="row" spacing={0.5}>
-                    <Chip label={`${scene.characters.length} chars`} size="small" sx={{ fontSize: responsive.captionFontSize }} />
-                    {scene.propsNeeded && scene.propsNeeded.length > 0 && (
-                      <Chip label={`${scene.propsNeeded.length} props`} size="small" sx={{ fontSize: responsive.captionFontSize }} />
-                    )}
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Chip label={`${scene.characters?.length || 0} chars`} size="small" sx={{ fontSize: responsive.captionFontSize }} />
+                    {scene.propsNeeded && scene.propsNeeded.length > 0 && <Chip label={`${scene.propsNeeded.length} props`} size="small" sx={{ fontSize: responsive.captionFontSize }} />}
+                    <IconButton
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEditScene(scene);
+                      }}
+                    >
+                      <EditIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                    </IconButton>
                   </Stack>
                 </Stack>
                 <Stack direction="row" spacing={0.5} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
@@ -3935,19 +5215,50 @@ const BreakdownTab: React.FC<{ scenes: SceneBreakdown[]; sceneStats: any }> = ({
                   <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Characters</TableCell>
                   {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Props</TableCell>}
                   <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Special Notes</TableCell>
+                  <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {scenes.map((scene) => (
-                  <TableRow key={scene.id}>
+                  <TableRow
+                    key={scene.id}
+                    hover
+                    selected={selectedScene?.id === scene.id}
+                    onClick={() => onSelectScene(scene)}
+                    sx={{ cursor: 'pointer' }}
+                  >
                     <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.sceneNumber}</TableCell>
                     <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.locationName}</TableCell>
-                    <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.characters.length}</TableCell>
+                    <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.characters?.length || 0}</TableCell>
                     {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.propsNeeded?.length || 0}</TableCell>}
                     <TableCell>
                       {scene.specialEffects && <Chip label="VFX" size={responsive.chipSize} sx={{ mr: 0.5, fontSize: responsive.captionFontSize }} />}
                       {scene.stuntsNotes && <Chip label="Stunts" size={responsive.chipSize} sx={{ mr: 0.5, fontSize: responsive.captionFontSize }} />}
                       {scene.vehicles && scene.vehicles.length > 0 && <Chip label="Vehicles" size={responsive.chipSize} sx={{ fontSize: responsive.captionFontSize }} />}
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title="Åpne scene">
+                        <IconButton
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onSelectScene(scene);
+                          }}
+                        >
+                          <VisibilityIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Rediger scene">
+                        <IconButton
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onEditScene(scene);
+                          }}
+                        >
+                          <EditIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                        </IconButton>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -3964,12 +5275,14 @@ const RevisionsTab: React.FC<{
   revisions: ScriptRevision[]; 
   manuscript: Manuscript;
   onRevisionsChange?: (revisions: ScriptRevision[]) => void;
-  onCreateRevision?: () => void;
+  onCreateRevision?: (revision: ScriptRevision) => Promise<void> | void;
+  onRestoreRevision?: (revision: ScriptRevision) => Promise<void> | void;
 }> = ({
   revisions,
   manuscript,
   onRevisionsChange,
   onCreateRevision,
+  onRestoreRevision,
 }) => {
   const { showSuccess, showError } = useToast();
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
@@ -3979,6 +5292,22 @@ const RevisionsTab: React.FC<{
   const [revisionNotes, setRevisionNotes] = useState('');
   const [selectedRevision, setSelectedRevision] = useState<ScriptRevision | null>(null);
   const [compareMode, setCompareMode] = useState(false);
+  const [useRichNotes, setUseRichNotes] = useState(false);
+  const mentionCandidates = useMemo(() => {
+    const pool = new Set<string>();
+    if (typeof manuscript.title === 'string' && manuscript.title.trim()) pool.add(manuscript.title.trim());
+    revisions.forEach((revision) => {
+      if (typeof revision.changesSummary === 'string' && revision.changesSummary.trim()) {
+        pool.add(revision.changesSummary.trim());
+      }
+      if (typeof revision.revisionNotes === 'string' && revision.revisionNotes.trim()) {
+        pool.add(revision.revisionNotes.trim());
+      }
+    });
+    pool.add('Regi');
+    pool.add('Manus');
+    return Array.from(pool);
+  }, [manuscript.title, revisions]);
 
   const handleCreateRevision = async () => {
     if (!revisionName.trim()) {
@@ -3987,13 +5316,14 @@ const RevisionsTab: React.FC<{
     }
 
     try {
+      const sanitizedRevisionNotes = stripHtmlTags(revisionNotes);
       const newRevision: ScriptRevision = {
         id: `rev-${Date.now()}`,
         manuscriptId: manuscript.id,
         version: `${manuscript.version || 1}.${revisions.length + 1}`,
         createdAt: new Date().toISOString(),
         changedBy: 'current-user',
-        changesSummary: revisionNotes || revisionName,
+        changesSummary: sanitizedRevisionNotes || revisionName.trim(),
         revisionNotes: revisionNotes,
         content: manuscript.content,
       };
@@ -4003,11 +5333,13 @@ const RevisionsTab: React.FC<{
       
       // Also save to service
       await manuscriptService.createRevision(newRevision);
+      await onCreateRevision?.(newRevision);
       
       showSuccess(`Revisjon "${revisionName}" opprettet`);
       setShowCreateDialog(false);
       setRevisionName('');
       setRevisionNotes('');
+      setUseRichNotes(false);
     } catch (error) {
       showError('Feil ved opprettelse av revisjon');
       console.error(error);
@@ -4023,14 +5355,22 @@ const RevisionsTab: React.FC<{
       showSuccess('Revisjon slettet');
     } catch (error) {
       showError('Feil ved sletting av revisjon');
+      console.error('Kunne ikke slette revisjon:', error);
     }
   };
 
-  const handleRestoreRevision = (revision: ScriptRevision) => {
+  const handleRestoreRevision = async (revision: ScriptRevision) => {
     if (!confirm('Vil du gjenopprette denne versjonen? Gjeldende endringer vil bli overskrevet.')) return;
     
-    // This would need to be connected to the parent to update manuscript content
-    showSuccess('Revisjon gjenopprettet');
+    try {
+      await onRestoreRevision?.(revision);
+      setSelectedRevision(revision);
+      setCompareMode(true);
+      showSuccess(`Revisjon ${revision.version} gjenopprettet`);
+    } catch (error) {
+      showError('Kunne ikke gjenopprette revisjon');
+      console.error('Feil ved gjenoppretting av revisjon:', error);
+    }
   };
 
   return (
@@ -4038,7 +5378,11 @@ const RevisionsTab: React.FC<{
       <Stack direction={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'stretch' : 'center'} spacing={isMobile ? 1 : 0} sx={{ mb: responsive.spacing }}>
         <Stack direction="row" spacing={isMobile ? 1 : 2} alignItems="center" flexWrap="wrap" useFlexGap>
           <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>
-            {isMobile ? 'Revisjoner' : 'Script Revisjoner & Diff Viewer'}
+            {isMobile
+              ? 'Revisjoner'
+              : isTablet
+                ? 'Revisjoner & Diff'
+                : 'Script Revisjoner & Diff Viewer'}
           </Typography>
           <Chip 
             label={`v${manuscript.version || '1.0'}`} 
@@ -4047,15 +5391,43 @@ const RevisionsTab: React.FC<{
             sx={{ fontSize: responsive.captionFontSize }}
           />
         </Stack>
-        <Button
-          variant="outlined"
-          size={responsive.buttonSize}
-          startIcon={<AddIcon sx={{ fontSize: responsive.iconSize }} />}
-          onClick={() => setShowCreateDialog(true)}
-          fullWidth={isMobile}
-        >
-          {isMobile ? 'Ny' : 'Ny Revisjon'}
-        </Button>
+        <Stack direction={isMobile ? 'column' : 'row'} spacing={1} alignItems={isMobile ? 'stretch' : 'center'}>
+          <ToggleButtonGroup
+            value={compareMode ? 'compare' : 'list'}
+            exclusive
+            size="small"
+            onChange={(_, value: 'compare' | 'list' | null) => {
+              if (!value) return;
+              setCompareMode(value === 'compare');
+            }}
+          >
+            <ToggleButton value="list">
+              <HistoryIcon sx={{ fontSize: responsive.iconSize - 6 }} />
+              {isDesktop && (
+                <Typography component="span" sx={{ ml: 0.75, fontSize: responsive.captionFontSize }}>
+                  Liste
+                </Typography>
+              )}
+            </ToggleButton>
+            <ToggleButton value="compare">
+              <PreviewIcon sx={{ fontSize: responsive.iconSize - 6 }} />
+              {isDesktop && (
+                <Typography component="span" sx={{ ml: 0.75, fontSize: responsive.captionFontSize }}>
+                  Compare
+                </Typography>
+              )}
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <Button
+            variant="outlined"
+            size={responsive.buttonSize}
+            startIcon={<AddIcon sx={{ fontSize: responsive.iconSize }} />}
+            onClick={() => setShowCreateDialog(true)}
+            fullWidth={isMobile}
+          >
+            {isMobile ? 'Ny' : 'Ny Revisjon'}
+          </Button>
+        </Stack>
       </Stack>
 
       {revisions.length === 0 ? (
@@ -4096,7 +5468,7 @@ const RevisionsTab: React.FC<{
                         sx={{ fontSize: responsive.captionFontSize }}
                       />
                       <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
-                        {revision.changesSummary || revision.revisionNotes || 'Ingen beskrivelse'}
+                        {stripHtmlTags(revision.changesSummary || revision.revisionNotes || 'Ingen beskrivelse') || 'Ingen beskrivelse'}
                       </Typography>
                     </Stack>
                     <Stack direction="row" spacing={0.5} alignItems="center">
@@ -4115,7 +5487,7 @@ const RevisionsTab: React.FC<{
                         size="small" 
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleRestoreRevision(revision);
+                          void handleRestoreRevision(revision);
                         }}
                         title="Gjenopprett"
                       >
@@ -4151,10 +5523,17 @@ const RevisionsTab: React.FC<{
       )}
 
       {/* Diff Viewer */}
-      {revisions.length > 0 && (
-        <Box sx={{ flex: 1, minHeight: 0 }}>
+      {revisions.length > 0 && compareMode && (
+        <Box sx={{ flex: 1, minHeight: is4K ? 520 : isDesktop ? 420 : isTablet ? 340 : 280 }}>
           <ScriptDiffViewer revisions={revisions} currentContent={manuscript.content} />
         </Box>
+      )}
+      {revisions.length > 0 && !compareMode && (
+        <Alert severity="info">
+          <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
+            Slå på Compare for å se diff mellom gjeldende manus og valgt revisjon.
+          </Typography>
+        </Alert>
       )}
 
       {/* Create Revision Dialog */}
@@ -4179,15 +5558,49 @@ const RevisionsTab: React.FC<{
               placeholder="F.eks. 'Draft 2' eller 'Etter regimøte'"
               required
             />
-            <TextField
-              label="Notater / Endringsbeskrivelse"
-              value={revisionNotes}
-              onChange={(e) => setRevisionNotes(e.target.value)}
-              fullWidth
-              multiline
-              rows={isMobile ? 2 : 3}
-              size={isMobile ? 'small' : 'medium'}
-              placeholder="Beskriv hva som er endret i denne revisjonen..."
+            <Stack direction={isMobile ? 'column' : 'row'} spacing={1} alignItems={isMobile ? 'stretch' : 'center'}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
+                Notatformat
+              </Typography>
+              <ToggleButtonGroup
+                size="small"
+                value={useRichNotes ? 'rich' : 'plain'}
+                exclusive
+                onChange={(_, value: 'rich' | 'plain' | null) => {
+                  if (!value) return;
+                  setUseRichNotes(value === 'rich');
+                }}
+              >
+                <ToggleButton value="plain">Tekst</ToggleButton>
+                <ToggleButton value="rich">Rik tekst</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+            {useRichNotes ? (
+              <RichTextEditor
+                value={revisionNotes}
+                onChange={setRevisionNotes}
+                placeholder="Beskriv hva som er endret i denne revisjonen..."
+                minHeight={isMobile ? 120 : 180}
+                accentColor={branding.colors.primary}
+              />
+            ) : (
+              <TextField
+                label="Notater / Endringsbeskrivelse"
+                value={revisionNotes}
+                onChange={(e) => setRevisionNotes(e.target.value)}
+                fullWidth
+                multiline
+                rows={isMobile ? 2 : 3}
+                size={isMobile ? 'small' : 'medium'}
+                placeholder="Beskriv hva som er endret i denne revisjonen..."
+              />
+            )}
+            <GlobalMentionHelper
+              text={revisionNotes}
+              localCandidates={mentionCandidates}
+              onApplySuggestion={(name) => setRevisionNotes((prev) => applyMentionSuggestion(prev, name))}
+              autoTagTitle="Auto-tagget i notater"
+              suggestionTitle="Mener du?"
             />
             <Stack direction={isMobile ? 'column' : 'row'} spacing={isMobile ? 1 : 2}>
               <Chip 

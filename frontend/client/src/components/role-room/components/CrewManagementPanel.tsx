@@ -111,6 +111,7 @@ import {
   Category as OtherDeptIcon,
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
+import globalTagService from '../services/globalTagService';
 import { 
   TeamIcon as GroupsIcon, 
   PersonNameIcon, 
@@ -126,6 +127,7 @@ import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import { CallSheetGenerator } from './CallSheetGenerator';
 import { detectConflicts } from '../hooks/useCrewData';
+import { useAuth } from '../../../hooks/useAuth';
 import crewPng from './icons/Keep/roleroom_crew.png';
 import { CrewManagementGuide } from './production/CrewManagementGuide';
 import {
@@ -133,6 +135,7 @@ import {
   getRoleLabel as getSharedRoleLabel,
   isTechnicalCrewMember as isTechnicalCrewMemberFromShared,
 } from './shared/technicalCrew';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 // ─── Sort / view types ────────────────────────────────────────────────────────
 type SortField = 'name' | 'role' | 'rate' | 'availability';
@@ -197,6 +200,18 @@ const focusVisibleStyles = {
     outline: '3px solid #b86bff',
     outlineOffset: '2px',
   },
+};
+
+const formatCrewNoteTimestamp = (value: unknown): string => {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleString('nb-NO', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
 // ─── Department config ────────────────────────────────────────────────────────
@@ -997,6 +1012,9 @@ interface CrewManagementPanelProps {
   totalBudget?: number;
   onTotalBudgetChange?: (budget: number) => void;
   onOpenTechnicalTeamDashboard?: () => void;
+  externalCreateSignal?: number;
+  onExternalCreated?: (crewMember: CrewMember) => void;
+  onExternalCreateCancelled?: () => void;
   /** Shoot day schedule from the Stripboard module */
   productionDays?: ProductionDay[];
   /** Scenes list for Callsheet pre-fill */
@@ -1013,6 +1031,9 @@ export function CrewManagementPanel({
   totalBudget = 0,
   onTotalBudgetChange,
   onOpenTechnicalTeamDashboard,
+  externalCreateSignal,
+  onExternalCreated,
+  onExternalCreateCancelled,
   productionDays: propProductionDays,
   scenes: propScenes,
 }: CrewManagementPanelProps) {
@@ -1026,6 +1047,12 @@ export function CrewManagementPanel({
 
   // Toast notifications
   const { showSuccess, showError, showInfo } = useToast();
+  const { user } = useAuth();
+  const noteActorLabel = useMemo(() => {
+    const raw = user?.displayName ?? user?.name ?? user?.email;
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
+  }, [user]);
+  const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
   const roleTabAccent = '#b86bff';
   const roleTabAccentHover = '#a855f7';
   const roleTabAccentSoft = 'rgba(184,107,255,0.18)';
@@ -1039,6 +1066,19 @@ export function CrewManagementPanel({
   // Core state
   const [crewMembers, setCrewMembers] = useState<CrewMember[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const mentionCandidates = useMemo(
+    () =>
+      crewMembers
+        .map((member) => member.name)
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
+    [crewMembers],
+  );
+  const applyMentionSuggestion = useCallback((sourceText: string | undefined, name: string): string => {
+    const current = typeof sourceText === 'string' ? sourceText : '';
+    if (!current.trim()) return name;
+    const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+    return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+  }, []);
   
   // Load crew members when projectId changes
   useEffect(() => {
@@ -1115,6 +1155,8 @@ export function CrewManagementPanel({
   const [filterStatus, setFilterStatus] = useState<CrewStatus | 'all'>('all');
   const [showDeptSidebar, setShowDeptSidebar] = useState(true);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const externalCreateSignalRef = useRef(0);
+  const externalCreatePendingRef = useRef(false);
   const [offlinePending, setOfflinePending] = useState<number>(() => {
     try {
       const q = JSON.parse(localStorage.getItem('crewDataOfflineQueue') || '[]') as Array<{ projectId: string }>;
@@ -2546,7 +2588,20 @@ export function CrewManagementPanel({
     setDialogOpen(true);
   }, [profession]);
 
+  useEffect(() => {
+    if (!externalCreateSignal || externalCreateSignal === externalCreateSignalRef.current) {
+      return;
+    }
+    externalCreateSignalRef.current = externalCreateSignal;
+    externalCreatePendingRef.current = true;
+    handleOpenDialog();
+  }, [externalCreateSignal, handleOpenDialog]);
+
   const handleCloseDialog = useCallback(() => {
+    if (externalCreatePendingRef.current) {
+      externalCreatePendingRef.current = false;
+      onExternalCreateCancelled?.();
+    }
     setDialogOpen(false);
     setEditingCrewMember(null);
     setFormData({
@@ -2557,7 +2612,7 @@ export function CrewManagementPanel({
       assignedScenes: [],
       notes: '',
     });
-  }, []);
+  }, [onExternalCreateCancelled]);
 
   const commandActions = useMemo(() => {
     return [
@@ -2662,11 +2717,37 @@ export function CrewManagementPanel({
     }
 
     try {
+      const isCreating = !editingCrewMember;
+      const nowIso = new Date().toISOString();
+      const notesText = typeof formData.notes === 'string' ? formData.notes.trim() : '';
+      const splitSheetDraft =
+        formData.splitSheet && typeof formData.splitSheet === 'object'
+          ? { ...(formData.splitSheet as Record<string, unknown>) }
+          : undefined;
+      const splitNotesText =
+        splitSheetDraft && typeof splitSheetDraft.notes === 'string'
+          ? splitSheetDraft.notes.trim()
+          : '';
+
+      if (splitSheetDraft && splitNotesText) {
+        splitSheetDraft.notesAuthorName = noteActorLabel;
+        splitSheetDraft.notesAuthorId = noteActorId;
+        splitSheetDraft.notesUpdatedAt = nowIso;
+      }
+
       const crewMember: CrewMember = editingCrewMember
         ? {
             ...editingCrewMember,
             ...formData,
-            updatedAt: new Date().toISOString(),
+            splitSheet: splitSheetDraft ?? formData.splitSheet,
+            ...(notesText
+              ? {
+                  notesAuthorName: noteActorLabel,
+                  notesAuthorId: noteActorId,
+                  notesUpdatedAt: nowIso,
+                }
+              : {}),
+            updatedAt: nowIso,
           }
         : {
             id: `crew-${Date.now()}`,
@@ -2677,11 +2758,28 @@ export function CrewManagementPanel({
             assignedScenes: formData.assignedScenes || [],
             rate: formData.rate,
             notes: formData.notes,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            splitSheet: splitSheetDraft,
+            ...(notesText
+              ? {
+                  notesAuthorName: noteActorLabel,
+                  notesAuthorId: noteActorId,
+                  notesUpdatedAt: nowIso,
+                }
+              : {}),
+            createdAt: nowIso,
+            updatedAt: nowIso,
           };
 
       await castingService.saveCrew(projectId, crewMember);
+      void globalTagService
+        .add([
+          formData.name || '',
+          ...(typeof formData.notes === 'string' ? globalTagService.parseExplicitMentions(formData.notes) : []),
+          ...(typeof formData.splitSheet?.notes === 'string' ? globalTagService.parseExplicitMentions(formData.splitSheet.notes) : []),
+        ])
+        .catch((error) => {
+          console.warn('Kunne ikke oppdatere globalt tag-register fra crew-notater:', error);
+        });
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
 
@@ -2692,6 +2790,11 @@ export function CrewManagementPanel({
       } else {
         showSuccess(`${formData.name} lagt til i teamet`, 3000);
         logActivity('Crew', `La til ${formData.name}`);
+      }
+
+      if (isCreating) {
+        externalCreatePendingRef.current = false;
+        onExternalCreated?.(crewMember);
       }
 
       handleCloseDialog();
@@ -4447,6 +4550,29 @@ export function CrewManagementPanel({
                           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
                             {member.notes}
                           </Typography>
+                          <Typography
+                            variant="caption"
+                            sx={{ color: 'rgba(255,255,255,0.6)', fontSize: { xs: '0.7rem', sm: '0.75rem' }, mt: 0.5, display: 'block' }}
+                          >
+                            Skrevet av:{' '}
+                            {(() => {
+                              const rawAuthor =
+                                member.notesAuthorName
+                                ?? member.notesAuthor
+                                ?? member.notesBy;
+                              return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
+                                ? rawAuthor.trim()
+                                : 'Ikke registrert';
+                            })()}
+                            {(() => {
+                              const rawUpdatedAt =
+                                member.notesUpdatedAt
+                                ?? member.notesLastEditedAt
+                                ?? member.notesTimestamp;
+                              const updatedText = formatCrewNoteTimestamp(rawUpdatedAt);
+                              return updatedText ? ` • ${updatedText}` : '';
+                            })()}
+                          </Typography>
                         </Box>
                       )}
                       {member.assignedScenes && member.assignedScenes.length > 0 && (
@@ -4878,13 +5004,16 @@ export function CrewManagementPanel({
         slotProps={{
           paper: {
             sx: {
-              bgcolor: '#1c2128',
+              background:
+                'linear-gradient(160deg, rgba(8,5,20,0.96) 0%, rgba(14,10,34,0.93) 52%, rgba(24,17,49,0.9) 100%)',
               color: '#fff',
               // iPad-friendly: ensure dialog doesn't go off-screen
               maxHeight: { xs: '100%', sm: '90vh' },
               m: { xs: 0, sm: 2, md: 2.5, lg: 3, xl: 4 },
-              borderRadius: { xs: 0, sm: 2 },
+              borderRadius: { xs: 0, sm: 2.5 },
               maxWidth: { xs: '95vw', sm: '90vw', md: '85vw', lg: '80vw', xl: '75vw' },
+              border: '1px solid rgba(184,107,255,0.34)',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
               willChange: 'transform, opacity',
               transformOrigin: 'center center',
               zIndex: 100000,
@@ -4895,8 +5024,16 @@ export function CrewManagementPanel({
           zIndex: 100000,
           '& .MuiBackdrop-root': {
             zIndex: 99998,
-            bgcolor: 'rgba(0,0,0,0.8)',
+            bgcolor: 'rgba(8,5,20,0.86)',
+            backdropFilter: 'blur(3px)',
             willChange: 'opacity',
+          },
+          '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+            borderColor: `${roleTabAccent} !important`,
+            borderWidth: '2px !important',
+          },
+          '& .MuiInputLabel-root.Mui-focused': {
+            color: `${roleTabAccent} !important`,
           },
         }}
       >
@@ -4904,7 +5041,7 @@ export function CrewManagementPanel({
           id={dialogTitleId}
           sx={{
             color: '#fff',
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            borderBottom: '1px solid rgba(184,107,255,0.34)',
             fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.2rem', lg: '1.375rem', xl: '1.75rem' },
             display: 'flex',
             justifyContent: 'space-between',
@@ -4912,19 +5049,40 @@ export function CrewManagementPanel({
             py: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
             px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
             gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
+            background: 'linear-gradient(180deg, rgba(184,107,255,0.16) 0%, rgba(184,107,255,0.04) 100%)',
           }}
         >
-          {editingCrewMember ? 'Rediger teammedlem' : 'Nytt teammedlem'}
-          {/* Close button for mobile */}
-          {isMobile && (
-            <IconButton
-              onClick={handleCloseDialog}
-              aria-label="Lukk dialog"
-              sx={{ color: 'rgba(255,255,255,0.87)', mr: -1 }}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <Box
+              sx={{
+                width: 34,
+                height: 34,
+                borderRadius: 1.5,
+                border: '1px solid rgba(184,107,255,0.42)',
+                background: 'linear-gradient(135deg, rgba(184,107,255,0.28), rgba(88,28,135,0.2))',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <CloseIcon />
-            </IconButton>
-          )}
+              <GroupsIcon sx={{ color: '#e9d5ff', fontSize: 18 }} />
+            </Box>
+            <Typography sx={{ fontSize: { xs: '1rem', sm: '1.1rem' }, fontWeight: 700 }}>
+              {editingCrewMember ? 'Rediger teammedlem' : 'Nytt teammedlem'}
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={handleCloseDialog}
+            aria-label="Lukk dialog"
+            sx={{
+              color: 'rgba(255,255,255,0.87)',
+              border: '1px solid rgba(184,107,255,0.34)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              '&:hover': { bgcolor: 'rgba(184,107,255,0.14)' },
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
         </DialogTitle>
         <DialogContent
           sx={{
@@ -4934,6 +5092,7 @@ export function CrewManagementPanel({
             // Better scroll behavior for iPad
             overflowY: 'auto',
             WebkitOverflowScrolling: 'touch',
+            bgcolor: 'rgba(15,23,42,0.25)',
           }}
         >
           <Typography
@@ -5010,8 +5169,8 @@ export function CrewManagementPanel({
                         color: '#fff',
                         maxHeight: 300,
                         '& .MuiMenuItem-root': {
-                          '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
-                          '&.Mui-selected': { bgcolor: 'rgba(0,212,255,0.2)' },
+                          '&:hover': { bgcolor: 'rgba(184,107,255,0.12)' },
+                          '&.Mui-selected': { bgcolor: 'rgba(184,107,255,0.2)' },
                         },
                       },
                     },
@@ -5037,7 +5196,7 @@ export function CrewManagementPanel({
                       minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                       py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
-                      '&:focus-visible': { bgcolor: 'rgba(0,212,255,0.2)' },
+                      '&:focus-visible': { bgcolor: 'rgba(184,107,255,0.2)' },
                     }}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
@@ -5376,8 +5535,8 @@ export function CrewManagementPanel({
                             bgcolor: '#1c2128',
                             color: '#fff',
                             '& .MuiMenuItem-root': {
-                              '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
-                              '&.Mui-selected': { bgcolor: 'rgba(0,212,255,0.2)' },
+                              '&:hover': { bgcolor: 'rgba(184,107,255,0.12)' },
+                              '&.Mui-selected': { bgcolor: 'rgba(184,107,255,0.2)' },
                             },
                           },
                         },
@@ -5446,6 +5605,47 @@ export function CrewManagementPanel({
                     },
                     '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
                   }}
+                />
+                {(() => {
+                  const splitSheetMeta =
+                    formData.splitSheet && typeof formData.splitSheet === 'object'
+                      ? (formData.splitSheet as Record<string, unknown>)
+                      : undefined;
+                  const rawAuthor =
+                    splitSheetMeta?.notesAuthorName
+                    ?? splitSheetMeta?.notesAuthor
+                    ?? splitSheetMeta?.notesBy;
+                  const rawUpdatedAt =
+                    splitSheetMeta?.notesUpdatedAt
+                    ?? splitSheetMeta?.notesLastEditedAt
+                    ?? splitSheetMeta?.notesTimestamp;
+                  const authorText =
+                    typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
+                      ? rawAuthor.trim()
+                      : 'Ikke registrert';
+                  const updatedText = formatCrewNoteTimestamp(rawUpdatedAt);
+                  return (
+                    <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>
+                      Skrevet av (split sheet): {authorText}{updatedText ? ` • ${updatedText}` : ''}
+                    </Typography>
+                  );
+                })()}
+                <GlobalMentionHelper
+                  text={typeof formData.splitSheet?.notes === 'string' ? formData.splitSheet.notes : ''}
+                  localCandidates={mentionCandidates}
+                  onApplySuggestion={(name) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      splitSheet: {
+                        ...prev.splitSheet,
+                        percentage: prev.splitSheet?.percentage ?? 0,
+                        notes: applyMentionSuggestion(
+                          typeof prev.splitSheet?.notes === 'string' ? prev.splitSheet.notes : '',
+                          name,
+                        ),
+                      },
+                    }))
+                  }
                 />
               </Stack>
             </Box>
@@ -5546,11 +5746,40 @@ export function CrewManagementPanel({
                 '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
               }}
             />
+            <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>
+              Skrevet av: {(() => {
+                const rawAuthor =
+                  formData.notesAuthorName
+                  ?? formData.notesAuthor
+                  ?? formData.notesBy;
+                return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
+                  ? rawAuthor.trim()
+                  : 'Ikke registrert';
+              })()}
+              {(() => {
+                const rawUpdatedAt =
+                  formData.notesUpdatedAt
+                  ?? formData.notesLastEditedAt
+                  ?? formData.notesTimestamp;
+                const updatedText = formatCrewNoteTimestamp(rawUpdatedAt);
+                return updatedText ? ` • ${updatedText}` : '';
+              })()}
+            </Typography>
+            <GlobalMentionHelper
+              text={typeof formData.notes === 'string' ? formData.notes : ''}
+              localCandidates={mentionCandidates}
+              onApplySuggestion={(name) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  notes: applyMentionSuggestion(typeof prev.notes === 'string' ? prev.notes : '', name),
+                }))
+              }
+            />
           </Stack>
         </DialogContent>
         <DialogActions
           sx={{
-            borderTop: '1px solid rgba(255,255,255,0.1)',
+            borderTop: '1px solid rgba(184,107,255,0.28)',
             p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
             gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 },
             flexDirection: { xs: 'column-reverse', sm: 'row' },
@@ -5558,7 +5787,7 @@ export function CrewManagementPanel({
             // Sticky at bottom for mobile
             position: { xs: 'sticky', sm: 'relative' },
             bottom: 0,
-            bgcolor: '#1c2128',
+            bgcolor: 'rgba(17,24,39,0.85)',
           }}
         >
           <Button
@@ -5573,8 +5802,10 @@ export function CrewManagementPanel({
               fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
               px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+              border: '1px solid rgba(184,107,255,0.34)',
+              bgcolor: 'rgba(255,255,255,0.02)',
               ...focusVisibleStyles,
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
+              '&:hover': { bgcolor: 'rgba(184,107,255,0.14)' },
             }}
           >
             Avbryt
@@ -5586,16 +5817,17 @@ export function CrewManagementPanel({
             aria-label={editingCrewMember ? 'Lagre endringer' : 'Opprett nytt crewmedlem'}
             fullWidth={isMobile}
             sx={{
-              bgcolor: '#00d4ff',
-              color: '#000',
-              fontWeight: 600,
+              bgcolor: roleTabAccent,
+              color: '#fff',
+              fontWeight: 700,
               fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
               px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
               minHeight: TOUCH_TARGET_SIZE,
               minWidth: { xs: 'auto', sm: 100 },
               ...focusVisibleStyles,
-              '&:hover': { bgcolor: '#00b8e6' },
+              boxShadow: '0 10px 24px rgba(88,28,135,0.35)',
+              '&:hover': { bgcolor: roleTabAccentHover, boxShadow: '0 12px 28px rgba(88,28,135,0.45)' },
             }}
           >
             Lagre

@@ -11,7 +11,6 @@ import {
   InputAdornment,
   Tabs,
   Tab,
-  Grid,
   Card,
   CardContent,
   CardActionArea,
@@ -26,7 +25,7 @@ import {
   ListItem,
   ListItemText,
   Divider,
-  Tooltip,
+  Stack,
   Paper,
 } from '@mui/material';
 import {
@@ -34,29 +33,16 @@ import {
   Close as CloseIcon,
   ContentCopy as ContentCopyIcon,
   Visibility as VisibilityIcon,
-  Star as StarIcon,
-  Add as AddIcon,
   Delete as DeleteIcon,
   Description as DescriptionIcon,
-  Movie as MovieIcon,
-  Tv as TvIcon,
-  VideoLibrary as VideoLibraryIcon,
-  Campaign as CampaignIcon,
-  MovieCreation as MovieCreationIcon,
-  ChatBubble as ChatBubbleIcon,
-  FlashOn as FlashOnIcon,
-  Timer as TimerIcon,
   History as HistoryIcon,
-  Phone as PhoneIcon,
   Person as PersonIcon,
-  PersonOutline as PersonOutlineIcon,
-  School as SchoolIcon,
-  RocketLaunch as RocketIcon,
   Architecture as ArchitectureIcon,
 } from '@mui/icons-material';
 import { manuscriptTemplateService } from '../services/manuscriptTemplateService';
 import type { Template, TemplateLibrary, StructureTemplate } from '../data/manuscriptTemplates';
 import { TemplateIcon } from './TemplateIcon';
+import { getBrandingSettings } from '../config/branding';
 
 interface ManuscriptTemplatePanelProps {
   open: boolean;
@@ -125,75 +111,141 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
   };
 
   const structureTemplates = manuscriptTemplateService.getStructureTemplates();
+  const branding = useMemo(() => getBrandingSettings(), []);
+  const selectedStructureTab = library.categories.length + 3;
+  const totalTemplateCount = useMemo(() => {
+    const categoryTemplates = library.categories.reduce((sum, category) => sum + category.templates.length, 0);
+    return categoryTemplates + library.userTemplates.length;
+  }, [library.categories, library.userTemplates.length]);
+  const activeTabLabel = useMemo(() => {
+    if (selectedTab === 0) return 'Alle maler';
+    if (selectedTab === library.categories.length + 1) return 'Mine maler';
+    if (selectedTab === library.categories.length + 2) return 'Nylig brukt';
+    if (selectedTab === selectedStructureTab) return 'Strukturer';
+    return library.categories[selectedTab - 1]?.name || 'Maler';
+  }, [selectedTab, library.categories, selectedStructureTab]);
 
   return (
     <>
       <Dialog
         open={open}
         onClose={onClose}
-        maxWidth="md"
+        maxWidth="xl"
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: '#1a1a1a',
-            backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05))',
-            minHeight: '80vh'
-          }
+            bgcolor: branding.colors.background,
+            backgroundImage: `linear-gradient(180deg, ${branding.colors.background} 0%, ${branding.colors.surface} 100%)`,
+            color: branding.colors.textPrimary,
+            border: `1px solid ${branding.colors.border}`,
+            minHeight: '82vh',
+            boxShadow: '0 26px 72px rgba(0, 0, 0, 0.6)',
+          },
         }}
       >
-        <DialogTitle sx={{ 
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <DescriptionIcon sx={{ color: '#00d4ff' }} />
-            <Typography variant="h6" sx={{ color: '#fff' }}>
-              Manuskriptmaler
-            </Typography>
+        <DialogTitle
+          sx={{
+            borderBottom: `1px solid ${branding.colors.border}`,
+            display: 'grid',
+            gridTemplateColumns: '1fr auto',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+            <Box
+              sx={{
+                width: 34,
+                height: 34,
+                borderRadius: 1.5,
+                display: 'grid',
+                placeItems: 'center',
+                bgcolor: 'rgba(0, 212, 255, 0.15)',
+                border: `1px solid ${branding.colors.accent}`,
+              }}
+            >
+              <DescriptionIcon sx={{ color: branding.colors.accent, fontSize: 20 }} />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h6" sx={{ color: branding.colors.textPrimary, lineHeight: 1.25 }}>
+                Role Room Manuskriptmaler
+              </Typography>
+              <Typography variant="caption" sx={{ color: branding.colors.textSecondary }}>
+                Velg en mal og legg den inn i manuset ditt på sekunder.
+              </Typography>
+            </Box>
           </Box>
-          <IconButton onClick={onClose} sx={{ color: '#fff' }}>
+          <IconButton
+            onClick={onClose}
+            sx={{ color: branding.colors.textSecondary, justifySelf: 'end' }}
+            aria-label="Lukk manuskriptmaler"
+          >
             <CloseIcon />
           </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ p: 0 }}>
-          {/* Search */}
-          <Box sx={{ p: 2, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <DialogContent sx={{ p: 0, display: 'grid', gridTemplateRows: 'auto auto minmax(0, 1fr)', minHeight: 0 }}>
+          <Box
+            sx={{
+              p: 2,
+              borderBottom: `1px solid ${branding.colors.border}`,
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) auto' },
+              gap: 1.5,
+              alignItems: 'center',
+            }}
+          >
             <TextField
               fullWidth
               placeholder="Søk etter maler..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              size="small"
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)' }} />
+                    <SearchIcon sx={{ color: branding.colors.textSecondary }} />
                   </InputAdornment>
                 ),
                 sx: {
-                  color: '#fff',
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                  '&.Mui-focused fieldset': { borderColor: '#00d4ff' }
-                }
+                  color: branding.colors.textPrimary,
+                  bgcolor: 'rgba(255,255,255,0.03)',
+                  borderRadius: 1.5,
+                  '& fieldset': { borderColor: branding.colors.border },
+                  '&:hover fieldset': { borderColor: branding.colors.accent },
+                  '&.Mui-focused fieldset': { borderColor: branding.colors.accent },
+                },
               }}
             />
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' },
+                gap: 1,
+              }}
+            >
+              <Chip label={activeTabLabel} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: branding.colors.accent }} />
+              <Chip label={`${filteredTemplates.length} treff`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
+              <Chip label={`${totalTemplateCount} totalt`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
+              <Chip
+                label={currentContent.trim() ? 'Setter inn i manus' : 'Oppretter nytt manus'}
+                size="small"
+                sx={{ bgcolor: 'rgba(16,185,129,0.14)', color: '#6ee7b7' }}
+              />
+            </Box>
           </Box>
 
-          {/* Tabs */}
           <Tabs
             value={selectedTab}
             onChange={(_, newValue) => setSelectedTab(newValue)}
             variant="scrollable"
             scrollButtons="auto"
             sx={{
-              borderBottom: '1px solid rgba(255,255,255,0.1)',
+              borderBottom: `1px solid ${branding.colors.border}`,
               px: 2,
-              '& .MuiTab-root': { color: 'rgba(255,255,255,0.87)', minHeight: 48 },
-              '& .Mui-selected': { color: '#00d4ff' },
-              '& .MuiTabs-indicator': { bgcolor: '#00d4ff' }
+              '& .MuiTab-root': { color: branding.colors.textSecondary, minHeight: 48 },
+              '& .Mui-selected': { color: branding.colors.accent },
+              '& .MuiTabs-indicator': { bgcolor: branding.colors.accent },
             }}
           >
             <Tab label="Alle" />
@@ -205,161 +257,215 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
             <Tab label="Strukturer" icon={<ArchitectureIcon />} iconPosition="start" />
           </Tabs>
 
-          {/* Content */}
-          <Box sx={{ p: 2, minHeight: 400, maxHeight: 500, overflowY: 'auto' }}>
-            {selectedTab === library.categories.length + 3 ? (
-              // Structure templates
-              <Grid container spacing={2}>
-                {structureTemplates.map(structure => (
-                  <Grid key={structure.id} size={{ xs: 12 }}>
-                    <Card
-                      sx={{
-                        bgcolor: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          bgcolor: 'rgba(255,255,255,0.08)',
-                          borderColor: '#00d4ff'
-                        }
-                      }}
-                    >
-                      <CardActionArea onClick={() => setStructureView(structure)}>
-                        <CardContent>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                            <ArchitectureIcon sx={{ color: '#00d4ff' }} />
-                            <Typography variant="h6" sx={{ color: '#fff' }}>
-                              {structure.name}
-                            </Typography>
-                          </Box>
-                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
-                            {structure.description}
-                          </Typography>
-                          <Chip
-                            label={`${structure.beats.length} story beats`}
-                            size="small"
-                            sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff' }}
-                          />
-                          <Chip
-                            label={`${structure.totalPages} sider`}
-                            size="small"
-                            sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.1)', color: '#fff' }}
-                          />
-                        </CardContent>
-                      </CardActionArea>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            ) : (
-              // Template grid
-              <Grid container spacing={2}>
-                {filteredTemplates.length === 0 ? (
-                  <Grid size={{ xs: 12 }}>
-                    <Typography sx={{ color: 'rgba(255,255,255,0.87)', textAlign: 'center', py: 4 }}>
-                      Ingen maler funnet
-                    </Typography>
-                  </Grid>
+          <Box
+            sx={{
+              p: 2,
+              minHeight: 0,
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1fr) 320px' },
+              gap: 2,
+            }}
+          >
+            <Box sx={{ minHeight: 0, overflowY: 'auto', pr: { xs: 0, xl: 1 } }}>
+              {selectedTab === selectedStructureTab ? (
+                structureTemplates.length === 0 ? (
+                  <Typography sx={{ color: branding.colors.textSecondary, textAlign: 'center', py: 6 }}>
+                    Ingen strukturmaler tilgjengelig
+                  </Typography>
                 ) : (
-                  filteredTemplates.map(template => (
-                    <Grid key={template.id} size={{ xs: 12, sm: 6 }}>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                      gap: 2,
+                    }}
+                  >
+                    {structureTemplates.map((structure) => (
                       <Card
+                        key={structure.id}
                         sx={{
-                          bgcolor: 'rgba(255,255,255,0.05)',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          height: '100%',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          transition: 'all 0.2s',
+                          bgcolor: 'rgba(255,255,255,0.03)',
+                          border: `1px solid ${branding.colors.border}`,
+                          borderRadius: 2,
+                          transition: 'transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease',
                           '&:hover': {
-                            bgcolor: 'rgba(255,255,255,0.08)',
-                            borderColor: '#00d4ff'
-                          }
+                            transform: 'translateY(-2px)',
+                            borderColor: branding.colors.accent,
+                            boxShadow: '0 14px 28px rgba(0,0,0,0.28)',
+                          },
                         }}
                       >
-                        <CardActionArea
-                          onClick={() => handleApply(template)}
-                          sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
-                        >
-                          <CardContent sx={{ flexGrow: 1, width: '100%' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <TemplateIcon iconName={template.icon} sx={{ color: '#00d4ff', fontSize: '1.2rem' }} />
-                                <Typography variant="h6" sx={{ color: '#fff', fontSize: '1rem' }}>
-                                  {template.name}
-                                </Typography>
-                              </Box>
-                              {template.isUserTemplate && (
-                                <IconButton
-                                  size="small"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteUserTemplate(template.id);
-                                  }}
-                                  sx={{ color: '#f44336', ml: 1 }}
-                                >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              )}
+                        <CardActionArea onClick={() => setStructureView(structure)} sx={{ height: '100%' }}>
+                          <CardContent>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                              <ArchitectureIcon sx={{ color: branding.colors.accent }} />
+                              <Typography variant="h6" sx={{ color: branding.colors.textPrimary, fontSize: '1rem' }}>
+                                {structure.name}
+                              </Typography>
                             </Box>
-                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1.5 }}>
-                              {template.description}
+                            <Typography variant="body2" sx={{ color: branding.colors.textSecondary, mb: 2 }}>
+                              {structure.description}
                             </Typography>
-                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                              {template.tags.slice(0, 3).map(tag => (
-                                <Chip
-                                  key={tag}
-                                  label={tag}
-                                  size="small"
-                                  sx={{
-                                    bgcolor: 'rgba(0,212,255,0.1)',
-                                    color: '#00d4ff',
-                                    fontSize: '0.7rem',
-                                    height: 20
-                                  }}
-                                />
-                              ))}
-                            </Box>
+                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                              <Chip label={`${structure.beats.length} beats`} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.14)', color: branding.colors.accent }} />
+                              <Chip label={`${structure.totalPages} sider`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
+                            </Stack>
                           </CardContent>
                         </CardActionArea>
-                        <Box sx={{ 
-                          display: 'flex', 
-                          gap: 0.5, 
-                          p: 1, 
-                          borderTop: '1px solid rgba(255,255,255,0.1)' 
-                        }}>
-                          <Tooltip title="Forhåndsvis">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPreviewTemplate(template);
-                              }}
-                              sx={{ color: 'rgba(255,255,255,0.87)' }}
-                            >
-                              <VisibilityIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Bruk mal">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleApply(template)}
-                              sx={{ color: '#00d4ff' }}
-                            >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
                       </Card>
-                    </Grid>
-                  ))
-                )}
-              </Grid>
-            )}
+                    ))}
+                  </Box>
+                )
+              ) : filteredTemplates.length === 0 ? (
+                <Typography sx={{ color: branding.colors.textSecondary, textAlign: 'center', py: 6 }}>
+                  Ingen maler funnet
+                </Typography>
+              ) : (
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      sm: 'repeat(2, minmax(0, 1fr))',
+                      lg: 'repeat(3, minmax(0, 1fr))',
+                    },
+                    gap: 2,
+                  }}
+                >
+                  {filteredTemplates.map((template) => (
+                    <Card
+                      key={template.id}
+                      sx={{
+                        bgcolor: 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${branding.colors.border}`,
+                        minHeight: 212,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        borderRadius: 2,
+                        transition: 'transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease',
+                        '&:hover': {
+                          transform: 'translateY(-3px)',
+                          borderColor: branding.colors.accent,
+                          boxShadow: '0 18px 30px rgba(0,0,0,0.34)',
+                        },
+                      }}
+                    >
+                      <CardActionArea
+                        onClick={() => handleApply(template)}
+                        sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
+                      >
+                        <CardContent sx={{ flexGrow: 1, width: '100%', display: 'grid', gridTemplateRows: 'auto auto 1fr' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <TemplateIcon iconName={template.icon} sx={{ color: branding.colors.accent, fontSize: '1.2rem' }} />
+                              <Typography variant="h6" sx={{ color: branding.colors.textPrimary, fontSize: '1rem', lineHeight: 1.25 }}>
+                                {template.name}
+                              </Typography>
+                            </Box>
+                            {template.isUserTemplate && (
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteUserTemplate(template.id);
+                                }}
+                                sx={{ color: '#f87171' }}
+                                aria-label={`Slett mal ${template.name}`}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                          </Box>
+                          <Typography variant="body2" sx={{ color: branding.colors.textSecondary, mb: 1.5 }}>
+                            {template.description}
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', alignContent: 'start' }}>
+                            {template.tags.slice(0, 4).map((tag) => (
+                              <Chip
+                                key={tag}
+                                label={tag}
+                                size="small"
+                                sx={{
+                                  bgcolor: 'rgba(0,212,255,0.1)',
+                                  color: branding.colors.accent,
+                                  fontSize: '0.7rem',
+                                  height: 21,
+                                }}
+                              />
+                            ))}
+                          </Box>
+                        </CardContent>
+                      </CardActionArea>
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                          gap: 0.75,
+                          p: 1,
+                          borderTop: `1px solid ${branding.colors.border}`,
+                        }}
+                      >
+                        <Button
+                          size="small"
+                          startIcon={<VisibilityIcon fontSize="small" />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewTemplate(template);
+                          }}
+                          sx={{ color: branding.colors.textSecondary, justifyContent: 'flex-start' }}
+                        >
+                          Forhåndsvis
+                        </Button>
+                        <Button
+                          size="small"
+                          startIcon={<ContentCopyIcon fontSize="small" />}
+                          onClick={() => handleApply(template)}
+                          sx={{ color: branding.colors.accent, justifyContent: 'flex-start' }}
+                        >
+                          Bruk mal
+                        </Button>
+                      </Box>
+                    </Card>
+                  ))}
+                </Box>
+              )}
+            </Box>
+
+            <Paper
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                border: `1px solid ${branding.colors.border}`,
+                bgcolor: 'rgba(255,255,255,0.03)',
+                display: 'grid',
+                gap: 1.5,
+                alignContent: 'start',
+                height: 'fit-content',
+                position: { xl: 'sticky' },
+                top: { xl: 0 },
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ color: branding.colors.textPrimary, fontWeight: 700 }}>
+                Role Room Tips
+              </Typography>
+              <Typography variant="body2" sx={{ color: branding.colors.textSecondary }}>
+                Klikk på et kort for å bruke malen direkte i manuseditoren.
+              </Typography>
+              <Divider sx={{ borderColor: branding.colors.border }} />
+              <Stack spacing={1}>
+                <Chip label={`Aktiv visning: ${activeTabLabel}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary, justifyContent: 'flex-start' }} />
+                <Chip label={`${filteredTemplates.length} tilgjengelige i denne visningen`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary, justifyContent: 'flex-start' }} />
+              </Stack>
+              <Divider sx={{ borderColor: branding.colors.border }} />
+              <Typography variant="caption" sx={{ color: branding.colors.textSecondary }}>
+                Tips: Bruk søk for å finne maler på type, sjanger eller nøkkelord.
+              </Typography>
+            </Paper>
           </Box>
         </DialogContent>
 
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
-          <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+        <DialogActions sx={{ borderTop: `1px solid ${branding.colors.border}`, p: 2 }}>
+          <Button onClick={onClose} sx={{ color: branding.colors.textSecondary }}>
             Lukk
           </Button>
         </DialogActions>
@@ -373,19 +479,21 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: '#1a1a1a',
-            backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05))'
-          }
+            bgcolor: branding.colors.background,
+            backgroundImage: `linear-gradient(180deg, ${branding.colors.background} 0%, ${branding.colors.surface} 100%)`,
+            border: `1px solid ${branding.colors.border}`,
+            color: branding.colors.textPrimary,
+          },
         }}
       >
-        <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <DialogTitle sx={{ borderBottom: `1px solid ${branding.colors.border}` }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <TemplateIcon iconName={previewTemplate?.icon} sx={{ color: '#00d4ff' }} />
-            <Box component="span" sx={{ color: '#fff', fontSize: '1.25rem', fontWeight: 500 }}>
+            <TemplateIcon iconName={previewTemplate?.icon} sx={{ color: branding.colors.accent }} />
+            <Box component="span" sx={{ color: branding.colors.textPrimary, fontSize: '1.25rem', fontWeight: 500 }}>
               {previewTemplate?.name}
             </Box>
           </Box>
-          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mt: 0.5 }}>
+          <Typography variant="caption" sx={{ color: branding.colors.textSecondary, display: 'block', mt: 0.5 }}>
             {previewTemplate?.description}
           </Typography>
         </DialogTitle>
@@ -393,21 +501,21 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
           <Paper
             sx={{
               p: 2,
-              bgcolor: '#0a0a0a',
-              border: '1px solid rgba(255,255,255,0.1)',
+              bgcolor: 'rgba(0,0,0,0.35)',
+              border: `1px solid ${branding.colors.border}`,
               fontFamily: 'Courier New, monospace',
               fontSize: '14px',
-              color: '#fff',
+              color: branding.colors.textPrimary,
               whiteSpace: 'pre-wrap',
               maxHeight: 400,
-              overflowY: 'auto'
+              overflowY: 'auto',
             }}
           >
             {previewTemplate?.content}
           </Paper>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <Button onClick={() => setPreviewTemplate(null)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+        <DialogActions sx={{ borderTop: `1px solid ${branding.colors.border}` }}>
+          <Button onClick={() => setPreviewTemplate(null)} sx={{ color: branding.colors.textSecondary }}>
             Lukk
           </Button>
           <Button
@@ -419,9 +527,9 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
               }
             }}
             sx={{
-              bgcolor: '#00d4ff',
-              color: '#000',
-              '&:hover': { bgcolor: '#00b8e6' }
+              bgcolor: branding.colors.accent,
+              color: branding.colors.background,
+              '&:hover': { bgcolor: branding.colors.accent, filter: 'brightness(0.92)' },
             }}
           >
             Bruk mal
@@ -437,19 +545,21 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: '#1a1a1a',
-            backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05))'
-          }
+            bgcolor: branding.colors.background,
+            backgroundImage: `linear-gradient(180deg, ${branding.colors.background} 0%, ${branding.colors.surface} 100%)`,
+            border: `1px solid ${branding.colors.border}`,
+            color: branding.colors.textPrimary,
+          },
         }}
       >
-        <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <DialogTitle sx={{ borderBottom: `1px solid ${branding.colors.border}` }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <ArchitectureIcon sx={{ color: '#00d4ff' }} />
-            <Box component="span" sx={{ color: '#fff', fontSize: '1.25rem', fontWeight: 500 }}>
+            <ArchitectureIcon sx={{ color: branding.colors.accent }} />
+            <Box component="span" sx={{ color: branding.colors.textPrimary, fontSize: '1.25rem', fontWeight: 500 }}>
               {structureView?.name}
             </Box>
           </Box>
-          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mt: 0.5 }}>
+          <Typography variant="caption" sx={{ color: branding.colors.textSecondary, display: 'block', mt: 0.5 }}>
             {structureView?.description}
           </Typography>
         </DialogTitle>
@@ -462,7 +572,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                     bgcolor: 'rgba(255,255,255,0.03)',
                     borderRadius: 1,
                     mb: 1,
-                    border: '1px solid rgba(255,255,255,0.1)'
+                    border: `1px solid ${branding.colors.border}`,
                   }}
                 >
                   <ListItemText
@@ -471,15 +581,15 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                         <Chip
                           label={typeof beat.page === 'number' ? `s.${beat.page}` : `s.${beat.page.min}-${beat.page.max}`}
                           size="small"
-                          sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff', fontWeight: 600 }}
+                          sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: branding.colors.accent, fontWeight: 600 }}
                         />
-                        <Typography sx={{ color: '#fff', fontWeight: 500 }}>
+                        <Typography sx={{ color: branding.colors.textPrimary, fontWeight: 500 }}>
                           {beat.name}
                         </Typography>
                       </Box>
                     }
                     secondary={
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 0.5 }}>
+                      <Typography variant="body2" sx={{ color: branding.colors.textSecondary, mt: 0.5 }}>
                         {beat.description}
                       </Typography>
                     }
@@ -489,8 +599,8 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
             ))}
           </List>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <Button onClick={() => setStructureView(null)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+        <DialogActions sx={{ borderTop: `1px solid ${branding.colors.border}` }}>
+          <Button onClick={() => setStructureView(null)} sx={{ color: branding.colors.textSecondary }}>
             Lukk
           </Button>
         </DialogActions>

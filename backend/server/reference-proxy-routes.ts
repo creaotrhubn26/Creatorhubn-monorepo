@@ -80,8 +80,14 @@ export function createReferenceProxyRouter(): Router {
       const imageUrl = req.query.url as string;
       if (!imageUrl) return res.status(400).json({ error: 'Missing url parameter' });
 
-      // Only allow shot.cafe and picsum URLs
-      const allowed = ['shot.cafe', 'picsum.photos'];
+      // Only allow explicitly trusted hosts that we proxy for internal references.
+      const allowed = [
+        'shot.cafe',
+        'picsum.photos',
+        'images.unsplash.com',
+        'plus.unsplash.com',
+        'images.pexels.com',
+      ];
       const parsed = new URL(imageUrl);
       if (!allowed.some(h => parsed.hostname.includes(h))) {
         return res.status(403).json({ error: 'URL not allowed' });
@@ -110,7 +116,7 @@ export function createReferenceProxyRouter(): Router {
   // ── Unsplash search proxy ────────────────────────────────
   router.get('/unsplash/search', async (req: Request, res: Response) => {
     try {
-      const { q, per_page = '12', orientation = 'landscape' } = req.query as Record<string, string>;
+      const { q, per_page = '12', orientation = 'landscape', intent = 'film' } = req.query as Record<string, string>;
       if (!q) return res.status(400).json({ error: 'Missing query parameter q' });
 
       if (!UNSPLASH_ACCESS_KEY) {
@@ -126,7 +132,13 @@ export function createReferenceProxyRouter(): Router {
       }
 
       const upstream = new URL('https://api.unsplash.com/search/photos');
-      upstream.searchParams.set('query', `${q} cinematic film`);
+      const normalizedIntent = String(intent || '').trim().toLowerCase();
+      upstream.searchParams.set(
+        'query',
+        normalizedIntent === 'presentation' || normalizedIntent === 'generic'
+          ? q
+          : `${q} cinematic film`,
+      );
       upstream.searchParams.set('per_page', per_page);
       upstream.searchParams.set('orientation', orientation);
 
@@ -152,6 +164,8 @@ export function createReferenceProxyRouter(): Router {
         id: `unsplash-${img.id}`,
         url: img.urls.regular,
         thumbnailUrl: img.urls.thumb,
+        description: img.alt_description || img.description || q,
+        photographer: img.user?.name || '',
         source: 'unsplash' as const,
         attribution: `Photo by ${img.user?.name || 'Unknown'}`,
       }));
@@ -166,7 +180,7 @@ export function createReferenceProxyRouter(): Router {
   // ── Pexels search proxy ──────────────────────────────────
   router.get('/pexels/search', async (req: Request, res: Response) => {
     try {
-      const { q, per_page = '8' } = req.query as Record<string, string>;
+      const { q, per_page = '8', intent = 'equipment' } = req.query as Record<string, string>;
       if (!q) return res.status(400).json({ error: 'Missing query parameter q' });
 
       if (!PEXELS_API_KEY) {
@@ -180,7 +194,12 @@ export function createReferenceProxyRouter(): Router {
         return res.json({ results: placeholders, source: 'picsum' });
       }
 
-      const upstream = `https://api.pexels.com/v1/search?query=${encodeURIComponent(q + ' equipment')}&per_page=${per_page}`;
+      const normalizedIntent = String(intent || '').trim().toLowerCase();
+      const searchQuery =
+        normalizedIntent === 'presentation' || normalizedIntent === 'generic'
+          ? q
+          : `${q} equipment`;
+      const upstream = `https://api.pexels.com/v1/search?query=${encodeURIComponent(searchQuery)}&per_page=${per_page}`;
       const response = await fetch(upstream, {
         headers: { Authorization: PEXELS_API_KEY },
         signal: AbortSignal.timeout(8000),

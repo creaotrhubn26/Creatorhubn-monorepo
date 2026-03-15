@@ -38,6 +38,7 @@ import { roleQueryKeys } from '../services/roleQueryKeys';
 import type { RoleTemplate} from '../config/roleDomain';
 import { createTemplateImportAuditEntry } from '../config/roleDomain';
 import { Z_INDEX } from '../config/zIndex';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface RolePoolPanelProps {
   projects: CastingProject[];
@@ -46,6 +47,13 @@ interface RolePoolPanelProps {
 }
 
 type WorkspaceView = 'standard' | 'pro';
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 export const RolePoolPanel: FC<RolePoolPanelProps> = ({
   projects,
@@ -68,6 +76,16 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
   const [importAuditNote, setImportAuditNote] = useState('');
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('standard');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const mentionCandidates = useMemo(() => {
+    const pool = new Set<string>();
+    if (selectedRole?.name?.trim()) pool.add(selectedRole.name.trim());
+    projects.forEach((project) => {
+      if (project?.name?.trim()) pool.add(project.name.trim());
+    });
+    pool.add('Casting');
+    pool.add('Audit');
+    return Array.from(pool);
+  }, [projects, selectedRole?.name]);
 
   const TOUCH_TARGET = 44;
   const roleTabAccent = '#b86bff';
@@ -948,6 +966,13 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                 },
               }}
+            />
+            <GlobalMentionHelper
+              text={importAuditNote}
+              localCandidates={mentionCandidates}
+              onApplySuggestion={(name) => setImportAuditNote((prev) => applyMentionSuggestion(prev, name))}
+              autoTagTitle="Auto-tagget i notat"
+              suggestionTitle="Mener du?"
             />
           </Stack>
         </DialogContent>

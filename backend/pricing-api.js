@@ -428,6 +428,130 @@ app.get('/api/clients', (req, res) => {
   res.json(userId ? mockClients : []);
 });
 
+// ============================================
+// BRREG compatibility endpoints (Role Room / Project modals)
+// ============================================
+
+const BRREG_COMPANY_FALLBACK = [
+  {
+    organizationNumber: '999888777',
+    name: 'QAZ Produksjon AS',
+    organizationForm: 'AS',
+    registrationDate: '2020-02-10',
+    businessAddress: { adresse: 'Studioveien 12', postnummer: '0150', poststed: 'OSLO' },
+    industry: 'Film og videoproduksjon',
+    employees: 12,
+  },
+  {
+    organizationNumber: '812345678',
+    name: 'Nordic Content Lab AS',
+    organizationForm: 'AS',
+    registrationDate: '2019-06-15',
+    businessAddress: { adresse: 'Bryggeveien 5', postnummer: '5003', poststed: 'BERGEN' },
+    industry: 'Markedsføring og innholdsproduksjon',
+    employees: 7,
+  },
+  {
+    organizationNumber: '998877665',
+    name: 'Role Room Demo Studio AS',
+    organizationForm: 'AS',
+    registrationDate: '2021-01-20',
+    businessAddress: { adresse: 'Kreativ gate 4', postnummer: '7042', poststed: 'TRONDHEIM' },
+    industry: 'Kreativ produksjon',
+    employees: 9,
+  },
+];
+
+app.get('/api/price-administration/brreg/companies/search', (req, res) => {
+  const name = String(req.query.name || '').trim().toLowerCase();
+  const rawLimit = Number(req.query.limit || 10);
+  const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, Math.floor(rawLimit))) : 10;
+
+  if (name.length < 2) {
+    return res.json({
+      success: true,
+      companies: [],
+      total: 0,
+      searchTerm: name,
+      source: 'fallback',
+      lastUpdated: new Date().toISOString(),
+    });
+  }
+
+  const companies = BRREG_COMPANY_FALLBACK
+    .filter((company) =>
+      company.name.toLowerCase().includes(name)
+      || company.organizationNumber.includes(name.replace(/\D/g, ''))
+    )
+    .slice(0, limit);
+
+  return res.json({
+    success: true,
+    companies,
+    total: companies.length,
+    searchTerm: name,
+    source: 'fallback',
+    lastUpdated: new Date().toISOString(),
+  });
+});
+
+app.get('/api/price-administration/brreg/company/:organizationNumber', (req, res) => {
+  const organizationNumber = String(req.params.organizationNumber || '').replace(/\D/g, '');
+  const company = BRREG_COMPANY_FALLBACK.find((entry) => entry.organizationNumber === organizationNumber);
+
+  if (!company) {
+    return res.status(404).json({
+      success: false,
+      error: 'Selskap ikke funnet',
+      organizationNumber,
+    });
+  }
+
+  return res.json({
+    success: true,
+    ...company,
+    source: 'fallback',
+    lastUpdated: new Date().toISOString(),
+  });
+});
+
+app.get('/api/price-administration/brreg/vehicle/:registrationNumber', (req, res) => {
+  const registrationNumber = String(req.params.registrationNumber || '').trim().toUpperCase();
+  return res.json({
+    success: true,
+    registrationNumber,
+    liens: [],
+    encumbrances: [],
+    status: 'active',
+    source: 'fallback',
+    lastUpdated: new Date().toISOString(),
+  });
+});
+
+app.get('/api/price-administration/brreg/notices', (req, res) => {
+  const limit = Math.max(1, Math.min(50, Number(req.query.limit || 10)));
+  const notices = [
+    {
+      id: 'notice-demo-1',
+      title: 'Oppdatering i registrerte firmaopplysninger',
+      type: 'company-update',
+      date: new Date().toISOString(),
+      organizationNumber: '999888777',
+      description: 'Demo-varsel for BRREG-integrasjon i utviklingsmodus.',
+      status: 'published',
+    },
+  ].slice(0, limit);
+
+  return res.json({
+    success: true,
+    notices,
+    total: notices.length,
+    type: req.query.type || null,
+    source: 'fallback',
+    lastUpdated: new Date().toISOString(),
+  });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

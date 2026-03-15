@@ -356,8 +356,11 @@ export class AdvancedBrushEngine {
     const rgb = hexToRgb(color);
     
     const pressure = (from.pressure + to.pressure) / 2;
-    const bristleCount = Math.ceil(size * 1.5);
-    const spread = size * (1 + (1 - pressure) * 0.5);
+    const pressureFactor = 0.4 + pressure * pressureSensitivity;
+    const tiltMagnitude = Math.hypot(from.tiltX + to.tiltX, from.tiltY + to.tiltY) / 180;
+    const tiltFactor = 1 + tiltMagnitude * tiltSensitivity;
+    const bristleCount = Math.max(2, Math.ceil(size * 1.5 * pressureFactor));
+    const spread = size * (1 + (1 - pressure) * 0.5) * tiltFactor;
     
     // Direction of stroke
     const angle = Math.atan2(to.y - from.y, to.x - from.x);
@@ -373,8 +376,8 @@ export class AdvancedBrushEngine {
       const toX = to.x + Math.cos(perpAngle) * (offset + bristleNoise * 2 - 1);
       const toY = to.y + Math.sin(perpAngle) * (offset + bristleNoise * 2 - 1);
       
-      const bristleOpacity = opacity * (0.3 + bristleNoise * 0.4) * pressure;
-      const bristleWidth = 0.5 + bristleNoise * 1.5;
+      const bristleOpacity = opacity * (0.3 + bristleNoise * 0.4) * pressureFactor;
+      const bristleWidth = (0.4 + bristleNoise * 1.5) * (0.7 + pressureFactor * 0.3);
       
       this.ctx.strokeStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${bristleOpacity})`;
       this.ctx.lineWidth = bristleWidth;

@@ -76,6 +76,7 @@ import {
   useAddCrewMember,
   useRoleRoomBootstrap,
 } from '../../hooks/useRoleRoom';
+import RoleRoomBrandMark from './components/shared/RoleRoomBrandMark';
 
 import type {
   CastingProject,
@@ -222,7 +223,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h5" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <img src="/TheRoleRoom_Logo_Tagline.png" alt="The Role Room" style={{ height: 48, objectFit: 'contain' }} />
+            <RoleRoomBrandMark appearance="header" showLabel={false} />
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Casting, crew & produksjonsplanlegging

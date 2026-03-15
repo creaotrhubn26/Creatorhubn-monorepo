@@ -111,12 +111,12 @@ const defaultCastingPlannerTutorial: Tutorial = {
     },
     {
       id: 'locations',
-      title: '5. Steder - Finn locations',
-      description: 'Her dokumenterer og organiserer du alle innspillingssteder. Legg til bilder, adresser, tillatelser og praktisk informasjon.',
+      title: '5. Lokasjoner - Finn lokasjoner',
+      description: 'Her dokumenterer og organiserer du alle innspillingslokasjoner. Legg til bilder, adresser, tillatelser og praktisk informasjon.',
       panel: 4,
       targetSelector: '[role="tab"]:nth-of-type(5)',
       action: 'click',
-      actionDescription: 'Klikk på "Steder"-fanen',
+      actionDescription: 'Klikk på "Lokasjoner"-fanen',
       tips: [
         'Last opp bilder av hver location',
         'Legg til adresse og veibeskrivelse',

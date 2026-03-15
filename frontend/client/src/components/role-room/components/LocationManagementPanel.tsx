@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useId } from 'react';
+import React, { useState, useMemo, useEffect, useId, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -92,6 +92,7 @@ import {
   useMap,
 } from 'react-leaflet';
 import settingsService from '../services/settingsService';
+import globalTagService from '../services/globalTagService';
 import { 
   LocationsIcon as LocationIcon, 
   StatsIcon, 
@@ -109,6 +110,8 @@ import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import locationPng from './icons/Keep/roleroom_location.png';
 import { getRoleLabel, isTechnicalCrewMember as isTechnicalCrewMemberFromShared } from './shared/technicalCrew';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useAuth } from '../../../hooks/useAuth';
 import 'leaflet/dist/leaflet.css';
 
 // WCAG 2.2 - 2.5.5 Target Size (minimum 44x44px)
@@ -190,6 +193,9 @@ const OPERATIONAL_FILTER_LABELS: Record<OperationalFilterKey, string> = {
 interface LocationManagementPanelProps {
   projectId: string;
   onUpdate?: () => void;
+  externalCreateSignal?: number;
+  onExternalCreated?: (location: Location) => void;
+  onExternalCreateCancelled?: () => void;
 }
 
 interface ProMapLocation {
@@ -543,9 +549,19 @@ function LocationLeafletSync({
   return null;
 }
 
-export function LocationManagementPanel({ projectId, onUpdate }: LocationManagementPanelProps) {
+export function LocationManagementPanel({
+  projectId,
+  onUpdate,
+  externalCreateSignal,
+  onExternalCreated,
+  onExternalCreateCancelled,
+}: LocationManagementPanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const is2KViewport = useMediaQuery('(min-width: 2048px)');
+  const is4KViewport = useMediaQuery('(min-width: 3840px)');
+  const is5KViewport = useMediaQuery('(min-width: 5120px)');
+  const proMapMinHeight = is5KViewport ? 520 : is4KViewport ? 460 : is2KViewport ? 380 : isMobile ? 220 : 260;
 
   // Unique IDs for WCAG
   const baseId = useId();
@@ -554,6 +570,12 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 
   // Toast notifications
   const { showSuccess, showError, showInfo } = useToast();
+  const { user } = useAuth();
+  const noteActorLabel = useMemo(() => {
+    const raw = user?.displayName ?? user?.name ?? user?.email;
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
+  }, [user]);
+  const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
 
   // Core state
   const [locations, setLocations] = useState<Location[]>([]);
@@ -597,6 +619,8 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
   }, [projectId]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const externalCreateSignalRef = useRef(0);
+  const externalCreatePendingRef = useRef(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
   const [selectedLocationForAnalysis, setSelectedLocationForAnalysis] = useState<Location | null>(null);
@@ -759,6 +783,28 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     assignedScenes: [],
     notes: '',
   });
+  const mentionCandidates = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...locations.map((location) => location.name),
+            formData.contactInfo?.name,
+            formData.name,
+          ]
+            .filter((value): value is string => typeof value === 'string')
+            .map((value) => value.trim())
+            .filter((value) => value.length >= 2),
+        ),
+      ),
+    [formData.contactInfo?.name, formData.name, locations],
+  );
+  const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+    const current = typeof sourceText === 'string' ? sourceText : '';
+    if (!current.trim()) return name;
+    const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+    return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+  };
 
   const locationTypes: Location['type'][] = ['studio', 'outdoor', 'indoor', 'virtual', 'other'];
   const commonFacilities = ['parking', 'restrooms', 'catering', 'wifi', 'power', 'dressing_rooms'];
@@ -1352,7 +1398,20 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     setDialogOpen(true);
   };
 
+  useEffect(() => {
+    if (!externalCreateSignal || externalCreateSignal === externalCreateSignalRef.current) {
+      return;
+    }
+    externalCreateSignalRef.current = externalCreateSignal;
+    externalCreatePendingRef.current = true;
+    handleOpenDialog();
+  }, [externalCreateSignal]);
+
   const handleCloseDialog = () => {
+    if (externalCreatePendingRef.current) {
+      externalCreatePendingRef.current = false;
+      onExternalCreateCancelled?.();
+    }
     setDialogOpen(false);
     setEditingLocation(null);
   };
@@ -1364,8 +1423,22 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     }
 
     try {
+      const isCreating = !editingLocation;
+      const nowIso = new Date().toISOString();
+      const notesText = typeof formData.notes === 'string' ? formData.notes.trim() : '';
       const location: Location = editingLocation
-        ? { ...editingLocation, ...formData, updatedAt: new Date().toISOString() }
+        ? {
+            ...editingLocation,
+            ...formData,
+            ...(notesText
+              ? {
+                  notesAuthorName: noteActorLabel,
+                  notesAuthorId: noteActorId,
+                  notesUpdatedAt: nowIso,
+                }
+              : {}),
+            updatedAt: nowIso,
+          }
         : {
             id: `location-${Date.now()}`,
             name: formData.name || '',
@@ -1379,11 +1452,31 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             notes: formData.notes,
             coordinates: formData.coordinates,
             propertyId: formData.propertyId,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            ...(notesText
+              ? {
+                  notesAuthorName: noteActorLabel,
+                  notesAuthorId: noteActorId,
+                  notesUpdatedAt: nowIso,
+                }
+              : {}),
+            createdAt: nowIso,
+            updatedAt: nowIso,
           };
 
       await castingService.saveLocation(projectId, location);
+      const mentionSeed = [
+        formData.name,
+        formData.contactInfo?.name,
+        ...globalTagService.parseExplicitMentions(typeof formData.notes === 'string' ? formData.notes : ''),
+      ]
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter((value) => value.length >= 2);
+      if (mentionSeed.length > 0) {
+        void globalTagService.add(mentionSeed).catch((error) => {
+          console.warn('Kunne ikke oppdatere globalt mention-register for lokasjoner:', error);
+        });
+      }
       const locs = await castingService.getLocations(projectId);
       setLocations(Array.isArray(locs) ? locs : []);
 
@@ -1392,6 +1485,11 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         showSuccess(`${formData.name} oppdatert`, 3000);
       } else {
         showSuccess(`${formData.name} lagt til`, 3000);
+      }
+
+      if (isCreating) {
+        externalCreatePendingRef.current = false;
+        onExternalCreated?.(location);
       }
 
       handleCloseDialog();
@@ -2695,7 +2793,52 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     <Box
       component="section"
       aria-labelledby="location-panel-title"
-      sx={{ p: containerPadding, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
+      sx={{
+        p: containerPadding,
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        mx: 'auto',
+        '@media (min-width: 2048px)': {
+          maxWidth: 2300,
+          px: 2.75,
+          py: 2.25,
+        },
+        '@media (min-width: 3840px)': {
+          maxWidth: 3400,
+          px: 3.25,
+          py: 2.75,
+        },
+        '@media (min-width: 5120px)': {
+          maxWidth: 4600,
+          px: 3.75,
+          py: 3.25,
+        },
+        '& .MuiButton-root': {
+          '@media (min-width: 2048px)': {
+            minHeight: 46,
+            fontSize: '0.96rem',
+          },
+          '@media (min-width: 3840px)': {
+            minHeight: 52,
+            fontSize: '1.04rem',
+          },
+          '@media (min-width: 5120px)': {
+            minHeight: 58,
+            fontSize: '1.12rem',
+          },
+        },
+        '& .MuiChip-root': {
+          '@media (min-width: 2048px)': { height: 30, fontSize: '0.84rem' },
+          '@media (min-width: 3840px)': { height: 34, fontSize: '0.9rem' },
+          '@media (min-width: 5120px)': { height: 38, fontSize: '0.96rem' },
+        },
+        '& .MuiIconButton-root': {
+          '@media (min-width: 2048px)': { width: 42, height: 42 },
+          '@media (min-width: 3840px)': { width: 46, height: 46 },
+          '@media (min-width: 5120px)': { width: 52, height: 52 },
+        },
+      }}
     >
       {/* Header - Responsive */}
       <Box
@@ -2706,6 +2849,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           alignItems: { xs: 'stretch', sm: 'center' },
           mb: 2,
           gap: { xs: 1.5, sm: 2 },
+          '@media (min-width: 2048px)': { mb: 2.5, gap: 2.25 },
+          '@media (min-width: 3840px)': { mb: 3, gap: 2.75 },
+          '@media (min-width: 5120px)': { mb: 3.5, gap: 3.25 },
         }}
       >
         {/* Enhanced Title with gradient - matches ProductionDayView */}
@@ -2715,6 +2861,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             alignItems: 'center',
             gap: { xs: 1.5, sm: 2 },
             py: { xs: 1, sm: 1.5 },
+            '@media (min-width: 2048px)': { gap: 2.25, py: 1.7 },
+            '@media (min-width: 3840px)': { gap: 2.75, py: 2 },
+            '@media (min-width: 5120px)': { gap: 3.25, py: 2.4 },
           }}
         >
           <Box
@@ -2733,6 +2882,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 transform: 'scale(1.05)',
                 boxShadow: '0 6px 18px rgba(168,85,247,0.35)',
               },
+              '@media (min-width: 2048px)': { width: 78, height: 78, borderRadius: 3.2 },
+              '@media (min-width: 3840px)': { width: 92, height: 92, borderRadius: 3.6 },
+              '@media (min-width: 5120px)': { width: 104, height: 104, borderRadius: 4 },
             }}
           >
             <PlaceIcon
@@ -2740,6 +2892,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 color: '#c4b5fd',
                 fontSize: { xs: 26, sm: 32, md: 30, lg: 36, xl: 42 },
                 filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+                '@media (min-width: 2048px)': { fontSize: 48 },
+                '@media (min-width: 3840px)': { fontSize: 56 },
+                '@media (min-width: 5120px)': { fontSize: 64 },
               }}
             />
           </Box>
@@ -2759,9 +2914,12 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
+                '@media (min-width: 2048px)': { fontSize: '2.2rem' },
+                '@media (min-width: 3840px)': { fontSize: '2.45rem' },
+                '@media (min-width: 5120px)': { fontSize: '2.8rem' },
               }}
             >
-              Produksjonssteder
+              Produksjonslokasjoner
             </Typography>
             <Typography
               sx={{
@@ -2772,9 +2930,20 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 display: 'flex',
                 alignItems: 'center',
                 gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+                '@media (min-width: 2048px)': { fontSize: '1.08rem', mt: 0.4 },
+                '@media (min-width: 3840px)': { fontSize: '1.2rem', mt: 0.5 },
+                '@media (min-width: 5120px)': { fontSize: '1.3rem', mt: 0.6 },
               }}
             >
-              <ExploreIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 17, xl: 20 }, opacity: 0.7 }} />
+              <ExploreIcon
+                sx={{
+                  fontSize: { xs: 14, sm: 16, md: 15, lg: 17, xl: 20 },
+                  opacity: 0.7,
+                  '@media (min-width: 2048px)': { fontSize: 22 },
+                  '@media (min-width: 3840px)': { fontSize: 25 },
+                  '@media (min-width: 5120px)': { fontSize: 28 },
+                }}
+              />
               Administrer lokasjoner og fasiliteter
             </Typography>
           </Box>
@@ -2787,6 +2956,20 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             gap: { xs: 0.5, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
             flexWrap: 'wrap',
             justifyContent: { xs: 'space-between', sm: 'flex-end' },
+            '@media (min-width: 2048px)': {
+              gap: 1.2,
+            },
+            '@media (min-width: 3840px)': {
+              gap: 1.5,
+            },
+            '@media (min-width: 5120px)': {
+              gap: 1.8,
+            },
+            '& .MuiButton-root': {
+              '@media (min-width: 2048px)': { px: 2.5, py: 1.15 },
+              '@media (min-width: 3840px)': { px: 3, py: 1.35 },
+              '@media (min-width: 5120px)': { px: 3.5, py: 1.55 },
+            },
           }}
         >
           <Tooltip title="Eksporter til CSV (Ctrl+E)">
@@ -2887,6 +3070,21 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
             bgcolor: 'rgba(255,255,255,0.03)',
             borderRadius: 2,
+            '@media (min-width: 2048px)': {
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: 2.25,
+              p: 2.5,
+            },
+            '@media (min-width: 3840px)': {
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: 2.75,
+              p: 3,
+            },
+            '@media (min-width: 5120px)': {
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: 3.25,
+              p: 3.5,
+            },
           }}
           role="region"
           aria-label="Statistikk over lokasjoner"
@@ -2951,6 +3149,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           gap: { xs: 1, sm: 2 },
           mb: 2,
           alignItems: { xs: 'stretch', sm: 'center' },
+          '@media (min-width: 2048px)': { gap: 2.25, mb: 2.5 },
+          '@media (min-width: 3840px)': { gap: 2.75, mb: 3 },
+          '@media (min-width: 5120px)': { gap: 3.25, mb: 3.5 },
         }}
       >
         <TextField
@@ -2976,10 +3177,28 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
               '&.Mui-focused fieldset': { borderColor: ROLE_ROOM_COLORS.accent },
             },
+            '@media (min-width: 2048px)': {
+              minWidth: 340,
+            },
+            '@media (min-width: 3840px)': {
+              minWidth: 420,
+            },
+            '@media (min-width: 5120px)': {
+              minWidth: 500,
+            },
           }}
         />
 
-        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 1,
+            justifyContent: 'space-between',
+            '@media (min-width: 2048px)': { gap: 1.2 },
+            '@media (min-width: 3840px)': { gap: 1.4 },
+            '@media (min-width: 5120px)': { gap: 1.7 },
+          }}
+        >
           <Tooltip title="Vis/skjul filtre">
             <Button
               variant={showFilters ? 'contained' : 'outlined'}
@@ -3087,6 +3306,18 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             bgcolor: 'rgba(255,255,255,0.03)',
             borderRadius: 2,
             alignItems: { xs: 'stretch', sm: 'center' },
+            '@media (min-width: 2048px)': {
+              gap: 2.25,
+              p: 2.5,
+            },
+            '@media (min-width: 3840px)': {
+              gap: 2.75,
+              p: 3,
+            },
+            '@media (min-width: 5120px)': {
+              gap: 3.25,
+              p: 3.5,
+            },
           }}
         >
           <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
@@ -3159,7 +3390,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         <RoleRoomEmptyState
           iconSrc={locationPng}
           title="Ingen lokasjoner ennå"
-          subtitle="Legg til lokasjoner for å organisere produksjonssteder"
+          subtitle="Legg til lokasjoner for å organisere produksjonslokasjoner"
           color="#a855f7"
         />
       ) : filteredAndSortedLocations.length === 0 ? (
@@ -3179,7 +3410,20 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             WebkitOverflowScrolling: 'touch',
           }}
         >
-          <Table aria-label="Lokasjoner tabell" sx={{ minWidth: { xs: 600, sm: 700, md: 750, lg: 850, xl: 1100 } }}>
+          <Table
+            aria-label="Lokasjoner tabell"
+            sx={{
+              minWidth: { xs: 600, sm: 700, md: 750, lg: 850, xl: 1100 },
+              '@media (min-width: 2048px)': { minWidth: 1600 },
+              '@media (min-width: 3840px)': { minWidth: 2200 },
+              '@media (min-width: 5120px)': { minWidth: 2800 },
+              '& .MuiTableCell-root': {
+                '@media (min-width: 2048px)': { py: 1.8 },
+                '@media (min-width: 3840px)': { py: 2.1, fontSize: '1.08rem' },
+                '@media (min-width: 5120px)': { py: 2.4, fontSize: '1.16rem' },
+              },
+            }}
+          >
             <TableHead>
               <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.05)' }}>
                 <TableCell padding="checkbox" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3330,16 +3574,62 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           </Table>
         </TableContainer>
       ) : viewMode === 'pro' ? (
-        <Stack spacing={{ xs: 1.5, sm: 2, md: 2.5 }}>
+        <Stack
+          spacing={{ xs: 1.5, sm: 2, md: 2.5 }}
+          sx={{
+            '@media (min-width: 2048px)': {
+              '& .location-pro-map-card .MuiCardContent-root, & .location-pro-list-card .MuiCardContent-root': {
+                p: 2.5,
+              },
+              '& .location-pro-work-card .MuiCardContent-root': {
+                p: 2,
+              },
+            },
+            '@media (min-width: 3840px)': {
+              '& .location-pro-map-card .MuiCardContent-root, & .location-pro-list-card .MuiCardContent-root': {
+                p: 3,
+              },
+              '& .location-pro-work-card .MuiCardContent-root': {
+                p: 2.35,
+              },
+              '& .location-pro-work-card .MuiTypography-root': {
+                fontSize: '1.02em',
+              },
+            },
+            '@media (min-width: 5120px)': {
+              '& .location-pro-map-card .MuiCardContent-root, & .location-pro-list-card .MuiCardContent-root': {
+                p: 3.5,
+              },
+              '& .location-pro-work-card .MuiCardContent-root': {
+                p: 2.7,
+              },
+              '& .location-pro-work-card .MuiTypography-root': {
+                fontSize: '1.1em',
+              },
+            },
+          }}
+        >
           <Box
             sx={{
               display: 'grid',
               gridTemplateColumns: {
                 xs: 'repeat(2, minmax(0, 1fr))',
                 sm: 'repeat(3, minmax(0, 1fr))',
+                md: 'repeat(3, minmax(0, 1fr))',
                 lg: 'repeat(6, minmax(0, 1fr))',
               },
               gap: { xs: 1, sm: 1.25, md: 1.5 },
+              mx: 'auto',
+              width: '100%',
+              '@media (min-width: 2048px)': {
+                gap: 2,
+              },
+              '@media (min-width: 3840px)': {
+                gap: 2.5,
+              },
+              '@media (min-width: 5120px)': {
+                gap: 3,
+              },
             }}
           >
             {([
@@ -3364,12 +3654,46 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                   color: '#fff',
                   textTransform: 'none',
                   minHeight: TOUCH_TARGET_SIZE,
+                  '@media (min-width: 2048px)': {
+                    px: 2,
+                    py: 1.35,
+                    minHeight: 52,
+                  },
+                  '@media (min-width: 3840px)': {
+                    px: 2.5,
+                    py: 1.6,
+                    minHeight: 60,
+                    borderRadius: 2.5,
+                  },
+                  '@media (min-width: 5120px)': {
+                    px: 3,
+                    py: 1.8,
+                    minHeight: 66,
+                    borderRadius: 3,
+                  },
                 }}
               >
-                <Typography sx={{ color: 'rgba(255,255,255,0.85)', fontSize: { xs: '0.72rem', sm: '0.8rem' } }}>
+                <Typography
+                  sx={{
+                    color: 'rgba(255,255,255,0.85)',
+                    fontSize: { xs: '0.72rem', sm: '0.8rem' },
+                    '@media (min-width: 2048px)': { fontSize: '0.88rem' },
+                    '@media (min-width: 3840px)': { fontSize: '1rem' },
+                    '@media (min-width: 5120px)': { fontSize: '1.08rem' },
+                  }}
+                >
                   {item.label}
                 </Typography>
-                <Typography sx={{ color: item.color, fontWeight: 800, fontSize: { xs: '1.05rem', sm: '1.2rem' } }}>
+                <Typography
+                  sx={{
+                    color: item.color,
+                    fontWeight: 800,
+                    fontSize: { xs: '1.05rem', sm: '1.2rem' },
+                    '@media (min-width: 2048px)': { fontSize: '1.35rem' },
+                    '@media (min-width: 3840px)': { fontSize: '1.55rem' },
+                    '@media (min-width: 5120px)': { fontSize: '1.75rem' },
+                  }}
+                >
                   {item.value}
                 </Typography>
               </Button>
@@ -3399,9 +3723,29 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 <Box
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 220px 220px auto auto' },
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      sm: 'repeat(2, minmax(0, 1fr))',
+                      lg: 'minmax(260px,1.6fr) minmax(220px,1fr) minmax(220px,1fr) auto auto',
+                    },
                     gap: 1,
                     alignItems: 'center',
+                    '@media (min-width: 2048px)': {
+                      gridTemplateColumns:
+                        'minmax(360px,2fr) minmax(280px,1.2fr) minmax(280px,1.2fr) auto auto',
+                      gap: 1.25,
+                    },
+                    '@media (min-width: 3840px)': {
+                      gridTemplateColumns:
+                        'minmax(460px,2.3fr) minmax(340px,1.3fr) minmax(340px,1.3fr) auto auto',
+                      gap: 1.5,
+                    },
+                    '@media (min-width: 5120px)': {
+                      gridTemplateColumns:
+                        'minmax(540px,2.5fr) minmax(400px,1.35fr) minmax(400px,1.35fr) auto auto',
+                      gap: 1.75,
+                    },
+                    '& > *': { minWidth: 0 },
                   }}
                 >
                   <TextField
@@ -3415,7 +3759,14 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
                     }}
                   />
-                  <FormControl size="small">
+                  <FormControl
+                    size="small"
+                    sx={{
+                      minWidth: 0,
+                      '@media (min-width: 2048px)': { minWidth: 260 },
+                      '@media (min-width: 3840px)': { minWidth: 320 },
+                    }}
+                  >
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>Lagrede visninger</InputLabel>
                     <Select
                       value={selectedProViewId}
@@ -3444,7 +3795,14 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                       ))}
                     </Select>
                   </FormControl>
-                  <FormControl size="small">
+                  <FormControl
+                    size="small"
+                    sx={{
+                      minWidth: 0,
+                      '@media (min-width: 2048px)': { minWidth: 260 },
+                      '@media (min-width: 3840px)': { minWidth: 320 },
+                    }}
+                  >
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>Operativt filter</InputLabel>
                     <Select
                       value={operationalFilter}
@@ -3466,7 +3824,16 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                     variant="contained"
                     startIcon={<SaveIcon />}
                     onClick={handleSaveCurrentProView}
-                    sx={{ minHeight: TOUCH_TARGET_SIZE, bgcolor: ROLE_ROOM_COLORS.accent, '&:hover': { bgcolor: ROLE_ROOM_COLORS.accentStrong } }}
+                    sx={{
+                      minHeight: TOUCH_TARGET_SIZE,
+                      whiteSpace: 'nowrap',
+                      px: { xs: 1.5, sm: 2 },
+                      bgcolor: ROLE_ROOM_COLORS.accent,
+                      '&:hover': { bgcolor: ROLE_ROOM_COLORS.accentStrong },
+                      '@media (min-width: 2048px)': { minHeight: 52, px: 2.5 },
+                      '@media (min-width: 3840px)': { minHeight: 58, px: 3 },
+                      '@media (min-width: 5120px)': { minHeight: 64, px: 3.5, fontSize: '1.04rem' },
+                    }}
                   >
                     Lagre view
                   </Button>
@@ -3475,7 +3842,14 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                     color="error"
                     onClick={handleDeleteSavedProView}
                     disabled={selectedProViewId === 'custom'}
-                    sx={{ minHeight: TOUCH_TARGET_SIZE }}
+                    sx={{
+                      minHeight: TOUCH_TARGET_SIZE,
+                      whiteSpace: 'nowrap',
+                      px: { xs: 1.5, sm: 2 },
+                      '@media (min-width: 2048px)': { minHeight: 52, px: 2.5 },
+                      '@media (min-width: 3840px)': { minHeight: 58, px: 3 },
+                      '@media (min-width: 5120px)': { minHeight: 64, px: 3.5, fontSize: '1.04rem' },
+                    }}
                   >
                     Slett view
                   </Button>
@@ -3490,9 +3864,26 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 <Box
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: '200px repeat(4, minmax(0, 1fr))' },
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      sm: 'repeat(2, minmax(0, 1fr))',
+                      lg: 'minmax(220px,1fr) repeat(4, minmax(0, 1fr))',
+                    },
                     gap: 1,
                     alignItems: 'center',
+                    '@media (min-width: 2048px)': {
+                      gridTemplateColumns: 'minmax(300px,1.2fr) repeat(4, minmax(220px,1fr))',
+                      gap: 1.25,
+                    },
+                    '@media (min-width: 3840px)': {
+                      gridTemplateColumns: 'minmax(380px,1.3fr) repeat(4, minmax(280px,1fr))',
+                      gap: 1.5,
+                    },
+                    '@media (min-width: 5120px)': {
+                      gridTemplateColumns: 'minmax(460px,1.35fr) repeat(4, minmax(340px,1fr))',
+                      gap: 1.75,
+                    },
+                    '& > *': { minWidth: 0 },
                   }}
                 >
                   <FormControl size="small">
@@ -3508,16 +3899,36 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                       <MenuItem value="blocked">Blokkert</MenuItem>
                     </Select>
                   </FormControl>
-                  <Button variant="outlined" onClick={handleBulkSetWorkflowStatus} startIcon={<VerifiedIcon />}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleBulkSetWorkflowStatus}
+                    startIcon={<VerifiedIcon />}
+                    sx={{ minHeight: TOUCH_TARGET_SIZE, whiteSpace: 'nowrap' }}
+                  >
                     Sett status
                   </Button>
-                  <Button variant="outlined" onClick={handleBulkAssignTechnicalTeam} startIcon={<EngineeringIcon />}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleBulkAssignTechnicalTeam}
+                    startIcon={<EngineeringIcon />}
+                    sx={{ minHeight: TOUCH_TARGET_SIZE, whiteSpace: 'nowrap' }}
+                  >
                     Tildel team
                   </Button>
-                  <Button variant="outlined" onClick={handleBulkCopyFacilitiesFromActive} startIcon={<DuplicateIcon />}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleBulkCopyFacilitiesFromActive}
+                    startIcon={<DuplicateIcon />}
+                    sx={{ minHeight: TOUCH_TARGET_SIZE, whiteSpace: 'nowrap' }}
+                  >
                     Kopier tags
                   </Button>
-                  <Button variant="outlined" onClick={handleExportSelectedCallSheet} startIcon={<ExportIcon />}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleExportSelectedCallSheet}
+                    startIcon={<ExportIcon />}
+                    sx={{ minHeight: TOUCH_TARGET_SIZE, whiteSpace: 'nowrap' }}
+                  >
                     Eksporter call sheet
                   </Button>
                 </Box>
@@ -3528,12 +3939,31 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: { xs: '1fr', xl: 'minmax(0,1.6fr) minmax(330px,1fr)' },
+              gridTemplateColumns: {
+                xs: '1fr',
+                lg: 'minmax(0,1.45fr) minmax(320px,1fr)',
+                xl: 'minmax(0,1.6fr) minmax(360px,1fr)',
+              },
               gap: { xs: 2, sm: 2.5, md: 2.75, lg: 3 },
+              '@media (min-width: 2048px)': {
+                gridTemplateColumns: 'minmax(0,1.75fr) minmax(460px,1fr)',
+                gap: 3.25,
+              },
+              '@media (min-width: 3840px)': {
+                gridTemplateColumns: 'minmax(0,1.85fr) minmax(620px,1fr)',
+                gap: 3.75,
+              },
+              '@media (min-width: 5120px)': {
+                gridTemplateColumns: 'minmax(0,1.95fr) minmax(760px,1fr)',
+                gap: 4.25,
+              },
             }}
           >
             <Stack spacing={{ xs: 1.5, sm: 2 }}>
-              <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+              <Card
+                className="location-pro-map-card"
+                sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}
+              >
                 <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                   <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.25 }}>
                     Kart + kort (60/40)
@@ -3541,23 +3971,39 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                   <Box
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: { xs: '1fr', md: 'minmax(0,1.6fr) minmax(0,1fr)' },
+                      gridTemplateColumns: {
+                        xs: '1fr',
+                        md: 'minmax(0,1.4fr) minmax(0,1fr)',
+                        xl: 'minmax(0,1.6fr) minmax(0,1fr)',
+                      },
                       gap: { xs: 1.25, sm: 1.5 },
                       alignItems: 'stretch',
+                      '@media (min-width: 2048px)': {
+                        gridTemplateColumns: 'minmax(0,1.8fr) minmax(360px,1fr)',
+                        gap: 2,
+                      },
+                      '@media (min-width: 3840px)': {
+                        gridTemplateColumns: 'minmax(0,1.9fr) minmax(520px,1fr)',
+                        gap: 2.5,
+                      },
+                      '@media (min-width: 5120px)': {
+                        gridTemplateColumns: 'minmax(0,2fr) minmax(620px,1fr)',
+                        gap: 3,
+                      },
                     }}
                   >
                     <Box
                       sx={{
                         position: 'relative',
                         borderRadius: 2,
-                        minHeight: { xs: 220, sm: 260 },
+                        minHeight: proMapMinHeight,
                         border: '1px solid rgba(255,255,255,0.16)',
                         background: 'rgba(10,8,27,0.9)',
                         overflow: 'hidden',
                         '& .leaflet-container': {
                           width: '100%',
                           height: '100%',
-                          minHeight: { xs: 220, sm: 260 },
+                          minHeight: proMapMinHeight,
                           background: '#0f172a',
                         },
                       }}
@@ -3574,7 +4020,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                             center={[activeMapLocation?.lat ?? mapLocations[0].lat, activeMapLocation?.lng ?? mapLocations[0].lng]}
                             zoom={13}
                             scrollWheelZoom
-                            style={{ height: '100%', minHeight: isMobile ? 220 : 260, width: '100%' }}
+                            style={{ height: '100%', minHeight: proMapMinHeight, width: '100%' }}
                           >
                             <TileLayer
                               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -3655,7 +4101,14 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                       )}
                     </Box>
 
-                    <Stack spacing={1} sx={{ maxHeight: { xs: 'none', md: 260 }, overflow: 'auto', pr: { md: 0.5 } }}>
+                    <Stack
+                      spacing={1}
+                      sx={{
+                        maxHeight: { xs: 'none', md: proMapMinHeight },
+                        overflow: 'auto',
+                        pr: { md: 0.5, '@media (min-width: 3840px)': 0.8 },
+                      }}
+                    >
                       {proFilteredAndSortedLocations.slice(0, 8).map((location) => {
                         const metric = locationMetricsById[location.id];
                         const isActive = activeMapLocationId === location.id;
@@ -3679,9 +4132,23 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                               bgcolor: isActive && hasCoordinates ? ROLE_ROOM_COLORS.secondarySoft : 'rgba(255,255,255,0.02)',
                               color: hasCoordinates ? '#fff' : 'rgba(255,255,255,0.5)',
                               minHeight: TOUCH_TARGET_SIZE,
+                              '@media (min-width: 2048px)': { minHeight: 50 },
+                              '@media (min-width: 3840px)': { minHeight: 56 },
+                              '@media (min-width: 5120px)': { minHeight: 62 },
                             }}
                           >
-                            <Typography sx={{ fontSize: '0.85rem', maxWidth: '75%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <Typography
+                              sx={{
+                                fontSize: '0.85rem',
+                                maxWidth: '75%',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                '@media (min-width: 2048px)': { fontSize: '0.95rem' },
+                                '@media (min-width: 3840px)': { fontSize: '1.04rem' },
+                                '@media (min-width: 5120px)': { fontSize: '1.12rem' },
+                              }}
+                            >
                               {location.name}
                             </Typography>
                             <Chip
@@ -3700,7 +4167,10 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 </CardContent>
               </Card>
 
-              <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+              <Card
+                className="location-pro-list-card"
+                sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}
+              >
                 <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
@@ -3813,6 +4283,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                       const contactExpanded = proSectionState.contact;
                       return (
                         <Card
+                          className="location-pro-work-card"
                           key={location.id}
                           id={`location-pro-card-${location.id}`}
                           sx={{
@@ -3919,6 +4390,15 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                                     lg: 'repeat(4, minmax(0, 1fr))',
                                   },
                                   gap: 1,
+                                  '@media (min-width: 2048px)': {
+                                    gap: 1.25,
+                                  },
+                                  '@media (min-width: 3840px)': {
+                                    gap: 1.5,
+                                  },
+                                  '@media (min-width: 5120px)': {
+                                    gap: 1.8,
+                                  },
                                 }}
                               >
                                 <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)' }}>
@@ -4059,8 +4539,24 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                                     sx={{
                                       mt: 1,
                                       display: 'grid',
-                                      gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' },
+                                      gridTemplateColumns: {
+                                        xs: '1fr',
+                                        md: 'repeat(2, minmax(0, 1fr))',
+                                        xl: 'repeat(3, minmax(0, 1fr))',
+                                      },
                                       gap: 1,
+                                      '@media (min-width: 2048px)': {
+                                        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                                        gap: 1.2,
+                                      },
+                                      '@media (min-width: 3840px)': {
+                                        gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+                                        gap: 1.4,
+                                      },
+                                      '@media (min-width: 5120px)': {
+                                        gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
+                                        gap: 1.6,
+                                      },
                                     }}
                                   >
                                     <TextField
@@ -4457,8 +4953,11 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                                   sx={{
                                     mt: 1,
                                     display: 'grid',
-                                    gridTemplateColumns: { xs: '1fr', xl: 'repeat(2, minmax(0, 1fr))' },
+                                    gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
                                     gap: 1,
+                                    '@media (min-width: 2048px)': { gap: 1.25 },
+                                    '@media (min-width: 3840px)': { gap: 1.5 },
+                                    '@media (min-width: 5120px)': { gap: 1.8 },
                                   }}
                                 >
                                   <Box
@@ -4476,8 +4975,14 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                                       sx={{
                                         mt: 0.75,
                                         display: 'grid',
-                                        gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                                        gridTemplateColumns: {
+                                          xs: '1fr',
+                                          md: 'repeat(2, minmax(0, 1fr))',
+                                          xl: 'repeat(3, minmax(0, 1fr))',
+                                        },
                                         gap: 0.75,
+                                        '@media (min-width: 2048px)': { gap: 0.9 },
+                                        '@media (min-width: 3840px)': { gap: 1.05 },
                                       }}
                                     >
                                       <TextField
@@ -4567,8 +5072,21 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                                         gridTemplateColumns: {
                                           xs: 'repeat(2, minmax(0, 1fr))',
                                           md: 'repeat(3, minmax(0, 1fr))',
+                                          xl: 'repeat(4, minmax(0, 1fr))',
                                         },
                                         gap: 0.7,
+                                        '@media (min-width: 2048px)': {
+                                          gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+                                          gap: 0.85,
+                                        },
+                                        '@media (min-width: 3840px)': {
+                                          gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
+                                          gap: 1,
+                                        },
+                                        '@media (min-width: 5120px)': {
+                                          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                                          gap: 1.1,
+                                        },
                                       }}
                                     >
                                       {locationMediaImages.length === 0 ? (
@@ -5434,7 +5952,21 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             borderRadius: 2.5,
             bgcolor: 'rgba(16, 12, 36, 0.52)',
             backdropFilter: 'blur(6px)',
-            p: { xs: 0.25, sm: 0.5, md: 0.75, lg: 0.875 },
+            p: { xs: 0.25, sm: 0.5, md: 0.75, lg: 0.875, xl: 1 },
+            maxWidth: { xs: '100%', xl: 1880 },
+            mx: 'auto',
+            '@media (min-width: 2048px)': {
+              p: 1.25,
+              maxWidth: 2320,
+            },
+            '@media (min-width: 3840px)': {
+              p: 1.75,
+              maxWidth: 3400,
+            },
+            '@media (min-width: 5120px)': {
+              p: 2.25,
+              maxWidth: 4400,
+            },
           }}
         >
         <Box
@@ -5447,9 +5979,22 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               sm: 'repeat(2, minmax(0, 1fr))',
               md: 'repeat(3, minmax(0, 1fr))',
               lg: 'repeat(4, minmax(0, 1fr))',
+              xl: 'repeat(4, minmax(0, 1fr))',
             },
             gap: { xs: 2.5, sm: 3, md: 3.25, lg: 3.5, xl: 4 },
-            alignItems: 'stretch',
+            alignItems: 'start',
+            '@media (min-width: 2048px)': {
+              gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+              gap: 3.5,
+            },
+            '@media (min-width: 3840px)': {
+              gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+              gap: 5,
+            },
+            '@media (min-width: 5120px)': {
+              gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+              gap: 5.5,
+            },
           }}
         >
           {filteredAndSortedLocations.map((location) => {
@@ -5460,7 +6005,10 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               role="listitem"
               sx={{
                 display: 'flex',
-                p: { xs: 0.5, sm: 0.75, md: 0.875, lg: 1 },
+                p: { xs: 0.25, sm: 0.375, md: 0.5, lg: 0.625 },
+                '@media (min-width: 2048px)': { p: 0.5 },
+                '@media (min-width: 3840px)': { p: 0.9 },
+                '@media (min-width: 5120px)': { p: 1.1 },
               }}
             >
               <Card
@@ -5468,19 +6016,34 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 aria-labelledby={`location-name-${location.id}`}
                 sx={{
                   width: '100%',
-                  height: '100%',
+                  height: 'auto',
                   display: 'flex',
+                  alignSelf: 'flex-start',
                   flexDirection: 'column',
-                  bgcolor: selectedIds.has(location.id) ? 'rgba(168,85,247,0.08)' : 'rgba(255,255,255,0.03)',
-                  border: selectedIds.has(location.id) ? '1.5px solid #a855f7' : '1.5px solid rgba(168,85,247,0.2)',
-                  borderRadius: 3,
+                  background: selectedIds.has(location.id)
+                    ? 'linear-gradient(165deg, rgba(33,24,59,0.96) 0%, rgba(20,16,43,0.94) 100%)'
+                    : 'linear-gradient(165deg, rgba(18,15,40,0.9) 0%, rgba(12,10,30,0.9) 100%)',
+                  border: selectedIds.has(location.id) ? '1px solid rgba(168,85,247,0.7)' : '1px solid rgba(168,85,247,0.28)',
+                  borderRadius: 2.5,
                   overflow: 'hidden',
                   transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  boxShadow: selectedIds.has(location.id)
+                    ? '0 10px 26px rgba(88,28,135,0.32)'
+                    : '0 8px 22px rgba(5,8,20,0.35)',
                   ...focusVisibleStyles,
                   '&:hover': {
-                    borderColor: 'rgba(168,85,247,0.6)',
-                    boxShadow: '0 8px 24px rgba(168,85,247,0.25)',
-                    transform: 'translateY(-2px)',
+                    borderColor: 'rgba(168,85,247,0.72)',
+                    boxShadow: '0 14px 32px rgba(88,28,135,0.35)',
+                    transform: 'translateY(-3px)',
+                  },
+                  '@media (min-width: 2048px)': {
+                    borderRadius: 2.75,
+                  },
+                  '@media (min-width: 3840px)': {
+                    borderRadius: 3,
+                  },
+                  '@media (min-width: 5120px)': {
+                    borderRadius: 3.25,
                   },
                 }}
               >
@@ -5489,34 +6052,57 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                   sx={{
                     background: `linear-gradient(135deg, ${typeColor}25 0%, rgba(168,85,247,0.15) 100%)`,
                     borderBottom: `1px solid ${typeColor}40`,
-                    p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
+                    p: { xs: 1.5, sm: 1.75, md: 1.875, lg: 2, xl: 2.25 },
+                    '@media (min-width: 2048px)': { p: 2.4 },
+                    '@media (min-width: 3840px)': { p: 2.8 },
+                    '@media (min-width: 5120px)': { p: 3.2 },
                   }}
                 >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, flex: 1 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25, md: 1.5, lg: 1.6, xl: 1.75 }, flex: 1, minWidth: 0 }}>
                       <Checkbox
                         checked={selectedIds.has(location.id)}
                         onChange={() => handleToggleSelect(location.id)}
                         sx={{
-                          p: 0.5,
+                          p: 0.25,
                           color: 'rgba(255,255,255,0.87)',
                           '&.Mui-checked': { color: '#a855f7' },
                         }}
                       />
                       <Box
                         sx={{
-                          width: { xs: 44, sm: 52, md: 48, lg: 60, xl: 68 },
-                          height: { xs: 44, sm: 52, md: 48, lg: 60, xl: 68 },
-                          borderRadius: 2,
+                          width: { xs: 40, sm: 44, md: 46, lg: 48, xl: 52 },
+                          height: { xs: 40, sm: 44, md: 46, lg: 48, xl: 52 },
+                          borderRadius: 1.75,
                           bgcolor: `${typeColor}30`,
-                          border: `2px solid ${typeColor}50`,
+                          border: `1px solid ${typeColor}55`,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          boxShadow: `0 4px 12px ${typeColor}30`,
+                          boxShadow: `0 4px 10px ${typeColor}25`,
+                          '@media (min-width: 2048px)': {
+                            width: 58,
+                            height: 58,
+                          },
+                          '@media (min-width: 3840px)': {
+                            width: 68,
+                            height: 68,
+                          },
+                          '@media (min-width: 5120px)': {
+                            width: 76,
+                            height: 76,
+                          },
                         }}
                       >
-                        <LocationIcon sx={{ color: typeColor, fontSize: { xs: 24, sm: 28, md: 26, lg: 32, xl: 36 } }} />
+                        <LocationIcon
+                          sx={{
+                            color: typeColor,
+                            fontSize: { xs: 22, sm: 24, md: 25, lg: 26, xl: 28 },
+                            '@media (min-width: 2048px)': { fontSize: 30 },
+                            '@media (min-width: 3840px)': { fontSize: 34 },
+                            '@media (min-width: 5120px)': { fontSize: 38 },
+                          }}
+                        />
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography
@@ -5526,16 +6112,21 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           sx={{
                             color: '#fff',
                             fontWeight: 700,
-                            fontSize: { xs: '1rem', sm: '1.15rem', md: '1.075rem', lg: '1.2rem', xl: '1.375rem' },
-                            lineHeight: 1.2,
+                            fontSize: { xs: '0.95rem', sm: '1rem', md: '1.05rem', lg: '1.1rem', xl: '1.2rem' },
+                            lineHeight: 1.25,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            '@media (min-width: 2048px)': { fontSize: '1.3rem' },
+                            '@media (min-width: 3840px)': { fontSize: '1.45rem' },
+                            '@media (min-width: 5120px)': { fontSize: '1.6rem' },
                           }}
                         >
                           {location.name}
                         </Typography>
-                        <Box sx={{ display: 'flex', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 }, mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, flexWrap: 'wrap' }}>
+                        <Box sx={{ display: 'flex', gap: { xs: 0.5, sm: 0.625, md: 0.75, lg: 0.875, xl: 1 }, mt: { xs: 0.5, sm: 0.625, md: 0.75, lg: 0.875, xl: 1 }, flexWrap: 'wrap' }}>
                           <Chip
                             label={getTypeLabel(location.type)}
                             size="small"
@@ -5543,8 +6134,8 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                               bgcolor: `${typeColor}40`,
                               color: typeColor,
                               fontWeight: 700,
-                              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
-                              height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 },
+                              fontSize: { xs: '0.64rem', sm: '0.68rem', md: '0.7rem', lg: '0.74rem', xl: '0.8rem' },
+                              height: { xs: 20, sm: 22, md: 23, lg: 24, xl: 26 },
                               border: `1px solid ${typeColor}60`,
                             }}
                           />
@@ -5554,10 +6145,10 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                               label={location.capacity}
                               size="small"
                               sx={{
-                                bgcolor: 'rgba(255,255,255,0.1)',
-                                color: 'rgba(255,255,255,0.8)',
-                                fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
-                                height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 },
+                                bgcolor: 'rgba(255,255,255,0.12)',
+                                color: 'rgba(255,255,255,0.84)',
+                                fontSize: { xs: '0.64rem', sm: '0.68rem', md: '0.7rem', lg: '0.74rem', xl: '0.8rem' },
+                                height: { xs: 20, sm: 22, md: 23, lg: 24, xl: 26 },
                               }}
                             />
                           )}
@@ -5569,8 +6160,13 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                       aria-label={favorites.has(location.id) ? 'Fjern favoritt' : 'Legg til favoritt'}
                       sx={{
                         color: favorites.has(location.id) ? '#ffc107' : 'rgba(255,255,255,0.3)',
+                        bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.12)' : 'transparent',
                         minWidth: TOUCH_TARGET_SIZE,
                         minHeight: TOUCH_TARGET_SIZE,
+                        borderRadius: 1.75,
+                        '&:hover': {
+                          bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.22)' : 'rgba(255,255,255,0.08)',
+                        },
                         ...focusVisibleStyles,
                       }}
                     >
@@ -5579,7 +6175,18 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                   </Box>
                 </Box>
 
-                <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <CardContent
+                  sx={{
+                    p: { xs: 1.5, sm: 1.75, md: 1.875, lg: 2, xl: 2.25 },
+                    '@media (min-width: 2048px)': { p: 2.4 },
+                    '@media (min-width: 3840px)': { p: 2.8 },
+                    '@media (min-width: 5120px)': { p: 3.2 },
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: { xs: 0.75, sm: 0.875, md: 1, lg: 1.125, xl: 1.25 },
+                  }}
+                >
                   {/* Address Info Card */}
                   {location.address && (
                     <Box
@@ -5791,15 +6398,15 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 
                   {/* Expandable section */}
                   <Collapse in={expandedCards.has(location.id)}>
-                    <Box sx={{ mt: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, pt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, borderTop: '2px solid rgba(168,85,247,0.2)' }}>
+                    <Box sx={{ mt: { xs: 0.75, sm: 1, md: 1.125, lg: 1.25, xl: 1.5 }, pt: { xs: 1.5, sm: 1.75, md: 1.875, lg: 2, xl: 2.25 }, borderTop: '1px solid rgba(168,85,247,0.22)' }}>
                       {location.notes && (
                         <Box
                           sx={{
-                            p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-                            mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-                            borderRadius: 2,
-                            bgcolor: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            p: { xs: 1.25, sm: 1.5, md: 1.75, lg: 1.875, xl: 2 },
+                            mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 1.875, xl: 2 },
+                            borderRadius: 1.75,
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.12)',
                           }}
                         >
                           <Typography
@@ -5816,6 +6423,27 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           </Typography>
                           <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.85rem', sm: '0.9rem', md: '0.875rem', lg: '0.95rem', xl: '1.05rem' } }}>
                             {location.notes}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: { xs: '0.7rem', sm: '0.75rem' }, mt: 0.6 }}>
+                            Skrevet av:{' '}
+                            {(() => {
+                              const rawAuthor =
+                                location.notesAuthorName
+                                ?? location.notesAuthor
+                                ?? location.notesBy;
+                              return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
+                                ? rawAuthor.trim()
+                                : 'Ikke registrert';
+                            })()}
+                            {(() => {
+                              const rawUpdatedAt =
+                                location.notesUpdatedAt
+                                ?? location.notesLastEditedAt
+                                ?? location.notesTimestamp;
+                              return typeof rawUpdatedAt === 'string' && rawUpdatedAt.trim().length > 0
+                                ? ` • ${formatDateTimeShort(rawUpdatedAt)}`
+                                : '';
+                            })()}
                           </Typography>
                         </Box>
                       )}
@@ -5905,15 +6533,17 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                     sx={{
                       display: 'flex',
                       justifyContent: 'space-between',
-                      alignItems: 'center',
-                      pt: { xs: 2, sm: 2.5 },
+                      alignItems: { xs: 'stretch', sm: 'center' },
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      gap: { xs: 1.75, sm: 2, md: 2.1, lg: 2.25, xl: 2.5 },
+                      pt: { xs: 2, sm: 2.25 },
                       mt: 'auto',
-                      borderTop: '2px solid rgba(168,85,247,0.2)',
+                      borderTop: '1px solid rgba(168,85,247,0.24)',
                     }}
                   >
                     <Button
                       variant="contained"
-                      size="medium"
+                      size="small"
                       onClick={() => toggleCardExpanded(location.id)}
                       endIcon={expandedCards.has(location.id) ? <CollapseIcon /> : <ExpandIcon />}
                       aria-expanded={expandedCards.has(location.id)}
@@ -5923,28 +6553,29 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           ? 'rgba(168,85,247,0.2)' 
                           : 'rgba(168,85,247,0.12)',
                         color: expandedCards.has(location.id) ? '#c4b5fd' : '#fff',
-                        fontSize: { xs: '0.875rem', sm: '0.9375rem', md: '0.90625rem', lg: '0.96875rem', xl: '1.0625rem' },
+                        fontSize: { xs: '0.8rem', sm: '0.84rem', md: '0.88rem', lg: '0.92rem', xl: '0.98rem' },
                         fontWeight: 600,
                         letterSpacing: '0.01em',
                         minHeight: TOUCH_TARGET_SIZE,
-                        px: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 },
-                        py: { xs: 0.875, sm: 1, md: 0.9375, lg: 1, xl: 1.25 },
+                        width: { xs: '100%', sm: 'auto' },
+                        px: { xs: 2.1, sm: 2.4, md: 2.6, lg: 2.8, xl: 3.1 },
+                        py: { xs: 0.7, sm: 0.75, md: 0.8, lg: 0.85, xl: 0.9 },
                         border: expandedCards.has(location.id) 
-                          ? '1.5px solid rgba(168,85,247,0.4)' 
-                          : '1.5px solid rgba(168,85,247,0.25)',
-                        borderRadius: 2.5,
+                          ? '1px solid rgba(168,85,247,0.5)' 
+                          : '1px solid rgba(168,85,247,0.3)',
+                        borderRadius: 2,
                         textTransform: 'none',
                         boxShadow: expandedCards.has(location.id) 
-                          ? '0 2px 8px rgba(168,85,247,0.25)' 
-                          : '0 1px 4px rgba(168,85,247,0.15)',
+                          ? '0 2px 8px rgba(168,85,247,0.22)' 
+                          : '0 1px 4px rgba(168,85,247,0.12)',
                         transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                         '&:hover': {
                           bgcolor: expandedCards.has(location.id)
                             ? 'rgba(168,85,247,0.3)'
                             : 'rgba(168,85,247,0.2)',
                           borderColor: 'rgba(168,85,247,0.5)',
-                          transform: 'translateY(-2px)',
-                          boxShadow: '0 4px 12px rgba(168,85,247,0.35)',
+                          transform: 'translateY(-1px)',
+                          boxShadow: '0 4px 10px rgba(168,85,247,0.3)',
                         },
                         '&:active': {
                           transform: 'translateY(0px)',
@@ -5957,33 +6588,51 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                         ...focusVisibleStyles,
                       }}
                     >
-                      {expandedCards.has(location.id) ? 'Skjul info' : 'Info'}
+                      {expandedCards.has(location.id) ? 'Skjul detaljer' : 'Vis detaljer'}
                     </Button>
-                    <Box sx={{ display: 'flex', gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 }, ml: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: 'repeat(4, minmax(0, 1fr))', sm: 'repeat(4, minmax(0, auto))' },
+                        gap: { xs: 1.1, sm: 1.2, md: 1.3, lg: 1.4, xl: 1.5 },
+                        width: { xs: '100%', sm: 'auto' },
+                        ml: { xs: 0, sm: 1.75, md: 2, lg: 2.2, xl: 2.4 },
+                        '@media (min-width: 2048px) and (max-width: 3839px)': {
+                          gap: 1.2,
+                          ml: 1.9,
+                        },
+                      }}
+                    >
                       <Tooltip title="Analyser lokasjon" arrow>
                         <IconButton
                           onClick={() => handleOpenAnalysisDialog(location)}
                           aria-label={`Analyser ${location.name}`}
                           sx={{
-                            minWidth: TOUCH_TARGET_SIZE,
-                            minHeight: TOUCH_TARGET_SIZE,
-                            color: '#00d4ff',
-                            bgcolor: 'rgba(0,212,255,0.15)',
-                            border: '1px solid rgba(0,212,255,0.3)',
-                            borderRadius: 2,
+                            minWidth: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
+                            minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
+                            p: { xs: 1, sm: 1.05, md: 1.1, lg: 1.15, xl: 1.2 },
+                            color: '#66dbff',
+                            bgcolor: 'rgba(0,212,255,0.11)',
+                            border: '1px solid rgba(0,212,255,0.28)',
+                            borderRadius: 1.75,
+                            '@media (min-width: 2048px) and (max-width: 3839px)': {
+                              minWidth: 50,
+                              minHeight: 50,
+                              p: 1.1,
+                            },
                             transition: 'all 0.2s ease',
                             '&:hover': { 
-                              bgcolor: 'rgba(0,212,255,0.25)',
-                              borderColor: 'rgba(0,212,255,0.5)',
-                              transform: 'scale(1.05)',
+                              bgcolor: 'rgba(0,212,255,0.2)',
+                              borderColor: 'rgba(0,212,255,0.45)',
+                              transform: 'translateY(-1px)',
                             },
                             '&:active': {
-                              transform: 'scale(0.95)',
+                              transform: 'translateY(0px)',
                             },
                             ...focusVisibleStyles,
                           }}
                         >
-                          <AnalyticsIcon sx={{ fontSize: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 } }} />
+                          <AnalyticsIcon sx={{ fontSize: { xs: 20, sm: 21, md: 22, lg: 23, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Dupliser" arrow>
@@ -5991,14 +6640,23 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           onClick={() => handleDuplicate(location)}
                           aria-label={`Dupliser ${location.name}`}
                           sx={{
-                            minWidth: TOUCH_TARGET_SIZE,
-                            minHeight: TOUCH_TARGET_SIZE,
+                            minWidth: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
+                            minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
+                            p: { xs: 1, sm: 1.05, md: 1.1, lg: 1.15, xl: 1.2 },
                             color: 'rgba(255,255,255,0.87)',
-                            '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
+                            bgcolor: 'rgba(255,255,255,0.07)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: 1.75,
+                            '@media (min-width: 2048px) and (max-width: 3839px)': {
+                              minWidth: 50,
+                              minHeight: 50,
+                              p: 1.1,
+                            },
+                            '&:hover': { bgcolor: 'rgba(255,255,255,0.12)', transform: 'translateY(-1px)' },
                             ...focusVisibleStyles,
                           }}
                         >
-                          <DuplicateIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
+                          <DuplicateIcon sx={{ fontSize: { xs: 20, sm: 21, md: 22, lg: 23, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Rediger" arrow>
@@ -6006,14 +6664,23 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           onClick={() => handleOpenDialog(location)}
                           aria-label={`Rediger ${location.name}`}
                           sx={{
-                            minWidth: TOUCH_TARGET_SIZE,
-                            minHeight: TOUCH_TARGET_SIZE,
+                            minWidth: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
+                            minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
+                            p: { xs: 1, sm: 1.05, md: 1.1, lg: 1.15, xl: 1.2 },
                             color: '#c4b5fd',
-                            '&:hover': { bgcolor: 'rgba(168,85,247,0.1)' },
+                            bgcolor: 'rgba(168,85,247,0.12)',
+                            border: '1px solid rgba(168,85,247,0.24)',
+                            borderRadius: 1.75,
+                            '@media (min-width: 2048px) and (max-width: 3839px)': {
+                              minWidth: 50,
+                              minHeight: 50,
+                              p: 1.1,
+                            },
+                            '&:hover': { bgcolor: 'rgba(168,85,247,0.2)', transform: 'translateY(-1px)' },
                             ...focusVisibleStyles,
                           }}
                         >
-                          <EditIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
+                          <EditIcon sx={{ fontSize: { xs: 20, sm: 21, md: 22, lg: 23, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Slett" arrow>
@@ -6021,14 +6688,23 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           onClick={() => handleDeleteWithUndo(location.id)}
                           aria-label={`Slett ${location.name}`}
                           sx={{
-                            minWidth: TOUCH_TARGET_SIZE,
-                            minHeight: TOUCH_TARGET_SIZE,
+                            minWidth: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
+                            minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
+                            p: { xs: 1, sm: 1.05, md: 1.1, lg: 1.15, xl: 1.2 },
                             color: '#ff4444',
-                            '&:hover': { bgcolor: 'rgba(255,68,68,0.1)' },
+                            bgcolor: 'rgba(255,68,68,0.09)',
+                            border: '1px solid rgba(255,68,68,0.2)',
+                            borderRadius: 1.75,
+                            '@media (min-width: 2048px) and (max-width: 3839px)': {
+                              minWidth: 50,
+                              minHeight: 50,
+                              p: 1.1,
+                            },
+                            '&:hover': { bgcolor: 'rgba(255,68,68,0.15)', transform: 'translateY(-1px)' },
                             ...focusVisibleStyles,
                           }}
                         >
-                          <DeleteIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
+                          <DeleteIcon sx={{ fontSize: { xs: 20, sm: 21, md: 22, lg: 23, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
                     </Box>
@@ -6097,15 +6773,20 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         slotProps={{
           paper: {
             sx: {
-              bgcolor: '#1c2128',
               color: '#fff',
+              background:
+                'radial-gradient(120% 140% at 0% 0%, rgba(34,211,238,0.14) 0%, rgba(17,24,39,0) 48%), linear-gradient(165deg, rgba(17,12,36,0.98) 0%, rgba(10,8,23,0.98) 100%)',
               maxHeight: { xs: '100%', sm: '90vh' },
               maxWidth: { xs: '95vw', sm: '85vw', md: '80vw', lg: '75vw', xl: '70vw' },
               m: { xs: 0, sm: 2, md: 2.5, lg: 3, xl: 4 },
-              borderRadius: { xs: 0, sm: 2 },
+              borderRadius: { xs: 0, sm: 3 },
+              border: '1px solid rgba(168,85,247,0.45)',
+              boxShadow:
+                '0 28px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(34,211,238,0.14) inset, 0 0 32px rgba(168,85,247,0.24)',
               willChange: 'transform, opacity',
               transformOrigin: 'center center',
               zIndex: 100000,
+              overflow: 'hidden',
             },
           },
         }}
@@ -6113,7 +6794,8 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           zIndex: 100000,
           '& .MuiBackdrop-root': {
             zIndex: 99998,
-            bgcolor: 'rgba(0,0,0,0.8)',
+            bgcolor: 'rgba(3,2,10,0.82)',
+            backdropFilter: 'blur(5px)',
             willChange: 'opacity',
           },
         }}
@@ -6121,27 +6803,81 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         <DialogTitle
           id={dialogTitleId}
           sx={{
-            color: '#fff',
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             py: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
             px: { xs: 2, sm: 3, md: 2.75, lg: 3, xl: 3.5 },
             gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 },
+            borderBottom: '1px solid rgba(168,85,247,0.34)',
+            background:
+              'linear-gradient(120deg, rgba(139,92,246,0.28) 0%, rgba(14,20,42,0.95) 55%, rgba(34,211,238,0.2) 100%)',
           }}
         >
-          <Typography sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem', md: '1.1875rem', lg: '1.375rem', xl: '1.75rem' }, fontWeight: 600 }}>
-            {editingLocation ? 'Rediger lokasjon' : 'Ny lokasjon'}
-          </Typography>
-          {isMobile && (
-            <IconButton onClick={handleCloseDialog} aria-label="Lukk dialog" sx={{ color: 'rgba(255,255,255,0.87)', mr: -1, minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
-              <CloseIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />
-            </IconButton>
-          )}
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box
+              sx={{
+                width: { xs: 38, sm: 42, md: 40, lg: 44, xl: 50 },
+                height: { xs: 38, sm: 42, md: 40, lg: 44, xl: 50 },
+                borderRadius: 2,
+                display: 'grid',
+                placeItems: 'center',
+                background: 'linear-gradient(135deg, rgba(168,85,247,0.92), rgba(124,58,237,0.88))',
+                border: '1px solid rgba(216,180,254,0.42)',
+                boxShadow: '0 10px 22px rgba(124,58,237,0.36)',
+              }}
+            >
+              <LocationIcon sx={{ color: '#ffffff', fontSize: { xs: 20, sm: 22, md: 21, lg: 23, xl: 26 } }} />
+            </Box>
+            <Box>
+              <Typography sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem', md: '1.1875rem', lg: '1.375rem', xl: '1.75rem' }, fontWeight: 700, lineHeight: 1.15 }}>
+                {editingLocation ? 'Rediger lokasjon' : 'Ny lokasjon'}
+              </Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: { xs: '0.76rem', sm: '0.84rem', md: '0.8rem', lg: '0.88rem', xl: '0.95rem' }, mt: 0.35 }}>
+                Role Room lokasjonsregister
+              </Typography>
+            </Box>
+          </Stack>
+          <IconButton
+            onClick={handleCloseDialog}
+            aria-label="Lukk dialog"
+            sx={{
+              color: 'rgba(241,245,249,0.95)',
+              mr: -0.5,
+              minWidth: TOUCH_TARGET_SIZE,
+              minHeight: TOUCH_TARGET_SIZE,
+              border: '1px solid rgba(148,163,184,0.35)',
+              bgcolor: 'rgba(15,23,42,0.55)',
+              '&:hover': { bgcolor: 'rgba(30,41,59,0.85)', borderColor: 'rgba(168,85,247,0.55)' },
+            }}
+          >
+            <CloseIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />
+          </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 3.5 }, px: { xs: 2, sm: 3, md: 2.75, lg: 3, xl: 3.5 }, pb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <Typography id={dialogDescId} variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
+        <DialogContent
+          sx={{
+            pt: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 3.5 },
+            px: { xs: 2, sm: 3, md: 2.75, lg: 3, xl: 3.5 },
+            pb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            background:
+              'linear-gradient(180deg, rgba(15,23,42,0.38) 0%, rgba(8,10,24,0.22) 100%)',
+          }}
+        >
+          <Typography
+            id={dialogDescId}
+            variant="body2"
+            sx={{
+              color: 'rgba(241,245,249,0.9)',
+              mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
+              fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+              p: { xs: 1.25, sm: 1.5, md: 1.4, lg: 1.5, xl: 1.75 },
+              borderRadius: 2,
+              border: '1px solid rgba(148,163,184,0.24)',
+              background: 'linear-gradient(135deg, rgba(30,41,59,0.62) 0%, rgba(15,23,42,0.36) 100%)',
+            }}
+          >
             Fyll ut informasjon om lokasjonen. Felter merket med * er påkrevd.
           </Typography>
           <Stack spacing={{ xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 }}>
@@ -6418,17 +7154,49 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 },
               }}
             />
+            <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>
+              Skrevet av:{' '}
+              {(() => {
+                const rawAuthor =
+                  formData.notesAuthorName
+                  ?? formData.notesAuthor
+                  ?? formData.notesBy;
+                return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
+                  ? rawAuthor.trim()
+                  : 'Ikke registrert';
+              })()}
+              {(() => {
+                const rawUpdatedAt =
+                  formData.notesUpdatedAt
+                  ?? formData.notesLastEditedAt
+                  ?? formData.notesTimestamp;
+                return typeof rawUpdatedAt === 'string' && rawUpdatedAt.trim().length > 0
+                  ? ` • ${formatDateTimeShort(rawUpdatedAt)}`
+                  : '';
+              })()}
+            </Typography>
+            <GlobalMentionHelper
+              text={typeof formData.notes === 'string' ? formData.notes : ''}
+              localCandidates={mentionCandidates}
+              onApplySuggestion={(name) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  notes: applyMentionSuggestion(typeof prev.notes === 'string' ? prev.notes : '', name),
+                }))
+              }
+            />
           </Stack>
         </DialogContent>
         <DialogActions
           sx={{
-            borderTop: '1px solid rgba(255,255,255,0.1)',
+            borderTop: '1px solid rgba(168,85,247,0.28)',
             p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
             flexDirection: { xs: 'column-reverse', sm: 'row' },
             gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 },
             position: { xs: 'sticky', sm: 'relative' },
             bottom: 0,
-            bgcolor: '#1c2128',
+            bgcolor: 'rgba(8,10,24,0.82)',
+            backdropFilter: 'blur(8px)',
           }}
         >
           <Button
@@ -6436,12 +7204,15 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             startIcon={<CancelIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
             fullWidth={isMobile}
             sx={{ 
-              color: 'rgba(255,255,255,0.87)', 
+              color: 'rgba(226,232,240,0.95)',
+              border: '1px solid rgba(148,163,184,0.38)',
+              bgcolor: 'rgba(15,23,42,0.55)',
               minHeight: TOUCH_TARGET_SIZE,
               fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
               px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-              ...focusVisibleStyles 
+              ...focusVisibleStyles,
+              '&:hover': { bgcolor: 'rgba(30,41,59,0.88)', borderColor: 'rgba(168,85,247,0.48)' },
             }}
           >
             Avbryt
@@ -6454,13 +7225,16 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             sx={{
               bgcolor: '#a855f7',
               color: '#fff',
-              fontWeight: 600,
+              fontWeight: 700,
               fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
               px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
               minHeight: TOUCH_TARGET_SIZE,
               ...focusVisibleStyles,
-              '&:hover': { bgcolor: '#9333ea' },
+              border: '1px solid rgba(216,180,254,0.45)',
+              boxShadow: '0 10px 24px rgba(124,58,237,0.45)',
+              backgroundImage: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+              '&:hover': { backgroundImage: 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)' },
             }}
           >
             {editingLocation ? 'Lagre' : 'Opprett'}

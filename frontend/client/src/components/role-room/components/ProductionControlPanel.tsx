@@ -32,12 +32,20 @@ import {
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { SceneBreakdown } from '../models/casting';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface ProductionControlPanelProps {
   selectedScene?: SceneBreakdown;
   selectedShot?: string;
   onClose: () => void;
 }
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 export const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({
   selectedScene,
@@ -319,6 +327,7 @@ const AudioControlPanel: React.FC = () => {
 
 const ReferencesPanel: React.FC = () => {
   const [images, setImages] = useState<string[]>([]);
+  const [visualNotes, setVisualNotes] = useState('');
 
   return (
     <Stack spacing={2}>
@@ -385,7 +394,16 @@ const ReferencesPanel: React.FC = () => {
         multiline
         rows={3}
         placeholder="Beskrivelse av ønsket look, farge, stemning..."
+        value={visualNotes}
+        onChange={(event) => setVisualNotes(event.target.value)}
         fullWidth
+      />
+      <GlobalMentionHelper
+        text={visualNotes}
+        localCandidates={['Regi', 'Foto', 'Lys', 'Colorist', 'Moodboard']}
+        onApplySuggestion={(name) => setVisualNotes((prev) => applyMentionSuggestion(prev, name))}
+        autoTagTitle="Auto-tagget i notater"
+        suggestionTitle="Mener du?"
       />
     </Stack>
   );

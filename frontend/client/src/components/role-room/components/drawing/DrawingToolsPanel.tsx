@@ -14,7 +14,7 @@
  * - Export options
  */
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -48,32 +48,43 @@ import {
 import { styled } from '@mui/material/styles';
 
 // Import all drawing components
-import type { DrawingLayer} from './LayersPanel';
-import { LayersPanel, BlendMode } from './LayersPanel';
+import { LayersPanel, type DrawingLayer } from './LayersPanel';
 import { BrushLibrary } from './BrushLibrary';
-import type { ShapeType, ShapeStyle} from './ShapeTools';
-import { ShapeTools, DEFAULT_SHAPE_STYLE } from './ShapeTools';
-import type { TextStyle} from './TextAnnotations';
-import { TextAnnotation, DEFAULT_TEXT_STYLE } from './TextAnnotations';
-import TextAnnotationsToolbar from './TextAnnotations';
-import type { SelectionMode, SelectionBounds, Transform } from './SelectionTools';
-import { SelectionTools } from './SelectionTools';
-import type { SymmetrySettings} from './SymmetryMode';
-import { SymmetryMode, SymmetryType, DEFAULT_SYMMETRY_SETTINGS } from './SymmetryMode';
-import type { PressureCurve} from './PressureCurveEditor';
-import { PressureCurveEditor, DEFAULT_PRESSURE_CURVE } from './PressureCurveEditor';
-import type { OnionSkinSettings} from './OnionSkinning';
-import { OnionSkinning, DEFAULT_ONION_SKIN_SETTINGS } from './OnionSkinning';
-import type { SampledColor } from './Eyedropper';
-import { Eyedropper } from './Eyedropper';
-import type { ExportSettings, ExportFrame} from './ExportOptions';
-import { ExportOptions, DEFAULT_EXPORT_SETTINGS } from './ExportOptions';
-import type { GestureSettings, GestureAction} from './GestureShortcuts';
-import { GestureShortcuts, DEFAULT_GESTURE_SETTINGS } from './GestureShortcuts';
-import type { StoryboardTemplate} from './StoryboardTemplates';
-import { StoryboardTemplates, FrameGuides, DEFAULT_GUIDES, drawGuides } from './StoryboardTemplates';
-import type { BrushConfig} from './AdvancedBrushEngine';
-import { DEFAULT_BRUSH_CONFIG } from './AdvancedBrushEngine';
+import { ShapeTools, DEFAULT_SHAPE_STYLE, type ShapeType, type ShapeStyle } from './ShapeTools';
+import TextAnnotationsToolbar, {
+  DEFAULT_TEXT_STYLE,
+  createTextAnnotation,
+  type TextStyle,
+  type TextAnnotation,
+} from './TextAnnotations';
+import {
+  SelectionTools,
+  getStrokeBounds,
+  type SelectionMode,
+  type SelectionBounds,
+  type Transform,
+} from './SelectionTools';
+import { SymmetryMode, DEFAULT_SYMMETRY_SETTINGS, type SymmetrySettings } from './SymmetryMode';
+import {
+  PressureCurveEditor,
+  DEFAULT_PRESSURE_CURVE,
+  type PressureCurve,
+} from './PressureCurveEditor';
+import {
+  OnionSkinning,
+  DEFAULT_ONION_SKIN_SETTINGS,
+  type OnionSkinSettings,
+} from './OnionSkinning';
+import { Eyedropper, type SampledColor } from './Eyedropper';
+import { ExportOptions, type ExportSettings, type ExportFrame } from './ExportOptions';
+import {
+  GestureShortcuts,
+  DEFAULT_GESTURE_SETTINGS,
+  type GestureSettings,
+  type GestureAction,
+} from './GestureShortcuts';
+import { StoryboardTemplates, type StoryboardTemplate } from './StoryboardTemplates';
+import { DEFAULT_BRUSH_CONFIG, type BrushConfig } from './AdvancedBrushEngine';
 import type { PencilStroke } from '../../hooks/useApplePencil';
 
 // =============================================================================
@@ -105,6 +116,8 @@ export interface DrawingState {
   brushConfig: BrushConfig;
   shapeStyle: ShapeStyle;
   textStyle: TextStyle;
+  textAnnotations: TextAnnotation[];
+  selectedTextAnnotationId: string | null;
   symmetrySettings: SymmetrySettings;
   pressureCurve: PressureCurve;
   onionSkinSettings: OnionSkinSettings;
@@ -167,6 +180,8 @@ export interface DrawingToolsPanelProps {
   defaultTab?: number;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
+  panelWidth?: number;
+  collapsedWidth?: number;
 }
 
 // =============================================================================
@@ -187,6 +202,8 @@ export const DEFAULT_DRAWING_STATE: DrawingState = {
   brushConfig: DEFAULT_BRUSH_CONFIG,
   shapeStyle: DEFAULT_SHAPE_STYLE,
   textStyle: DEFAULT_TEXT_STYLE,
+  textAnnotations: [],
+  selectedTextAnnotationId: null,
   symmetrySettings: DEFAULT_SYMMETRY_SETTINGS,
   pressureCurve: DEFAULT_PRESSURE_CURVE,
   onionSkinSettings: DEFAULT_ONION_SKIN_SETTINGS,
@@ -207,13 +224,13 @@ export const DEFAULT_DRAWING_STATE: DrawingState = {
 // =============================================================================
 
 const PanelContainer = styled(Paper, {
-  shouldForwardProp: (prop) => prop !== 'position' && prop !== 'collapsed',
-})<{ position: 'left' | 'right'; collapsed: boolean }>(({ position, collapsed }) => ({
+  shouldForwardProp: (prop) => prop !== 'position' && prop !== 'collapsed' && prop !== 'panelWidth' && prop !== 'collapsedWidth',
+})<{ position: 'left' | 'right'; collapsed: boolean; panelWidth: number; collapsedWidth: number }>(({ position, collapsed, panelWidth, collapsedWidth }) => ({
   position: 'absolute',
   top: 16,
   [position]: 16,
   bottom: 16,
-  width: collapsed ? 48 : 300,
+  width: collapsed ? collapsedWidth : panelWidth,
   backgroundColor: 'rgba(20, 20, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
@@ -293,6 +310,8 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
   defaultTab = 0,
   collapsed: controlledCollapsed,
   onCollapsedChange,
+  panelWidth = 300,
+  collapsedWidth = 48,
 }) => {
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [internalCollapsed, setInternalCollapsed] = useState(false);
@@ -305,6 +324,7 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
     symmetry: false,
     pressure: false,
     onion: false,
+    eyedropper: false,
     gestures: false,
     export: false,
   });
@@ -331,6 +351,46 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
       activeTool: shapeType ? 'shape' : 'brush' 
     });
   }, [onStateChange]);
+
+  const handleSaveCurrentBrush = useCallback(() => {
+    onStateChange({
+      activeTool: 'brush',
+      brushConfig: { ...state.brushConfig },
+    });
+  }, [onStateChange, state.brushConfig]);
+
+  const handleTextAnnotationsChange = useCallback((annotations: TextAnnotation[]) => {
+    onStateChange({ textAnnotations: annotations });
+  }, [onStateChange]);
+
+  const handleSelectedTextChange = useCallback((id: string | null) => {
+    onStateChange({ selectedTextAnnotationId: id, activeTool: 'text' });
+  }, [onStateChange]);
+
+  const handleAddText = useCallback(() => {
+    const annotation = createTextAnnotation('Text', 64, 64, state.textStyle);
+    onStateChange({
+      activeTool: 'text',
+      textAnnotations: [...state.textAnnotations, annotation],
+      selectedTextAnnotationId: annotation.id,
+    });
+  }, [onStateChange, state.textAnnotations, state.textStyle]);
+
+  const handleTextStyleChange = useCallback((style: Partial<TextStyle>) => {
+    const nextTextStyle = { ...state.textStyle, ...style };
+    const selectedId = state.selectedTextAnnotationId;
+    const nextAnnotations = selectedId
+      ? state.textAnnotations.map((annotation) => (
+        annotation.id === selectedId
+          ? { ...annotation, style: { ...annotation.style, ...style } }
+          : annotation
+      ))
+      : state.textAnnotations;
+    onStateChange({
+      textStyle: nextTextStyle,
+      textAnnotations: nextAnnotations,
+    });
+  }, [onStateChange, state.selectedTextAnnotationId, state.textAnnotations, state.textStyle]);
 
   const handleColorPickFromEyedropper = useCallback((color: string) => {
     onColorPick(color);
@@ -380,10 +440,32 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
     }
   }, [onUndo, onRedo, onCopy, onPaste, onCut, onGestureAction]);
 
+  const handleDeleteSelection = useCallback(() => {
+    if (state.selectedStrokeIds.length > 0) {
+      const selectedIndexSet = new Set(
+        state.selectedStrokeIds
+          .map((id) => Number(id.replace('stroke-', '')))
+          .filter((index) => Number.isInteger(index) && index >= 0 && index < strokes.length)
+      );
+      if (selectedIndexSet.size > 0) {
+        const remaining = strokes.filter((_, index) => !selectedIndexSet.has(index));
+        onStrokesChange(remaining);
+      }
+    }
+    onDelete();
+  }, [onDelete, onStrokesChange, state.selectedStrokeIds, strokes]);
+
   // Collapsed toolbar view
   if (collapsed) {
     return (
-      <PanelContainer position={position} collapsed elevation={8}>
+      <PanelContainer
+        data-pencil-ignore="true"
+        position={position}
+        collapsed
+        panelWidth={panelWidth}
+        collapsedWidth={collapsedWidth}
+        elevation={8}
+      >
         <Stack spacing={0.5} sx={{ p: 0.5, alignItems: 'center' }}>
           <Tooltip title="Expand" placement={position === 'right' ? 'left' : 'right'}>
             <IconButton size="small" onClick={() => setCollapsed(false)}>
@@ -450,7 +532,14 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
   }
 
   return (
-    <PanelContainer position={position} collapsed={false} elevation={8}>
+    <PanelContainer
+      data-pencil-ignore="true"
+      position={position}
+      collapsed={false}
+      panelWidth={panelWidth}
+      collapsedWidth={collapsedWidth}
+      elevation={8}
+    >
       {/* Header */}
       <Box sx={{ 
         p: 1, 
@@ -545,6 +634,14 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
             activeLayerId={state.activeLayerId}
             onLayersChange={(layers) => onStateChange({ layers })}
             onActiveLayerChange={(id) => onStateChange({ activeLayerId: id })}
+            onLayerSelect={onLayerSelect}
+            onLayerAdd={onLayerAdd}
+            onLayerDelete={onLayerDelete}
+            onLayerVisibilityToggle={onLayerVisibilityToggle}
+            onLayerOpacityChange={onLayerOpacityChange}
+            onLayerReorder={onLayerReorder}
+            onLayerMerge={onLayerMerge}
+            onLayerDuplicate={onLayerDuplicate}
           />
         </Collapse>
 
@@ -560,7 +657,7 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
           <BrushLibrary
             currentConfig={state.brushConfig}
             onBrushSelect={handleBrushSelect}
-            onSaveCurrentBrush={() => {}}
+            onSaveCurrentBrush={handleSaveCurrentBrush}
           />
         </Collapse>
 
@@ -612,13 +709,13 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
         </SectionHeader>
         <Collapse in={expandedSections.text}>
           <TextAnnotationsToolbar
-            annotations={[]}
-            selectedId={null}
-            onAnnotationsChange={() => {}}
-            onSelectedChange={() => {}}
-            onAddText={() => {}}
+            annotations={state.textAnnotations}
+            selectedId={state.selectedTextAnnotationId}
+            onAnnotationsChange={handleTextAnnotationsChange}
+            onSelectedChange={handleSelectedTextChange}
+            onAddText={handleAddText}
             style={state.textStyle}
-            onStyleChange={(style: Partial<TextStyle>) => onStateChange({ textStyle: { ...state.textStyle, ...style } })}
+            onStyleChange={handleTextStyleChange}
           />
         </Collapse>
 
@@ -633,16 +730,23 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
         <Collapse in={expandedSections.selection}>
           <SelectionTools
             mode={state.selectionMode}
-            onModeChange={(mode) => onStateChange({ selectionMode: mode })}
+            onModeChange={(mode) => onStateChange({ selectionMode: mode, activeTool: 'select' })}
             selectedStrokeIds={state.selectedStrokeIds}
             onSelectionChange={(ids) => onStateChange({ selectedStrokeIds: ids })}
             bounds={state.selectionBounds}
             onTransform={(transform) => onStateChange({ transform })}
             onCopy={onCopy}
             onPaste={onPaste}
-            onDelete={onDelete}
-            onSelectAll={() => {}}
-            onDeselectAll={() => onStateChange({ selectedStrokeIds: [] })}
+            onDelete={handleDeleteSelection}
+            onSelectAll={() => {
+              const ids = strokes.map((_, index) => `stroke-${index}`);
+              onStateChange({
+                activeTool: 'select',
+                selectedStrokeIds: ids,
+                selectionBounds: getStrokeBounds(strokes),
+              });
+            }}
+            onDeselectAll={() => onStateChange({ selectedStrokeIds: [], selectionBounds: null })}
             canPaste={false}
             hasSelection={state.selectedStrokeIds.length > 0}
           />

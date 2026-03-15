@@ -5,6 +5,9 @@ export type AdminUser = {
   email: string;
   role: string;
   display_name: string;
+  name?: string;
+  loginAs?: string;
+  requestedRole?: string | null;
 };
 
 export type AuthSession = {
@@ -12,6 +15,13 @@ export type AuthSession = {
   currentUserId?: string | null;
   selectedProfession?: string | null;
   lastUpdated?: string | null;
+};
+
+export type RoleContextUpdate = {
+  role?: string;
+  loginAs?: string | null;
+  requestedRole?: string | null;
+  selectedProfession?: string | null;
 };
 
 type SessionWindow = Window & { __currentUserId?: string };
@@ -102,6 +112,36 @@ export const authSessionService = {
       selectedProfession: roleId,
       lastUpdated: new Date().toISOString(),
     };
+    await persistSession(next);
+  },
+
+  async updateRoleContext(update: RoleContextUpdate): Promise<void> {
+    if (!sessionCache.adminUser) return;
+
+    const nextAdminUser: AdminUser = {
+      ...sessionCache.adminUser,
+      role: update.role ?? sessionCache.adminUser.role,
+      loginAs: update.loginAs === undefined ? sessionCache.adminUser.loginAs : update.loginAs || undefined,
+      requestedRole:
+        update.requestedRole === undefined
+          ? sessionCache.adminUser.requestedRole
+          : update.requestedRole,
+    };
+
+    const next: AuthSession = {
+      ...sessionCache,
+      adminUser: nextAdminUser,
+      selectedProfession:
+        update.selectedProfession === undefined
+          ? sessionCache.selectedProfession
+          : update.selectedProfession,
+      currentUserId:
+        nextAdminUser.id !== undefined && nextAdminUser.id !== null
+          ? String(nextAdminUser.id)
+          : sessionCache.currentUserId,
+      lastUpdated: new Date().toISOString(),
+    };
+
     await persistSession(next);
   },
 

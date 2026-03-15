@@ -345,6 +345,37 @@ const STEPS: Step[] = [
         ),
         screenshotLabel: 'Each element type highlighted in the editor',
       },
+      {
+        heading: 'Role auto-sync to The Role Room',
+        body: (
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8, mb: 1.2 }}>
+              When you write a new character line in screenplay format (for example
+              <strong> NORA </strong> on its own CHARACTER line), the editor can automatically
+              create that name as a <strong>Role</strong> in The Role Room.
+            </Typography>
+            <Box component="ul" sx={{ pl: 2.5, mb: 1.2 }}>
+              {[
+                'The line must be parsed as a Fountain CHARACTER line.',
+                'A project must be selected (so the role has a project context).',
+                'Existing role names are not duplicated (case-insensitive check).',
+                'If save fails (offline/API error), role creation is skipped.',
+              ].map((rule) => (
+                <Box key={rule} component="li" sx={{ mb: 0.4 }}>
+                  <Typography variant="body2" sx={{ lineHeight: 1.7 }}>
+                    {rule}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+            <Callout color="#22c55e">
+              Tip: if a role does not appear automatically, verify that the line is
+              formatted as a proper CHARACTER cue (all-caps name on its own line).
+            </Callout>
+          </>
+        ),
+        screenshotLabel: 'Character cue in manuscript auto-creating a role in The Role Room',
+      },
     ],
   },
   {

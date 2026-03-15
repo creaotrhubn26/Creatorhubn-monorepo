@@ -84,6 +84,14 @@ export interface LayersPanelProps {
   activeLayerId: string;
   onLayersChange: (layers: DrawingLayer[]) => void;
   onActiveLayerChange: (layerId: string) => void;
+  onLayerSelect?: (layerId: string) => void;
+  onLayerAdd?: () => void;
+  onLayerDelete?: (layerId: string) => void;
+  onLayerVisibilityToggle?: (layerId: string) => void;
+  onLayerOpacityChange?: (layerId: string, opacity: number) => void;
+  onLayerReorder?: (fromIndex: number, toIndex: number) => void;
+  onLayerMerge?: (layerId: string) => void;
+  onLayerDuplicate?: (layerId: string) => void;
   onMergeLayers?: (layerIds: string[]) => void;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
@@ -93,7 +101,7 @@ export interface LayersPanelProps {
 // Styled Components
 // =============================================================================
 
-const PanelContainer = styled(Paper)(({ theme }) => ({
+const PanelContainer = styled(Paper)(() => ({
   backgroundColor: 'rgba(20, 20, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
@@ -193,6 +201,14 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
   activeLayerId,
   onLayersChange,
   onActiveLayerChange,
+  onLayerSelect,
+  onLayerAdd,
+  onLayerDelete,
+  onLayerVisibilityToggle,
+  onLayerOpacityChange,
+  onLayerReorder,
+  onLayerMerge,
+  onLayerDuplicate,
   onMergeLayers,
   collapsed: controlledCollapsed,
   onCollapsedChange,
@@ -215,7 +231,8 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
     const newLayer = createLayer(`Layer ${layers.length + 1}`);
     onLayersChange([newLayer, ...layers]);
     onActiveLayerChange(newLayer.id);
-  }, [layers, onLayersChange, onActiveLayerChange]);
+    onLayerAdd?.();
+  }, [layers, onLayersChange, onActiveLayerChange, onLayerAdd]);
 
   // Delete layer
   const handleDeleteLayer = useCallback((layerId: string) => {
@@ -225,8 +242,9 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
     if (activeLayerId === layerId) {
       onActiveLayerChange(newLayers[0].id);
     }
+    onLayerDelete?.(layerId);
     setMenuAnchor(null);
-  }, [layers, activeLayerId, onLayersChange, onActiveLayerChange]);
+  }, [layers, activeLayerId, onLayersChange, onActiveLayerChange, onLayerDelete]);
 
   // Duplicate layer
   const handleDuplicateLayer = useCallback((layerId: string) => {
@@ -244,8 +262,9 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
     const newLayers = [...layers];
     newLayers.splice(index, 0, newLayer);
     onLayersChange(newLayers);
+    onLayerDuplicate?.(layerId);
     setMenuAnchor(null);
-  }, [layers, onLayersChange]);
+  }, [layers, onLayersChange, onLayerDuplicate]);
 
   // Toggle visibility
   const handleToggleVisibility = useCallback((layerId: string) => {
@@ -253,7 +272,8 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
       l.id === layerId ? { ...l, visible: !l.visible } : l
     );
     onLayersChange(newLayers);
-  }, [layers, onLayersChange]);
+    onLayerVisibilityToggle?.(layerId);
+  }, [layers, onLayersChange, onLayerVisibilityToggle]);
 
   // Toggle lock
   const handleToggleLock = useCallback((layerId: string) => {
@@ -269,7 +289,8 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
       l.id === layerId ? { ...l, opacity } : l
     );
     onLayersChange(newLayers);
-  }, [layers, onLayersChange]);
+    onLayerOpacityChange?.(layerId, opacity);
+  }, [layers, onLayersChange, onLayerOpacityChange]);
 
   // Update blend mode
   const handleBlendModeChange = useCallback((layerId: string, blendMode: BlendMode) => {
@@ -308,8 +329,9 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
     const newLayers = [...layers];
     [newLayers[index], newLayers[newIndex]] = [newLayers[newIndex], newLayers[index]];
     onLayersChange(newLayers);
+    onLayerReorder?.(index, newIndex);
     setMenuAnchor(null);
-  }, [layers, onLayersChange]);
+  }, [layers, onLayersChange, onLayerReorder]);
 
   // Merge with layer below
   const handleMergeDown = useCallback((layerId: string) => {
@@ -326,11 +348,13 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
     
     const newLayers = layers.filter((_, i) => i !== index);
     newLayers[index] = mergedLayer;
-    
+
     onLayersChange(newLayers);
     onActiveLayerChange(mergedLayer.id);
+    onMergeLayers?.([currentLayer.id, belowLayer.id]);
+    onLayerMerge?.(layerId);
     setMenuAnchor(null);
-  }, [layers, onLayersChange, onActiveLayerChange]);
+  }, [layers, onLayersChange, onActiveLayerChange, onMergeLayers, onLayerMerge]);
 
   // Drag handlers for reordering
   const handleDragStart = useCallback((e: React.DragEvent, layerId: string) => {
@@ -363,8 +387,9 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
     newLayers.splice(dropIndex, 0, removed);
     
     onLayersChange(newLayers);
+    onLayerReorder?.(dragIndex, dropIndex);
     setDraggedLayerId(null);
-  }, [draggedLayerId, layers, onLayersChange]);
+  }, [draggedLayerId, layers, onLayersChange, onLayerReorder]);
 
   return (
     <PanelContainer>
@@ -431,7 +456,10 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({
               key={layer.id}
               active={layer.id === activeLayerId}
               dragging={layer.id === draggedLayerId}
-              onClick={() => onActiveLayerChange(layer.id)}
+              onClick={() => {
+                onActiveLayerChange(layer.id);
+                onLayerSelect?.(layer.id);
+              }}
               draggable
               onDragStart={(e) => handleDragStart(e, layer.id)}
               onDragOver={handleDragOver}

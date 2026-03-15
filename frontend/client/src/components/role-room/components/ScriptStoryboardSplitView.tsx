@@ -380,11 +380,11 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
               {showSyncControls && (
                 <SyncIndicator synced={syncEnabled}>
                   {syncEnabled ? <Sync sx={{ fontSize: 14 }} /> : <SyncDisabled sx={{ fontSize: 14 }} />}
-                  {syncEnabled ? 'Synced' : 'Unsynced'}
+                  {syncEnabled ? 'Synkronisert' : 'Ikke synkronisert'}
                 </SyncIndicator>
               )}
               <FrameCounter
-                label={`Frame ${activeFrameIndex + 1} / ${frameCount}`}
+                label={`Rute ${activeFrameIndex + 1} av ${frameCount}`}
                 size="small"
               />
             </Stack>
@@ -395,12 +395,12 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
       {/* Script Pane */}
       {scriptCollapsed ? (
         <CollapsedPane>
-          <Tooltip title="Expand Script" placement="right">
+          <Tooltip title="Utvid manus" placement="right">
             <IconButton size="small" onClick={() => setScriptCollapsed(false)}>
               <Article sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Script Editor" placement="right">
+          <Tooltip title="Manusredigering" placement="right">
             <IconButton size="small" onClick={() => setScriptCollapsed(false)}>
               <ChevronRight sx={{ fontSize: 18 }} />
             </IconButton>
@@ -417,15 +417,15 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
           <PaneHeader>
             <Stack direction="row" alignItems="center" gap={1}>
               <Article sx={{ fontSize: 18, color: 'text.secondary' }} />
-              <Typography variant="subtitle2">Script</Typography>
+              <Typography variant="subtitle2">Manus</Typography>
               <Chip 
-                label={`Line ${scriptStoryboard?.scriptPosition.lineNumber || 1}`}
+                label={`Linje ${scriptStoryboard?.scriptPosition.lineNumber || 1}`}
                 size="small"
                 sx={{ height: 20, fontSize: 10 }}
               />
             </Stack>
             <Stack direction="row" gap={0.5}>
-              <Tooltip title="Link to Frame">
+              <Tooltip title="Koble til rute">
                 <IconButton 
                   size="small"
                   onClick={() => {
@@ -442,7 +442,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
                   <Link sx={{ fontSize: 16 }} />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Collapse Script">
+              <Tooltip title="Skjul manus">
                 <IconButton size="small" onClick={() => setScriptCollapsed(true)}>
                   <ChevronLeft sx={{ fontSize: 16 }} />
                 </IconButton>
@@ -462,7 +462,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
             ) : (
               <Box sx={{ p: 2, color: 'text.secondary' }}>
                 <Typography variant="body2">
-                  No script editor provided. Pass a renderScriptEditor prop.
+                  Ingen manusredigering tilgjengelig. Send inn renderScriptEditor-prop.
                 </Typography>
               </Box>
             )}
@@ -481,12 +481,12 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
       {/* Storyboard Pane */}
       {storyboardCollapsed ? (
         <CollapsedPane sx={{ borderLeft: '1px solid rgba(255,255,255,0.08)', borderRight: 'none' }}>
-          <Tooltip title="Expand Storyboard" placement="left">
+          <Tooltip title="Utvid storyboard" placement="left">
             <IconButton size="small" onClick={() => setStoryboardCollapsed(false)}>
               <Image sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Storyboard" placement="left">
+          <Tooltip title="Storyboardvisning" placement="left">
             <IconButton size="small" onClick={() => setStoryboardCollapsed(false)}>
               <ChevronLeft sx={{ fontSize: 18 }} />
             </IconButton>
@@ -505,13 +505,13 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
               <Image sx={{ fontSize: 18, color: 'text.secondary' }} />
               <Typography variant="subtitle2">Storyboard</Typography>
               <FrameCounter
-                label={`${frameCount} frames`}
+                label={`${frameCount} ruter`}
                 size="small"
               />
             </Stack>
             <Stack direction="row" gap={0.5}>
               {/* Frame navigation */}
-              <Tooltip title="Previous Frame">
+              <Tooltip title="Forrige rute">
                 <IconButton 
                   size="small"
                   disabled={activeFrameIndex === 0}
@@ -520,7 +520,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
                   <NavigateBefore sx={{ fontSize: 16 }} />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Next Frame">
+              <Tooltip title="Neste rute">
                 <IconButton 
                   size="small"
                   disabled={activeFrameIndex >= frameCount - 1}
@@ -532,17 +532,17 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
               <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
               
               {/* Actions */}
-              <Tooltip title="Add Frame">
+              <Tooltip title="Ny storyboard">
                 <IconButton size="small" onClick={onCreateFrame}>
                   <Add sx={{ fontSize: 16 }} />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Draw Frame">
+              <Tooltip title="Tegn rute">
                 <IconButton size="small">
                   <Brush sx={{ fontSize: 16 }} />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Generate from Script">
+              <Tooltip title="Generer fra manus">
                 <IconButton size="small" onClick={onGenerateFromScript}>
                   <PhotoCamera sx={{ fontSize: 16 }} />
                 </IconButton>
@@ -550,7 +550,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
               
               <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
               
-              <Tooltip title="Settings">
+              <Tooltip title="Innstillinger">
                 <IconButton 
                   size="small"
                   onClick={(e) => setSettingsAnchor(e.currentTarget)}
@@ -558,7 +558,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
                   <Settings sx={{ fontSize: 16 }} />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Collapse Storyboard">
+              <Tooltip title="Skjul storyboard">
                 <IconButton size="small" onClick={() => setStoryboardCollapsed(true)}>
                   <ChevronRight sx={{ fontSize: 16 }} />
                 </IconButton>
@@ -603,7 +603,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
             ) : (
               <Box sx={{ p: 2, color: 'text.secondary' }}>
                 <Typography variant="body2">
-                  No storyboard renderer provided. Pass a renderStoryboard prop.
+                  Ingen storyboard-visning tilgjengelig. Send inn renderStoryboard-prop.
                 </Typography>
               </Box>
             )}
@@ -628,7 +628,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
             {syncEnabled ? <Sync fontSize="small" /> : <SyncDisabled fontSize="small" />}
           </ListItemIcon>
           <ListItemText>
-            {syncEnabled ? 'Disable Sync' : 'Enable Sync'}
+            {syncEnabled ? 'Slå av synkronisering' : 'Slå på synkronisering'}
           </ListItemText>
         </MenuItem>
         <Divider />
@@ -636,7 +636,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
           <ListItemIcon>
             <Article fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Auto-scroll Script</ListItemText>
+          <ListItemText>Autoscroll manus</ListItemText>
           <Switch
             size="small"
             checked={scriptStoryboard?.autoScrollScript ?? true}
@@ -647,7 +647,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
           <ListItemIcon>
             <Image fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Auto-scroll Storyboard</ListItemText>
+          <ListItemText>Autoscroll storyboard</ListItemText>
           <Switch
             size="small"
             checked={scriptStoryboard?.autoScrollStoryboard ?? true}
@@ -665,7 +665,7 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
           <ListItemIcon>
             <VerticalSplit fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Reset Layout</ListItemText>
+          <ListItemText>Tilbakestill layout</ListItemText>
         </MenuItem>
       </Menu>
     </SplitContainer>

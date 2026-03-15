@@ -15,6 +15,17 @@ interface GoldenManifest {
   cases: GoldenCaseInput[];
 }
 
+interface GoldenReportFile {
+  generatedAt?: string;
+  run?: {
+    runId?: string;
+    totalCases?: number;
+    passedCases?: number;
+    failedCases?: number;
+    averageOverallScore?: number;
+  };
+}
+
 function getArg(name: string, fallback?: string): string | undefined {
   const key = `--${name}`;
   const idx = process.argv.indexOf(key);
@@ -33,15 +44,37 @@ function toAbsolute(filePath: string): string {
   return path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
 }
 
+function toNumber(value: unknown, fallback = 0): number {
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function readPreviousNightlyReport(reportPath: string): GoldenReportFile | null {
+  if (!fs.existsSync(reportPath)) return null;
+  try {
+    const raw = fs.readFileSync(reportPath, 'utf8');
+    const parsed = JSON.parse(raw) as GoldenReportFile;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const manifestArg = getArg('manifest', 'scripts/storyarc-v2-golden.manifest.example.json');
   if (!manifestArg) {
     throw new Error('Missing --manifest');
   }
 
-  const baseUrl = getArg('base-url', process.env.STORYARC_BASE_URL || 'http://127.0.0.1:3001')!;
+  const baseUrl = getArg('base-url', process.env.STORYARC_BASE_URL || 'http://127.0.0.1:3003')!;
   const failOnRegression = toBool(getArg('fail-on-regression', 'true'), true);
   const nightly = toBool(getArg('nightly', 'false'), false);
+  const compareWithLastNightly = toBool(
+    getArg('compare-with-last-nightly', nightly ? 'true' : 'false'),
+    nightly
+  );
+  const maxScoreDrop = Math.max(0, toNumber(getArg('max-score-drop', '0.02'), 0.02));
+  const maxPassRateDrop = Math.max(0, toNumber(getArg('max-pass-rate-drop', '0.05'), 0.05));
   const outputArg = getArg('output');
 
   const manifestPath = toAbsolute(manifestArg);
@@ -77,6 +110,7 @@ async function main() {
         `storyarc-v2-golden-${Date.now()}.json`
       );
   const outputPath = outputArg ? toAbsolute(outputArg) : defaultOutput;
+  const previousNightly = compareWithLastNightly ? readPreviousNightlyReport(outputPath) : null;
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(
@@ -99,7 +133,41 @@ async function main() {
   console.log(`Average overall score: ${run.averageOverallScore}`);
   console.log(`Report: ${outputPath}`);
 
-  if (failOnRegression && Number(run.failedCases || 0) > 0) {
+  const regressions: string[] = [];
+  if (Number(run.failedCases || 0) > 0) {
+    regressions.push(`failedCases=${run.failedCases}`);
+  }
+
+  if (previousNightly?.run) {
+    const previousAverage = toNumber(previousNightly.run.averageOverallScore, 0);
+    const currentAverage = toNumber(run.averageOverallScore, 0);
+    if (currentAverage < previousAverage - maxScoreDrop) {
+      regressions.push(
+        `averageOverallScore dropped from ${previousAverage.toFixed(3)} to ${currentAverage.toFixed(
+          3
+        )} (max allowed drop ${maxScoreDrop.toFixed(3)})`
+      );
+    }
+
+    const previousPassed = toNumber(previousNightly.run.passedCases, 0);
+    const previousTotal = Math.max(1, toNumber(previousNightly.run.totalCases, 0));
+    const previousPassRate = previousPassed / previousTotal;
+    const currentPassRate = toNumber(run.passedCases, 0) / Math.max(1, toNumber(run.totalCases, 0));
+    if (currentPassRate < previousPassRate - maxPassRateDrop) {
+      regressions.push(
+        `passRate dropped from ${(previousPassRate * 100).toFixed(1)}% to ${(currentPassRate * 100).toFixed(
+          1
+        )}% (max allowed drop ${(maxPassRateDrop * 100).toFixed(1)}%)`
+      );
+    }
+  }
+
+  if (regressions.length > 0) {
+    console.error('Regression detected:');
+    regressions.forEach((entry) => console.error(`- ${entry}`));
+  }
+
+  if (failOnRegression && regressions.length > 0) {
     process.exitCode = 1;
   }
 }

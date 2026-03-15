@@ -1491,7 +1491,16 @@ function AnimatedLowerThirds({
             <InputLabel>Type</InputLabel>
             <Select
               value={filterType}
-              onChange={(e) => setFilterType(e.target.value as any)}
+              onChange={(e) => {
+                const selectedFilter = e.target.value as string;
+                if (
+                  selectedFilter === 'all' ||
+                  selectedFilter === 'course' ||
+                  selectedFilter === 'lesson'
+                ) {
+                  setFilterType(selectedFilter);
+                }
+              }}
               label="Type"
             >
               <MenuItem value="all">All</MenuItem>

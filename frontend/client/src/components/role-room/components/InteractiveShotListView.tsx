@@ -75,6 +75,8 @@ import {
   PRODUCTION_PRESETS,
 } from '../models/casting';
 import { InteractiveShotCard } from './InteractiveShotCard';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import globalTagService from '../services/globalTagService';
 
 interface InteractiveShotListViewProps {
   shotList: ShotList;
@@ -185,6 +187,17 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
     
     return result;
   }, [orderedShots, filterLocation, filterPriority, filterMediaType, showCriticalOnly]);
+
+  const mentionCandidates = useMemo(
+    () =>
+      orderedShots
+        .map((shot) => {
+          if (shot.assignedRoleId) return getRoleName(shot.assignedRoleId);
+          return '';
+        })
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
+    [getRoleName, orderedShots],
+  );
 
   const stats = useMemo(() => {
     const completed = orderedShots.filter(s => s.status === 'completed').length;
@@ -342,6 +355,16 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
   const handleSaveNotes = useCallback(() => {
     if (selectedShotForNotes) {
       onUpdateShot(selectedShotForNotes.id, { fieldNotes: currentNotes });
+      if (currentNotes.trim().length > 0) {
+        void globalTagService
+          .add([
+            selectedShotForNotes.title || selectedShotForNotes.id,
+            ...globalTagService.parseExplicitMentions(currentNotes),
+          ])
+          .catch((error) => {
+            console.warn('Kunne ikke oppdatere globalt tag-register fra feltnotater:', error);
+          });
+      }
     }
     setNotesDialogOpen(false);
     setSelectedShotForNotes(null);
@@ -1130,6 +1153,17 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
                 bgcolor: 'rgba(255,255,255,0.05)',
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
               },
+            }}
+          />
+          <GlobalMentionHelper
+            text={currentNotes}
+            localCandidates={mentionCandidates}
+            onApplySuggestion={(name) => {
+              setCurrentNotes((previous) => {
+                if (!previous.trim()) return name;
+                const replaced = previous.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+                return replaced !== previous ? replaced : `${previous.trimEnd()} ${name}`;
+              });
             }}
           />
         </DialogContent>

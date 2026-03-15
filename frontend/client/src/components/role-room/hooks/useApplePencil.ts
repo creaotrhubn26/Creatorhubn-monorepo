@@ -4,8 +4,7 @@
  * Provides Apple Pencil integration with pressure, tilt, and gesture support
  */
 
-import type { RefObject } from 'react';
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useLayoutEffect, type RefObject } from 'react';
 
 // =============================================================================
 // Types
@@ -28,6 +27,18 @@ export interface PencilStroke {
   color: string;
   width: number;
   opacity: number;
+  brush?: {
+    type: string;
+    size: number;
+    color: string;
+    opacity: number;
+    hardness: number;
+    flow: number;
+    wetness: number;
+    grain: number;
+    tiltSensitivity: number;
+    pressureSensitivity: number;
+  };
 }
 
 export interface ApplePencilCallbacks {
@@ -58,7 +69,7 @@ export interface ApplePencilState {
 }
 
 export interface UseApplePencilReturn {
-  ref: RefObject<HTMLCanvasElement | null>;
+  ref: RefObject<HTMLElement | null>;
   state: ApplePencilState;
   currentStroke: PencilStroke | null;
   getStrokeWidth: (pressure: number, baseWidth: number) => number;
@@ -73,8 +84,11 @@ export const useApplePencil = (
   callbacks: ApplePencilCallbacks = {},
   config: ApplePencilConfig = {}
 ): UseApplePencilReturn => {
-  const ref = useRef<HTMLCanvasElement | null>(null);
+  const ref = useRef<HTMLElement | null>(null);
   const currentStroke = useRef<PencilStroke | null>(null);
+  const callbacksRef = useRef<ApplePencilCallbacks>(callbacks);
+  const configRef = useRef<ApplePencilConfig>(config);
+  const smoothedPressureRef = useRef<number>(0.5);
   const state = useRef<ApplePencilState>({
     isDrawing: false,
     isHovering: false,
@@ -90,8 +104,13 @@ export const useApplePencil = (
     return 'mouse';
   };
 
-  const createPoint = (event: PointerEvent, canvas: HTMLCanvasElement): PencilPoint => {
-    const rect = canvas.getBoundingClientRect();
+  const shouldIgnorePointerEvent = (event: PointerEvent): boolean => {
+    const target = event.target;
+    return target instanceof Element && Boolean(target.closest('[data-pencil-ignore="true"]'));
+  };
+
+  const createPoint = (event: PointerEvent, element: HTMLElement): PencilPoint => {
+    const rect = element.getBoundingClientRect();
     return {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
@@ -102,14 +121,48 @@ export const useApplePencil = (
     };
   };
 
+  useLayoutEffect(() => {
+    callbacksRef.current = callbacks;
+  }, [callbacks]);
+
+  useLayoutEffect(() => {
+    configRef.current = config;
+  }, [
+    config.palmRejection,
+    config.minPressure,
+    config.pressureSmoothing,
+    config.enableHover,
+    config.enableDoubleTap,
+  ]);
+
   useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
+    const element = ref.current;
+    if (!element) return;
+
+    const getSmoothedPressure = (rawPressure: number): number => {
+      const smoothing = Math.min(Math.max(configRef.current.pressureSmoothing ?? 0, 0), 0.95);
+      const next = smoothedPressureRef.current * smoothing + rawPressure * (1 - smoothing);
+      smoothedPressureRef.current = next;
+      return next;
+    };
 
     const handlePointerDown = (event: PointerEvent) => {
+      if (shouldIgnorePointerEvent(event)) return;
       event.preventDefault();
       const inputType = getInputType(event);
-      const point = createPoint(event, canvas);
+      const currentConfig = configRef.current;
+
+      if (inputType === 'touch') {
+        if (currentConfig.palmRejection === 'pencil-only') return;
+        if (currentConfig.palmRejection === 'smart' && state.current.currentInputType === 'pen') return;
+      }
+
+      const point = createPoint(event, element);
+      const minPressure = currentConfig.minPressure ?? 0;
+      point.pressure = inputType === 'pen'
+        ? Math.max(minPressure, point.pressure)
+        : point.pressure;
+      point.pressure = getSmoothedPressure(point.pressure);
       
       state.current.isDrawing = true;
       state.current.isActive = true;
@@ -125,26 +178,40 @@ export const useApplePencil = (
         opacity: 1,
       };
       
-      callbacks.onStrokeStart?.(point, inputType);
+      try {
+        if (event.target && 'setPointerCapture' in (event.target as Element)) {
+          (event.target as Element).setPointerCapture(event.pointerId);
+        }
+      } catch {
+        // Ignore capture failures on unsupported targets
+      }
+
+      callbacksRef.current.onStrokeStart?.(point, inputType);
     };
 
     const handlePointerMove = (event: PointerEvent) => {
+      if (!state.current.isDrawing && shouldIgnorePointerEvent(event)) return;
       event.preventDefault();
-      const point = createPoint(event, canvas);
+      const point = createPoint(event, element);
       const inputType = getInputType(event);
+      const minPressure = configRef.current.minPressure ?? 0;
+      point.pressure = inputType === 'pen'
+        ? Math.max(minPressure, point.pressure)
+        : point.pressure;
+      point.pressure = getSmoothedPressure(point.pressure);
 
       if (state.current.isDrawing && currentStroke.current) {
         currentStroke.current.points.push(point);
         state.current.currentPressure = point.pressure;
-        callbacks.onStrokeMove?.(point, inputType);
+        callbacksRef.current.onStrokeMove?.(point, inputType);
       } else {
         // Hover (Pencil 2 feature)
-        if (inputType === 'pen' && !state.current.isDrawing) {
+        if ((configRef.current.enableHover ?? true) && inputType === 'pen' && !state.current.isDrawing) {
           if (!state.current.isHovering) {
             state.current.isHovering = true;
-            callbacks.onHoverStart?.(point);
+            callbacksRef.current.onHoverStart?.(point);
           } else {
-            callbacks.onHoverMove?.(point);
+            callbacksRef.current.onHoverMove?.(point);
           }
         }
       }
@@ -155,35 +222,54 @@ export const useApplePencil = (
       const inputType = getInputType(event);
       
       if (state.current.isDrawing && currentStroke.current) {
-        callbacks.onStrokeEnd?.(currentStroke.current, inputType);
+        // Capture a final point at pointer-up so features like hold-to-straight-line
+        // can reliably read the end timestamp even when there were no move events.
+        const finalPoint = createPoint(event, element);
+        const minPressure = configRef.current.minPressure ?? 0;
+        finalPoint.pressure = inputType === 'pen'
+          ? Math.max(minPressure, finalPoint.pressure)
+          : finalPoint.pressure;
+        currentStroke.current.points.push(finalPoint);
+        state.current.currentPressure = finalPoint.pressure;
+
+        callbacksRef.current.onStrokeEnd?.(currentStroke.current, inputType);
         currentStroke.current = null;
         state.current.isDrawing = false;
         state.current.isActive = false;
         state.current.currentInputType = null;
         state.current.currentPressure = 0;
+        smoothedPressureRef.current = 0.5;
+      }
+
+      try {
+        if (event.target && 'releasePointerCapture' in (event.target as Element)) {
+          (event.target as Element).releasePointerCapture(event.pointerId);
+        }
+      } catch {
+        // Ignore release failures on unsupported targets
       }
     };
 
     const handlePointerLeave = () => {
       if (state.current.isHovering) {
         state.current.isHovering = false;
-        callbacks.onHoverEnd?.();
+        callbacksRef.current.onHoverEnd?.();
       }
     };
 
     // Attach event listeners
-    canvas.addEventListener('pointerdown', handlePointerDown);
-    canvas.addEventListener('pointermove', handlePointerMove);
-    canvas.addEventListener('pointerup', handlePointerUp);
-    canvas.addEventListener('pointerleave', handlePointerLeave);
+    element.addEventListener('pointerdown', handlePointerDown);
+    element.addEventListener('pointermove', handlePointerMove);
+    element.addEventListener('pointerup', handlePointerUp);
+    element.addEventListener('pointerleave', handlePointerLeave);
 
     return () => {
-      canvas.removeEventListener('pointerdown', handlePointerDown);
-      canvas.removeEventListener('pointermove', handlePointerMove);
-      canvas.removeEventListener('pointerup', handlePointerUp);
-      canvas.removeEventListener('pointerleave', handlePointerLeave);
+      element.removeEventListener('pointerdown', handlePointerDown);
+      element.removeEventListener('pointermove', handlePointerMove);
+      element.removeEventListener('pointerup', handlePointerUp);
+      element.removeEventListener('pointerleave', handlePointerLeave);
     };
-  }, [callbacks]);
+  }, []);
 
   const getStrokeWidth = (pressure: number, baseWidth: number): number => {
     return baseWidth * (0.5 + pressure * 0.5);

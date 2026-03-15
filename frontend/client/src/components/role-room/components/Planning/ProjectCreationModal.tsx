@@ -12,8 +12,7 @@ import getProfessionIconUtil from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../../hooks/useDynamicProfessions';
 import { getProjectTypeNextSteps, getProjectTypeInitialDescription } from '@/utils/project-worklog-helpers';
 // New context imports
-import { useProject } from '@/contexts/ProjectContext';
-import type { Project, Collaborator, Milestone } from '@/contexts/ProjectContext';
+import { useProject, type Project, type Collaborator, type Milestone } from '@/contexts/ProjectContext';
 // Ensure type imports are used for type-checking
 const _collaboratorType: Collaborator | null = null;
 const _milestoneType: Milestone | null = null;
@@ -159,7 +158,6 @@ import AddIcon from '@mui/icons-material/Add';
 import { useAuth } from '@/hooks/useAuth';
 import { ProjectTypeSelector } from './ProjectTypeSelector';
 import { PROJECT_TYPES } from './projectTypeConstants';
-import { ContactPicker } from './ContactPicker';
 import { ContactProjectInfoSummary } from './ContactProjectInfoSummary';
 import { logger } from '@/core/services/logger';
 import type { ProjectData, MemoryCardConfig, SelectedMemoryCard, LabelingKey, ScriptParameters } from './types';
@@ -663,7 +661,7 @@ const DYNAMIC_WORKLOG_TEMPLATES = {
     },
       location_scouting: {
         title: "Lokasjonsscouting og teknisk planlegging",
-        description: "Utforskning og evaluering av, filmingsteder:\n\n• Besøke potensielle lokasjoner\n• Vurdere lysforhold og akustikk\n• Planlegge kameraplasseringer og bevegelser\n• Koordinere tillatelser og logistikk",
+        description: "Utforskning og evaluering av, innspillingslokasjoner:\n\n• Besøke potensielle lokasjoner\n• Vurdere lysforhold og akustikk\n• Planlegge kameraplasseringer og bevegelser\n• Koordinere tillatelser og logistikk",
         timeEstimate: 4,
         checklistItems: ["Lokasjoner evaluert","Lysforhold kartlagt","Kameraplasseringer planlagt","Tillatelser sikret"]
     }
@@ -1155,8 +1153,7 @@ export default function ProjectCreationWithMemoryCards({
   const { 
     theme, 
     getProfessionTheme, 
-    getComponentTheme,
-    isDarkMode 
+    getComponentTheme
 } = useTheme();
   
   const { 
@@ -1552,9 +1549,6 @@ useEffect(() => {
     }
   }, [initialData?.eventDates]);
 
-  // Existing client picker (Google Contacts)
-  const [selectedContact, setSelectedContact] = useState<any | null>(null);
-
   // Dynamic project types system
   const { allTypes: dynamicProjectTypes, trackUsage, isLoading: projectTypesLoading, createProjectType } = useProjectTypes();
   const [addProjectTypeDialogOpen, setAddProjectTypeDialogOpen] = useState(false);
@@ -1704,7 +1698,7 @@ useEffect(() => {
     setTrollInitDialogOpen(false);
     if (trollInitStatus === 'complete') {
       showSuccessToast('🎬 TROLL demo-prosjekt lastet fra database!', 5000);
-      setActiveStep(1);
+      setActiveStep(0);
     }
   }, [trollInitStatus, showSuccessToast]);
 
@@ -1712,17 +1706,6 @@ useEffect(() => {
   const handleLoadTrollDemo = useCallback(async () => {
     handleOpenTrollDialog();
   }, [handleOpenTrollDialog]);
-
-  useEffect(() => {
-    if (selectedContact) {
-      setProjectData(prev => ({
-        ...prev,
-        clientName: selectedContact.displayName || `${selectedContact.firstName || ''} ${selectedContact.lastName || ''}`.trim(),
-        clientEmail: selectedContact.email || '',
-        clientPhone: selectedContact.phone || ''
-      }));
-    }
-  }, [selectedContact]);
 
   // Event Management linkage prompt
   const [askedConnectEvent, setAskedConnectEvent] = useState(false);
@@ -2319,7 +2302,7 @@ useEffect(() => {
         }}
       >
         {isCastingPlanner 
-          ? (getTerm ? `Nytt ${getTerm('project')}` : 'Nytt Casting Prosjekt')
+          ? (getTerm ? `Nytt ${getTerm('project')}` : 'Nytt Role Room prosjekt')
           : initialData ? 'Create Project from Submission' : 'Project Creation with Memory Cards'
         }
       </Typography>
@@ -2395,15 +2378,84 @@ useEffect(() => {
               {index === 0 && (
                 /* Step 0: Grunndata - Contact & Project Info */
                 <Box sx={{ mt: 2 }}>
-                  {/* Existing client (Google Contacts) picker */}
-                  <ContactPicker
-                    selectedContact={selectedContact}
-                    onContactSelect={setSelectedContact}
-                    profession={profession}
-                    showErrorToast={showErrorToast}
-                    showInfoToast={showInfoToast}
-                    showSuccessToast={showSuccessToast}
-                  />
+                  {/* Project responsible fields */}
+                  <Card
+                    sx={{
+                      mb: 3,
+                      borderRadius: 3,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                      transition: 'box-shadow 0.3s ease',
+                      '&:hover': {
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                      },
+                    }}
+                  >
+                    <CardContent sx={{ p: 3 }}>
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                        sx={{
+                          fontWeight: 700,
+                          fontSize: '1.125rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          color: 'text.primary',
+                        }}
+                      >
+                        <Person sx={{ color: 'primary.main' }} />
+                        Prosjektansvarlig
+                      </Typography>
+                      <Divider sx={{ mb: 2, mt: 1 }} />
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'text.secondary',
+                          mb: 2,
+                          fontSize: '0.875rem',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        Angi hvem som er prosjektansvarlig for dette Role Room prosjektet.
+                      </Typography>
+                      <Stack spacing={2}>
+                        <TextField
+                          label="Prosjektansvarlig navn"
+                          fullWidth
+                          value={projectData.clientName || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setProjectData((prev) => ({ ...prev, clientName: value }));
+                          }}
+                          autoComplete="name"
+                        />
+                        <TextField
+                          label="E-post"
+                          fullWidth
+                          type="email"
+                          inputMode="email"
+                          autoComplete="email"
+                          value={projectData.clientEmail || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setProjectData((prev) => ({ ...prev, clientEmail: value }));
+                          }}
+                        />
+                        <TextField
+                          label="Telefon"
+                          fullWidth
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="tel"
+                          value={projectData.clientPhone || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setProjectData((prev) => ({ ...prev, clientPhone: value }));
+                          }}
+                        />
+                      </Stack>
+                    </CardContent>
+                  </Card>
 
                   {/* Contact & Project Info Summary */}
                   <Box sx={{ mt: 3 }}>
@@ -2416,7 +2468,6 @@ useEffect(() => {
                       location={projectData.location}
                       projectType={projectData.projectType}
                       showProjectType={!!initialData?.projectType}
-                      selectedContact={selectedContact}
                       clientName={projectData.clientName}
                       clientEmail={projectData.clientEmail}
                       clientPhone={projectData.clientPhone}
@@ -3014,7 +3065,7 @@ useEffect(() => {
                   <li>Prosjekt, roller og karakterer</li>
                   <li>Kandidater og skuespillere</li>
                   <li>Crew og produksjonsteam</li>
-                  <li>Lokasjoner og opptakssteder</li>
+                  <li>Lokasjoner for opptak</li>
                   <li>Produksjonsdager og tidsplan</li>
                   <li>Scener og shot lists</li>
                   <li>Tilbud og kontrakter</li>
@@ -4586,7 +4637,6 @@ useEffect(() => {
                 {(() => {
                   const profTheme = getProfessionTheme(userProfession);
                   const compTheme = getComponentTheme('ProjectCreationModal');
-                  const darkMode = isDarkMode;
                   const currentSetting = getSetting('language');
                   const merged = mergeWithDefaults({ theme: settings.theme, currency: settings.currency });
                   void theming;
@@ -4606,7 +4656,7 @@ useEffect(() => {
                   }
                   return (
                     <Stack spacing={1}>
-                      <Typography variant="body2">Mørk modus: {darkMode ? 'Ja' : 'Nei'}</Typography>
+                      <Typography variant="body2">Mørk modus: Ja</Typography>
                       <Typography variant="body2">Standard type: {String(currentSetting || 'Ikke satt')}</Typography>
                       <Button size="small" onClick={() => {
                         updateSetting('language', settings.language === 'nb' ? 'en' : 'nb');

@@ -1,12 +1,24 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Avatar,
   Box,
   Button,
+  Checkbox,
   Chip,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   LinearProgress,
+  Menu,
   MenuItem,
   Select,
   Slider,
@@ -15,34 +27,47 @@ import {
   Tabs,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Add,
   Campaign,
+  CheckCircleOutline,
   Description,
   DragIndicator,
   Edit,
+  Image as ImageIcon,
+  Link as LinkIcon,
   MailOutline,
-  MonetizationOn,
+  MusicNote,
   Movie,
   NotificationsNone,
   Pause,
   PlayArrow,
-  Publish,
-  Quiz,
   Save,
   Search,
-  Settings,
   Subtitles,
   VideoLibrary,
-} from '@mui/icons-material';
-import { useLocation } from 'wouter';
-import { useAcademy, type Course, type Lesson, type LessonResource } from '@/contexts/AcademyContext';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
-import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
-import { useAcademyLocale } from './academyLocale';
-import AcademyBrandMark from './AcademyBrandMark';
-import AcademyPlayerStudio from './AcademyPlayerStudio';
+} from "@mui/icons-material";
+import { useLocation } from "wouter";
+import {
+  useAcademy,
+  type Course,
+  type Lesson,
+  type LessonResource,
+} from "@/contexts/AcademyContext";
+import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
+import { withUniversalIntegration } from "@/integration/UniversalIntegrationHOC";
+import { useAcademyLocale } from "./academyLocale";
+import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
+import AcademyLeftSidebar from "./AcademyLeftSidebar";
+import AcademyPlayerStudio from "./AcademyPlayerStudio";
+import { probeVideoDurationSeconds } from "./academyVideoSourceUtils";
+import {
+  buildUrlMediaFingerprint,
+  normalizeMediaAssetId,
+  normalizeMediaVersion,
+  resolveLinkedVideoVersionState,
+} from "@/utils/academyMediaLinkUtils";
 
 interface AcademyLessonStudioProps {
   courseId?: string;
@@ -55,114 +80,139 @@ interface LessonChapter {
   id: string;
   title: string;
   duration: number;
-  type: 'video' | 'pdf' | 'quiz';
+  type: "video" | "pdf" | "quiz";
 }
 
 interface LessonResourceItem {
   id: string;
   title: string;
-  type: 'video' | 'pdf' | 'link' | 'image';
+  type: "video" | "pdf" | "link" | "image" | "audio";
   url: string;
   duration?: number;
+  mediaAssetId?: string;
+  mediaVersion?: number;
+  mediaUpdatedAt?: string;
+  mediaFingerprint?: string;
 }
 
-type CenterTab = 'content' | 'engagement' | 'quiz' | 'monetization';
-type RightTab = 'info' | 'resources' | 'comments' | 'settings';
+interface MediaResourceOption {
+  id: string;
+  title: string;
+  type: LessonResourceItem["type"];
+  url: string;
+  duration?: number;
+  sourceLabel: string;
+  mediaAssetId?: string;
+  mediaVersion?: number;
+  mediaUpdatedAt?: string;
+  mediaFingerprint?: string;
+}
 
-const VIDEO_PLACEHOLDER = '/assets/academy/intro-video.mp4';
+type EngagementEntryType = "comment" | "question";
+
+interface EngagementReply {
+  id: string;
+  author: string;
+  text: string;
+  createdAt: string;
+}
+
+interface EngagementEntry {
+  id: string;
+  type: EngagementEntryType;
+  author: string;
+  text: string;
+  timestamp: number;
+  createdAt: string;
+  replies: EngagementReply[];
+}
+
+type CenterTab = "content" | "engagement";
+type RightTab = "info" | "resources";
+
+const VIDEO_PLACEHOLDER = "/assets/academy/intro-video.mp4";
 
 const cinematicPanelSx = {
   borderRadius: 1.4,
-  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
-  background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
+  border: "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+  background:
+    "linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))",
 };
+
+const lessonStudioSectionCardSx = {
+  ...cinematicPanelSx,
+  p: 1,
+  display: "grid",
+  gap: 0.9,
+} as const;
+
+const lessonStudioSectionLabelSx = {
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "rgba(237,240,247,0.62)",
+} as const;
 
 const placeholderBackgrounds = [
-  'linear-gradient(145deg, rgba(26,30,40,0.92), rgba(12,16,24,0.98)), radial-gradient(circle at 85% 14%, rgba(245,166,35,0.34), rgba(0,0,0,0))',
-  'linear-gradient(145deg, rgba(18,23,34,0.94), rgba(9,13,20,0.98)), radial-gradient(circle at 20% 80%, rgba(245,166,35,0.22), rgba(0,0,0,0))',
-  'linear-gradient(145deg, rgba(16,20,30,0.92), rgba(8,12,18,0.98)), radial-gradient(circle at 73% 10%, rgba(103,154,233,0.2), rgba(0,0,0,0))',
+  "linear-gradient(145deg, rgba(26,30,40,0.92), rgba(12,16,24,0.98)), radial-gradient(circle at 85% 14%, rgba(245,166,35,0.34), rgba(0,0,0,0))",
+  "linear-gradient(145deg, rgba(18,23,34,0.94), rgba(9,13,20,0.98)), radial-gradient(circle at 20% 80%, rgba(245,166,35,0.22), rgba(0,0,0,0))",
+  "linear-gradient(145deg, rgba(16,20,30,0.92), rgba(8,12,18,0.98)), radial-gradient(circle at 73% 10%, rgba(103,154,233,0.2), rgba(0,0,0,0))",
 ];
 
-const createFallbackCourse = (): Course => {
-  const now = new Date().toISOString();
-  return {
-    id: 'lesson-studio-fallback',
-    title: 'Directing Masterclass',
-    description: 'Professional lesson editing workflows for cinematic learning content.',
-    instructor: {
-      id: 'studio-user',
-      name: 'Norwedfilm',
-      avatar: '',
-      bio: 'Film director',
-      profession: 'videographer',
-    },
-    thumbnail: '',
-    videoUrl: VIDEO_PLACEHOLDER,
-    duration: 588,
-    level: 'advanced',
-    category: 'videography',
-    tags: ['directing', 'filmmaking', 'cinematography'],
-    price: 36984,
-    isFree: false,
-    isPublished: false,
-    createdAt: now,
-    updatedAt: now,
-    rating: 4.8,
-    studentCount: 370,
-    prerequisites: [],
-    learningOutcomes: [],
-    resources: [],
-    lessons: [
-      {
-        id: 'lesson-studio-fallback-lesson',
-        courseId: 'lesson-studio-fallback',
-        title: 'Lighting Basics',
-        description: 'Understanding key light, fill light, and practical setup in directing.',
-        videoUrl: VIDEO_PLACEHOLDER,
-        duration: 588,
-        order: 1,
-        isPreview: true,
-        resources: [
-          {
-            id: 'resource-intro-video',
-            type: 'video',
-            title: 'Intro-lights.mp4',
-            url: VIDEO_PLACEHOLDER,
-            description: 'Main lesson media',
-          },
-          {
-            id: 'resource-guide-pdf',
-            type: 'pdf',
-            title: 'Lighting_basics_guide.pdf',
-            url: '/assets/academy/guide.pdf',
-            description: 'Lesson worksheet',
-          },
-        ],
-      },
-    ],
-  };
-};
-
-const createDefaultChapters = (): LessonChapter[] => [
-  { id: 'chapter-1', title: 'The Importance of Key Light', duration: 123, type: 'video' },
-  { id: 'chapter-2', title: 'Setting Up 3-Point Lighting', duration: 206, type: 'video' },
-  { id: 'chapter-3', title: 'Practical Setup', duration: 157, type: 'video' },
-];
+const createDefaultChapters = (): LessonChapter[] => [];
 
 const formatTime = (seconds: number): string => {
-  const safeSeconds = Number.isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : 0;
+  const safeSeconds =
+    Number.isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : 0;
   const min = Math.floor(safeSeconds / 60);
   const sec = safeSeconds % 60;
-  return `${min}:${sec.toString().padStart(2, '0')}`;
+  return `${min}:${sec.toString().padStart(2, "0")}`;
 };
 
-const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+const extractLessonVideoDisplayName = (
+  value: string | undefined,
+  fallback: string,
+): string => {
+  const url = String(value || "").trim();
+  if (!url) return fallback;
+
+  try {
+    const normalized =
+      typeof window !== "undefined"
+        ? new URL(url, window.location.origin)
+        : new URL(url, "https://academy.local");
+    const pathname = normalized.pathname || "";
+    const lastSegment = pathname.split("/").filter(Boolean).pop() || "";
+    return decodeURIComponent(lastSegment || normalized.hostname || fallback);
+  } catch {
+    const lastSegment = url.split("/").filter(Boolean).pop() || fallback;
+    try {
+      return decodeURIComponent(lastSegment);
+    } catch {
+      return lastSegment;
+    }
+  }
+};
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+const normalizeZoom = (value: number): number =>
+  clamp(Math.round(value), 100, 220);
+const normalizeFocal = (value: number): number =>
+  clamp(Math.round(value), 0, 100);
+const normalizeTimestamp = (value: number, maxDuration: number): number =>
+  clamp(
+    Math.round(Number.isFinite(value) ? value : 0),
+    0,
+    Math.max(0, Math.round(maxDuration)),
+  );
 
 const lessonToChapterList = (lesson: Lesson | null): LessonChapter[] => {
-  const description = String(lesson?.description || '');
+  const description = String(lesson?.description || "");
   const lines = description
-    .split('\n')
-    .map((line) => line.replace(/^[-•]\s*/, '').trim())
+    .split("\n")
+    .map((line) => line.replace(/^[-•]\s*/, "").trim())
     .filter(Boolean);
 
   if (lines.length === 0) {
@@ -176,80 +226,157 @@ const lessonToChapterList = (lesson: Lesson | null): LessonChapter[] => {
     id: `chapter-from-lesson-${index + 1}`,
     title: line,
     duration: chunk,
-    type: 'video',
+    type: "video",
   }));
 };
 
 const lessonToResourceList = (lesson: Lesson | null): LessonResourceItem[] => {
-  if (!lesson || !Array.isArray(lesson.resources) || lesson.resources.length === 0) {
-    return [
-      {
-        id: 'resource-lesson-video',
-        title: 'Intro-lights.mp4',
-        type: 'video',
-        url: VIDEO_PLACEHOLDER,
-        duration: 6 * 60 + 59,
-      },
-      {
-        id: 'resource-lesson-pdf',
-        title: 'Lighting_basics_guide.pdf',
-        type: 'pdf',
-        url: '/assets/academy/guide.pdf',
-      },
-    ];
+  if (
+    !lesson ||
+    !Array.isArray(lesson.resources) ||
+    lesson.resources.length === 0
+  ) {
+    return [];
   }
 
-  return lesson.resources.map((resource) => ({
-    id: String(resource.id),
-    title: String(resource.title || 'Resource'),
-    type: (resource.type as LessonResourceItem['type']) || 'link',
-    url: resource.url || '#',
-    duration: resource.type === 'video' ? Number(lesson.duration || 0) : undefined,
-  }));
+  return lesson.resources
+    .filter((resource) => Boolean(resource.url))
+    .map((resource) => {
+      const resourceType: LessonResourceItem["type"] =
+        resource.type === "audio"
+          ? "audio"
+          : resource.type === "image"
+            ? "image"
+            : resource.type === "video"
+              ? "video"
+              : resource.type === "pdf"
+                ? "pdf"
+                : "link";
+
+      return {
+        id: String(resource.id),
+        mediaAssetId:
+          normalizeMediaAssetId(resource.mediaAssetId) || String(resource.id),
+        title: String(resource.title || "Resource"),
+        type: resourceType,
+        url: resource.url || "#",
+        duration:
+          resourceType === "video" ? Number(lesson.duration || 0) : undefined,
+        mediaVersion: resource.mediaVersion
+          ? normalizeMediaVersion(resource.mediaVersion, 1)
+          : undefined,
+        mediaUpdatedAt: resource.mediaUpdatedAt,
+        mediaFingerprint: resource.mediaFingerprint,
+      };
+    });
 };
 
 const buildSummaryFromDescription = (description: string): string[] => {
   const lines = description
-    .split('\n')
-    .map((line) => line.replace(/^[-•]\s*/, '').trim())
+    .split("\n")
+    .map((line) => line.replace(/^[-•]\s*/, "").trim())
     .filter(Boolean);
 
   if (lines.length > 0) return lines;
-
-  return [
-    'Understanding key light, fill light, and back light.',
-    'Setting up 3-point lighting with affordable gear.',
-    'Adjusting white balance for different lighting conditions.',
-  ];
+  return [];
 };
 
-function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLessonStudioProps) {
-  const [, setLocation] = useLocation();
-  const { state, getCourse, updateCourse } = useAcademy();
+const mapLessonResourceType = (
+  type: Lesson["resources"][number]["type"],
+  url: string | undefined,
+): LessonResourceItem["type"] => {
+  if (type === "audio") return "audio";
+  if (type === "image") return "image";
+  if (type === "video") return "video";
+  if (type === "pdf") return "pdf";
+  if (url && url.toLowerCase().endsWith(".pdf")) return "pdf";
+  return "link";
+};
+
+const resourceListsEqual = (
+  a: LessonResourceItem[],
+  b: LessonResourceItem[],
+): boolean => {
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    return (
+      item.id === other.id &&
+      item.mediaAssetId === other.mediaAssetId &&
+      item.title === other.title &&
+      item.type === other.type &&
+      item.url === other.url &&
+      item.duration === other.duration &&
+      item.mediaVersion === other.mediaVersion &&
+      item.mediaUpdatedAt === other.mediaUpdatedAt &&
+      item.mediaFingerprint === other.mediaFingerprint
+    );
+  });
+};
+
+function AcademyLessonStudio({
+  courseId,
+  lessonId,
+  onSave,
+  onCancel,
+}: AcademyLessonStudioProps) {
+  const [location, setLocation] = useLocation();
+  const { state, getCourse, updateCourse, setCurrentCourse, setCurrentLesson } =
+    useAcademy();
   const { analytics, debugging } = useEnhancedMasterIntegration();
   const { navLabel, tt } = useAcademyLocale();
 
-  const fallbackCourse = useMemo(() => createFallbackCourse(), []);
-
-  const [leftNav, setLeftNav] = useState('lessons');
-  const [centerTab, setCenterTab] = useState<CenterTab>('content');
-  const [rightTab, setRightTab] = useState<RightTab>('info');
+  const [leftNav, setLeftNav] = useState("lessons");
+  const [centerTab, setCenterTab] = useState<CenterTab>("content");
+  const [rightTab, setRightTab] = useState<RightTab>("info");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [selectedCourseId, setSelectedCourseId] = useState(courseId || '');
-  const [saveMessage, setSaveMessage] = useState('');
-  const [searchValue, setSearchValue] = useState('');
+  const [selectedCourseId, setSelectedCourseId] = useState(courseId || "");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [searchValue, setSearchValue] = useState("");
   const [summaryPoints, setSummaryPoints] = useState<string[]>([]);
-  const [lessonTitle, setLessonTitle] = useState(tt('Lyssetting grunnleggende', 'Lighting Basics'));
-  const [chapterItems, setChapterItems] = useState<LessonChapter[]>(createDefaultChapters);
+  const [lessonTitle, setLessonTitle] = useState("");
+  const [selectedLessonInstructorId, setSelectedLessonInstructorId] =
+    useState("");
+  const [lessonThumbnailUrl, setLessonThumbnailUrl] = useState("");
+  const [lessonThumbnailZoom, setLessonThumbnailZoom] = useState(100);
+  const [lessonThumbnailFocalX, setLessonThumbnailFocalX] = useState(50);
+  const [lessonThumbnailFocalY, setLessonThumbnailFocalY] = useState(50);
+  const [thumbnailMenuAnchorEl, setThumbnailMenuAnchorEl] =
+    useState<HTMLElement | null>(null);
+  const [chapterItems, setChapterItems] = useState<LessonChapter[]>(
+    createDefaultChapters,
+  );
   const [resourceItems, setResourceItems] = useState<LessonResourceItem[]>([]);
+  const [resourcePickerOpen, setResourcePickerOpen] = useState(false);
+  const [resourcePickerSearchValue, setResourcePickerSearchValue] =
+    useState("");
+  const [resourcePickerSelection, setResourcePickerSelection] = useState<
+    string[]
+  >([]);
+  const [engagementItems, setEngagementItems] = useState<EngagementEntry[]>([]);
+  const [newEngagementType, setNewEngagementType] =
+    useState<EngagementEntryType>("question");
+  const [newEngagementText, setNewEngagementText] = useState("");
+  const [newEngagementTimestamp, setNewEngagementTimestamp] = useState(0);
+  const [replyDraftByEntryId, setReplyDraftByEntryId] = useState<
+    Record<string, string>
+  >({});
+  const thumbnailInputRef = useRef<HTMLInputElement | null>(null);
 
   const courseItems = useMemo(() => {
     if (Array.isArray(state.courses) && state.courses.length > 0) {
       return state.courses;
     }
-    return [fallbackCourse];
-  }, [fallbackCourse, state.courses]);
+    return [] as Course[];
+  }, [state.courses]);
+
+  const instructorItems = useMemo(() => {
+    if (!Array.isArray(state.instructors)) return [];
+    return [...state.instructors].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
+  }, [state.instructors]);
 
   const courseOptionIds = useMemo(
     () => courseItems.map((course) => String(course.id)),
@@ -261,50 +388,364 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
     if (fromParam) return fromParam;
 
     const fromSelected = selectedCourseId
-      ? courseItems.find((course) => String(course.id) === String(selectedCourseId))
+      ? courseItems.find(
+          (course) => String(course.id) === String(selectedCourseId),
+        )
       : null;
     if (fromSelected) return fromSelected;
 
-    return state.currentCourse || courseItems[0] || fallbackCourse;
-  }, [courseId, courseItems, fallbackCourse, getCourse, selectedCourseId, state.currentCourse]);
+    return state.currentCourse || courseItems[0] || null;
+  }, [courseId, courseItems, getCourse, selectedCourseId, state.currentCourse]);
+
+  useEffect(() => {
+    const nextCourseId = String(courseId || "").trim();
+    if (!nextCourseId) return;
+    setSelectedCourseId((previousCourseId) =>
+      previousCourseId === nextCourseId ? previousCourseId : nextCourseId,
+    );
+  }, [courseId]);
+
+  useEffect(() => {
+    if (!activeCourse?.id) return;
+    const inState = state.courses.some(
+      (course) => String(course.id) === String(activeCourse.id),
+    );
+    if (!inState) return;
+    if (String(state.currentCourse?.id || "") === String(activeCourse.id))
+      return;
+    setCurrentCourse(activeCourse);
+  }, [activeCourse, setCurrentCourse, state.courses, state.currentCourse?.id]);
 
   const selectedCourseValue = useMemo(() => {
-    const preferredId = String(selectedCourseId || activeCourse?.id || '');
+    const preferredId = String(selectedCourseId || activeCourse?.id || "");
     if (preferredId && courseOptionIds.includes(preferredId)) {
       return preferredId;
     }
-    return courseOptionIds[0] || '';
+    return courseOptionIds[0] || "";
   }, [activeCourse?.id, courseOptionIds, selectedCourseId]);
 
+  const syncCourseIdInRoute = useCallback(
+    (nextCourseId: string) => {
+      const normalizedCourseId = String(nextCourseId || "").trim();
+      const [pathname, rawQuery = ""] = location.split("?");
+      const params = new URLSearchParams(rawQuery);
+
+      if (normalizedCourseId) {
+        params.set("courseId", normalizedCourseId);
+      } else {
+        params.delete("courseId");
+      }
+      params.delete("course_id");
+
+      const suffix = params.toString();
+      setLocation(suffix ? `${pathname}?${suffix}` : pathname);
+    },
+    [location, setLocation],
+  );
+
   const courseLessons = useMemo(() => {
-    if (Array.isArray(activeCourse?.lessons) && activeCourse.lessons.length > 0) {
+    if (
+      Array.isArray(activeCourse?.lessons) &&
+      activeCourse.lessons.length > 0
+    ) {
       return activeCourse.lessons;
     }
-    return fallbackCourse.lessons;
-  }, [activeCourse?.lessons, fallbackCourse.lessons]);
+    return [] as Lesson[];
+  }, [activeCourse?.lessons]);
 
   const activeLesson = useMemo(() => {
     if (lessonId) {
       return (
-        courseLessons.find((lesson) => String(lesson.id) === String(lessonId)) ||
+        courseLessons.find(
+          (lesson) => String(lesson.id) === String(lessonId),
+        ) ||
         state.currentLesson ||
         courseLessons[0] ||
-        fallbackCourse.lessons[0]
+        null
       );
     }
 
-    return state.currentLesson || courseLessons[0] || fallbackCourse.lessons[0];
-  }, [courseLessons, fallbackCourse.lessons, lessonId, state.currentLesson]);
+    return state.currentLesson || courseLessons[0] || null;
+  }, [courseLessons, lessonId, state.currentLesson]);
 
-  const duration = Number(activeLesson?.duration || activeCourse?.duration || 588);
+  const duration = Number(
+    activeLesson?.duration || activeCourse?.duration || 588,
+  );
+
+  const lessonVideoState = useMemo(() => {
+    const skillVideoUrl = String(activeLesson?.videoUrl || "").trim();
+    const courseVideoUrl = String(activeCourse?.videoUrl || "").trim();
+    const hasSkillVideo =
+      skillVideoUrl.length > 0 && skillVideoUrl !== VIDEO_PLACEHOLDER;
+    const hasCourseVideo =
+      courseVideoUrl.length > 0 && courseVideoUrl !== VIDEO_PLACEHOLDER;
+
+    if (hasSkillVideo) {
+      return {
+        source: "skill" as const,
+        url: skillVideoUrl,
+        duration: Number(activeLesson?.duration || 0),
+      };
+    }
+
+    if (hasCourseVideo) {
+      return {
+        source: "course" as const,
+        url: courseVideoUrl,
+        duration: Number(activeCourse?.duration || 0),
+      };
+    }
+
+    return {
+      source: "none" as const,
+      url: "",
+      duration: 0,
+    };
+  }, [
+    activeCourse?.duration,
+    activeCourse?.videoUrl,
+    activeLesson?.duration,
+    activeLesson?.videoUrl,
+  ]);
+
+  const lessonVideoDisplayLabel = useMemo(
+    () => {
+      const explicitName =
+        lessonVideoState.source === "skill"
+          ? String(activeLesson?.linkedVideoAssetName || "").trim()
+          : lessonVideoState.source === "course"
+            ? String(activeCourse?.linkedVideoAssetName || "").trim()
+            : "";
+      if (explicitName) return explicitName;
+      return extractLessonVideoDisplayName(
+        lessonVideoState.url,
+        tt("Video", "Video"),
+      );
+    },
+    [
+      activeCourse?.linkedVideoAssetName,
+      activeLesson?.linkedVideoAssetName,
+      lessonVideoState.source,
+      lessonVideoState.url,
+      tt,
+    ],
+  );
+
+  const lessonVideoVersionState = useMemo(
+    () =>
+      resolveLinkedVideoVersionState({
+        carrier:
+          lessonVideoState.source === "skill"
+            ? activeLesson
+            : lessonVideoState.source === "course"
+              ? activeCourse
+              : null,
+        course: activeCourse,
+        fallbackName: tt("Video", "Video"),
+      }),
+    [activeCourse, activeLesson, lessonVideoState.source, tt],
+  );
 
   const visibleResources = useMemo(() => {
     const query = searchValue.trim().toLowerCase();
     if (!query) return resourceItems;
     return resourceItems.filter((resource) => {
-      return resource.title.toLowerCase().includes(query) || resource.type.toLowerCase().includes(query);
+      return (
+        resource.title.toLowerCase().includes(query) ||
+        resource.type.toLowerCase().includes(query)
+      );
     });
   }, [resourceItems, searchValue]);
+
+  const curriculumLearningOutcomes = useMemo(() => {
+    const values = Array.isArray(activeCourse?.learningOutcomes)
+      ? activeCourse.learningOutcomes
+      : [];
+    return values
+      .map((value) => String(value || "").trim())
+      .filter(
+        (value, index, array) =>
+          value.length > 0 && array.indexOf(value) === index,
+      );
+  }, [activeCourse?.learningOutcomes]);
+
+  const mediaResourceOptions = useMemo<MediaResourceOption[]>(() => {
+    if (!activeCourse) return [];
+
+    const options: MediaResourceOption[] = [];
+    const seenByUrl = new Set<string>();
+    const pushOption = (option: MediaResourceOption) => {
+      if (!option.url || seenByUrl.has(option.url)) return;
+      seenByUrl.add(option.url);
+      options.push(option);
+    };
+
+    if (activeCourse.videoUrl) {
+      pushOption({
+        id:
+          normalizeMediaAssetId(activeCourse.linkedVideoAssetId) ||
+          `${String(activeCourse.id)}-course-video`,
+        mediaAssetId:
+          normalizeMediaAssetId(activeCourse.linkedVideoAssetId) || undefined,
+        mediaVersion: activeCourse.linkedVideoAssetVersion
+          ? normalizeMediaVersion(activeCourse.linkedVideoAssetVersion, 1)
+          : undefined,
+        mediaUpdatedAt: activeCourse.linkedVideoUpdatedAt,
+        mediaFingerprint:
+          activeCourse.linkedVideoFingerprint ||
+          buildUrlMediaFingerprint(activeCourse.videoUrl),
+        title:
+          String(activeCourse.linkedVideoAssetName || "").trim() ||
+          `${activeCourse.title} ${tt("introvideo", "intro video")}`,
+        type: "video",
+        url: activeCourse.videoUrl,
+        duration: Number(activeCourse.duration || 0),
+        sourceLabel: tt("Kursvideo", "Course video"),
+      });
+    }
+
+    (Array.isArray(activeCourse.resources)
+      ? activeCourse.resources
+      : []
+    ).forEach((resource, index) => {
+      if (!resource.url) return;
+      pushOption({
+        id:
+          normalizeMediaAssetId(resource.mediaAssetId) ||
+          `${String(activeCourse.id)}-course-resource-${resource.id || index}`,
+        mediaAssetId: normalizeMediaAssetId(resource.mediaAssetId) || undefined,
+        mediaVersion: resource.mediaVersion
+          ? normalizeMediaVersion(resource.mediaVersion, 1)
+          : undefined,
+        mediaUpdatedAt: resource.mediaUpdatedAt,
+        mediaFingerprint:
+          resource.mediaFingerprint || buildUrlMediaFingerprint(resource.url),
+        title: resource.title || tt("Kursressurs", "Course resource"),
+        type: mapLessonResourceType(resource.type, resource.url),
+        url: resource.url,
+        sourceLabel: tt("Media", "Media"),
+      });
+    });
+
+    (Array.isArray(activeCourse.lessons) ? activeCourse.lessons : []).forEach(
+      (lesson, lessonIndex) => {
+        const lessonId = String(lesson.id || lessonIndex);
+        if (lesson.videoUrl) {
+          pushOption({
+            id:
+              normalizeMediaAssetId(lesson.linkedVideoAssetId) ||
+              `${String(activeCourse.id)}-${lessonId}-video`,
+            mediaAssetId:
+              normalizeMediaAssetId(lesson.linkedVideoAssetId) || undefined,
+            mediaVersion: lesson.linkedVideoAssetVersion
+              ? normalizeMediaVersion(lesson.linkedVideoAssetVersion, 1)
+              : undefined,
+            mediaUpdatedAt: lesson.linkedVideoUpdatedAt,
+            mediaFingerprint:
+              lesson.linkedVideoFingerprint ||
+              buildUrlMediaFingerprint(lesson.videoUrl),
+            title:
+              String(lesson.linkedVideoAssetName || "").trim() ||
+              `${lesson.title || tt("Leksjon", "Lesson")} ${tt("video", "video")}`,
+            type: "video",
+            url: lesson.videoUrl,
+            duration: Number(lesson.duration || 0),
+            sourceLabel: tt("Leksjonsvideo", "Lesson video"),
+          });
+        }
+
+        (Array.isArray(lesson.resources) ? lesson.resources : []).forEach(
+          (resource, resourceIndex) => {
+            if (!resource.url) return;
+            pushOption({
+              id:
+                normalizeMediaAssetId(resource.mediaAssetId) ||
+                `${String(activeCourse.id)}-${lessonId}-resource-${resource.id || resourceIndex}`,
+              mediaAssetId:
+                normalizeMediaAssetId(resource.mediaAssetId) || undefined,
+              mediaVersion: resource.mediaVersion
+                ? normalizeMediaVersion(resource.mediaVersion, 1)
+                : undefined,
+              mediaUpdatedAt: resource.mediaUpdatedAt,
+              mediaFingerprint:
+                resource.mediaFingerprint ||
+                buildUrlMediaFingerprint(resource.url),
+              title: resource.title || tt("Leksjonsressurs", "Lesson resource"),
+              type: mapLessonResourceType(resource.type, resource.url),
+              url: resource.url,
+              duration:
+                resource.type === "video"
+                  ? Number(lesson.duration || 0)
+                  : undefined,
+              sourceLabel: tt("Media", "Media"),
+            });
+          },
+        );
+      },
+    );
+
+    return options;
+  }, [activeCourse, tt]);
+
+  const mediaResourceByUrl = useMemo(
+    () => new Map(mediaResourceOptions.map((item) => [item.url, item])),
+    [mediaResourceOptions],
+  );
+
+  const mediaResourceById = useMemo(
+    () => new Map(mediaResourceOptions.map((item) => [item.id, item])),
+    [mediaResourceOptions],
+  );
+
+  const filteredMediaResourceOptions = useMemo(() => {
+    const query = resourcePickerSearchValue.trim().toLowerCase();
+    if (!query) return mediaResourceOptions;
+    return mediaResourceOptions.filter((item) => {
+      const haystack =
+        `${item.title} ${item.type} ${item.sourceLabel}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [mediaResourceOptions, resourcePickerSearchValue]);
+
+  const thumbnailOptions = useMemo(() => {
+    const options: Array<{ id: string; label: string; url: string }> = [];
+    const seen = new Set<string>();
+    const pushOption = (
+      id: string,
+      label: string,
+      url: string | undefined | null,
+    ) => {
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      options.push({ id, label, url });
+    };
+
+    if (activeCourse?.thumbnail) {
+      pushOption(
+        "course-thumb",
+        tt("Kursthumbnail", "Course thumbnail"),
+        activeCourse.thumbnail,
+      );
+    }
+
+    resourceItems
+      .filter((resource) => resource.type === "image")
+      .forEach((resource) => {
+        pushOption(resource.id, resource.title, resource.url);
+      });
+
+    (activeCourse?.resources || [])
+      .filter((resource) => resource.type === "image")
+      .forEach((resource, index) => {
+        pushOption(
+          `course-resource-${resource.id || index}`,
+          resource.title || tt("Kursbilde", "Course image"),
+          resource.url,
+        );
+      });
+
+    return options;
+  }, [activeCourse?.resources, activeCourse?.thumbnail, resourceItems, tt]);
 
   useEffect(() => {
     if (!selectedCourseId && activeCourse?.id) {
@@ -319,26 +760,130 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
   }, [selectedCourseId, selectedCourseValue]);
 
   useEffect(() => {
-    setLessonTitle(String(activeLesson?.title || tt('Lyssetting grunnleggende', 'Lighting Basics')));
-    setSummaryPoints(buildSummaryFromDescription(String(activeLesson?.description || '')));
+    setLessonTitle(String(activeLesson?.title || ""));
+    const nextInstructorId = String(
+      activeLesson?.videoInstructorId ||
+        activeCourse?.competencyLeadInstructorId ||
+        activeCourse?.instructor?.id ||
+        instructorItems[0]?.id ||
+        "",
+    ).trim();
+    setSelectedLessonInstructorId(nextInstructorId);
+    const lessonObjectives = buildSummaryFromDescription(
+      String(activeLesson?.description || ""),
+    );
+    if (curriculumLearningOutcomes.length > 0) {
+      const normalizedLessonObjectives = new Set(
+        lessonObjectives
+          .map((value) => value.trim().toLowerCase())
+          .filter(Boolean),
+      );
+      const linkedFromCurriculum = curriculumLearningOutcomes.filter((value) =>
+        normalizedLessonObjectives.has(value.trim().toLowerCase()),
+      );
+      setSummaryPoints(linkedFromCurriculum);
+    } else {
+      setSummaryPoints(lessonObjectives);
+    }
     setChapterItems(lessonToChapterList(activeLesson));
     setResourceItems(lessonToResourceList(activeLesson));
-  }, [activeLesson, tt]);
+    setEngagementItems([]);
+    setReplyDraftByEntryId({});
+    setNewEngagementText("");
+    setNewEngagementType("question");
+    setNewEngagementTimestamp(0);
+    const firstImageResource = (activeLesson?.resources || []).find(
+      (resource) => resource.type === "image" && Boolean(resource.url),
+    );
+    const storedThumbnail =
+      typeof activeLesson?.thumbnail === "string" &&
+      activeLesson.thumbnail.trim().length > 0
+        ? activeLesson.thumbnail
+        : firstImageResource?.url || activeCourse?.thumbnail || "";
+    setLessonThumbnailUrl(storedThumbnail);
+    setLessonThumbnailZoom(
+      typeof activeLesson?.thumbnailZoom === "number" &&
+        Number.isFinite(activeLesson.thumbnailZoom)
+        ? normalizeZoom(activeLesson.thumbnailZoom)
+        : 100,
+    );
+    setLessonThumbnailFocalX(
+      typeof activeLesson?.thumbnailFocalX === "number" &&
+        Number.isFinite(activeLesson.thumbnailFocalX)
+        ? normalizeFocal(activeLesson.thumbnailFocalX)
+        : 50,
+    );
+    setLessonThumbnailFocalY(
+      typeof activeLesson?.thumbnailFocalY === "number" &&
+        Number.isFinite(activeLesson.thumbnailFocalY)
+        ? normalizeFocal(activeLesson.thumbnailFocalY)
+        : 50,
+    );
+  }, [
+    activeCourse?.competencyLeadInstructorId,
+    activeCourse?.instructor?.id,
+    activeCourse?.thumbnail,
+    activeLesson,
+    curriculumLearningOutcomes,
+    instructorItems,
+    tt,
+  ]);
 
   useEffect(() => {
-    analytics.trackEvent('academy_lesson_studio_opened', {
+    setResourceItems((current) => {
+      if (current.length === 0) return current;
+
+      const synced: LessonResourceItem[] = current.reduce<LessonResourceItem[]>(
+        (acc, resource) => {
+          const mediaMatch = mediaResourceByUrl.get(resource.url);
+          if (!mediaMatch) return acc;
+
+          acc.push({
+            id: mediaMatch.id,
+            mediaAssetId: mediaMatch.mediaAssetId || mediaMatch.id,
+            title: mediaMatch.title,
+            type: mediaMatch.type,
+            url: mediaMatch.url,
+            duration: mediaMatch.duration ?? resource.duration,
+            mediaVersion: mediaMatch.mediaVersion ?? resource.mediaVersion,
+            mediaUpdatedAt:
+              mediaMatch.mediaUpdatedAt ?? resource.mediaUpdatedAt,
+            mediaFingerprint:
+              mediaMatch.mediaFingerprint ?? resource.mediaFingerprint,
+          });
+          return acc;
+        },
+        [],
+      );
+
+      if (resourceListsEqual(current, synced)) {
+        return current;
+      }
+
+      return synced;
+    });
+  }, [mediaResourceByUrl]);
+
+  useEffect(() => {
+    analytics.trackEvent("academy_lesson_studio_opened", {
       courseId: activeCourse?.id || null,
       lessonId: activeLesson?.id || null,
       chapterCount: chapterItems.length,
       timestamp: Date.now(),
     });
 
-    debugging.logIntegration('info', 'AcademyLessonStudio opened', {
+    debugging.logIntegration("info", "AcademyLessonStudio opened", {
       courseId: activeCourse?.id || null,
       lessonId: activeLesson?.id || null,
       chapterCount: chapterItems.length,
     });
-  }, [activeCourse?.id, activeLesson?.id, analytics, chapterItems.length, debugging]);
+  }, [
+    activeCourse?.id,
+    activeLesson?.id,
+    analytics,
+    chapterItems.length,
+    debugging,
+  ]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -365,7 +910,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
           id,
           title: `New Chapter ${prev.length + 1}`,
           duration: 120,
-          type: 'video',
+          type: "video",
         },
       ];
     });
@@ -380,85 +925,652 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
     );
   }, []);
 
-  const duplicateLesson = useCallback(() => {
-    setChapterItems((prev) => [
-      ...prev,
-      {
-        id: `chapter-${Date.now()}-copy`,
-        title: lessonTitle ? `${lessonTitle} (Copy)` : 'Lesson Copy',
-        duration: Math.max(90, Math.round(duration / 2)),
-        type: 'video',
-      },
-    ]);
-    setSaveMessage(tt('Leksjon duplisert til kapittelutkast.', 'Lesson duplicated into chapter draft.'));
-  }, [duration, lessonTitle, tt]);
-
-  const addResource = useCallback(() => {
-    setResourceItems((prev) => [
-      ...prev,
-      {
-        id: `resource-${Date.now()}`,
-        title: `New Resource ${prev.length + 1}`,
-        type: 'link',
-        url: 'https://academy.creatorhub.no/resource',
-      },
-    ]);
+  const toggleLinkedLearningOutcome = useCallback((outcome: string) => {
+    setSummaryPoints((current) =>
+      current.includes(outcome)
+        ? current.filter((entry) => entry !== outcome)
+        : [...current, outcome],
+    );
   }, []);
+
+  const useCurrentPlaybackTimestamp = useCallback(() => {
+    setNewEngagementTimestamp(normalizeTimestamp(currentTime, duration));
+  }, [currentTime, duration]);
+
+  const addEngagementEntry = useCallback(() => {
+    const trimmed = newEngagementText.trim();
+    if (!trimmed) {
+      setSaveMessage(
+        tt(
+          "Skriv inn en kommentar eller et spørsmål først.",
+          "Write a comment or question first.",
+        ),
+      );
+      return;
+    }
+
+    const entryTimestamp = normalizeTimestamp(newEngagementTimestamp, duration);
+    const nextEntry: EngagementEntry = {
+      id: `engagement-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: newEngagementType,
+      author: tt("Deg", "You"),
+      text: trimmed,
+      timestamp: entryTimestamp,
+      createdAt: new Date().toISOString(),
+      replies: [],
+    };
+
+    setEngagementItems((current) => [nextEntry, ...current]);
+    setNewEngagementText("");
+    setSaveMessage(
+      newEngagementType === "question"
+        ? tt(
+            "Spørsmål lagt til med timestamp.",
+            "Question added with timestamp.",
+          )
+        : tt(
+            "Kommentar lagt til med timestamp.",
+            "Comment added with timestamp.",
+          ),
+    );
+
+    analytics.trackEvent("academy_lesson_engagement_entry_added", {
+      type: newEngagementType,
+      timestamp: entryTimestamp,
+      courseId: activeCourse?.id || null,
+      lessonId: activeLesson?.id || null,
+      createdAt: Date.now(),
+    });
+  }, [
+    activeCourse?.id,
+    activeLesson?.id,
+    analytics,
+    duration,
+    newEngagementText,
+    newEngagementTimestamp,
+    newEngagementType,
+    tt,
+  ]);
+
+  const addReplyToEngagementEntry = useCallback(
+    (entryId: string) => {
+      const draft = (replyDraftByEntryId[entryId] || "").trim();
+      if (!draft) return;
+
+      const reply: EngagementReply = {
+        id: `reply-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        author: tt("Deg", "You"),
+        text: draft,
+        createdAt: new Date().toISOString(),
+      };
+
+      setEngagementItems((current) =>
+        current.map((entry) =>
+          entry.id === entryId
+            ? {
+                ...entry,
+                replies: [...entry.replies, reply],
+              }
+            : entry,
+        ),
+      );
+      setReplyDraftByEntryId((current) => ({
+        ...current,
+        [entryId]: "",
+      }));
+
+      analytics.trackEvent("academy_lesson_engagement_reply_added", {
+        entryId,
+        courseId: activeCourse?.id || null,
+        lessonId: activeLesson?.id || null,
+        createdAt: Date.now(),
+      });
+    },
+    [activeCourse?.id, activeLesson?.id, analytics, replyDraftByEntryId, tt],
+  );
+
+  const openResourcePicker = useCallback(() => {
+    const currentlySelectedIds = resourceItems
+      .map(
+        (resource) =>
+          mediaResourceByUrl.get(resource.url)?.id || resource.mediaAssetId,
+      )
+      .filter((id): id is string => Boolean(id));
+    setResourcePickerSelection(Array.from(new Set(currentlySelectedIds)));
+    setResourcePickerSearchValue("");
+    setResourcePickerOpen(true);
+  }, [mediaResourceByUrl, resourceItems]);
+
+  const closeResourcePicker = useCallback(() => {
+    setResourcePickerOpen(false);
+    setResourcePickerSearchValue("");
+  }, []);
+
+  const toggleResourcePickerSelection = useCallback((id: string) => {
+    setResourcePickerSelection((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  }, []);
+
+  const applyResourcePickerSelection = useCallback(() => {
+    const nextResources = resourcePickerSelection
+      .map((id) => mediaResourceById.get(id))
+      .filter((item): item is MediaResourceOption => Boolean(item))
+      .map(
+        (item) =>
+          ({
+            id: item.id,
+            mediaAssetId: item.mediaAssetId || item.id,
+            title: item.title,
+            type: item.type,
+            url: item.url,
+            duration: item.duration,
+            mediaVersion: item.mediaVersion,
+            mediaUpdatedAt: item.mediaUpdatedAt,
+            mediaFingerprint: item.mediaFingerprint,
+          }) satisfies LessonResourceItem,
+      );
+
+    setResourceItems(nextResources);
+    setSaveMessage(
+      nextResources.length === 0
+        ? tt("Ingen ressurser valgt.", "No resources selected.")
+        : tt(
+            `${nextResources.length} ressurs(er) synkronisert fra Media.`,
+            `${nextResources.length} resource(s) synced from Media.`,
+          ),
+    );
+
+    analytics.trackEvent("academy_lesson_resources_added", {
+      count: nextResources.length,
+      lessonId: activeLesson?.id || null,
+      courseId: activeCourse?.id || null,
+      source: "media-library",
+      timestamp: Date.now(),
+    });
+
+    closeResourcePicker();
+  }, [
+    activeCourse?.id,
+    activeLesson?.id,
+    analytics,
+    closeResourcePicker,
+    mediaResourceById,
+    resourcePickerSelection,
+    tt,
+  ]);
+
+  const bindVideoFromMediaToTarget = useCallback(
+    async (mediaResourceId: string, target: "skill" | "course") => {
+      const selectedMedia = mediaResourceById.get(mediaResourceId);
+      if (!selectedMedia || selectedMedia.type !== "video") {
+        setSaveMessage(
+          tt("Velg en videoressurs først.", "Select a video resource first."),
+        );
+        return;
+      }
+
+      if (
+        !activeCourse?.id ||
+        !Array.isArray(state.courses) ||
+        !state.courses.some(
+          (course) => String(course.id) === String(activeCourse.id),
+        )
+      ) {
+        setSaveMessage(
+          tt(
+            "Fant ikke aktivt kurs for videokobling.",
+            "Could not find active course for video linking.",
+          ),
+        );
+        return;
+      }
+
+      const detectedDuration = await probeVideoDurationSeconds(selectedMedia.url);
+      const resolvedDuration =
+        (Number.isFinite(Number(detectedDuration)) && Number(detectedDuration) > 0
+          ? Number(detectedDuration)
+          : Number.isFinite(Number(selectedMedia.duration)) && Number(selectedMedia.duration) > 0
+            ? Number(selectedMedia.duration)
+            : null) ?? null;
+      const mediaAssetId =
+        normalizeMediaAssetId(selectedMedia.mediaAssetId) ||
+        normalizeMediaAssetId(selectedMedia.id);
+      const mediaVersion = normalizeMediaVersion(selectedMedia.mediaVersion, 1);
+      const mediaFingerprint =
+        String(selectedMedia.mediaFingerprint || "").trim() ||
+        buildUrlMediaFingerprint(selectedMedia.url);
+
+      const nowIso = new Date().toISOString();
+
+      try {
+        if (target === "course") {
+          const nextCourse: Course = {
+            ...activeCourse,
+            videoUrl: selectedMedia.url,
+            linkedVideoAssetId: mediaAssetId || undefined,
+            linkedVideoAssetVersion: mediaVersion,
+            linkedVideoAssetName: selectedMedia.title,
+            linkedVideoUpdatedAt: nowIso,
+            linkedVideoFingerprint: mediaFingerprint,
+            duration: resolvedDuration || activeCourse.duration,
+            updatedAt: nowIso,
+          };
+          await updateCourse(nextCourse);
+          setCurrentCourse(nextCourse);
+          setSaveMessage(
+            tt("Video koblet til kurs.", "Video linked to course."),
+          );
+          analytics.trackEvent("academy_video_binding_updated", {
+            scope: "course",
+            courseId: activeCourse.id,
+            lessonId: activeLesson?.id || null,
+            videoUrl: selectedMedia.url,
+            timestamp: Date.now(),
+          });
+          return;
+        }
+
+        if (!activeLesson?.id) {
+          setSaveMessage(
+            tt("Velg en ferdighet først.", "Select a skill first."),
+          );
+          return;
+        }
+
+        const currentLessons = Array.isArray(activeCourse.lessons)
+          ? activeCourse.lessons
+          : [];
+        const nextLessons = currentLessons.map((lesson) => {
+          if (String(lesson.id) !== String(activeLesson.id)) return lesson;
+          return {
+            ...lesson,
+            videoUrl: selectedMedia.url,
+            linkedVideoAssetId: mediaAssetId || undefined,
+            linkedVideoAssetVersion: mediaVersion,
+            linkedVideoAssetName: selectedMedia.title,
+            linkedVideoUpdatedAt: nowIso,
+            linkedVideoFingerprint: mediaFingerprint,
+            duration: resolvedDuration || lesson.duration,
+          };
+        });
+
+        const nextCourse: Course = {
+          ...activeCourse,
+          lessons: nextLessons,
+          updatedAt: nowIso,
+        };
+
+        await updateCourse(nextCourse);
+        setCurrentCourse(nextCourse);
+
+        const nextLesson =
+          nextLessons.find(
+            (lesson) => String(lesson.id) === String(activeLesson.id),
+          ) || null;
+        if (nextLesson) {
+          setCurrentLesson(nextLesson);
+        }
+
+        setSaveMessage(
+          tt("Video koblet til ferdighet.", "Video linked to skill."),
+        );
+        analytics.trackEvent("academy_video_binding_updated", {
+          scope: "skill",
+          courseId: activeCourse.id,
+          lessonId: activeLesson.id,
+          videoUrl: selectedMedia.url,
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : tt(
+                "Kunne ikke koble video akkurat nå.",
+                "Could not link video right now.",
+              );
+        setSaveMessage(message);
+        debugging.logIntegration(
+          "error",
+          "Failed to bind media video in lesson studio",
+          {
+            message,
+            target,
+            mediaResourceId,
+            courseId: activeCourse.id,
+            lessonId: activeLesson?.id || null,
+          },
+        );
+      }
+    },
+    [
+      activeCourse,
+      activeLesson?.id,
+      analytics,
+      debugging,
+      mediaResourceById,
+      setCurrentCourse,
+      setCurrentLesson,
+      state.courses,
+      tt,
+      updateCourse,
+    ],
+  );
+
+  const syncLessonThumbnailPatch = useCallback(
+    async (
+      patch: Partial<
+        Pick<
+          Lesson,
+          "thumbnail" | "thumbnailZoom" | "thumbnailFocalX" | "thumbnailFocalY"
+        >
+      >,
+    ) => {
+      if (
+        !activeCourse?.id ||
+        !activeLesson?.id ||
+        !Array.isArray(state.courses) ||
+        !state.courses.some(
+          (course) => String(course.id) === String(activeCourse.id),
+        )
+      ) {
+        return;
+      }
+
+      const currentLessons = Array.isArray(activeCourse.lessons)
+        ? activeCourse.lessons
+        : [];
+      const nextLessons = currentLessons.map((lesson) =>
+        String(lesson.id) === String(activeLesson.id)
+          ? { ...lesson, ...patch }
+          : lesson,
+      );
+
+      await updateCourse({
+        ...activeCourse,
+        lessons: nextLessons,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    [activeCourse, activeLesson?.id, state.courses, updateCourse],
+  );
+
+  const openThumbnailMenu = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      setThumbnailMenuAnchorEl(event.currentTarget);
+    },
+    [],
+  );
+
+  const closeThumbnailMenu = useCallback(() => {
+    setThumbnailMenuAnchorEl(null);
+  }, []);
+
+  const setThumbnailFromVideo = useCallback(() => {
+    const fallback = activeCourse?.thumbnail || lessonThumbnailUrl;
+    if (fallback) {
+      setLessonThumbnailUrl(fallback);
+      void syncLessonThumbnailPatch({ thumbnail: fallback || undefined });
+      setSaveMessage(
+        tt(
+          "Thumbnail satt fra video/kurs.",
+          "Thumbnail set from video/course.",
+        ),
+      );
+    } else {
+      setSaveMessage(
+        tt(
+          "Ingen videothumbnail tilgjengelig ennå.",
+          "No video thumbnail available yet.",
+        ),
+      );
+    }
+    setThumbnailMenuAnchorEl(null);
+  }, [
+    activeCourse?.thumbnail,
+    lessonThumbnailUrl,
+    syncLessonThumbnailPatch,
+    tt,
+  ]);
+
+  const setThumbnailFromMedia = useCallback(
+    (url: string) => {
+      setLessonThumbnailUrl(url);
+      void syncLessonThumbnailPatch({ thumbnail: url || undefined });
+      setThumbnailMenuAnchorEl(null);
+    },
+    [syncLessonThumbnailPatch],
+  );
+
+  const pickThumbnailFile = useCallback(() => {
+    thumbnailInputRef.current?.click();
+    setThumbnailMenuAnchorEl(null);
+  }, []);
+
+  const handleThumbnailInputChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const objectUrl = URL.createObjectURL(file);
+      setLessonThumbnailUrl(objectUrl);
+      void syncLessonThumbnailPatch({ thumbnail: objectUrl });
+      setResourceItems((prev) => [
+        ...prev,
+        {
+          id: `thumbnail-file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          title: file.name,
+          type: "image",
+          url: objectUrl,
+        },
+      ]);
+      setSaveMessage(
+        tt("Thumbnail oppdatert for leksjonen.", "Lesson thumbnail updated."),
+      );
+      event.target.value = "";
+    },
+    [syncLessonThumbnailPatch, tt],
+  );
+
+  const handleThumbnailZoomCommitted = useCallback(
+    (
+      _event: Event | React.SyntheticEvent<Element, Event>,
+      value: number | number[],
+    ) => {
+      const next = normalizeZoom(Array.isArray(value) ? value[0] : value);
+      setLessonThumbnailZoom(next);
+      void syncLessonThumbnailPatch({ thumbnailZoom: next });
+    },
+    [syncLessonThumbnailPatch],
+  );
+
+  const handleThumbnailFocalXCommitted = useCallback(
+    (
+      _event: Event | React.SyntheticEvent<Element, Event>,
+      value: number | number[],
+    ) => {
+      const next = normalizeFocal(Array.isArray(value) ? value[0] : value);
+      setLessonThumbnailFocalX(next);
+      void syncLessonThumbnailPatch({ thumbnailFocalX: next });
+    },
+    [syncLessonThumbnailPatch],
+  );
+
+  const handleThumbnailFocalYCommitted = useCallback(
+    (
+      _event: Event | React.SyntheticEvent<Element, Event>,
+      value: number | number[],
+    ) => {
+      const next = normalizeFocal(Array.isArray(value) ? value[0] : value);
+      setLessonThumbnailFocalY(next);
+      void syncLessonThumbnailPatch({ thumbnailFocalY: next });
+    },
+    [syncLessonThumbnailPatch],
+  );
+
+  const resetThumbnailCrop = useCallback(() => {
+    setLessonThumbnailZoom(100);
+    setLessonThumbnailFocalX(50);
+    setLessonThumbnailFocalY(50);
+    void syncLessonThumbnailPatch({
+      thumbnailZoom: 100,
+      thumbnailFocalX: 50,
+      thumbnailFocalY: 50,
+    });
+  }, [syncLessonThumbnailPatch]);
 
   const saveLesson = useCallback(
     async (publish: boolean) => {
-      const lessonDescription = summaryPoints.map((point) => `• ${point}`).join('\n');
-      const lessonResources: LessonResource[] = resourceItems.map((resource) => ({
-        id: resource.id,
-        title: resource.title,
-        type: resource.type,
-        url: resource.url,
-        description: resource.title,
-      }));
+      if (!activeCourse?.id) {
+        setSaveMessage(
+          tt(
+            "Velg et kurs før du lagrer leksjonen.",
+            "Select a course before saving the lesson.",
+          ),
+        );
+        return;
+      }
 
-      const fallbackLesson: Lesson = {
+      const selectedObjectives =
+        curriculumLearningOutcomes.length > 0
+          ? summaryPoints.filter((point) =>
+              curriculumLearningOutcomes.includes(point),
+            )
+          : summaryPoints;
+      const lessonDescription = selectedObjectives
+        .map((point) => `• ${point}`)
+        .join("\n");
+      const lessonResources: LessonResource[] = resourceItems.map(
+        (resource) => ({
+          id: resource.id,
+          title: resource.title,
+          type: resource.type,
+          url: resource.url,
+          description: resource.title,
+          mediaAssetId: resource.mediaAssetId,
+          mediaVersion: resource.mediaVersion,
+          mediaUpdatedAt: resource.mediaUpdatedAt,
+          mediaFingerprint: resource.mediaFingerprint,
+        }),
+      );
+      const normalizedThumbnailUrl = lessonThumbnailUrl.trim();
+      const normalizedThumbnailZoom = normalizeZoom(lessonThumbnailZoom);
+      const normalizedThumbnailFocalX = normalizeFocal(lessonThumbnailFocalX);
+      const normalizedThumbnailFocalY = normalizeFocal(lessonThumbnailFocalY);
+      const lessonInstructorId = String(
+        selectedLessonInstructorId ||
+          activeLesson?.videoInstructorId ||
+          activeCourse?.competencyLeadInstructorId ||
+          activeCourse?.instructor?.id ||
+          "",
+      ).trim();
+      const lessonResourcesWithThumbnail = [...lessonResources];
+      if (
+        normalizedThumbnailUrl &&
+        !lessonResourcesWithThumbnail.some(
+          (resource) =>
+            resource.type === "image" &&
+            resource.url === normalizedThumbnailUrl,
+        )
+      ) {
+        lessonResourcesWithThumbnail.unshift({
+          id: `lesson-thumbnail-${activeLesson?.id || Date.now()}`,
+          title: `${lessonTitle || "Lesson"} thumbnail`,
+          type: "image",
+          url: normalizedThumbnailUrl,
+          description: tt("Leksjons-thumbnail", "Lesson thumbnail"),
+        });
+      }
+
+      const lessonDraft: Lesson = {
         id: String(activeLesson?.id || `lesson-${Date.now()}`),
-        courseId: String(activeCourse?.id || fallbackCourse.id),
-        title: lessonTitle || 'Untitled Lesson',
+        courseId: String(activeCourse.id),
+        title: lessonTitle || "Untitled Lesson",
         description: lessonDescription,
-        videoUrl: activeLesson?.videoUrl || VIDEO_PLACEHOLDER,
+        videoUrl:
+          activeLesson?.videoUrl || activeCourse?.videoUrl || VIDEO_PLACEHOLDER,
+        linkedVideoAssetId: activeLesson?.linkedVideoAssetId,
+        linkedVideoAssetVersion: activeLesson?.linkedVideoAssetVersion,
+        linkedVideoAssetName: activeLesson?.linkedVideoAssetName,
+        linkedVideoUpdatedAt: activeLesson?.linkedVideoUpdatedAt,
+        linkedVideoFingerprint:
+          activeLesson?.linkedVideoFingerprint ||
+          buildUrlMediaFingerprint(activeLesson?.videoUrl),
+        videoInstructorId: lessonInstructorId || undefined,
+        thumbnail: normalizedThumbnailUrl || undefined,
+        thumbnailZoom: normalizedThumbnailZoom,
+        thumbnailFocalX: normalizedThumbnailFocalX,
+        thumbnailFocalY: normalizedThumbnailFocalY,
         duration,
         order: Number(activeLesson?.order || 1),
         isPreview: Boolean(activeLesson?.isPreview),
-        resources: lessonResources,
+        resources: lessonResourcesWithThumbnail,
       };
 
-      const currentLessons = Array.isArray(activeCourse?.lessons) && activeCourse.lessons.length > 0
-        ? activeCourse.lessons
-        : [fallbackLesson];
+      const currentLessons =
+        Array.isArray(activeCourse.lessons) && activeCourse.lessons.length > 0
+          ? activeCourse.lessons
+          : [lessonDraft];
 
-      const hasActive = currentLessons.some((lesson) => String(lesson.id) === String(fallbackLesson.id));
+      const hasActive = currentLessons.some(
+        (lesson) => String(lesson.id) === String(lessonDraft.id),
+      );
       const nextLessons = hasActive
         ? currentLessons.map((lesson) => {
-            if (String(lesson.id) !== String(fallbackLesson.id)) return lesson;
+            if (String(lesson.id) !== String(lessonDraft.id)) return lesson;
             return {
               ...lesson,
-              title: lessonTitle || 'Untitled Lesson',
+              title: lessonTitle || "Untitled Lesson",
               description: lessonDescription,
+              linkedVideoAssetId:
+                activeLesson?.linkedVideoAssetId || lesson.linkedVideoAssetId,
+              linkedVideoAssetVersion:
+                activeLesson?.linkedVideoAssetVersion ||
+                lesson.linkedVideoAssetVersion,
+              linkedVideoAssetName:
+                activeLesson?.linkedVideoAssetName || lesson.linkedVideoAssetName,
+              linkedVideoUpdatedAt:
+                activeLesson?.linkedVideoUpdatedAt || lesson.linkedVideoUpdatedAt,
+              linkedVideoFingerprint:
+                activeLesson?.linkedVideoFingerprint ||
+                lesson.linkedVideoFingerprint ||
+                buildUrlMediaFingerprint(activeLesson?.videoUrl || lesson.videoUrl),
+              videoInstructorId: lessonInstructorId || undefined,
+              thumbnail: normalizedThumbnailUrl || undefined,
+              thumbnailZoom: normalizedThumbnailZoom,
+              thumbnailFocalX: normalizedThumbnailFocalX,
+              thumbnailFocalY: normalizedThumbnailFocalY,
               duration,
-              resources: lessonResources,
+              resources: lessonResourcesWithThumbnail,
             };
           })
-        : [...currentLessons, fallbackLesson];
+        : [...currentLessons, lessonDraft];
 
       const payload = {
-        id: activeCourse?.id || fallbackCourse.id,
-        lessonId: fallbackLesson.id,
+        id: activeCourse.id,
+        lessonId: lessonDraft.id,
         title: lessonTitle,
         description: lessonDescription,
         chapters: chapterItems,
-        resources: lessonResources,
+        thumbnail: normalizedThumbnailUrl || null,
+        thumbnailZoom: normalizedThumbnailZoom,
+        thumbnailFocalX: normalizedThumbnailFocalX,
+        thumbnailFocalY: normalizedThumbnailFocalY,
+        videoInstructorId: lessonInstructorId || null,
+        resources: lessonResourcesWithThumbnail,
         publish,
         updatedAt: new Date().toISOString(),
       };
 
       try {
-        if (activeCourse?.id && state.courses.some((course) => String(course.id) === String(activeCourse.id))) {
+        if (
+          activeCourse?.id &&
+          state.courses.some(
+            (course) => String(course.id) === String(activeCourse.id),
+          )
+        ) {
           await updateCourse({
             ...activeCourse,
             lessons: nextLessons,
@@ -468,22 +1580,33 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
         }
 
         onSave?.(payload);
-        setSaveMessage(publish ? tt('Leksjon publisert.', 'Lesson published.') : tt('Leksjon lagret.', 'Lesson saved.'));
+        setSaveMessage(
+          publish
+            ? tt("Leksjon publisert.", "Lesson published.")
+            : tt("Leksjon lagret.", "Lesson saved."),
+        );
 
-        analytics.trackEvent(publish ? 'academy_lesson_publish' : 'academy_lesson_save', {
-          courseId: activeCourse?.id || null,
-          lessonId: fallbackLesson.id,
-          chapterCount: chapterItems.length,
-          resourceCount: lessonResources.length,
-          timestamp: Date.now(),
-        });
+        analytics.trackEvent(
+          publish ? "academy_lesson_publish" : "academy_lesson_save",
+          {
+            courseId: activeCourse?.id || null,
+            lessonId: lessonDraft.id,
+            instructorId: lessonInstructorId || null,
+            chapterCount: chapterItems.length,
+            resourceCount: lessonResourcesWithThumbnail.length,
+            timestamp: Date.now(),
+          },
+        );
       } catch (error) {
-        const message = error instanceof Error ? error.message : tt('Kunne ikke lagre leksjon.', 'Failed to save lesson.');
+        const message =
+          error instanceof Error
+            ? error.message
+            : tt("Kunne ikke lagre leksjon.", "Failed to save lesson.");
         setSaveMessage(message);
-        debugging.logIntegration('error', 'Academy lesson save failed', {
+        debugging.logIntegration("error", "Academy lesson save failed", {
           message,
           courseId: activeCourse?.id || null,
-          lessonId: fallbackLesson.id,
+          lessonId: lessonDraft.id,
         });
       }
     },
@@ -492,15 +1615,23 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
       activeLesson?.id,
       activeLesson?.isPreview,
       activeLesson?.order,
+      activeLesson?.videoInstructorId,
       activeLesson?.videoUrl,
+      activeCourse?.competencyLeadInstructorId,
+      activeCourse?.videoUrl,
       analytics,
       chapterItems,
       debugging,
+      curriculumLearningOutcomes,
       duration,
-      fallbackCourse.id,
       lessonTitle,
+      lessonThumbnailUrl,
+      lessonThumbnailZoom,
+      lessonThumbnailFocalX,
+      lessonThumbnailFocalY,
       onSave,
       resourceItems,
+      selectedLessonInstructorId,
       state.courses,
       summaryPoints,
       tt,
@@ -508,163 +1639,210 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
     ],
   );
 
-  const leftNavItems = [
-    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
-    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
-    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
-    { id: 'lesson-current', label: lessonTitle || tt('Lyssetting grunnleggende', 'Lighting Basics'), route: '/academy/lesson-editor', inset: true },
-    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
-    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
-    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
-    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
-    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
-    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
-    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
-    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
-    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
-  ];
+  const renderResourceIcon = useCallback((type: LessonResourceItem["type"]) => {
+    if (type === "pdf")
+      return <Description sx={{ fontSize: 18, color: "#f8d56f" }} />;
+    if (type === "image")
+      return <ImageIcon sx={{ fontSize: 18, color: "#8ec6ff" }} />;
+    if (type === "audio")
+      return <MusicNote sx={{ fontSize: 18, color: "#93d6b3" }} />;
+    if (type === "link")
+      return <LinkIcon sx={{ fontSize: 18, color: "#9db4ff" }} />;
+    return <VideoLibrary sx={{ fontSize: 18, color: "#8ec6ff" }} />;
+  }, []);
+
+  const handleLessonQuickAction = useCallback(
+    (action: "player" | "lower-thirds" | "cta-overlay") => {
+      if (action === "player") {
+        setLocation("/academy/player-studio");
+      } else if (action === "lower-thirds") {
+        setLocation("/academy/lower-thirds");
+      } else if (action === "cta-overlay") {
+        const query = new URLSearchParams();
+        if (activeCourse?.id) query.set("courseId", String(activeCourse.id));
+        if (activeLesson?.id) query.set("lessonId", String(activeLesson.id));
+        const suffix = query.toString();
+        setLocation(
+          suffix ? `/academy/cta-overlay?${suffix}` : "/academy/cta-overlay",
+        );
+      }
+
+      analytics.trackEvent("academy_lesson_quick_action_clicked", {
+        action,
+        courseId: activeCourse?.id || null,
+        lessonId: activeLesson?.id || null,
+        timestamp: Date.now(),
+      });
+    },
+    [activeCourse?.id, activeLesson?.id, analytics, setLocation],
+  );
+
+  const courseBuilderSkillsRoute = useMemo(() => {
+    const query = new URLSearchParams();
+    if (activeCourse?.id) query.set("courseId", String(activeCourse.id));
+    if (activeLesson?.id) {
+      query.set("lessonId", String(activeLesson.id));
+      query.set("skillId", String(activeLesson.id));
+    }
+    const suffix = query.toString();
+    return suffix
+      ? `/academy/course-creator?${suffix}`
+      : "/academy/course-creator";
+  }, [activeCourse?.id, activeLesson?.id]);
+
+  const goToCourseBuilderSkills = useCallback(() => {
+    setLocation(courseBuilderSkillsRoute);
+  }, [courseBuilderSkillsRoute, setLocation]);
 
   return (
     <Box
       sx={{
-        minHeight: '100vh',
-        color: '#edf0f7',
-        bgcolor: '#06080d',
+        minHeight: "100vh",
+        color: "#edf0f7",
+        bgcolor: "#06080d",
         fontFamily: '"Manrope", "Barlow", "Segoe UI", sans-serif',
-        position: 'relative',
-        overflow: 'hidden',
+        position: "relative",
+        overflow: "hidden",
       }}
     >
       <Box
         sx={{
-          position: 'absolute',
+          position: "absolute",
           inset: 0,
-          pointerEvents: 'none',
+          pointerEvents: "none",
           background:
-            'radial-gradient(circle at 74% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%)',
+            "radial-gradient(circle at 74% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%)",
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", lg: "row" },
+          minHeight: "100vh",
+          position: "relative",
+          zIndex: 1,
+          width: "min(100%, var(--academy-shell-max-width, 1920px))",
+          mx: "auto",
+        }}
+      >
+        <AcademyLeftSidebar
+          activeNav={leftNav}
+          onNavigate={(navId, route) => {
+            setLeftNav(navId);
+            setLocation(route);
+          }}
+          onCreateCourse={() => {
+            setLeftNav("curriculum");
+            setLocation("/academy/curriculum?createCompetency=1");
+          }}
+          tt={tt}
+          navLabel={navLabel}
+          currentLessonLabel={
+            lessonTitle || tt("Leksjon uten tittel", "Untitled lesson")
+          }
+          bottomAction={{
+            label: tt("Nytt kapittel", "New Chapter"),
+            onClick: addChapter,
+          }}
+        />
+
         <Box
-          component="aside"
           sx={{
-            width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
-            background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
-            display: 'flex',
-            flexDirection: 'column',
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <AcademyBrandMark />
-            <Button
-              variant="outlined"
-              startIcon={<Add />}
-              onClick={() => setLocation('/academy/course-creator')}
-              sx={{
-                justifyContent: 'flex-start',
-                borderColor: 'rgba(248,179,33,0.55)',
-                color: '#f8d56f',
-                borderRadius: 1,
-                textTransform: 'none',
-                fontWeight: 600,
-              }}
-            >
-              {tt('Opprett nytt kurs', 'Create New Course')}
-            </Button>
-          </Stack>
-
-          <Stack spacing={0.5} sx={{ px: 1.5 }}>
-            {leftNavItems.map((item) => {
-              const active = item.id === leftNav;
-              return (
-                <Button
-                  key={item.id}
-                  onClick={() => {
-                    setLeftNav(item.id);
-                    setLocation(item.route);
-                  }}
-                  sx={{
-                    justifyContent: 'flex-start',
-                    color: active ? '#fce3a1' : item.id === 'lesson-current' ? 'rgba(237,240,247,0.74)' : 'rgba(237,240,247,0.82)',
-                    borderRadius: item.id === 'lesson-current' ? 0.8 : 1,
-                    textTransform: 'none',
-                    px: item.id === 'lesson-current' ? 1.4 : 2,
-                    py: item.id === 'lesson-current' ? 0.75 : 1.15,
-                    ml: item.id === 'lesson-current' ? 2.1 : 0,
-                    width: item.id === 'lesson-current' ? 'calc(100% - 16px)' : '100%',
-                    border: item.id === 'lesson-current' ? 'var(--academy-hairline-width, 1px) solid transparent' : active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
-                    borderLeft: item.id === 'lesson-current' ? (active ? '2px solid rgba(248,179,33,0.55)' : '2px solid rgba(255,255,255,0.18)') : 'none',
-                    background: item.id === 'lesson-current'
-                      ? active
-                        ? 'rgba(248,179,33,0.08)'
-                        : 'transparent'
-                      : active
-                        ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
-                        : 'transparent',
-                    fontSize: item.id === 'lesson-current' ? 13.5 : 15,
-                  }}
-                >
-                  {item.label}
-                </Button>
-              );
-            })}
-          </Stack>
-
-          <Box sx={{ mt: 'auto', p: 2 }}>
-            <Button
-              variant="text"
-              startIcon={<Add />}
-              onClick={addChapter}
-              sx={{
-                width: '100%',
-                justifyContent: 'flex-start',
-                color: '#edf0f7',
-                textTransform: 'none',
-                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
-                borderRadius: 1,
-              }}
-            >
-              {tt('Ny modul', 'New Module')}
-            </Button>
-          </Box>
-        </Box>
-
-        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Box
             sx={{
               height: 74,
               px: 3,
-              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'linear-gradient(180deg, rgba(13,16,25,0.95), rgba(10,13,20,0.9))',
+              borderBottom:
+                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              background:
+                "linear-gradient(180deg, rgba(13,16,25,0.95), rgba(10,13,20,0.9))",
             }}
           >
             <Stack direction="row" spacing={2} alignItems="center">
-              <Typography sx={{ letterSpacing: '0.22em', fontSize: 15, color: 'rgba(237,240,247,0.82)' }}>
-                CREATOR STUDIO
+              <Typography
+                sx={{
+                  letterSpacing: "0.16em",
+                  fontSize: 15,
+                  color: "rgba(237,240,247,0.82)",
+                }}
+              >
+                ACADEMY
               </Typography>
               <Chip
-                label={activeCourse?.isPublished ? tt('Publisert', 'Published') : tt('Utkast', 'Draft')}
+                label={tt("Leksjonsstudio", "Lesson Studio")}
                 size="small"
-                sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7', fontWeight: 600 }}
+                sx={{
+                  bgcolor: "rgba(255,255,255,0.08)",
+                  color: "#edf0f7",
+                  fontWeight: 700,
+                  border:
+                    "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)",
+                }}
+              />
+              <Chip
+                label={
+                  activeCourse?.isPublished
+                    ? tt("Publisert", "Published")
+                    : tt("Utkast", "Draft")
+                }
+                size="small"
+                sx={{
+                  bgcolor: "rgba(255,255,255,0.08)",
+                  color: "#edf0f7",
+                  fontWeight: 600,
+                }}
               />
             </Stack>
 
             <Stack direction="row" spacing={1.2} alignItems="center">
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <AcademyLocaleSwitcher />
+              <IconButton
+                size="small"
+                onClick={() =>
+                  setLocation("/academy/settings?tab=notifications")
+                }
+                aria-label={tt("Varsler", "Notifications")}
+                sx={{ color: "rgba(237,240,247,0.75)" }}
+              >
                 <NotificationsNone fontSize="small" />
               </IconButton>
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <IconButton
+                size="small"
+                onClick={() => setLocation("/academy/settings?tab=messages")}
+                aria-label={tt("Meldinger", "Messages")}
+                sx={{ color: "rgba(237,240,247,0.75)" }}
+              >
                 <MailOutline fontSize="small" />
               </IconButton>
-              <Avatar sx={{ width: 34, height: 34, bgcolor: '#f8b321', color: '#111' }}>
-                {String(activeCourse?.instructor?.name || 'N').charAt(0).toUpperCase()}
-              </Avatar>
+              <IconButton
+                size="small"
+                onClick={() => setLocation("/academy/settings?tab=profile")}
+                aria-label={tt("Profil", "Profile")}
+                sx={{ p: 0 }}
+              >
+                <Avatar
+                  sx={{
+                    width: 34,
+                    height: 34,
+                    bgcolor: "#f8b321",
+                    color: "#111",
+                  }}
+                >
+                  {String(activeCourse?.instructor?.name || "N")
+                    .charAt(0)
+                    .toUpperCase()}
+                </Avatar>
+              </IconButton>
             </Stack>
           </Box>
 
@@ -672,34 +1850,60 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
             sx={{
               flex: 1,
               minHeight: 0,
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 390px' },
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                lg: "minmax(0, 1fr) var(--academy-right-panel-width, 390px)",
+              },
               gap: 2,
               px: 2,
               py: 2,
             }}
           >
-            <Box sx={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 1.4 }}>
+            <Box
+              sx={{
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: 1.4,
+              }}
+            >
               <Stack
-                direction={{ xs: 'column', lg: 'row' }}
+                direction={{ xs: "column", lg: "row" }}
                 spacing={1.2}
                 justifyContent="space-between"
-                alignItems={{ xs: 'stretch', lg: 'center' }}
+                alignItems={{ xs: "stretch", lg: "center" }}
               >
-                <Stack direction="row" spacing={1.2} alignItems="center" flexWrap="wrap" useFlexGap>
-                  <Typography sx={{ fontSize: 36, fontWeight: 600, letterSpacing: '0.02em' }}>
-                    {tt('Leksjonsredigering', 'Lesson Editor')}
+                <Stack
+                  direction="row"
+                  spacing={1.2}
+                  alignItems="center"
+                  flexWrap="wrap"
+                  useFlexGap
+                >
+                  <Typography
+                    sx={{
+                      fontSize: "clamp(1.5rem, 1.15rem + 1vw, 2.1rem)",
+                      fontWeight: 600,
+                      letterSpacing: "0.02em",
+                    }}
+                  >
+                    {tt("Leksjonsstudio", "Lesson Studio")}
                   </Typography>
                   <Select
                     size="small"
                     value={selectedCourseValue}
-                    onChange={(event) => setSelectedCourseId(String(event.target.value))}
+                    onChange={(event) => {
+                      const nextCourseId = String(event.target.value);
+                      setSelectedCourseId(nextCourseId);
+                      syncCourseIdInRoute(nextCourseId);
+                    }}
                     sx={{
                       minWidth: 200,
-                      color: '#edf0f7',
-                      bgcolor: 'rgba(255,255,255,0.05)',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255,255,255,0.14)',
+                      color: "#edf0f7",
+                      bgcolor: "rgba(255,255,255,0.05)",
+                      "& .MuiOutlinedInput-notchedOutline": {
+                        borderColor: "rgba(255,255,255,0.14)",
                       },
                     }}
                   >
@@ -714,59 +1918,54 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                   <Button
                     variant="outlined"
-                    startIcon={<PlayArrow />}
-                    onClick={() => setLocation('/academy/video-player')}
+                    onClick={goToCourseBuilderSkills}
                     sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
+                      textTransform: "none",
+                      borderColor: "rgba(248,179,33,0.34)",
+                      color: "#f8d56f",
                       borderRadius: 1,
                     }}
                   >
-                    {tt('Forhåndsvis', 'Preview')}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Movie />}
-                    onClick={() => setLocation('/academy/video-player')}
-                    sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
-                      borderRadius: 1,
-                    }}
-                  >
-                    {tt('Spiller', 'Player')}
+                    {tt("Til ferdighetsbygger", "Back to Skills Builder")}
                   </Button>
                   <Button
                     variant="outlined"
                     startIcon={<Save />}
                     onClick={() => void saveLesson(false)}
                     sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
+                      textTransform: "none",
+                      borderColor: "rgba(255,255,255,0.2)",
+                      color: "#edf0f7",
                       borderRadius: 1,
                     }}
                   >
-                    {tt('Lagre', 'Save')}
-                  </Button>
-                  <Button
-                    variant="contained"
-                    startIcon={<Publish />}
-                    onClick={() => void saveLesson(true)}
-                    sx={{
-                      textTransform: 'none',
-                      borderRadius: 1,
-                      color: '#0f0f0f',
-                      background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                      boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
-                    }}
-                  >
-                    {tt('Publiser', 'Publish')}
+                    {tt("Lagre", "Save")}
                   </Button>
                 </Stack>
               </Stack>
+
+              <Box
+                sx={{
+                  ...cinematicPanelSx,
+                  px: 1.1,
+                  py: 0.9,
+                  bgcolor: "rgba(10,14,22,0.84)",
+                  borderColor: "rgba(255,255,255,0.12)",
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: 13,
+                    color: "rgba(237,240,247,0.76)",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {tt(
+                    "Primærflyten er Ferdighetsbygger → Ferdigheter. Bruk denne siden for avansert redigering av valgt ferdighet.",
+                    "Primary workflow is Skills Builder → Skills. Use this page for advanced editing of the selected skill.",
+                  )}
+                </Typography>
+              </Box>
 
               {!!saveMessage && (
                 <Typography
@@ -774,9 +1973,10 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     px: 1.2,
                     py: 0.85,
                     borderRadius: 1,
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)',
-                    color: '#f8d56f',
-                    bgcolor: 'rgba(248,179,33,0.08)',
+                    border:
+                      "var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)",
+                    color: "#f8d56f",
+                    bgcolor: "rgba(248,179,33,0.08)",
                   }}
                 >
                   {saveMessage}
@@ -785,62 +1985,81 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
 
               <Box sx={{ ...cinematicPanelSx, p: 1.2 }}>
                 <Stack
-                  direction={{ xs: 'column', md: 'row' }}
+                  direction={{ xs: "column", md: "row" }}
                   spacing={1}
-                  alignItems={{ xs: 'stretch', md: 'center' }}
+                  alignItems={{ xs: "stretch", md: "center" }}
                   justifyContent="space-between"
                   sx={{ mb: 1.2 }}
                 >
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <DragIndicator sx={{ color: '#f8b321' }} />
-                    <Typography sx={{ fontSize: 34, fontWeight: 600 }}>{lessonTitle || tt('Lyssetting grunnleggende', 'Lighting Basics')}</Typography>
+                    <DragIndicator sx={{ color: "#f8b321" }} />
+                    <Typography sx={{ fontSize: 34, fontWeight: 600 }}>
+                      {lessonTitle ||
+                        tt("Leksjon uten tittel", "Untitled lesson")}
+                    </Typography>
                   </Stack>
 
                   <Button
                     startIcon={<Add />}
                     onClick={addChapter}
                     sx={{
-                      textTransform: 'none',
-                      color: '#0f0f0f',
-                      background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                      textTransform: "none",
+                      color: "#0f0f0f",
+                      background: "linear-gradient(180deg, #ffd44e, #f2a616)",
                       fontWeight: 700,
                     }}
                   >
-                    {tt('Legg til kapittel', 'Add Chapter')}
+                    {tt("Legg til kapittel", "Add Chapter")}
                   </Button>
                 </Stack>
 
                 <Box
                   sx={{
                     borderRadius: 1,
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
-                    overflow: 'hidden',
-                    background: 'linear-gradient(145deg, rgba(18,22,32,0.96), rgba(10,13,20,0.95))',
+                    border:
+                      "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+                    overflow: "hidden",
+                    background:
+                      "linear-gradient(145deg, rgba(18,22,32,0.96), rgba(10,13,20,0.95))",
                   }}
                 >
                   <Box
                     sx={{
-                      display: 'grid',
-                      gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 235px' },
+                      display: "grid",
+                      gridTemplateColumns: {
+                        xs: "1fr",
+                        lg: "minmax(0, 1fr) 235px",
+                      },
                       gap: 1,
                       p: 1,
                     }}
                   >
                     <AcademyPlayerStudio
-                      src={activeLesson?.videoUrl || VIDEO_PLACEHOLDER}
+                      src={
+                        activeLesson?.videoUrl ||
+                        activeCourse?.videoUrl ||
+                        VIDEO_PLACEHOLDER
+                      }
+                      poster={
+                        lessonThumbnailUrl ||
+                        activeCourse?.thumbnail ||
+                        undefined
+                      }
+                      posterZoom={lessonThumbnailZoom}
+                      objectPosition={`${lessonThumbnailFocalX}% ${lessonThumbnailFocalY}%`}
                       muted
                       loop
                       containerSx={{
                         background:
-                          'radial-gradient(circle at 72% 20%, rgba(248,179,33,0.18), rgba(10,13,20,0) 46%), linear-gradient(145deg, rgba(20,24,35,0.96), rgba(9,12,18,0.96))',
+                          "radial-gradient(circle at 72% 20%, rgba(248,179,33,0.18), rgba(10,13,20,0) 46%), linear-gradient(145deg, rgba(20,24,35,0.96), rgba(9,12,18,0.96))",
                       }}
                     >
                       <Box
                         sx={{
-                          position: 'absolute',
-                          left: '50%',
-                          top: '50%',
-                          transform: 'translate(-50%, -50%)',
+                          position: "absolute",
+                          left: "50%",
+                          top: "50%",
+                          transform: "translate(-50%, -50%)",
                         }}
                       >
                         <IconButton
@@ -850,51 +2069,69 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                           sx={{
                             width: 84,
                             height: 84,
-                            border: '2px solid rgba(255,255,255,0.45)',
-                            color: '#f7f8fb',
-                            bgcolor: 'rgba(4,5,8,0.42)',
-                            transition: 'background-color 0.2s ease',
-                            transform: 'none !important',
-                            '&:hover': {
-                              bgcolor: 'rgba(0,0,0,0.56)',
-                              transform: 'none !important',
+                            border: "2px solid rgba(255,255,255,0.45)",
+                            color: "#f7f8fb",
+                            bgcolor: "rgba(4,5,8,0.42)",
+                            transition: "background-color 0.2s ease",
+                            transform: "none !important",
+                            "&:hover": {
+                              bgcolor: "rgba(0,0,0,0.56)",
+                              transform: "none !important",
                             },
-                            '&:active': {
-                              transform: 'none !important',
+                            "&:active": {
+                              transform: "none !important",
                             },
                           }}
                         >
-                          {isPlaying ? <Pause sx={{ fontSize: 42 }} /> : <PlayArrow sx={{ fontSize: 42 }} />}
+                          {isPlaying ? (
+                            <Pause sx={{ fontSize: 42 }} />
+                          ) : (
+                            <PlayArrow sx={{ fontSize: 42 }} />
+                          )}
                         </IconButton>
                       </Box>
 
                       <Box
                         sx={{
-                          position: 'absolute',
+                          position: "absolute",
                           left: 14,
                           right: 14,
                           bottom: 12,
                         }}
                       >
                         <Stack direction="row" alignItems="center" spacing={1}>
-                          <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.78)' }}>
+                          <Typography
+                            sx={{
+                              fontSize: 13,
+                              color: "rgba(237,240,247,0.78)",
+                            }}
+                          >
                             {formatTime(currentTime)}
                           </Typography>
                           <Slider
                             value={currentTime}
                             onChange={(_, value) => {
-                              const next = Array.isArray(value) ? value[0] : value;
-                              setCurrentTime(clamp(next, 0, Math.max(duration, 1)));
+                              const next = Array.isArray(value)
+                                ? value[0]
+                                : value;
+                              setCurrentTime(
+                                clamp(next, 0, Math.max(duration, 1)),
+                              );
                             }}
                             min={0}
                             max={Math.max(duration, 1)}
                             sx={{
                               flex: 1,
-                              color: '#f8b321',
-                              '& .MuiSlider-thumb': { width: 10, height: 10 },
+                              color: "#f8b321",
+                              "& .MuiSlider-thumb": { width: 10, height: 10 },
                             }}
                           />
-                          <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.78)' }}>
+                          <Typography
+                            sx={{
+                              fontSize: 13,
+                              color: "rgba(237,240,247,0.78)",
+                            }}
+                          >
                             {formatTime(duration)}
                           </Typography>
                         </Stack>
@@ -902,88 +2139,369 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     </AcademyPlayerStudio>
 
                     <Stack spacing={1}>
-                      <Box
-                        sx={{
-                          borderRadius: 1,
-                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
-                          background: placeholderBackgrounds[0],
-                          minHeight: 130,
-                          p: 1,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'flex-end',
-                        }}
-                      >
-                        <Typography sx={{ fontSize: 34, fontWeight: 600, lineHeight: 1.1 }}>{lessonTitle}</Typography>
-                        <Stack direction="row" spacing={0.6} sx={{ mt: 1 }}>
-                          <Button
-                            size="small"
+                      <Box sx={{ ...cinematicPanelSx, p: 0.9 }}>
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          justifyContent="space-between"
+                        >
+                          <Typography
                             sx={{
-                              textTransform: 'none',
-                              color: '#edf0f7',
-                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
+                              fontSize: 13,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.08em",
+                              color: "rgba(237,240,247,0.62)",
                             }}
                           >
-                            Edit
-                          </Button>
+                            Thumbnail
+                          </Typography>
                           <Button
                             size="small"
+                            onClick={openThumbnailMenu}
+                            startIcon={<Add sx={{ fontSize: 16 }} />}
                             sx={{
-                              textTransform: 'none',
-                              color: '#edf0f7',
-                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
+                              textTransform: "none",
+                              minWidth: 0,
+                              color: "#edf0f7",
+                              border:
+                                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)",
+                              borderRadius: 0.9,
+                              px: 1,
+                              py: 0.28,
                             }}
                           >
-                            Set to Video
+                            {lessonThumbnailUrl
+                              ? tt("Endre", "Change")
+                              : tt("Legg til", "Add")}
                           </Button>
                         </Stack>
-                      </Box>
 
-                      <Box sx={{ ...cinematicPanelSx, p: 0.9 }}>
-                        <Typography sx={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(237,240,247,0.62)' }}>
-                          Thumbnail
-                        </Typography>
                         <Box
                           sx={{
-                            mt: 0.7,
-                            borderRadius: 1,
-                            minHeight: 86,
-                            background: placeholderBackgrounds[1],
-                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
+                            mt: 0.8,
+                            p: 0.55,
+                            borderRadius: 1.1,
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                            background: "rgba(9,12,20,0.62)",
                           }}
-                        />
-                      </Box>
+                        >
+                          <Box
+                            sx={{
+                              borderRadius: 1,
+                              aspectRatio: "16 / 9",
+                              minHeight: 108,
+                              ...(lessonThumbnailUrl
+                                ? {
+                                    backgroundImage: `linear-gradient(180deg, rgba(8,11,18,0.16), rgba(8,11,18,0.44)), url(${lessonThumbnailUrl})`,
+                                    backgroundPosition: `center, ${lessonThumbnailFocalX}% ${lessonThumbnailFocalY}%`,
+                                    backgroundSize: `cover, ${lessonThumbnailZoom}%`,
+                                    backgroundRepeat: "no-repeat, no-repeat",
+                                  }
+                                : {
+                                    background: placeholderBackgrounds[1],
+                                  }),
+                              position: "relative",
+                              overflow: "hidden",
+                            }}
+                          >
+                            {!lessonThumbnailUrl && (
+                              <Stack
+                                spacing={0.2}
+                                alignItems="center"
+                                justifyContent="center"
+                                sx={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  px: 1,
+                                  textAlign: "center",
+                                  background:
+                                    "linear-gradient(180deg, rgba(6,8,14,0.24), rgba(6,8,14,0.62))",
+                                }}
+                              >
+                                <Typography
+                                  sx={{
+                                    fontSize: 12,
+                                    color: "rgba(237,240,247,0.9)",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {tt(
+                                    "Ingen thumbnail valgt",
+                                    "No thumbnail selected",
+                                  )}
+                                </Typography>
+                                <Typography
+                                  sx={{
+                                    fontSize: 11,
+                                    color: "rgba(237,240,247,0.62)",
+                                  }}
+                                >
+                                  {tt(
+                                    "Velg fra video, media eller last opp",
+                                    "Choose from video, media or upload",
+                                  )}
+                                </Typography>
+                              </Stack>
+                            )}
+                            {lessonThumbnailUrl && (
+                              <Box
+                                sx={{
+                                  position: "absolute",
+                                  left: `calc(${lessonThumbnailFocalX}% - 7px)`,
+                                  top: `calc(${lessonThumbnailFocalY}% - 7px)`,
+                                  width: 14,
+                                  height: 14,
+                                  borderRadius: "50%",
+                                  border: "2px solid rgba(248,179,33,0.95)",
+                                  background: "rgba(8,11,18,0.2)",
+                                  boxShadow: "0 0 0 2px rgba(8,11,18,0.45)",
+                                  pointerEvents: "none",
+                                }}
+                              />
+                            )}
+                          </Box>
 
-                      <Box sx={{ ...cinematicPanelSx, p: 0.9 }}>
-                        <Stack spacing={0.65}>
-                          {resourceItems.slice(0, 2).map((resource) => (
+                          {lessonThumbnailUrl && (
                             <Stack
-                              key={resource.id}
                               direction="row"
                               alignItems="center"
-                              spacing={0.8}
-                              sx={{
-                                borderRadius: 1,
-                                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                                px: 0.9,
-                                py: 0.75,
-                                bgcolor: 'rgba(11,15,24,0.7)',
-                              }}
+                              justifyContent="space-between"
+                              sx={{ mt: 0.55, px: 0.2 }}
                             >
-                              {resource.type === 'pdf' ? (
-                                <Description sx={{ fontSize: 18, color: '#f8d56f' }} />
-                              ) : (
-                                <VideoLibrary sx={{ fontSize: 18, color: '#8ec6ff' }} />
-                              )}
-                              <Typography sx={{ flex: 1, fontSize: 13 }} noWrap>
-                                {resource.title}
+                              <Typography
+                                sx={{
+                                  fontSize: 11,
+                                  color: "rgba(237,240,247,0.62)",
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.04em",
+                                }}
+                              >
+                                {tt("Utsnitt", "Framing")}
                               </Typography>
-                              <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.62)' }}>
-                                {resource.duration ? formatTime(resource.duration) : '--'}
+                              <Typography
+                                sx={{
+                                  fontSize: 11,
+                                  color: "rgba(237,240,247,0.72)",
+                                }}
+                              >
+                                {lessonThumbnailZoom}% · X{" "}
+                                {lessonThumbnailFocalX}% · Y{" "}
+                                {lessonThumbnailFocalY}%
                               </Typography>
                             </Stack>
+                          )}
+                        </Box>
+                        <Menu
+                          anchorEl={thumbnailMenuAnchorEl}
+                          open={Boolean(thumbnailMenuAnchorEl)}
+                          onClose={closeThumbnailMenu}
+                          PaperProps={{
+                            sx: {
+                              bgcolor: "rgba(12,16,24,0.98)",
+                              color: "#edf0f7",
+                              border:
+                                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)",
+                            },
+                          }}
+                        >
+                          <MenuItem onClick={setThumbnailFromVideo}>
+                            {tt(
+                              "Bruk thumbnail fra video",
+                              "Use thumbnail from video",
+                            )}
+                          </MenuItem>
+                          <MenuItem onClick={pickThumbnailFile}>
+                            {tt("Last opp bilde", "Upload image")}
+                          </MenuItem>
+                          {thumbnailOptions.length > 0 && (
+                            <Divider
+                              sx={{ borderColor: "rgba(255,255,255,0.12)" }}
+                            />
+                          )}
+                          {thumbnailOptions.slice(0, 8).map((option) => (
+                            <MenuItem
+                              key={option.id}
+                              onClick={() => setThumbnailFromMedia(option.url)}
+                            >
+                              {option.label}
+                            </MenuItem>
                           ))}
-                        </Stack>
+                        </Menu>
+                        <input
+                          ref={thumbnailInputRef}
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          onChange={handleThumbnailInputChange}
+                        />
+                        {lessonThumbnailUrl && (
+                          <Box
+                            sx={{
+                              mt: 0.8,
+                              p: 0.75,
+                              borderRadius: 1,
+                              border:
+                                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                              background: "rgba(9,12,20,0.56)",
+                            }}
+                          >
+                            <Stack spacing={0.7}>
+                              <Stack
+                                direction="row"
+                                justifyContent="space-between"
+                                alignItems="center"
+                              >
+                                <Typography
+                                  sx={{
+                                    fontSize: 12,
+                                    color: "rgba(237,240,247,0.74)",
+                                  }}
+                                >
+                                  {tt("Zoom", "Zoom")}
+                                </Typography>
+                                <Typography
+                                  sx={{
+                                    fontSize: 12,
+                                    color: "rgba(237,240,247,0.64)",
+                                  }}
+                                >
+                                  {lessonThumbnailZoom}%
+                                </Typography>
+                              </Stack>
+                              <Slider
+                                size="small"
+                                min={100}
+                                max={220}
+                                step={1}
+                                value={lessonThumbnailZoom}
+                                onChange={(_, value) =>
+                                  setLessonThumbnailZoom(
+                                    normalizeZoom(
+                                      Array.isArray(value) ? value[0] : value,
+                                    ),
+                                  )
+                                }
+                                onChangeCommitted={handleThumbnailZoomCommitted}
+                                sx={{
+                                  color: "#f8b321",
+                                  "& .MuiSlider-thumb": {
+                                    width: 10,
+                                    height: 10,
+                                  },
+                                }}
+                              />
+
+                              <Stack
+                                direction="row"
+                                justifyContent="space-between"
+                                alignItems="center"
+                              >
+                                <Typography
+                                  sx={{
+                                    fontSize: 12,
+                                    color: "rgba(237,240,247,0.74)",
+                                  }}
+                                >
+                                  {tt("Fokus X", "Focus X")}
+                                </Typography>
+                                <Typography
+                                  sx={{
+                                    fontSize: 12,
+                                    color: "rgba(237,240,247,0.64)",
+                                  }}
+                                >
+                                  {lessonThumbnailFocalX}%
+                                </Typography>
+                              </Stack>
+                              <Slider
+                                size="small"
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={lessonThumbnailFocalX}
+                                onChange={(_, value) =>
+                                  setLessonThumbnailFocalX(
+                                    normalizeFocal(
+                                      Array.isArray(value) ? value[0] : value,
+                                    ),
+                                  )
+                                }
+                                onChangeCommitted={
+                                  handleThumbnailFocalXCommitted
+                                }
+                                sx={{
+                                  color: "#f8b321",
+                                  "& .MuiSlider-thumb": {
+                                    width: 10,
+                                    height: 10,
+                                  },
+                                }}
+                              />
+
+                              <Stack
+                                direction="row"
+                                justifyContent="space-between"
+                                alignItems="center"
+                              >
+                                <Typography
+                                  sx={{
+                                    fontSize: 12,
+                                    color: "rgba(237,240,247,0.74)",
+                                  }}
+                                >
+                                  {tt("Fokus Y", "Focus Y")}
+                                </Typography>
+                                <Typography
+                                  sx={{
+                                    fontSize: 12,
+                                    color: "rgba(237,240,247,0.64)",
+                                  }}
+                                >
+                                  {lessonThumbnailFocalY}%
+                                </Typography>
+                              </Stack>
+                              <Slider
+                                size="small"
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={lessonThumbnailFocalY}
+                                onChange={(_, value) =>
+                                  setLessonThumbnailFocalY(
+                                    normalizeFocal(
+                                      Array.isArray(value) ? value[0] : value,
+                                    ),
+                                  )
+                                }
+                                onChangeCommitted={
+                                  handleThumbnailFocalYCommitted
+                                }
+                                sx={{
+                                  color: "#f8b321",
+                                  "& .MuiSlider-thumb": {
+                                    width: 10,
+                                    height: 10,
+                                  },
+                                }}
+                              />
+
+                              <Button
+                                size="small"
+                                onClick={resetThumbnailCrop}
+                                sx={{
+                                  alignSelf: "flex-start",
+                                  textTransform: "none",
+                                  color: "#edf0f7",
+                                  border:
+                                    "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)",
+                                }}
+                              >
+                                {tt("Nullstill utsnitt", "Reset crop")}
+                              </Button>
+                            </Stack>
+                          </Box>
+                        )}
                       </Box>
                     </Stack>
                   </Box>
@@ -995,26 +2513,29 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     sx={{
                       mt: 0.2,
                       px: 0.6,
-                      borderTop: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
-                      borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
-                      '& .MuiTabs-indicator': { backgroundColor: '#f8b321' },
-                      '& .MuiTab-root': {
-                        color: 'rgba(237,240,247,0.74)',
-                        textTransform: 'none',
+                      borderTop:
+                        "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+                      borderBottom:
+                        "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+                      "& .MuiTabs-indicator": { backgroundColor: "#f8b321" },
+                      "& .MuiTab-root": {
+                        color: "rgba(237,240,247,0.74)",
+                        textTransform: "none",
                         minHeight: 42,
                         fontSize: 14,
                       },
-                      '& .Mui-selected': { color: '#f7f8fb' },
+                      "& .Mui-selected": { color: "#f7f8fb" },
                     }}
                   >
-                    <Tab label={tt('Innhold', 'Content')} value="content" />
-                    <Tab label={tt('Engasjement', 'Engagement')} value="engagement" />
-                    <Tab label={tt('Quiz og oppgaver', 'Quiz & Assignments')} value="quiz" />
-                    <Tab label={tt('Monetisering', 'Monetization')} value="monetization" />
+                    <Tab label={tt("Innhold", "Content")} value="content" />
+                    <Tab
+                      label={tt("Engasjement", "Engagement")}
+                      value="engagement"
+                    />
                   </Tabs>
 
                   <Box sx={{ p: 1 }}>
-                    {centerTab === 'content' && (
+                    {centerTab === "content" && (
                       <Stack spacing={0.8}>
                         {chapterItems.map((chapter, index) => (
                           <Stack
@@ -1026,162 +2547,449 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                               px: 1,
                               py: 1,
                               borderRadius: 1,
-                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.11)',
-                              bgcolor: 'rgba(11,15,24,0.74)',
+                              border:
+                                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.11)",
+                              bgcolor: "rgba(11,15,24,0.74)",
                             }}
                           >
-                            <DragIndicator sx={{ color: 'rgba(237,240,247,0.48)' }} />
+                            <DragIndicator
+                              sx={{ color: "rgba(237,240,247,0.48)" }}
+                            />
                             <Chip
                               label={chapter.type.toUpperCase()}
                               size="small"
                               sx={{
-                                bgcolor: 'rgba(248,179,33,0.2)',
-                                color: '#f7f8fb',
+                                bgcolor: "rgba(248,179,33,0.2)",
+                                color: "#f7f8fb",
                                 fontWeight: 700,
                               }}
                             />
                             <TextField
                               size="small"
                               value={chapter.title}
-                              onChange={(event) => updateChapter(chapter.id, event.target.value)}
+                              onChange={(event) =>
+                                updateChapter(chapter.id, event.target.value)
+                              }
                               sx={{
                                 flex: 1,
-                                '& .MuiInputBase-root': {
-                                  color: '#edf0f7',
-                                  bgcolor: 'rgba(255,255,255,0.03)',
+                                "& .MuiInputBase-root": {
+                                  color: "#edf0f7",
+                                  bgcolor: "rgba(255,255,255,0.03)",
                                 },
                               }}
                             />
-                            <Typography sx={{ minWidth: 60, textAlign: 'right', color: 'rgba(237,240,247,0.72)' }}>
+                            <Typography
+                              sx={{
+                                minWidth: 60,
+                                textAlign: "right",
+                                color: "rgba(237,240,247,0.72)",
+                              }}
+                            >
                               {formatTime(chapter.duration)}
                             </Typography>
-                            <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.7)' }}>
+                            <IconButton
+                              size="small"
+                              sx={{ color: "rgba(237,240,247,0.7)" }}
+                            >
                               <Edit fontSize="small" />
                             </IconButton>
-                            <Typography sx={{ fontWeight: 700, color: '#f8d56f' }}>{index + 1}</Typography>
+                            <Typography
+                              sx={{ fontWeight: 700, color: "#f8d56f" }}
+                            >
+                              {index + 1}
+                            </Typography>
                           </Stack>
                         ))}
                       </Stack>
                     )}
 
-                    {centerTab === 'engagement' && (
-                      <Box sx={{ ...cinematicPanelSx, p: 1.2 }}>
-                        <Typography sx={{ fontSize: 18, fontWeight: 600, mb: 1 }}>{tt('Leksjonssynlighet', 'Lesson Visibility')}</Typography>
-                        <Stack spacing={0.9}>
-                          <Stack direction="row" justifyContent="space-between">
-                            <Typography>Completion Heatmap Coverage</Typography>
-                            <Typography sx={{ color: '#f8d56f' }}>82%</Typography>
-                          </Stack>
-                          <LinearProgress
-                            variant="determinate"
-                            value={82}
-                            sx={{
-                              height: 7,
-                              borderRadius: 999,
-                              bgcolor: 'rgba(255,255,255,0.12)',
-                              '& .MuiLinearProgress-bar': {
-                                borderRadius: 999,
-                                background: 'linear-gradient(90deg, #8de270 0%, #f8b321 100%)',
-                              },
-                            }}
-                          />
-                          <Stack direction="row" justifyContent="space-between">
-                            <Typography>Avg Watch Retention</Typography>
-                            <Typography sx={{ color: '#f8d56f' }}>74%</Typography>
-                          </Stack>
-                          <LinearProgress
-                            variant="determinate"
-                            value={74}
-                            sx={{
-                              height: 7,
-                              borderRadius: 999,
-                              bgcolor: 'rgba(255,255,255,0.12)',
-                              '& .MuiLinearProgress-bar': {
-                                borderRadius: 999,
-                                background: 'linear-gradient(90deg, #7fb4ff 0%, #f8b321 100%)',
-                              },
-                            }}
-                          />
-                        </Stack>
-                      </Box>
-                    )}
-
-                    {centerTab === 'quiz' && (
-                      <Box sx={{ ...cinematicPanelSx, p: 1.2 }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                          <Typography sx={{ fontSize: 18, fontWeight: 600 }}>Quiz & Assignments</Typography>
-                          <Button
-                            startIcon={<Quiz />}
-                            onClick={() => setLocation('/academy/quiz-manager')}
-                            sx={{
-                              textTransform: 'none',
-                              color: '#edf0f7',
-                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                            }}
+                    {centerTab === "engagement" && (
+                      <Stack spacing={1}>
+                        <Box sx={{ ...cinematicPanelSx, p: 1.2 }}>
+                          <Typography
+                            sx={{ fontSize: 18, fontWeight: 600, mb: 1 }}
                           >
-                            {tt('Åpne Quiz Manager', 'Open Quiz Manager')}
-                          </Button>
-                        </Stack>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>
-                          {tt('Legg til sjekkpunkter i video, korte oppgaver og automatisk tilbakemelding for denne leksjonen.', 'Add in-video checks, short assignments and auto-feedback for this lesson.')}
-                        </Typography>
-                      </Box>
-                    )}
+                            {tt("Leksjonssynlighet", "Lesson Visibility")}
+                          </Typography>
+                          <Stack spacing={0.9}>
+                            <Stack
+                              direction="row"
+                              justifyContent="space-between"
+                            >
+                              <Typography>
+                                Completion Heatmap Coverage
+                              </Typography>
+                              <Typography sx={{ color: "#f8d56f" }}>
+                                82%
+                              </Typography>
+                            </Stack>
+                            <LinearProgress
+                              variant="determinate"
+                              value={82}
+                              sx={{
+                                height: 7,
+                                borderRadius: 999,
+                                bgcolor: "rgba(255,255,255,0.12)",
+                                "& .MuiLinearProgress-bar": {
+                                  borderRadius: 999,
+                                  background:
+                                    "linear-gradient(90deg, #8de270 0%, #f8b321 100%)",
+                                },
+                              }}
+                            />
+                            <Stack
+                              direction="row"
+                              justifyContent="space-between"
+                            >
+                              <Typography>Avg Watch Retention</Typography>
+                              <Typography sx={{ color: "#f8d56f" }}>
+                                74%
+                              </Typography>
+                            </Stack>
+                            <LinearProgress
+                              variant="determinate"
+                              value={74}
+                              sx={{
+                                height: 7,
+                                borderRadius: 999,
+                                bgcolor: "rgba(255,255,255,0.12)",
+                                "& .MuiLinearProgress-bar": {
+                                  borderRadius: 999,
+                                  background:
+                                    "linear-gradient(90deg, #7fb4ff 0%, #f8b321 100%)",
+                                },
+                              }}
+                            />
+                          </Stack>
+                        </Box>
 
-                    {centerTab === 'monetization' && (
-                      <Box sx={{ ...cinematicPanelSx, p: 1.2 }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                          <Typography sx={{ fontSize: 18, fontWeight: 600 }}>{tt('Monetiseringskontroller', 'Monetization Controls')}</Typography>
-                          <Button
-                            startIcon={<MonetizationOn />}
-                            onClick={() => setLocation('/academy/monetization')}
-                            sx={{
-                              textTransform: 'none',
-                              color: '#edf0f7',
-                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                            }}
+                        <Box sx={{ ...cinematicPanelSx, p: 1.2 }}>
+                          <Stack
+                            direction="row"
+                            justifyContent="space-between"
+                            alignItems="center"
+                            sx={{ mb: 1 }}
                           >
-                            {tt('Åpne monetisering', 'Open Monetization')}
-                          </Button>
-                        </Stack>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>
-                          {tt('Konfigurer forhåndsvisningstilgang, mersalgspunkter og pakkesynlighet for denne leksjonen.', 'Configure preview access, upsell moments, and bundle visibility for this lesson.')}
-                        </Typography>
-                      </Box>
+                            <Typography sx={{ fontSize: 18, fontWeight: 600 }}>
+                              {tt(
+                                "Kommentarer og spørsmål",
+                                "Comments & Questions",
+                              )}
+                            </Typography>
+                            <Button
+                              onClick={useCurrentPlaybackTimestamp}
+                              size="small"
+                              sx={{
+                                textTransform: "none",
+                                color: "#edf0f7",
+                                border:
+                                  "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                              }}
+                            >
+                              {tt("Bruk nåværende tid", "Use current time")} (
+                              {formatTime(currentTime)})
+                            </Button>
+                          </Stack>
+
+                          <Stack spacing={0.8} sx={{ mb: 1 }}>
+                            <Stack
+                              direction={{ xs: "column", sm: "row" }}
+                              spacing={0.8}
+                            >
+                              <Select
+                                size="small"
+                                value={newEngagementType}
+                                onChange={(event) =>
+                                  setNewEngagementType(
+                                    event.target.value as EngagementEntryType,
+                                  )
+                                }
+                                sx={{
+                                  minWidth: 170,
+                                  color: "#edf0f7",
+                                  bgcolor: "rgba(255,255,255,0.04)",
+                                  "& .MuiOutlinedInput-notchedOutline": {
+                                    borderColor: "rgba(255,255,255,0.16)",
+                                  },
+                                }}
+                              >
+                                <MenuItem value="question">
+                                  {tt("Spørsmål", "Question")}
+                                </MenuItem>
+                                <MenuItem value="comment">
+                                  {tt("Kommentar", "Comment")}
+                                </MenuItem>
+                              </Select>
+                              <TextField
+                                size="small"
+                                type="number"
+                                label={tt("Timestamp (sek)", "Timestamp (sec)")}
+                                value={newEngagementTimestamp}
+                                onChange={(event) =>
+                                  setNewEngagementTimestamp(
+                                    normalizeTimestamp(
+                                      Number(event.target.value || 0),
+                                      duration,
+                                    ),
+                                  )
+                                }
+                                sx={{
+                                  width: { xs: "100%", sm: 170 },
+                                  "& .MuiInputBase-root": { color: "#edf0f7" },
+                                }}
+                              />
+                            </Stack>
+                            <TextField
+                              size="small"
+                              multiline
+                              minRows={2}
+                              value={newEngagementText}
+                              onChange={(event) =>
+                                setNewEngagementText(event.target.value)
+                              }
+                              placeholder={tt(
+                                "Skriv spørsmål eller kommentar knyttet til denne tiden i videoen...",
+                                "Write a question or comment tied to this timestamp...",
+                              )}
+                              sx={{
+                                "& .MuiInputBase-root": {
+                                  color: "#edf0f7",
+                                  bgcolor: "rgba(255,255,255,0.03)",
+                                },
+                              }}
+                            />
+                            <Stack
+                              direction="row"
+                              justifyContent="space-between"
+                              alignItems="center"
+                            >
+                              <Typography
+                                sx={{
+                                  color: "rgba(237,240,247,0.62)",
+                                  fontSize: 12,
+                                }}
+                              >
+                                {tt("Valgt tid", "Selected time")}:{" "}
+                                {formatTime(newEngagementTimestamp)}
+                              </Typography>
+                              <Button
+                                onClick={addEngagementEntry}
+                                sx={{
+                                  textTransform: "none",
+                                  color: "#0f0f0f",
+                                  background:
+                                    "linear-gradient(180deg, #ffd44e, #f2a616)",
+                                }}
+                              >
+                                {tt("Publiser", "Post")}
+                              </Button>
+                            </Stack>
+                          </Stack>
+
+                          <Divider
+                            sx={{ borderColor: "rgba(255,255,255,0.1)", mb: 1 }}
+                          />
+
+                          <Stack spacing={0.8}>
+                            {engagementItems.length === 0 && (
+                              <Typography
+                                sx={{ color: "rgba(237,240,247,0.62)" }}
+                              >
+                                {tt(
+                                  "Ingen kommentarer eller spørsmål ennå.",
+                                  "No comments or questions yet.",
+                                )}
+                              </Typography>
+                            )}
+                            {engagementItems.map((entry) => (
+                              <Box
+                                key={entry.id}
+                                sx={{
+                                  p: 1,
+                                  borderRadius: 1,
+                                  border:
+                                    "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.11)",
+                                  bgcolor: "rgba(11,15,24,0.78)",
+                                }}
+                              >
+                                <Stack
+                                  direction="row"
+                                  spacing={0.7}
+                                  alignItems="center"
+                                  sx={{ mb: 0.55 }}
+                                >
+                                  <Avatar
+                                    sx={{
+                                      width: 28,
+                                      height: 28,
+                                      bgcolor: "rgba(248,179,33,0.75)",
+                                      color: "#111",
+                                      fontSize: 13,
+                                    }}
+                                  >
+                                    {entry.author.charAt(0).toUpperCase()}
+                                  </Avatar>
+                                  <Typography
+                                    sx={{ fontWeight: 700, fontSize: 14 }}
+                                  >
+                                    {entry.author}
+                                  </Typography>
+                                  <Chip
+                                    label={
+                                      entry.type === "question"
+                                        ? tt("Spørsmål", "Question")
+                                        : tt("Kommentar", "Comment")
+                                    }
+                                    size="small"
+                                    sx={{
+                                      bgcolor:
+                                        entry.type === "question"
+                                          ? "rgba(126,174,255,0.2)"
+                                          : "rgba(248,179,33,0.2)",
+                                      color: "#edf0f7",
+                                    }}
+                                  />
+                                  <Button
+                                    size="small"
+                                    onClick={() => {
+                                      setCurrentTime(
+                                        normalizeTimestamp(
+                                          entry.timestamp,
+                                          duration,
+                                        ),
+                                      );
+                                      setIsPlaying(false);
+                                    }}
+                                    sx={{
+                                      ml: "auto",
+                                      minWidth: 0,
+                                      textTransform: "none",
+                                      color: "#f8d56f",
+                                      px: 0.8,
+                                    }}
+                                  >
+                                    {formatTime(entry.timestamp)}
+                                  </Button>
+                                </Stack>
+
+                                <Typography
+                                  sx={{
+                                    color: "rgba(237,240,247,0.84)",
+                                    mb: 0.8,
+                                  }}
+                                >
+                                  {entry.text}
+                                </Typography>
+
+                                <Stack spacing={0.5} sx={{ pl: 1 }}>
+                                  {entry.replies.map((reply) => (
+                                    <Box
+                                      key={reply.id}
+                                      sx={{
+                                        px: 0.8,
+                                        py: 0.55,
+                                        borderRadius: 0.8,
+                                        border:
+                                          "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.09)",
+                                        bgcolor: "rgba(8,11,18,0.72)",
+                                      }}
+                                    >
+                                      <Typography
+                                        sx={{
+                                          fontSize: 12,
+                                          fontWeight: 700,
+                                          color: "rgba(237,240,247,0.92)",
+                                        }}
+                                      >
+                                        {reply.author}
+                                      </Typography>
+                                      <Typography
+                                        sx={{
+                                          fontSize: 13,
+                                          color: "rgba(237,240,247,0.76)",
+                                        }}
+                                      >
+                                        {reply.text}
+                                      </Typography>
+                                    </Box>
+                                  ))}
+                                </Stack>
+
+                                <Stack
+                                  direction="row"
+                                  spacing={0.6}
+                                  sx={{ mt: 0.8 }}
+                                >
+                                  <TextField
+                                    size="small"
+                                    value={replyDraftByEntryId[entry.id] || ""}
+                                    onChange={(event) =>
+                                      setReplyDraftByEntryId((current) => ({
+                                        ...current,
+                                        [entry.id]: event.target.value,
+                                      }))
+                                    }
+                                    placeholder={tt(
+                                      "Skriv et svar...",
+                                      "Write a reply...",
+                                    )}
+                                    sx={{
+                                      flex: 1,
+                                      "& .MuiInputBase-root": {
+                                        color: "#edf0f7",
+                                        bgcolor: "rgba(255,255,255,0.03)",
+                                      },
+                                    }}
+                                  />
+                                  <Button
+                                    onClick={() =>
+                                      addReplyToEngagementEntry(entry.id)
+                                    }
+                                    sx={{
+                                      textTransform: "none",
+                                      color: "#edf0f7",
+                                      border:
+                                        "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                                    }}
+                                  >
+                                    {tt("Svar", "Reply")}
+                                  </Button>
+                                </Stack>
+                              </Box>
+                            ))}
+                          </Stack>
+                        </Box>
+                      </Stack>
                     )}
                   </Box>
                 </Box>
 
                 <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
+                  direction={{ xs: "column", sm: "row" }}
                   spacing={1}
-                  alignItems={{ xs: 'stretch', sm: 'center' }}
+                  alignItems={{ xs: "stretch", sm: "center" }}
                   justifyContent="space-between"
                 >
-                  <Button
-                    startIcon={<Add />}
-                    onClick={addChapter}
-                    sx={{
-                      textTransform: 'none',
-                      minWidth: 160,
-                      color: '#0f0f0f',
-                      background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {tt('Legg til kapittel', 'Add Chapter')}
-                  </Button>
+                  <Typography sx={{ color: "rgba(237,240,247,0.72)" }}>
+                    {tt("Kapitler", "Chapters")}: {chapterItems.length}
+                  </Typography>
 
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Leksjonssynlighet', 'Lesson Visibility')}</Typography>
+                    <Typography sx={{ color: "rgba(237,240,247,0.72)" }}>
+                      {tt("Leksjonssynlighet", "Lesson Visibility")}
+                    </Typography>
                     <Chip
-                      label={activeCourse?.isPublished ? tt('Publisert', 'Published') : tt('Utkast', 'Draft')}
+                      label={
+                        activeCourse?.isPublished
+                          ? tt("Publisert", "Published")
+                          : tt("Utkast", "Draft")
+                      }
                       size="small"
                       sx={{
                         bgcolor: activeCourse?.isPublished
-                          ? 'rgba(127,214,153,0.22)'
-                          : 'rgba(248,179,33,0.18)',
-                        color: '#f7f8fb',
+                          ? "rgba(127,214,153,0.22)"
+                          : "rgba(248,179,33,0.18)",
+                        color: "#f7f8fb",
                       }}
                     />
                   </Stack>
@@ -1189,445 +2997,885 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
               </Box>
             </Box>
 
-            <Box sx={{ ...cinematicPanelSx, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <Box
+              sx={{
+                ...cinematicPanelSx,
+                minHeight: 0,
+                minWidth: 0,
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
               <Tabs
                 value={rightTab}
                 onChange={(_, value: RightTab) => setRightTab(value)}
                 textColor="inherit"
+                variant="scrollable"
+                scrollButtons="auto"
+                allowScrollButtonsMobile
                 sx={{
-                  borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
-                  '& .MuiTabs-indicator': { backgroundColor: '#f8b321' },
-                  '& .MuiTab-root': { color: 'rgba(237,240,247,0.78)', textTransform: 'none', minHeight: 44 },
-                  '& .Mui-selected': { color: '#f7f8fb' },
+                  borderBottom:
+                    "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+                  "& .MuiTabs-indicator": { backgroundColor: "#f8b321" },
+                  "& .MuiTab-root": {
+                    color: "rgba(237,240,247,0.78)",
+                    textTransform: "none",
+                    minHeight: 44,
+                    minWidth: "fit-content",
+                    px: 1.2,
+                  },
+                  "& .Mui-selected": { color: "#f7f8fb" },
                 }}
               >
-                <Tab label={tt('Info', 'Info')} value="info" />
-                <Tab label={tt('Ressurser', 'Resources')} value="resources" />
-                <Tab label={tt('Kommentarer og spørsmål', 'Comments & QA')} value="comments" />
-                <Tab label={tt('Innstillinger', 'Settings')} value="settings" />
+                <Tab label={tt("Info", "Info")} value="info" />
+                <Tab label={tt("Ressurser", "Resources")} value="resources" />
               </Tabs>
 
-              {rightTab === 'info' && (
-                <Box sx={{ p: 1.3, display: 'flex', flexDirection: 'column', gap: 1.2 }}>
-                  <Typography sx={{ fontWeight: 700, fontSize: 18 }}>Text</Typography>
-                  <TextField
-                    value={lessonTitle}
-                    onChange={(event) => setLessonTitle(event.target.value)}
-                    size="small"
-                    sx={{ '& .MuiInputBase-root': { color: '#edf0f7' } }}
-                  />
+              {rightTab === "info" && (
+                <Box
+                  sx={{
+                    p: 1.3,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1.2,
+                  }}
+                >
+                  <Box sx={lessonStudioSectionCardSx}>
+                    <Typography sx={lessonStudioSectionLabelSx}>
+                      {tt("Innhold", "Content")}
+                    </Typography>
+                    <TextField
+                      label={tt("Ferdighetstittel", "Skill title")}
+                      value={lessonTitle}
+                      onChange={(event) => setLessonTitle(event.target.value)}
+                      size="small"
+                      sx={{ "& .MuiInputBase-root": { color: "#edf0f7" } }}
+                    />
+                  </Box>
 
-                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                    {[Movie, Subtitles, Campaign, Settings].map((Icon, index) => (
-                      <IconButton
-                        key={`format-icon-${index}`}
+                  <Box sx={lessonStudioSectionCardSx}>
+                    <Typography sx={lessonStudioSectionLabelSx}>
+                      {tt("Instruktør", "Instructor")}
+                    </Typography>
+                    <Stack
+                      direction={{ xs: "column", md: "row" }}
+                      spacing={0.7}
+                      alignItems={{ xs: "stretch", md: "center" }}
+                    >
+                      <Select
                         size="small"
+                        value={selectedLessonInstructorId}
+                        onChange={(event) =>
+                          setSelectedLessonInstructorId(String(event.target.value))
+                        }
                         sx={{
-                          color: 'rgba(237,240,247,0.74)',
-                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
+                          minWidth: { xs: "100%", md: 250 },
+                          color: "#edf0f7",
+                          bgcolor: "rgba(255,255,255,0.04)",
+                          "& .MuiOutlinedInput-notchedOutline": {
+                            borderColor: "rgba(255,255,255,0.16)",
+                          },
                         }}
+                        displayEmpty
                       >
-                        <Icon fontSize="small" />
-                      </IconButton>
-                    ))}
-                  </Stack>
-
-                  <Stack spacing={0.8}>
-                    {summaryPoints.map((point, index) => (
-                      <Stack key={`summary-${index}`} direction="row" spacing={0.8} alignItems="center">
-                        <Typography sx={{ color: '#f8d56f', fontSize: 16 }}>▸</Typography>
-                        <TextField
-                          value={point}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setSummaryPoints((prev) => prev.map((entry, itemIndex) => (itemIndex === index ? value : entry)));
-                          }}
-                          size="small"
-                          sx={{ flex: 1, '& .MuiInputBase-root': { color: '#edf0f7' } }}
-                        />
-                      </Stack>
-                    ))}
-                  </Stack>
-
-                  <Button
-                    startIcon={<Add />}
-                    onClick={() => setSummaryPoints((prev) => [...prev, tt('Nytt læringsmål', 'New lesson objective')])}
-                    sx={{
-                      alignSelf: 'flex-start',
-                      textTransform: 'none',
-                      color: '#edf0f7',
-                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                    }}
-                  >
-                    {tt('Legg til læringsmål', 'Add Objective')}
-                  </Button>
-
-                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
-
-                  <Typography sx={{ fontWeight: 700, fontSize: 18 }}>{tt('Ressurssamling', 'Resource Set')}</Typography>
-                  <Box
-                    sx={{
-                      borderRadius: 1,
-                      border: '1px dashed rgba(255,255,255,0.2)',
-                      px: 1,
-                      py: 1.1,
-                      color: 'rgba(237,240,247,0.68)',
-                    }}
-                  >
-                    {tt('Dra og slipp ressurser inn i denne leksjonen.', 'Drag & drop resource items into this lesson.')}
-                  </Box>
-
-                  <Box sx={{ ...cinematicPanelSx, p: 1 }}>
-                    <Stack spacing={0.8}>
-                      {resourceItems.map((resource) => (
-                        <Stack
-                          key={`resource-info-${resource.id}`}
-                          direction="row"
-                          alignItems="center"
-                          spacing={0.8}
-                          sx={{
-                            px: 0.9,
-                            py: 0.75,
-                            borderRadius: 1,
-                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                            bgcolor: 'rgba(9,12,19,0.74)',
-                          }}
-                        >
-                          {resource.type === 'pdf' ? (
-                            <Description sx={{ fontSize: 18, color: '#f8d56f' }} />
-                          ) : (
-                            <VideoLibrary sx={{ fontSize: 18, color: '#8ec6ff' }} />
+                        <MenuItem value="">
+                          {tt(
+                            "Velg instruktør for ferdighet",
+                            "Select skill instructor",
                           )}
-                          <Typography sx={{ flex: 1, fontSize: 14 }} noWrap>
-                            {resource.title}
-                          </Typography>
-                          <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.7)' }}>
-                            <Edit fontSize="small" />
-                          </IconButton>
-                        </Stack>
-                      ))}
-                    </Stack>
-                  </Box>
-
-                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
-
-                  <Typography sx={{ fontWeight: 700, fontSize: 18 }}>{tt('Kapitler', 'Chapters')}</Typography>
-                  <Stack spacing={0.8}>
-                    {chapterItems.map((chapter) => (
-                      <Stack
-                        key={`chapter-side-${chapter.id}`}
-                        direction="row"
-                        alignItems="center"
-                        spacing={0.7}
+                        </MenuItem>
+                        {instructorItems.map((instructor) => (
+                          <MenuItem
+                            key={`lesson-instructor-${instructor.id}`}
+                            value={instructor.id}
+                          >
+                            {instructor.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                      <Button
+                        onClick={() => setLocation("/academy/instructors")}
                         sx={{
-                          px: 0.95,
-                          py: 0.75,
-                          borderRadius: 1,
-                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                          bgcolor: 'rgba(9,12,19,0.74)',
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                          whiteSpace: "nowrap",
                         }}
                       >
-                        <Typography sx={{ color: '#f8d56f', fontWeight: 700 }}>#{chapterItems.indexOf(chapter) + 1}</Typography>
-                        <Typography sx={{ flex: 1 }} noWrap>
-                          {chapter.title}
-                        </Typography>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.64)', fontSize: 13 }}>
-                          {formatTime(chapter.duration)}
-                        </Typography>
-                        <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.7)' }}>
-                          <Edit fontSize="small" />
-                        </IconButton>
-                      </Stack>
-                    ))}
-                  </Stack>
-
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      startIcon={<Add />}
-                      onClick={addChapter}
-                      sx={{
-                        flex: 1,
-                        textTransform: 'none',
-                        color: '#0f0f0f',
-                        background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                      }}
-                    >
-                      {tt('Legg til kapittel', 'Add Chapter')}
-                    </Button>
-                    <Button
-                      sx={{
-                        textTransform: 'none',
-                        color: '#edf0f7',
-                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
-                      }}
-                    >
-                      {tt('Eksporter disposisjon', 'Export Outline')}
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
-
-              {rightTab === 'resources' && (
-                <Box sx={{ p: 1.3, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <TextField
-                    value={searchValue}
-                    onChange={(event) => setSearchValue(event.target.value)}
-                    placeholder={tt('Søk ressurser...', 'Search resources...')}
-                    size="small"
-                    InputProps={{
-                      startAdornment: <Search fontSize="small" sx={{ mr: 0.7, color: 'rgba(237,240,247,0.6)' }} />,
-                    }}
-                    sx={{
-                      '& .MuiInputBase-root': {
-                        bgcolor: 'rgba(11,14,22,0.8)',
-                        color: '#edf0f7',
-                      },
-                    }}
-                  />
-
-                  <Box sx={{ ...cinematicPanelSx, p: 1 }}>
-                    <Stack spacing={0.8}>
-                      {visibleResources.map((resource) => (
-                        <Stack
-                          key={`resource-tab-${resource.id}`}
-                          direction="row"
-                          alignItems="center"
-                          spacing={0.8}
-                          sx={{
-                            px: 0.9,
-                            py: 0.75,
-                            borderRadius: 1,
-                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                            bgcolor: 'rgba(11,15,24,0.74)',
-                          }}
-                        >
-                          <Chip label={resource.type.toUpperCase()} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: '#edf0f7' }} />
-                          <Typography sx={{ flex: 1 }} noWrap>
-                            {resource.title}
-                          </Typography>
-                          <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.66)' }}>
-                            {resource.duration ? formatTime(resource.duration) : '--'}
-                          </Typography>
-                        </Stack>
-                      ))}
+                        {tt("Administrer instruktører", "Manage instructors")}
+                      </Button>
                     </Stack>
-                  </Box>
-
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      startIcon={<Add />}
-                      onClick={addResource}
-                      sx={{
-                        flex: 1,
-                        textTransform: 'none',
-                        color: '#0f0f0f',
-                        background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                      }}
+                    <Typography
+                      sx={{ color: "rgba(237,240,247,0.66)", fontSize: 12 }}
                     >
-                      Add Resource
-                    </Button>
-                    <Button
-                      sx={{
-                        textTransform: 'none',
-                        color: '#edf0f7',
-                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
-                      }}
-                    >
-                      Upload
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
-
-              {rightTab === 'comments' && (
-                <Box sx={{ p: 1.3, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {[0, 1, 2].map((index) => (
-                    <Box
-                      key={`comment-${index}`}
-                      sx={{
-                        ...cinematicPanelSx,
-                        p: 1,
-                        borderColor: 'rgba(255,255,255,0.1)',
-                      }}
-                    >
-                      <Stack direction="row" spacing={0.8} alignItems="center">
-                        <Avatar sx={{ width: 30, height: 30, bgcolor: 'rgba(248,179,33,0.75)', color: '#111' }}>
-                          {index === 0 ? 'E' : index === 1 ? 'D' : 'A'}
-                        </Avatar>
-                        <Typography sx={{ fontWeight: 700 }}>
-                          {index === 0 ? 'Emma Berg' : index === 1 ? 'David Skar' : 'Alex Jensen'}
-                        </Typography>
-                        <Typography sx={{ ml: 'auto', fontSize: 12, color: 'rgba(237,240,247,0.6)' }}>
-                          {formatTime(62 + index * 28)}
-                        </Typography>
-                      </Stack>
-                      <Typography sx={{ mt: 0.8, color: 'rgba(237,240,247,0.78)' }}>
-                        {index === 0
-                          ? 'Nice flow here. Consider adding a short setup recap before the chapter switch.'
-                          : index === 1
-                            ? 'Lower the background music by 3dB when the speaker starts.'
-                            : 'Good pacing. A tighter chapter title can improve navigation.'}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              )}
-
-              {rightTab === 'settings' && (
-                <Box sx={{ p: 1.3, display: 'flex', flexDirection: 'column', gap: 1.1 }}>
-                  <TextField
-                    label={tt('Tilgangsnivå', 'Access Level')}
-                    value={activeLesson?.isPreview ? tt('Forhåndsvisning aktivert', 'Preview Enabled') : tt('Kun medlemmer', 'Members Only')}
-                    size="small"
-                    sx={{ '& .MuiInputBase-root': { color: '#edf0f7' } }}
-                  />
-                  <TextField
-                    label={tt('Publiseringsdato', 'Release Date')}
-                    value={new Date().toISOString().slice(0, 16)}
-                    size="small"
-                    sx={{ '& .MuiInputBase-root': { color: '#edf0f7' } }}
-                  />
-                  <TextField
-                    label={tt('Lokalisering', 'Localization')}
-                    value="Norwegian (nb-NO)"
-                    size="small"
-                    sx={{ '& .MuiInputBase-root': { color: '#edf0f7' } }}
-                  />
-
-                  <Box sx={{ ...cinematicPanelSx, p: 1 }}>
-                    <Typography sx={{ fontWeight: 700, mb: 0.7 }}>{tt('Automatisering', 'Automation')}</Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>
                       {tt(
-                        'Autogenerer transkripsjon, kapittelmarkører og læringsmål etter opplasting.',
-                        'Auto-generate transcript, chapter markers and learning objectives after upload.',
+                        "Instruktørrollen lagres sammen med ferdigheten når du lagrer/publiserer.",
+                        "Instructor role is saved with this skill when you save/publish.",
                       )}
                     </Typography>
                   </Box>
+
+                  <Box sx={lessonStudioSectionCardSx}>
+                    <Typography sx={lessonStudioSectionLabelSx}>
+                      {tt("Video", "Video")}
+                    </Typography>
+                    <Stack
+                      direction="row"
+                      spacing={0.8}
+                      alignItems="center"
+                      useFlexGap
+                      flexWrap="wrap"
+                    >
+                      <Chip
+                        size="small"
+                        icon={<PlayArrow fontSize="small" />}
+                        label={
+                          lessonVideoState.source === "skill"
+                            ? tt("Ferdighetsvideo", "Skill video")
+                            : lessonVideoState.source === "course"
+                              ? tt("Kursvideo", "Course video")
+                              : tt("Ingen video", "No video")
+                        }
+                        sx={{
+                          height: 22,
+                          bgcolor:
+                            lessonVideoState.source === "none"
+                              ? "rgba(255,255,255,0.08)"
+                              : lessonVideoState.source === "skill"
+                                ? "rgba(92,180,128,0.14)"
+                                : "rgba(248,179,33,0.14)",
+                          color:
+                            lessonVideoState.source === "none"
+                              ? "#edf0f7"
+                              : lessonVideoState.source === "skill"
+                                ? "#d8f4df"
+                                : "#f8d56f",
+                          border:
+                            lessonVideoState.source === "none"
+                              ? "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)"
+                              : lessonVideoState.source === "skill"
+                                ? "var(--academy-hairline-width, 1px) solid rgba(92,180,128,0.24)"
+                                : "var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.24)",
+                          fontWeight: 700,
+                          ".MuiChip-icon": {
+                            color:
+                              lessonVideoState.source === "none"
+                                ? "rgba(237,240,247,0.72)"
+                                : lessonVideoState.source === "skill"
+                                  ? "#9ee2ae"
+                                  : "#f8d56f",
+                          },
+                        }}
+                      />
+                      {lessonVideoState.source === "none" ? (
+                        <Typography
+                          sx={{
+                            color: "rgba(237,240,247,0.64)",
+                            fontSize: 12.5,
+                          }}
+                        >
+                          {tt(
+                            "Koble video fra Media for å sette riktig lengde og kilde.",
+                            "Link a video from Media to set the correct duration and source.",
+                          )}
+                        </Typography>
+                      ) : (
+                        <Typography
+                          sx={{
+                            minWidth: 0,
+                            flex: 1,
+                            color: "rgba(237,240,247,0.76)",
+                            fontSize: 12.5,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {`${lessonVideoDisplayLabel} · ${formatTime(
+                            Number(lessonVideoState.duration || 0),
+                          )}`}
+                        </Typography>
+                      )}
+                    </Stack>
+                    {lessonVideoVersionState.hasUpdate ? (
+                      <Box
+                        sx={{
+                          mt: 0.15,
+                          px: 0.9,
+                          py: 0.75,
+                          borderRadius: 1,
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,170,66,0.26)",
+                          bgcolor: "rgba(255,170,66,0.08)",
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontSize: 12.5,
+                            fontWeight: 700,
+                            color: "#ffd8aa",
+                          }}
+                        >
+                          {tt(
+                            "Nyere videoversjon er tilgjengelig.",
+                            "A newer video version is available.",
+                          )}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            mt: 0.25,
+                            fontSize: 12,
+                            color: "rgba(237,240,247,0.72)",
+                          }}
+                        >
+                          {`v${lessonVideoVersionState.linkedVersion} -> v${lessonVideoVersionState.currentVersion}`}
+                        </Typography>
+                      </Box>
+                    ) : null}
+                  </Box>
+
+                  <Box sx={lessonStudioSectionCardSx}>
+                    <Typography sx={lessonStudioSectionLabelSx}>
+                      {tt("Studio", "Studio")}
+                    </Typography>
+                    <Stack
+                      direction="row"
+                      spacing={0.5}
+                      flexWrap="wrap"
+                      useFlexGap
+                    >
+                      <IconButton
+                        size="small"
+                        onClick={() => handleLessonQuickAction("player")}
+                        aria-label={tt(
+                          "Åpne spillerstudio",
+                          "Open player studio",
+                        )}
+                        title={tt("Åpne spillerstudio", "Open player studio")}
+                        sx={{
+                          color: "rgba(237,240,247,0.74)",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                        }}
+                      >
+                        <Movie fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleLessonQuickAction("lower-thirds")}
+                        aria-label={tt(
+                          "Åpne nedre tredeler",
+                          "Open lower thirds",
+                        )}
+                        title={tt("Åpne nedre tredeler", "Open lower thirds")}
+                        sx={{
+                          color: "rgba(237,240,247,0.74)",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                        }}
+                      >
+                        <Subtitles fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleLessonQuickAction("cta-overlay")}
+                        aria-label={tt("Åpne CTA-overlegg", "Open CTA overlay")}
+                        title={tt("Åpne CTA-overlegg", "Open CTA overlay")}
+                        sx={{
+                          color: "rgba(237,240,247,0.74)",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                        }}
+                      >
+                        <Campaign fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  </Box>
+
+                  <Box sx={lessonStudioSectionCardSx}>
+                    <Typography sx={lessonStudioSectionLabelSx}>
+                      {tt(
+                        "Læringsmål (fra læreplan)",
+                        "Learning objectives (from curriculum)",
+                      )}
+                    </Typography>
+
+                    {curriculumLearningOutcomes.length === 0 ? (
+                      <Box
+                        sx={{
+                          p: 1,
+                          borderRadius: 1,
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                          bgcolor: "rgba(255,255,255,0.02)",
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            color: "rgba(237,240,247,0.68)",
+                            fontSize: 13,
+                            mb: 0.8,
+                          }}
+                        >
+                          {tt(
+                            "Ingen læringsmål er definert i læreplanen ennå.",
+                            "No learning objectives are defined in curriculum yet.",
+                          )}
+                        </Typography>
+                        <Button
+                          onClick={() => setLocation("/academy/curriculum")}
+                          sx={{
+                            textTransform: "none",
+                            color: "#edf0f7",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                          }}
+                        >
+                          {tt("Åpne læreplan", "Open curriculum")}
+                        </Button>
+                      </Box>
+                    ) : (
+                      <>
+                        <Stack spacing={0.55}>
+                          {curriculumLearningOutcomes.map((outcome) => {
+                            const checked = summaryPoints.includes(outcome);
+                            return (
+                              <Stack
+                                key={`curriculum-outcome-${outcome}`}
+                                direction="row"
+                                spacing={0.7}
+                                alignItems="center"
+                                sx={{
+                                  px: 0.55,
+                                  py: 0.35,
+                                  borderRadius: 0.8,
+                                  border:
+                                    "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                                  bgcolor: checked
+                                    ? "rgba(245,166,35,0.12)"
+                                    : "rgba(255,255,255,0.02)",
+                                }}
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  onChange={() =>
+                                    toggleLinkedLearningOutcome(outcome)
+                                  }
+                                  sx={{
+                                    p: 0.45,
+                                    color: "rgba(237,240,247,0.6)",
+                                    "&.Mui-checked": { color: "#f8b321" },
+                                  }}
+                                />
+                                <Typography
+                                  sx={{
+                                    color: "rgba(237,240,247,0.84)",
+                                    fontSize: 13,
+                                    lineHeight: 1.35,
+                                  }}
+                                >
+                                  {outcome}
+                                </Typography>
+                              </Stack>
+                            );
+                          })}
+                        </Stack>
+
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                        >
+                          <Typography
+                            sx={{
+                              color: "rgba(237,240,247,0.6)",
+                              fontSize: 12,
+                            }}
+                          >
+                            {tt("Koblet til ferdighet", "Linked to skill")}:{" "}
+                            {summaryPoints.length}
+                          </Typography>
+                          <Button
+                            onClick={() => setLocation("/academy/curriculum")}
+                            sx={{
+                              textTransform: "none",
+                              color: "#edf0f7",
+                              border:
+                                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                            }}
+                          >
+                            {tt("Rediger i læreplan", "Edit in curriculum")}
+                          </Button>
+                        </Stack>
+                      </>
+                    )}
+                  </Box>
+
+                  <Box sx={lessonStudioSectionCardSx}>
+                    <Typography sx={lessonStudioSectionLabelSx}>
+                      {tt("Ressurssamling", "Resource Set")}
+                    </Typography>
+                    <Box
+                      sx={{
+                        borderRadius: 1,
+                        border: "1px dashed rgba(255,255,255,0.2)",
+                        px: 1,
+                        py: 1.1,
+                        cursor: "pointer",
+                        transition: "all 0.18s ease",
+                        color: "rgba(237,240,247,0.68)",
+                        backgroundColor: "rgba(255,255,255,0.02)",
+                        "&:hover": {
+                          borderColor: "rgba(248,179,33,0.48)",
+                          backgroundColor: "rgba(245,166,35,0.1)",
+                        },
+                      }}
+                      onClick={openResourcePicker}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openResourcePicker();
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={tt(
+                        "Velg ressurser fra media",
+                        "Select resources from media",
+                      )}
+                    >
+                      <Typography sx={{ color: "rgba(237,240,247,0.86)" }}>
+                        {tt(
+                          "Velg ressurser fra Media-biblioteket.",
+                          "Select resources from the Media library.",
+                        )}
+                      </Typography>
+                      <Typography
+                        sx={{
+                          mt: 0.45,
+                          fontSize: 12,
+                          color: "rgba(237,240,247,0.58)",
+                        }}
+                      >
+                        {tt(
+                          "Klikk for å åpne Media-velger.",
+                          "Click to open the media picker.",
+                        )}
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ ...cinematicPanelSx, p: 1 }}>
+                      <Stack spacing={0.8}>
+                        {resourceItems.length === 0 && (
+                          <Typography
+                            sx={{ fontSize: 13, color: "rgba(237,240,247,0.6)" }}
+                          >
+                            {tt(
+                              "Ingen ressurser valgt fra Media ennå.",
+                              "No resources selected from Media yet.",
+                            )}
+                          </Typography>
+                        )}
+                        {resourceItems.map((resource) => (
+                          <Stack
+                            key={`resource-info-${resource.id}`}
+                            direction="row"
+                            alignItems="center"
+                            spacing={0.8}
+                            sx={{
+                              px: 0.9,
+                              py: 0.75,
+                              borderRadius: 1,
+                              border:
+                                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                              bgcolor: "rgba(9,12,19,0.74)",
+                            }}
+                          >
+                            {renderResourceIcon(resource.type)}
+                            <Typography sx={{ flex: 1, fontSize: 14 }} noWrap>
+                              {resource.title}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={openResourcePicker}
+                              sx={{ color: "rgba(237,240,247,0.7)" }}
+                              aria-label={tt(
+                                "Rediger ressursvalg",
+                                "Edit resource selection",
+                              )}
+                            >
+                              <Edit fontSize="small" />
+                            </IconButton>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </Box>
+                  </Box>
                 </Box>
               )}
 
-              <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
-
-              <Stack direction="row" spacing={1} sx={{ p: 1.1 }}>
-                <Button
-                  startIcon={<Campaign />}
-                  onClick={() => setLocation('/academy/cta-overlay')}
+              {rightTab === "resources" && (
+                <Box
                   sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
-                  }}
-                >{tt('CTA-overlegg', 'CTA Overlay')}</Button>
-                <Button
-                  startIcon={<Subtitles />}
-                  onClick={() => setLocation('/academy/lower-thirds')}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
+                    p: 1.3,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1.2,
                   }}
                 >
-                  {tt('Nedre tredeler', 'Lower Thirds')}
-                </Button>
-              </Stack>
+                  <Box sx={lessonStudioSectionCardSx}>
+                    <Typography sx={lessonStudioSectionLabelSx}>
+                      {tt("Søk", "Search")}
+                    </Typography>
+                    <TextField
+                      value={searchValue}
+                      onChange={(event) => setSearchValue(event.target.value)}
+                      placeholder={tt("Søk ressurser...", "Search resources...")}
+                      size="small"
+                      InputProps={{
+                        startAdornment: (
+                          <Search
+                            fontSize="small"
+                            sx={{ mr: 0.7, color: "rgba(237,240,247,0.6)" }}
+                          />
+                        ),
+                      }}
+                      sx={{
+                        "& .MuiInputBase-root": {
+                          bgcolor: "rgba(11,14,22,0.8)",
+                          color: "#edf0f7",
+                        },
+                      }}
+                    />
+                  </Box>
+
+                  <Box sx={lessonStudioSectionCardSx}>
+                    <Typography sx={lessonStudioSectionLabelSx}>
+                      {tt("Tilgjengelige ressurser", "Available resources")}
+                    </Typography>
+                    <Stack spacing={0.8}>
+                      {visibleResources.length === 0 ? (
+                        <Typography
+                          sx={{ fontSize: 13, color: "rgba(237,240,247,0.6)" }}
+                        >
+                          {tt(
+                            "Ingen ressurser matcher søket ennå.",
+                            "No resources match the current search yet.",
+                          )}
+                        </Typography>
+                      ) : (
+                        visibleResources.map((resource) => (
+                          <Stack
+                            key={`resource-tab-${resource.id}`}
+                            direction="row"
+                            alignItems="center"
+                            spacing={0.8}
+                            sx={{
+                              px: 0.9,
+                              py: 0.75,
+                              borderRadius: 1,
+                              border:
+                                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                              bgcolor: "rgba(11,15,24,0.74)",
+                            }}
+                          >
+                            <Chip
+                              label={resource.type.toUpperCase()}
+                              size="small"
+                              sx={{
+                                bgcolor: "rgba(255,255,255,0.12)",
+                                color: "#edf0f7",
+                              }}
+                            />
+                            <Typography sx={{ flex: 1 }} noWrap>
+                              {resource.title}
+                            </Typography>
+                            <Typography
+                              sx={{
+                                fontSize: 12,
+                                color: "rgba(237,240,247,0.66)",
+                              }}
+                            >
+                              {resource.duration
+                                ? formatTime(resource.duration)
+                                : "--"}
+                            </Typography>
+                          </Stack>
+                        ))
+                      )}
+                    </Stack>
+                  </Box>
+
+                  <Box sx={lessonStudioSectionCardSx}>
+                    <Typography sx={lessonStudioSectionLabelSx}>
+                      {tt("Handling", "Action")}
+                    </Typography>
+                    <Button
+                      startIcon={<Add />}
+                      onClick={openResourcePicker}
+                      sx={{
+                        textTransform: "none",
+                        color: "#0f0f0f",
+                        background: "linear-gradient(180deg, #ffd44e, #f2a616)",
+                        alignSelf: "flex-start",
+                      }}
+                    >
+                      {tt("Velg fra Media", "Choose from Media")}
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+
+              <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
 
               <Stack direction="row" spacing={1} sx={{ p: 1.1, pt: 0 }}>
-                <Button
-                  onClick={duplicateLesson}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                  }}
-                >
-                  {tt('Dupliser leksjon', 'Duplicate Lesson')}
-                </Button>
-                <Button
-                  onClick={() => void saveLesson(true)}
-                  sx={{
-                    minWidth: 118,
-                    textTransform: 'none',
-                    color: '#0f0f0f',
-                    background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                    fontWeight: 700,
-                  }}
-                >
-                  {tt('Publiser', 'Publish')}
-                </Button>
-              </Stack>
-
-              <Stack direction="row" spacing={1} sx={{ p: 1.1, pt: 0 }}>
-                <Button
-                  startIcon={<MonetizationOn />}
-                  onClick={() => setLocation('/academy/monetization')}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                  }}
-                >
-                  {tt('Monetisering', 'Monetization')}
-                </Button>
-                <Button
-                  startIcon={<Quiz />}
-                  onClick={() => setLocation('/academy/quiz-manager')}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                  }}
-                >
-                  Quiz
-                </Button>
-              </Stack>
-
-              <Stack direction="row" spacing={1} sx={{ p: 1.1, pt: 0 }}>
-                <Button
-                  startIcon={<Save />}
-                  onClick={() => void saveLesson(false)}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                  }}
-                >
-                  {tt('Lagre utkast', 'Save Draft')}
-                </Button>
                 <Button
                   onClick={() => {
                     if (onCancel) {
                       onCancel();
                     } else {
-                      setLocation('/academy/course-creator');
+                      goToCourseBuilderSkills();
                     }
                   }}
                   sx={{
-                    textTransform: 'none',
-                    color: 'rgba(237,240,247,0.78)',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                    textTransform: "none",
+                    color: "rgba(237,240,247,0.78)",
+                    border:
+                      "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
                   }}
                 >
-                  {tt('Lukk', 'Close')}
+                  {tt("Til ferdighetsbygger", "Back to Skills Builder")}
                 </Button>
               </Stack>
             </Box>
           </Box>
         </Box>
       </Box>
+
+      <Dialog
+        open={resourcePickerOpen}
+        onClose={closeResourcePicker}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: "rgba(10,14,22,0.98)",
+            color: "#edf0f7",
+            border:
+              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)",
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          {tt("Velg ressurser fra Media", "Select resources from Media")}
+        </DialogTitle>
+        <DialogContent sx={{ pt: "8px !important" }}>
+          <TextField
+            value={resourcePickerSearchValue}
+            onChange={(event) =>
+              setResourcePickerSearchValue(event.target.value)
+            }
+            placeholder={tt("Søk i media...", "Search media...")}
+            size="small"
+            fullWidth
+            sx={{
+              mb: 1.2,
+              "& .MuiInputBase-root": {
+                bgcolor: "rgba(11,14,22,0.9)",
+                color: "#edf0f7",
+              },
+            }}
+          />
+          <Typography
+            sx={{ mb: 1, fontSize: 12, color: "rgba(237,240,247,0.65)" }}
+          >
+            {tt(
+              "Tips: Bruk «Ferdighet» for aktiv leksjon eller «Kurs» for alle ferdigheter uten egen video.",
+              "Tip: Use “Skill” for the active lesson, or “Course” for all skills without their own video.",
+            )}
+          </Typography>
+          <Stack
+            spacing={0.7}
+            sx={{ maxHeight: 360, overflowY: "auto", pr: 0.4 }}
+          >
+            {filteredMediaResourceOptions.length === 0 && (
+              <Typography sx={{ fontSize: 13, color: "rgba(237,240,247,0.6)" }}>
+                {tt(
+                  "Ingen mediaressurser funnet.",
+                  "No media resources found.",
+                )}
+              </Typography>
+            )}
+            {filteredMediaResourceOptions.map((item) => {
+              const isChecked = resourcePickerSelection.includes(item.id);
+              const alreadyInLesson = resourceItems.some(
+                (resource) => resource.url === item.url,
+              );
+              return (
+                <Stack
+                  key={item.id}
+                  direction="row"
+                  alignItems="center"
+                  spacing={0.8}
+                  sx={{
+                    px: 0.9,
+                    py: 0.75,
+                    borderRadius: 1,
+                    border:
+                      "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                    bgcolor: isChecked
+                      ? "rgba(245,166,35,0.14)"
+                      : "rgba(11,15,24,0.72)",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => toggleResourcePickerSelection(item.id)}
+                >
+                  <Checkbox
+                    checked={isChecked}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleResourcePickerSelection(item.id);
+                    }}
+                    sx={{
+                      color: "rgba(237,240,247,0.7)",
+                      "&.Mui-checked": { color: "#f8b321" },
+                    }}
+                  />
+                  {renderResourceIcon(item.type)}
+                  <Stack sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography noWrap sx={{ fontSize: 14 }}>
+                      {item.title}
+                    </Typography>
+                    <Typography
+                      noWrap
+                      sx={{ fontSize: 12, color: "rgba(237,240,247,0.58)" }}
+                    >
+                      {item.sourceLabel}
+                    </Typography>
+                  </Stack>
+                  {alreadyInLesson && (
+                    <CheckCircleOutline
+                      sx={{ fontSize: 16, color: "rgba(141,226,112,0.85)" }}
+                    />
+                  )}
+                  {item.type === "video" && (
+                    <Stack direction="row" spacing={0.5}>
+                      <Button
+                        size="small"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void bindVideoFromMediaToTarget(item.id, "skill");
+                        }}
+                        sx={{
+                          minWidth: 0,
+                          px: 0.8,
+                          py: 0.3,
+                          lineHeight: 1.1,
+                          textTransform: "none",
+                          fontSize: 11,
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Ferdighet", "Skill")}
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void bindVideoFromMediaToTarget(item.id, "course");
+                        }}
+                        sx={{
+                          minWidth: 0,
+                          px: 0.8,
+                          py: 0.3,
+                          lineHeight: 1.1,
+                          textTransform: "none",
+                          fontSize: 11,
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Kurs", "Course")}
+                      </Button>
+                    </Stack>
+                  )}
+                </Stack>
+              );
+            })}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 1.4 }}>
+          <Button
+            onClick={closeResourcePicker}
+            sx={{
+              textTransform: "none",
+              color: "rgba(237,240,247,0.84)",
+            }}
+          >
+            {tt("Avbryt", "Cancel")}
+          </Button>
+          <Button
+            onClick={() => {
+              const query = new URLSearchParams();
+              if (activeCourse?.id)
+                query.set("courseId", String(activeCourse.id));
+              if (activeLesson?.id)
+                query.set("lessonId", String(activeLesson.id));
+              query.set("bind", "skill");
+              query.set(
+                "returnTo",
+                location ||
+                  `/academy/lesson-editor?courseId=${encodeURIComponent(String(activeCourse?.id || ""))}${
+                    activeLesson?.id
+                      ? `&lessonId=${encodeURIComponent(String(activeLesson.id))}`
+                      : ""
+                  }`,
+              );
+              const suffix = query.toString();
+              setLocation(
+                suffix ? `/academy/media?${suffix}` : "/academy/media",
+              );
+            }}
+            sx={{
+              textTransform: "none",
+              color: "#f8d56f",
+              border:
+                "var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)",
+            }}
+          >
+            {tt("Åpne full Media", "Open full Media")}
+          </Button>
+          <Button
+            onClick={applyResourcePickerSelection}
+            variant="contained"
+            sx={{
+              textTransform: "none",
+              color: "#0f0f0f",
+              background: "linear-gradient(180deg, #ffd44e, #f2a616)",
+            }}
+          >
+            {tt("Bruk valgte ressurser", "Use selected resources")}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
 
 export default withUniversalIntegration(AcademyLessonStudio, {
-  componentId: 'academy-lesson-studio',
-  componentName: 'Academy Lesson Studio',
-  componentType: 'editor',
-  componentCategory: 'academy',
-  featureIds: ['lesson-editor', 'chapter-management', 'resource-panel', 'academy-curriculum'],
+  componentId: "academy-lesson-studio",
+  componentName: "Academy Lesson Studio",
+  componentType: "editor",
+  componentCategory: "academy",
+  featureIds: [
+    "lesson-editor",
+    "chapter-management",
+    "resource-panel",
+    "academy-curriculum",
+  ],
 });

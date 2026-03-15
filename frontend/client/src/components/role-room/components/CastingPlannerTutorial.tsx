@@ -10,7 +10,6 @@ import {
   Chip,
   Avatar,
   useMediaQuery,
-  useTheme,
   Slider,
 } from '@mui/material';
 import {
@@ -41,8 +40,7 @@ import {
 } from './icons/CastingIcons';
 // Compatible icon type for both MUI SvgIcon and custom FC<IconProps> components
 type IconComponentType = ComponentType<{ sx?: Record<string, unknown> }>;
-import type { Tutorial, TutorialStep } from '../services/tutorialService';
-import { tutorialService } from '../services/tutorialService';
+import { tutorialService, type Tutorial, type TutorialStep } from '../services/tutorialService';
 
 const defaultTutorialSteps: TutorialStep[] = [
   {
@@ -122,12 +120,12 @@ const defaultTutorialSteps: TutorialStep[] = [
   },
   {
     id: 'locations',
-    title: '5. Steder - Finn locations',
-    description: 'Her dokumenterer og organiserer du alle innspillingssteder. Legg til bilder, adresser, tillatelser og praktisk informasjon.',
+    title: '5. Lokasjoner - Finn lokasjoner',
+    description: 'Her dokumenterer og organiserer du alle innspillingslokasjoner. Legg til bilder, adresser, tillatelser og praktisk informasjon.',
     panel: 4,
     targetSelector: '[role="tab"]:nth-of-type(5)',
     action: 'click',
-    actionDescription: 'Klikk på "Steder"-fanen',
+    actionDescription: 'Klikk på "Lokasjoner"-fanen',
     tips: [
       'Last opp bilder av hver location',
       'Legg til adresse og veibeskrivelse',
@@ -270,7 +268,7 @@ const panelInfo = [
   { name: 'Roller', icon: RolesIcon, color: '#f48fb1' },
   { name: 'Kandidater', icon: CandidatesIcon, color: '#10b981' },
   { name: 'Team', icon: TeamIcon, color: '#00d4ff' },
-  { name: 'Steder', icon: LocationIcon, color: '#4caf50' },
+  { name: 'Lokasjoner', icon: LocationIcon, color: '#4caf50' },
   { name: 'Utstyr', icon: PropIcon, color: '#9333ea' },
   { name: 'Kalender', icon: CalendarIcon, color: '#9c27b0' },
   { name: 'Shot Lists', icon: ShotListIcon, color: '#e91e63' },
@@ -284,7 +282,7 @@ const stepIndicatorMeta: Record<string, { label: string; icon: IconComponentType
   'roles': { label: 'Roller', icon: RolesIcon, color: '#f48fb1' },
   'candidates': { label: 'Kandidater', icon: CandidatesIcon, color: '#10b981' },
   'team': { label: 'Team', icon: TeamIcon, color: '#00d4ff' },
-  'locations': { label: 'Steder', icon: LocationIcon, color: '#4caf50' },
+  'locations': { label: 'Lokasjoner', icon: LocationIcon, color: '#4caf50' },
   'props': { label: 'Utstyr', icon: PropIcon, color: '#9333ea' },
   'calendar': { label: 'Kalender', icon: CalendarIcon, color: '#9c27b0' },
   'shotlist': { label: 'Shot Lists', icon: ShotListIcon, color: '#e91e63' },
@@ -310,9 +308,7 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
   customTutorial,
   category = 'casting-planner',
 }) => {
-  const theme = useTheme();
-  const isDarkMode = theme.palette.mode === 'dark';
-  const borderColor = isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+  const borderColor = 'rgba(255,255,255,0.15)';
   const isMobile = useMediaQuery('(max-width:599px)');
   const isTablet = useMediaQuery('(min-width:600px) and (max-width:959px)');
   const is720p = useMediaQuery('(min-width:960px) and (max-width:1279px)');

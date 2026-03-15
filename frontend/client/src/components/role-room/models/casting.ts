@@ -9,6 +9,8 @@ export type UserRoleType =
   | 'casting_director'
   | 'production_manager'
   | 'camera_team'
+  | 'content_producer'
+  | 'client_reviewer'
   | 'agency'
   | 'writer'
   | 'script_editor'
@@ -21,10 +23,14 @@ export interface UserRolePermissions {
   canManageCrew?: boolean;
   canManageLocations?: boolean;
   canEditShots?: boolean;
+  canEditShotLists?: boolean;
   canApprove?: boolean;
   canEditScript?: boolean;
   canLockScript?: boolean;
   canRunTableRead?: boolean;
+  canComment?: boolean;
+  canRequestChanges?: boolean;
+  canViewEconomy?: boolean;
 }
 
 export interface UserRole {
@@ -119,13 +125,22 @@ export interface Candidate {
   photos?: string[];
   videos?: string[];
   photoFocalPoints?: Array<{ x: number; y: number }>;
+  contactInfo?: ContactInfo;
+  contact_info?: ContactInfo;
   email?: string;
   phone?: string;
   agency?: string;
   notes?: string;
+  auditionNotes?: string;
+  audition_notes?: string;
   status?: string;
   roleId?: string;
   role_id?: string;
+  assignedRoles?: string[];
+  assigned_roles?: string[];
+  consent?: Array<Record<string, unknown>>;
+  modelUrl?: string;
+  personality?: string;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
@@ -564,6 +579,11 @@ export interface Manuscript {
   projectId: string;
   title: string;
   content: string;
+  subtitle?: string;
+  author?: string;
+  status?: string;
+  coverImage?: string;
+  coverFocalPoint?: { x: number; y: number };
   language?: string;
   createdAt?: string;
   updatedAt?: string;

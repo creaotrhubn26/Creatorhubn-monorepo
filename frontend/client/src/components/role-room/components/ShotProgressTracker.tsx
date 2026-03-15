@@ -49,6 +49,7 @@ import {
 } from '@mui/icons-material';
 import { TrendingIcon as TrendingUpIcon } from './icons/CastingIcons';
 import type { SceneBreakdown } from '../models/casting';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 // Internal shot type for tracking
 interface TrackedShot {
@@ -88,6 +89,13 @@ interface ShotProgressTrackerProps {
   scenes: SceneBreakdown[];
   onProgressUpdate?: (progress: ShotProgress[]) => void;
 }
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 // Generate demo shots for each scene
 const generateDemoShots = (scene: SceneBreakdown): TrackedShot[] => {
@@ -607,6 +615,17 @@ export const ShotProgressTracker: React.FC<ShotProgressTrackerProps> = ({
               value={newTakeNotes}
               onChange={(e) => setNewTakeNotes(e.target.value)}
               placeholder="Tekniske notater, skuespiller-performance, etc."
+            />
+            <GlobalMentionHelper
+              text={newTakeNotes}
+              localCandidates={[
+                ...new Set(
+                  scenes
+                    .map((scene) => `Scene ${scene.sceneNumber}`)
+                    .filter((value) => value.trim().length >= 2),
+                ),
+              ]}
+              onApplySuggestion={(name) => setNewTakeNotes((prev) => applyMentionSuggestion(prev, name))}
             />
           </Stack>
         </DialogContent>

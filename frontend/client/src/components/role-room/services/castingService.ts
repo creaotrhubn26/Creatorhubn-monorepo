@@ -10,9 +10,31 @@ import type {
   ProductionDay,
   ShotList,
   CastingShot,
+  SceneBreakdown,
   UserRole,
   Consent,
 } from '../models/casting';
+import type {
+  LiveSetSession,
+  LiveSetBatchIngestRequest,
+  LiveSetBatchIngestResponse,
+  LiveSetEventsSinceResponse,
+  LiveSetAckResponse,
+  LiveSetHealthResponse,
+  WeatherAlertNormalized,
+} from '../types/liveSetContracts';
+import {
+  CONTENT_PRODUCER_DEMO_PROJECT_ID,
+  PRODUCER_DEMO_CLIENT_ADDRESS,
+  PRODUCER_DEMO_CLIENT_COMPANY,
+  PRODUCER_DEMO_CLIENT_EMAIL,
+  PRODUCER_DEMO_CLIENT_NAME,
+  PRODUCER_DEMO_CLIENT_ORGANIZATION_NUMBER,
+  PRODUCER_DEMO_PRIMARY_LOCATION,
+  PRODUCER_DEMO_PROJECT_DESCRIPTION,
+  PRODUCER_DEMO_PROJECT_NAME,
+  containsLegacyProducerDemoMarker,
+} from '../constants/producerDemo';
 import { sceneComposerService } from './sceneComposerService';
 import settingsService, { getCurrentUserId } from './settingsService';
 
@@ -25,6 +47,21 @@ let dbCheckPromise: Promise<boolean> | null = null;
 // Local storage fallback for projects
 const PROJECTS_STORAGE_KEY = 'casting-projects';
 let cachedProjects: CastingProject[] = [];
+const TROLL_DEMO_PROJECT_ID = 'troll-project-2026';
+const PROJECT_FETCH_CACHE_TTL_MS = 2000;
+const inFlightProjectRequests = new Map<string, Promise<CastingProject | null>>();
+const projectFetchCache = new Map<string, { project: CastingProject | null; cachedAt: number }>();
+
+const invalidateProjectFetchCache = (projectId?: string): void => {
+  if (projectId) {
+    projectFetchCache.delete(projectId);
+    inFlightProjectRequests.delete(projectId);
+    return;
+  }
+
+  projectFetchCache.clear();
+  inFlightProjectRequests.clear();
+};
 
 const hydrateProjects = async (): Promise<void> => {
   try {
@@ -62,6 +99,183 @@ function getProjectsFromStorage(): CastingProject[] {
 function saveProjectsToStorage(projects: CastingProject[]): void {
   cachedProjects = projects;
   void settingsService.setSetting(PROJECTS_STORAGE_KEY, projects, { userId: getCurrentUserId() });
+}
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+
+const readFirstNonEmptyString = (...values: unknown[]): string | undefined => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+};
+
+const resolveCrewRole = (crewMember: CrewMember): string => {
+  const source = asRecord(crewMember) ?? {};
+  const nested = asRecord(source.crew_data) ?? asRecord(source.crewData);
+  return (
+    readFirstNonEmptyString(
+      source.role,
+      source.crewRole,
+      source.crew_role,
+      source.position,
+      source.title,
+      source.jobTitle,
+      source.job_title,
+      nested?.role,
+      nested?.crewRole,
+      nested?.position,
+      nested?.title,
+      source.department,
+    ) || 'Crew-medlem'
+  );
+};
+
+function normalizeCrewMember(crewMember: CrewMember): { member: CrewMember; changed: boolean } {
+  const currentRole = readFirstNonEmptyString((crewMember as Record<string, unknown>).role);
+  const nextRole = resolveCrewRole(crewMember);
+  if (currentRole === nextRole) {
+    return { member: crewMember, changed: false };
+  }
+  return {
+    member: {
+      ...(crewMember as Record<string, unknown>),
+      role: nextRole,
+    } as CrewMember,
+    changed: true,
+  };
+}
+
+function normalizeProject(project: CastingProject): { project: CastingProject; changed: boolean } {
+  const sourceCrew = Array.isArray(project.crew) ? project.crew : [];
+  const sourceUserRoles = Array.isArray((project as Record<string, unknown>).userRoles)
+    ? ((project as Record<string, unknown>).userRoles as UserRole[])
+    : [];
+  let changed = !Array.isArray(project.crew);
+  const normalizedCrew = sourceCrew.map((member) => {
+    const normalized = normalizeCrewMember(member);
+    if (normalized.changed) {
+      changed = true;
+    }
+    return normalized.member;
+  });
+
+  const normalizedUserRoles = sourceUserRoles.map((role) => {
+    const nextRole: UserRole = {
+      ...role,
+      projectId: role.projectId ?? role.project_id ?? project.id,
+      userId: role.userId ?? role.user_id,
+      createdAt: role.createdAt ?? role.created_at,
+      updatedAt: role.updatedAt ?? role.updated_at,
+    };
+    if (
+      nextRole.projectId !== role.projectId ||
+      nextRole.userId !== role.userId ||
+      nextRole.createdAt !== role.createdAt ||
+      nextRole.updatedAt !== role.updatedAt
+    ) {
+      changed = true;
+    }
+    return nextRole;
+  });
+  if (!Array.isArray((project as Record<string, unknown>).userRoles)) {
+    changed = true;
+  }
+
+  if (!changed) {
+    return { project, changed: false };
+  }
+
+  return {
+    project: {
+      ...project,
+      crew: normalizedCrew,
+      userRoles: normalizedUserRoles,
+    },
+    changed: true,
+  };
+}
+
+function normalizeProjects(projects: CastingProject[]): { projects: CastingProject[]; changed: boolean } {
+  let changed = false;
+  const normalized = projects.map((project) => {
+    const next = normalizeProject(project);
+    if (next.changed) {
+      changed = true;
+    }
+    return next.project;
+  });
+  return { projects: normalized, changed };
+}
+
+function isTrollDemoProject(project: CastingProject): boolean {
+  const projectId = String(project.id || '').trim().toLowerCase();
+  const projectName = String(project.name || '').trim().toLowerCase();
+  return projectId === TROLL_DEMO_PROJECT_ID || projectName === 'troll';
+}
+
+function isLegacyContentProducerDemoProject(project: CastingProject): boolean {
+  const projectId = String(project.id || '').trim().toLowerCase();
+  if (projectId !== CONTENT_PRODUCER_DEMO_PROJECT_ID) {
+    return false;
+  }
+
+  const crewSummary = (project.crew || [])
+    .map((member) => `${String(member.name || '')} ${String(member.role || '')}`)
+    .join(' ');
+  const roleSummary = (project.roles || [])
+    .map((role) => `${String(role.name || '')} ${String(role.description || '')}`)
+    .join(' ');
+
+  return (
+    containsLegacyProducerDemoMarker(
+      project.name,
+      project.description,
+      String(project.clientName || ''),
+      String(project.clientCompanyName || ''),
+      crewSummary,
+      roleSummary
+    ) ||
+    !String(project.clientName || '').trim() ||
+    !String(project.clientCompanyName || '').trim()
+  );
+}
+
+function producerDemoProjectNeedsUpgrade(project: CastingProject): boolean {
+  if (isLegacyContentProducerDemoProject(project)) {
+    return true;
+  }
+
+  const sceneBreakdowns = Array.isArray(project.sceneBreakdowns) ? project.sceneBreakdowns : [];
+  const shotLists = Array.isArray(project.shotLists) ? project.shotLists : [];
+  const productionDays = Array.isArray(project.productionDays) ? project.productionDays : [];
+
+  return (
+    String(project.name || '').trim() !== PRODUCER_DEMO_PROJECT_NAME ||
+    !String(project.clientName || '').trim() ||
+    !String(project.clientCompanyName || '').trim() ||
+    sceneBreakdowns.length < 3 ||
+    shotLists.length < 3 ||
+    productionDays.length < 2
+  );
+}
+
+function isTransientProjectFetchError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    error.name === 'AbortError' ||
+    message.includes('failed to fetch') ||
+    message.includes('networkerror') ||
+    message.includes('load failed') ||
+    message.includes('err_aborted')
+  );
 }
 
 /**
@@ -114,7 +328,11 @@ async function checkDatabaseAvailability(): Promise<boolean> {
  */
 async function getProjectsFromDb(): Promise<CastingProject[]> {
   // Get local storage data first
-  const localProjects = getProjectsFromStorage();
+  const normalizedLocal = normalizeProjects(getProjectsFromStorage());
+  const localProjects = normalizedLocal.projects;
+  if (normalizedLocal.changed) {
+    saveProjectsToStorage(localProjects);
+  }
 
   const dbOk = await checkDatabaseAvailability();
   if (!dbOk) {
@@ -128,7 +346,9 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
       throw new Error(`Failed to fetch projects: ${response.statusText}`);
     }
     const data = await response.json();
-    const dbProjects = Array.isArray(data) ? data : data.projects || [];
+    const dbProjectsRaw = Array.isArray(data) ? data : data.projects || [];
+    const normalizedDb = normalizeProjects(dbProjectsRaw);
+    const dbProjects = normalizedDb.projects;
     
     // Only use DB projects if they have richer data than local
     // This prevents overwriting mock data with empty DB data
@@ -171,7 +391,11 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
     // Return local data if it's richer
     return localProjects;
   } catch (error) {
-    console.error('Error fetching projects from database:', error);
+    if (isTransientProjectFetchError(error)) {
+      console.warn('Project fetch interrupted, using local projects');
+    } else {
+      console.error('Error fetching projects from database:', error);
+    }
     // Fall back to local storage
     return localProjects;
   }
@@ -181,6 +405,13 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
  * Save project to database with fallback to storage
  */
 async function saveProjectToDb(project: CastingProject): Promise<void> {
+  const normalizedProject = normalizeProject(project);
+  if (normalizedProject.changed) {
+    project = normalizedProject.project;
+  }
+
+  invalidateProjectFetchCache(project.id);
+
   // Always save to storage first
   const projects = getProjectsFromStorage();
   const existingIndex = projects.findIndex(p => p.id === project.id);
@@ -215,6 +446,8 @@ async function saveProjectToDb(project: CastingProject): Promise<void> {
  * Delete project from database with fallback to storage
  */
 async function deleteProjectFromDb(id: string): Promise<void> {
+  invalidateProjectFetchCache(id);
+
   // Remove from storage first
   let projects = getProjectsFromStorage();
   projects = projects.filter(p => p.id !== id);
@@ -236,11 +469,24 @@ async function deleteProjectFromDb(id: string): Promise<void> {
 }
 
 export const castingService = {
+  getTrollDemoProjectId(): string {
+    return TROLL_DEMO_PROJECT_ID;
+  },
+
+  getContentProducerDemoProjectId(): string {
+    return CONTENT_PRODUCER_DEMO_PROJECT_ID;
+  },
+
+  isTrollDemoProject(project: CastingProject): boolean {
+    return isTrollDemoProject(project);
+  },
+
   /**
    * Get all projects from database or storage
    */
   async getProjects(): Promise<CastingProject[]> {
     try {
+      invalidateProjectFetchCache();
       return await getProjectsFromDb();
     } catch (error) {
       console.error('Database fetch failed, falling back to storage:', error);
@@ -254,42 +500,77 @@ export const castingService = {
    */
   async getProject(id: string): Promise<CastingProject | null> {
     // Check local storage first
-    const localProjects = getProjectsFromStorage();
-    const localProject = localProjects.find(p => p.id === id);
-    
-    try {
-      const response = await fetch(`/api/casting/projects/${id}`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          return localProject || null;
-        }
-        throw new Error(`Failed to fetch project: ${response.statusText}`);
-      }
-      const dbProject = await response.json();
-      
-      // Compare richness - prefer richer data (check both arrays and counts)
-      const dbHasData = (dbProject?.candidates?.length ?? 0) > 0 || 
-                        (dbProject?.roles?.length ?? 0) > 0 || 
-                        (dbProject?.crew?.length ?? 0) > 0 ||
-                        (dbProject?.candidatesCount ?? 0) > 0 ||
-                        (dbProject?.rolesCount ?? 0) > 0 ||
-                        (dbProject?.crewCount ?? 0) > 0;
-      const localHasData = (localProject?.candidates?.length ?? 0) > 0 || 
-                           (localProject?.roles?.length ?? 0) > 0 || 
-                           (localProject?.crew?.length ?? 0) > 0 ||
-                           ((localProject?.candidatesCount ?? 0) > 0) ||
-                           ((localProject?.rolesCount ?? 0) > 0) ||
-                           ((localProject?.crewCount ?? 0) > 0);
-      
-      if (localHasData && !dbHasData) {
-        return localProject ?? null;
-      }
-      
-      return dbProject ?? null;
-    } catch (_error) {
-      // Fall back to storage
-      return localProject || null;
+    const normalizedLocal = normalizeProjects(getProjectsFromStorage());
+    const localProjects = normalizedLocal.projects;
+    if (normalizedLocal.changed) {
+      saveProjectsToStorage(localProjects);
     }
+    const localProject = localProjects.find(p => p.id === id);
+
+    const cached = projectFetchCache.get(id);
+    if (cached && Date.now() - cached.cachedAt < PROJECT_FETCH_CACHE_TTL_MS) {
+      return cached.project;
+    }
+
+    const existingRequest = inFlightProjectRequests.get(id);
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    const request = (async (): Promise<CastingProject | null> => {
+      try {
+        const response = await fetch(`/api/casting/projects/${id}`);
+        if (!response.ok) {
+          if (response.status === 404) {
+            const fallbackProject = localProject || null;
+            projectFetchCache.set(id, { project: fallbackProject, cachedAt: Date.now() });
+            return fallbackProject;
+          }
+          throw new Error(`Failed to fetch project: ${response.statusText}`);
+        }
+        const dbProjectRaw = await response.json();
+        const normalizedDbProject = dbProjectRaw
+          ? normalizeProject(dbProjectRaw as CastingProject)
+          : { project: null as CastingProject | null, changed: false };
+        const dbProject = normalizedDbProject.project;
+
+        const dbHasData = (dbProject?.candidates?.length ?? 0) > 0 ||
+                          (dbProject?.roles?.length ?? 0) > 0 ||
+                          (dbProject?.crew?.length ?? 0) > 0 ||
+                          (dbProject?.candidatesCount ?? 0) > 0 ||
+                          (dbProject?.rolesCount ?? 0) > 0 ||
+                          (dbProject?.crewCount ?? 0) > 0;
+        const localHasData = (localProject?.candidates?.length ?? 0) > 0 ||
+                             (localProject?.roles?.length ?? 0) > 0 ||
+                             (localProject?.crew?.length ?? 0) > 0 ||
+                             ((localProject?.candidatesCount ?? 0) > 0) ||
+                             ((localProject?.rolesCount ?? 0) > 0) ||
+                             ((localProject?.crewCount ?? 0) > 0);
+
+        const preferredProject = localHasData && !dbHasData
+          ? localProject ?? null
+          : dbProject ?? null;
+
+        if (dbProject && normalizedDbProject.changed) {
+          const mergedProjects = localProjects
+            .filter(project => project.id !== dbProject.id)
+            .concat(dbProject);
+          saveProjectsToStorage(mergedProjects);
+        }
+
+        projectFetchCache.set(id, { project: preferredProject, cachedAt: Date.now() });
+        return preferredProject;
+      } catch (_error) {
+        const fallbackProject = localProject || null;
+        projectFetchCache.set(id, { project: fallbackProject, cachedAt: Date.now() });
+        return fallbackProject;
+      } finally {
+        inFlightProjectRequests.delete(id);
+      }
+    })();
+
+    inFlightProjectRequests.set(id, request);
+    return request;
   },
 
   /**
@@ -939,6 +1220,207 @@ export const castingService = {
   },
 
   // ============================================================================
+  // Live Set Sync (session + event stream)
+  // ============================================================================
+
+  async startLiveSetSession(
+    projectId: string,
+    payload: {
+      sessionId?: string;
+      operatorId: string;
+      deviceId: string;
+      shootingDayId?: string;
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<LiveSetSession> {
+    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to start live set session: ${response.status}`);
+    }
+    const data = await response.json() as { success?: boolean; session?: LiveSetSession };
+    if (!data?.success || !data?.session) {
+      throw new Error('Live set session response missing session payload');
+    }
+    return data.session;
+  },
+
+  async batchIngestLiveSetEvents(
+    projectId: string,
+    payload: LiveSetBatchIngestRequest,
+  ): Promise<LiveSetBatchIngestResponse> {
+    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/events/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to sync live set events: ${response.status}`);
+    }
+    const data = await response.json() as LiveSetBatchIngestResponse;
+    return {
+      success: Boolean(data?.success),
+      ackedEventIds: Array.isArray(data?.ackedEventIds) ? data.ackedEventIds : [],
+      rejected: Array.isArray(data?.rejected) ? data.rejected : [],
+      conflicts: Array.isArray(data?.conflicts) ? data.conflicts : [],
+      serverTime: typeof data?.serverTime === 'string' ? data.serverTime : new Date().toISOString(),
+    };
+  },
+
+  async getLiveSetEventsSince(projectId: string, since?: string): Promise<LiveSetEventsSinceResponse> {
+    const query = new URLSearchParams();
+    if (since) query.set('since', since);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/events${suffix}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch live set events: ${response.status}`);
+    }
+    const data = await response.json() as LiveSetEventsSinceResponse;
+    return {
+      success: Boolean(data?.success),
+      events: Array.isArray(data?.events) ? data.events : [],
+      conflicts: Array.isArray(data?.conflicts) ? data.conflicts : [],
+      serverCursor: typeof data?.serverCursor === 'string' ? data.serverCursor : undefined,
+    };
+  },
+
+  async ackLiveSetEvents(
+    projectId: string,
+    payload: { sessionId: string; eventIds: string[] },
+  ): Promise<LiveSetAckResponse> {
+    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/sync/ack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to acknowledge live set events: ${response.status}`);
+    }
+    const data = await response.json() as LiveSetAckResponse;
+    return {
+      success: Boolean(data?.success),
+      ackedEventIds: Array.isArray(data?.ackedEventIds) ? data.ackedEventIds : [],
+      unknownEventIds: Array.isArray(data?.unknownEventIds) ? data.unknownEventIds : [],
+    };
+  },
+
+  async getLiveSetHealth(projectId: string): Promise<LiveSetHealthResponse> {
+    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/health`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch live set health: ${response.status}`);
+    }
+    const data = await response.json() as LiveSetHealthResponse;
+    return {
+      success: Boolean(data?.success),
+      status: data?.status ?? 'degraded',
+      dependencies: data?.dependencies ?? {
+        db: 'degraded',
+        weatherUpstream: 'degraded',
+        websocket: 'degraded',
+      },
+      timestamp: data?.timestamp ?? new Date().toISOString(),
+    };
+  },
+
+  async getLiveSetWeather(
+    projectId: string,
+    payload: { location?: string; lat?: number; lon?: number },
+  ): Promise<{
+    success: boolean;
+    current: {
+      location?: string;
+      temperature?: number;
+      precipitation?: number;
+      windSpeed?: number;
+      symbolCode?: string;
+      source?: string;
+      timestamp?: string;
+      cache?: { hit: boolean; ttlMs: number };
+    };
+    alerts: WeatherAlertNormalized[];
+  }> {
+    const query = new URLSearchParams();
+    if (typeof payload.location === 'string' && payload.location.trim()) {
+      query.set('location', payload.location.trim());
+    }
+    if (typeof payload.lat === 'number' && Number.isFinite(payload.lat)) {
+      query.set('lat', payload.lat.toString());
+    }
+    if (typeof payload.lon === 'number' && Number.isFinite(payload.lon)) {
+      query.set('lon', payload.lon.toString());
+    }
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/weather${suffix}`);
+    let data: {
+      success?: boolean;
+      current?: Record<string, unknown>;
+      alerts?: WeatherAlertNormalized[];
+      cache?: { hit?: boolean; ttlMs?: number };
+    } | null = null;
+
+    if (!response.ok && response.status === 404) {
+      // Local/demo projects may not exist in backend DB yet.
+      // Fallback to generic weather endpoint to keep Live Set operational.
+      const location = typeof payload.location === 'string' && payload.location.trim()
+        ? payload.location.trim().toLowerCase()
+        : 'oslo';
+      const fallbackSuffix = query.toString() ? `?${query.toString()}` : '';
+      const fallbackResponse = await fetch(`/api/price-administration/weather/current/${encodeURIComponent(location)}${fallbackSuffix}`);
+      if (fallbackResponse.ok) {
+        const fallback = await fallbackResponse.json() as Record<string, unknown>;
+        data = {
+          success: true,
+          current: {
+            location: typeof fallback.location === 'string' ? fallback.location : payload.location,
+            temperature: typeof fallback.temperature === 'number' ? fallback.temperature : undefined,
+            precipitation: typeof fallback.precipitation === 'number' ? fallback.precipitation : 0,
+            windSpeed: typeof fallback.windSpeed === 'number' ? fallback.windSpeed : 0,
+            symbolCode: typeof fallback.symbolCode === 'string' ? fallback.symbolCode : undefined,
+            source: typeof fallback.source === 'string' ? fallback.source : 'yr_api',
+            timestamp: typeof fallback.timestamp === 'string' ? fallback.timestamp : new Date().toISOString(),
+          },
+          alerts: [],
+          cache: { hit: false, ttlMs: 0 },
+        };
+      } else {
+        throw new Error(`Failed to fetch live set weather: ${response.status}`);
+      }
+    } else if (!response.ok) {
+      throw new Error(`Failed to fetch live set weather: ${response.status}`);
+    } else {
+      data = await response.json() as {
+        success?: boolean;
+        current?: Record<string, unknown>;
+        alerts?: WeatherAlertNormalized[];
+        cache?: { hit?: boolean; ttlMs?: number };
+      };
+    }
+
+    const current = (data?.current ?? {}) as Record<string, unknown>;
+    const cache = data?.cache;
+    return {
+      success: Boolean(data?.success),
+      current: {
+        location: typeof current.location === 'string' ? current.location : undefined,
+        temperature: typeof current.temperature === 'number' ? current.temperature : undefined,
+        precipitation: typeof current.precipitation === 'number' ? current.precipitation : undefined,
+        windSpeed: typeof current.windSpeed === 'number' ? current.windSpeed : undefined,
+        symbolCode: typeof current.symbolCode === 'string' ? current.symbolCode : undefined,
+        source: typeof current.source === 'string' ? current.source : undefined,
+        timestamp: typeof current.timestamp === 'string' ? current.timestamp : undefined,
+        cache: {
+          hit: Boolean(cache?.hit),
+          ttlMs: typeof cache?.ttlMs === 'number' ? cache.ttlMs : 0,
+        },
+      },
+      alerts: Array.isArray(data?.alerts) ? data.alerts : [],
+    };
+  },
+
+  // ============================================================================
   // Team Dashboard Snapshots
   // ============================================================================
 
@@ -1022,7 +1504,13 @@ export const castingService = {
    */
   async getUserRoles(projectId: string): Promise<UserRole[]> {
     const project = await this.getProject(projectId);
-    return project?.userRoles || [];
+    return (project?.userRoles || []).map((role) => ({
+      ...role,
+      projectId: role.projectId ?? role.project_id ?? projectId,
+      userId: role.userId ?? role.user_id,
+      createdAt: role.createdAt ?? role.created_at,
+      updatedAt: role.updatedAt ?? role.updated_at,
+    }));
   },
 
   /**
@@ -1125,6 +1613,7 @@ export const castingService = {
    * Singleton: multiple callers share the same in-flight promise.
    */
   _initPromise: null as Promise<void> | null,
+  _contentProducerInitPromise: null as Promise<void> | null,
 
   async initializeMockData(): Promise<void> {
     if (!this._initPromise) {
@@ -1133,11 +1622,568 @@ export const castingService = {
     return this._initPromise;
   },
 
+  async initializeContentProducerDemoData(): Promise<void> {
+    if (!this._contentProducerInitPromise) {
+      this._contentProducerInitPromise = this._doInitializeContentProducerDemoData();
+    }
+    return this._contentProducerInitPromise;
+  },
+
+  async _doInitializeContentProducerDemoData(): Promise<void> {
+    let existingProjects: CastingProject[] = [];
+    let existingDemoProject: CastingProject | undefined;
+    try {
+      existingProjects = await this.getProjects();
+      existingDemoProject = existingProjects.find(
+        (project) => String(project.id || '').trim().toLowerCase() === CONTENT_PRODUCER_DEMO_PROJECT_ID
+      );
+      if (existingDemoProject && !producerDemoProjectNeedsUpgrade(existingDemoProject)) {
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking existing content producer projects:', error);
+    }
+
+    const now = new Date().toISOString();
+    const producerManuscriptId = `content-producer-demo-${CONTENT_PRODUCER_DEMO_PROJECT_ID}`;
+    const producerSceneIds = {
+      kickoff: `${producerManuscriptId}-scene-1`,
+      training: `${producerManuscriptId}-scene-2`,
+      post: `${producerManuscriptId}-scene-3`,
+    } as const;
+    const producerSceneBreakdowns: SceneBreakdown[] = [
+      {
+        id: producerSceneIds.kickoff,
+        manuscriptId: producerManuscriptId,
+        projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        sceneNumber: '1',
+        sceneHeading: `INT. MØTEROM HOS ${PRODUCER_DEMO_CLIENT_COMPANY.toUpperCase()} - DAY`,
+        locationName: PRODUCER_DEMO_CLIENT_COMPANY,
+        intExt: 'INT',
+        timeOfDay: 'DAY',
+        description: 'Kickoff med kunden der mål, risikobilde og godkjenningsflyt settes før produksjon.',
+        characters: ['PRODUSENT', 'KLIENT'],
+        propsNeeded: ['Brief', 'Risikokart', 'Leveranseoversikt'],
+        storyboardFrames: [
+          {
+            id: `${producerSceneIds.kickoff}-frame-1`,
+            shotNumber: '1A',
+            title: 'Kickoff overview',
+            description: 'Bredt møtebilde med klient og produsent rundt brief og leveranseplan.',
+            imageUrl: '/role-room-assets/roleroom_producer.webp',
+            thumbnailUrl: '/role-room-assets/roleroom_producer_thumb.webp',
+            cameraAngle: 'Eye Level',
+            movement: 'Static',
+            duration: 6,
+          },
+          {
+            id: `${producerSceneIds.kickoff}-frame-2`,
+            shotNumber: '1B',
+            title: 'Approval detail',
+            description: 'Detalj av risikokart, leveransefaser og godkjenningspunkter.',
+            imageUrl: '/role-room-assets/roleroom_contract.webp',
+            thumbnailUrl: '/role-room-assets/roleroom_contract.webp',
+            cameraAngle: 'High Angle',
+            movement: 'Static',
+            duration: 4,
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: producerSceneIds.training,
+        manuscriptId: producerManuscriptId,
+        projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        sceneNumber: '2',
+        sceneHeading: `INT. ${PRODUCER_DEMO_PRIMARY_LOCATION.toUpperCase()} - DAY`,
+        locationName: PRODUCER_DEMO_PRIMARY_LOCATION,
+        intExt: 'INT',
+        timeOfDay: 'DAY',
+        description: 'En ny tekniker ledes gjennom sikker start, radiosamband og kontrollromsoverlevering.',
+        characters: ['HMS-INSTRUKTØR', 'NY TEKNIKER', 'FOTOGRAF'],
+        propsNeeded: ['Verneutstyr', 'Radio', 'SJA-skjema'],
+        storyboardFrames: [
+          {
+            id: `${producerSceneIds.training}-frame-1`,
+            shotNumber: '2A',
+            title: 'Safe start wide',
+            description: 'Instruktør og tekniker ved sikkerhetsveggen i treningssenteret.',
+            imageUrl: '/role-room-assets/roleroom_filmfotograf.webp',
+            thumbnailUrl: '/role-room-assets/roleroom_filmfotograf_thumb.webp',
+            cameraAngle: 'Eye Level',
+            movement: 'Static',
+            duration: 7,
+          },
+          {
+            id: `${producerSceneIds.training}-frame-2`,
+            shotNumber: '2B',
+            title: 'PPE insert',
+            description: 'Detalj av hjelm, kortleser og radio før feltadgang.',
+            imageUrl: '/role-room-assets/roleroom_camera.webp',
+            thumbnailUrl: '/role-room-assets/roleroom_camera.webp',
+            cameraAngle: 'Close-up',
+            movement: 'Static',
+            duration: 4,
+          },
+          {
+            id: `${producerSceneIds.training}-frame-3`,
+            shotNumber: '2C',
+            title: 'Control room handover',
+            description: 'Overlevering i kontrollrommet med fokus på kommunikasjon og rutine.',
+            imageUrl: '/role-room-assets/role-video.webp',
+            thumbnailUrl: '/role-room-assets/role-video.webp',
+            cameraAngle: 'Over Shoulder',
+            movement: 'Truck',
+            duration: 6,
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: producerSceneIds.post,
+        manuscriptId: producerManuscriptId,
+        projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        sceneNumber: '3',
+        sceneHeading: 'INT. REDIGERINGSROM - EVENING',
+        locationName: 'REDIGERINGSROM',
+        intExt: 'INT',
+        timeOfDay: 'EVENING',
+        description: 'Klientreview, siste korrigeringer og eksport av tre leveranseversjoner.',
+        characters: ['PRODUSENT', 'KLIENT'],
+        propsNeeded: ['Redigeringsstasjon', 'Kommentarspor', 'Versjonsliste'],
+        storyboardFrames: [
+          {
+            id: `${producerSceneIds.post}-frame-1`,
+            shotNumber: '3A',
+            title: 'Edit suite overview',
+            description: 'Bredt bilde av redigeringsrom med tre versjoner i timeline.',
+            imageUrl: '/role-room-assets/roleroom_dashboard.webp',
+            thumbnailUrl: '/role-room-assets/roleroom_dashboard.webp',
+            cameraAngle: 'Eye Level',
+            movement: 'Static',
+            duration: 5,
+          },
+          {
+            id: `${producerSceneIds.post}-frame-2`,
+            shotNumber: '3B',
+            title: 'Review notes',
+            description: 'Kommentarspor og klientmerknader på skjerm før endelig eksport.',
+            imageUrl: '/role-room-assets/roleroom_chat.webp',
+            thumbnailUrl: '/role-room-assets/roleroom_chat.webp',
+            cameraAngle: 'High Angle',
+            movement: 'Static',
+            duration: 4,
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+    const producerProductionDays: ProductionDay[] = [
+      {
+        id: 'cp-day-1',
+        projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        date: '2026-04-12',
+        callTime: '08:30',
+        wrapTime: '11:00',
+        scenes: [producerSceneIds.kickoff],
+        notes: 'Kickoff, klientbrief og endelig godkjenning av leveranseplan.',
+        status: 'planned',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'cp-day-2',
+        projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        date: '2026-04-18',
+        callTime: '07:30',
+        wrapTime: '17:00',
+        scenes: [producerSceneIds.training],
+        notes: 'Produksjonsdag i opplæringssenteret med HMS, onboarding og rekrutteringsdekning.',
+        status: 'planned',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'cp-day-3',
+        projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        date: '2026-04-22',
+        callTime: '10:00',
+        wrapTime: '15:00',
+        scenes: [producerSceneIds.post],
+        notes: 'Klientreview, siste justeringer og eksport av godkjenningspakke.',
+        status: 'planned',
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+    const producerShotLists: ShotList[] = [
+      {
+        id: 'cp-shotlist-1',
+        projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        sceneId: producerSceneIds.kickoff,
+        sceneName: 'Kickoff og brief',
+        productionContext: 'corporate',
+        productionPhase: 'planning',
+        notes: 'Vis klientbrief, risikobilde og tydelig godkjenningsflyt.',
+        createdAt: now,
+        updatedAt: now,
+        shots: [
+          {
+            id: 'cp-shot-1A',
+            sceneId: producerSceneIds.kickoff,
+            description: 'Wide av kickoff-bord med klient og produsent',
+            shotType: 'Wide',
+            cameraAngle: 'Eye Level',
+            cameraMovement: 'Static',
+            duration: 6,
+            priority: 'critical',
+            status: 'completed',
+            imageUrl: '/role-room-assets/roleroom_producer.webp',
+            createdAt: now,
+            updatedAt: now,
+          } as CastingShot,
+          {
+            id: 'cp-shot-1B',
+            sceneId: producerSceneIds.kickoff,
+            description: 'Insert av brief, risikokart og leveranseoversikt',
+            shotType: 'Detail',
+            cameraAngle: 'High Angle',
+            cameraMovement: 'Static',
+            duration: 4,
+            priority: 'important',
+            status: 'completed',
+            imageUrl: '/role-room-assets/roleroom_contract.webp',
+            createdAt: now,
+            updatedAt: now,
+          } as CastingShot,
+        ],
+      },
+      {
+        id: 'cp-shotlist-2',
+        projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        sceneId: producerSceneIds.training,
+        sceneName: 'Sikker start i treningssenter',
+        productionContext: 'corporate',
+        productionPhase: 'shooting',
+        notes: 'Skal dekke onboarding, HMS og rekrutteringsvariant i samme opptak.',
+        createdAt: now,
+        updatedAt: now,
+        shots: [
+          {
+            id: 'cp-shot-2A',
+            sceneId: producerSceneIds.training,
+            description: 'Hero-wide av instruktør og ny tekniker ved sikkerhetsveggen',
+            shotType: 'Wide',
+            cameraAngle: 'Eye Level',
+            cameraMovement: 'Static',
+            duration: 7,
+            priority: 'critical',
+            status: 'in_progress',
+            imageUrl: '/role-room-assets/roleroom_filmfotograf.webp',
+            createdAt: now,
+            updatedAt: now,
+          } as CastingShot,
+          {
+            id: 'cp-shot-2B',
+            sceneId: producerSceneIds.training,
+            description: 'Insert av verneutstyr, kortleser og radio',
+            shotType: 'Detail',
+            cameraAngle: 'Close-up',
+            cameraMovement: 'Static',
+            duration: 4,
+            priority: 'important',
+            status: 'in_progress',
+            imageUrl: '/role-room-assets/roleroom_camera.webp',
+            createdAt: now,
+            updatedAt: now,
+          } as CastingShot,
+          {
+            id: 'cp-shot-2C',
+            sceneId: producerSceneIds.training,
+            description: 'OTS av overlevering i kontrollrommet',
+            shotType: 'Over Shoulder',
+            cameraAngle: 'Eye Level',
+            cameraMovement: 'Truck',
+            duration: 6,
+            priority: 'important',
+            status: 'not_started',
+            imageUrl: '/role-room-assets/role-video.webp',
+            createdAt: now,
+            updatedAt: now,
+          } as CastingShot,
+        ],
+      },
+      {
+        id: 'cp-shotlist-3',
+        projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        sceneId: producerSceneIds.post,
+        sceneName: 'Klientreview og eksport',
+        productionContext: 'corporate',
+        productionPhase: 'review',
+        notes: 'Godkjenningspakke, kommentarspor og endelig eksport.',
+        createdAt: now,
+        updatedAt: now,
+        shots: [
+          {
+            id: 'cp-shot-3A',
+            sceneId: producerSceneIds.post,
+            description: 'Wide av redigeringsrom og tre leveranseversjoner',
+            shotType: 'Wide',
+            cameraAngle: 'Eye Level',
+            cameraMovement: 'Static',
+            duration: 5,
+            priority: 'important',
+            status: 'completed',
+            imageUrl: '/role-room-assets/roleroom_dashboard.webp',
+            createdAt: now,
+            updatedAt: now,
+          } as CastingShot,
+          {
+            id: 'cp-shot-3B',
+            sceneId: producerSceneIds.post,
+            description: 'Nærbilde av klientkommentarer og godkjenningsstatus',
+            shotType: 'Detail',
+            cameraAngle: 'High Angle',
+            cameraMovement: 'Static',
+            duration: 4,
+            priority: 'important',
+            status: 'completed',
+            imageUrl: '/role-room-assets/roleroom_chat.webp',
+            createdAt: now,
+            updatedAt: now,
+          } as CastingShot,
+        ],
+      },
+    ];
+    const demoProject: CastingProject = {
+      ...(existingDemoProject || {}),
+      id: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+      name: PRODUCER_DEMO_PROJECT_NAME,
+      description: PRODUCER_DEMO_PROJECT_DESCRIPTION,
+      status: 'active',
+      genre: 'commercial',
+      projectType: 'corporate-training',
+      startDate: '2026-04-12',
+      endDate: '2026-04-24',
+      budget: 325000,
+      currency: 'NOK',
+      clientName: PRODUCER_DEMO_CLIENT_NAME,
+      clientEmail: PRODUCER_DEMO_CLIENT_EMAIL,
+      clientCompanyName: PRODUCER_DEMO_CLIENT_COMPANY,
+      clientOrganizationNumber: PRODUCER_DEMO_CLIENT_ORGANIZATION_NUMBER,
+      clientCompanyAddress: PRODUCER_DEMO_CLIENT_ADDRESS,
+      roles: [
+        {
+          id: 'cp-role-hms-host',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          name: 'HMS-instruktor',
+          description: 'Leder sikkerhetssekvensene og forklarer sjekkpunkter for nye teknikere.',
+          status: 'casting',
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'cp-role-extra-shift-lead',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          name: 'Medvirkende - skiftleder',
+          description: 'Demonstrerer oppmote, radiosamband og sikker overlevering i kontrollrommet.',
+          status: 'casting',
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      candidates: [
+        {
+          id: 'cp-candidate-1',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          roleId: 'cp-role-hms-host',
+          name: 'Lea Bjerke',
+          email: 'lea.bjerke@northwinddemo.no',
+          phone: '+47 900 11 223',
+          status: 'shortlisted',
+          notes: 'Trygg formidler med troverdig energi for HMS- og onboarding-innhold.',
+          photos: ['/role-room-assets/roleroom_casting_director.webp'],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'cp-candidate-2',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          roleId: 'cp-role-extra-shift-lead',
+          name: 'Henrik Solli',
+          email: 'henrik.solli@northwinddemo.no',
+          phone: '+47 955 44 222',
+          status: 'available',
+          notes: 'Har industriell troverdighet og passer som skiftleder eller tekniker i reenactment.',
+          photos: ['/role-room-assets/roleroom_fotograf.webp'],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      crew: [
+        {
+          id: 'cp-crew-1',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          name: 'Mina Haugen',
+          role: 'producer',
+          department: 'production',
+          status: 'confirmed',
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'cp-crew-2',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          name: 'Jonas Rode',
+          role: 'cinematographer',
+          department: 'camera',
+          status: 'confirmed',
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'cp-crew-3',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          name: 'Sofie Lien',
+          role: 'sound_engineer',
+          department: 'sound',
+          status: 'confirmed',
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      schedules: [
+        {
+          id: 'cp-schedule-1',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          title: 'Kickoff med Northwind Drilling',
+          date: '2026-04-12',
+          startTime: '09:00',
+          endTime: '10:30',
+          type: 'meeting',
+          status: 'confirmed',
+          notes: 'Avklarer budskap, risikopunkter og hvilke filmer som skal brukes i onboarding og rekruttering.',
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'cp-schedule-2',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          title: 'Klientreview av shotlist og storyboard',
+          date: '2026-04-15',
+          startTime: '14:00',
+          endTime: '15:00',
+          type: 'review',
+          status: 'confirmed',
+          notes: 'Helene godkjenner sceneprioritering for sikker start-pakken.',
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'cp-schedule-3',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          title: 'Produksjonsdag - opplaeringssenter',
+          date: '2026-04-18',
+          startTime: '07:30',
+          endTime: '17:00',
+          type: 'shoot',
+          status: 'confirmed',
+          notes: 'Intervjuer, reenactments og B-roll fra kontrollrom og sikkerhetstrening.',
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      locations: [
+        {
+          id: 'cp-location-1',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          name: PRODUCER_DEMO_PRIMARY_LOCATION,
+          address: PRODUCER_DEMO_CLIENT_ADDRESS,
+          accessNotes: 'Oppmote ved resepsjon. Hjelm, vernesko og registrering kreves for alle i crew.',
+          assignedScenes: [producerSceneIds.training],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      props: [
+        {
+          id: 'cp-prop-1',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          name: 'Verneutstyr-sett',
+          category: 'wardrobe',
+          quantity: 6,
+          assignedScenes: [producerSceneIds.training],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'cp-prop-2',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          name: 'SJA-skjema og onboarding-folder',
+          category: 'document',
+          quantity: 4,
+          assignedScenes: [producerSceneIds.training],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      productionDays: producerProductionDays,
+      shotLists: producerShotLists,
+      sceneBreakdowns: producerSceneBreakdowns,
+      userRoles: [
+        {
+          id: 'cp-userrole-1',
+          projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+          userId: getCurrentUserId(),
+          role: 'content_producer',
+          permissions: {
+            canViewAll: true,
+            canEditCasting: true,
+            canEditProduction: true,
+            canEditShots: true,
+            canEditShotLists: true,
+            canManageCrew: false,
+            canManageLocations: true,
+            canApprove: false,
+            canEditScript: true,
+            canRunTableRead: true,
+            canComment: true,
+            canRequestChanges: true,
+            canViewEconomy: true,
+          },
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      createdAt: existingDemoProject?.createdAt || now,
+      updatedAt: now,
+    };
+
+    try {
+      await this.saveProject(demoProject);
+      const saved = await this.getProject(demoProject.id);
+      if (!saved) {
+        console.error('❌ Failed to verify content producer demo project was saved!');
+      }
+      if (existingDemoProject) {
+        console.log('✅ Content producer demo project migrated to business content demo');
+      } else if (existingProjects.length > 0) {
+        console.log('✅ Content producer demo project created alongside existing projects');
+      }
+    } catch (error) {
+      console.error('Failed to initialize content producer demo project:', error);
+    }
+  },
+
   async _doInitializeMockData(): Promise<void> {
     try {
       const existingProjects = await this.getProjects();
-      if (existingProjects.length > 0) {
-        // Don't overwrite existing data
+      const hasTrollDemo = existingProjects.some((project) => isTrollDemoProject(project));
+      if (hasTrollDemo) {
+        // Keep existing data intact when TROLL already exists.
         return;
       }
     } catch (error) {
@@ -1156,7 +2202,7 @@ export const castingService = {
     const shootDay6 = new Date('2026-01-27');
 
     const mockProject: CastingProject = {
-      id: 'troll-project-2026',
+      id: TROLL_DEMO_PROJECT_ID,
       name: 'TROLL',
       description: 'Norsk eventyrfilm regissert av Roar Uthaug. Når en eksplosjon i de norske fjellene avslører et urgammelt troll, må paleontologen Nora samarbeide med myndighetene for å stoppe skapningen før den når hovedstaden. En spektakulær action-eventyrfilm med VFX og storslåtte locations.',
       roles: [
@@ -1947,7 +2993,7 @@ export const castingService = {
       productionDays: [
         {
           id: 'day-1',
-          projectId: 'troll-project-2026',
+          projectId: TROLL_DEMO_PROJECT_ID,
           date: shootDay1.toISOString().split('T')[0],
           callTime: '06:00',
           wrapTime: '18:00',
@@ -1962,7 +3008,7 @@ export const castingService = {
         },
         {
           id: 'day-2',
-          projectId: 'troll-project-2026',
+          projectId: TROLL_DEMO_PROJECT_ID,
           date: shootDay2.toISOString().split('T')[0],
           callTime: '14:00',
           wrapTime: '02:00',
@@ -1977,7 +3023,7 @@ export const castingService = {
         },
         {
           id: 'day-3',
-          projectId: 'troll-project-2026',
+          projectId: TROLL_DEMO_PROJECT_ID,
           date: shootDay3.toISOString().split('T')[0],
           callTime: '08:00',
           wrapTime: '16:00',
@@ -1992,7 +3038,7 @@ export const castingService = {
         },
         {
           id: 'day-4',
-          projectId: 'troll-project-2026',
+          projectId: TROLL_DEMO_PROJECT_ID,
           date: shootDay4.toISOString().split('T')[0],
           callTime: '18:00',
           wrapTime: '06:00',
@@ -2007,7 +3053,7 @@ export const castingService = {
         },
         {
           id: 'day-5',
-          projectId: 'troll-project-2026',
+          projectId: TROLL_DEMO_PROJECT_ID,
           date: shootDay5.toISOString().split('T')[0],
           callTime: '07:00',
           wrapTime: '17:00',
@@ -2022,7 +3068,7 @@ export const castingService = {
         },
         {
           id: 'day-6',
-          projectId: 'troll-project-2026',
+          projectId: TROLL_DEMO_PROJECT_ID,
           date: shootDay6.toISOString().split('T')[0],
           callTime: '20:00',
           wrapTime: '06:00',

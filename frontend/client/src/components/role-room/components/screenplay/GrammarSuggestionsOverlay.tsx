@@ -37,12 +37,11 @@ import {
   KeyboardArrowDown as ArrowDownIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
-import type {
-  GrammarError,
-  GrammarSuggestion} from '../../services/grammarMLService';
 import {
   grammarMLService,
   useGrammarCheck,
+  type GrammarError,
+  type GrammarSuggestion,
 } from '../../services/grammarMLService';
 
 // ============================================================================
@@ -124,7 +123,6 @@ export const GrammarSuggestionsOverlay: React.FC<GrammarSuggestionsOverlayProps>
   debounceMs = 300,
   maxSuggestions = 3,
   anchorEl,
-  darkMode = true,
 }) => {
   const { errors, loading } = useGrammarCheck(content, debounceMs);
   const [selectedError, setSelectedError] = useState<GrammarError | null>(null);
@@ -242,9 +240,9 @@ export const GrammarSuggestionsOverlay: React.FC<GrammarSuggestionsOverlayProps>
     return null;
   }
 
-  const bgColor = darkMode ? 'rgba(30, 30, 50, 0.95)' : 'rgba(255, 255, 255, 0.95)';
-  const textColor = darkMode ? '#fff' : '#000';
-  const borderColor = darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  const bgColor = 'rgba(30, 30, 50, 0.95)';
+  const textColor = '#fff';
+  const borderColor = 'rgba(255,255,255,0.1)';
 
   return (
     <>
@@ -493,13 +491,11 @@ export const GrammarSuggestionsOverlay: React.FC<GrammarSuggestionsOverlayProps>
 interface AggressivenessSliderProps {
   value: number;
   onChange: (value: number) => void;
-  darkMode?: boolean;
 }
 
 export const AggressivenessSlider: React.FC<AggressivenessSliderProps> = ({
   value,
   onChange,
-  darkMode = true,
 }) => {
   const labels = ['Minimal', 'Forsiktig', 'Balansert', 'Aktiv', 'Aggressiv'];
   const labelIndex = Math.min(4, Math.floor(value * 5));
@@ -550,13 +546,7 @@ export const AggressivenessSlider: React.FC<AggressivenessSliderProps> = ({
 // Grammar Stats Widget
 // ============================================================================
 
-interface GrammarStatsWidgetProps {
-  darkMode?: boolean;
-}
-
-export const GrammarStatsWidget: React.FC<GrammarStatsWidgetProps> = ({
-  darkMode = true,
-}) => {
+export const GrammarStatsWidget: React.FC = () => {
   const [stats, setStats] = useState(grammarMLService.getStats());
 
   useEffect(() => {
@@ -566,7 +556,7 @@ export const GrammarStatsWidget: React.FC<GrammarStatsWidgetProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const bgColor = darkMode ? 'rgba(30, 30, 50, 0.8)' : 'rgba(255, 255, 255, 0.9)';
+  const bgColor = 'rgba(30, 30, 50, 0.8)';
 
   return (
     <Paper

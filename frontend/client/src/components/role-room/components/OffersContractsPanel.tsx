@@ -42,6 +42,7 @@ import {
   offersApi,
   contractsApi
 } from '../services/castingApiService';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface Candidate {
   id: string;
@@ -61,6 +62,13 @@ interface OffersContractsPanelProps {
   roles?: Role[];
   onCandidateStatusChange?: (candidateId: string, status: string) => void;
 }
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
   projectId,
@@ -537,6 +545,21 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
               multiline
               rows={2}
               fullWidth
+            />
+            <GlobalMentionHelper
+              text={notes}
+              localCandidates={[
+                ...new Set(
+                  [
+                    ...candidates.map((candidate) => candidate.name),
+                    ...roles.map((role) => role.name),
+                  ]
+                    .filter((value): value is string => typeof value === 'string')
+                    .map((value) => value.trim())
+                    .filter((value) => value.length >= 2),
+                ),
+              ]}
+              onApplySuggestion={(name) => setNotes((prev) => applyMentionSuggestion(prev, name))}
             />
           </Box>
         </DialogContent>

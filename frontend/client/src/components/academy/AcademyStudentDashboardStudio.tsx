@@ -11,7 +11,6 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  Add,
   CheckCircleOutline,
   MailOutline,
   MoreHoriz,
@@ -21,11 +20,12 @@ import {
   Stars,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
-import { useAcademy, type Course, type Enrollment, type Lesson } from '@/contexts/AcademyContext';
+import { useAcademy, type Enrollment, type Lesson } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
-import AcademyBrandMark from './AcademyBrandMark';
+import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
+import AcademyLeftSidebar from './AcademyLeftSidebar';
 
 interface AcademyStudentDashboardStudioProps {
   courseId?: string;
@@ -78,151 +78,6 @@ const placeholderBackgrounds = [
   'linear-gradient(145deg, rgba(19,24,36,0.93), rgba(11,14,22,0.98)), radial-gradient(circle at 70% 22%, rgba(248,179,33,0.22), rgba(0,0,0,0))',
 ];
 
-const fallbackCourses: Course[] = [
-  {
-    id: 'student-course-1',
-    title: 'Cinematic Filmmaking',
-    description: 'Master cinematic storytelling with practical scene work.',
-    instructor: {
-      id: 'student-instructor-1',
-      name: 'Sarah Johnson',
-      avatar: '',
-      bio: 'Filmmaker and educator',
-      profession: 'videographer',
-    },
-    thumbnail: '',
-    videoUrl: '/assets/academy/intro-video.mp4',
-    duration: 360,
-    level: 'advanced',
-    category: 'videography',
-    tags: ['filmmaking', 'cinematic'],
-    price: 36984,
-    isFree: false,
-    isPublished: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    rating: 4.8,
-    studentCount: 510,
-    lessons: [],
-    prerequisites: [],
-    learningOutcomes: [],
-    resources: [],
-  },
-  {
-    id: 'student-course-2',
-    title: 'Vocal Production Pros',
-    description: 'Production workflows for voice-centric content creators.',
-    instructor: {
-      id: 'student-instructor-2',
-      name: 'Adrian Berglund',
-      avatar: '',
-      bio: 'Audio engineer',
-      profession: 'music_producer',
-    },
-    thumbnail: '',
-    videoUrl: '/assets/academy/intro-video.mp4',
-    duration: 320,
-    level: 'advanced',
-    category: 'music_production',
-    tags: ['audio', 'vocals'],
-    price: 29900,
-    isFree: false,
-    isPublished: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    rating: 4.7,
-    studentCount: 430,
-    lessons: [],
-    prerequisites: [],
-    learningOutcomes: [],
-    resources: [],
-  },
-  {
-    id: 'student-course-3',
-    title: 'Digital Photography',
-    description: 'Light, composition, and photo storytelling from scratch.',
-    instructor: {
-      id: 'student-instructor-3',
-      name: 'Lisa Holden',
-      avatar: '',
-      bio: 'Photographer',
-      profession: 'photographer',
-    },
-    thumbnail: '',
-    videoUrl: '/assets/academy/intro-video.mp4',
-    duration: 280,
-    level: 'intermediate',
-    category: 'photography',
-    tags: ['photography'],
-    price: 25900,
-    isFree: false,
-    isPublished: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    rating: 4.6,
-    studentCount: 370,
-    lessons: [],
-    prerequisites: [],
-    learningOutcomes: [],
-    resources: [],
-  },
-];
-
-const defaultRows = (): StudentSummaryRow[] => [
-  {
-    id: 'summary-1',
-    name: 'Sarah Johnson',
-    role: 'Vocal Production Pros',
-    primaryCohort: 'Early Access · 3 Courses',
-    completionRate: 35,
-    enrolledCourses: 3,
-    actions: 3,
-    avatarTheme: 0,
-  },
-  {
-    id: 'summary-2',
-    name: 'Adrian Berglund',
-    role: 'Cinematic Filmmaking',
-    primaryCohort: '6 Courses',
-    completionRate: 84,
-    enrolledCourses: 5,
-    actions: 5,
-    avatarTheme: 1,
-  },
-  {
-    id: 'summary-3',
-    name: 'Lisa Holden',
-    role: 'Drone Pilot',
-    primaryCohort: '2 Courses',
-    completionRate: 82,
-    enrolledCourses: 2,
-    actions: 2,
-    avatarTheme: 2,
-  },
-  {
-    id: 'summary-4',
-    name: 'Jonas Ek',
-    role: 'Video Editor',
-    primaryCohort: '4 Courses',
-    completionRate: 79,
-    enrolledCourses: 4,
-    actions: 4,
-    avatarTheme: 3,
-  },
-];
-
-const defaultActivity = (): ActivityItem[] => [
-  { id: 'a1', author: 'Jonas Ek', message: 'Posted in Cinematic Photography', timestamp: '20 h ago' },
-  { id: 'a2', author: 'Lars Eriksen', message: 'Shared Lighting Examples', timestamp: '10 h ago' },
-  { id: 'a3', author: 'Sarah Johnson', message: 'Completed module discussion', timestamp: '4 h ago' },
-];
-
-const defaultPoints = (): PointItem[] => [
-  { id: 'p1', name: 'Sarah Johnson', subtitle: 'Berg // comments', points: 2310, avatarTheme: 0 },
-  { id: 'p2', name: 'Lars Eriksen', subtitle: 'Vocal Photography // replies', points: 2120, avatarTheme: 1 },
-  { id: 'p3', name: 'Jonas Ek', subtitle: 'Luden // responses', points: 1960, avatarTheme: 2 },
-];
-
 const getProgressFromEnrollment = (enrollment: Enrollment): number => {
   const progressRows = Array.isArray(enrollment?.progress) ? enrollment.progress : [];
   if (progressRows.length === 0) return 0;
@@ -246,11 +101,11 @@ const toDisplayName = (value: string, index: number): string => {
 };
 
 function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStudioProps) {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { state, getCourse, setCurrentCourse, setCurrentLesson } = useAcademy();
   const { analytics } = useEnhancedMasterIntegration();
   
-  const { navLabel } = useAcademyLocale();
+  const { navLabel, tt } = useAcademyLocale();
 
   const [mainTab, setMainTab] = useState<'explore' | 'courses' | 'library' | 'community' | 'achievements'>('courses');
   const [leftNav, setLeftNav] = useState('overview');
@@ -259,7 +114,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
     if (Array.isArray(state?.courses) && state.courses.length > 0) {
       return state.courses;
     }
-    return fallbackCourses;
+    return [];
   }, [state?.courses]);
 
   const enrollments = useMemo(() => (Array.isArray(state?.enrollments) ? state.enrollments : []), [state?.enrollments]);
@@ -267,14 +122,13 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
   const activeCourse = useMemo(() => {
     const fromParam = courseId ? getCourse(courseId) : null;
     if (fromParam) return fromParam;
-    return state.currentCourse || courses[0] || fallbackCourses[0];
+    return state.currentCourse || courses[0] || null;
   }, [courseId, courses, getCourse, state.currentCourse]);
 
   const learningPathCards = useMemo(() => {
-    const fallbackProgress = [24, 68, 52, 79];
     return courses.slice(0, 3).map((course, index) => {
       const enrollmentForCourse = enrollments.find((entry) => String(entry.courseId) === String(course.id));
-      const progress = enrollmentForCourse ? getProgressFromEnrollment(enrollmentForCourse) : fallbackProgress[index % fallbackProgress.length];
+      const progress = enrollmentForCourse ? getProgressFromEnrollment(enrollmentForCourse) : 0;
       return {
         id: String(course.id),
         title: course.title,
@@ -290,11 +144,11 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
     const enrollmentForCourse = enrollments.find((entry) => String(entry.courseId) === String(activeCourse?.id || ''));
     if (enrollmentForCourse) return getProgressFromEnrollment(enrollmentForCourse);
     const fromCard = learningPathCards[0]?.progress;
-    return Number.isFinite(fromCard) ? Number(fromCard) : 24;
+    return Number.isFinite(fromCard) ? Number(fromCard) : 0;
   }, [activeCourse?.id, enrollments, learningPathCards]);
 
   const studentRows = useMemo(() => {
-    if (enrollments.length === 0) return defaultRows();
+    if (enrollments.length === 0) return [] as StudentSummaryRow[];
 
     const grouped = new Map<string, { completion: number[]; courses: Set<string> }>();
     enrollments.forEach((enrollment) => {
@@ -324,14 +178,9 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
   }, [courses, enrollments]);
 
   const todoTasks = useMemo<TodoTask[]>(() => {
-    const fallback: TodoTask[] = [
-      { id: 'todo-1', title: 'Lighting Basics', durationLabel: '40 m', completion: 55, buttonLabel: 'Resume' },
-      { id: 'todo-2', title: 'Vocal Arrangement Breakdown', durationLabel: '62 m', completion: 48, buttonLabel: 'Continue' },
-    ];
-
-    if (!activeCourse) return fallback;
+    if (!activeCourse) return [];
     const lessons = Array.isArray(activeCourse.lessons) ? activeCourse.lessons : [];
-    if (lessons.length === 0) return fallback;
+    if (lessons.length === 0) return [];
 
     return lessons.slice(0, 2).map((lesson, index) => ({
       id: `todo-${lesson.id || index}`,
@@ -342,8 +191,13 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
     }));
   }, [activeCourse]);
 
+  const nextUpLesson = useMemo(() => {
+    if (!activeCourse || !Array.isArray(activeCourse.lessons)) return null;
+    return activeCourse.lessons[0] || null;
+  }, [activeCourse]);
+
   const discussionActivity = useMemo(() => {
-    if (studentRows.length === 0) return defaultActivity();
+    if (studentRows.length === 0) return [] as ActivityItem[];
     return studentRows.slice(0, 3).map((row, index) => ({
       id: `activity-${row.id}`,
       author: row.name,
@@ -353,7 +207,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
   }, [studentRows]);
 
   const pointsBoard = useMemo(() => {
-    if (studentRows.length === 0) return defaultPoints();
+    if (studentRows.length === 0) return [] as PointItem[];
     return studentRows
       .map((row, index) => ({
         id: `points-${row.id}`,
@@ -397,6 +251,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
       const lessons = Array.isArray(targetCourse.lessons) ? targetCourse.lessons : [];
       const firstLesson = lessons[0] || {
         id: `${targetCourse.id}-intro`,
+        courseId: String(targetCourse.id),
         title: `${targetCourse.title} Intro`,
         description: targetCourse.description || 'Course introduction',
         videoUrl: targetCourse.videoUrl || '/assets/academy/intro-video.mp4',
@@ -408,21 +263,10 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
 
       setCurrentCourse({ ...targetCourse, lessons: lessons.length > 0 ? lessons : [firstLesson] });
       setCurrentLesson(firstLesson);
-      setLocation('/academy/video-player');
+      setLocation('/academy/player-studio');
     },
     [activeCourse, courses, setCurrentCourse, setCurrentLesson, setLocation],
   );
-
-  const leftNavItems = [
-    { id: 'overview', label: navLabel('Overview'), route: '/academy/student-dashboard' },
-    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
-    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
-    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
-    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
-    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
-    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
-    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
-  ];
 
   return (
     <Box
@@ -441,118 +285,59 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
           inset: 0,
           pointerEvents: 'none',
           background:
-            'radial-gradient(circle at 78% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 44%), radial-gradient(circle at 16% 78%, rgba(82,121,204,0.12), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 30%)',
+            'radial-gradient(circle at 74% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%)',
         }}
       />
 
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
-        <Box
-          component="aside"
-          sx={{
-            width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
-            background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
-            display: 'flex',
-            flexDirection: 'column',
+        <AcademyLeftSidebar
+          activeNav={leftNav}
+          onNavigate={(navId, route) => {
+            setLeftNav(navId);
+            setLocation(route);
           }}
-        >
-          <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <AcademyBrandMark />
-            <Button
-              variant="outlined"
-              startIcon={<Add />}
-              onClick={() => setLocation('/academy/course-creator')}
-              sx={{
-                justifyContent: 'flex-start',
-                borderColor: 'rgba(248,179,33,0.55)',
-                color: '#f8d56f',
-                borderRadius: 1,
-                textTransform: 'none',
-                fontWeight: 600,
-              }}
-            >
-              Create New Course
-            </Button>
-          </Stack>
-
-          <Stack spacing={0.5} sx={{ px: 1.5 }}>
-            {leftNavItems.map((item) => {
-              const active = item.id === leftNav;
-              return (
-                <Button
-                  key={item.id}
-                  onClick={() => {
-                    setLeftNav(item.id);
-                    setLocation(item.route);
-                  }}
-                  sx={{
-                    justifyContent: 'flex-start',
-                    color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
-                    borderRadius: 1,
-                    textTransform: 'none',
-                    px: 2,
-                    py: 1.15,
-                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
-                    background: active
-                      ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
-                      : 'transparent',
-                  }}
-                >
-                  {item.label}
-                </Button>
-              );
-            })}
-          </Stack>
-
-          <Box sx={{ mt: 'auto', px: 1.8, pb: 1.2 }}>
-            <Button
-              variant="text"
-              startIcon={<Add />}
-              onClick={() => setLocation('/academy/module-manager')}
-              sx={{
-                width: '100%',
-                justifyContent: 'flex-start',
-                color: '#edf0f7',
-                textTransform: 'none',
-                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
-                borderRadius: 1,
-              }}
-            >
-              New Module
-            </Button>
-          </Box>
-
-          <Box sx={{ mt: 'auto', px: 1.8, pb: 2 }}>
-            <Typography sx={{ mb: 0.8, color: 'rgba(237,240,247,0.74)', fontWeight: 600 }}>Achievements</Typography>
-            <Box
-              sx={{
-                ...panelSx,
-                p: 0.8,
-                borderColor: 'rgba(248,179,33,0.2)',
-              }}
-            >
-              <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
-                {achievements.map((item, index) => (
-                  <Box
-                    key={item.id}
-                    sx={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: '50%',
-                      border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)',
-                      background: placeholderBackgrounds[index % placeholderBackgrounds.length],
-                      display: 'grid',
-                      placeItems: 'center',
-                    }}
-                  >
-                    <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{item.value}</Typography>
-                  </Box>
-                ))}
-              </Stack>
-            </Box>
-          </Box>
-        </Box>
+          onCreateCourse={() => {
+            setLeftNav('curriculum');
+            setLocation('/academy/curriculum?createCompetency=1');
+          }}
+          tt={tt}
+          navLabel={navLabel}
+          bottomAction={{
+            label: tt('Ny kompetanse', 'New Competency'),
+            onClick: () => setLocation('/academy/curriculum'),
+          }}
+          footerContent={
+            <>
+              <Typography sx={{ mb: 0.8, color: 'rgba(237,240,247,0.74)', fontWeight: 600 }}>Achievements</Typography>
+              <Box
+                sx={{
+                  ...panelSx,
+                  p: 0.8,
+                  borderColor: 'rgba(248,179,33,0.2)',
+                }}
+              >
+                <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+                  {achievements.map((item, index) => (
+                    <Box
+                      key={item.id}
+                      sx={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: '50%',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)',
+                        background: placeholderBackgrounds[index % placeholderBackgrounds.length],
+                        display: 'grid',
+                        placeItems: 'center',
+                      }}
+                    >
+                      <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{item.value}</Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            </>
+          }
+        />
 
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Box
@@ -581,7 +366,13 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                     onClick={() => {
                       setMainTab(key);
                       if (key === 'explore') setLocation('/academy');
-                      if (key === 'library') setLocation('/academy/media');
+                      if (key === 'library') {
+                        const query = new URLSearchParams();
+                        if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
+                        query.set('returnTo', location || '/academy/student-dashboard');
+                        const suffix = query.toString();
+                        setLocation(suffix ? `/academy/media?${suffix}` : '/academy/media');
+                      }
                       if (key === 'community') setLocation('/community');
                     }}
                     sx={{
@@ -600,10 +391,21 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
             </Stack>
 
             <Stack direction="row" spacing={1} alignItems="center">
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <AcademyLocaleSwitcher />
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=notifications')}
+                aria-label={tt('Varsler', 'Notifications')}
+                sx={{ color: 'rgba(237,240,247,0.75)' }}
+              >
                 <NotificationsNone fontSize="small" />
               </IconButton>
-              <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=messages')}
+                aria-label={tt('Meldinger', 'Messages')}
+                sx={{ color: 'rgba(237,240,247,0.75)' }}
+              >
                 <MailOutline fontSize="small" />
               </IconButton>
               <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
@@ -611,9 +413,16 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                   <Search fontSize="small" />
                 </Badge>
               </IconButton>
-              <Avatar sx={{ width: 34, height: 34, bgcolor: '#f8b321', color: '#111', border: '2px solid rgba(248,179,33,0.55)' }}>
-                {String(activeCourse?.instructor?.name || 'S').charAt(0).toUpperCase()}
-              </Avatar>
+              <IconButton
+                size="small"
+                onClick={() => setLocation('/academy/settings?tab=profile')}
+                aria-label={tt('Profil', 'Profile')}
+                sx={{ p: 0 }}
+              >
+                <Avatar sx={{ width: 34, height: 34, bgcolor: '#f8b321', color: '#111', border: '2px solid rgba(248,179,33,0.55)' }}>
+                  {String(activeCourse?.instructor?.name || 'S').charAt(0).toUpperCase()}
+                </Avatar>
+              </IconButton>
             </Stack>
           </Box>
 
@@ -680,9 +489,11 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                   <Box sx={{ position: 'absolute', left: 14, bottom: 14 }}>
                     <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Next up:</Typography>
                     <Typography sx={{ fontSize: { xs: 30, sm: 40, md: 48 }, fontWeight: 600, lineHeight: 1 }}>
-                      Lighting Basics
+                      {nextUpLesson?.title || tt('Ingen ferdighet valgt', 'No skill selected')}
                     </Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Create cinematic lighting</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>
+                      {nextUpLesson?.description || tt('Velg en ferdighet for å starte læringsreisen.', 'Select a skill to start your learning journey.')}
+                    </Typography>
                   </Box>
                 </Box>
               </Box>

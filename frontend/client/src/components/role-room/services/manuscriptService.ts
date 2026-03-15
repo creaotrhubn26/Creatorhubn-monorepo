@@ -4,24 +4,44 @@ import type {
   DialogueLine,
   ScriptRevision,
   Act,
-  ManuscriptExport} from '../models/casting';
-import {
-  ShotCamera,
-  ShotLighting,
-  ShotAudio,
-  ShotNote,
-  StoryboardFrame,
+  ManuscriptExport,
 } from '../models/casting';
 import { settingsService } from './settingsService';
+import {
+  CONTENT_PRODUCER_DEMO_PROJECT_ID,
+  PRODUCER_DEMO_CLIENT_COMPANY,
+  PRODUCER_DEMO_PRIMARY_LOCATION,
+  PRODUCER_DEMO_PROJECT_NAME,
+  containsLegacyProducerDemoMarker,
+} from '../constants/producerDemo';
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
 let dbCheckPromise: Promise<boolean> | null = null;
+let manuscriptApiAvailable: boolean | null = null;
+let manuscriptApiFallbackLogged = false;
+
+function markManuscriptApiUnavailable(reason?: string): void {
+  dbAvailable = false;
+  manuscriptApiAvailable = false;
+
+  if (manuscriptApiFallbackLogged) {
+    return;
+  }
+
+  const detail = reason ? ` (${reason})` : '';
+  console.info(`Manuscript API unavailable${detail}. Falling back to settings storage.`);
+  manuscriptApiFallbackLogged = true;
+}
 
 /**
  * Check if database is available
  */
 async function checkDatabaseAvailability(): Promise<boolean> {
+  if (manuscriptApiAvailable === false) {
+    return false;
+  }
+
   if (dbAvailable !== null) {
     return dbAvailable;
   }
@@ -33,8 +53,17 @@ async function checkDatabaseAvailability(): Promise<boolean> {
   dbCheckPromise = (async () => {
     try {
       const response = await fetch('/api/casting/health');
+      if (!response.ok) {
+        dbAvailable = false;
+        return false;
+      }
       const result = await response.json();
-      dbAvailable = result.status === 'healthy';
+      if (result.status !== 'healthy') {
+        dbAvailable = false;
+        return false;
+      }
+
+      dbAvailable = true;
       return dbAvailable;
     } catch (error) {
       console.error('Database not available:', error);
@@ -56,6 +85,48 @@ const SETTINGS_NAMESPACES = {
   ACTS: 'virtualStudio_manuscriptActs',
   DEMO_INIT: 'virtualStudio_manuscriptDemoInit',
 };
+
+const TROLL_DEMO_PROJECT_ID = 'troll-project-2026';
+const normalizeDemoProjectId = (value: string | null | undefined): string => String(value || '').trim().toLowerCase();
+
+function isLegacyTrollDemoManuscriptForProducerProject(manuscript: Manuscript): boolean {
+  const projectId = normalizeDemoProjectId(manuscript.projectId);
+  const manuscriptId = normalizeDemoProjectId(manuscript.id);
+  const title = normalizeDemoProjectId(manuscript.title);
+  return projectId === CONTENT_PRODUCER_DEMO_PROJECT_ID && (
+    manuscriptId.startsWith('troll-demo-') ||
+    title === 'troll'
+  );
+}
+
+function isLegacyContentProducerDemoManuscript(manuscript: Manuscript): boolean {
+  const projectId = normalizeDemoProjectId(manuscript.projectId);
+  if (projectId !== CONTENT_PRODUCER_DEMO_PROJECT_ID) {
+    return false;
+  }
+
+  return containsLegacyProducerDemoMarker(
+    manuscript.title,
+    manuscript.subtitle,
+    manuscript.author,
+    manuscript.content
+  );
+}
+
+function mergeById<T extends { id: string }>(primary: T[], fallback: T[]): T[] {
+  if (fallback.length === 0) return primary;
+  if (primary.length === 0) return fallback;
+
+  const merged = new Map<string, T>();
+  primary.forEach((item) => merged.set(item.id, item));
+  fallback.forEach((item) => {
+    if (!merged.has(item.id)) {
+      merged.set(item.id, item);
+    }
+  });
+
+  return Array.from(merged.values());
+}
 
 async function getManuscriptsFromStorage(projectId: string): Promise<Manuscript[]> {
   const cached = await settingsService.getSetting<Manuscript[]>(SETTINGS_NAMESPACES.MANUSCRIPTS, { projectId });
@@ -88,6 +159,27 @@ async function deleteManuscriptFromStorage(id: string): Promise<void> {
   }
 }
 
+async function deleteDemoManuscriptEverywhere(id: string, isDbAvailable: boolean): Promise<void> {
+  if (isDbAvailable) {
+    try {
+      await fetch(`/api/casting/manuscripts/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.warn('Could not delete legacy demo manuscript from database:', error);
+    }
+  }
+
+  await deleteManuscriptFromStorage(id);
+}
+
+async function clearManuscriptScopedStorage(manuscriptId: string): Promise<void> {
+  await saveActsToStorage(manuscriptId, []);
+  await settingsService.setSetting(SETTINGS_NAMESPACES.SCENES, [], { projectId: manuscriptId });
+  await settingsService.setSetting(SETTINGS_NAMESPACES.DIALOGUE, [], { projectId: manuscriptId });
+  await settingsService.setSetting(SETTINGS_NAMESPACES.REVISIONS, [], { projectId: manuscriptId });
+}
+
 async function getScenesFromStorage(manuscriptId: string): Promise<SceneBreakdown[]> {
   const cached = await settingsService.getSetting<SceneBreakdown[]>(SETTINGS_NAMESPACES.SCENES, {
     projectId: manuscriptId,
@@ -108,6 +200,19 @@ async function saveSceneToStorage(scene: SceneBreakdown): Promise<void> {
     cached.push(scene);
   }
   await settingsService.setSetting(SETTINGS_NAMESPACES.SCENES, cached, { projectId: manuscriptId });
+}
+
+async function deleteSceneFromStorage(sceneId: string): Promise<void> {
+  const entries = await settingsService.listSettings(SETTINGS_NAMESPACES.SCENES);
+  for (const entry of entries) {
+    const scenes = Array.isArray(entry.data) ? (entry.data as SceneBreakdown[]) : [];
+    const filtered = scenes.filter((scene) => scene.id !== sceneId);
+    if (filtered.length !== scenes.length) {
+      await settingsService.setSetting(SETTINGS_NAMESPACES.SCENES, filtered, {
+        projectId: entry.projectId,
+      });
+    }
+  }
 }
 
 async function getDialogueFromStorage(manuscriptId: string): Promise<DialogueLine[]> {
@@ -180,6 +285,400 @@ async function hasDemoInit(projectId: string): Promise<boolean> {
 
 async function markDemoInit(projectId: string): Promise<void> {
   await settingsService.setSetting(SETTINGS_NAMESPACES.DEMO_INIT, true, { projectId });
+}
+
+function findMissingDemoItems<T extends { id: string }>(existing: T[], expected: T[]): T[] {
+  const existingIds = new Set(existing.map((item) => normalizeDemoProjectId(item.id)));
+  return expected.filter((item) => !existingIds.has(normalizeDemoProjectId(item.id)));
+}
+
+function readNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function getSceneStoryboardFrames(scene: SceneBreakdown | undefined): Array<Record<string, unknown>> {
+  if (!scene || !Array.isArray(scene.storyboardFrames)) {
+    return [];
+  }
+
+  return scene.storyboardFrames.filter(
+    (frame): frame is Record<string, unknown> => frame !== null && typeof frame === 'object'
+  );
+}
+
+function sceneNeedsDemoRepair(existing: SceneBreakdown | undefined, expected: SceneBreakdown): boolean {
+  if (!existing) {
+    return true;
+  }
+
+  const existingFrames = getSceneStoryboardFrames(existing);
+  const expectedFrames = getSceneStoryboardFrames(expected);
+  const existingCharacters = Array.isArray(existing.characters) ? existing.characters : [];
+  const expectedCharacters = Array.isArray(expected.characters) ? expected.characters : [];
+  const existingProps = Array.isArray(existing.propsNeeded) ? existing.propsNeeded : [];
+  const expectedProps = Array.isArray(expected.propsNeeded) ? expected.propsNeeded : [];
+
+  return (
+    !readNonEmptyString(existing.sceneHeading, existing.heading) ||
+    !readNonEmptyString(existing.description) ||
+    (expectedFrames.length > 0 && existingFrames.length < expectedFrames.length) ||
+    (expectedCharacters.length > 0 && existingCharacters.length < expectedCharacters.length) ||
+    (expectedProps.length > 0 && existingProps.length < expectedProps.length)
+  );
+}
+
+function mergeDemoScene(existing: SceneBreakdown | undefined, expected: SceneBreakdown): SceneBreakdown {
+  if (!existing) {
+    return expected;
+  }
+
+  const existingFrames = getSceneStoryboardFrames(existing);
+  const expectedFrames = getSceneStoryboardFrames(expected);
+  const existingCharacters = Array.isArray(existing.characters) ? existing.characters : [];
+  const existingProps = Array.isArray(existing.propsNeeded) ? existing.propsNeeded : [];
+
+  return {
+    ...expected,
+    ...existing,
+    id: expected.id,
+    manuscriptId: expected.manuscriptId,
+    projectId: expected.projectId,
+    actId: expected.actId,
+    heading: readNonEmptyString(existing.heading, existing.sceneHeading, expected.heading, expected.sceneHeading),
+    sceneHeading: readNonEmptyString(existing.sceneHeading, existing.heading, expected.sceneHeading, expected.heading),
+    locationName: readNonEmptyString(existing.locationName, expected.locationName),
+    intExt: readNonEmptyString(existing.intExt, expected.intExt),
+    timeOfDay: readNonEmptyString(existing.timeOfDay, expected.timeOfDay),
+    description: readNonEmptyString(existing.description, expected.description),
+    characters: existingCharacters.length > 0 ? existingCharacters : expected.characters,
+    propsNeeded: existingProps.length > 0 ? existingProps : expected.propsNeeded,
+    storyboardFrames: existingFrames.length > 0 ? existingFrames : expectedFrames,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function fetchActsFromDatabase(manuscriptId: string, isDbAvailable: boolean): Promise<Act[]> {
+  if (!isDbAvailable) {
+    return [];
+  }
+
+  try {
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/acts`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/acts (demo init)');
+        return [];
+      }
+      throw new Error(`Failed to fetch acts: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.warn('Could not inspect act database during demo initialization:', error);
+    return [];
+  }
+}
+
+async function fetchScenesFromDatabase(manuscriptId: string, isDbAvailable: boolean): Promise<SceneBreakdown[]> {
+  if (!isDbAvailable) {
+    return [];
+  }
+
+  try {
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/scenes`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/scenes (demo init)');
+        return [];
+      }
+      throw new Error(`Failed to fetch scenes: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.warn('Could not inspect scene database during demo initialization:', error);
+    return [];
+  }
+}
+
+async function fetchDialogueFromDatabase(manuscriptId: string, isDbAvailable: boolean): Promise<DialogueLine[]> {
+  if (!isDbAvailable) {
+    return [];
+  }
+
+  try {
+    const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/dialogue`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/dialogue (demo init)');
+        return [];
+      }
+      throw new Error(`Failed to fetch dialogue: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.warn('Could not inspect dialogue database during demo initialization:', error);
+    return [];
+  }
+}
+
+async function postDemoActToDatabase(act: Act): Promise<void> {
+  const response = await fetch('/api/casting/acts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(act),
+  });
+
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Failed to create act: ${response.statusText}`);
+  }
+
+  if (response.status === 404) {
+    markManuscriptApiUnavailable('POST /api/casting/acts (demo init)');
+  }
+}
+
+async function postDemoSceneToDatabase(scene: SceneBreakdown): Promise<void> {
+  const response = await fetch('/api/casting/scenes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(scene),
+  });
+
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Failed to create scene: ${response.statusText}`);
+  }
+
+  if (response.status === 404) {
+    markManuscriptApiUnavailable('POST /api/casting/scenes (demo init)');
+  }
+}
+
+async function postDemoDialogueToDatabase(dialogue: DialogueLine): Promise<void> {
+  const response = await fetch('/api/casting/dialogue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dialogue),
+  });
+
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Failed to create dialogue: ${response.statusText}`);
+  }
+
+  if (response.status === 404) {
+    markManuscriptApiUnavailable('POST /api/casting/dialogue (demo init)');
+  }
+}
+
+async function purgeDemoManuscriptData(manuscriptId: string, isDbAvailable: boolean): Promise<void> {
+  await clearManuscriptScopedStorage(manuscriptId);
+
+  if (isDbAvailable) {
+    const databaseDialogue = await fetchDialogueFromDatabase(manuscriptId, isDbAvailable);
+    for (const line of databaseDialogue) {
+      const response = await fetch(`/api/casting/dialogue/${line.id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`Failed to delete legacy demo dialogue: ${response.statusText}`);
+      }
+      if (response.status === 404) {
+        markManuscriptApiUnavailable('DELETE /api/casting/dialogue/:id (demo init)');
+      }
+    }
+
+    const databaseScenes = await fetchScenesFromDatabase(manuscriptId, isDbAvailable);
+    for (const scene of databaseScenes) {
+      const response = await fetch(`/api/casting/scenes/${scene.id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`Failed to delete legacy demo scene: ${response.statusText}`);
+      }
+      if (response.status === 404) {
+        markManuscriptApiUnavailable('DELETE /api/casting/scenes/:id (demo init)');
+      }
+    }
+
+    const databaseActs = await fetchActsFromDatabase(manuscriptId, isDbAvailable);
+    for (const act of databaseActs) {
+      const response = await fetch(`/api/casting/acts/${act.id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`Failed to delete legacy demo act: ${response.statusText}`);
+      }
+      if (response.status === 404) {
+        markManuscriptApiUnavailable('DELETE /api/casting/acts/:id (demo init)');
+      }
+    }
+  }
+
+  await deleteDemoManuscriptEverywhere(manuscriptId, isDbAvailable);
+}
+
+async function ensureDemoDataIntegrity(
+  demoData: {
+    manuscript: Manuscript;
+    acts: Act[];
+    scenes: SceneBreakdown[];
+    dialogue: DialogueLine[];
+  },
+  options: {
+    cachedManuscript?: Manuscript;
+    databaseManuscript?: Manuscript;
+    isDbAvailable: boolean;
+    demoLabel: string;
+  }
+): Promise<void> {
+  const { cachedManuscript, databaseManuscript, isDbAvailable, demoLabel } = options;
+  const manuscriptId = demoData.manuscript.id;
+
+  const resolvedManuscript: Manuscript = {
+    ...demoData.manuscript,
+    ...cachedManuscript,
+    ...databaseManuscript,
+    id: demoData.manuscript.id,
+    projectId: demoData.manuscript.projectId,
+    title: databaseManuscript?.title?.trim() || cachedManuscript?.title?.trim() || demoData.manuscript.title,
+    content: databaseManuscript?.content?.trim() || cachedManuscript?.content?.trim() || demoData.manuscript.content,
+  };
+
+  const needsCachedManuscriptRepair = !cachedManuscript || !cachedManuscript.content?.trim();
+  const needsDatabaseManuscriptRepair = !databaseManuscript || !databaseManuscript.content?.trim();
+
+  if (needsCachedManuscriptRepair) {
+    await saveManuscriptToStorage(resolvedManuscript);
+  }
+
+  if (isDbAvailable && needsDatabaseManuscriptRepair) {
+    if (!databaseManuscript) {
+      const response = await fetch('/api/casting/manuscripts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resolvedManuscript),
+      });
+
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`Failed to create demo manuscript: ${response.statusText}`);
+      }
+
+      if (response.status === 404) {
+        markManuscriptApiUnavailable('POST /api/casting/manuscripts (demo init)');
+      }
+    } else {
+      const response = await fetch(`/api/casting/manuscripts/${resolvedManuscript.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resolvedManuscript),
+      });
+
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`Failed to repair demo manuscript: ${response.statusText}`);
+      }
+
+      if (response.status === 404) {
+        markManuscriptApiUnavailable('PUT /api/casting/manuscripts/:id (demo init)');
+      }
+    }
+  }
+
+  const cachedActs = await getActsFromStorage(manuscriptId);
+  const cachedScenes = await getScenesFromStorage(manuscriptId);
+  const cachedDialogue = await getDialogueFromStorage(manuscriptId);
+
+  const missingCachedActs = findMissingDemoItems(cachedActs, demoData.acts);
+  const missingCachedScenes = findMissingDemoItems(cachedScenes, demoData.scenes);
+  const missingCachedDialogue = findMissingDemoItems(cachedDialogue, demoData.dialogue);
+  const repairedCachedScenes = demoData.scenes
+    .map((scene) => {
+      const existingScene = cachedScenes.find(
+        (cachedScene) => normalizeDemoProjectId(cachedScene.id) === normalizeDemoProjectId(scene.id)
+      );
+      return existingScene && sceneNeedsDemoRepair(existingScene, scene)
+        ? mergeDemoScene(existingScene, scene)
+        : null;
+    })
+    .filter((scene): scene is SceneBreakdown => scene !== null);
+
+  if (missingCachedActs.length > 0) {
+    await saveActsToStorage(manuscriptId, mergeById(cachedActs, demoData.acts));
+  }
+
+  for (const scene of missingCachedScenes) {
+    await saveSceneToStorage(scene);
+  }
+
+  for (const scene of repairedCachedScenes) {
+    await saveSceneToStorage(scene);
+  }
+
+  for (const dialogue of missingCachedDialogue) {
+    await saveDialogueToStorage(dialogue);
+  }
+
+  if (isDbAvailable) {
+    const databaseActs = await fetchActsFromDatabase(manuscriptId, isDbAvailable);
+    const databaseScenes = await fetchScenesFromDatabase(manuscriptId, isDbAvailable);
+    const databaseDialogue = await fetchDialogueFromDatabase(manuscriptId, isDbAvailable);
+
+    const missingDatabaseActs = findMissingDemoItems(databaseActs, demoData.acts);
+    const missingDatabaseScenes = findMissingDemoItems(databaseScenes, demoData.scenes);
+    const missingDatabaseDialogue = findMissingDemoItems(databaseDialogue, demoData.dialogue);
+    const repairedDatabaseScenes = demoData.scenes
+      .map((scene) => {
+        const existingScene = databaseScenes.find(
+          (databaseScene) => normalizeDemoProjectId(databaseScene.id) === normalizeDemoProjectId(scene.id)
+        );
+        return existingScene && sceneNeedsDemoRepair(existingScene, scene)
+          ? mergeDemoScene(existingScene, scene)
+          : null;
+      })
+      .filter((scene): scene is SceneBreakdown => scene !== null);
+
+    for (const act of missingDatabaseActs) {
+      await postDemoActToDatabase(act);
+    }
+
+    for (const scene of missingDatabaseScenes) {
+      await postDemoSceneToDatabase(scene);
+    }
+
+    for (const scene of repairedDatabaseScenes) {
+      await postDemoSceneToDatabase(scene);
+    }
+
+    for (const dialogue of missingDatabaseDialogue) {
+      await postDemoDialogueToDatabase(dialogue);
+    }
+
+    if (
+      needsDatabaseManuscriptRepair ||
+      missingDatabaseActs.length > 0 ||
+      missingDatabaseScenes.length > 0 ||
+      repairedDatabaseScenes.length > 0 ||
+      missingDatabaseDialogue.length > 0
+    ) {
+      console.log(
+        `🛠️ Rehydrated ${demoLabel} demo data: manuscript=${needsDatabaseManuscriptRepair ? 1 : 0}, acts=${missingDatabaseActs.length}, scenes=${missingDatabaseScenes.length}, repairedScenes=${repairedDatabaseScenes.length}, dialogue=${missingDatabaseDialogue.length}`
+      );
+    }
+  }
+
+  if (
+    needsCachedManuscriptRepair ||
+    missingCachedActs.length > 0 ||
+    missingCachedScenes.length > 0 ||
+    repairedCachedScenes.length > 0 ||
+    missingCachedDialogue.length > 0
+  ) {
+    console.log(
+      `💾 Restored cached ${demoLabel} demo data: manuscript=${needsCachedManuscriptRepair ? 1 : 0}, acts=${missingCachedActs.length}, scenes=${missingCachedScenes.length}, repairedScenes=${repairedCachedScenes.length}, dialogue=${missingCachedDialogue.length}`
+    );
+  }
 }
 
 /**
@@ -840,94 +1339,465 @@ THE END
 }
 
 /**
+ * Generate demo data for content producer workflow.
+ */
+function generateContentProducerDemoData(projectId: string): {
+  manuscript: Manuscript;
+  acts: Act[];
+  scenes: SceneBreakdown[];
+  dialogue: DialogueLine[];
+} {
+  const manuscriptId = `content-producer-demo-${projectId}`;
+  const now = new Date().toISOString();
+  const sceneOneFrames = [
+    {
+      id: `${manuscriptId}-scene-1-frame-1`,
+      shotNumber: '1A',
+      title: 'Kickoff overview',
+      description: 'Bred etablering av kickoff-møtet med klient, produsent og sikkerhetsmål på skjerm.',
+      imageUrl: '/role-room-assets/roleroom_producer.webp',
+      thumbnailUrl: '/role-room-assets/roleroom_producer_thumb.webp',
+      cameraAngle: 'Eye Level',
+      movement: 'Static',
+      duration: 6,
+      notes: 'Brukes som åpningsbilde for prosjektbrief og beslutningslinje.',
+      sceneId: `${manuscriptId}-scene-1`,
+      scriptLineRange: [1, 2] as [number, number],
+    },
+    {
+      id: `${manuscriptId}-scene-1-frame-2`,
+      shotNumber: '1B',
+      title: 'Approval detail',
+      description: 'Detaljbilde av brief, risikokart og leveranseoversikt for onboarding, HMS og rekruttering.',
+      imageUrl: '/role-room-assets/roleroom_contract.webp',
+      thumbnailUrl: '/role-room-assets/roleroom_contract.webp',
+      cameraAngle: 'High Angle',
+      movement: 'Static',
+      duration: 4,
+      notes: 'Viser at prosjektet er klientstyrt og godkjenningsdrevet.',
+      sceneId: `${manuscriptId}-scene-1`,
+      scriptLineRange: [1, 2] as [number, number],
+    },
+    {
+      id: `${manuscriptId}-scene-1-frame-3`,
+      shotNumber: '1C',
+      title: 'Client alignment',
+      description: 'Medium av klienten som bekrefter behovet for tre versjoner og tydelig godkjenningsflyt.',
+      imageUrl: '/role-room-assets/roleroom_klient.webp',
+      thumbnailUrl: '/role-room-assets/roleroom_klient_thumb.webp',
+      cameraAngle: 'Eye Level',
+      movement: 'Dolly',
+      duration: 5,
+      notes: 'Brukes som visuell inngang til klientsamarbeid og beslutningspunkter.',
+      sceneId: `${manuscriptId}-scene-1`,
+      scriptLineRange: [1, 2] as [number, number],
+    },
+  ];
+  const sceneTwoFrames = [
+    {
+      id: `${manuscriptId}-scene-2-frame-1`,
+      shotNumber: '2A',
+      title: 'Safe start wide',
+      description: 'Bred dekning av instruktør og ny tekniker ved sikkerhetsveggen i treningssenteret.',
+      imageUrl: '/role-room-assets/roleroom_filmfotograf.webp',
+      thumbnailUrl: '/role-room-assets/roleroom_filmfotograf_thumb.webp',
+      cameraAngle: 'Eye Level',
+      movement: 'Static',
+      duration: 7,
+      notes: 'Hero-shot for HMS-sekvensen. Må fungere for onboarding og rekruttering.',
+      sceneId: `${manuscriptId}-scene-2`,
+      scriptLineRange: [3, 3] as [number, number],
+    },
+    {
+      id: `${manuscriptId}-scene-2-frame-2`,
+      shotNumber: '2B',
+      title: 'PPE checklist insert',
+      description: 'Detalj av verneutstyr, kortleser og radio som bekreftes før feltadgang.',
+      imageUrl: '/role-room-assets/roleroom_camera.webp',
+      thumbnailUrl: '/role-room-assets/roleroom_camera.webp',
+      cameraAngle: 'Close-up',
+      movement: 'Static',
+      duration: 4,
+      notes: 'Forklarer handlingsrekkefølgen i sikker start.',
+      sceneId: `${manuscriptId}-scene-2`,
+      scriptLineRange: [3, 3] as [number, number],
+    },
+    {
+      id: `${manuscriptId}-scene-2-frame-3`,
+      shotNumber: '2C',
+      title: 'Control room handover',
+      description: 'Medium av instruktør og tekniker i kontrollrommet under overlevering og radiosamband.',
+      imageUrl: '/role-room-assets/role-video.webp',
+      thumbnailUrl: '/role-room-assets/role-video.webp',
+      cameraAngle: 'Over Shoulder',
+      movement: 'Truck',
+      duration: 6,
+      notes: 'Skal kunne klippes mot detaljbilder av paneler og radiosamband.',
+      sceneId: `${manuscriptId}-scene-2`,
+      scriptLineRange: [3, 3] as [number, number],
+    },
+  ];
+  const sceneThreeFrames = [
+    {
+      id: `${manuscriptId}-scene-3-frame-1`,
+      shotNumber: '3A',
+      title: 'Edit suite overview',
+      description: 'Bred etablering av redigeringsrommet med tre versjoner i tidslinjen.',
+      imageUrl: '/role-room-assets/roleroom_dashboard.webp',
+      thumbnailUrl: '/role-room-assets/roleroom_dashboard.webp',
+      cameraAngle: 'Eye Level',
+      movement: 'Static',
+      duration: 5,
+      notes: 'Brukes som overgang til postproduksjonsfasen.',
+      sceneId: `${manuscriptId}-scene-3`,
+      scriptLineRange: [4, 4] as [number, number],
+    },
+    {
+      id: `${manuscriptId}-scene-3-frame-2`,
+      shotNumber: '3B',
+      title: 'Client review notes',
+      description: 'Nærbilde av klientkommentarer og godkjenningspunkter på skjerm.',
+      imageUrl: '/role-room-assets/roleroom_chat.webp',
+      thumbnailUrl: '/role-room-assets/roleroom_chat.webp',
+      cameraAngle: 'High Angle',
+      movement: 'Static',
+      duration: 4,
+      notes: 'Må speile kommentarer, endringsønsker og tydelig godkjenning.',
+      sceneId: `${manuscriptId}-scene-3`,
+      scriptLineRange: [4, 4] as [number, number],
+    },
+    {
+      id: `${manuscriptId}-scene-3-frame-3`,
+      shotNumber: '3C',
+      title: 'Approved delivery',
+      description: 'Medium av produsenten som eksporterer godkjent leveransepakke for onboarding, HMS og rekruttering.',
+      imageUrl: '/role-room-assets/roleroom_settings.webp',
+      thumbnailUrl: '/role-room-assets/roleroom_settings.webp',
+      cameraAngle: 'Eye Level',
+      movement: 'Dolly',
+      duration: 5,
+      notes: 'Sluttbilde som bekrefter ferdig leveranse og klientgodkjenning.',
+      sceneId: `${manuscriptId}-scene-3`,
+      scriptLineRange: [4, 4] as [number, number],
+    },
+  ];
+  const content = `Title: ${PRODUCER_DEMO_PROJECT_NAME}
+Credit: Utarbeidet av
+Author: Northwind Studio
+Draft date: ${new Date().toLocaleDateString('nb-NO')}
+
+= FASE 1 - PREPRODUKSJON =
+
+INT. MØTEROM HOS ${PRODUCER_DEMO_CLIENT_COMPANY.toUpperCase()} - DAY
+
+Produsenten går gjennom brief, sikkerhetskrav og godkjenningsflyt med kunden.
+
+KLIENT
+Vi trenger filmer som fungerer like godt til onboarding, HMS og rekruttering.
+
+PRODUSENT
+Vi bygger pakken rundt en ny teknikers første skift, slik at alle forstår flyten fra innsjekk til avvik.
+
+= FASE 2 - PRODUKSJON =
+
+INT. ${PRODUCER_DEMO_PRIMARY_LOCATION.toUpperCase()} - DAY
+
+Instruktøren møter den nye teknikeren ved sikkerhetsveggen. Kamera A tar wide, kamera B henter hender, radio og sjekkliste.
+
+HMS-INSTRUKTØR
+Ingen går i felt før SJA, radiosjekk og verneutstyr er bekreftet.
+
+FOTOGRAF
+Vi tar en ekstra detalj av kortleser, hjelm og kontrollpanelet før vi går videre til kontrollrommet.
+
+= FASE 3 - POSTPRODUKSJON =
+
+INT. REDIGERINGSROM - EVENING
+
+Teamet finjusterer rytme, tekstplater og versjoner for onboarding, HMS og rekruttering før klientgjennomgang.
+
+PRODUSENT
+Eksporter en godkjenningspakke med tre versjoner og tydelige kommentarer per scene.
+
+KLIENT (V.O.)
+Godkjent. Bytt siste kontrollromsbilde med droneetablering fra opplæringssenteret, så er vi klare.
+`;
+
+  const manuscript: Manuscript = {
+    id: manuscriptId,
+    projectId,
+    title: PRODUCER_DEMO_PROJECT_NAME,
+    subtitle: 'HMS, onboarding og rekruttering for offshore-personell',
+    author: 'Northwind Studio',
+    format: 'fountain',
+    content,
+    createdAt: now,
+    updatedAt: now,
+    version: '1.0',
+    status: 'draft',
+    pageCount: 12,
+    wordCount: 1800,
+  };
+
+  const acts: Act[] = [
+    {
+      id: `${manuscriptId}-act-1`,
+      manuscriptId,
+      projectId,
+      actNumber: 1,
+      title: 'PREPRODUKSJON',
+      description: 'Mål, budskap, sikkerhetskrav og godkjenningsflyt avklares med kunden.',
+      pageStart: 1,
+      pageEnd: 4,
+      estimatedRuntime: 20,
+      sortOrder: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${manuscriptId}-act-2`,
+      manuscriptId,
+      projectId,
+      actNumber: 2,
+      title: 'PRODUKSJON',
+      description: 'Opptak gjennomføres i opplæringssenteret med shotlist og scene-notater.',
+      pageStart: 5,
+      pageEnd: 8,
+      estimatedRuntime: 35,
+      sortOrder: 2,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${manuscriptId}-act-3`,
+      manuscriptId,
+      projectId,
+      actNumber: 3,
+      title: 'POSTPRODUKSJON',
+      description: 'Klipp, revisjoner og klientgodkjenning fordelt på tre leveranseversjoner.',
+      pageStart: 9,
+      pageEnd: 12,
+      estimatedRuntime: 25,
+      sortOrder: 3,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
+  const scenes: SceneBreakdown[] = [
+    {
+      id: `${manuscriptId}-scene-1`,
+      manuscriptId,
+      projectId,
+      actId: acts[0].id,
+      sceneNumber: '1',
+      sceneHeading: `INT. MØTEROM HOS ${PRODUCER_DEMO_CLIENT_COMPANY.toUpperCase()} - DAY`,
+      intExt: 'INT',
+      locationName: PRODUCER_DEMO_CLIENT_COMPANY,
+      timeOfDay: 'DAY',
+      description: 'Kickoff med kunden der onboarding, HMS og rekrutteringsmal avklares.',
+      pageLength: 2,
+      estimatedDuration: 120,
+      characters: ['PRODUSENT', 'KLIENT'],
+      propsNeeded: ['Brief', 'Risikokart', 'Disposisjon for læringsreise'],
+      storyboardFrames: sceneOneFrames,
+      status: 'completed',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${manuscriptId}-scene-2`,
+      manuscriptId,
+      projectId,
+      actId: acts[1].id,
+      sceneNumber: '2',
+      sceneHeading: `INT. ${PRODUCER_DEMO_PRIMARY_LOCATION.toUpperCase()} - DAY`,
+      intExt: 'INT',
+      locationName: PRODUCER_DEMO_PRIMARY_LOCATION,
+      timeOfDay: 'DAY',
+      description: 'Hovedsekvensen følger en ny tekniker gjennom sikker oppstart i opplæringssenteret.',
+      pageLength: 3,
+      estimatedDuration: 180,
+      characters: ['HMS-INSTRUKTØR', 'NY TEKNIKER', 'FOTOGRAF'],
+      propsNeeded: ['Verneutstyr', 'Radio', 'SJA-skjema'],
+      storyboardFrames: sceneTwoFrames,
+      status: 'scheduled',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${manuscriptId}-scene-3`,
+      manuscriptId,
+      projectId,
+      actId: acts[2].id,
+      sceneNumber: '3',
+      sceneHeading: 'INT. REDIGERINGSROM - EVENING',
+      intExt: 'INT',
+      locationName: 'REDIGERINGSROM',
+      timeOfDay: 'EVENING',
+      description: 'Klientreview, endelig klippjustering og eksport av tre leveransepakker.',
+      pageLength: 2,
+      estimatedDuration: 140,
+      characters: ['PRODUSENT', 'KLIENT'],
+      propsNeeded: ['Redigeringsstasjon', 'Kommentarspor', 'Versjonsliste'],
+      storyboardFrames: sceneThreeFrames,
+      status: 'not-scheduled',
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
+  const dialogue: DialogueLine[] = [
+    {
+      id: `${manuscriptId}-dial-1`,
+      manuscriptId,
+      sceneId: scenes[0].id,
+      characterName: 'KLIENT',
+      dialogueText: 'Vi trenger filmer som fungerer like godt til onboarding, HMS og rekruttering.',
+      dialogueType: 'dialogue',
+      lineNumber: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${manuscriptId}-dial-2`,
+      manuscriptId,
+      sceneId: scenes[0].id,
+      characterName: 'PRODUSENT',
+      dialogueText: 'Vi bygger pakken rundt en ny teknikers første skift, slik at budskapet blir konkret og lett å godkjenne.',
+      dialogueType: 'dialogue',
+      lineNumber: 2,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${manuscriptId}-dial-3`,
+      manuscriptId,
+      sceneId: scenes[1].id,
+      characterName: 'HMS-INSTRUKTØR',
+      dialogueText: 'Ingen går i felt før SJA, radiosjekk og verneutstyr er bekreftet.',
+      dialogueType: 'dialogue',
+      lineNumber: 3,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${manuscriptId}-dial-4`,
+      manuscriptId,
+      sceneId: scenes[2].id,
+      characterName: 'KLIENT',
+      dialogueText: 'Godkjent. Bytt siste kontrollromsbilde med droneetablering fra opplæringssenteret, så er vi klare.',
+      dialogueType: 'voice-over',
+      lineNumber: 4,
+      parenthetical: 'V.O.',
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
+  return { manuscript, acts, scenes, dialogue };
+}
+
+/**
  * Initialize demo data for a project if no manuscripts exist
  */
 async function initializeDemoDataIfNeeded(projectId: string): Promise<void> {
-  if (await hasDemoInit(projectId)) return;
+  const normalizedProjectId = normalizeDemoProjectId(projectId);
+  const isTrollDemoProject = normalizedProjectId === TROLL_DEMO_PROJECT_ID;
+  const isContentProducerDemoProject = normalizedProjectId === CONTENT_PRODUCER_DEMO_PROJECT_ID;
+  const isKnownDemoProject = isTrollDemoProject || isContentProducerDemoProject;
 
-  const manuscripts = await getManuscriptsFromStorage(projectId);
-  if (manuscripts.length === 0) {
-    console.log('🎬 Initializing TROLL demo data for project:', projectId);
-    const demoData = generateTrollDemoData(projectId);
-    
-    // Cache demo data for offline access
-    await saveManuscriptToStorage(demoData.manuscript);
-    console.log('📝 Saved manuscript:', demoData.manuscript.title);
-    
-    // Save acts
-    await saveActsToStorage(demoData.manuscript.id, demoData.acts);
-    console.log('🎭 Saved', demoData.acts.length, 'acts');
-    
-    // Save scenes
-    for (const scene of demoData.scenes) {
-      await saveSceneToStorage(scene);
-    }
-    console.log('🎬 Saved', demoData.scenes.length, 'scenes');
-    
-    // Save dialogue
-    await settingsService.setSetting(SETTINGS_NAMESPACES.DIALOGUE, demoData.dialogue, {
-      projectId: demoData.manuscript.id,
-    });
-    console.log('💬 Saved', demoData.dialogue.length, 'dialogue lines');
-    
-    // Also sync to database if available
-    const isDbAvailable = await checkDatabaseAvailability();
-    if (isDbAvailable) {
-      try {
-        console.log('🔄 Syncing TROLL demo data to database...');
-        
-        // Create manuscript in DB
-        const manuscriptResponse = await fetch('/api/casting/manuscripts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(demoData.manuscript),
-        });
-        
-        if (manuscriptResponse.ok) {
-          console.log('✅ Manuscript synced to database');
-          
-          // Create acts in DB
-          for (const act of demoData.acts) {
-            await fetch('/api/casting/acts', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(act),
-            });
-          }
-          console.log('✅ Acts synced to database');
-          
-          // Create scenes in DB
-          for (const scene of demoData.scenes) {
-            await fetch('/api/casting/scenes', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(scene),
-            });
-          }
-          console.log('✅ Scenes synced to database');
-          
-          // Create dialogue in DB
-          for (const line of demoData.dialogue) {
-            await fetch('/api/casting/dialogue', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(line),
-            });
-          }
-          console.log('✅ Dialogue synced to database');
-        }
-      } catch (error) {
-        console.error('⚠️ Error syncing demo data to database:', error);
-        // Continue anyway - settings cache has the data
+  if (!isKnownDemoProject) {
+    return;
+  }
+
+  const cachedManuscripts = await getManuscriptsFromStorage(projectId);
+  let databaseManuscripts: Manuscript[] = [];
+  const isDbAvailable = await checkDatabaseAvailability();
+
+  if (isDbAvailable) {
+    try {
+      const response = await fetch(`/api/casting/manuscripts?projectId=${projectId}`);
+      if (response.ok) {
+        databaseManuscripts = await response.json();
+      } else if (response.status === 404) {
+        markManuscriptApiUnavailable('GET /api/casting/manuscripts (demo init)');
       }
+    } catch (error) {
+      console.warn('Could not inspect manuscript database during demo initialization:', error);
     }
-    
-    // Mark as initialized
-    await markDemoInit(projectId);
-    
-    console.log('✅ Demo data for "TROLL" initialized successfully');
+  }
+
+  let effectiveCachedManuscripts = cachedManuscripts;
+  let effectiveDatabaseManuscripts = databaseManuscripts;
+  let existingManuscripts = mergeById(effectiveDatabaseManuscripts, effectiveCachedManuscripts);
+  if (isContentProducerDemoProject) {
+    const legacyTrollManuscripts = existingManuscripts.filter(isLegacyTrollDemoManuscriptForProducerProject);
+    if (legacyTrollManuscripts.length > 0) {
+      console.log(`🧹 Removing ${legacyTrollManuscripts.length} legacy TROLL manuscript(s) from producer demo project`);
+      for (const legacyManuscript of legacyTrollManuscripts) {
+        await purgeDemoManuscriptData(legacyManuscript.id, isDbAvailable);
+      }
+      effectiveCachedManuscripts = effectiveCachedManuscripts.filter(
+        (manuscript) => !legacyTrollManuscripts.some((legacy) => legacy.id === manuscript.id)
+      );
+      effectiveDatabaseManuscripts = effectiveDatabaseManuscripts.filter(
+        (manuscript) => !legacyTrollManuscripts.some((legacy) => legacy.id === manuscript.id)
+      );
+      existingManuscripts = existingManuscripts.filter(
+        (manuscript) => !legacyTrollManuscripts.some((legacy) => legacy.id === manuscript.id)
+      );
+    }
+
+    const legacyProducerManuscripts = existingManuscripts.filter(isLegacyContentProducerDemoManuscript);
+    if (legacyProducerManuscripts.length > 0) {
+      console.log(`🧹 Replacing ${legacyProducerManuscripts.length} legacy producer demo manuscript(s) with business project data`);
+      for (const legacyManuscript of legacyProducerManuscripts) {
+        await purgeDemoManuscriptData(legacyManuscript.id, isDbAvailable);
+      }
+      effectiveCachedManuscripts = effectiveCachedManuscripts.filter(
+        (manuscript) => !legacyProducerManuscripts.some((legacy) => legacy.id === manuscript.id)
+      );
+      effectiveDatabaseManuscripts = effectiveDatabaseManuscripts.filter(
+        (manuscript) => !legacyProducerManuscripts.some((legacy) => legacy.id === manuscript.id)
+      );
+      existingManuscripts = existingManuscripts.filter(
+        (manuscript) => !legacyProducerManuscripts.some((legacy) => legacy.id === manuscript.id)
+      );
+    }
+  }
+
+  const demoLabel = isContentProducerDemoProject ? PRODUCER_DEMO_PROJECT_NAME : 'TROLL';
+  const demoData = isContentProducerDemoProject
+    ? generateContentProducerDemoData(projectId)
+    : generateTrollDemoData(projectId);
+  const expectedDemoManuscriptId = normalizeDemoProjectId(demoData.manuscript.id);
+  const cachedDemoManuscript = effectiveCachedManuscripts.find(
+    (manuscript) => normalizeDemoProjectId(manuscript.id) === expectedDemoManuscriptId
+  );
+  const databaseDemoManuscript = effectiveDatabaseManuscripts.find(
+    (manuscript) => normalizeDemoProjectId(manuscript.id) === expectedDemoManuscriptId
+  );
+
+  if (existingManuscripts.length === 0) {
+    console.log(`🎬 Initializing ${demoLabel} demo data for project:`, projectId);
   } else {
-    console.log('📚 Found', manuscripts.length, 'existing manuscripts for project:', projectId);
+    console.log('📚 Found', existingManuscripts.length, 'existing manuscripts for project:', projectId);
+  }
+
+  try {
+    await ensureDemoDataIntegrity(demoData, {
+      cachedManuscript: cachedDemoManuscript,
+      databaseManuscript: databaseDemoManuscript,
+      isDbAvailable,
+      demoLabel,
+    });
+  } catch (error) {
+    console.error(`⚠️ Error repairing ${demoLabel} demo data:`, error);
+  }
+
+  if (!(await hasDemoInit(projectId))) {
+    await markDemoInit(projectId);
   }
 }
 
@@ -941,6 +1811,7 @@ class ManuscriptService {
   async getManuscripts(projectId: string): Promise<Manuscript[]> {
     // Initialize demo data if needed
     await initializeDemoDataIfNeeded(projectId);
+    const cachedManuscripts = await getManuscriptsFromStorage(projectId);
     
     const isDbAvailable = await checkDatabaseAvailability();
     
@@ -948,16 +1819,22 @@ class ManuscriptService {
       try {
         const response = await fetch(`/api/casting/manuscripts?projectId=${projectId}`);
         if (!response.ok) {
-          throw new Error(`Failed to fetch manuscripts: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('GET /api/casting/manuscripts');
+          } else {
+            throw new Error(`Failed to fetch manuscripts: ${response.statusText}`);
+          }
+        } else {
+          const dbManuscripts = await response.json();
+          return mergeById(dbManuscripts, cachedManuscripts);
         }
-        return await response.json();
       } catch (error) {
         console.error('Error fetching manuscripts from database:', error);
-        return await getManuscriptsFromStorage(projectId);
+        return cachedManuscripts;
       }
     }
     
-    return await getManuscriptsFromStorage(projectId);
+    return cachedManuscripts;
   }
 
   /**
@@ -970,9 +1847,14 @@ class ManuscriptService {
       try {
         const response = await fetch(`/api/casting/manuscripts/${id}`);
         if (!response.ok) {
-          throw new Error(`Failed to fetch manuscript: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id');
+          } else {
+            throw new Error(`Failed to fetch manuscript: ${response.statusText}`);
+          }
+        } else {
+          return await response.json();
         }
-        return await response.json();
       } catch (error) {
         console.error('Error fetching manuscript from database:', error);
       }
@@ -1002,10 +1884,14 @@ class ManuscriptService {
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to create manuscript: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('POST /api/casting/manuscripts');
+          } else {
+            throw new Error(`Failed to create manuscript: ${response.statusText}`);
+          }
+        } else {
+          return await response.json();
         }
-        
-        return await response.json();
       } catch (error) {
         console.error('Error creating manuscript in database:', error);
       }
@@ -1033,10 +1919,14 @@ class ManuscriptService {
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to update manuscript: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('PUT /api/casting/manuscripts/:id');
+          } else {
+            throw new Error(`Failed to update manuscript: ${response.statusText}`);
+          }
+        } else {
+          return await response.json();
         }
-        
-        return await response.json();
       } catch (error) {
         console.error('Error updating manuscript in database:', error);
       }
@@ -1060,10 +1950,14 @@ class ManuscriptService {
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to delete manuscript: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('DELETE /api/casting/manuscripts/:id');
+          } else {
+            throw new Error(`Failed to delete manuscript: ${response.statusText}`);
+          }
+        } else {
+          return;
         }
-        
-        return;
       } catch (error) {
         console.error('Error deleting manuscript from database:', error);
       }
@@ -1077,21 +1971,28 @@ class ManuscriptService {
    * Get scenes for a manuscript
    */
   async getScenes(manuscriptId: string): Promise<SceneBreakdown[]> {
+    const cachedScenes = await getScenesFromStorage(manuscriptId);
     const isDbAvailable = await checkDatabaseAvailability();
     
     if (isDbAvailable) {
       try {
         const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/scenes`);
         if (!response.ok) {
-          throw new Error(`Failed to fetch scenes: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/scenes');
+          } else {
+            throw new Error(`Failed to fetch scenes: ${response.statusText}`);
+          }
+        } else {
+          const dbScenes = await response.json();
+          return mergeById(dbScenes, cachedScenes);
         }
-        return await response.json();
       } catch (error) {
         console.error('Error fetching scenes from database:', error);
       }
     }
     
-    return await getScenesFromStorage(manuscriptId);
+    return cachedScenes;
   }
 
   /**
@@ -1111,10 +2012,14 @@ class ManuscriptService {
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to save scene: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('POST /api/casting/scenes');
+          } else {
+            throw new Error(`Failed to save scene: ${response.statusText}`);
+          }
+        } else {
+          return await response.json();
         }
-        
-        return await response.json();
       } catch (error) {
         console.error('Error saving scene to database:', error);
       }
@@ -1126,24 +2031,60 @@ class ManuscriptService {
   }
 
   /**
+   * Delete a scene
+   */
+  async deleteScene(sceneId: string): Promise<void> {
+    const isDbAvailable = await checkDatabaseAvailability();
+
+    if (isDbAvailable) {
+      try {
+        const response = await fetch(`/api/casting/scenes/${sceneId}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('DELETE /api/casting/scenes/:id');
+          } else {
+            throw new Error(`Failed to delete scene: ${response.statusText}`);
+          }
+        } else {
+          return;
+        }
+      } catch (error) {
+        console.error('Error deleting scene from database:', error);
+      }
+    }
+
+    await deleteSceneFromStorage(sceneId);
+  }
+
+  /**
    * Get dialogue for a manuscript
    */
   async getDialogue(manuscriptId: string): Promise<DialogueLine[]> {
+    const cachedDialogue = await getDialogueFromStorage(manuscriptId);
     const isDbAvailable = await checkDatabaseAvailability();
     
     if (isDbAvailable) {
       try {
         const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/dialogue`);
         if (!response.ok) {
-          throw new Error(`Failed to fetch dialogue: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/dialogue');
+          } else {
+            throw new Error(`Failed to fetch dialogue: ${response.statusText}`);
+          }
+        } else {
+          const dbDialogue = await response.json();
+          return mergeById(dbDialogue, cachedDialogue);
         }
-        return await response.json();
       } catch (error) {
         console.error('Error fetching dialogue from database:', error);
       }
     }
     
-    return await getDialogueFromStorage(manuscriptId);
+    return cachedDialogue;
   }
 
   /**
@@ -1161,10 +2102,14 @@ class ManuscriptService {
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to save dialogue: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('POST /api/casting/dialogue');
+          } else {
+            throw new Error(`Failed to save dialogue: ${response.statusText}`);
+          }
+        } else {
+          return await response.json();
         }
-        
-        return await response.json();
       } catch (error) {
         console.error('Error saving dialogue to database:', error);
       }
@@ -1188,10 +2133,14 @@ class ManuscriptService {
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to delete dialogue: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('DELETE /api/casting/dialogue/:id');
+          } else {
+            throw new Error(`Failed to delete dialogue: ${response.statusText}`);
+          }
+        } else {
+          return true;
         }
-        
-        return true;
       } catch (error) {
         console.error('Error deleting dialogue from database:', error);
       }
@@ -1206,21 +2155,28 @@ class ManuscriptService {
    * Get revisions for a manuscript
    */
   async getRevisions(manuscriptId: string): Promise<ScriptRevision[]> {
+    const cachedRevisions = await getRevisionsFromStorage(manuscriptId);
     const isDbAvailable = await checkDatabaseAvailability();
     
     if (isDbAvailable) {
       try {
         const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/revisions`);
         if (!response.ok) {
-          throw new Error(`Failed to fetch revisions: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/revisions');
+          } else {
+            throw new Error(`Failed to fetch revisions: ${response.statusText}`);
+          }
+        } else {
+          const dbRevisions = await response.json();
+          return mergeById(dbRevisions, cachedRevisions);
         }
-        return await response.json();
       } catch (error) {
         console.error('Error fetching revisions from database:', error);
       }
     }
     
-    return await getRevisionsFromStorage(manuscriptId);
+    return cachedRevisions;
   }
 
   /**
@@ -1238,10 +2194,14 @@ class ManuscriptService {
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to create revision: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('POST /api/casting/revisions');
+          } else {
+            throw new Error(`Failed to create revision: ${response.statusText}`);
+          }
+        } else {
+          return await response.json();
         }
-        
-        return await response.json();
       } catch (error) {
         console.error('Error creating revision in database:', error);
       }
@@ -1297,6 +2257,7 @@ class ManuscriptService {
     let sceneNumber = 1;
     let lineNumber = 1;
     let currentCharacter: string | null = null;
+    let currentCharacterExtension: string | null = null;
     let inDualDialogue = false;
     let pageNumber = 1;
     
@@ -1347,6 +2308,11 @@ class ManuscriptService {
       if (isSceneHeading) {
         // Save previous scene if exists
         if (currentScene) {
+          currentScene.endPageNumber = pageNumber;
+          currentScene.pageLength = Math.max(
+            1,
+            pageNumber - Number(currentScene.pageNumber || pageNumber) + 1,
+          );
           scenes.push(currentScene as SceneBreakdown);
         }
         
@@ -1374,6 +2340,9 @@ class ManuscriptService {
           intExt: intExt as 'INT' | 'EXT' | 'INT/EXT',
           locationName,
           timeOfDay: timeOfDay as SceneBreakdown['timeOfDay'],
+          pageNumber,
+          endPageNumber: pageNumber,
+          pageLength: 1,
           description: '',
           characters: [],
           status: 'not-scheduled',
@@ -1383,6 +2352,8 @@ class ManuscriptService {
         
         sceneNumber++;
         currentCharacter = null;
+        currentCharacterExtension = null;
+        inDualDialogue = false;
         continue;
       }
       
@@ -1402,6 +2373,13 @@ class ManuscriptService {
       // Page break (===)
       if (trimmedLine === '===' || trimmedLine.match(/^={3,}$/)) {
         pageNumber++;
+        if (currentScene) {
+          currentScene.endPageNumber = pageNumber;
+          currentScene.pageLength = Math.max(
+            1,
+            pageNumber - Number(currentScene.pageNumber || pageNumber) + 1,
+          );
+        }
         continue;
       }
       
@@ -1419,16 +2397,23 @@ class ManuscriptService {
         const forcedCharacter = characterMatch[1] === '@';
         const characterName = characterMatch[2].trim();
         const extension = characterMatch[3]?.trim() || '';
+        const extensionContent = extension.replace(/^\(|\)$/g, '').trim();
         
         // Check if it's likely a character name (not a transition)
-        if (!characterName.match(/^(FADE|CUT|DISSOLVE|SMASH|MATCH|IRIS|WIPE)/)) {
+        if (forcedCharacter || !characterName.match(/^(FADE|CUT|DISSOLVE|SMASH|MATCH|IRIS|WIPE)/)) {
           currentCharacter = characterName;
+          currentCharacterExtension = extensionContent || null;
           characters.add(characterName);
           
           // Check for dual dialogue (^ prefix)
-          if (i + 1 < lines.length && lines[i + 1].trim().startsWith('^')) {
+          if (
+            trimmedLine.endsWith('^') ||
+            (i + 1 < lines.length && lines[i + 1].trim().startsWith('^'))
+          ) {
             inDualDialogue = true;
-            i++; // Skip the ^ line
+            if (i + 1 < lines.length && lines[i + 1].trim().startsWith('^')) {
+              i++; // Skip the ^ line
+            }
           }
           
           // Add to current scene's character list
@@ -1446,11 +2431,21 @@ class ManuscriptService {
         if (trimmedLine.startsWith('(') && trimmedLine.endsWith(')')) {
           // Parenthetical - add to previous dialogue if exists
           if (dialogue.length > 0 && dialogue[dialogue.length - 1].characterName === currentCharacter) {
-            dialogue[dialogue.length - 1].parenthetical = trimmedLine;
+            dialogue[dialogue.length - 1].parenthetical = trimmedLine.slice(1, -1).trim();
           }
           continue;
         }
         
+        const normalizedExtension = (currentCharacterExtension || '').toUpperCase();
+        const dialogueType =
+          inDualDialogue
+            ? 'dual-dialogue'
+            : normalizedExtension.includes('V.O')
+              ? 'voice-over'
+              : normalizedExtension.includes('O.S') || normalizedExtension.includes('OFF SCREEN')
+                ? 'off-screen'
+                : 'dialogue';
+
         // It's dialogue
         const dialogueLine: DialogueLine = {
           id: `dialogue-${Date.now()}-${lineNumber}`,
@@ -1458,7 +2453,11 @@ class ManuscriptService {
           manuscriptId: '',
           characterName: currentCharacter,
           dialogueText: trimmedLine,
-          dialogueType: 'dialogue', // Note: dual dialogue detected but not distinguished in type
+          dialogueType,
+          parenthetical:
+            currentCharacterExtension && currentCharacterExtension !== "CONT'D"
+              ? currentCharacterExtension
+              : undefined,
           lineNumber: lineNumber++,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -1466,6 +2465,7 @@ class ManuscriptService {
         dialogue.push(dialogueLine);
         
         inDualDialogue = false; // Reset dual dialogue flag
+        currentCharacterExtension = null;
         continue;
       }
       
@@ -1480,11 +2480,18 @@ class ManuscriptService {
         
         currentScene.description = (currentScene.description || '') + actionText + '\n';
         currentCharacter = null; // Reset character on action line
+        currentCharacterExtension = null;
+        inDualDialogue = false;
       }
     }
     
     // Save last scene
     if (currentScene) {
+      currentScene.endPageNumber = pageNumber;
+      currentScene.pageLength = Math.max(
+        1,
+        pageNumber - Number(currentScene.pageNumber || pageNumber) + 1,
+      );
       scenes.push(currentScene as SceneBreakdown);
     }
     
@@ -1530,6 +2537,10 @@ class ManuscriptService {
       }
     }
     
+    if (inTitlePage) {
+      return content.length;
+    }
+
     return titlePageEnd;
   }
 
@@ -1611,21 +2622,28 @@ class ManuscriptService {
    * Get acts for a manuscript
    */
   async getActs(manuscriptId: string): Promise<Act[]> {
+    const cachedActs = await getActsFromStorage(manuscriptId);
     const isDbAvailable = await checkDatabaseAvailability();
     
     if (isDbAvailable) {
       try {
         const response = await fetch(`/api/casting/manuscripts/${manuscriptId}/acts`);
         if (!response.ok) {
-          throw new Error(`Failed to fetch acts: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('GET /api/casting/manuscripts/:id/acts');
+          } else {
+            throw new Error(`Failed to fetch acts: ${response.statusText}`);
+          }
+        } else {
+          const dbActs = await response.json();
+          return mergeById(dbActs, cachedActs);
         }
-        return await response.json();
       } catch (error) {
         console.error('Error fetching acts from database:', error);
       }
     }
     
-    return await getActsFromStorage(manuscriptId);
+    return cachedActs;
   }
 
   /**
@@ -1638,7 +2656,10 @@ class ManuscriptService {
       try {
         const response = await fetch(`/api/casting/acts/${actId}`);
         if (!response.ok) {
-          if (response.status === 404) return null;
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('GET /api/casting/acts/:id');
+            return null;
+          }
           throw new Error(`Failed to fetch act: ${response.statusText}`);
         }
         return await response.json();
@@ -1665,10 +2686,14 @@ class ManuscriptService {
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to create act: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('POST /api/casting/acts');
+          } else {
+            throw new Error(`Failed to create act: ${response.statusText}`);
+          }
+        } else {
+          return await response.json();
         }
-        
-        return await response.json();
       } catch (error) {
         console.error('Error creating act in database:', error);
       }
@@ -1696,10 +2721,14 @@ class ManuscriptService {
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to update act: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('PUT /api/casting/acts/:id');
+          } else {
+            throw new Error(`Failed to update act: ${response.statusText}`);
+          }
+        } else {
+          return await response.json();
         }
-        
-        return await response.json();
       } catch (error) {
         console.error('Error updating act in database:', error);
       }
@@ -1728,10 +2757,14 @@ class ManuscriptService {
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to delete act: ${response.statusText}`);
+          if (response.status === 404) {
+            markManuscriptApiUnavailable('DELETE /api/casting/acts/:id');
+          } else {
+            throw new Error(`Failed to delete act: ${response.statusText}`);
+          }
+        } else {
+          return;
         }
-        
-        return;
       } catch (error) {
         console.error('Error deleting act from database:', error);
       }

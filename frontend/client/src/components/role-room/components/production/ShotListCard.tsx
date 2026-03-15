@@ -45,6 +45,9 @@ import {
   Landscape as ExtIcon,
   AccessTime as TimeIcon,
   PersonOff as UnassignedIcon,
+  HourglassEmpty as WaitingIcon,
+  Autorenew as InProgressIcon,
+  CheckCircle as CompletedIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   ContentCopy as DuplicateIcon,
@@ -69,15 +72,17 @@ const COLOR_TAG_MAP: Record<string, string> = {
 // ─── STATUS BADGE ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ pct }: { pct: number }) {
-  const { color, label } =
-    pct === 100  ? { color: '#22c55e', label: 'Done' }
-    : pct >= 50  ? { color: '#f97316', label: 'In Progress' }
-    : pct > 0    ? { color: '#3b82f6', label: 'Started' }
-    :              { color: '#6b7280', label: 'Not Started' };
+  const { color, label, icon } =
+    pct === 100
+      ? { color: '#22c55e', label: 'Fullført', icon: <CompletedIcon sx={{ fontSize: 12 }} /> }
+      : pct > 0
+        ? { color: '#f97316', label: 'Pågår', icon: <InProgressIcon sx={{ fontSize: 12 }} /> }
+        : { color: '#6b7280', label: 'Venter', icon: <WaitingIcon sx={{ fontSize: 12 }} /> };
 
   return (
     <Chip
       size="small"
+      icon={icon}
       label={label}
       sx={{
         bgcolor: color + '22',
@@ -87,6 +92,11 @@ function StatusBadge({ pct }: { pct: number }) {
         fontSize: '0.65rem',
         height: 20,
         px: 0.25,
+        '& .MuiChip-icon': {
+          color,
+          ml: '4px',
+          mr: '-2px',
+        },
       }}
     />
   );

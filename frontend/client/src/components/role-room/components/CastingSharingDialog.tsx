@@ -38,6 +38,7 @@ import {
   People as PeopleIcon,
   SupervisorAccount as SupervisorAccountIcon,
   Videocam as VideocamIcon,
+  FactCheck as FactCheckIcon,
   Cancel as CancelIcon,
   FileDownload as FileDownloadIcon,
 } from '@mui/icons-material';
@@ -169,6 +170,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
   const roleTypes: UserRoleType[] = [
     'director',
     'producer',
+    'content_producer',
+    'client_reviewer',
     'casting_director',
     'production_manager',
     'camera_team',
@@ -179,6 +182,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     const labels: Record<string, string> = {
       director: 'Regissør',
       producer: 'Produsent',
+      content_producer: 'Innholdsprodusent',
+      client_reviewer: 'Klient-revisor',
       casting_director: 'Casting-ansvarlig',
       production_manager: 'Produksjonsleder',
       camera_team: 'Kamera-team',
@@ -1180,6 +1185,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                           const icons: Record<UserRoleType, ReactElement> = {
                             director: <MovieIcon sx={{ fontSize: '1rem' }} />,
                             producer: <BusinessIcon sx={{ fontSize: '1rem' }} />,
+                            content_producer: <VideocamIcon sx={{ fontSize: '1rem' }} />,
+                            client_reviewer: <FactCheckIcon sx={{ fontSize: '1rem' }} />,
                             casting_director: <PeopleIcon sx={{ fontSize: '1rem' }} />,
                             production_manager: <SupervisorAccountIcon sx={{ fontSize: '1rem' }} />,
                             camera_team: <VideocamIcon sx={{ fontSize: '1rem' }} />,
@@ -1622,5 +1629,3 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     </>
   );
 }
-
-

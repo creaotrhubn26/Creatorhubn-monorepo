@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -55,6 +55,7 @@ import {
 } from '@mui/icons-material';
 import type { SceneBreakdown} from '../models/casting';
 import { CastingShot } from '../models/casting';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface TakeLog {
   id: string;
@@ -93,6 +94,13 @@ interface ScriptSupervisorNotesProps {
   scenes: SceneBreakdown[];
   onLogUpdate?: (log: TakeLog) => void;
 }
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
   scenes,
@@ -183,6 +191,27 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
     technicalNotes: '',
     soundNotes: '',
   });
+
+  const mentionCandidates = useMemo(() => {
+    const pool = new Set<string>();
+    scenes.forEach((scene) => {
+      if (typeof scene.sceneNumber === 'string' && scene.sceneNumber.trim()) {
+        pool.add(`Scene ${scene.sceneNumber}`);
+      }
+      if (typeof scene.name === 'string' && scene.name.trim()) {
+        pool.add(scene.name.trim());
+      }
+    });
+    takeLogs.forEach((log) => {
+      if (typeof log.sceneNumber === 'string' && log.sceneNumber.trim()) {
+        pool.add(`Scene ${log.sceneNumber}`);
+      }
+      if (typeof log.shotNumber === 'string' && log.shotNumber.trim()) {
+        pool.add(`Shot ${log.shotNumber}`);
+      }
+    });
+    return Array.from(pool);
+  }, [scenes, takeLogs]);
 
   // Timer effect
   useEffect(() => {
@@ -665,6 +694,18 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
                 onChange={(e) => setNewLog(prev => ({ ...prev, performanceNotes: e.target.value }))}
                 placeholder="Skuespillerprestasjoner, energi, timing..."
               />
+              <GlobalMentionHelper
+                text={newLog.performanceNotes || ''}
+                localCandidates={mentionCandidates}
+                onApplySuggestion={(name) =>
+                  setNewLog((prev) => ({
+                    ...prev,
+                    performanceNotes: applyMentionSuggestion(prev.performanceNotes, name),
+                  }))
+                }
+                autoTagTitle="Auto-tagget i notater"
+                suggestionTitle="Mener du?"
+              />
             </Grid>
 
             <Grid size={{ xs: 12 }}>
@@ -676,6 +717,18 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
                 value={newLog.technicalNotes || ''}
                 onChange={(e) => setNewLog(prev => ({ ...prev, technicalNotes: e.target.value }))}
                 placeholder="Fokus, eksponering, kamerabevegelse..."
+              />
+              <GlobalMentionHelper
+                text={newLog.technicalNotes || ''}
+                localCandidates={mentionCandidates}
+                onApplySuggestion={(name) =>
+                  setNewLog((prev) => ({
+                    ...prev,
+                    technicalNotes: applyMentionSuggestion(prev.technicalNotes, name),
+                  }))
+                }
+                autoTagTitle="Auto-tagget i notater"
+                suggestionTitle="Mener du?"
               />
             </Grid>
 
@@ -689,6 +742,18 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
                 onChange={(e) => setNewLog(prev => ({ ...prev, continuityNotes: e.target.value }))}
                 placeholder="Posisjoner, rekvisitter, kostyme..."
               />
+              <GlobalMentionHelper
+                text={newLog.continuityNotes || ''}
+                localCandidates={mentionCandidates}
+                onApplySuggestion={(name) =>
+                  setNewLog((prev) => ({
+                    ...prev,
+                    continuityNotes: applyMentionSuggestion(prev.continuityNotes, name),
+                  }))
+                }
+                autoTagTitle="Auto-tagget i notater"
+                suggestionTitle="Mener du?"
+              />
             </Grid>
 
             <Grid size={{ xs: 12 }}>
@@ -698,6 +763,18 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
                 value={newLog.directorComment || ''}
                 onChange={(e) => setNewLog(prev => ({ ...prev, directorComment: e.target.value }))}
                 placeholder="Regissørens kommentar"
+              />
+              <GlobalMentionHelper
+                text={newLog.directorComment || ''}
+                localCandidates={mentionCandidates}
+                onApplySuggestion={(name) =>
+                  setNewLog((prev) => ({
+                    ...prev,
+                    directorComment: applyMentionSuggestion(prev.directorComment, name),
+                  }))
+                }
+                autoTagTitle="Auto-tagget i notater"
+                suggestionTitle="Mener du?"
               />
             </Grid>
           </Grid>

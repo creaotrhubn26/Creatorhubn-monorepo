@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ThemeProvider, createTheme, responsiveFontSizes } from '@mui/material/styles';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { GlobalStyles } from '@mui/material';
 import { creatorHubTheme } from '@/theme/creatorHubTheme';
 
@@ -170,10 +170,7 @@ export default function AcademyDesignProvider({ children }: AcademyDesignProvide
       },
     });
 
-    return responsiveFontSizes(theme, {
-      factor: 2,
-      breakpoints: ['sm', 'md', 'lg', 'xl'],
-    });
+    return theme;
   }, []);
 
   return (
@@ -184,6 +181,7 @@ export default function AcademyDesignProvider({ children }: AcademyDesignProvide
             '--academy-shell-max-width': '1920px',
             '--academy-hairline-width': '1px',
             '--academy-divider-width': '1px',
+            '--academy-right-panel-width': '440px',
             textRendering: 'optimizeLegibility',
             WebkitFontSmoothing: 'antialiased',
             MozOsxFontSmoothing: 'grayscale',
@@ -238,16 +236,16 @@ export default function AcademyDesignProvider({ children }: AcademyDesignProvide
           },
           '@media (min-resolution: 2dppx)': {
             'body.academy-route': {
-              '--academy-shell-max-width': '2140px',
-              '--academy-hairline-width': '0.75px',
-              '--academy-divider-width': '0.75px',
+              '--academy-shell-max-width': '2000px',
+              '--academy-hairline-width': '0.85px',
+              '--academy-divider-width': '0.85px',
             },
           },
           '@media (min-resolution: 3dppx)': {
             'body.academy-route': {
-              '--academy-shell-max-width': '2280px',
-              '--academy-hairline-width': '0.66px',
-              '--academy-divider-width': '0.66px',
+              '--academy-shell-max-width': '2080px',
+              '--academy-hairline-width': '0.75px',
+              '--academy-divider-width': '0.75px',
             },
           },
         }}

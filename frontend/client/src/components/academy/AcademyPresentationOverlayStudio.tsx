@@ -6,14 +6,16 @@ import {
   Button,
   ButtonGroup,
   Chip,
-  Divider,
+  FormControlLabel,
   IconButton,
   LinearProgress,
   MenuItem,
   Select,
   Slider,
   Stack,
+  Switch,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -24,6 +26,9 @@ import {
   AutoAwesome,
   ChevronLeft,
   ChevronRight,
+  CloudDone,
+  CloudOff,
+  CloudSync,
   DeleteOutline,
   Description,
   Edit,
@@ -31,12 +36,13 @@ import {
   InfoOutlined,
   MailOutline,
   NotificationsNone,
-  PlayArrow,
   Publish,
   Save,
   Search,
   Slideshow,
   Tune,
+  Visibility,
+  VisibilityOff,
   WarningAmber,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
@@ -54,7 +60,34 @@ import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
 import AcademyLeftSidebar from './AcademyLeftSidebar';
 import AcademyPlayerStudio from './AcademyPlayerStudio';
 import { resolveAcademyVideoUrl } from './academyVideoSourceUtils';
+import {
+  formatToolSavedTime,
+  hasSavedDraftNewerThanPublished,
+  useAcademyToolUx,
+  useToolAutoSaveState,
+} from './academyToolCore';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  ACADEMY_PRESENTATION_GRAMMAR_BUDGETS,
+  ACADEMY_PRESENTATION_THEME_TOKENS,
+  academyPresentationBuildGrammarPlan,
+  academyPresentationThemeTokens,
+  type AcademyPresentationBrandTokens as SharedPresentationBrandTokens,
+  type AcademyPresentationContinuationPlan as SharedPresentationContinuationPlan,
+  type AcademyPresentationNarrativeRole as SharedPresentationNarrativeRole,
+  type AcademyPresentationRepairAction as SharedPresentationRepairAction,
+  type AcademyPresentationSlideBudget as SharedPresentationSlideBudget,
+  type AcademyPresentationSlideGrammarId as SharedPresentationSlideGrammarId,
+  type AcademyPresentationStructuredContent as SharedPresentationStructuredContent,
+  type AcademyPresentationVisualNeed as SharedPresentationVisualNeed,
+} from '@shared/academy-presentation-design-system';
+import {
+  buildPresentationGraphicPlan,
+  buildPresentationGraphicAsset,
+  buildPresentationReferenceQueries,
+  evaluatePresentationDeckDesign,
+  type PresentationDeckDesignEvaluation,
+} from './presentationStudioDesignRuntime';
 
 interface AcademyPresentationOverlayStudioProps {
   courseId?: string;
@@ -108,23 +141,32 @@ interface PresentationVisualThemePreset {
   preferredTemplate: PresentationTemplateId;
   preferredMode: PresentationDisplayMode;
   splitLayoutVariant: PresentationSplitLayoutVariant;
-  colors: {
-    navBg: string;
-    navCardBg: string;
-    navCardActiveBg: string;
-    navText: string;
-    navAccent: string;
-    canvasBg: string;
-    canvasCardBg: string;
-    canvasCardBorder: string;
-    canvasTitle: string;
-    canvasText: string;
-    presenterBg: string;
-    presenterCardBg: string;
-    presenterText: string;
-    chipBg: string;
-    chipText: string;
-  };
+  colors: SharedPresentationBrandTokens;
+}
+
+type PresentationChartStyle = SharedPresentationBrandTokens['chartStyle'];
+type PresentationImageStyle = SharedPresentationBrandTokens['imageStyle'];
+
+interface PresentationBrandKit {
+  id: string;
+  name: string;
+  baseThemeId: PresentationVisualThemeId;
+  primary: string;
+  secondary: string;
+  accent: string;
+  canvasTitle: string;
+  canvasText: string;
+  headingFont: string;
+  bodyFont: string;
+  cornerRadius: number;
+  chartStyle: PresentationChartStyle;
+  imageStyle: PresentationImageStyle;
+  logoText: string;
+  footerText: string;
+  requireLogo: boolean;
+  requireFooter: boolean;
+  minContrastRatio: number;
+  updatedAt: string;
 }
 
 interface PresentationSlide {
@@ -151,6 +193,29 @@ interface PresentationSceneElement {
   y: number;
   width: number;
   height: number;
+  role?:
+    | 'eyebrow'
+    | 'headline'
+    | 'subtitle'
+    | 'body'
+    | 'bullet'
+    | 'column-title'
+    | 'column-body'
+    | 'step-title'
+    | 'step-body'
+    | 'stat-value'
+    | 'stat-label'
+    | 'quote'
+    | 'quote-attribution'
+    | 'cta'
+    | 'cta-support'
+    | 'media'
+    | 'badge';
+  align?: 'left' | 'center';
+  tone?: 'default' | 'muted' | 'accent' | 'inverse';
+  prompt?: string;
+  graphicKind?: PresentationDesignGraphicSlot['kind'];
+  assetDataUrl?: string;
 }
 
 interface PresentationDeck {
@@ -158,6 +223,7 @@ interface PresentationDeck {
   name: string;
   template: PresentationTemplateId;
   visualThemeId: PresentationVisualThemeId;
+  brandKitId?: string;
   displayMode: PresentationDisplayMode;
   splitLayoutVariant: PresentationSplitLayoutVariant;
   showNavigator: boolean;
@@ -174,9 +240,16 @@ type PresentationStoreEntry = {
   decks: PresentationDeck[];
   duration: number;
   updatedAt: string;
+  publishedAt?: string;
 };
 
 type PresentationStoreMap = Record<string, PresentationStoreEntry>;
+type PresentationBrandKitStoreMap = Record<string, PresentationBrandKit[]>;
+
+interface PresentationBrandEvaluation {
+  score: number;
+  findings: PresentationQualityIssue[];
+}
 
 type ParsedPresentationResource = {
   id: string;
@@ -237,6 +310,14 @@ interface PresentationQualityIssue {
   messageEn: string;
 }
 
+interface PresentationSemanticSearchRankItem {
+  id: string;
+  score: number;
+  lexicalScore: number;
+  semanticScore: number;
+  rerankScore: number | null;
+}
+
 type PresentationDesignVisualType =
   | 'title'
   | 'agenda'
@@ -246,6 +327,10 @@ type PresentationDesignVisualType =
   | 'process'
   | 'kpi'
   | 'timeline'
+  | 'roadmap'
+  | 'architecture'
+  | 'scenario'
+  | 'knowledge-check'
   | 'comparison'
   | 'demo'
   | 'quote'
@@ -261,22 +346,31 @@ interface PresentationDesignGraphicSlot {
   y: number;
   width: number;
   height: number;
+  resolvedAssetUrl?: string;
+  assetSource?: string;
 }
 
 interface PresentationDesignSlidePlan {
   slideId: string;
   visualType: PresentationDesignVisualType;
+  grammarId: SharedPresentationSlideGrammarId;
+  narrativeRole: SharedPresentationNarrativeRole;
   layoutHint: string;
   recommendedLayout: PresentationDisplayMode;
   confidence: number;
   reasons: string[];
   intentTags: string[];
+  contentBudget: SharedPresentationSlideBudget;
+  structuredContent: SharedPresentationStructuredContent;
+  repairActions: SharedPresentationRepairAction[];
+  visualNeeds: SharedPresentationVisualNeed[];
   copySuggestions: {
     title: string;
     body: string[];
     cta: string;
   };
   graphicSlots: PresentationDesignGraphicSlot[];
+  continuation?: SharedPresentationContinuationPlan | null;
 }
 
 interface PresentationDesignPlan {
@@ -290,13 +384,124 @@ interface PresentationDesignPlan {
   recommendedSplitLayoutVariant: PresentationSplitLayoutVariant;
   summary: {
     generatedBy: string;
+    provider?: 'huggingface' | 'openai' | 'rule-engine';
     model?: string;
     slideCount: number;
     visualCounts: Record<PresentationDesignVisualType, number>;
+    grammarCounts?: Record<string, number>;
+    repairActionsCount?: number;
+    templateMemoryMatches?: PresentationTemplateMemoryMatch[];
+    retrievalMeta?: PresentationTemplateMemoryMeta;
+    brandContextName?: string;
+    pipeline?: string[];
   };
+  brandTokens?: SharedPresentationBrandTokens;
   slides: PresentationDesignSlidePlan[];
   generatedAt: string;
 }
+
+type PresentationTemplateMemoryKind = 'deck' | 'brand-kit' | 'preset';
+
+interface PresentationTemplateMemoryItem {
+  id: string;
+  kind: PresentationTemplateMemoryKind;
+  name: string;
+  summary: string;
+  templateId: PresentationTemplateId;
+  visualThemeId: PresentationVisualThemeId;
+  displayMode: PresentationDisplayMode;
+  splitLayoutVariant: PresentationSplitLayoutVariant;
+  searchText: string;
+  brandName: string;
+}
+
+interface PresentationTemplateMemoryMatch {
+  id: string;
+  kind: PresentationTemplateMemoryKind;
+  name: string;
+  summary: string;
+  templateId: PresentationTemplateId;
+  visualThemeId: PresentationVisualThemeId;
+  displayMode: PresentationDisplayMode;
+  splitLayoutVariant: PresentationSplitLayoutVariant;
+  brandName: string;
+  score: number;
+  lexicalScore: number;
+  semanticScore: number;
+  rerankScore: number | null;
+}
+
+interface PresentationTemplateMemoryMeta {
+  provider: 'lexical' | 'huggingface';
+  embeddingModel?: string;
+  rerankerModel?: string;
+  candidateCount: number;
+  matchedCount: number;
+}
+
+type PresentationAiCritiqueSeverity = 'warning' | 'error';
+type PresentationAiCritiqueCategory =
+  | 'content'
+  | 'hierarchy'
+  | 'visual'
+  | 'balance'
+  | 'grammar'
+  | 'narrative'
+  | 'brand';
+
+interface PresentationAiCritiqueFinding {
+  id: string;
+  slideId?: string;
+  severity: PresentationAiCritiqueSeverity;
+  category: PresentationAiCritiqueCategory;
+  messageNo: string;
+  messageEn: string;
+  repairHintNo: string;
+  repairHintEn: string;
+  recommendedGrammarId?: SharedPresentationSlideGrammarId;
+  recommendedVisualKind?: PresentationDesignGraphicSlot['kind'];
+  confidence: number;
+}
+
+interface PresentationAiCritiqueResult {
+  provider: 'huggingface' | 'heuristic';
+  model: string;
+  overall: number;
+  narrative: number;
+  pedagogy: number;
+  design: number;
+  visuals: number;
+  brand: number;
+  findings: PresentationAiCritiqueFinding[];
+  generatedAt: string;
+  pipeline?: string[];
+}
+
+interface PresentationReferenceImageResult {
+  id: string;
+  url: string;
+  thumbnailUrl?: string;
+  source?: string;
+  attribution?: string;
+  description?: string;
+  photographer?: string;
+}
+
+interface PresentationLocalVisualAssetCandidate {
+  id: string;
+  url: string;
+  title: string;
+  description: string;
+  source: 'resource' | 'video-poster' | 'lesson-thumbnail' | 'course-thumbnail';
+  scope: 'selected-skill' | 'course' | 'other-skill' | 'lesson-thumbnail' | 'course-thumbnail';
+  assetKind: 'image' | 'video-poster' | 'thumbnail';
+  folderTag?: string;
+  mediaAssetId?: string;
+  uploaded?: boolean;
+}
+
+const PRESENTATION_MEDIA_FOLDER_TAG_REGEX = /\[folder:([a-z0-9-]+)\]/i;
+const PRESENTATION_MEDIA_SOURCE_TAG_REGEX = /\[source:(upload|resource)\]/i;
 
 const academyShellMaxWidth = 'min(100%, var(--academy-shell-max-width, 2880px))';
 const panelSx = {
@@ -304,17 +509,83 @@ const panelSx = {
   border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
+const PRESENTATION_CONTROL_BUTTON_SX = {
+  height: 34,
+  borderRadius: 1,
+  textTransform: 'none',
+  transition: 'all 140ms ease',
+};
+const PRESENTATION_NEUTRAL_OUTLINED_BUTTON_SX = {
+  ...PRESENTATION_CONTROL_BUTTON_SX,
+  borderColor: 'rgba(255,255,255,0.2)',
+  color: '#edf0f7',
+  bgcolor: 'rgba(255,255,255,0.02)',
+  '&:hover': {
+    borderColor: 'rgba(255,255,255,0.34)',
+    bgcolor: 'rgba(255,255,255,0.06)',
+  },
+};
+const PRESENTATION_WARNING_OUTLINED_BUTTON_SX = {
+  ...PRESENTATION_CONTROL_BUTTON_SX,
+  borderColor: 'rgba(248,179,33,0.35)',
+  color: '#f8d675',
+  bgcolor: 'rgba(248,179,33,0.06)',
+  '&:hover': {
+    borderColor: 'rgba(248,179,33,0.5)',
+    bgcolor: 'rgba(248,179,33,0.14)',
+  },
+};
+const PRESENTATION_SAVE_BUTTON_SX = {
+  ...PRESENTATION_NEUTRAL_OUTLINED_BUTTON_SX,
+  minWidth: 104,
+};
+const PRESENTATION_PUBLISH_BUTTON_SX = {
+  ...PRESENTATION_CONTROL_BUTTON_SX,
+  minWidth: 112,
+  color: '#0f0f0f',
+  background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.68)',
+  boxShadow: '0 8px 20px rgba(248,179,33,0.25)',
+  '&:hover': {
+    background: 'linear-gradient(180deg, #ffe07a, #f5b53a)',
+    boxShadow: '0 10px 24px rgba(248,179,33,0.35)',
+  },
+};
+const PRESENTATION_SECTION_LABEL_SX = {
+  fontSize: 12,
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  color: 'rgba(237,240,247,0.68)',
+  fontWeight: 700,
+};
+const PRESENTATION_DETAIL_CARD_SX = {
+  borderRadius: 1,
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
+  background: 'linear-gradient(145deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015))',
+  p: 1,
+  display: 'grid',
+  gap: 0.8,
+};
 
 const PRESENTATION_VIDEO_PLACEHOLDER = '/assets/academy/intro-video.mp4';
 const PRESENTATION_STORE_KEY = 'academyPresentationOverlayStoreV1';
 const PRESENTATION_KV_KEY = 'academy_presentation_overlay_store_v1';
 const PRESENTATION_EDITOR_PREFS_KEY = 'academy_presentation_editor_prefs_v1';
+const PRESENTATION_BRAND_KITS_KEY = 'academy_presentation_brand_kits_v1';
 const PRESENTATION_RESOURCE_ID_PREFIX = 'presentation-resource-';
 const PRESENTATION_RESOURCE_COURSE_PREFIX = 'presentation-resource-course-';
 const PRESENTATION_RESOURCE_SKILL_PREFIX = 'presentation-resource-skill-';
 const TELEPROMPTER_SPEAKER_ALL = '__all__';
 const TELEPROMPTER_SYNC_POLL_INTERVAL_MS = 1600;
 const TELEPROMPTER_SYNC_POLL_ATTEMPTS = 120;
+
+const PRESENTATION_FONT_OPTIONS = [
+  '"Sora", "Segoe UI", sans-serif',
+  '"Manrope", "Segoe UI", sans-serif',
+  '"Space Grotesk", "Segoe UI", sans-serif',
+  '"IBM Plex Sans", "Segoe UI", sans-serif',
+  '"Plus Jakarta Sans", "Segoe UI", sans-serif',
+];
 
 const templatePresets: PresentationTemplatePreset[] = [
   {
@@ -377,30 +648,14 @@ const templatePresets: PresentationTemplatePreset[] = [
 const visualThemePresets: PresentationVisualThemePreset[] = [
   {
     id: 'neutral-modern',
-    labelNo: 'Noytral modern',
+    labelNo: 'Neutral Modern',
     labelEn: 'Neutral Modern',
-    descriptionNo: 'Ren og allsidig visuell stil for generell opplaring og demo.',
-    descriptionEn: 'Clean, versatile style for general training and demos.',
-    preferredTemplate: 'walkthrough',
-    preferredMode: 'split-screen',
+    descriptionNo: 'Ren, moderne deck for produkt, opplæring og generelle presentasjoner.',
+    descriptionEn: 'Clean modern deck for product, training, and general presentations.',
+    preferredTemplate: 'product-overview',
+    preferredMode: 'side-panel',
     splitLayoutVariant: 'balanced',
-    colors: {
-      navBg: 'linear-gradient(180deg, rgba(30,46,70,0.86), rgba(12,21,34,0.9))',
-      navCardBg: 'rgba(7,14,25,0.38)',
-      navCardActiveBg: 'rgba(128,176,238,0.3)',
-      navText: '#f2f6ff',
-      navAccent: '#82b0ee',
-      canvasBg: 'linear-gradient(180deg, rgba(244,248,255,0.98), rgba(229,237,248,0.96))',
-      canvasCardBg: 'rgba(255,255,255,0.78)',
-      canvasCardBorder: 'rgba(66,103,142,0.25)',
-      canvasTitle: '#1f3a5d',
-      canvasText: '#2e4b68',
-      presenterBg: 'linear-gradient(180deg, rgba(8,12,20,0.14), rgba(8,12,20,0.34))',
-      presenterCardBg: 'rgba(7,12,20,0.48)',
-      presenterText: '#f5f1e7',
-      chipBg: 'rgba(255,255,255,0.14)',
-      chipText: '#f5f8ff',
-    },
+    colors: ACADEMY_PRESENTATION_THEME_TOKENS['neutral-modern'],
   },
   {
     id: 'sales-command',
@@ -411,85 +666,31 @@ const visualThemePresets: PresentationVisualThemePreset[] = [
     preferredTemplate: 'feature-explainer',
     preferredMode: 'split-screen',
     splitLayoutVariant: 'slide-focus',
-    colors: {
-      navBg: 'linear-gradient(180deg, rgba(48,24,18,0.9), rgba(18,12,8,0.92))',
-      navCardBg: 'rgba(29,16,10,0.56)',
-      navCardActiveBg: 'rgba(248,179,33,0.35)',
-      navText: '#ffeccc',
-      navAccent: '#f8b321',
-      canvasBg: 'linear-gradient(180deg, rgba(255,248,236,0.98), rgba(252,239,215,0.98))',
-      canvasCardBg: 'rgba(255,255,255,0.82)',
-      canvasCardBorder: 'rgba(166,108,26,0.26)',
-      canvasTitle: '#5f2d08',
-      canvasText: '#6a3b17',
-      presenterBg: 'linear-gradient(180deg, rgba(37,20,12,0.4), rgba(20,12,8,0.48))',
-      presenterCardBg: 'rgba(35,18,10,0.55)',
-      presenterText: '#ffe8c1',
-      chipBg: 'rgba(248,179,33,0.22)',
-      chipText: '#fff0cf',
-    },
+    colors: ACADEMY_PRESENTATION_THEME_TOKENS['sales-command'],
   },
   {
     id: 'operations-grid',
     labelNo: 'Operations Grid',
     labelEn: 'Operations Grid',
-    descriptionNo: 'Systematisk og industriell stil for prosedyre- og driftstrening.',
-    descriptionEn: 'Systematic, industrial visual language for operations training.',
+    descriptionNo: 'Teknisk og ryddig visuell stil for prosess, runbooks og operativ trening.',
+    descriptionEn: 'Technical, structured theme for process, runbooks, and operational training.',
     preferredTemplate: 'walkthrough',
     preferredMode: 'split-screen',
     splitLayoutVariant: 'presenter-focus',
-    colors: {
-      navBg: 'linear-gradient(180deg, rgba(18,40,38,0.9), rgba(8,20,21,0.92))',
-      navCardBg: 'rgba(8,26,25,0.54)',
-      navCardActiveBg: 'rgba(52,173,140,0.36)',
-      navText: '#dcfff6',
-      navAccent: '#34ad8c',
-      canvasBg: 'linear-gradient(180deg, rgba(237,252,247,0.98), rgba(225,245,238,0.98))',
-      canvasCardBg: 'rgba(255,255,255,0.8)',
-      canvasCardBorder: 'rgba(33,118,98,0.24)',
-      canvasTitle: '#0b5a4a',
-      canvasText: '#1a5f52',
-      presenterBg: 'linear-gradient(180deg, rgba(9,24,22,0.32), rgba(8,19,17,0.46))',
-      presenterCardBg: 'rgba(8,24,22,0.52)',
-      presenterText: '#d8fff4',
-      chipBg: 'rgba(52,173,140,0.22)',
-      chipText: '#ddfff6',
-    },
+    colors: ACADEMY_PRESENTATION_THEME_TOKENS['operations-grid'],
   },
   {
     id: 'offshore-briefing',
     labelNo: 'Offshore Briefing',
     labelEn: 'Offshore Briefing',
-    descriptionNo: 'Kontraststerk beredskapsstil for sikkerhets- og hendelsesflyt.',
-    descriptionEn: 'High-contrast briefing style for safety and incident flow.',
+    descriptionNo: 'Rolig briefing-stil for sikkerhet, kvalitet og seriøs faglig opplæring.',
+    descriptionEn: 'Calm briefing style for safety, quality, and high-trust training.',
     preferredTemplate: 'training-deep-dive',
     preferredMode: 'split-screen',
     splitLayoutVariant: 'balanced',
-    colors: {
-      navBg: 'linear-gradient(180deg, rgba(12,28,53,0.92), rgba(7,14,28,0.95))',
-      navCardBg: 'rgba(9,20,37,0.56)',
-      navCardActiveBg: 'rgba(92,149,255,0.34)',
-      navText: '#deebff',
-      navAccent: '#5c95ff',
-      canvasBg: 'linear-gradient(180deg, rgba(240,247,255,0.98), rgba(227,237,252,0.98))',
-      canvasCardBg: 'rgba(255,255,255,0.82)',
-      canvasCardBorder: 'rgba(44,86,147,0.26)',
-      canvasTitle: '#173b6c',
-      canvasText: '#204570',
-      presenterBg: 'linear-gradient(180deg, rgba(9,16,29,0.26), rgba(8,12,22,0.4))',
-      presenterCardBg: 'rgba(8,14,26,0.5)',
-      presenterText: '#e4eeff',
-      chipBg: 'rgba(92,149,255,0.2)',
-      chipText: '#e4eeff',
-    },
+    colors: ACADEMY_PRESENTATION_THEME_TOKENS['offshore-briefing'],
   },
 ];
-
-const projectTemplateToVisualTheme: Record<string, PresentationVisualThemeId> = {
-  'sales-enablement-a-a': 'sales-command',
-  'production-operations-a-a': 'operations-grid',
-  'offshore-safety-a-a': 'offshore-briefing',
-};
 
 const projectTemplateToPresentationTemplate: Record<string, PresentationTemplateId> = {
   'sales-enablement-a-a': 'feature-explainer',
@@ -548,20 +749,69 @@ const clamp = (value: number, min: number, max: number): number =>
 
 const roundHalfSecond = (value: number): number => Math.round(value * 2) / 2;
 
-const parseHexColor = (value: string): { r: number; g: number; b: number } | null => {
+const normalizeSearchToken = (value: string): string =>
+  String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const tokenizeSearchQuery = (value: string): string[] =>
+  Array.from(
+    new Set(
+      normalizeSearchToken(value)
+        .split(' ')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 1),
+    ),
+  ).slice(0, 18);
+
+const computeDeckLexicalSearchScore = (deck: PresentationDeck, query: string, queryTokens: string[]): number => {
+  const normalizedQuery = normalizeSearchToken(query);
+  if (!normalizedQuery) return 0;
+  const normalizedName = normalizeSearchToken(deck.name);
+  const normalizedSourceName = normalizeSearchToken(deck.sourceName);
+  const normalizedSlideTitles = normalizeSearchToken(
+    deck.slides.map((slide) => slide.title).join(' '),
+  );
+  let score = 0;
+  if (normalizedName.includes(normalizedQuery)) score += 0.62;
+  if (normalizedSourceName.includes(normalizedQuery)) score += 0.3;
+  if (normalizedSlideTitles.includes(normalizedQuery)) score += 0.22;
+  queryTokens.forEach((token) => {
+    if (normalizedName.includes(token)) score += 0.09;
+    else if (normalizedSourceName.includes(token)) score += 0.05;
+    else if (normalizedSlideTitles.includes(token)) score += 0.035;
+  });
+  return clamp(score, 0, 1);
+};
+
+const parseCssColor = (value: string): { r: number; g: number; b: number } | null => {
   const match = String(value || '').match(/#([0-9a-f]{3}|[0-9a-f]{6})\b/i);
-  if (!match) return null;
-  const hex = match[1];
-  if (hex.length === 3) {
-    const r = Number.parseInt(`${hex[0]}${hex[0]}`, 16);
-    const g = Number.parseInt(`${hex[1]}${hex[1]}`, 16);
-    const b = Number.parseInt(`${hex[2]}${hex[2]}`, 16);
+  if (match) {
+    const hex = match[1];
+    if (hex.length === 3) {
+      const r = Number.parseInt(`${hex[0]}${hex[0]}`, 16);
+      const g = Number.parseInt(`${hex[1]}${hex[1]}`, 16);
+      const b = Number.parseInt(`${hex[2]}${hex[2]}`, 16);
+      return { r, g, b };
+    }
+    const r = Number.parseInt(hex.slice(0, 2), 16);
+    const g = Number.parseInt(hex.slice(2, 4), 16);
+    const b = Number.parseInt(hex.slice(4, 6), 16);
     return { r, g, b };
   }
-  const r = Number.parseInt(hex.slice(0, 2), 16);
-  const g = Number.parseInt(hex.slice(2, 4), 16);
-  const b = Number.parseInt(hex.slice(4, 6), 16);
-  return { r, g, b };
+  const rgbMatch = String(value || '').match(/rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+  if (rgbMatch) {
+    return {
+      r: clamp(Number(rgbMatch[1]) || 0, 0, 255),
+      g: clamp(Number(rgbMatch[2]) || 0, 0, 255),
+      b: clamp(Number(rgbMatch[3]) || 0, 0, 255),
+    };
+  }
+  return null;
 };
 
 const relativeLuminance = (rgb: { r: number; g: number; b: number }): number => {
@@ -577,8 +827,8 @@ const relativeLuminance = (rgb: { r: number; g: number; b: number }): number => 
 };
 
 const contrastRatio = (foreground: string, background: string): number | null => {
-  const fg = parseHexColor(foreground);
-  const bg = parseHexColor(background);
+  const fg = parseCssColor(foreground);
+  const bg = parseCssColor(background);
   if (!fg || !bg) return null;
   const fgLum = relativeLuminance(fg);
   const bgLum = relativeLuminance(bg);
@@ -868,6 +1118,10 @@ const toDesignVisualType = (value: string): PresentationDesignVisualType => {
     candidate === 'process' ||
     candidate === 'kpi' ||
     candidate === 'timeline' ||
+    candidate === 'roadmap' ||
+    candidate === 'architecture' ||
+    candidate === 'scenario' ||
+    candidate === 'knowledge-check' ||
     candidate === 'comparison' ||
     candidate === 'demo' ||
     candidate === 'quote' ||
@@ -897,8 +1151,101 @@ const toDesignGraphicKind = (
   return 'illustration';
 };
 
+const toPresentationGrammarId = (value: string): SharedPresentationSlideGrammarId => {
+  const candidate = String(value || '').trim().toLowerCase();
+  return candidate in ACADEMY_PRESENTATION_GRAMMAR_BUDGETS
+    ? (candidate as SharedPresentationSlideGrammarId)
+    : 'content-grid';
+};
+
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const toTemplateMemoryKind = (value: string): PresentationTemplateMemoryKind => {
+  const candidate = String(value || '').trim().toLowerCase();
+  if (candidate === 'brand-kit' || candidate === 'preset' || candidate === 'deck') {
+    return candidate;
+  }
+  return 'deck';
+};
+
+const parseTemplateMemoryMatches = (value: unknown): PresentationTemplateMemoryMatch[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!isObjectRecord(entry)) return null;
+      return {
+        id: String(entry.id || '').trim(),
+        kind: toTemplateMemoryKind(String(entry.kind || 'deck')),
+        name: String(entry.name || '').trim(),
+        summary: String(entry.summary || '').trim(),
+        templateId: toTemplateId(String(entry.templateId || 'walkthrough')),
+        visualThemeId: toVisualThemeId(String(entry.visualThemeId || 'neutral-modern')),
+        displayMode: toDisplayMode(String(entry.displayMode || 'split-screen')),
+        splitLayoutVariant: toSplitLayoutVariant(String(entry.splitLayoutVariant || 'balanced')),
+        brandName: String(entry.brandName || '').trim(),
+        score: clamp(Number(entry.score) || 0, 0, 1),
+        lexicalScore: clamp(Number(entry.lexicalScore) || 0, 0, 1),
+        semanticScore: clamp(Number(entry.semanticScore) || 0, 0, 1),
+        rerankScore:
+          entry.rerankScore === null || entry.rerankScore === undefined
+            ? null
+            : clamp(Number(entry.rerankScore) || 0, 0, 1),
+      } satisfies PresentationTemplateMemoryMatch;
+    })
+    .filter((entry): entry is PresentationTemplateMemoryMatch => Boolean(entry && entry.id && entry.name))
+    .slice(0, 6);
+};
+
+const parseAiCritique = (payload: unknown): PresentationAiCritiqueResult | null => {
+  const root = isObjectRecord(payload) ? payload : null;
+  const rawData = isObjectRecord(root?.data) ? root.data : root;
+  if (!isObjectRecord(rawData)) return null;
+  const findings = Array.isArray(rawData.findings)
+    ? rawData.findings
+        .map((entry) => {
+          if (!isObjectRecord(entry)) return null;
+          return {
+            id: String(entry.id || `critique-${Date.now()}`),
+            slideId: String(entry.slideId || '').trim() || undefined,
+            severity: String(entry.severity || '').trim().toLowerCase() === 'error' ? 'error' : 'warning',
+            category: (['content', 'hierarchy', 'visual', 'balance', 'grammar', 'narrative', 'brand'].includes(
+              String(entry.category || '').trim().toLowerCase(),
+            )
+              ? String(entry.category || '').trim().toLowerCase()
+              : 'content') as PresentationAiCritiqueCategory,
+            messageNo: String(entry.messageNo || entry.message || entry.messageEn || '').trim(),
+            messageEn: String(entry.messageEn || entry.message || entry.messageNo || '').trim(),
+            repairHintNo: String(entry.repairHintNo || entry.repairHint || entry.repairHintEn || '').trim(),
+            repairHintEn: String(entry.repairHintEn || entry.repairHint || entry.repairHintNo || '').trim(),
+            recommendedGrammarId: entry.recommendedGrammarId
+              ? toPresentationGrammarId(String(entry.recommendedGrammarId || 'content-grid'))
+              : undefined,
+            recommendedVisualKind: entry.recommendedVisualKind
+              ? toDesignGraphicKind(String(entry.recommendedVisualKind || 'illustration'))
+              : undefined,
+            confidence: clamp(Number(entry.confidence) || 0.68, 0, 1),
+          } satisfies PresentationAiCritiqueFinding;
+        })
+        .filter((entry): entry is PresentationAiCritiqueFinding => Boolean(entry && entry.messageNo))
+    : [];
+
+  return {
+    provider: String(rawData.provider || '').trim().toLowerCase() === 'huggingface' ? 'huggingface' : 'heuristic',
+    model: String(rawData.model || '').trim() || 'academy-presentation-heuristics-v1',
+    overall: clamp(Number(rawData.overall) || 0, 0, 100),
+    narrative: clamp(Number(rawData.narrative) || 0, 0, 100),
+    pedagogy: clamp(Number(rawData.pedagogy) || 0, 0, 100),
+    design: clamp(Number(rawData.design) || 0, 0, 100),
+    visuals: clamp(Number(rawData.visuals) || 0, 0, 100),
+    brand: clamp(Number(rawData.brand) || 0, 0, 100),
+    findings,
+    generatedAt: String(rawData.generatedAt || new Date().toISOString()),
+    pipeline: Array.isArray(rawData.pipeline)
+      ? rawData.pipeline.map((item) => String(item || '').trim()).filter(Boolean)
+      : undefined,
+  };
+};
 
 const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
   const root = isObjectRecord(payload) ? payload : null;
@@ -916,6 +1263,10 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
     'process',
     'kpi',
     'timeline',
+    'roadmap',
+    'architecture',
+    'scenario',
+    'knowledge-check',
     'comparison',
     'demo',
     'quote',
@@ -949,6 +1300,8 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
                     y: clamp(Number(slot.y) || 0, 0, 100),
                     width: clamp(Number(slot.width) || 20, 1, 100),
                     height: clamp(Number(slot.height) || 12, 1, 100),
+                    resolvedAssetUrl: String(slot.resolvedAssetUrl || '').trim(),
+                    assetSource: String(slot.assetSource || '').trim(),
                   };
                 })
                 .filter((slot): slot is PresentationDesignGraphicSlot => Boolean(slot))
@@ -957,6 +1310,10 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
           return {
             slideId: String(entry.slideId || '').trim(),
             visualType: toDesignVisualType(String(entry.visualType || 'feature')),
+            grammarId: toPresentationGrammarId(String(entry.grammarId || 'content-grid')),
+            narrativeRole:
+              (String(entry.narrativeRole || '').trim().toLowerCase() as SharedPresentationNarrativeRole) ||
+              'setup',
             layoutHint: String(entry.layoutHint || '').trim(),
             recommendedLayout: toDisplayMode(String(entry.recommendedLayout || 'split-screen')),
             confidence: clamp(Number(entry.confidence) || 0.5, 0, 1),
@@ -966,6 +1323,128 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
             intentTags: Array.isArray(entry.intentTags)
               ? entry.intentTags.map((tag) => String(tag || '').trim()).filter(Boolean)
               : [],
+            contentBudget: isObjectRecord(entry.contentBudget)
+              ? {
+                  titleMaxChars: Math.max(24, Number(entry.contentBudget.titleMaxChars) || 56),
+                  subtitleMaxChars: Math.max(40, Number(entry.contentBudget.subtitleMaxChars) || 92),
+                  maxBullets: Math.max(0, Number(entry.contentBudget.maxBullets) || 4),
+                  bulletMaxChars: Math.max(32, Number(entry.contentBudget.bulletMaxChars) || 80),
+                  maxColumns: Math.max(0, Number(entry.contentBudget.maxColumns) || 0),
+                  maxTimelineSteps: Math.max(0, Number(entry.contentBudget.maxTimelineSteps) || 0),
+                  maxStats: Math.max(0, Number(entry.contentBudget.maxStats) || 0),
+                  maxQuoteChars: Math.max(0, Number(entry.contentBudget.maxQuoteChars) || 0),
+                  maxCtaChars: Math.max(24, Number(entry.contentBudget.maxCtaChars) || 44),
+                }
+              : {
+                  titleMaxChars: 56,
+                  subtitleMaxChars: 92,
+                  maxBullets: 4,
+                  bulletMaxChars: 80,
+                  maxColumns: 0,
+                  maxTimelineSteps: 0,
+                  maxStats: 0,
+                  maxQuoteChars: 0,
+                  maxCtaChars: 44,
+                },
+            structuredContent: isObjectRecord(entry.structuredContent)
+              ? {
+                  eyebrow: String(entry.structuredContent.eyebrow || '').trim(),
+                  title: String(entry.structuredContent.title || '').trim(),
+                  subtitle: String(entry.structuredContent.subtitle || '').trim(),
+                  bullets: Array.isArray(entry.structuredContent.bullets)
+                    ? entry.structuredContent.bullets.map((item) => String(item || '').trim()).filter(Boolean)
+                    : [],
+                  columns: Array.isArray(entry.structuredContent.columns)
+                    ? entry.structuredContent.columns
+                        .map((item) =>
+                          isObjectRecord(item)
+                            ? {
+                                title: String(item.title || '').trim(),
+                                body: String(item.body || '').trim(),
+                              }
+                            : null,
+                        )
+                        .filter((item): item is SharedPresentationStructuredContent['columns'][number] => Boolean(item))
+                    : [],
+                  steps: Array.isArray(entry.structuredContent.steps)
+                    ? entry.structuredContent.steps
+                        .map((item) =>
+                          isObjectRecord(item)
+                            ? {
+                                title: String(item.title || '').trim(),
+                                body: String(item.body || '').trim(),
+                              }
+                            : null,
+                        )
+                        .filter((item): item is SharedPresentationStructuredContent['steps'][number] => Boolean(item))
+                    : [],
+                  stats: Array.isArray(entry.structuredContent.stats)
+                    ? entry.structuredContent.stats
+                        .map((item) =>
+                          isObjectRecord(item)
+                            ? {
+                                value: String(item.value || '').trim(),
+                                label: String(item.label || '').trim(),
+                                context: String(item.context || '').trim(),
+                              }
+                            : null,
+                        )
+                        .filter((item): item is SharedPresentationStructuredContent['stats'][number] => Boolean(item))
+                    : [],
+                  quoteText: String(entry.structuredContent.quoteText || '').trim(),
+                  quoteAttribution: String(entry.structuredContent.quoteAttribution || '').trim(),
+                  ctaLabel: String(entry.structuredContent.ctaLabel || '').trim(),
+                  ctaSupport: String(entry.structuredContent.ctaSupport || '').trim(),
+                  mediaIntent: String(entry.structuredContent.mediaIntent || '').trim(),
+                  emphasis: Array.isArray(entry.structuredContent.emphasis)
+                    ? entry.structuredContent.emphasis.map((item) => String(item || '').trim()).filter(Boolean)
+                    : [],
+                }
+              : {
+                  eyebrow: '',
+                  title: String(copySuggestions.title || '').trim(),
+                  subtitle: '',
+                  bullets: Array.isArray(copySuggestions.body)
+                    ? copySuggestions.body.map((line) => String(line || '').trim()).filter(Boolean)
+                    : [],
+                  columns: [],
+                  steps: [],
+                  stats: [],
+                  quoteText: '',
+                  quoteAttribution: '',
+                  ctaLabel: String(copySuggestions.cta || '').trim(),
+                  ctaSupport: '',
+                  mediaIntent: '',
+                  emphasis: [],
+                },
+            repairActions: Array.isArray(entry.repairActions)
+              ? entry.repairActions
+                  .map((item) =>
+                    isObjectRecord(item)
+                      ? {
+                          id: String(item.id || '').trim() as SharedPresentationRepairAction['id'],
+                          reason: String(item.reason || '').trim(),
+                          from: String(item.from || '').trim() || undefined,
+                          to: String(item.to || '').trim() || undefined,
+                        }
+                      : null,
+                  )
+                  .filter((item): item is SharedPresentationRepairAction => Boolean(item && item.id && item.reason))
+              : [],
+            visualNeeds: Array.isArray(entry.visualNeeds)
+              ? entry.visualNeeds
+                  .map((item) =>
+                    isObjectRecord(item)
+                      ? {
+                          kind: toDesignGraphicKind(String(item.kind || 'illustration')),
+                          label: String(item.label || '').trim() || 'Visual',
+                          prompt: String(item.prompt || '').trim() || 'Supporting visual',
+                          priority: String(item.priority || '').trim().toLowerCase() === 'primary' ? 'primary' : 'secondary',
+                        }
+                      : null,
+                  )
+                  .filter((item): item is SharedPresentationVisualNeed => Boolean(item))
+              : [],
             copySuggestions: {
               title: String(copySuggestions.title || '').trim(),
               body: Array.isArray(copySuggestions.body)
@@ -974,6 +1453,16 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
               cta: String(copySuggestions.cta || '').trim(),
             },
             graphicSlots,
+            continuation: isObjectRecord(entry.continuation)
+              ? {
+                  title: String(entry.continuation.title || '').trim(),
+                  subtitle: String(entry.continuation.subtitle || '').trim(),
+                  bullets: Array.isArray(entry.continuation.bullets)
+                    ? entry.continuation.bullets.map((line) => String(line || '').trim()).filter(Boolean)
+                    : [],
+                  grammarId: toPresentationGrammarId(String(entry.continuation.grammarId || 'content-grid')),
+                }
+              : null,
           } as PresentationDesignSlidePlan;
         })
         .filter((entry): entry is PresentationDesignSlidePlan => Boolean(entry && entry.slideId))
@@ -987,23 +1476,65 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
     lessonId: String(rawData.lessonId || '').trim(),
     deckName: String(rawData.deckName || '').trim(),
     recommendedTemplateId: toTemplateId(String(rawData.recommendedTemplateId || 'walkthrough')),
-    recommendedVisualThemeId: toVisualThemeId(String(rawData.recommendedVisualThemeId || 'neutral-modern')),
+    recommendedVisualThemeId: toVisualThemeId(String(rawData.recommendedVisualThemeId || 'sales-command')),
     recommendedDisplayMode: toDisplayMode(String(rawData.recommendedDisplayMode || 'split-screen')),
     recommendedSplitLayoutVariant: toSplitLayoutVariant(
       String(rawData.recommendedSplitLayoutVariant || 'balanced'),
     ),
     summary: {
       generatedBy: String(summary.generatedBy || 'academy-design-plan-heuristic-v1'),
+      provider:
+        String(summary.provider || '').trim().toLowerCase() === 'huggingface'
+          ? 'huggingface'
+          : String(summary.provider || '').trim().toLowerCase() === 'openai'
+            ? 'openai'
+            : 'rule-engine',
       model: String(summary.model || '').trim() || undefined,
       slideCount: Math.max(0, Number(summary.slideCount) || slides.length),
       visualCounts,
+      grammarCounts: isObjectRecord(summary.grammarCounts)
+        ? Object.fromEntries(
+            Object.entries(summary.grammarCounts).map(([key, value]) => [key, Math.max(0, Number(value) || 0)]),
+          )
+        : undefined,
+      repairActionsCount: Math.max(0, Number(summary.repairActionsCount) || 0),
+      templateMemoryMatches: parseTemplateMemoryMatches(summary.templateMemoryMatches),
+      retrievalMeta: isObjectRecord(summary.retrievalMeta)
+        ? {
+            provider:
+              String(summary.retrievalMeta.provider || '').trim().toLowerCase() === 'huggingface'
+                ? 'huggingface'
+                : 'lexical',
+            embeddingModel: String(summary.retrievalMeta.embeddingModel || '').trim() || undefined,
+            rerankerModel: String(summary.retrievalMeta.rerankerModel || '').trim() || undefined,
+            candidateCount: Math.max(0, Number(summary.retrievalMeta.candidateCount) || 0),
+            matchedCount: Math.max(0, Number(summary.retrievalMeta.matchedCount) || 0),
+          }
+        : undefined,
+      brandContextName: String(summary.brandContextName || '').trim() || undefined,
+      pipeline: Array.isArray(summary.pipeline)
+        ? summary.pipeline.map((item) => String(item || '').trim()).filter(Boolean)
+        : undefined,
     },
+    brandTokens: isObjectRecord(rawData.brandTokens)
+      ? ({
+          ...academyPresentationThemeTokens(
+            toVisualThemeId(String(rawData.brandTokens.themeId || rawData.recommendedVisualThemeId || 'neutral-modern')),
+          ),
+          ...rawData.brandTokens,
+          themeId: toVisualThemeId(
+            String(rawData.brandTokens.themeId || rawData.recommendedVisualThemeId || 'neutral-modern'),
+          ),
+        } as SharedPresentationBrandTokens)
+      : academyPresentationThemeTokens(
+          toVisualThemeId(String(rawData.recommendedVisualThemeId || 'neutral-modern')),
+        ),
     slides,
     generatedAt: String(rawData.generatedAt || new Date().toISOString()),
   };
 };
 
-const designGraphicKindToElementType = (
+const _designGraphicKindToElementType = (
   kind: PresentationDesignGraphicSlot['kind'],
 ): PresentationElementType =>
   kind === 'chart' || kind === 'screenshot' || kind === 'illustration' || kind === 'photo'
@@ -1018,10 +1549,14 @@ const LOCAL_DESIGN_VISUAL_KEYWORDS: Array<{
   { type: 'problem', keywords: ['problem', 'challenge', 'utfordring', 'risk'] },
   { type: 'solution', keywords: ['solution', 'losning', 'tiltak', 'approach'] },
   { type: 'feature', keywords: ['feature', 'funksjon', 'module', 'capability'] },
-  { type: 'process', keywords: ['step', 'workflow', 'prosess', 'flyt', 'how to'] },
+  { type: 'process', keywords: ['step', 'workflow', 'prosess', 'flyt', 'how to', 'swimlane', 'handoff', 'cross functional'] },
   { type: 'kpi', keywords: ['kpi', 'result', 'vekst', 'revenue', 'conversion'] },
-  { type: 'timeline', keywords: ['timeline', 'roadmap', 'mile', 'phase', 'q1', 'q2', 'q3', 'q4'] },
-  { type: 'comparison', keywords: ['compare', 'vs', 'versus', 'before', 'after'] },
+  { type: 'timeline', keywords: ['timeline', 'mile', 'phase', 'q1', 'q2', 'q3', 'q4'] },
+  { type: 'roadmap', keywords: ['roadmap', 'release plan', 'milepæl', 'milepael', 'next phase'] },
+  { type: 'architecture', keywords: ['architecture', 'arkitektur', 'stack', 'system map', 'components', 'layer', 'data flow', 'integration flow', 'api flow'] },
+  { type: 'scenario', keywords: ['scenario', 'situasjon', 'use case', 'brukstilfelle', 'role play'] },
+  { type: 'knowledge-check', keywords: ['knowledge check', 'quiz', 'test deg selv', 'reflection question'] },
+  { type: 'comparison', keywords: ['compare', 'vs', 'versus', 'before', 'after', 'decision matrix', 'prioritization matrix', 'impact effort'] },
   { type: 'demo', keywords: ['demo', 'screen', 'walkthrough', 'live'] },
   { type: 'quote', keywords: ['quote', 'testimonial', 'kundesitat', 'feedback'] },
   { type: 'cta', keywords: ['cta', 'next step', 'contact', 'kontakt', 'book'] },
@@ -1043,14 +1578,14 @@ const inferLocalDesignVisualType = (
   const normalized = normalizeLocalDesignToken(sourceText);
   if (!normalized) {
     if (index === 0) return 'title';
-    if (index >= totalSlides - 1) return 'summary';
+    if (totalSlides > 2 && index >= totalSlides - 1) return 'summary';
     return 'feature';
   }
   if (index === 0 && /(welcome|velkommen|intro|introduksjon)/i.test(normalized)) {
     return 'title';
   }
 
-  let best: PresentationDesignVisualType = index >= totalSlides - 1 ? 'summary' : 'feature';
+  let best: PresentationDesignVisualType = totalSlides > 2 && index >= totalSlides - 1 ? 'summary' : 'feature';
   let bestScore = -1;
   LOCAL_DESIGN_VISUAL_KEYWORDS.forEach((entry) => {
     let score = 0;
@@ -1067,14 +1602,14 @@ const inferLocalDesignVisualType = (
   return best;
 };
 
-const layoutForLocalDesignVisualType = (visualType: PresentationDesignVisualType): PresentationDisplayMode => {
+const _layoutForLocalDesignVisualType = (visualType: PresentationDesignVisualType): PresentationDisplayMode => {
   if (visualType === 'title') return 'full-frame';
   if (visualType === 'agenda' || visualType === 'summary') return 'side-panel';
   if (visualType === 'quote' || visualType === 'cta') return 'picture-in-picture';
   return 'split-screen';
 };
 
-const graphicSlotsForLocalDesignVisualType = (
+const _graphicSlotsForLocalDesignVisualType = (
   slideId: string,
   visualType: PresentationDesignVisualType,
   title: string,
@@ -1141,8 +1676,14 @@ const buildLocalDesignPlanFallback = ({
   projectTemplateId: string;
   useNorwegian: boolean;
 }): PresentationDesignPlan => {
-  const mappedTheme =
-    projectTemplateToVisualTheme[projectTemplateId] || deck.visualThemeId || 'neutral-modern';
+  const mappedTheme: PresentationVisualThemeId =
+    projectTemplateId === 'sales-enablement-a-a'
+      ? 'sales-command'
+      : projectTemplateId === 'production-operations-a-a'
+        ? 'operations-grid'
+        : projectTemplateId === 'offshore-safety-a-a'
+          ? 'offshore-briefing'
+          : 'neutral-modern';
   const mappedTemplate =
     projectTemplateToPresentationTemplate[projectTemplateId] || deck.template || 'walkthrough';
   const splitVariant = getVisualThemePresetById(mappedTheme).splitLayoutVariant;
@@ -1156,6 +1697,10 @@ const buildLocalDesignPlanFallback = ({
     process: 0,
     kpi: 0,
     timeline: 0,
+    roadmap: 0,
+    architecture: 0,
+    scenario: 0,
+    'knowledge-check': 0,
     comparison: 0,
     demo: 0,
     quote: 0,
@@ -1171,27 +1716,46 @@ const buildLocalDesignPlanFallback = ({
       deck.slides.length,
     );
     visualCounts[visualType] += 1;
+    const grammarPlan = academyPresentationBuildGrammarPlan({
+      slideId: slide.id,
+      title: slide.title,
+      bodyLines,
+      visualType,
+      index,
+      totalSlides: deck.slides.length,
+      useNorwegian,
+    });
     return {
       slideId: slide.id,
       visualType,
+      grammarId: grammarPlan.grammarId,
+      narrativeRole: grammarPlan.narrativeRole,
       layoutHint:
-        visualType === 'kpi'
-          ? 'Prioritize numeric contrast and trend direction.'
-          : visualType === 'timeline'
-            ? 'Place chronological flow from top to bottom with clear milestones.'
-            : 'Balance presenter and slide hierarchy.',
-      recommendedLayout: layoutForLocalDesignVisualType(visualType),
+        grammarPlan.grammarId === 'stats' || grammarPlan.grammarId === 'chart'
+          ? 'Use numeric contrast and a dominant chart frame.'
+          : grammarPlan.grammarId === 'hero'
+            ? 'Keep one message in focus and reduce visual clutter.'
+            : 'Balance presenter, content, and visual hierarchy.',
+      recommendedLayout: grammarPlan.recommendedLayout,
       confidence: 0.62,
-      reasons: ['local heuristic fallback'],
-      intentTags: [visualType, mappedTemplate, mappedTheme],
+      reasons: ['local heuristic fallback', `grammar:${grammarPlan.grammarId}`],
+      intentTags: [visualType, grammarPlan.grammarId, mappedTemplate, mappedTheme, grammarPlan.recommendedLayout],
+      contentBudget: grammarPlan.contentBudget,
+      structuredContent: grammarPlan.structuredContent,
+      repairActions: grammarPlan.repairActions,
+      visualNeeds: grammarPlan.visualNeeds,
       copySuggestions: {
-        title: slide.title,
-        body: bodyLines,
-        cta: useNorwegian
-          ? 'Oppsummer og avtal neste steg.'
-          : 'Summarize and confirm next step.',
+        title: grammarPlan.structuredContent.title,
+        body:
+          grammarPlan.structuredContent.bullets.length > 0
+            ? grammarPlan.structuredContent.bullets
+            : bodyLines,
+        cta:
+          grammarPlan.structuredContent.ctaLabel ||
+          (useNorwegian ? 'Oppsummer og avtal neste steg.' : 'Summarize and confirm next step.'),
       },
-      graphicSlots: graphicSlotsForLocalDesignVisualType(slide.id, visualType, slide.title),
+      graphicSlots: grammarPlan.graphicSlots,
+      continuation: grammarPlan.continuation,
     } as PresentationDesignSlidePlan;
   });
 
@@ -1205,10 +1769,20 @@ const buildLocalDesignPlanFallback = ({
     recommendedDisplayMode: 'split-screen',
     recommendedSplitLayoutVariant: splitVariant,
     summary: {
-      generatedBy: 'academy-design-plan-local-fallback-v1',
+      generatedBy: 'academy-design-plan-local-grammar-fallback-v2',
       slideCount: slides.length,
       visualCounts,
+      grammarCounts: slides.reduce(
+        (acc, slide) => {
+          acc[slide.grammarId] = (acc[slide.grammarId] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>,
+      ),
+      repairActionsCount: slides.reduce((acc, slide) => acc + slide.repairActions.length, 0),
+      pipeline: ['brief-to-narrative', 'grammar-budget-repair', 'theme-token-apply'],
     },
+    brandTokens: academyPresentationThemeTokens(mappedTheme),
     slides,
     generatedAt: new Date().toISOString(),
   };
@@ -1218,6 +1792,84 @@ const getVisualThemePresetById = (
   themeId: PresentationVisualThemeId,
 ): PresentationVisualThemePreset =>
   visualThemePresets.find((entry) => entry.id === themeId) || visualThemePresets[0];
+
+const buildPresentationBrandKitFromTheme = (
+  themeId: PresentationVisualThemeId,
+  name?: string,
+): PresentationBrandKit => {
+  const base = academyPresentationThemeTokens(themeId);
+  return {
+    id: `presentation-brand-kit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: String(name || `${base.labelEn} Brand Kit`).trim() || `${base.labelEn} Brand Kit`,
+    baseThemeId: themeId,
+    primary: base.primary,
+    secondary: base.secondary,
+    accent: base.accent,
+    canvasTitle: base.canvasTitle,
+    canvasText: base.canvasText,
+    headingFont: base.headingFont,
+    bodyFont: base.bodyFont,
+    cornerRadius: base.cornerRadius,
+    chartStyle: base.chartStyle,
+    imageStyle: base.imageStyle,
+    logoText: '',
+    footerText: '',
+    requireLogo: false,
+    requireFooter: false,
+    minContrastRatio: 4.5,
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+const resolvePresentationBrandTokens = (
+  themeId: PresentationVisualThemeId,
+  brandKit?: PresentationBrandKit | null,
+): SharedPresentationBrandTokens => {
+  const base = academyPresentationThemeTokens(brandKit?.baseThemeId || themeId);
+  if (!brandKit) return base;
+  return {
+    ...base,
+    labelNo: brandKit.name,
+    labelEn: brandKit.name,
+    primary: brandKit.primary || base.primary,
+    secondary: brandKit.secondary || base.secondary,
+    accent: brandKit.accent || base.accent,
+    canvasTitle: brandKit.canvasTitle || base.canvasTitle,
+    canvasText: brandKit.canvasText || base.canvasText,
+    navAccent: brandKit.primary || base.navAccent,
+    chipBg: alpha(brandKit.primary || base.primary, 0.16),
+    chipText: '#edf3ff',
+    headingFont: brandKit.headingFont || base.headingFont,
+    bodyFont: brandKit.bodyFont || base.bodyFont,
+    cornerRadius: Math.max(8, Number(brandKit.cornerRadius) || base.cornerRadius),
+    chartStyle: brandKit.chartStyle || base.chartStyle,
+    imageStyle: brandKit.imageStyle || base.imageStyle,
+  };
+};
+
+const getPresentationBrandKitScopeKey = (courseId: string): string =>
+  String(courseId || '').trim() || 'global';
+
+const readPresentationBrandKitStore = (): PresentationBrandKitStoreMap => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(PRESENTATION_BRAND_KITS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as PresentationBrandKitStoreMap;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const writePresentationBrandKitStore = (store: PresentationBrandKitStoreMap): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PRESENTATION_BRAND_KITS_KEY, JSON.stringify(store));
+  } catch {
+    // ignore storage failures
+  }
+};
 
 const inferProjectTemplateIdFromCourse = (course: Course | null | undefined): string => {
   const explicit = String(course?.curriculumProjectTemplateId || '').trim();
@@ -1238,14 +1890,22 @@ const resolvePresentationDefaultsForCourse = (
   splitLayoutVariant: PresentationSplitLayoutVariant;
 } => {
   const projectTemplateId = inferProjectTemplateIdFromCourse(course);
-  const mappedTheme = projectTemplateToVisualTheme[projectTemplateId] || 'neutral-modern';
+  const mappedTheme: PresentationVisualThemeId =
+    projectTemplateId === 'sales-enablement-a-a'
+      ? 'sales-command'
+      : projectTemplateId === 'production-operations-a-a'
+        ? 'operations-grid'
+        : projectTemplateId === 'offshore-safety-a-a'
+          ? 'offshore-briefing'
+          : 'neutral-modern';
   const mappedTemplate = projectTemplateToPresentationTemplate[projectTemplateId] || 'walkthrough';
-  const themePreset = getVisualThemePresetById(mappedTheme);
+  const templatePreset =
+    templatePresets.find((template) => template.id === mappedTemplate) || templatePresets[0];
   return {
-    templateId: mappedTemplate || themePreset.preferredTemplate,
+    templateId: mappedTemplate || templatePreset.id,
     visualThemeId: mappedTheme,
-    defaultMode: themePreset.preferredMode,
-    splitLayoutVariant: themePreset.splitLayoutVariant,
+    defaultMode: templatePreset.defaultMode,
+    splitLayoutVariant: 'balanced',
   };
 };
 
@@ -1375,6 +2035,9 @@ const buildDefaultSlideElements = (title: string, layout: PresentationDisplayMod
       y: 10,
       width: wide ? 56 : 76,
       height: 18,
+      role: 'headline',
+      align: 'left',
+      tone: 'default',
     },
     {
       id: `scene-el-body-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1384,6 +2047,9 @@ const buildDefaultSlideElements = (title: string, layout: PresentationDisplayMod
       y: 32,
       width: wide ? 56 : 76,
       height: 50,
+      role: 'body',
+      align: 'left',
+      tone: 'muted',
     },
   ];
 };
@@ -1459,6 +2125,23 @@ const splitTextLines = (text: string, maxChars = 52): string[] => {
   return lines.slice(0, 4);
 };
 
+const shortPreviewText = (value: string, maxChars: number): string => {
+  const raw = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!raw) return '';
+  if (raw.length <= maxChars) return raw;
+  const cut = raw.slice(0, maxChars).replace(/\s+\S*$/, '').trim();
+  return `${cut || raw.slice(0, maxChars - 1)}…`;
+};
+
+const solidPreviewColor = (value: string, fallback: string): string => {
+  const raw = String(value || '').trim();
+  const rgbaMatch = raw.match(/rgba?\([^)]+\)/i);
+  if (rgbaMatch?.[0]) return rgbaMatch[0];
+  const hexMatch = raw.match(/#[0-9a-f]{3,8}/i);
+  if (hexMatch?.[0]) return hexMatch[0];
+  return fallback;
+};
+
 const extractSlideDimensionsFromPresentationXml = (
   presentationXml: string | undefined,
 ): { widthEmu: number; heightEmu: number } => {
@@ -1505,15 +2188,23 @@ const buildSlideSvgPreview = (
   slide: PresentationSlide,
   themeId: PresentationVisualThemeId,
   deckName: string,
+  options?: {
+    brandTokens?: SharedPresentationBrandTokens;
+    brandKit?: PresentationBrandKit | null;
+  },
 ): string => {
-  const theme = getVisualThemePresetById(themeId);
+  const theme = options?.brandTokens || academyPresentationThemeTokens(themeId);
+  const brandKit = options?.brandKit || null;
+  const headingFont = escapeSvgText(String(theme.headingFont || 'Segoe UI, sans-serif').replace(/"/g, "'"));
+  const bodyFont = escapeSvgText(String(theme.bodyFont || 'Segoe UI, sans-serif').replace(/"/g, "'"));
+  const navFill = solidPreviewColor(theme.navBg, '#101826');
   const width = 1280;
   const height = 720;
-  const headerHeight = 92;
+  const headerHeight = 88;
   const margin = 28;
   const elementMarkup = slide.elements
     .slice(0, 18)
-    .map((element, index) => {
+    .map((element) => {
       const x = Math.round((clamp(element.x, 0, 100) / 100) * width);
       const y = Math.round((clamp(element.y, 0, 100) / 100) * (height - headerHeight) + headerHeight);
       const w = Math.round((clamp(element.width, 1, 100) / 100) * width);
@@ -1525,18 +2216,50 @@ const buildSlideSvgPreview = (
 
       if (element.type === 'text') {
         const lines = splitTextLines(element.text, 48);
-        const textColor = index === 0 ? theme.colors.canvasTitle : theme.colors.canvasText;
+        const textColor =
+          element.tone === 'accent'
+            ? theme.primary
+            : element.tone === 'inverse'
+              ? '#f7fbff'
+              : element.tone === 'muted'
+                ? alpha(theme.canvasText, 0.86)
+                : theme.canvasTitle;
+        const fontSize =
+          element.role === 'headline'
+            ? 28
+            : element.role === 'quote'
+              ? 24
+              : element.role === 'stat-value'
+                ? 26
+                : element.role === 'subtitle'
+                  ? 18
+                  : element.role === 'eyebrow'
+                    ? 13
+                    : 16;
+        const fontWeight =
+          element.role === 'headline' || element.role === 'stat-value'
+            ? 800
+            : element.role === 'subtitle' || element.role === 'column-title' || element.role === 'step-title'
+              ? 700
+              : 600;
+        const align = element.align === 'center' ? 'middle' : 'start';
+        const textAnchorX = element.align === 'center' ? safeX + safeW / 2 : safeX + 16;
+        const cardFill =
+          element.role === 'headline' && slide.layout === 'full-frame'
+            ? 'rgba(255,255,255,0.74)'
+            : theme.surface;
         return `
           <rect x="${safeX}" y="${safeY}" width="${safeW}" height="${safeH}" rx="14" ry="14"
-            fill="${theme.colors.canvasCardBg}" stroke="${theme.colors.canvasCardBorder}" stroke-width="1.2" />
+            fill="${cardFill}" stroke="${alpha(theme.primary, 0.12)}" stroke-width="1.2" />
           ${lines
             .map(
               (line, lineIndex) => `
-                <text x="${safeX + 16}" y="${safeY + 24 + lineIndex * 22}"
+                <text x="${textAnchorX}" y="${safeY + 24 + lineIndex * (fontSize + 4)}"
                   fill="${textColor}"
-                  font-family="Barlow, Manrope, Segoe UI, sans-serif"
-                  font-size="${index === 0 ? 24 : 18}"
-                  font-weight="${index === 0 ? 700 : 600}">
+                  text-anchor="${align}"
+                  font-family="${element.role === 'headline' ? headingFont : bodyFont}"
+                  font-size="${fontSize}"
+                  font-weight="${fontWeight}">
                   ${escapeSvgText(line)}
                 </text>`,
             )
@@ -1544,11 +2267,37 @@ const buildSlideSvgPreview = (
         `;
       }
 
+      const placeholderLabel = escapeSvgText(
+        shortPreviewText(String(element.prompt || element.text || element.role || 'Visual'), 48),
+      );
+      const mediaFill =
+        element.type === 'video'
+          ? alpha(theme.accent, 0.18)
+          : element.type === 'image'
+            ? alpha(theme.secondary, 0.18)
+            : alpha(theme.primary, 0.12);
+      const assetHref = String(element.assetDataUrl || '').trim();
+      if (assetHref) {
+        return `
+          <rect x="${safeX}" y="${safeY}" width="${safeW}" height="${safeH}" rx="14" ry="14"
+            fill="${theme.surface}" stroke="${alpha(theme.primary, 0.14)}" stroke-width="1.2" />
+          <image href="${escapeSvgText(assetHref)}" x="${safeX + 6}" y="${safeY + 6}"
+            width="${Math.max(34, safeW - 12)}" height="${Math.max(26, safeH - 12)}"
+            preserveAspectRatio="xMidYMid slice" />
+        `;
+      }
       return `
         <rect x="${safeX}" y="${safeY}" width="${safeW}" height="${safeH}" rx="14" ry="14"
-          fill="${theme.colors.canvasCardBg}" stroke="${theme.colors.canvasCardBorder}" stroke-width="1.2" />
+          fill="${theme.surface}" stroke="${alpha(theme.primary, 0.14)}" stroke-width="1.2" />
         <rect x="${safeX + 10}" y="${safeY + 10}" width="${Math.max(34, safeW - 20)}" height="${Math.max(26, safeH - 20)}"
-          rx="10" ry="10" fill="rgba(0,0,0,0.08)" />
+          rx="10" ry="10" fill="${mediaFill}" />
+        <text x="${safeX + 18}" y="${safeY + 30}"
+          fill="${theme.canvasTitle}"
+          font-family="${bodyFont}"
+          font-size="15"
+          font-weight="700">
+          ${placeholderLabel}
+        </text>
       `;
     })
     .join('');
@@ -1557,35 +2306,546 @@ const buildSlideSvgPreview = (
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
       <defs>
         <linearGradient id="slideBg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#ffffff" />
-          <stop offset="100%" stop-color="#f4f7fb" />
+          <stop offset="0%" stop-color="${theme.surface}" />
+          <stop offset="100%" stop-color="${theme.surfaceMuted}" />
         </linearGradient>
       </defs>
       <rect x="0" y="0" width="${width}" height="${height}" fill="url(#slideBg)" />
-      <rect x="0" y="0" width="${width}" height="${headerHeight}" fill="rgba(17,31,49,0.92)" />
-      <text x="${margin}" y="42" fill="#f2f6ff" font-family="Barlow, Manrope, Segoe UI, sans-serif" font-size="17" font-weight="700">
+      <rect x="0" y="0" width="${width}" height="${headerHeight}" fill="${navFill}" />
+      <text x="${margin}" y="38" fill="#f2f6ff" font-family="${bodyFont}" font-size="15" font-weight="700">
         ${escapeSvgText(deckName || 'Presentation')}
       </text>
-      <text x="${margin}" y="74" fill="#fef0cb" font-family="Barlow, Manrope, Segoe UI, sans-serif" font-size="28" font-weight="800">
+      <text x="${margin}" y="70" fill="${theme.navAccent}" font-family="${headingFont}" font-size="28" font-weight="800">
         ${escapeSvgText(slide.title || 'Slide')}
       </text>
+      ${brandKit?.logoText ? `
+        <rect x="${width - 254}" y="18" width="214" height="34" rx="${Math.max(10, theme.cornerRadius - 2)}" fill="${alpha(theme.primary, 0.22)}" stroke="${alpha(theme.primary, 0.36)}" />
+        <text x="${width - 236}" y="40" fill="#f7fbff" font-family="${headingFont}" font-size="15" font-weight="800">
+          ${escapeSvgText(shortPreviewText(brandKit.logoText, 24))}
+        </text>
+      ` : ''}
       ${elementMarkup}
+      ${brandKit?.footerText ? `
+        <line x1="${margin}" y1="${height - 44}" x2="${width - margin}" y2="${height - 44}" stroke="${alpha(theme.canvasText, 0.18)}" stroke-width="1" />
+        <text x="${margin}" y="${height - 18}" fill="${alpha(theme.canvasText, 0.86)}" font-family="${bodyFont}" font-size="14" font-weight="600">
+          ${escapeSvgText(shortPreviewText(brandKit.footerText, 82))}
+        </text>
+      ` : ''}
     </svg>
   `;
 
   return encodeSvgToDataUrl(svg);
 };
 
+const createSceneTextElement = (
+  slideId: string,
+  key: string,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  role: NonNullable<PresentationSceneElement['role']>,
+  options?: {
+    align?: PresentationSceneElement['align'];
+    tone?: PresentationSceneElement['tone'];
+  },
+): PresentationSceneElement => ({
+  id: `${slideId}-${key}`,
+  type: 'text',
+  text: String(text || '').trim(),
+  x,
+  y,
+  width,
+  height,
+  role,
+  align: options?.align || 'left',
+  tone: options?.tone || 'default',
+});
+
+const createSceneVisualElement = (
+  slideId: string,
+  key: string,
+  type: Exclude<PresentationElementType, 'text'>,
+  prompt: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  role: NonNullable<PresentationSceneElement['role']>,
+  options?: {
+    graphicKind?: PresentationDesignGraphicSlot['kind'];
+    assetDataUrl?: string;
+  },
+): PresentationSceneElement => ({
+  id: `${slideId}-${key}`,
+  type,
+  text: '',
+  prompt,
+  x,
+  y,
+  width,
+  height,
+  role,
+  tone: 'default',
+  graphicKind: options?.graphicKind,
+  assetDataUrl: String(options?.assetDataUrl || '').trim(),
+});
+
+const buildElementsFromStructuredSlidePlan = (
+  slide: PresentationSlide,
+  slidePlan: PresentationDesignSlidePlan,
+  themeId: PresentationVisualThemeId,
+  brandTokensOverride?: SharedPresentationBrandTokens,
+): PresentationSceneElement[] => {
+  const layout = slidePlan.recommendedLayout;
+  const themeTokens = brandTokensOverride || academyPresentationThemeTokens(themeId);
+  const titleX = layout === 'split-screen' || layout === 'full-frame' ? 8 : 10;
+  const titleWidth = layout === 'split-screen' || layout === 'full-frame' ? 48 : 72;
+  const contentX = titleX;
+  const contentWidth = titleWidth;
+  const visualX = layout === 'full-frame' ? 58 : layout === 'side-panel' ? 58 : 54;
+  const visualWidth = layout === 'full-frame' ? 34 : layout === 'side-panel' ? 34 : 40;
+  const elements: PresentationSceneElement[] = [];
+  const content = slidePlan.structuredContent;
+
+  if (content.eyebrow) {
+    elements.push(
+      createSceneTextElement(
+        slide.id,
+        'eyebrow',
+        content.eyebrow,
+        contentX,
+        7,
+        contentWidth,
+        8,
+        'eyebrow',
+        { tone: 'accent' },
+      ),
+    );
+  }
+  elements.push(
+    createSceneTextElement(slide.id, 'headline', content.title || slide.title, contentX, 10, contentWidth, 15, 'headline'),
+  );
+  if (content.subtitle) {
+    elements.push(
+      createSceneTextElement(
+        slide.id,
+        'subtitle',
+        content.subtitle,
+        contentX,
+        27,
+        contentWidth,
+        12,
+        'subtitle',
+        { tone: 'muted' },
+      ),
+    );
+  }
+
+  let cursorY = content.subtitle ? 41 : 30;
+  const pushBullets = (bullets: string[], startY: number) => {
+    bullets.slice(0, 5).forEach((bullet, index) => {
+      elements.push(
+        createSceneTextElement(
+          slide.id,
+          `bullet-${index}`,
+          bullet,
+          contentX,
+          startY + index * 11,
+          contentWidth,
+          9,
+          'bullet',
+          { tone: 'muted' },
+        ),
+      );
+    });
+  };
+
+  if (
+    slidePlan.grammarId === 'comparison' ||
+    slidePlan.grammarId === 'decision-matrix' ||
+    slidePlan.grammarId === 'before-after' ||
+    slidePlan.grammarId === 'team' ||
+    slidePlan.grammarId === 'case-study' ||
+    slidePlan.grammarId === 'architecture' ||
+    slidePlan.grammarId === 'architecture-diagram' ||
+    slidePlan.grammarId === 'product-architecture-flow' ||
+    slidePlan.grammarId === 'org-chart' ||
+    slidePlan.grammarId === 'scenario' ||
+    slidePlan.grammarId === 'decision-tree'
+  ) {
+    const usesWideColumnGrid =
+      slidePlan.grammarId === 'architecture' ||
+      slidePlan.grammarId === 'architecture-diagram' ||
+      slidePlan.grammarId === 'product-architecture-flow' ||
+      slidePlan.grammarId === 'org-chart';
+    const columns = content.columns.slice(0, usesWideColumnGrid ? 4 : 3);
+    const columnWidth =
+      usesWideColumnGrid
+        ? 17.5
+        : columns.length === 2
+          ? 23
+          : 15.5;
+    columns.forEach((column, index) => {
+      const x =
+        slidePlan.grammarId === 'architecture' ||
+        slidePlan.grammarId === 'architecture-diagram' ||
+        slidePlan.grammarId === 'product-architecture-flow' ||
+        slidePlan.grammarId === 'org-chart'
+          ? contentX + (index % 2) * (columnWidth + 3)
+          : contentX + index * (columnWidth + 2.5);
+      const y =
+        slidePlan.grammarId === 'architecture' ||
+        slidePlan.grammarId === 'architecture-diagram' ||
+        slidePlan.grammarId === 'product-architecture-flow' ||
+        slidePlan.grammarId === 'org-chart'
+          ? cursorY + Math.floor(index / 2) * 18
+          : cursorY;
+      elements.push(
+        createSceneTextElement(slide.id, `column-title-${index}`, column.title, x, y, columnWidth, 8, 'column-title'),
+      );
+      elements.push(
+        createSceneTextElement(
+          slide.id,
+          `column-body-${index}`,
+          column.body,
+          x,
+          y + 10,
+          columnWidth,
+          slidePlan.grammarId === 'architecture' ||
+          slidePlan.grammarId === 'architecture-diagram' ||
+          slidePlan.grammarId === 'product-architecture-flow' ||
+          slidePlan.grammarId === 'org-chart'
+            ? 12
+            : 17,
+          'column-body',
+          { tone: 'muted' },
+        ),
+      );
+    });
+    cursorY +=
+      slidePlan.grammarId === 'architecture' ||
+      slidePlan.grammarId === 'architecture-diagram' ||
+      slidePlan.grammarId === 'product-architecture-flow' ||
+      slidePlan.grammarId === 'org-chart'
+        ? 38
+        : 30;
+  } else if (
+    slidePlan.grammarId === 'faq' ||
+    slidePlan.grammarId === 'knowledge-check' ||
+    slidePlan.grammarId === 'interactive-quiz'
+  ) {
+    content.columns.slice(0, 4).forEach((column, index) => {
+      const columnWidth = 22;
+      const x = contentX + (index % 2) * (columnWidth + 2.5);
+      const y = cursorY + Math.floor(index / 2) * 20;
+      elements.push(
+        createSceneTextElement(
+          slide.id,
+          `${slidePlan.grammarId}-question-${index}`,
+          slidePlan.grammarId === 'faq' ? column.title : `${String.fromCharCode(65 + index)}.`,
+          x,
+          y,
+          slidePlan.grammarId === 'faq' ? columnWidth : 4,
+          8,
+          'column-title',
+          { tone: 'accent' },
+        ),
+      );
+      elements.push(
+        createSceneTextElement(
+          slide.id,
+          `${slidePlan.grammarId}-answer-${index}`,
+          slidePlan.grammarId === 'faq' ? column.body : column.body || column.title,
+          slidePlan.grammarId === 'faq' ? x : x + 5,
+          y + 8,
+          slidePlan.grammarId === 'faq' ? columnWidth : columnWidth - 5,
+          12,
+          'column-body',
+          { tone: 'muted' },
+        ),
+      );
+    });
+    cursorY += Math.max(1, Math.ceil(Math.min(content.columns.length, 4) / 2)) * 20;
+  } else if (
+    slidePlan.grammarId === 'timeline' ||
+    slidePlan.grammarId === 'process' ||
+    slidePlan.grammarId === 'roadmap' ||
+    slidePlan.grammarId === 'swimlane-process'
+  ) {
+    if (slidePlan.grammarId === 'swimlane-process' && content.columns.length > 0) {
+      content.columns.slice(0, 3).forEach((column, index) => {
+        elements.push(
+          createSceneTextElement(slide.id, `lane-title-${index}`, column.title, contentX, cursorY + index * 10, 18, 8, 'step-title', { tone: 'accent' }),
+        );
+        elements.push(
+          createSceneTextElement(
+            slide.id,
+            `lane-body-${index}`,
+            content.steps[index]?.title || column.body,
+            contentX + 20,
+            cursorY + index * 10,
+            contentWidth - 20,
+            8,
+            'step-body',
+            { tone: 'muted' },
+          ),
+        );
+      });
+      cursorY += Math.min(content.columns.length, 3) * 10 + 2;
+    } else {
+      content.steps.slice(0, slidePlan.grammarId === 'roadmap' ? 6 : 5).forEach((step, index) => {
+      elements.push(
+        createSceneTextElement(slide.id, `step-title-${index}`, step.title, contentX, cursorY + index * 11, 18, 8, 'step-title', { tone: 'accent' }),
+      );
+      elements.push(
+        createSceneTextElement(
+          slide.id,
+          `step-body-${index}`,
+          step.body,
+          contentX + 20,
+          cursorY + index * 11,
+          contentWidth - 20,
+          8,
+          'step-body',
+          { tone: 'muted' },
+        ),
+      );
+      });
+      cursorY += Math.min(content.steps.length, slidePlan.grammarId === 'roadmap' ? 6 : 5) * 11 + 2;
+    }
+  } else if (slidePlan.grammarId === 'stats' || slidePlan.grammarId === 'chart') {
+    content.stats.slice(0, 4).forEach((stat, index) => {
+      const x = contentX + (index % 2) * 24;
+      const y = cursorY + Math.floor(index / 2) * 14;
+      elements.push(
+        createSceneTextElement(slide.id, `stat-value-${index}`, stat.value, x, y, 20, 10, 'stat-value', { tone: 'accent' }),
+      );
+      elements.push(
+        createSceneTextElement(slide.id, `stat-label-${index}`, stat.label, x, y + 8, 20, 8, 'stat-label', { tone: 'muted' }),
+      );
+    });
+    cursorY += Math.max(1, Math.ceil(Math.min(content.stats.length, 4) / 2)) * 15;
+    pushBullets(content.bullets.slice(0, 2), cursorY);
+  } else if (slidePlan.grammarId === 'quote') {
+    elements.push(
+      createSceneTextElement(slide.id, 'quote', content.quoteText || content.subtitle, contentX, cursorY, contentWidth, 20, 'quote'),
+    );
+    if (content.quoteAttribution) {
+      elements.push(
+        createSceneTextElement(
+          slide.id,
+          'quote-attribution',
+          content.quoteAttribution,
+          contentX,
+          cursorY + 22,
+          contentWidth,
+          8,
+          'quote-attribution',
+          { tone: 'muted' },
+        ),
+      );
+    }
+    cursorY += 32;
+  } else {
+    pushBullets(content.bullets, cursorY);
+    cursorY += Math.min(content.bullets.length, 5) * 11;
+  }
+
+  if (content.ctaLabel) {
+    elements.push(
+      createSceneTextElement(slide.id, 'cta', content.ctaLabel, contentX, Math.min(82, cursorY + 3), contentWidth, 8, 'cta', { tone: 'accent' }),
+    );
+    if (content.ctaSupport) {
+      elements.push(
+        createSceneTextElement(
+          slide.id,
+          'cta-support',
+          content.ctaSupport,
+          contentX,
+          Math.min(90, cursorY + 12),
+          contentWidth,
+          8,
+          'cta-support',
+          { tone: 'muted' },
+        ),
+      );
+    }
+  }
+
+  slidePlan.graphicSlots.slice(0, 4).forEach((slot, index) => {
+    const type = slot.kind === 'chart' || slot.kind === 'illustration' || slot.kind === 'photo' || slot.kind === 'screenshot'
+      ? 'image'
+      : slot.kind === 'badge'
+        ? 'shape'
+        : slot.kind === 'icon'
+          ? 'shape'
+          : 'shape';
+    const assetDataUrl =
+      String(slot.resolvedAssetUrl || '').trim() ||
+      buildPresentationGraphicAsset({
+        slot,
+        structuredContent: content,
+        theme: themeTokens,
+        grammarId: slidePlan.grammarId,
+      });
+    elements.push(
+      createSceneVisualElement(
+        slide.id,
+        `visual-${index}`,
+        type,
+        slot.prompt || slot.label,
+        clamp(slot.x, visualX, 94),
+        clamp(slot.y, 14, 82),
+        clamp(slot.width, 10, visualWidth),
+        clamp(slot.height, 8, 60),
+        slot.kind === 'badge' ? 'badge' : 'media',
+        {
+          graphicKind: slot.kind,
+          assetDataUrl,
+        },
+      ),
+    );
+  });
+
+  return elements.slice(0, 20);
+};
+
+const buildContinuationSlide = (
+  sourceSlide: PresentationSlide,
+  continuation: SharedPresentationContinuationPlan,
+  useNorwegian: boolean,
+  themeId: PresentationVisualThemeId,
+  deckName: string,
+  brandTokensOverride?: SharedPresentationBrandTokens,
+  brandKit?: PresentationBrandKit | null,
+): PresentationSlide => {
+  const continuationPlan = academyPresentationBuildGrammarPlan({
+    slideId: `${sourceSlide.id}--auto-cont-1`,
+    title: continuation.title,
+    bodyLines: continuation.bullets,
+    visualType: 'summary',
+    index: 0,
+    totalSlides: 1,
+    useNorwegian,
+    preferredGrammarId: continuation.grammarId,
+    preferredSubtitle: continuation.subtitle,
+    preferredBullets: continuation.bullets,
+  });
+  const draftSlide: PresentationSlide = {
+    id: `${sourceSlide.id}--auto-cont-1`,
+    title: continuationPlan.structuredContent.title,
+    sourceSlideNumber: sourceSlide.sourceSlideNumber,
+    startTime: clamp(sourceSlide.startTime + sourceSlide.duration + 0.5, 0, 10_000),
+    duration: Math.max(6, Math.round(Math.max(6, sourceSlide.duration * 0.75))),
+    instructorId: sourceSlide.instructorId,
+    layout: continuationPlan.recommendedLayout,
+    speakerNotes: continuationPlan.structuredContent.bullets.join('\n'),
+    elements: buildElementsFromStructuredSlidePlan(
+      {
+        ...sourceSlide,
+        id: `${sourceSlide.id}--auto-cont-1`,
+        layout: continuationPlan.recommendedLayout,
+      },
+      {
+        slideId: `${sourceSlide.id}--auto-cont-1`,
+        visualType: 'summary',
+        grammarId: continuationPlan.grammarId,
+        narrativeRole: 'close',
+        layoutHint: 'Continuation slide created from grammar repair.',
+        recommendedLayout: continuationPlan.recommendedLayout,
+        confidence: 0.72,
+        reasons: ['continuation'],
+        intentTags: ['continuation', continuationPlan.grammarId],
+        contentBudget: continuationPlan.contentBudget,
+        structuredContent: continuationPlan.structuredContent,
+        repairActions: continuationPlan.repairActions,
+        visualNeeds: continuationPlan.visualNeeds,
+        copySuggestions: {
+          title: continuationPlan.structuredContent.title,
+          body: continuationPlan.structuredContent.bullets,
+          cta: continuationPlan.structuredContent.ctaLabel,
+        },
+        graphicSlots: continuationPlan.graphicSlots,
+        continuation: null,
+      },
+      themeId,
+      brandTokensOverride,
+    ),
+  };
+  return hydrateSlidePreview(normalizeSlide(draftSlide, 10_000), themeId, deckName, {
+    force: true,
+    brandTokens: brandTokensOverride,
+    brandKit,
+  });
+};
+
+const buildSpeakerNotesFromStructuredContent = (
+  content: SharedPresentationStructuredContent,
+): string =>
+  [
+    content.subtitle,
+    ...content.bullets,
+    ...content.columns.map((entry) => `${entry.title}: ${entry.body}`.trim()),
+    ...content.steps.map((entry) => `${entry.title}: ${entry.body}`.trim()),
+    ...content.stats.map((entry) => `${entry.value} ${entry.label} ${entry.context}`.trim()),
+    content.quoteText,
+    content.quoteAttribution,
+    content.ctaLabel,
+    content.ctaSupport,
+  ]
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean)
+    .join('\n');
+
+const reflowDeckSlidesForTimeline = (
+  slides: PresentationSlide[],
+  maxDuration: number,
+): PresentationSlide[] => {
+  const gap = 0.5;
+  const normalized: PresentationSlide[] = [];
+  slides.forEach((slide, index) => {
+    if (index === 0) {
+      normalized.push(normalizeSlide(slide, maxDuration));
+      return;
+    }
+    const previous = normalized[index - 1];
+    const minimumStart = roundHalfSecond(previous.startTime + previous.duration + gap);
+    if (slide.startTime >= minimumStart) {
+      normalized.push(normalizeSlide(slide, maxDuration));
+      return;
+    }
+    normalized.push(
+      normalizeSlide(
+      {
+        ...slide,
+        startTime: minimumStart,
+      },
+      maxDuration,
+      ),
+    );
+  });
+  return normalized;
+};
+
 const hydrateSlidePreview = (
   slide: PresentationSlide,
   themeId: PresentationVisualThemeId,
   deckName: string,
-  options?: { force?: boolean },
+  options?: {
+    force?: boolean;
+    brandTokens?: SharedPresentationBrandTokens;
+    brandKit?: PresentationBrandKit | null;
+  },
 ): PresentationSlide => {
   const force = options?.force === true;
   const previewImageUrl =
     (!force ? String(slide.previewImageUrl || '').trim() : '') ||
-    buildSlideSvgPreview(slide, themeId, deckName);
+    buildSlideSvgPreview(slide, themeId, deckName, {
+      brandTokens: options?.brandTokens,
+      brandKit: options?.brandKit,
+    });
   return {
     ...slide,
     previewImageUrl,
@@ -1821,13 +3081,293 @@ const buildTemplateSlides = (
   });
 };
 
+type PresentationContextSlideSeed = {
+  title: string;
+  subtitle?: string;
+  bodyLines: string[];
+  visualType: PresentationDesignVisualType;
+  preferredGrammarId?: SharedPresentationSlideGrammarId;
+  ctaLabel?: string;
+  ctaSupport?: string;
+  mediaIntent?: string;
+};
+
+const uniquePresentationLines = (values: Array<string | null | undefined>): string[] => {
+  const seen = new Set<string>();
+  return values
+    .map((value) => String(value || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const resolveContextualSkillSuggestion = (
+  course: Course | null | undefined,
+  skill: Lesson | null | undefined,
+) => {
+  if (!course?.pedagogicalArchitecture?.studioSuggestions || !skill?.title) return null;
+  const skillTitle = String(skill.title || '').trim().toLowerCase();
+  if (!skillTitle) return null;
+  return (
+    course.pedagogicalArchitecture.studioSuggestions.skills.find((entry) => {
+      const title = String(entry.title || '').trim().toLowerCase();
+      return title === skillTitle || title.includes(skillTitle) || skillTitle.includes(title);
+    }) || null
+  );
+};
+
+const buildContextualPresentationSeeds = (
+  course: Course | null | undefined,
+  skill: Lesson | null | undefined,
+  useNorwegian: boolean,
+): PresentationContextSlideSeed[] => {
+  const architecture = course?.pedagogicalArchitecture;
+  const matchedSkillSuggestion = resolveContextualSkillSuggestion(course, skill);
+  const deckTitle = String(skill?.title || course?.title || '').trim() || (useNorwegian ? 'Presentasjon' : 'Presentation');
+  const competencyTitle = String(course?.title || '').trim();
+  const primaryDescription =
+    String(skill?.description || '').trim() ||
+    String(architecture?.purpose || '').trim() ||
+    String(course?.description || '').trim();
+  const audienceText = String(architecture?.audience || '').trim();
+  const transformationText =
+    String(architecture?.transformation || '').trim() ||
+    uniquePresentationLines(architecture?.transformations || [])[0] ||
+    '';
+  const skillMapItems = Array.isArray(architecture?.skillMap) ? architecture.skillMap : [];
+  const skillMapLines = uniquePresentationLines(
+    skillMapItems.flatMap((entry) => [String(entry?.title || ''), String(entry?.focus || '')]),
+  );
+  const practiceLines = uniquePresentationLines([
+    architecture?.practiceDesign,
+    architecture?.proofOfLearning,
+    ...(Array.isArray(architecture?.problemsSolved) ? architecture.problemsSolved : []),
+  ]);
+  const learningOutcomeLines = uniquePresentationLines([
+    ...(Array.isArray(course?.learningOutcomes) ? course.learningOutcomes : []),
+    ...(Array.isArray(architecture?.skills) ? architecture.skills : []),
+    ...(Array.isArray(architecture?.competencies) ? architecture.competencies : []),
+    matchedSkillSuggestion?.objective,
+  ]);
+  const focusLines = (skill ? learningOutcomeLines : uniquePresentationLines([
+    ...(Array.isArray(architecture?.competencies) ? architecture.competencies : []),
+    ...(Array.isArray(architecture?.skills) ? architecture.skills : []),
+    ...(Array.isArray(course?.learningOutcomes) ? course.learningOutcomes : []),
+  ])).slice(0, 4);
+  const processLines = uniquePresentationLines([
+    ...(skillMapLines.length > 0 ? skillMapLines : []),
+    ...(focusLines.length > 0 ? focusLines : []),
+  ]).slice(0, 5);
+  const nextStepLabel = useNorwegian ? 'Bruk dette i neste opptak' : 'Use this in the next recording';
+  const nextStepSupport =
+    String(matchedSkillSuggestion?.objective || '').trim() ||
+    transformationText ||
+    primaryDescription;
+
+  return [
+    {
+      title: deckTitle,
+      subtitle:
+        primaryDescription ||
+        (competencyTitle
+          ? useNorwegian
+            ? `Bygd for ${competencyTitle}`
+            : `Built for ${competencyTitle}`
+          : ''),
+      bodyLines: uniquePresentationLines([
+        audienceText,
+        transformationText,
+        competencyTitle && skill
+          ? useNorwegian
+            ? `Kompetanse: ${competencyTitle}`
+            : `Competency: ${competencyTitle}`
+          : '',
+      ]).slice(0, 3),
+      visualType: 'title',
+      preferredGrammarId: 'hero',
+      mediaIntent: deckTitle,
+    },
+    {
+      title: useNorwegian ? 'Dette skal mestres' : 'What learners should master',
+      subtitle:
+        transformationText ||
+        (useNorwegian ? 'Fokus pa konkret mestring og trygg gjennomforing.' : 'Focus on concrete mastery and confident execution.'),
+      bodyLines: focusLines,
+      visualType: 'summary',
+      preferredGrammarId: 'checklist',
+      mediaIntent: deckTitle,
+    },
+    {
+      title: useNorwegian ? 'Slik jobber du gjennom ferdigheten' : 'How the skill is performed',
+      subtitle:
+        String(matchedSkillSuggestion?.objective || '').trim() ||
+        (useNorwegian ? 'Del opp flyten i tydelige steg.' : 'Break the flow into clear steps.'),
+      bodyLines: processLines,
+      visualType: 'process',
+      preferredGrammarId: 'process',
+      mediaIntent: deckTitle,
+    },
+    {
+      title: useNorwegian ? 'Ovelse og kvalitet' : 'Practice and quality',
+      subtitle:
+        audienceText ||
+        (useNorwegian ? 'Knytt opplaringen til ekte arbeidssituasjoner.' : 'Tie the training to real work situations.'),
+      bodyLines: practiceLines.slice(0, 4),
+      visualType: 'feature',
+      preferredGrammarId: 'content-grid',
+      mediaIntent: deckTitle,
+    },
+    {
+      title: useNorwegian ? 'Neste steg' : 'Next step',
+      subtitle:
+        primaryDescription ||
+        (useNorwegian ? 'Presentasjonen er klar til videre finpuss ved behov.' : 'The presentation is ready for light refinement if needed.'),
+      bodyLines: uniquePresentationLines([
+        nextStepSupport,
+        ...(focusLines.slice(0, 2)),
+      ]).slice(0, 3),
+      visualType: 'cta',
+      preferredGrammarId: 'cta',
+      ctaLabel: nextStepLabel,
+      ctaSupport: nextStepSupport,
+      mediaIntent: deckTitle,
+    },
+  ].filter((seed) => seed.bodyLines.length > 0 || seed.visualType === 'title' || seed.visualType === 'cta');
+};
+
+const buildContextualPresentationSlides = (
+  course: Course | null | undefined,
+  skill: Lesson | null | undefined,
+  targetDuration: number,
+  useNorwegian: boolean,
+  visualThemeId: PresentationVisualThemeId,
+  deckName: string,
+): PresentationSlide[] => {
+  const seeds = buildContextualPresentationSeeds(course, skill, useNorwegian);
+  const totalSlides = Math.max(1, seeds.length);
+  const availableWindow = Math.max(48, targetDuration - 10);
+  const baseDuration = Math.max(8, Math.floor(availableWindow / totalSlides));
+  const startOffset = 6;
+
+  return seeds.map((seed, index) => {
+    const slideId = `slide-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`;
+    const startTime = clamp(startOffset + index * baseDuration, 0, Math.max(0, targetDuration - 6));
+    const grammarPlan = academyPresentationBuildGrammarPlan({
+      slideId,
+      title: seed.title,
+      bodyLines: seed.bodyLines,
+      visualType: seed.visualType,
+      index,
+      totalSlides,
+      useNorwegian,
+      preferredGrammarId: seed.preferredGrammarId,
+      preferredSubtitle: seed.subtitle,
+      preferredBullets: seed.bodyLines,
+      preferredCtaLabel: seed.ctaLabel,
+      preferredCtaSupport: seed.ctaSupport,
+      preferredMediaIntent: seed.mediaIntent,
+    });
+    const slidePlan: PresentationDesignSlidePlan = {
+      slideId,
+      visualType: seed.visualType,
+      grammarId: grammarPlan.grammarId,
+      narrativeRole: grammarPlan.narrativeRole,
+      layoutHint: 'Context-aware starter deck generated from competency and skill context.',
+      recommendedLayout: grammarPlan.recommendedLayout,
+      confidence: 0.78,
+      reasons: ['contextual-starter', skill ? 'skill-scope' : 'course-scope'],
+      intentTags: ['auto-context', grammarPlan.grammarId],
+      contentBudget: grammarPlan.contentBudget,
+      structuredContent: grammarPlan.structuredContent,
+      repairActions: grammarPlan.repairActions,
+      visualNeeds: grammarPlan.visualNeeds,
+      copySuggestions: {
+        title: grammarPlan.structuredContent.title,
+        body: grammarPlan.structuredContent.bullets,
+        cta: grammarPlan.structuredContent.ctaLabel,
+      },
+      graphicSlots: grammarPlan.graphicSlots,
+      continuation: grammarPlan.continuation,
+    };
+    const draftSlide: PresentationSlide = {
+      id: slideId,
+      sourceSlideNumber: index + 1,
+      title: grammarPlan.structuredContent.title,
+      startTime,
+      duration: clamp(baseDuration, 6, Math.max(6, targetDuration - startTime)),
+      layout: grammarPlan.recommendedLayout,
+      speakerNotes: buildSpeakerNotesFromStructuredContent(grammarPlan.structuredContent),
+      elements: buildElementsFromStructuredSlidePlan(
+        {
+          id: slideId,
+          title: grammarPlan.structuredContent.title,
+          sourceSlideNumber: index + 1,
+          startTime,
+          duration: clamp(baseDuration, 6, Math.max(6, targetDuration - startTime)),
+          layout: grammarPlan.recommendedLayout,
+          speakerNotes: '',
+          elements: [],
+        },
+        slidePlan,
+        visualThemeId,
+      ),
+    };
+    return hydrateSlidePreview(normalizeSlide(draftSlide, targetDuration), visualThemeId, deckName);
+  });
+};
+
+const createContextualDeckFromContext = (
+  templateId: PresentationTemplateId,
+  course: Course | null | undefined,
+  skill: Lesson | null | undefined,
+  targetDuration: number,
+  useNorwegian: boolean,
+  visualThemeId: PresentationVisualThemeId = 'sales-command',
+  splitLayoutVariant: PresentationSplitLayoutVariant = 'balanced',
+): PresentationDeck => {
+  const preset = templatePresets.find((item) => item.id === templateId) || templatePresets[0];
+  const now = new Date().toISOString();
+  const resolvedName =
+    String(skill?.title || course?.title || '').trim() || (useNorwegian ? 'Ny presentasjon' : 'New Presentation');
+  const resolvedSplitVariant =
+    preset.defaultMode === 'split-screen' ? splitLayoutVariant : 'balanced';
+  return {
+    id: `presentation-deck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: resolvedName,
+    template: preset.id,
+    visualThemeId,
+    brandKitId: undefined,
+    displayMode: preset.defaultMode,
+    splitLayoutVariant: resolvedSplitVariant,
+    showNavigator: false,
+    placement: toPlacement(preset.defaultPlacement),
+    opacity: 0.96,
+    sourceName: useNorwegian ? 'Auto-generert fra kompetanse og ferdighet' : 'Auto-generated from competency and skill',
+    sourceType: 'auto-context',
+    sourceUrl: '',
+    slides: buildContextualPresentationSlides(
+      course,
+      skill,
+      targetDuration,
+      useNorwegian,
+      visualThemeId,
+      resolvedName,
+    ),
+    updatedAt: now,
+  };
+};
+
 const createDeckFromTemplate = (
   templateId: PresentationTemplateId,
   targetDuration: number,
   useNorwegian: boolean,
   sourceName?: string,
   sourceType?: string,
-  visualThemeId: PresentationVisualThemeId = 'neutral-modern',
+  visualThemeId: PresentationVisualThemeId = 'sales-command',
   splitLayoutVariant: PresentationSplitLayoutVariant = 'balanced',
 ): PresentationDeck => {
   const preset = templatePresets.find((item) => item.id === templateId) || templatePresets[0];
@@ -1840,6 +3380,7 @@ const createDeckFromTemplate = (
     name: resolvedName,
     template: preset.id,
     visualThemeId,
+    brandKitId: undefined,
     displayMode: preset.defaultMode,
     splitLayoutVariant: resolvedSplitVariant,
     showNavigator: false,
@@ -1869,6 +3410,22 @@ const normalizeSceneElement = (
     y: clamp(Number(element.y) || 0, 0, 100),
     width: clamp(Number(element.width) || 20, 1, 100),
     height: clamp(Number(element.height) || 8, 1, 100),
+    role: String(element.role || '').trim() as PresentationSceneElement['role'],
+    align:
+      String(element.align || '').trim().toLowerCase() === 'center'
+        ? 'center'
+        : 'left',
+    tone:
+      String(element.tone || '').trim().toLowerCase() === 'accent'
+        ? 'accent'
+        : String(element.tone || '').trim().toLowerCase() === 'inverse'
+          ? 'inverse'
+          : String(element.tone || '').trim().toLowerCase() === 'muted'
+            ? 'muted'
+            : 'default',
+    prompt: String(element.prompt || '').trim(),
+    graphicKind: String(element.graphicKind || '').trim() as PresentationDesignGraphicSlot['kind'],
+    assetDataUrl: String(element.assetDataUrl || '').trim(),
   };
 };
 
@@ -1912,7 +3469,7 @@ const normalizeSlide = (slide: PresentationSlide, maxDuration: number): Presenta
 const normalizeDeck = (deck: PresentationDeck, maxDuration: number): PresentationDeck => {
   const normalizedName = String(deck.name || 'Presentation').trim() || 'Presentation';
   const normalizedThemeId = toVisualThemeId(
-    String((deck as Partial<PresentationDeck>).visualThemeId || 'neutral-modern'),
+    String((deck as Partial<PresentationDeck>).visualThemeId || 'sales-command'),
   );
   const normalizedSlides = Array.isArray(deck.slides)
     ? deck.slides
@@ -1929,6 +3486,7 @@ const normalizeDeck = (deck: PresentationDeck, maxDuration: number): Presentatio
     name: normalizedName,
     template: toTemplateId(String(deck.template || 'product-overview')),
     visualThemeId: normalizedThemeId,
+    brandKitId: String((deck as Partial<PresentationDeck>).brandKitId || '').trim() || undefined,
     displayMode: toDisplayMode(String(deck.displayMode || 'picture-in-picture')),
     splitLayoutVariant:
       toDisplayMode(String(deck.displayMode || 'picture-in-picture')) === 'split-screen'
@@ -1950,6 +3508,14 @@ const normalizeDeck = (deck: PresentationDeck, maxDuration: number): Presentatio
 const isLikelyPresentationResource = (resource: CourseResource | LessonResource): boolean => {
   const title = String(resource.title || '').trim();
   return title.startsWith('[Presentation]') || String(resource.id || '').startsWith(PRESENTATION_RESOURCE_ID_PREFIX);
+};
+
+const parsePresentationMediaResourceMetadata = (description: string | undefined) => {
+  const raw = String(description || '');
+  return {
+    folderTag: raw.match(PRESENTATION_MEDIA_FOLDER_TAG_REGEX)?.[1] || '',
+    sourceTag: raw.match(PRESENTATION_MEDIA_SOURCE_TAG_REGEX)?.[1] || '',
+  };
 };
 
 const parseTimecode = (value: string): number | null => {
@@ -2095,13 +3661,22 @@ function AcademyPresentationOverlayStudio({
     () => getRouteParam('lessonId') || getRouteParam('skillId'),
     [location],
   );
+  const { autoSaveState, lastSavedAt, markDirty, markSaving, markSaved } = useToolAutoSaveState();
+  const {
+    simpleMode,
+    toggleSimpleMode,
+    shouldShowAdvanced,
+  } = useAcademyToolUx('presentation');
 
   const [leftNav, setLeftNav] = useState('tool-presentation');
   const [search, setSearch] = useState('');
+  const [semanticSearchBusy, setSemanticSearchBusy] = useState(false);
+  const [semanticSearchRanking, setSemanticSearchRanking] = useState<PresentationSemanticSearchRankItem[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState(courseId || routeCourseId || '');
   const [scope, setScope] = useState<PresentationScope>(routeLessonId ? 'skill' : 'course');
   const [selectedSkillId, setSelectedSkillId] = useState(routeLessonId || '');
   const [decks, setDecks] = useState<PresentationDeck[]>([]);
+  const [brandKits, setBrandKits] = useState<PresentationBrandKit[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState('');
   const [duration, setDuration] = useState(300);
   const [durationInput, setDurationInput] = useState('5:00');
@@ -2135,20 +3710,33 @@ function AcademyPresentationOverlayStudio({
   const [designPlan, setDesignPlan] = useState<PresentationDesignPlan | null>(null);
   const [designPlanBusy, setDesignPlanBusy] = useState(false);
   const [designPlanError, setDesignPlanError] = useState('');
+  const [aiCritique, setAiCritique] = useState<PresentationAiCritiqueResult | null>(null);
+  const [aiCritiqueBusy, setAiCritiqueBusy] = useState(false);
+  const [aiCritiqueError, setAiCritiqueError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
+  const [lastPublishedAt, setLastPublishedAt] = useState('');
+  const [hasSavedChangesSincePublish, setHasSavedChangesSincePublish] = useState(false);
 
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hydratedScopeKeyRef = useRef<string>('');
+  const brandKitHydratedScopeRef = useRef<string>('');
+  const autoSaveHydratedRef = useRef(false);
+  const lastAutoSavedSignatureRef = useRef('');
+  const autoContextGenerationRef = useRef<Set<string>>(new Set());
   const userMutationTickRef = useRef(0);
   const teleprompterLastTickRef = useRef<number | null>(null);
   const teleprompterViewportRef = useRef<HTMLDivElement | null>(null);
   const teleprompterSpeechSyncRunRef = useRef(0);
   const teleprompterSpeechCacheRef = useRef<Map<string, TeleprompterSpeechCacheEntry>>(new Map());
+  const semanticSearchRequestRef = useRef(0);
+  const visualSearchCacheRef = useRef<Map<string, { url: string; source: string }>>(new Map());
+  const videoPosterCacheRef = useRef<Map<string, string>>(new Map());
 
   const markUserMutation = useCallback(() => {
     userMutationTickRef.current += 1;
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -2412,6 +4000,17 @@ function AcademyPresentationOverlayStudio({
     );
   }, [activeCourse?.id, effectiveScope, selectedSkill?.id]);
 
+  const autoSaveSignature = useMemo(
+    () =>
+      JSON.stringify({
+        scopeStorageKey,
+        duration,
+        decks,
+        brandKits,
+      }),
+    [brandKits, decks, duration, scopeStorageKey],
+  );
+
   const scopeResources = useMemo<Array<CourseResource | LessonResource>>(() => {
     if (effectiveScope === 'skill') {
       return Array.isArray(selectedSkill?.resources) ? selectedSkill.resources : [];
@@ -2419,10 +4018,185 @@ function AcademyPresentationOverlayStudio({
     return Array.isArray(activeCourse?.resources) ? activeCourse.resources : [];
   }, [activeCourse?.resources, effectiveScope, selectedSkill?.resources]);
 
+  const presentationLocalVisualAssets = useMemo<PresentationLocalVisualAssetCandidate[]>(() => {
+    const candidates: PresentationLocalVisualAssetCandidate[] = [];
+    const seen = new Set<string>();
+    const pushCandidate = (
+      id: string,
+      url: string,
+      title: string,
+      description: string,
+      source: PresentationLocalVisualAssetCandidate['source'],
+      scope: PresentationLocalVisualAssetCandidate['scope'],
+      assetKind: PresentationLocalVisualAssetCandidate['assetKind'],
+      folderTag = '',
+      mediaAssetId = '',
+      uploaded = false,
+    ) => {
+      const trimmedUrl = String(url || '').trim();
+      if (!trimmedUrl) return;
+      const dedupeKey = String(mediaAssetId || trimmedUrl).trim().toLowerCase();
+      if (dedupeKey && seen.has(dedupeKey)) return;
+      if (dedupeKey) seen.add(dedupeKey);
+      candidates.push({
+        id,
+        url: trimmedUrl,
+        title: String(title || '').trim(),
+        description: String(description || '').trim(),
+        source,
+        scope,
+        assetKind,
+        folderTag: String(folderTag || '').trim() || undefined,
+        mediaAssetId: String(mediaAssetId || '').trim() || undefined,
+        uploaded,
+      });
+    };
+
+    const appendResourceCandidates = (
+      resources: Array<CourseResource | LessonResource> | undefined,
+      scope: PresentationLocalVisualAssetCandidate['scope'],
+    ) => {
+      if (!Array.isArray(resources)) return;
+      resources.forEach((resource, index) => {
+        if (isLikelyPresentationResource(resource)) return;
+        const metadata = parsePresentationMediaResourceMetadata(resource.description);
+        const mediaAssetId = String(resource.mediaAssetId || resource.id || '');
+        if (resource.type === 'image') {
+          pushCandidate(
+            String(resource.id || `${scope}-presentation-image-${index + 1}`),
+            resource.url,
+            resource.title,
+            resource.description,
+            'resource',
+            scope,
+            'image',
+            metadata.folderTag,
+            mediaAssetId,
+            metadata.sourceTag === 'upload',
+          );
+          return;
+        }
+        if (resource.type !== 'video') return;
+        const preferredPosterUrl = String(resource.mediaPosterUrl || '').trim() || resource.url;
+        pushCandidate(
+          String(resource.id || `${scope}-presentation-video-${index + 1}`),
+          preferredPosterUrl,
+          resource.title,
+          resource.description,
+          'video-poster',
+          scope,
+          'video-poster',
+          metadata.folderTag,
+          mediaAssetId,
+          metadata.sourceTag === 'upload',
+        );
+      });
+    };
+
+    appendResourceCandidates(selectedSkill?.resources, 'selected-skill');
+    appendResourceCandidates(activeCourse?.resources, 'course');
+    (Array.isArray(activeCourse?.lessons) ? activeCourse.lessons : []).forEach((lesson) => {
+      if (selectedSkill?.id && String(lesson.id || '') === String(selectedSkill.id)) return;
+      appendResourceCandidates(lesson.resources, 'other-skill');
+    });
+
+    if (selectedSkill?.thumbnail) {
+      pushCandidate(
+        `lesson-thumbnail-${selectedSkill.id}`,
+        selectedSkill.thumbnail,
+        selectedSkill.title,
+        selectedSkill.description,
+        'lesson-thumbnail',
+        'lesson-thumbnail',
+        'thumbnail',
+      );
+    }
+
+    if (selectedSkill?.videoUrl) {
+      const preferredPosterUrl =
+        String(selectedSkill.linkedVideoPosterUrl || '').trim() || selectedSkill.videoUrl;
+      pushCandidate(
+        `lesson-video-poster-${selectedSkill.id}`,
+        preferredPosterUrl,
+        `${selectedSkill.title} video`,
+        selectedSkill.description,
+        'video-poster',
+        'selected-skill',
+        'video-poster',
+        'lesson-videos',
+        String(selectedSkill.linkedVideoAssetId || selectedSkill.id || ''),
+      );
+    }
+
+    if (activeCourse?.thumbnail) {
+      pushCandidate(
+        `course-thumbnail-${activeCourse.id}`,
+        activeCourse.thumbnail,
+        activeCourse.title,
+        activeCourse.description,
+        'course-thumbnail',
+        'course-thumbnail',
+        'thumbnail',
+      );
+    }
+
+    if (activeCourse?.videoUrl) {
+      const preferredPosterUrl =
+        String(activeCourse.linkedVideoPosterUrl || '').trim() || activeCourse.videoUrl;
+      pushCandidate(
+        `course-video-poster-${activeCourse.id}`,
+        preferredPosterUrl,
+        `${activeCourse.title} video`,
+        activeCourse.description,
+        'video-poster',
+        'course',
+        'video-poster',
+        'course-materials',
+        String(activeCourse.linkedVideoAssetId || activeCourse.id || ''),
+      );
+    }
+
+    return candidates;
+  }, [
+    activeCourse?.description,
+    activeCourse?.id,
+    activeCourse?.lessons,
+    activeCourse?.resources,
+    activeCourse?.thumbnail,
+    activeCourse?.title,
+    activeCourse?.videoUrl,
+    activeCourse?.linkedVideoAssetId,
+    selectedSkill?.description,
+    selectedSkill?.id,
+    selectedSkill?.linkedVideoAssetId,
+    selectedSkill?.resources,
+    selectedSkill?.thumbnail,
+    selectedSkill?.title,
+    selectedSkill?.videoUrl,
+  ]);
+
   const resolvedCourseId = useMemo(
     () => String(activeCourse?.id || selectedCourseValue || routeCourseId || '').trim(),
     [activeCourse?.id, routeCourseId, selectedCourseValue],
   );
+
+  const brandKitScopeKey = useMemo(
+    () => getPresentationBrandKitScopeKey(resolvedCourseId),
+    [resolvedCourseId],
+  );
+
+  useEffect(() => {
+    const store = readPresentationBrandKitStore();
+    brandKitHydratedScopeRef.current = brandKitScopeKey;
+    setBrandKits(Array.isArray(store[brandKitScopeKey]) ? store[brandKitScopeKey] : []);
+  }, [brandKitScopeKey]);
+
+  useEffect(() => {
+    if (brandKitHydratedScopeRef.current !== brandKitScopeKey) return;
+    const store = readPresentationBrandKitStore();
+    store[brandKitScopeKey] = brandKits;
+    writePresentationBrandKitStore(store);
+  }, [brandKitScopeKey, brandKits]);
 
   const buildRouteWithContext = useCallback(
     (
@@ -2484,7 +4258,7 @@ function AcademyPresentationOverlayStudio({
 
     const grouped = new Map<string, ParsedPresentationResource[]>();
     parsed.forEach((item) => {
-      const key = `${item.deckId}::${item.template}::${item.visualThemeId}::${item.displayMode}::${item.splitLayoutVariant}::${item.placement}::${item.sourceName}`;
+      const key = `${item.deckId}::${item.template}::${item.displayMode}::${item.splitLayoutVariant}::${item.placement}::${item.sourceName}`;
       const list = grouped.get(key) || [];
       list.push(item);
       grouped.set(key, list);
@@ -2551,6 +4325,8 @@ function AcademyPresentationOverlayStudio({
       const normalized = localEntry.decks.map((deck) => normalizeDeck(deck, targetDuration));
       setDecks(normalized);
       setSelectedDeckId(normalized[0]?.id || '');
+      setLastPublishedAt(String(localEntry.publishedAt || ''));
+      setHasSavedChangesSincePublish(hasSavedDraftNewerThanPublished(localEntry.updatedAt, localEntry.publishedAt));
       const nextDuration = Math.max(60, Number(localEntry.duration) || targetDuration);
       setDuration(nextDuration);
       setCurrentTime((prev) => Math.min(prev, nextDuration));
@@ -2560,25 +4336,38 @@ function AcademyPresentationOverlayStudio({
     if (resourceDerivedDecks.length > 0) {
       setDecks(resourceDerivedDecks);
       setSelectedDeckId(resourceDerivedDecks[0]?.id || '');
+      setLastPublishedAt('');
+      setHasSavedChangesSincePublish(false);
       setDuration(targetDuration);
       setCurrentTime((prev) => Math.min(prev, targetDuration));
       return;
     }
 
-    const defaultDeck = createDeckFromTemplate(
+    const defaultDeck = createContextualDeckFromContext(
       presentationDefaultsForCourse.templateId,
+      activeCourse,
+      effectiveScope === 'skill' ? selectedSkill : null,
       targetDuration,
       isNorwegian,
-      '',
-      '',
       presentationDefaultsForCourse.visualThemeId,
       presentationDefaultsForCourse.splitLayoutVariant,
     );
     setDecks([defaultDeck]);
     setSelectedDeckId(defaultDeck.id);
+    setLastPublishedAt('');
+    setHasSavedChangesSincePublish(false);
     setDuration(targetDuration);
     setCurrentTime((prev) => Math.min(prev, targetDuration));
-  }, [isNorwegian, presentationDefaultsForCourse, resourceDerivedDecks, scopeStorageKey, targetDuration]);
+  }, [
+    activeCourse,
+    effectiveScope,
+    isNorwegian,
+    presentationDefaultsForCourse,
+    resourceDerivedDecks,
+    scopeStorageKey,
+    selectedSkill,
+    targetDuration,
+  ]);
 
   useEffect(() => {
     if (!scopeStorageKey) return;
@@ -2609,6 +4398,8 @@ function AcademyPresentationOverlayStudio({
 
       const mergedEntry = mergedStore[scopeStorageKey];
       if (!mergedEntry || !Array.isArray(mergedEntry.decks) || mergedEntry.decks.length === 0) {
+        setLastPublishedAt('');
+        setHasSavedChangesSincePublish(false);
         return;
       }
       if (userMutationTickRef.current !== mutationAtStart) {
@@ -2618,6 +4409,8 @@ function AcademyPresentationOverlayStudio({
       const normalized = mergedEntry.decks.map((deck) => normalizeDeck(deck, targetDuration));
       setDecks(normalized);
       setSelectedDeckId(normalized[0]?.id || '');
+      setLastPublishedAt(String(mergedEntry.publishedAt || ''));
+      setHasSavedChangesSincePublish(hasSavedDraftNewerThanPublished(mergedEntry.updatedAt, mergedEntry.publishedAt));
       const nextDuration = Math.max(60, Number(mergedEntry.duration) || targetDuration);
       setDuration(nextDuration);
       setCurrentTime((prev) => Math.min(prev, nextDuration));
@@ -2627,6 +4420,75 @@ function AcademyPresentationOverlayStudio({
       cancelled = true;
     };
   }, [scopeStorageKey, targetDuration]);
+
+  useEffect(() => {
+    if (!scopeStorageKey) return;
+    if (!autoSaveHydratedRef.current) {
+      autoSaveHydratedRef.current = true;
+      lastAutoSavedSignatureRef.current = autoSaveSignature;
+      markSaved();
+      return;
+    }
+    if (autoSaveSignature === lastAutoSavedSignatureRef.current) return;
+
+    markDirty();
+    const timer = window.setTimeout(() => {
+      markSaving();
+      const normalizedDecks = decks.map((deck) => normalizeDeck(deck, duration));
+      const store = readPresentationStore();
+      const previousEntry = store[scopeStorageKey];
+      store[scopeStorageKey] = {
+        decks: normalizedDecks,
+        duration,
+        updatedAt: new Date().toISOString(),
+        publishedAt: previousEntry?.publishedAt,
+      };
+      writePresentationStore(store);
+      void writePresentationStoreToDb(store);
+      lastAutoSavedSignatureRef.current = autoSaveSignature;
+      setLastPublishedAt(String(previousEntry?.publishedAt || ''));
+      setHasSavedChangesSincePublish(Boolean(previousEntry?.publishedAt));
+      markSaved();
+    }, 720);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    autoSaveSignature,
+    decks,
+    duration,
+    markDirty,
+    markSaved,
+    markSaving,
+    scopeStorageKey,
+  ]);
+
+  useEffect(() => {
+    if (brandKits.length === 0 && !decks.some((deck) => deck.brandKitId)) return;
+    setDecks((prev) =>
+      prev.map((deck) => {
+        const deckBrandKit = deck.brandKitId ? brandKits.find((kit) => kit.id === deck.brandKitId) || null : null;
+        const deckBrandTokens = resolvePresentationBrandTokens(deck.visualThemeId, deckBrandKit);
+        return {
+          ...deck,
+          slides: deck.slides.map((slide) =>
+            hydrateSlidePreview(slide, deck.visualThemeId, deck.name, {
+              force: true,
+              brandTokens: deckBrandTokens,
+              brandKit: deckBrandKit,
+            }),
+          ),
+        };
+      }),
+    );
+  }, [brandKits]);
+
+  useEffect(() => {
+    autoSaveHydratedRef.current = false;
+    lastAutoSavedSignatureRef.current = '';
+    autoContextGenerationRef.current.clear();
+  }, [scopeStorageKey]);
 
   useEffect(() => {
     analytics.trackEvent('academy_presentation_overlay_studio_opened', {
@@ -2645,17 +4507,143 @@ function AcademyPresentationOverlayStudio({
     });
   }, [activeCourse?.id, analytics, debugging, decks.length, effectiveScope, selectedSkill?.id]);
 
+  const semanticSearchItems = useMemo(
+    () =>
+      decks.map((deck) => ({
+        id: deck.id,
+        title: deck.name,
+        subtitle: deck.sourceName,
+        text: deck.slides
+          .slice(0, 20)
+          .map((slide) => {
+            const elementText = slide.elements
+              .filter((element) => element.type === 'text')
+              .map((element) => String(element.text || '').trim())
+              .filter(Boolean)
+              .slice(0, 3)
+              .join(' ');
+            return `${slide.title} ${slide.speakerNotes} ${elementText}`.trim();
+          })
+          .filter(Boolean)
+          .join(' \n ')
+          .slice(0, 2600),
+        tags: [deck.template, deck.visualThemeId, deck.displayMode, deck.splitLayoutVariant],
+      })),
+    [decks],
+  );
+
+  useEffect(() => {
+    const query = search.trim();
+    const requestId = semanticSearchRequestRef.current + 1;
+    semanticSearchRequestRef.current = requestId;
+
+    if (!query || semanticSearchItems.length === 0) {
+      setSemanticSearchBusy(false);
+      setSemanticSearchRanking([]);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        setSemanticSearchBusy(true);
+        try {
+          const response = (await apiRequest('/api/academy/presentation/semantic-search', {
+            method: 'POST',
+            body: {
+              query,
+              limit: Math.min(36, semanticSearchItems.length),
+              items: semanticSearchItems,
+            },
+          })) as Record<string, unknown>;
+          if (semanticSearchRequestRef.current !== requestId) return;
+          const responseData =
+            response.data && typeof response.data === 'object'
+              ? (response.data as Record<string, unknown>)
+              : null;
+          const rankingRaw =
+            responseData && Array.isArray(responseData.ranking) ? responseData.ranking : [];
+          const ranking = rankingRaw
+            .map((entry) => {
+              if (!entry || typeof entry !== 'object') return null;
+              const candidate = entry as Record<string, unknown>;
+              const id = String(candidate.id || '').trim();
+              if (!id) return null;
+              const score = Number(candidate.score);
+              const lexicalScore = Number(candidate.lexicalScore);
+              const semanticScore = Number(candidate.semanticScore);
+              const rerankRaw = candidate.rerankScore;
+              const rerankScore =
+                rerankRaw === null || rerankRaw === undefined ? null : Number(rerankRaw);
+              return {
+                id,
+                score: Number.isFinite(score) ? score : 0,
+                lexicalScore: Number.isFinite(lexicalScore) ? lexicalScore : 0,
+                semanticScore: Number.isFinite(semanticScore) ? semanticScore : 0,
+                rerankScore:
+                  rerankScore === null || Number.isFinite(rerankScore) ? rerankScore : null,
+              } satisfies PresentationSemanticSearchRankItem;
+            })
+            .filter((entry): entry is PresentationSemanticSearchRankItem => Boolean(entry));
+          setSemanticSearchRanking(ranking);
+        } catch {
+          if (semanticSearchRequestRef.current !== requestId) return;
+          setSemanticSearchRanking([]);
+        } finally {
+          if (semanticSearchRequestRef.current === requestId) {
+            setSemanticSearchBusy(false);
+          }
+        }
+      })();
+    }, 260);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [search, semanticSearchItems]);
+
   const filteredDecks = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = search.trim();
     if (!query) return decks;
-    return decks.filter((deck) => {
-      return (
-        deck.name.toLowerCase().includes(query) ||
-        deck.sourceName.toLowerCase().includes(query) ||
-        deck.slides.some((slide) => slide.title.toLowerCase().includes(query))
-      );
+    const queryTokens = tokenizeSearchQuery(query);
+    const semanticRankIndex = new Map<string, number>();
+    const semanticScoreByDeckId = new Map<string, number>();
+    semanticSearchRanking.forEach((entry, index) => {
+      semanticRankIndex.set(entry.id, index);
+      semanticScoreByDeckId.set(entry.id, Number(entry.score) || 0);
     });
-  }, [decks, search]);
+
+    const ranked = decks
+      .map((deck) => {
+        const lexicalScore = computeDeckLexicalSearchScore(deck, query, queryTokens);
+        const semanticScore = semanticScoreByDeckId.get(deck.id) || 0;
+        const combinedScore =
+          semanticScore > 0
+            ? semanticScore * 0.74 + lexicalScore * 0.26
+            : lexicalScore;
+        return {
+          deck,
+          lexicalScore,
+          semanticScore,
+          combinedScore,
+          semanticIndex: semanticRankIndex.get(deck.id) ?? Number.MAX_SAFE_INTEGER,
+        };
+      })
+      .filter(
+        (entry) =>
+          entry.lexicalScore > 0 ||
+          entry.semanticScore >= 0.16 ||
+          entry.combinedScore >= 0.14,
+      )
+      .sort((a, b) => {
+        if (b.combinedScore !== a.combinedScore) return b.combinedScore - a.combinedScore;
+        if (a.semanticIndex !== b.semanticIndex) return a.semanticIndex - b.semanticIndex;
+        return b.lexicalScore - a.lexicalScore;
+      })
+      .map((entry) => entry.deck);
+
+    if (ranked.length > 0) return ranked;
+    return decks.filter((deck) => computeDeckLexicalSearchScore(deck, query, queryTokens) > 0);
+  }, [decks, search, semanticSearchRanking]);
 
   const activeDeckId = useMemo(() => {
     if (selectedDeckId && decks.some((deck) => deck.id === selectedDeckId)) {
@@ -2696,6 +4684,8 @@ function AcademyPresentationOverlayStudio({
   useEffect(() => {
     setDesignPlan(null);
     setDesignPlanError('');
+    setAiCritique(null);
+    setAiCritiqueError('');
   }, [activeDeckId]);
 
   useEffect(() => {
@@ -2729,10 +4719,100 @@ function AcademyPresentationOverlayStudio({
       templatePresets[0],
     [selectedDeck?.template],
   );
-
   const selectedVisualThemePreset = useMemo(
-    () => getVisualThemePresetById(selectedDeck?.visualThemeId || presentationDefaultsForCourse.visualThemeId),
-    [presentationDefaultsForCourse.visualThemeId, selectedDeck?.visualThemeId],
+    () =>
+      visualThemePresets.find((themePreset) => themePreset.id === selectedDeck?.visualThemeId) ||
+      visualThemePresets[0],
+    [selectedDeck?.visualThemeId],
+  );
+
+  const selectedBrandKit = useMemo(
+    () =>
+      selectedDeck?.brandKitId
+        ? brandKits.find((kit) => kit.id === selectedDeck.brandKitId) || null
+        : null,
+    [brandKits, selectedDeck?.brandKitId],
+  );
+
+  const effectiveBrandTokens = useMemo(
+    () =>
+      resolvePresentationBrandTokens(
+        selectedDeck?.visualThemeId || presentationDefaultsForCourse.visualThemeId,
+        selectedBrandKit,
+      ),
+    [presentationDefaultsForCourse.visualThemeId, selectedBrandKit, selectedDeck?.visualThemeId],
+  );
+
+  const activeVisualThemeColors = effectiveBrandTokens;
+
+  const templateMemory = useMemo<PresentationTemplateMemoryItem[]>(
+    () =>
+      decks
+        .filter((deck) => deck.id !== selectedDeck?.id)
+        .map((deck) => ({
+          id: deck.id,
+          kind: 'deck',
+          name: deck.name,
+          summary: deck.sourceName || deck.slides[0]?.title || '',
+          templateId: deck.template,
+          visualThemeId: deck.visualThemeId,
+          displayMode: deck.displayMode,
+          splitLayoutVariant: deck.splitLayoutVariant,
+          searchText: deck.slides
+            .slice(0, 20)
+            .map((slide) => {
+              const elementText = slide.elements
+                .filter((element) => element.type === 'text')
+                .map((element) => String(element.text || '').trim())
+                .filter(Boolean)
+                .slice(0, 4)
+                .join(' ');
+              return [slide.title, slide.speakerNotes, elementText].filter(Boolean).join(' · ');
+            })
+            .filter(Boolean)
+            .join('\n')
+            .slice(0, 3600),
+          brandName: deck.brandKitId
+            ? brandKits.find((kit) => kit.id === deck.brandKitId)?.name || ''
+            : '',
+        }))
+        .filter((entry) => entry.searchText.trim().length > 0)
+        .slice(0, 48),
+    [brandKits, decks, selectedDeck?.id],
+  );
+
+  const activeBrandContext = useMemo(
+    () => ({
+      name:
+        selectedBrandKit?.name ||
+        selectedTemplatePreset.label ||
+        (isNorwegian ? 'Presentasjonsbrand' : 'Presentation brand'),
+      primary: activeVisualThemeColors.primary,
+      secondary: activeVisualThemeColors.secondary,
+      accent: activeVisualThemeColors.accent,
+      headingFont: activeVisualThemeColors.headingFont,
+      bodyFont: activeVisualThemeColors.bodyFont,
+      chartStyle: activeVisualThemeColors.chartStyle,
+      imageStyle: activeVisualThemeColors.imageStyle,
+      logoText: selectedBrandKit?.logoText || '',
+      footerText: selectedBrandKit?.footerText || '',
+      minContrastRatio: selectedBrandKit?.minContrastRatio || 4.5,
+    }),
+    [
+      activeVisualThemeColors.accent,
+      activeVisualThemeColors.bodyFont,
+      activeVisualThemeColors.chartStyle,
+      activeVisualThemeColors.headingFont,
+      activeVisualThemeColors.imageStyle,
+      activeVisualThemeColors.primary,
+      activeVisualThemeColors.secondary,
+      isNorwegian,
+      selectedBrandKit?.footerText,
+      selectedBrandKit?.logoText,
+      selectedBrandKit?.minContrastRatio,
+      selectedBrandKit?.name,
+      selectedTemplatePreset.label,
+    ],
   );
 
   const activeProjectTemplateId = useMemo(
@@ -2865,84 +4945,206 @@ function AcademyPresentationOverlayStudio({
     return overlaps;
   }, [selectedDeck]);
 
-  const qualityIssues = useMemo<PresentationQualityIssue[]>(() => {
-    if (!selectedDeck) return [];
-    const issues: PresentationQualityIssue[] = [];
-    const ordered = [...selectedDeck.slides].sort(
-      (left, right) => Number(left.startTime || 0) - Number(right.startTime || 0),
-    );
-    const maxTimeline = Math.max(60, duration);
-
-    ordered.forEach((slide) => {
-      if (slide.duration < 3) {
-        issues.push({
-          id: `short-duration-${slide.id}`,
-          slideId: slide.id,
-          severity: 'warning',
-          messageNo: `"${slide.title}" har for kort varighet (< 3s).`,
-          messageEn: `"${slide.title}" has a very short duration (< 3s).`,
-        });
-      }
-
-      const end = slide.startTime + slide.duration;
-      if (end > maxTimeline + 0.001) {
-        issues.push({
-          id: `out-of-bounds-timeline-${slide.id}`,
-          slideId: slide.id,
-          severity: 'error',
-          messageNo: `"${slide.title}" går utenfor total tidslinje.`,
-          messageEn: `"${slide.title}" exceeds the total timeline.`,
-        });
-      }
-
-      const overlap = slideOverlapMap.get(String(slide.id)) || 0;
-      if (overlap > 0) {
-        issues.push({
-          id: `overlap-${slide.id}`,
-          slideId: slide.id,
-          severity: overlap > 0.6 ? 'error' : 'warning',
-          messageNo: `"${slide.title}" overlapper andre slides (${overlap.toFixed(1)}s).`,
-          messageEn: `"${slide.title}" overlaps other slides (${overlap.toFixed(1)}s).`,
-        });
-      }
-
-      slide.elements.forEach((element) => {
-        if (element.x < 0 || element.y < 0 || element.x + element.width > 100 || element.y + element.height > 100) {
-          issues.push({
-            id: `element-bounds-${slide.id}-${element.id}`,
-            slideId: slide.id,
-            severity: 'warning',
-            messageNo: `"${slide.title}" har element utenfor safe bounds.`,
-            messageEn: `"${slide.title}" has an element outside safe bounds.`,
+  const activeQualityPlan = useMemo(() => {
+    if (!selectedDeck) return null;
+    const currentPlan =
+      designPlan &&
+      selectedDeck.slides.every((slide) => designPlan.slides.some((entry) => entry.slideId === slide.id))
+        ? designPlan
+        : buildLocalDesignPlanFallback({
+            deck: selectedDeck,
+            scope: effectiveScope,
+            courseId: resolvedCourseId,
+            lessonId: effectiveScope === 'skill' ? String(selectedSkill?.id || '') : '',
+            projectTemplateId: activeProjectTemplateId,
+            useNorwegian: isNorwegian,
           });
-        }
-        if (element.type === 'text' && String(element.text || '').trim().length > 130) {
-          issues.push({
-            id: `mobile-text-${slide.id}-${element.id}`,
-            slideId: slide.id,
-            severity: 'warning',
-            messageNo: `"${slide.title}" har tekst som er for lang for mobil.`,
-            messageEn: `"${slide.title}" has text that is too long for mobile.`,
-          });
-        }
-      });
+    return new Map(currentPlan.slides.map((entry) => [entry.slideId, entry]));
+  }, [
+    activeProjectTemplateId,
+    designPlan,
+    effectiveScope,
+    isNorwegian,
+    resolvedCourseId,
+    selectedDeck,
+    selectedSkill?.id,
+  ]);
+
+  const designEvaluation = useMemo<PresentationDeckDesignEvaluation>(() => {
+    if (!selectedDeck || !activeQualityPlan) {
+      return {
+        overall: 100,
+        content: 100,
+        hierarchy: 100,
+        balance: 100,
+        visuals: 100,
+        grammar: 100,
+        slides: [],
+        findings: [],
+      };
+    }
+    return evaluatePresentationDeckDesign({
+      maxTimeline: Math.max(60, duration),
+      themeTokens: activeVisualThemeColors,
+      slides: selectedDeck.slides.map((slide) => {
+        const planForSlide =
+          activeQualityPlan.get(slide.id) ||
+          buildLocalDesignPlanFallback({
+            deck: {
+              ...selectedDeck,
+              slides: [slide],
+            },
+            scope: effectiveScope,
+            courseId: resolvedCourseId,
+            lessonId: effectiveScope === 'skill' ? String(selectedSkill?.id || '') : '',
+            projectTemplateId: activeProjectTemplateId,
+            useNorwegian: isNorwegian,
+          }).slides[0];
+        return {
+          slideId: slide.id,
+          title: slide.title,
+          startTime: slide.startTime,
+          duration: slide.duration,
+          overlapSeconds: slideOverlapMap.get(String(slide.id)) || 0,
+          elements: slide.elements,
+          grammarId: planForSlide.grammarId,
+          contentBudget: planForSlide.contentBudget,
+          structuredContent: planForSlide.structuredContent,
+          visualNeeds: planForSlide.visualNeeds,
+        };
+      }),
     });
+  }, [
+    activeProjectTemplateId,
+    activeQualityPlan,
+    duration,
+    effectiveScope,
+    isNorwegian,
+    resolvedCourseId,
+    selectedDeck,
+    selectedSkill?.id,
+    activeVisualThemeColors,
+    slideOverlapMap,
+  ]);
 
-    const ratio = contrastRatio(
-      selectedVisualThemePreset.colors.canvasText,
-      selectedVisualThemePreset.colors.canvasBg,
+  const canvasContrastRatio = useMemo(
+    () =>
+      contrastRatio(
+        activeVisualThemeColors.canvasText,
+        solidPreviewColor(activeVisualThemeColors.canvasBg, '#ffffff'),
+      ),
+    [activeVisualThemeColors.canvasBg, activeVisualThemeColors.canvasText],
+  );
+
+  const brandEvaluation = useMemo<PresentationBrandEvaluation>(() => {
+    const findings: PresentationQualityIssue[] = [];
+    const minContrastRatio = Math.max(3, Number(selectedBrandKit?.minContrastRatio) || 4.5);
+    const navContrast = contrastRatio(
+      activeVisualThemeColors.navText,
+      solidPreviewColor(activeVisualThemeColors.navBg, '#101826'),
     );
-    if (ratio !== null && ratio < 3.5) {
-      issues.push({
-        id: 'contrast-theme',
-        severity: 'warning',
-        messageNo: 'Temaets kontrast i canvas kan være for lav.',
-        messageEn: 'Theme contrast in canvas may be too low.',
+
+    if (selectedDeck?.brandKitId && !selectedBrandKit) {
+      findings.push({
+        id: 'brand-kit-missing',
+        severity: 'error',
+        messageNo: 'Valgt brand kit finnes ikke lenger for denne presentasjonen.',
+        messageEn: 'The selected brand kit no longer exists for this presentation.',
       });
     }
 
-    return issues;
-  }, [duration, selectedDeck, selectedVisualThemePreset.colors.canvasBg, selectedVisualThemePreset.colors.canvasText, slideOverlapMap]);
+    if (selectedBrandKit?.requireLogo && !selectedBrandKit.logoText.trim()) {
+      findings.push({
+        id: 'brand-logo-required',
+        severity: 'error',
+        messageNo: 'Brand kit krever logo eller wordmark, men feltet er tomt.',
+        messageEn: 'The brand kit requires a logo or wordmark, but the field is empty.',
+      });
+    }
+
+    if (selectedBrandKit?.requireFooter && !selectedBrandKit.footerText.trim()) {
+      findings.push({
+        id: 'brand-footer-required',
+        severity: 'error',
+        messageNo: 'Brand kit krever footer, men footer-teksten er tom.',
+        messageEn: 'The brand kit requires a footer, but the footer text is empty.',
+      });
+    }
+
+    if (canvasContrastRatio !== null && canvasContrastRatio < minContrastRatio) {
+      findings.push({
+        id: 'brand-canvas-contrast',
+        severity: 'error',
+        messageNo: `Canvas-kontrast ${canvasContrastRatio.toFixed(1)} er lavere enn brand-kravet ${minContrastRatio.toFixed(1)}.`,
+        messageEn: `Canvas contrast ${canvasContrastRatio.toFixed(1)} is lower than the brand requirement ${minContrastRatio.toFixed(1)}.`,
+      });
+    }
+
+    if (navContrast !== null && navContrast < minContrastRatio) {
+      findings.push({
+        id: 'brand-nav-contrast',
+        severity: 'warning',
+        messageNo: `Navigasjonskontrast ${navContrast.toFixed(1)} er lavere enn brand-kravet ${minContrastRatio.toFixed(1)}.`,
+        messageEn: `Navigation contrast ${navContrast.toFixed(1)} is lower than the brand requirement ${minContrastRatio.toFixed(1)}.`,
+      });
+    }
+
+    if (selectedBrandKit?.logoText && selectedBrandKit.logoText.trim().length > 26) {
+      findings.push({
+        id: 'brand-logo-too-long',
+        severity: 'warning',
+        messageNo: 'Wordmark/logo-tekst er for lang og vil gi svak header-hierarki.',
+        messageEn: 'The wordmark/logo text is too long and weakens the header hierarchy.',
+      });
+    }
+
+    if (selectedBrandKit?.footerText && selectedBrandKit.footerText.trim().length > 96) {
+      findings.push({
+        id: 'brand-footer-too-long',
+        severity: 'warning',
+        messageNo: 'Footer-teksten er for lang og bor forkortes for renere decks.',
+        messageEn: 'The footer text is too long and should be shortened for cleaner decks.',
+      });
+    }
+
+    const penalty = findings.reduce(
+      (acc, issue) => acc + (issue.severity === 'error' ? 16 : 8),
+      0,
+    );
+    return {
+      score: clamp(100 - penalty, 0, 100),
+      findings,
+    };
+  }, [
+    activeVisualThemeColors.canvasBg,
+    activeVisualThemeColors.canvasText,
+    activeVisualThemeColors.navBg,
+    activeVisualThemeColors.navText,
+    canvasContrastRatio,
+    selectedBrandKit,
+    selectedDeck?.brandKitId,
+  ]);
+
+  const qualityIssues = useMemo<PresentationQualityIssue[]>(
+    () => [
+      ...designEvaluation.findings.map((finding) => ({
+        id: finding.id,
+        slideId: finding.slideId,
+        severity: finding.severity,
+        messageNo: finding.messageNo,
+        messageEn: finding.messageEn,
+      })),
+      ...brandEvaluation.findings,
+      ...(aiCritique?.findings.map((finding) => ({
+        id: finding.id,
+        slideId: finding.slideId,
+        severity: finding.severity,
+        messageNo: finding.messageNo,
+        messageEn: finding.messageEn,
+      })) || []),
+    ],
+    [aiCritique?.findings, brandEvaluation.findings, designEvaluation.findings],
+  );
 
   const qualitySummary = useMemo(() => {
     const errorCount = qualityIssues.filter((issue) => issue.severity === 'error').length;
@@ -2951,8 +5153,151 @@ function AcademyPresentationOverlayStudio({
       errorCount,
       warningCount,
       canPublish: errorCount === 0,
+      designScore: Math.round(
+        designEvaluation.overall * 0.68 +
+          brandEvaluation.score * 0.14 +
+          (aiCritique?.overall ?? 100) * 0.18,
+      ),
+      brandScore: brandEvaluation.score,
+      aiScore: aiCritique?.overall ?? null,
     };
-  }, [qualityIssues]);
+  }, [aiCritique?.overall, brandEvaluation.score, designEvaluation.overall, qualityIssues]);
+  const simplePresentationStatus = useMemo(() => {
+    if (designPlanBusy) {
+      return {
+        label: tt('Bygger automatisk', 'Generating automatically'),
+        toneBg: 'rgba(92,149,255,0.16)',
+        toneText: '#dce8ff',
+      };
+    }
+    if (designPlanError) {
+      return {
+        label: tt('Trenger oppdatering', 'Needs refresh'),
+        toneBg: 'rgba(255,122,122,0.18)',
+        toneText: '#ffd6d6',
+      };
+    }
+    if (selectedDeck?.sourceType === 'auto-context-ready' || designPlan) {
+      return {
+        label: tt('Auto-generert', 'Auto-generated'),
+        toneBg: 'rgba(126,232,179,0.18)',
+        toneText: '#caffea',
+      };
+    }
+    return {
+      label: tt('Klar til oppsett', 'Ready to process'),
+      toneBg: 'rgba(248,179,33,0.18)',
+      toneText: '#ffe6b8',
+    };
+  }, [designPlan, designPlanBusy, designPlanError, selectedDeck?.sourceType, tt]);
+  const simplePresentationHighlights = useMemo(
+    () =>
+      uniquePresentationLines([
+        ...(previewSlide ? [previewSlide.title] : []),
+        ...(selectedDeck?.slides.slice(1, 4).map((slide) => slide.title) || []),
+      ]).slice(0, 4),
+    [previewSlide, selectedDeck?.slides],
+  );
+  const simplePresentationSummary = useMemo(() => {
+    const architecture = activeCourse?.pedagogicalArchitecture;
+    return (
+      String(selectedSkill?.description || '').trim() ||
+      String(architecture?.purpose || '').trim() ||
+      String(architecture?.transformation || '').trim() ||
+      String(activeCourse?.description || '').trim() ||
+      tt(
+        'Presentasjonen bygges automatisk ut fra kompetanse, ferdighet og pedagogisk arkitektur.',
+        'The presentation is built automatically from competency, skill, and pedagogical architecture.',
+      )
+    );
+  }, [
+    activeCourse?.description,
+    activeCourse?.pedagogicalArchitecture,
+    selectedSkill?.description,
+    tt,
+  ]);
+  const saveStatusIndicator = useMemo(() => {
+    if (autoSaveState === 'saving') {
+      return {
+        icon: <CloudSync fontSize="small" className="academy-save-spin" />,
+        tooltip: tt('Lagrer endringer ...', 'Saving changes ...'),
+        bgColor: 'rgba(116,173,255,0.22)',
+        textColor: '#b9d7ff',
+        borderColor: 'rgba(116,173,255,0.38)',
+      };
+    }
+    if (autoSaveState === 'dirty') {
+      return {
+        icon: <CloudOff fontSize="small" />,
+        tooltip: tt('Ikke lagret', 'Unsaved'),
+        bgColor: 'rgba(248,179,33,0.2)',
+        textColor: '#f8d675',
+        borderColor: 'rgba(248,179,33,0.36)',
+      };
+    }
+    const formatted = formatToolSavedTime(lastSavedAt, tt('nb-NO', 'en-US'));
+    return {
+      icon: <CloudDone fontSize="small" />,
+      tooltip: `${tt('Lagret', 'Saved')} • ${formatted}`,
+      bgColor: 'rgba(126,232,179,0.16)',
+      textColor: '#9ef1ca',
+      borderColor: 'rgba(126,232,179,0.36)',
+    };
+  }, [autoSaveState, lastSavedAt, tt]);
+  const draftStatusChip = useMemo(() => {
+    const publishedAtMs = Date.parse(lastPublishedAt);
+    const hasPublishedVersion = Number.isFinite(publishedAtMs) && publishedAtMs > 0;
+    const publishedFormatted = hasPublishedVersion
+      ? formatToolSavedTime(lastPublishedAt, tt('nb-NO', 'en-US'))
+      : '--:--';
+    if (autoSaveState === 'saving') {
+      return {
+        label: hasPublishedVersion
+          ? tt('Oppdaterer utkast ...', 'Updating draft ...')
+          : tt('Utkast lagres ...', 'Draft saving ...'),
+        tooltip: hasPublishedVersion
+          ? `${tt('Sist publisert', 'Last published')} • ${publishedFormatted}`
+          : tt(
+              'Utkast synkroniseres. Ikke publisert ennå.',
+              'Draft is syncing. Not published yet.',
+            ),
+      };
+    }
+    if (autoSaveState === 'dirty') {
+      return {
+        label: hasPublishedVersion
+          ? tt('Publisert · nye endringer', 'Published · new changes')
+          : tt('Utkast ikke lagret', 'Draft unsaved'),
+        tooltip: hasPublishedVersion
+          ? tt(
+              'Det finnes en publisert versjon, men nye endringer er ikke publisert ennå.',
+              'A published version exists, but new changes are not published yet.',
+            )
+          : tt(
+              'Du har ulagrede endringer. Ikke publisert.',
+              'You have unsaved changes. Not published.',
+            ),
+      };
+    }
+    if (hasPublishedVersion && !hasSavedChangesSincePublish) {
+      return {
+        label: tt('Publisert', 'Published'),
+        tooltip: `${tt('Publisert', 'Published')} • ${publishedFormatted}`,
+      };
+    }
+    if (hasPublishedVersion && hasSavedChangesSincePublish) {
+      const formatted = formatToolSavedTime(lastSavedAt, tt('nb-NO', 'en-US'));
+      return {
+        label: tt('Utkast lagret (nyere enn publisert)', 'Draft saved (newer than published)'),
+        tooltip: `${tt('Lagret', 'Saved')} • ${formatted} • ${tt('Sist publisert', 'Last published')} • ${publishedFormatted}`,
+      };
+    }
+    const formatted = formatToolSavedTime(lastSavedAt, tt('nb-NO', 'en-US'));
+    return {
+      label: tt('Utkast lagret (ikke publisert)', 'Draft saved (not published)'),
+      tooltip: `${tt('Lagret', 'Saved')} • ${formatted} • ${tt('Ikke publisert', 'Not published')}`,
+    };
+  }, [autoSaveState, hasSavedChangesSincePublish, lastPublishedAt, lastSavedAt, tt]);
   const previewSlideBodyLines = useMemo(() => collectSlideBodyLines(previewSlide), [previewSlide]);
   const previewSlideBodyDraft = useMemo(() => previewSlideBodyLines.join('\n'), [previewSlideBodyLines]);
   const activeInstructorScript = useMemo(
@@ -3305,6 +5650,10 @@ function AcademyPresentationOverlayStudio({
     setIsPlaying(false);
   }, []);
 
+  const toggleStudentPreview = useCallback(() => {
+    togglePlayback();
+  }, [togglePlayback]);
+
   const resolveTeleprompterSyncVideoPath = useCallback(
     async (sourceUrl: string): Promise<string> => {
       const trimmed = String(sourceUrl || '').trim();
@@ -3591,8 +5940,14 @@ function AcademyPresentationOverlayStudio({
         prev.map((deck) => {
           if (deck.id !== activeDeckId) return deck;
           const updatedDeck = updater(deck);
+          const deckBrandKit =
+            updatedDeck.brandKitId
+              ? brandKits.find((kit) => kit.id === updatedDeck.brandKitId) || null
+              : null;
+          const deckBrandTokens = resolvePresentationBrandTokens(updatedDeck.visualThemeId, deckBrandKit);
           const shouldRegeneratePreviews =
             updatedDeck.visualThemeId !== deck.visualThemeId ||
+            updatedDeck.brandKitId !== deck.brandKitId ||
             updatedDeck.name !== deck.name;
           const withHydratedSlides: PresentationDeck = {
             ...updatedDeck,
@@ -3602,7 +5957,11 @@ function AcademyPresentationOverlayStudio({
                     slide,
                     updatedDeck.visualThemeId,
                     updatedDeck.name,
-                    { force: shouldRegeneratePreviews },
+                    {
+                      force: shouldRegeneratePreviews,
+                      brandTokens: deckBrandTokens,
+                      brandKit: deckBrandKit,
+                    },
                   ),
                 )
               : [],
@@ -3617,7 +5976,721 @@ function AcademyPresentationOverlayStudio({
         }),
       );
     },
-    [activeDeckId, duration, markUserMutation],
+    [activeDeckId, brandKits, duration, markUserMutation],
+  );
+
+  const hydrateDeckWithBrandKit = useCallback(
+    (deck: PresentationDeck, brandKit: PresentationBrandKit | null | undefined): PresentationDeck => {
+      const nextThemeId = brandKit?.baseThemeId || deck.visualThemeId;
+      const brandTokens = resolvePresentationBrandTokens(nextThemeId, brandKit);
+      return normalizeDeck(
+        {
+          ...deck,
+          visualThemeId: nextThemeId,
+          brandKitId: brandKit?.id || undefined,
+          slides: deck.slides.map((slide) =>
+            hydrateSlidePreview(slide, nextThemeId, deck.name, {
+              force: true,
+              brandTokens,
+              brandKit,
+            }),
+          ),
+          updatedAt: new Date().toISOString(),
+        },
+        duration,
+      );
+    },
+    [duration],
+  );
+
+  const applyBrandKitToSelectedDeck = useCallback(
+    (brandKitId: string) => {
+      if (!activeDeckId) return;
+      markUserMutation();
+      const nextBrandKit = brandKitId ? brandKits.find((kit) => kit.id === brandKitId) || null : null;
+      setDecks((prev) =>
+        prev.map((deck) => (deck.id === activeDeckId ? hydrateDeckWithBrandKit(deck, nextBrandKit) : deck)),
+      );
+      setSaveMessage(
+        nextBrandKit
+          ? tt('Brand kit koblet til valgt presentasjon.', 'Brand kit linked to the selected presentation.')
+          : tt('Brand kit fjernet fra valgt presentasjon.', 'Brand kit removed from the selected presentation.'),
+      );
+    },
+    [activeDeckId, brandKits, hydrateDeckWithBrandKit, markUserMutation, tt],
+  );
+
+  const createBrandKitFromSelectedDeck = useCallback(() => {
+    const baseThemeId = selectedDeck?.visualThemeId || presentationDefaultsForCourse.visualThemeId;
+    const nextBrandKit = buildPresentationBrandKitFromTheme(
+      baseThemeId,
+      `${selectedDeck?.name || tt('Ny presentasjon', 'New presentation')} Brand Kit`,
+    );
+    setBrandKits((prev) => [nextBrandKit, ...prev]);
+    if (activeDeckId) {
+      markUserMutation();
+      setDecks((prev) =>
+        prev.map((deck) => (deck.id === activeDeckId ? hydrateDeckWithBrandKit(deck, nextBrandKit) : deck)),
+      );
+    }
+    setSaveMessage(tt('Nytt brand kit opprettet fra valgt deck.', 'New brand kit created from the selected deck.'));
+  }, [
+    activeDeckId,
+    hydrateDeckWithBrandKit,
+    markUserMutation,
+    presentationDefaultsForCourse.visualThemeId,
+    selectedDeck?.name,
+    selectedDeck?.visualThemeId,
+    tt,
+  ]);
+
+  const updateBrandKit = useCallback(
+    (brandKitId: string, updater: (kit: PresentationBrandKit) => PresentationBrandKit) => {
+      markUserMutation();
+      setBrandKits((prev) => {
+        const nextBrandKits = prev.map((kit) => {
+          if (kit.id !== brandKitId) return kit;
+          const updated = updater(kit);
+          return {
+            ...updated,
+            updatedAt: new Date().toISOString(),
+          };
+        });
+        const updatedBrandKit = nextBrandKits.find((kit) => kit.id === brandKitId) || null;
+        setDecks((prevDecks) =>
+          prevDecks.map((deck) =>
+            deck.brandKitId === brandKitId ? hydrateDeckWithBrandKit(deck, updatedBrandKit) : deck,
+          ),
+        );
+        return nextBrandKits;
+      });
+    },
+    [hydrateDeckWithBrandKit, markUserMutation],
+  );
+
+  const deleteBrandKit = useCallback(
+    (brandKitId: string) => {
+      const deletedBrandKit = brandKits.find((kit) => kit.id === brandKitId) || null;
+      markUserMutation();
+      setBrandKits((prev) => prev.filter((kit) => kit.id !== brandKitId));
+      setDecks((prev) =>
+        prev.map((deck) => {
+          if (deck.brandKitId !== brandKitId) return deck;
+          return hydrateDeckWithBrandKit(
+            {
+              ...deck,
+              visualThemeId: deletedBrandKit?.baseThemeId || deck.visualThemeId,
+            },
+            null,
+          );
+        }),
+      );
+      setSaveMessage(tt('Brand kit slettet.', 'Brand kit deleted.'));
+    },
+    [brandKits, hydrateDeckWithBrandKit, markUserMutation, tt],
+  );
+
+  const buildDesignPlanRequestBody = useCallback(
+    (
+      deck: PresentationDeck,
+      options?: {
+        repairFocus?: string[];
+      },
+    ) => ({
+      scope: effectiveScope,
+      courseId: resolvedCourseId,
+      lessonId: effectiveScope === 'skill' ? String(selectedSkill?.id || '') : '',
+      projectTemplateId: activeProjectTemplateId,
+      useNorwegian: isNorwegian,
+      deckName: deck.name,
+      deckTemplate: deck.template,
+      templateMemory,
+      brandContext: activeBrandContext,
+      repairFocus: options?.repairFocus?.slice(0, 8) || [],
+      slides: deck.slides.map((slide) => ({
+        id: slide.id,
+        title: slide.title,
+        startTime: slide.startTime,
+        duration: slide.duration,
+        layout: slide.layout,
+        speakerNotes: slide.speakerNotes,
+        textLines: collectSlideBodyLines(slide),
+      })),
+    }),
+    [
+      activeBrandContext,
+      activeProjectTemplateId,
+      effectiveScope,
+      isNorwegian,
+      resolvedCourseId,
+      selectedSkill?.id,
+      templateMemory,
+    ],
+  );
+
+  const toAbsolutePresentationAssetUrl = useCallback((url: string): string => {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return '';
+    if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:')) return trimmed;
+    if (typeof window === 'undefined') return trimmed;
+    try {
+      return new URL(trimmed, window.location.origin).toString();
+    } catch {
+      return trimmed;
+    }
+  }, []);
+
+  const generatePresentationVideoPoster = useCallback(async (videoUrl: string): Promise<string | null> => {
+    const absoluteUrl = toAbsolutePresentationAssetUrl(videoUrl);
+    if (!absoluteUrl || typeof document === 'undefined') return null;
+    const cacheKey = absoluteUrl.trim().toLowerCase();
+    const cached = videoPosterCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+
+    const cleanup = () => {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    };
+
+    try {
+      const metadataLoaded = new Promise<void>((resolve, reject) => {
+        const onLoaded = () => {
+          cleanupListeners();
+          resolve();
+        };
+        const onError = () => {
+          cleanupListeners();
+          reject(new Error('video-metadata-failed'));
+        };
+        const cleanupListeners = () => {
+          video.removeEventListener('loadedmetadata', onLoaded);
+          video.removeEventListener('error', onError);
+        };
+        video.addEventListener('loadedmetadata', onLoaded, { once: true });
+        video.addEventListener('error', onError, { once: true });
+      });
+
+      video.src = absoluteUrl;
+      await metadataLoaded;
+
+      const targetTime = Math.max(
+        0.1,
+        Math.min(
+          Number.isFinite(video.duration) && video.duration > 0 ? video.duration * 0.15 : 0.8,
+          2.5,
+        ),
+      );
+
+      await new Promise<void>((resolve, reject) => {
+        const onSeeked = () => {
+          cleanupListeners();
+          resolve();
+        };
+        const onError = () => {
+          cleanupListeners();
+          reject(new Error('video-seek-failed'));
+        };
+        const cleanupListeners = () => {
+          video.removeEventListener('seeked', onSeeked);
+          video.removeEventListener('error', onError);
+        };
+        video.addEventListener('seeked', onSeeked, { once: true });
+        video.addEventListener('error', onError, { once: true });
+        video.currentTime = targetTime;
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(320, video.videoWidth || 640);
+      canvas.height = Math.max(180, video.videoHeight || 360);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        cleanup();
+        return null;
+      }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const poster = canvas.toDataURL('image/jpeg', 0.84);
+      if (poster) {
+        videoPosterCacheRef.current.set(cacheKey, poster);
+      }
+      cleanup();
+      return poster || null;
+    } catch {
+      cleanup();
+      return null;
+    }
+  }, [toAbsolutePresentationAssetUrl]);
+
+  const resolveLocalPresentationVisualUrl = useCallback(
+    async (candidate: PresentationLocalVisualAssetCandidate): Promise<string> => {
+      if (candidate.assetKind === 'video-poster') {
+        const absoluteUrl = toAbsolutePresentationAssetUrl(candidate.url);
+        if (
+          absoluteUrl.startsWith('data:image/') ||
+          /\.(png|jpe?g|webp|gif|svg)(\?|#|$)/i.test(absoluteUrl)
+        ) {
+          return absoluteUrl;
+        }
+        const poster = await generatePresentationVideoPoster(candidate.url);
+        if (poster) return poster;
+      }
+      return toAbsolutePresentationAssetUrl(candidate.url);
+    },
+    [generatePresentationVideoPoster, toAbsolutePresentationAssetUrl],
+  );
+
+  const searchPresentationReferenceAsset = useCallback(
+    async ({
+      queries,
+      kind,
+      preferredSources,
+      grammarId,
+    }: {
+      queries: string[];
+      kind: PresentationDesignGraphicSlot['kind'];
+      preferredSources?: string[];
+      grammarId?: SharedPresentationSlideGrammarId;
+    }): Promise<{ url: string; source: string } | null> => {
+      const normalizedQueries = Array.from(
+        new Set(
+          queries
+            .map((entry) => String(entry || '').replace(/\s+/g, ' ').trim())
+            .filter(Boolean),
+        ),
+      ).slice(0, 3);
+      if (normalizedQueries.length === 0) return null;
+
+      const providerScore = (source: string): number => {
+        const normalized = String(source || '').trim().toLowerCase();
+        const preferredIndex = (preferredSources || []).findIndex(
+          (entry) => String(entry || '').trim().toLowerCase() === normalized,
+        );
+        const preferredBonus =
+          preferredIndex >= 0 ? Math.max(0, 1.4 - preferredIndex * 0.2) : 0;
+        if (normalized === 'unsplash') return 4 + preferredBonus;
+        if (normalized === 'pexels') return 3.7 + preferredBonus;
+        if (normalized === 'pixabay') return 3.2 + preferredBonus;
+        if (normalized === 'cache') return 5 + preferredBonus;
+        if (normalized === 'reference') return 2.2 + preferredBonus;
+        if (normalized === 'video-poster') return 2.6 + preferredBonus;
+        return preferredBonus;
+      };
+
+      const normalizeTokens = (value: string): string[] =>
+        String(value || '')
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9\s-]/g, ' ')
+          .split(/\s+/)
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 2);
+
+      let bestMatch: { url: string; source: string; score: number } | null = null;
+
+      const localScopeScore = (candidate: PresentationLocalVisualAssetCandidate): number => {
+        if (kind === 'screenshot') {
+          const typePenalty = candidate.assetKind === 'video-poster' ? 0.35 : 0;
+          if (candidate.scope === 'selected-skill') return (candidate.uploaded ? 4.2 : 3.4) - typePenalty;
+          if (candidate.scope === 'course') return (candidate.uploaded ? 3.1 : 2.5) - typePenalty;
+          if (candidate.scope === 'other-skill') return (candidate.uploaded ? 2.2 : 1.8) - typePenalty;
+          if (candidate.scope === 'lesson-thumbnail') return 1.45;
+          return 1.05;
+        }
+        if (candidate.scope === 'selected-skill') return candidate.uploaded ? 2.4 : 1.9;
+        if (candidate.scope === 'course') return candidate.uploaded ? 1.8 : 1.45;
+        if (candidate.scope === 'other-skill') return candidate.uploaded ? 1.2 : 1.0;
+        if (candidate.scope === 'lesson-thumbnail') return 0.8;
+        return 0.65;
+      };
+
+      const localFolderBonus = (candidate: PresentationLocalVisualAssetCandidate): number => {
+        const folderTag = String(candidate.folderTag || '').trim().toLowerCase();
+        if (!folderTag) return 0;
+        if (kind === 'screenshot') {
+          if (/(course-materials|tutorials)/.test(folderTag)) return 0.55;
+          if (candidate.assetKind === 'video-poster' && /lesson-videos/.test(folderTag)) return 0.2;
+          if (/(lesson-videos|quiz-assets|certificates)/.test(folderTag)) return -0.15;
+        }
+        if (grammarId === 'interactive-quiz' && /quiz-assets/.test(folderTag)) return 0.55;
+        return 0;
+      };
+
+      for (const normalizedQuery of normalizedQueries) {
+        const cacheKey = `${kind}:${String(grammarId || '')}:${normalizedQuery.toLowerCase()}`;
+        const cached = visualSearchCacheRef.current.get(cacheKey);
+        if (cached) {
+          const cachedScore = providerScore(cached.source) + 1;
+          if (!bestMatch || cachedScore > bestMatch.score) {
+            bestMatch = { ...cached, score: cachedScore };
+          }
+          continue;
+        }
+
+        const queryTokens = normalizeTokens(normalizedQuery);
+        const localCandidate = presentationLocalVisualAssets
+          .map((candidate) => {
+            const candidateTokens = normalizeTokens(
+              `${candidate.title} ${candidate.description} ${candidate.folderTag || ''} ${candidate.scope} ${candidate.source}`,
+            );
+            const overlap =
+              queryTokens.length > 0
+                ? queryTokens.filter((token) => candidateTokens.includes(token)).length / queryTokens.length
+                : 0;
+            const sourceBonus = localScopeScore(candidate) + providerScore(candidate.source);
+            return {
+              candidate,
+              score: overlap * 3 + sourceBonus + localFolderBonus(candidate),
+            };
+          })
+          .sort((left, right) => right.score - left.score)[0];
+
+        if (localCandidate && localCandidate.score >= (kind === 'screenshot' ? 2.2 : 1.6)) {
+          const absolute = await resolveLocalPresentationVisualUrl(localCandidate.candidate);
+          visualSearchCacheRef.current.set(cacheKey, {
+            url: absolute,
+            source: localCandidate.candidate.source,
+          });
+          if (!bestMatch || localCandidate.score > bestMatch.score) {
+            bestMatch = {
+              url: absolute,
+              source: localCandidate.candidate.source,
+              score: localCandidate.score,
+            };
+          }
+          if (kind === 'screenshot') {
+            continue;
+          }
+        }
+
+        if (kind === 'screenshot') {
+          continue;
+        }
+
+        const endpoints = [
+          `/api/unsplash/search?q=${encodeURIComponent(normalizedQuery)}&per_page=6&orientation=landscape&intent=presentation`,
+          `/api/pexels/search?q=${encodeURIComponent(normalizedQuery)}&per_page=6&intent=presentation`,
+          `/api/pixabay/search?q=${encodeURIComponent(normalizedQuery)}&per_page=6`,
+        ];
+
+        const payloads = await Promise.all(
+          endpoints.map(async (endpoint) => {
+            try {
+              const response = await fetch(endpoint, { credentials: 'include' });
+              if (!response.ok) return null;
+              return (await response.json()) as {
+                results?: PresentationReferenceImageResult[];
+                source?: string;
+              };
+            } catch {
+              return null;
+            }
+          }),
+        );
+
+        const ranked = payloads
+          .flatMap((payload) => {
+            if (!payload || !Array.isArray(payload.results)) return [];
+            return payload.results
+              .filter((entry) => Boolean(entry?.url))
+              .map((entry) => {
+                const source = String(entry.source || payload.source || 'reference').trim() || 'reference';
+                const normalizedSource = source.toLowerCase();
+                if (normalizedSource === 'picsum') return null;
+                const candidateText = normalizeTokens(
+                  `${entry.description || ''} ${entry.attribution || ''} ${entry.photographer || ''} ${entry.source || ''}`,
+                );
+                const overlap =
+                  queryTokens.length > 0
+                    ? queryTokens.filter((token) => candidateText.includes(token)).length / queryTokens.length
+                    : 0;
+                const score =
+                  providerScore(source) +
+                  overlap * 1.6 +
+                  (String(entry.description || '').trim() ? 0.25 : 0) +
+                  (String(entry.photographer || '').trim() ? 0.1 : 0);
+                return {
+                  entry,
+                  source,
+                  score,
+                };
+              })
+              .filter(
+                (
+                  candidate,
+                ): candidate is {
+                  entry: PresentationReferenceImageResult;
+                  source: string;
+                  score: number;
+                } => Boolean(candidate),
+              );
+          })
+          .sort((left, right) => right.score - left.score);
+
+        const winner = ranked[0];
+        if (!winner?.entry?.url) {
+          continue;
+        }
+        const proxied = `/api/shotcafe/image-proxy?url=${encodeURIComponent(String(winner.entry.url).trim())}`;
+        const absolute = toAbsolutePresentationAssetUrl(proxied);
+        visualSearchCacheRef.current.set(cacheKey, {
+          url: absolute,
+          source: winner.source,
+        });
+        if (!bestMatch || winner.score > bestMatch.score) {
+          bestMatch = {
+            url: absolute,
+            source: winner.source,
+            score: winner.score,
+          };
+        }
+      }
+
+      return bestMatch ? { url: bestMatch.url, source: bestMatch.source } : null;
+    },
+    [presentationLocalVisualAssets, resolveLocalPresentationVisualUrl, toAbsolutePresentationAssetUrl],
+  );
+
+  const resolveDesignPlanVisualAssets = useCallback(
+    async (plan: PresentationDesignPlan): Promise<PresentationDesignPlan> => {
+      const slides = await Promise.all(
+        plan.slides.map(async (slidePlan) => {
+          const graphicSlots = await Promise.all(
+            slidePlan.graphicSlots.map(async (slot) => {
+              const graphicPlan = buildPresentationGraphicPlan({
+                slot,
+                structuredContent: slidePlan.structuredContent,
+                theme: activeVisualThemeColors,
+                grammarId: slidePlan.grammarId,
+              });
+              if (!graphicPlan.prefersReferenceAsset) {
+                return slot;
+              }
+              if (String(slot.resolvedAssetUrl || '').trim()) {
+                return {
+                  ...slot,
+                  resolvedAssetUrl: toAbsolutePresentationAssetUrl(String(slot.resolvedAssetUrl || '').trim()),
+                };
+              }
+              const resolved = await searchPresentationReferenceAsset(
+                {
+                  queries:
+                    graphicPlan.referenceQueries.length > 0
+                      ? graphicPlan.referenceQueries
+                      : buildPresentationReferenceQueries({
+                          slot,
+                          structuredContent: slidePlan.structuredContent,
+                          theme: activeVisualThemeColors,
+                          grammarId: slidePlan.grammarId,
+                        }),
+                  kind: slot.kind,
+                  preferredSources: graphicPlan.preferredSources,
+                  grammarId: slidePlan.grammarId,
+                },
+              );
+              if (!resolved) return slot;
+              return {
+                ...slot,
+                resolvedAssetUrl: resolved.url,
+                assetSource: resolved.source,
+              };
+            }),
+          );
+          return {
+            ...slidePlan,
+            graphicSlots,
+          };
+        }),
+      );
+      return {
+        ...plan,
+        slides,
+      };
+    },
+    [activeVisualThemeColors, searchPresentationReferenceAsset, toAbsolutePresentationAssetUrl],
+  );
+
+  const fetchBackendDesignPlan = useCallback(
+    async (
+      deck: PresentationDeck,
+      options?: {
+        repairFocus?: string[];
+      },
+    ): Promise<PresentationDesignPlan> => {
+      const response = await apiRequest('/api/academy/presentation/design-plan', {
+        method: 'POST',
+        body: buildDesignPlanRequestBody(deck, options),
+      });
+      const parsed = parseDesignPlan(response);
+      if (!parsed) {
+        throw new Error(
+          tt(
+            'Design-plan respons kunne ikke tolkes.',
+            'Could not parse design plan response.',
+          ),
+        );
+      }
+      return parsed;
+    },
+    [buildDesignPlanRequestBody, tt],
+  );
+
+  const buildCritiqueRequestBody = useCallback(
+    (deck: PresentationDeck) => {
+      const critiquePlan =
+        designPlan &&
+        deck.slides.every((slide) => designPlan.slides.some((entry) => entry.slideId === slide.id))
+          ? designPlan
+          : buildLocalDesignPlanFallback({
+              deck,
+              scope: effectiveScope,
+              courseId: resolvedCourseId,
+              lessonId: effectiveScope === 'skill' ? String(selectedSkill?.id || '') : '',
+              projectTemplateId: activeProjectTemplateId,
+              useNorwegian: isNorwegian,
+            });
+      const planBySlideId = new Map(critiquePlan.slides.map((entry) => [entry.slideId, entry]));
+      return {
+        scope: effectiveScope,
+        courseId: resolvedCourseId,
+        lessonId: effectiveScope === 'skill' ? String(selectedSkill?.id || '') : '',
+        projectTemplateId: activeProjectTemplateId,
+        useNorwegian: isNorwegian,
+        deckName: deck.name,
+        brandContext: activeBrandContext,
+        slides: deck.slides.map((slide) => {
+          const planForSlide =
+            planBySlideId.get(slide.id) ||
+            buildLocalDesignPlanFallback({
+              deck: { ...deck, slides: [slide] },
+              scope: effectiveScope,
+              courseId: resolvedCourseId,
+              lessonId: effectiveScope === 'skill' ? String(selectedSkill?.id || '') : '',
+              projectTemplateId: activeProjectTemplateId,
+              useNorwegian: isNorwegian,
+            }).slides[0];
+          return {
+            slideId: slide.id,
+            title: slide.title,
+            visualType: planForSlide.visualType,
+            grammarId: planForSlide.grammarId,
+            layout: slide.layout,
+            previewImageUrl: slide.previewImageUrl || '',
+            structuredContent: planForSlide.structuredContent,
+            contentBudget: planForSlide.contentBudget,
+            visualNeeds: planForSlide.visualNeeds,
+          };
+        }),
+      };
+    },
+    [
+      activeBrandContext,
+      activeProjectTemplateId,
+      designPlan,
+      effectiveScope,
+      isNorwegian,
+      resolvedCourseId,
+      selectedSkill?.id,
+    ],
+  );
+
+  const requestDeckCritique = useCallback(
+    async (deck: PresentationDeck): Promise<PresentationAiCritiqueResult> => {
+      const response = await apiRequest('/api/academy/presentation/critique', {
+        method: 'POST',
+        body: buildCritiqueRequestBody(deck),
+      });
+      const parsed = parseAiCritique(response);
+      if (!parsed) {
+        throw new Error(
+          tt(
+            'AI-kritikk kunne ikke tolkes.',
+            'Could not parse AI critique response.',
+          ),
+        );
+      }
+      return parsed;
+    },
+    [buildCritiqueRequestBody, tt],
+  );
+
+  const selectPreferredRepairPlan = useCallback(
+    async (
+      deck: PresentationDeck,
+      options?: {
+        repairFocus?: string[];
+      },
+    ): Promise<{ plan: PresentationDesignPlan; source: 'backend' | 'local' }> => {
+      const localPlan = buildLocalDesignPlanFallback({
+        deck,
+        scope: effectiveScope,
+        courseId: resolvedCourseId,
+        lessonId: effectiveScope === 'skill' ? String(selectedSkill?.id || '') : '',
+        projectTemplateId: activeProjectTemplateId,
+        useNorwegian: isNorwegian,
+      });
+      const deckUpdatedAtMs = Date.parse(String(deck.updatedAt || ''));
+      const hasRepairFocus = Boolean(options?.repairFocus && options.repairFocus.length > 0);
+
+      if (designPlan && !hasRepairFocus) {
+        const currentPlanGeneratedAtMs = Date.parse(String(designPlan.generatedAt || ''));
+        const currentPlanCoversAllSlides = deck.slides.every((slide) =>
+          designPlan.slides.some((entry) => entry.slideId === slide.id),
+        );
+        if (
+          currentPlanCoversAllSlides &&
+          Number.isFinite(currentPlanGeneratedAtMs) &&
+          (!Number.isFinite(deckUpdatedAtMs) || currentPlanGeneratedAtMs >= deckUpdatedAtMs)
+        ) {
+          return {
+            plan: await resolveDesignPlanVisualAssets(designPlan),
+            source: 'backend',
+          };
+        }
+      }
+
+      try {
+        const remotePlan = await fetchBackendDesignPlan(deck, options);
+        const remoteGeneratedAtMs = Date.parse(String(remotePlan.generatedAt || ''));
+        const remoteCoversAllSlides = deck.slides.every((slide) =>
+          remotePlan.slides.some((entry) => entry.slideId === slide.id),
+        );
+        if (
+          remoteCoversAllSlides &&
+          (hasRepairFocus ||
+            (Number.isFinite(remoteGeneratedAtMs) &&
+              (!Number.isFinite(deckUpdatedAtMs) || remoteGeneratedAtMs >= deckUpdatedAtMs)))
+        ) {
+          return {
+            plan: await resolveDesignPlanVisualAssets(remotePlan),
+            source: 'backend',
+          };
+        }
+      } catch {
+        // Use local grammar plan when backend plan is unavailable or stale.
+      }
+
+      return {
+        plan: await resolveDesignPlanVisualAssets(localPlan),
+        source: 'local',
+      };
+    },
+    [
+      activeProjectTemplateId,
+      designPlan,
+      effectiveScope,
+      fetchBackendDesignPlan,
+      isNorwegian,
+      resolveDesignPlanVisualAssets,
+      resolvedCourseId,
+      selectedSkill?.id,
+    ],
   );
 
   const applyTemplate = useCallback(
@@ -3626,15 +6699,14 @@ function AcademyPresentationOverlayStudio({
 
       if (!selectedDeck) {
         const themeId = presentationDefaultsForCourse.visualThemeId;
-        const themePreset = getVisualThemePresetById(themeId);
-        const nextDeck = createDeckFromTemplate(
+        const nextDeck = createContextualDeckFromContext(
           templateId,
+          activeCourse,
+          effectiveScope === 'skill' ? selectedSkill : null,
           duration,
           isNorwegian,
-          '',
-          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
           themeId,
-          themePreset.splitLayoutVariant,
+          'balanced',
         );
         markUserMutation();
         setDecks((prev) => [nextDeck, ...prev]);
@@ -3649,7 +6721,7 @@ function AcademyPresentationOverlayStudio({
         displayMode: preset.defaultMode,
         splitLayoutVariant:
           preset.defaultMode === 'split-screen'
-            ? (getVisualThemePresetById(deck.visualThemeId).splitLayoutVariant)
+            ? deck.splitLayoutVariant || 'balanced'
             : 'balanced',
         showNavigator: false,
         placement: toPlacement(preset.defaultPlacement),
@@ -3660,10 +6732,13 @@ function AcademyPresentationOverlayStudio({
     },
     [
       duration,
+      effectiveScope,
+      activeCourse,
       isNorwegian,
       markUserMutation,
       presentationDefaultsForCourse.visualThemeId,
       selectedDeck,
+      selectedSkill,
       tt,
       updateSelectedDeck,
     ],
@@ -3774,12 +6849,12 @@ function AcademyPresentationOverlayStudio({
   );
 
   const addDeck = useCallback(() => {
-    const nextDeck = createDeckFromTemplate(
+    const nextDeck = createContextualDeckFromContext(
       presentationDefaultsForCourse.templateId,
+      activeCourse,
+      effectiveScope === 'skill' ? selectedSkill : null,
       duration,
       isNorwegian,
-      '',
-      '',
       presentationDefaultsForCourse.visualThemeId,
       presentationDefaultsForCourse.splitLayoutVariant,
     );
@@ -3787,7 +6862,16 @@ function AcademyPresentationOverlayStudio({
     setDecks((prev) => [nextDeck, ...prev]);
     setSelectedDeckId(nextDeck.id);
     setSaveMessage(tt('Ny presentasjon opprettet.', 'New presentation created.'));
-  }, [duration, isNorwegian, markUserMutation, presentationDefaultsForCourse, tt]);
+  }, [
+    activeCourse,
+    duration,
+    effectiveScope,
+    isNorwegian,
+    markUserMutation,
+    presentationDefaultsForCourse,
+    selectedSkill,
+    tt,
+  ]);
 
   const removeDeck = useCallback(
     (deckId?: string) => {
@@ -3992,7 +7076,7 @@ function AcademyPresentationOverlayStudio({
     (
       plan: PresentationDesignPlan,
       targetSlideId?: string,
-      options?: { silent?: boolean; source?: 'manual' | 'auto' | 'fallback' },
+      options?: { silent?: boolean; source?: 'manual' | 'auto' | 'fallback' | 'repair' },
     ) => {
       if (!selectedDeck) return;
       const planBySlide = new Map(plan.slides.map((slidePlan) => [slidePlan.slideId, slidePlan]));
@@ -4004,7 +7088,7 @@ function AcademyPresentationOverlayStudio({
           : 0;
 
       updateSelectedDeck((deck) => {
-        const nextDeckTheme = applyAll ? plan.recommendedVisualThemeId : deck.visualThemeId;
+        const activeBrandKit = deck.brandKitId ? brandKits.find((kit) => kit.id === deck.brandKitId) || null : null;
         const nextDeckDisplayMode = applyAll ? plan.recommendedDisplayMode : deck.displayMode;
         const nextDeckSplitVariant =
           nextDeckDisplayMode === 'split-screen'
@@ -4012,108 +7096,84 @@ function AcademyPresentationOverlayStudio({
               ? plan.recommendedSplitLayoutVariant
               : deck.splitLayoutVariant
             : 'balanced';
+        const baseSlides = deck.slides.filter((slide) => {
+          const slideId = String(slide.id || '');
+          if (!slideId.includes('--auto-cont-')) return true;
+          const ownerSlideId = slideId.split('--auto-cont-')[0];
+          if (!targetSlideId) return false;
+          return ownerSlideId !== targetSlideId;
+        });
 
-        const nextSlides = deck.slides.map((slide) => {
-          if (targetSlideId && slide.id !== targetSlideId) return slide;
+        const nextThemeId = activeBrandKit?.baseThemeId || (applyAll ? plan.recommendedVisualThemeId : deck.visualThemeId);
+        const nextBrandTokens = resolvePresentationBrandTokens(nextThemeId, activeBrandKit);
+        const rebuiltSlides = baseSlides.flatMap((slide) => {
+          if (targetSlideId && slide.id !== targetSlideId) return [slide];
           const slidePlan = planBySlide.get(slide.id);
-          if (!slidePlan) return slide;
+          if (!slidePlan) return [slide];
 
-          const suggestedTitle = String(slidePlan.copySuggestions.title || '').trim() || slide.title;
-          const bodyLines = Array.isArray(slidePlan.copySuggestions.body)
-            ? slidePlan.copySuggestions.body.map((line) => String(line || '').trim()).filter(Boolean)
-            : [];
-          const ctaLine = String(slidePlan.copySuggestions.cta || '').trim();
-          const bodyText = [...bodyLines, ...(slidePlan.visualType === 'cta' && ctaLine ? [ctaLine] : [])]
-            .filter(Boolean)
-            .join('\n');
           const layout = toDisplayMode(
             String(slidePlan.recommendedLayout || slide.layout || deck.displayMode),
           );
-
-          const baseElements = slide.elements.filter(
-            (element) => !String(element.id || '').startsWith('design-slot-'),
-          );
-          let nextElements = [...baseElements];
-          const firstTextIndex = nextElements.findIndex((element) => element.type === 'text');
-          const textX = layout === 'split-screen' || layout === 'full-frame' ? 8 : 12;
-          const textWidth = layout === 'split-screen' || layout === 'full-frame' ? 56 : 76;
-
-          if (firstTextIndex >= 0) {
-            nextElements[firstTextIndex] = {
-              ...nextElements[firstTextIndex],
-              text: suggestedTitle,
-              x: textX,
-              y: 10,
-              width: textWidth,
-              height: 16,
-            };
-          } else {
-            nextElements.unshift({
-              id: `${slide.id}-title-${Date.now().toString(36)}`,
-              type: 'text',
-              text: suggestedTitle,
-              x: textX,
-              y: 10,
-              width: textWidth,
-              height: 16,
-            });
-          }
-
-          if (bodyText) {
-            const titleTextIndex = nextElements.findIndex((element) => element.type === 'text');
-            const bodyTextIndex = nextElements.findIndex(
-              (element, index) => element.type === 'text' && index !== titleTextIndex,
-            );
-            if (bodyTextIndex >= 0) {
-              nextElements[bodyTextIndex] = {
-                ...nextElements[bodyTextIndex],
-                text: bodyText,
-                x: textX,
-                y: 30,
-                width: textWidth,
-                height: 40,
-              };
-            } else {
-              nextElements.push({
-                id: `${slide.id}-body-${Date.now().toString(36)}`,
-                type: 'text',
-                text: bodyText,
-                x: textX,
-                y: 30,
-                width: textWidth,
-                height: 40,
-              });
-            }
-          }
-
-          const graphicElements = slidePlan.graphicSlots.slice(0, 6).map((slot) => ({
-            id: `design-slot-${slot.id}`,
-            type: designGraphicKindToElementType(slot.kind),
-            text: slot.prompt || slot.label || '',
-            x: clamp(Number(slot.x) || 0, 0, 100),
-            y: clamp(Number(slot.y) || 0, 0, 100),
-            width: clamp(Number(slot.width) || 20, 1, 100),
-            height: clamp(Number(slot.height) || 12, 1, 100),
-          }));
-
-          nextElements = [...nextElements, ...graphicElements].slice(0, 20);
-          return {
+          const draftSlide: PresentationSlide = {
             ...slide,
-            title: suggestedTitle,
+            title: String(slidePlan.structuredContent.title || slidePlan.copySuggestions.title || slide.title).trim() || slide.title,
             layout,
-            elements: nextElements,
+            speakerNotes: buildSpeakerNotesFromStructuredContent(slidePlan.structuredContent),
+            elements: buildElementsFromStructuredSlidePlan(
+              {
+                ...slide,
+                layout,
+              },
+              slidePlan,
+              nextThemeId,
+              nextBrandTokens,
+            ),
             previewImageUrl: '',
             thumbnailImageUrl: '',
           };
+          const hydratedSlide = hydrateSlidePreview(
+            normalizeSlide(draftSlide, duration),
+            nextThemeId,
+            deck.name,
+            { force: true, brandTokens: nextBrandTokens, brandKit: activeBrandKit },
+          );
+
+          const continuationSlide = slidePlan.continuation
+            ? buildContinuationSlide(
+                hydratedSlide,
+                slidePlan.continuation,
+                isNorwegian,
+                nextThemeId,
+                deck.name,
+                nextBrandTokens,
+                activeBrandKit,
+              )
+            : null;
+
+          return continuationSlide ? [hydratedSlide, continuationSlide] : [hydratedSlide];
         });
+
+        const nextSlides = reflowDeckSlidesForTimeline(rebuiltSlides, duration).map((slide) =>
+          hydrateSlidePreview(slide, nextThemeId, deck.name, {
+            force: true,
+            brandTokens: nextBrandTokens,
+            brandKit: activeBrandKit,
+          }),
+        );
+        const nextSourceType =
+          deck.sourceType === 'auto-context' &&
+          (options?.source === 'auto' || options?.source === 'fallback')
+            ? 'auto-context-ready'
+            : deck.sourceType;
 
         return {
           ...deck,
           template: applyAll ? plan.recommendedTemplateId : deck.template,
-          visualThemeId: nextDeckTheme,
+          visualThemeId: nextThemeId,
           displayMode: nextDeckDisplayMode,
           splitLayoutVariant: nextDeckSplitVariant,
           showNavigator: false,
+          sourceType: nextSourceType,
           slides: nextSlides,
         };
       });
@@ -4146,7 +7206,7 @@ function AcademyPresentationOverlayStudio({
         source: options?.source || 'manual',
       });
     },
-    [selectedDeck, trackPresentationEvent, tt, updateSelectedDeck],
+    [brandKits, duration, isNorwegian, selectedDeck, trackPresentationEvent, tt, updateSelectedDeck],
   );
 
   const generateDesignPlan = useCallback(async () => {
@@ -4158,51 +7218,21 @@ function AcademyPresentationOverlayStudio({
     try {
       setDesignPlanBusy(true);
       setDesignPlanError('');
-      const response = await apiRequest('/api/academy/presentation/design-plan', {
-        method: 'POST',
-        body: {
-          scope: effectiveScope,
-          courseId: resolvedCourseId,
-          lessonId: effectiveScope === 'skill' ? String(selectedSkill?.id || '') : '',
-          projectTemplateId: activeProjectTemplateId,
-          useNorwegian: isNorwegian,
-          deckName: selectedDeck.name,
-          deckTemplate: selectedDeck.template,
-          deckVisualThemeId: selectedDeck.visualThemeId,
-          slides: selectedDeck.slides.map((slide) => ({
-            id: slide.id,
-            title: slide.title,
-            startTime: slide.startTime,
-            duration: slide.duration,
-            layout: slide.layout,
-            speakerNotes: slide.speakerNotes,
-            textLines: collectSlideBodyLines(slide),
-          })),
-        },
-      });
-
-      const parsed = parseDesignPlan(response);
-      if (!parsed) {
-        throw new Error(
-          tt(
-            'Design-plan respons kunne ikke tolkes.',
-            'Could not parse design plan response.',
-          ),
-        );
-      }
-
-      setDesignPlan(parsed);
-      applyDesignPlanPayload(parsed, undefined, { silent: true, source: 'auto' });
+      setAiCritique(null);
+      setAiCritiqueError('');
+      const parsed = await fetchBackendDesignPlan(selectedDeck);
+      const resolvedPlan = await resolveDesignPlanVisualAssets(parsed);
+      setDesignPlan(resolvedPlan);
+      applyDesignPlanPayload(resolvedPlan, undefined, { silent: true, source: 'auto' });
       setSaveMessage(
         tt(
-          `Design-plan generert og brukt på ${parsed.slides.length} slides.`,
-          `Design plan generated and applied to ${parsed.slides.length} slides.`,
+          `Design-plan generert og brukt på ${resolvedPlan.slides.length} slides.`,
+          `Design plan generated and applied to ${resolvedPlan.slides.length} slides.`,
         ),
       );
       trackPresentationEvent('academy_presentation_design_plan_generated', {
-        slideCount: parsed.slides.length,
-        template: parsed.recommendedTemplateId,
-        theme: parsed.recommendedVisualThemeId,
+        slideCount: resolvedPlan.slides.length,
+        template: resolvedPlan.recommendedTemplateId,
       });
     } catch (error) {
       const fallbackEligible =
@@ -4218,9 +7248,10 @@ function AcademyPresentationOverlayStudio({
           projectTemplateId: activeProjectTemplateId,
           useNorwegian: isNorwegian,
         });
-        setDesignPlan(fallbackPlan);
+        const resolvedFallbackPlan = await resolveDesignPlanVisualAssets(fallbackPlan);
+        setDesignPlan(resolvedFallbackPlan);
         setDesignPlanError('');
-        applyDesignPlanPayload(fallbackPlan, undefined, {
+        applyDesignPlanPayload(resolvedFallbackPlan, undefined, {
           silent: true,
           source: 'fallback',
         });
@@ -4232,7 +7263,7 @@ function AcademyPresentationOverlayStudio({
         );
         trackPresentationEvent('academy_presentation_design_plan_fallback_used', {
           reason: 'endpoint_not_implemented',
-          slideCount: fallbackPlan.slides.length,
+          slideCount: resolvedFallbackPlan.slides.length,
         });
         return;
       }
@@ -4250,8 +7281,10 @@ function AcademyPresentationOverlayStudio({
     activeProjectTemplateId,
     applyDesignPlanPayload,
     effectiveScope,
+    fetchBackendDesignPlan,
     isNorwegian,
     resolvedCourseId,
+    resolveDesignPlanVisualAssets,
     selectedDeck,
     selectedSkill?.id,
     trackPresentationEvent,
@@ -4262,9 +7295,145 @@ function AcademyPresentationOverlayStudio({
     (targetSlideId?: string) => {
       if (!designPlan) return;
       applyDesignPlanPayload(designPlan, targetSlideId, { source: 'manual' });
+      if (!targetSlideId) {
+        setAiCritique(null);
+        setAiCritiqueError('');
+      }
     },
     [applyDesignPlanPayload, designPlan],
   );
+
+  const runAiCritique = useCallback(
+    async (
+      deck: PresentationDeck,
+      options?: {
+        silent?: boolean;
+      },
+    ): Promise<PresentationAiCritiqueResult | null> => {
+      try {
+        setAiCritiqueBusy(true);
+        setAiCritiqueError('');
+        const critique = await requestDeckCritique(deck);
+        setAiCritique(critique);
+        if (!options?.silent) {
+          setSaveMessage(
+            tt(
+              `AI-kritikk ferdig. Score ${critique.overall}/100.`,
+              `AI critique complete. Score ${critique.overall}/100.`,
+            ),
+          );
+        }
+        trackPresentationEvent('academy_presentation_ai_critique_generated', {
+          provider: critique.provider,
+          model: critique.model,
+          overall: critique.overall,
+          findingCount: critique.findings.length,
+        });
+        return critique;
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : tt('Kunne ikke kjøre AI-kritikk.', 'Could not run AI critique.');
+        setAiCritiqueError(message);
+        if (!options?.silent) {
+          setSaveMessage(message);
+        }
+        return null;
+      } finally {
+        setAiCritiqueBusy(false);
+      }
+    },
+    [requestDeckCritique, trackPresentationEvent, tt],
+  );
+
+  const repairDeckDesign = useCallback(async () => {
+    if (!selectedDeck) return;
+    try {
+      setDesignPlanBusy(true);
+      const critique = await runAiCritique(selectedDeck, { silent: true });
+      const repairFocus =
+        critique?.findings
+          .slice(0, 8)
+          .map((finding) =>
+            [
+              finding.slideId ? `${finding.slideId}:` : '',
+              tt(finding.repairHintNo, finding.repairHintEn) || tt(finding.messageNo, finding.messageEn),
+            ]
+              .filter(Boolean)
+              .join(' '),
+          )
+          .filter(Boolean) || [];
+      const { plan: repairPlan, source } = await selectPreferredRepairPlan(selectedDeck, {
+        repairFocus,
+      });
+      setDesignPlan(repairPlan);
+      applyDesignPlanPayload(repairPlan, undefined, { silent: true, source: 'repair' });
+      setAiCritique(null);
+      setAiCritiqueError('');
+      setSaveMessage(
+        source === 'backend'
+          ? tt(
+              `Repair deck brukte backend-plan og oppdaterte ${repairPlan.slides.length} slides med nye visuals.`,
+              `Repair deck used the backend plan and refreshed ${repairPlan.slides.length} slides with new visuals.`,
+            )
+          : tt(
+              `Repair deck brukte lokal grammar-pass og oppdaterte ${repairPlan.slides.length} slides med nye visuals.`,
+              `Repair deck used the local grammar pass and refreshed ${repairPlan.slides.length} slides with new visuals.`,
+            ),
+      );
+      trackPresentationEvent('academy_presentation_repair_deck', {
+        slideCount: repairPlan.slides.length,
+        issueCount: qualityIssues.length,
+        scoreBefore: designEvaluation.overall,
+        planSource: source,
+        critiqueIssueCount: critique?.findings.length || 0,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : tt('Kunne ikke reparere presentasjonen.', 'Could not repair the presentation.');
+      setSaveMessage(message);
+    } finally {
+      setDesignPlanBusy(false);
+    }
+  }, [
+    applyDesignPlanPayload,
+    designEvaluation.overall,
+    qualityIssues.length,
+    runAiCritique,
+    selectedDeck,
+    selectPreferredRepairPlan,
+    trackPresentationEvent,
+    tt,
+  ]);
+
+  const refreshPresentationDesign = useCallback(async () => {
+    if (!selectedDeck) return;
+    if (designPlan || selectedDeck.sourceType === 'auto-context-ready') {
+      await repairDeckDesign();
+      return;
+    }
+    await generateDesignPlan();
+  }, [designPlan, generateDesignPlan, repairDeckDesign, selectedDeck]);
+
+  useEffect(() => {
+    if (!scopeStorageKey || !selectedDeck) return;
+    if (selectedDeck.sourceType !== 'auto-context') return;
+    if (designPlanBusy) return;
+
+    const autoKey = `${scopeStorageKey}:${selectedDeck.id}`;
+    if (autoContextGenerationRef.current.has(autoKey)) return;
+    autoContextGenerationRef.current.add(autoKey);
+    setSaveMessage(
+      tt(
+        'Bygger presentasjonen automatisk ut fra kompetanse og ferdighet.',
+        'Building the presentation automatically from the competency and skill.',
+      ),
+    );
+    void generateDesignPlan();
+  }, [designPlanBusy, generateDesignPlan, scopeStorageKey, selectedDeck, tt]);
 
   const removeSlide = useCallback(
     (slideId: string) => {
@@ -4416,8 +7585,11 @@ function AcademyPresentationOverlayStudio({
       }
 
       const normalizedDecks = decks.map((deck) => normalizeDeck(deck, duration));
+      const now = new Date().toISOString();
+      let persistedPublishedAt = '';
 
       try {
+        markSaving();
         const existing = course ? state.courses.find((entry) => entry.id === course.id) : undefined;
 
         if (existing) {
@@ -4439,7 +7611,7 @@ function AcademyPresentationOverlayStudio({
                     : `[Presentation][Course] ${deck.name} :: ${slide.title}`,
                 url: slide.previewImageUrl || deck.sourceUrl || '#',
                 description:
-                  `${deck.name} · ${formatTime(startTime)}-${formatTime(endTime)} · order:${index + 1} · template:${deck.template} · theme:${deck.visualThemeId} · mode:${deck.displayMode} · variant:${deck.splitLayoutVariant} · placement:${deck.placement} · layout:${slide.layout || deck.displayMode} · deck:${deck.id} · slide:${slide.id} · slideNo:${Math.max(1, Number(slide.sourceSlideNumber) || index + 1)}` +
+                  `${deck.name} · ${formatTime(startTime)}-${formatTime(endTime)} · order:${index + 1} · template:${deck.template} · mode:${deck.displayMode} · variant:${deck.splitLayoutVariant} · placement:${deck.placement} · layout:${slide.layout || deck.displayMode} · deck:${deck.id} · slide:${slide.id} · slideNo:${Math.max(1, Number(slide.sourceSlideNumber) || index + 1)}` +
                   (deck.sourceName ? ` · source:${deck.sourceName}` : ''),
               };
             }),
@@ -4478,10 +7650,13 @@ function AcademyPresentationOverlayStudio({
             effectiveScope === 'skill' ? String(skill?.id || '') : undefined,
           );
           const store = readPresentationStore();
+          const previousEntry = store[key];
+          persistedPublishedAt = String(previousEntry?.publishedAt || '');
           store[key] = {
             decks: normalizedDecks,
             duration,
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
+            publishedAt: publish ? now : persistedPublishedAt || undefined,
           };
           writePresentationStore(store);
           void writePresentationStoreToDb(store);
@@ -4501,6 +7676,14 @@ function AcademyPresentationOverlayStudio({
             ? tt('Presentasjonsoppsett publisert.', 'Presentation setup published.')
             : tt('Presentasjonsoppsett lagret.', 'Presentation setup saved.'),
         );
+        markSaved();
+        if (publish) {
+          setLastPublishedAt(now);
+          setHasSavedChangesSincePublish(false);
+        } else {
+          setLastPublishedAt(persistedPublishedAt);
+          setHasSavedChangesSincePublish(Boolean(persistedPublishedAt));
+        }
 
         analytics.trackEvent('academy_presentation_overlay_saved', {
           courseId: course?.id || null,
@@ -4512,6 +7695,7 @@ function AcademyPresentationOverlayStudio({
           timestamp: Date.now(),
         });
       } catch (error) {
+        markDirty();
         setSaveMessage(
           error instanceof Error
             ? error.message
@@ -4525,6 +7709,9 @@ function AcademyPresentationOverlayStudio({
       decks,
       duration,
       effectiveScope,
+      markDirty,
+      markSaved,
+      markSaving,
       onSave,
       qualityIssues.length,
       qualitySummary.canPublish,
@@ -4662,10 +7849,48 @@ function AcademyPresentationOverlayStudio({
               <Typography sx={{ letterSpacing: '0.22em', fontSize: 15, color: 'rgba(237,240,247,0.82)' }}>
                 CREATOR STUDIO
               </Typography>
+              <Tooltip title={draftStatusChip.tooltip}>
+                <Chip
+                  label={draftStatusChip.label}
+                  size="small"
+                  sx={{
+                    bgcolor: saveStatusIndicator.bgColor,
+                    color: saveStatusIndicator.textColor,
+                    border: `var(--academy-hairline-width, 1px) solid ${saveStatusIndicator.borderColor}`,
+                    fontWeight: 600,
+                  }}
+                />
+              </Tooltip>
+              <Tooltip title={saveStatusIndicator.tooltip}>
+                <Box
+                  role="status"
+                  aria-label={saveStatusIndicator.tooltip}
+                  sx={{
+                    width: 30,
+                    height: 30,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 1,
+                    bgcolor: saveStatusIndicator.bgColor,
+                    color: saveStatusIndicator.textColor,
+                    border: `var(--academy-hairline-width, 1px) solid ${saveStatusIndicator.borderColor}`,
+                    '@keyframes academySaveSpin': {
+                      from: { transform: 'rotate(0deg)' },
+                      to: { transform: 'rotate(360deg)' },
+                    },
+                    '& .academy-save-spin': {
+                      animation: 'academySaveSpin 1.05s linear infinite',
+                    },
+                  }}
+                >
+                  {saveStatusIndicator.icon}
+                </Box>
+              </Tooltip>
               <Chip
                 size="small"
                 icon={<Slideshow sx={{ fontSize: 16 }} />}
-                label={tt('Presentasjonsoverlegg', 'Presentation Overlay')}
+                label={tt('Presentasjonsstudio', 'Presentation Studio')}
                 sx={{
                   bgcolor: 'rgba(248,179,33,0.14)',
                   color: '#f8d56f',
@@ -4730,26 +7955,11 @@ function AcademyPresentationOverlayStudio({
                 alignItems={{ xs: 'stretch', md: 'center' }}
               >
                 <Stack spacing={0.4}>
-                  <Typography sx={{ fontSize: 'clamp(1.5rem, 1.2rem + 1vw, 2rem)', fontWeight: 700, lineHeight: 1.1 }}>
-                    {tt('PPT i video', 'PPT in Video')}
+                  <Typography sx={{ fontSize: 'clamp(1.65rem, 1.3rem + 1.1vw, 2.05rem)', fontWeight: 700, lineHeight: 1.1, letterSpacing: '0.015em' }}>
+                    {tt('Presentasjonsstudio', 'Presentation Studio')}
                   </Typography>
                   <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
-                    <Chip
-                      size="small"
-                      label={
-                        effectiveScope === 'skill'
-                          ? tt('Scope: Ferdighet', 'Scope: Skill')
-                          : tt('Scope: Kurs', 'Scope: Course')
-                      }
-                      sx={{
-                        bgcolor:
-                          effectiveScope === 'skill'
-                            ? 'rgba(106,196,255,0.2)'
-                            : 'rgba(248,179,33,0.2)',
-                        color: '#edf0f7',
-                      }}
-                    />
-                    {activeProjectTemplateId && (
+                    {shouldShowAdvanced && activeProjectTemplateId && (
                       <Chip
                         size="small"
                         label={`${tt('Prosjektmal', 'Project template')}: ${
@@ -4766,14 +7976,6 @@ function AcademyPresentationOverlayStudio({
                         }}
                       />
                     )}
-                    <Chip
-                      size="small"
-                      label={`${tt('Tema', 'Theme')}: ${tt(selectedVisualThemePreset.labelNo, selectedVisualThemePreset.labelEn)}`}
-                      sx={{
-                        bgcolor: 'rgba(92,149,255,0.2)',
-                        color: '#e7f0ff',
-                      }}
-                    />
                   </Stack>
                 </Stack>
 
@@ -4782,31 +7984,99 @@ function AcademyPresentationOverlayStudio({
                   spacing={0.8}
                   flexWrap="wrap"
                   useFlexGap
-                  sx={{ justifyContent: { xs: 'flex-start', lg: 'flex-end' } }}
+                  sx={{
+                    minWidth: 0,
+                    justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+                    rowGap: 0.8,
+                  }}
                 >
                   <Button
+                    size="small"
                     variant="outlined"
-                    startIcon={<PlayArrow />}
-                    onClick={togglePlayback}
+                    onClick={toggleSimpleMode}
                     sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
-                      borderRadius: 1,
+                      ...PRESENTATION_NEUTRAL_OUTLINED_BUTTON_SX,
+                      color: simpleMode ? '#edf0f7' : '#f8d675',
+                      borderColor: simpleMode ? 'rgba(255,255,255,0.2)' : 'rgba(248,179,33,0.35)',
+                      bgcolor: simpleMode ? 'rgba(255,255,255,0.02)' : 'rgba(248,179,33,0.1)',
                     }}
                   >
-                    {tt('Forhandsvis', 'Preview')}
+                    {simpleMode
+                      ? tt('Pro-modus', 'Pro mode')
+                      : tt('Tilbake til enkel', 'Back to simple')}
+                  </Button>
+                  {shouldShowAdvanced ? (
+                    <>
+                      <Button
+                        variant="outlined"
+                        startIcon={<AutoAwesome />}
+                        onClick={repairDeckDesign}
+                        disabled={!selectedDeck || designPlanBusy}
+                        sx={{
+                          ...PRESENTATION_NEUTRAL_OUTLINED_BUTTON_SX,
+                          borderColor: 'rgba(126,232,179,0.34)',
+                          color: '#caffea',
+                          bgcolor: 'rgba(126,232,179,0.08)',
+                          '&:hover': {
+                            borderColor: 'rgba(126,232,179,0.5)',
+                            bgcolor: 'rgba(126,232,179,0.14)',
+                          },
+                        }}
+                      >
+                        {tt('Repair deck', 'Repair deck')}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<AutoFixHigh />}
+                        onClick={autoFixQualityIssues}
+                        disabled={qualityIssues.length === 0}
+                        sx={PRESENTATION_WARNING_OUTLINED_BUTTON_SX}
+                      >
+                        {tt('Auto-fiks', 'Auto-fix')}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outlined"
+                      startIcon={<AutoAwesome />}
+                      onClick={() => void refreshPresentationDesign()}
+                      disabled={!selectedDeck || designPlanBusy}
+                      sx={{
+                        ...PRESENTATION_NEUTRAL_OUTLINED_BUTTON_SX,
+                        borderColor: 'rgba(126,232,179,0.34)',
+                        color: '#caffea',
+                        bgcolor: 'rgba(126,232,179,0.08)',
+                        '&:hover': {
+                          borderColor: 'rgba(126,232,179,0.5)',
+                          bgcolor: 'rgba(126,232,179,0.14)',
+                        },
+                      }}
+                    >
+                      {designPlanBusy
+                        ? tt('Oppdaterer ...', 'Refreshing ...')
+                        : tt('Oppdater presentasjon', 'Refresh presentation')}
+                    </Button>
+                  )}
+                  <Button
+                    variant="outlined"
+                    startIcon={isPlaying ? <Visibility /> : <VisibilityOff />}
+                    onClick={toggleStudentPreview}
+                    sx={{
+                      ...PRESENTATION_NEUTRAL_OUTLINED_BUTTON_SX,
+                      borderColor: isPlaying ? 'rgba(248,179,33,0.45)' : 'rgba(255,255,255,0.2)',
+                      color: isPlaying ? '#f8d675' : '#edf0f7',
+                      bgcolor: isPlaying ? 'rgba(248,179,33,0.12)' : 'transparent',
+                    }}
+                  >
+                    {isPlaying
+                      ? tt('Forhåndsvisning på', 'Preview on')
+                      : tt('Forhåndsvis (student)', 'Preview (learner)')}
                   </Button>
                   <Button
                     variant="outlined"
                     startIcon={<Save />}
                     onClick={() => void savePresentationSetup(false)}
-                    sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
-                      borderRadius: 1,
-                    }}
+                    sx={PRESENTATION_SAVE_BUTTON_SX}
                   >
                     {tt('Lagre', 'Save')}
                   </Button>
@@ -4815,13 +8085,7 @@ function AcademyPresentationOverlayStudio({
                     startIcon={<Publish />}
                     onClick={() => void savePresentationSetup(true)}
                     disabled={!qualitySummary.canPublish}
-                    sx={{
-                      textTransform: 'none',
-                      color: '#0f0f0f',
-                      borderRadius: 1,
-                      background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                      boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
-                    }}
+                    sx={PRESENTATION_PUBLISH_BUTTON_SX}
                   >
                     {tt('Publiser', 'Publish')}
                   </Button>
@@ -4852,6 +8116,13 @@ function AcademyPresentationOverlayStudio({
                     <Select
                       size="small"
                       value={selectedCourseValue}
+                      displayEmpty
+                      renderValue={(value) => {
+                        const matchedCourse = courseItems.find(
+                          (course) => String(course.id) === String(value || ''),
+                        );
+                        return matchedCourse?.title || tt('Kompetanse', 'Competency');
+                      }}
                       onChange={(event) => {
                         const nextCourseId = String(event.target.value);
                         setSelectedCourseId(nextCourseId);
@@ -4866,6 +8137,9 @@ function AcademyPresentationOverlayStudio({
                         },
                       }}
                     >
+                      <MenuItem value="" disabled>
+                        {tt('Kompetanse', 'Competency')}
+                      </MenuItem>
                       {courseItems.map((course) => (
                         <MenuItem key={course.id} value={String(course.id)}>
                           {course.title}
@@ -4886,7 +8160,7 @@ function AcademyPresentationOverlayStudio({
                         },
                       }}
                     >
-                      <MenuItem value="course">{tt('Kurs', 'Course')}</MenuItem>
+                      <MenuItem value="course">{tt('Ferdighet', 'Skill')}</MenuItem>
                       <MenuItem value="skill">{tt('Ferdighet', 'Skill')}</MenuItem>
                     </Select>
 
@@ -4941,22 +8215,50 @@ function AcademyPresentationOverlayStudio({
                         },
                       }}
                     />
+                    <Chip
+                      size="small"
+                      avatar={
+                        activeInstructorProfile?.name ? (
+                          <Avatar sx={{ width: 22, height: 22 }}>
+                            {activeInstructorProfile.name.charAt(0).toUpperCase()}
+                          </Avatar>
+                        ) : undefined
+                      }
+                      label={
+                        activeInstructorProfile?.name
+                          ? `${tt('Instruktør', 'Instructor')}: ${activeInstructorProfile.name}`
+                          : tt('Instruktør ikke satt', 'Instructor not assigned')
+                      }
+                      sx={{
+                        maxWidth: { xs: '100%', md: 320 },
+                        color: '#edf0f7',
+                        bgcolor: 'rgba(255,255,255,0.08)',
+                        '& .MuiChip-label': {
+                          display: 'block',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        },
+                      }}
+                    />
                   </Stack>
 
                 </Stack>
 
+                {shouldShowAdvanced ? (
+                  <>
+                    <Stack
+                      spacing={0.8}
+                      sx={PRESENTATION_DETAIL_CARD_SX}
+                    >
+                      <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                        {tt('Timeline og kvalitet', 'Timeline and quality')}
+                      </Typography>
                 <Stack
                   direction={{ xs: 'column', lg: 'row' }}
                   spacing={0.8}
                   justifyContent="space-between"
                   alignItems={{ xs: 'stretch', lg: 'center' }}
-                  sx={{
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                    borderRadius: 1,
-                    px: 0.8,
-                    py: 0.7,
-                    bgcolor: 'rgba(255,255,255,0.03)',
-                  }}
                 >
                   <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap alignItems="center">
                     <Button
@@ -5011,6 +8313,28 @@ function AcademyPresentationOverlayStudio({
                     </Button>
                     <Chip
                       size="small"
+                      label={tt(
+                        `Designscore ${qualitySummary.designScore}`,
+                        `Design score ${qualitySummary.designScore}`,
+                      )}
+                      sx={{
+                        bgcolor:
+                          qualitySummary.designScore >= 86
+                            ? 'rgba(126,232,179,0.18)'
+                            : qualitySummary.designScore >= 72
+                              ? 'rgba(248,179,33,0.18)'
+                              : 'rgba(255,122,122,0.2)',
+                        color:
+                          qualitySummary.designScore >= 86
+                            ? '#caffea'
+                            : qualitySummary.designScore >= 72
+                              ? '#ffe6b8'
+                              : '#ffd6d6',
+                        fontWeight: 700,
+                      }}
+                    />
+                    <Chip
+                      size="small"
                       icon={<WarningAmber sx={{ fontSize: 16 }} />}
                       label={tt(
                         `${qualityIssues.length} kvalitetssjekker`,
@@ -5063,34 +8387,18 @@ function AcademyPresentationOverlayStudio({
                         color: '#edf0f7',
                       }}
                     />
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<AutoFixHigh />}
-                      onClick={autoFixQualityIssues}
-                      disabled={qualityIssues.length === 0}
-                      sx={{
-                        textTransform: 'none',
-                        borderColor: 'rgba(248,179,33,0.48)',
-                        color: '#f8d675',
-                        minWidth: 108,
-                      }}
-                    >
-                      {tt('Auto-fiks', 'Auto-fix')}
-                    </Button>
                   </Stack>
                 </Stack>
 
+                    </Stack>
+
                 <Stack
                   spacing={0.8}
-                  sx={{
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
-                    borderRadius: 1,
-                    px: 0.8,
-                    py: 0.7,
-                    bgcolor: 'rgba(255,255,255,0.03)',
-                  }}
+                  sx={PRESENTATION_DETAIL_CARD_SX}
                 >
+                  <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                    {tt('Teleprompter', 'Teleprompter')}
+                  </Typography>
                   <Stack
                     direction={{ xs: 'column', lg: 'row' }}
                     spacing={0.8}
@@ -5400,6 +8708,8 @@ function AcademyPresentationOverlayStudio({
                       </Typography>
                     )}
                 </Stack>
+                  </>
+                ) : null}
               </Stack>
 
               {!!saveMessage && (
@@ -5512,7 +8822,7 @@ function AcademyPresentationOverlayStudio({
                             <Box
                               sx={{
                                 borderRight: { md: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)' },
-                                background: selectedVisualThemePreset.colors.navBg,
+                                background: activeVisualThemeColors.navBg,
                                 display: 'flex',
                                 flexDirection: 'column',
                                 p: isNavigatorCollapsed ? 0.35 : 1,
@@ -5538,8 +8848,8 @@ function AcademyPresentationOverlayStudio({
                                       orderedPreviewSlides.findIndex((slide) => slide.id === previewSlide.id) + 1,
                                     )}/${Math.max(1, orderedPreviewSlides.length)}`}
                                     sx={{
-                                      bgcolor: selectedVisualThemePreset.colors.chipBg,
-                                      color: selectedVisualThemePreset.colors.chipText,
+                                      bgcolor: activeVisualThemeColors.chipBg,
+                                      color: activeVisualThemeColors.chipText,
                                     }}
                                   />
                                 )}
@@ -5552,7 +8862,7 @@ function AcademyPresentationOverlayStudio({
                                       : tt('Skjul tema-velger', 'Hide theme picker')
                                   }
                                   sx={{
-                                    color: selectedVisualThemePreset.colors.navText,
+                                    color: activeVisualThemeColors.navText,
                                     border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                                     bgcolor: 'rgba(9,16,26,0.42)',
                                     '&:hover': {
@@ -5584,15 +8894,15 @@ function AcademyPresentationOverlayStudio({
                                         borderRadius: 0.8,
                                         borderColor: active ? 'rgba(173,209,255,0.78)' : 'rgba(255,255,255,0.14)',
                                         bgcolor: active
-                                          ? selectedVisualThemePreset.colors.navCardActiveBg
-                                          : selectedVisualThemePreset.colors.navCardBg,
-                                        color: selectedVisualThemePreset.colors.navText,
+                                          ? activeVisualThemeColors.navCardActiveBg
+                                          : activeVisualThemeColors.navCardBg,
+                                        color: activeVisualThemeColors.navText,
                                         fontWeight: active ? 700 : 600,
                                         '&:hover': {
                                           borderColor: active ? 'rgba(173,209,255,0.9)' : 'rgba(255,255,255,0.26)',
                                           bgcolor: active
-                                            ? selectedVisualThemePreset.colors.navCardActiveBg
-                                            : selectedVisualThemePreset.colors.navCardBg,
+                                            ? activeVisualThemeColors.navCardActiveBg
+                                            : activeVisualThemeColors.navCardBg,
                                         },
                                       }}
                                     >
@@ -5675,7 +8985,7 @@ function AcademyPresentationOverlayStudio({
                               display: 'flex',
                               flexDirection: 'column',
                               justifyContent: 'space-between',
-                              background: selectedVisualThemePreset.colors.presenterBg,
+                              background: activeVisualThemeColors.presenterBg,
                             }}
                           >
                             <Box sx={{ flex: 1 }} />
@@ -5684,12 +8994,12 @@ function AcademyPresentationOverlayStudio({
 
                           <Box
                             sx={{
-                              background: selectedVisualThemePreset.colors.canvasBg,
+                              background: activeVisualThemeColors.canvasBg,
                               p: 1.2,
                               display: 'flex',
                               flexDirection: 'column',
                               gap: 1,
-                              color: selectedVisualThemePreset.colors.canvasTitle,
+                              color: activeVisualThemeColors.canvasTitle,
                               overflow: 'auto',
                             }}
                           >
@@ -5698,13 +9008,13 @@ function AcademyPresentationOverlayStudio({
                                 sx={{
                                   fontSize: 12,
                                   fontWeight: 700,
-                                  color: alpha(selectedVisualThemePreset.colors.canvasTitle, 0.74),
+                                  color: alpha(activeVisualThemeColors.canvasTitle, 0.74),
                                   letterSpacing: '0.03em',
                                 }}
                               >
                                 {selectedDeck.name}
                               </Typography>
-                              <Typography sx={{ fontSize: 11.5, color: alpha(selectedVisualThemePreset.colors.canvasText, 0.75) }}>
+                              <Typography sx={{ fontSize: 11.5, color: alpha(activeVisualThemeColors.canvasText, 0.75) }}>
                                 {selectedTemplatePreset ? tt(selectedTemplatePreset.labelNo, selectedTemplatePreset.labelEn) : ''}
                               </Typography>
                             </Stack>
@@ -5713,7 +9023,7 @@ function AcademyPresentationOverlayStudio({
                               sx={{
                                 borderRadius: 0.8,
                                 overflow: 'hidden',
-                                border: `1px solid ${alpha(selectedVisualThemePreset.colors.canvasCardBorder, 0.9)}`,
+                                border: `1px solid ${alpha(activeVisualThemeColors.canvasCardBorder, 0.9)}`,
                                 bgcolor: 'rgba(255,255,255,0.7)',
                                 minHeight: 172,
                               }}
@@ -5731,7 +9041,7 @@ function AcademyPresentationOverlayStudio({
                                     minHeight: 172,
                                     display: 'grid',
                                     placeItems: 'center',
-                                    color: alpha(selectedVisualThemePreset.colors.canvasText, 0.74),
+                                    color: alpha(activeVisualThemeColors.canvasText, 0.74),
                                   }}
                                 >
                                   {tt('Ingen slide-preview enda', 'No slide preview yet')}
@@ -5751,10 +9061,10 @@ function AcademyPresentationOverlayStudio({
                                 fontWeight: 800,
                                 fontSize: 'clamp(1.2rem, 1.1rem + 0.4vw, 1.9rem)',
                                 lineHeight: 1.2,
-                                color: selectedVisualThemePreset.colors.canvasTitle,
+                                color: activeVisualThemeColors.canvasTitle,
                                 outline: 'none',
                                 borderRadius: 0.6,
-                                border: `1px dashed ${alpha(selectedVisualThemePreset.colors.canvasTitle, 0.35)}`,
+                                border: `1px dashed ${alpha(activeVisualThemeColors.canvasTitle, 0.35)}`,
                                 px: 0.6,
                                 py: 0.4,
                                 cursor: 'text',
@@ -5777,11 +9087,11 @@ function AcademyPresentationOverlayStudio({
                               sx={{
                                 outline: 'none',
                                 borderRadius: 0.6,
-                                border: `1px dashed ${alpha(selectedVisualThemePreset.colors.canvasTitle, 0.28)}`,
+                                border: `1px dashed ${alpha(activeVisualThemeColors.canvasTitle, 0.28)}`,
                                 px: 0.6,
                                 py: 0.45,
                                 cursor: 'text',
-                                color: selectedVisualThemePreset.colors.canvasText,
+                                color: activeVisualThemeColors.canvasText,
                                 whiteSpace: 'pre-wrap',
                                 fontSize: 13.2,
                                 lineHeight: 1.45,
@@ -5799,8 +9109,8 @@ function AcademyPresentationOverlayStudio({
                                   key={`${previewSlide.id}-point-${index}`}
                                   sx={{
                                     borderRadius: 0.85,
-                                    border: `var(--academy-hairline-width, 1px) solid ${alpha(selectedVisualThemePreset.colors.canvasCardBorder, 0.92)}`,
-                                    bgcolor: selectedVisualThemePreset.colors.canvasCardBg,
+                                    border: `var(--academy-hairline-width, 1px) solid ${alpha(activeVisualThemeColors.canvasCardBorder, 0.92)}`,
+                                    bgcolor: activeVisualThemeColors.canvasCardBg,
                                     p: 0.8,
                                     display: 'flex',
                                     alignItems: 'center',
@@ -5812,7 +9122,7 @@ function AcademyPresentationOverlayStudio({
                                       width: 26,
                                       height: 26,
                                       borderRadius: 0.6,
-                                      bgcolor: selectedVisualThemePreset.colors.navAccent,
+                                      bgcolor: activeVisualThemeColors.navAccent,
                                       color: '#e9f2ff',
                                       display: 'grid',
                                       placeItems: 'center',
@@ -5825,7 +9135,7 @@ function AcademyPresentationOverlayStudio({
                                   </Box>
                                   <Typography
                                     sx={{
-                                      color: selectedVisualThemePreset.colors.canvasText,
+                                      color: activeVisualThemeColors.canvasText,
                                       fontWeight: 600,
                                       fontSize: 15,
                                       lineHeight: 1.3,
@@ -5838,7 +9148,7 @@ function AcademyPresentationOverlayStudio({
                             </Stack>
 
                             <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mt: 'auto' }}>
-                              <Description sx={{ fontSize: 17, color: alpha(selectedVisualThemePreset.colors.canvasText, 0.78) }} />
+                              <Description sx={{ fontSize: 17, color: alpha(activeVisualThemeColors.canvasText, 0.78) }} />
                               <Typography
                                 contentEditable
                                 suppressContentEditableWarning
@@ -5852,13 +9162,13 @@ function AcademyPresentationOverlayStudio({
                                   }));
                                 }}
                                 sx={{
-                                  color: alpha(selectedVisualThemePreset.colors.canvasText, 0.9),
+                                  color: alpha(activeVisualThemeColors.canvasText, 0.9),
                                   fontSize: 12.3,
                                   outline: 'none',
                                   borderRadius: 0.6,
                                   px: 0.4,
                                   py: 0.1,
-                                  border: `1px dashed ${alpha(selectedVisualThemePreset.colors.canvasText, 0.22)}`,
+                                  border: `1px dashed ${alpha(activeVisualThemeColors.canvasText, 0.22)}`,
                                   cursor: 'text',
                                 }}
                               >
@@ -6314,7 +9624,7 @@ function AcademyPresentationOverlayStudio({
                         <Box
                           sx={{
                             borderRight: { md: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)' },
-                            background: selectedVisualThemePreset.colors.navBg,
+                            background: activeVisualThemeColors.navBg,
                             display: 'flex',
                             flexDirection: 'column',
                             p: isNavigatorCollapsed ? 0.35 : 1,
@@ -6340,8 +9650,8 @@ function AcademyPresentationOverlayStudio({
                                   orderedPreviewSlides.findIndex((slide) => slide.id === previewSlide.id) + 1,
                                 )}/${Math.max(1, orderedPreviewSlides.length)}`}
                                 sx={{
-                                  bgcolor: selectedVisualThemePreset.colors.chipBg,
-                                  color: selectedVisualThemePreset.colors.chipText,
+                                  bgcolor: activeVisualThemeColors.chipBg,
+                                  color: activeVisualThemeColors.chipText,
                                 }}
                               />
                             )}
@@ -6354,7 +9664,7 @@ function AcademyPresentationOverlayStudio({
                                   : tt('Skjul tema-velger', 'Hide theme picker')
                               }
                               sx={{
-                                color: selectedVisualThemePreset.colors.navText,
+                                color: activeVisualThemeColors.navText,
                                 border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                                 bgcolor: 'rgba(9,16,26,0.42)',
                                 '&:hover': {
@@ -6386,15 +9696,15 @@ function AcademyPresentationOverlayStudio({
                                     borderRadius: 0.8,
                                     borderColor: active ? 'rgba(173,209,255,0.78)' : 'rgba(255,255,255,0.14)',
                                     bgcolor: active
-                                      ? selectedVisualThemePreset.colors.navCardActiveBg
-                                      : selectedVisualThemePreset.colors.navCardBg,
-                                    color: selectedVisualThemePreset.colors.navText,
+                                      ? activeVisualThemeColors.navCardActiveBg
+                                      : activeVisualThemeColors.navCardBg,
+                                    color: activeVisualThemeColors.navText,
                                     fontWeight: active ? 700 : 600,
                                     '&:hover': {
                                       borderColor: active ? 'rgba(173,209,255,0.9)' : 'rgba(255,255,255,0.26)',
                                       bgcolor: active
-                                        ? selectedVisualThemePreset.colors.navCardActiveBg
-                                        : selectedVisualThemePreset.colors.navCardBg,
+                                        ? activeVisualThemeColors.navCardActiveBg
+                                        : activeVisualThemeColors.navCardBg,
                                     },
                                   }}
                                 >
@@ -6478,7 +9788,7 @@ function AcademyPresentationOverlayStudio({
                             display: 'flex',
                             flexDirection: 'column',
                             justifyContent: 'space-between',
-                            background: selectedVisualThemePreset.colors.presenterBg,
+                            background: activeVisualThemeColors.presenterBg,
                           }}
                         >
                           <Box sx={{ flex: 1 }} />
@@ -6487,7 +9797,7 @@ function AcademyPresentationOverlayStudio({
 
                       <Box
                         sx={{
-                          background: selectedVisualThemePreset.colors.canvasBg,
+                          background: activeVisualThemeColors.canvasBg,
                           p: 0,
                           display: 'flex',
                           flexDirection: 'column',
@@ -6526,7 +9836,7 @@ function AcademyPresentationOverlayStudio({
                                 minHeight: 220,
                                 display: 'grid',
                                 placeItems: 'center',
-                                color: alpha(selectedVisualThemePreset.colors.canvasText, 0.74),
+                                color: alpha(activeVisualThemeColors.canvasText, 0.74),
                               }}
                             >
                               {tt('Ingen slide-preview enda', 'No slide preview yet')}
@@ -6540,6 +9850,8 @@ function AcademyPresentationOverlayStudio({
                 </Box>
               </Box>
 
+              {shouldShowAdvanced && (
+              <>
               <Box sx={{ ...panelSx, p: 1.1, display: 'grid', gap: 0.9 }}>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'stretch', md: 'center' }}>
                   <TextField
@@ -6588,6 +9900,14 @@ function AcademyPresentationOverlayStudio({
                     {tt('Ny presentasjon', 'New deck')}
                   </Button>
                 </Stack>
+
+                {search.trim().length > 0 && (
+                  <Typography sx={{ color: 'rgba(237,240,247,0.66)', fontSize: 11.5 }}>
+                    {semanticSearchBusy
+                      ? tt('AI-sok rangerer presentasjoner...', 'AI search is ranking presentations...')
+                      : tt('AI-sok aktiv for dette soket.', 'AI search is active for this query.')}
+                  </Typography>
+                )}
 
                 {filteredDecks.length === 0 ? (
                   <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>
@@ -6819,7 +10139,7 @@ function AcademyPresentationOverlayStudio({
                           >
                             {instructorItems.length === 0 && (
                               <MenuItem value="">
-                                {tt('Ingen instruktør satt', 'No instructor set')}
+                                {tt('Ingen instruktører tilgjengelig', 'No instructors available')}
                               </MenuItem>
                             )}
                             {instructorItems.map((instructor) => (
@@ -6983,9 +10303,152 @@ function AcademyPresentationOverlayStudio({
                   )}
                 </Box>
               )}
+              </>
+              )}
             </Box>
 
             <Box sx={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 1.1 }}>
+              {!shouldShowAdvanced && (
+                <>
+                  <Box sx={{ ...panelSx, p: 1.2, display: 'grid', gap: 0.9 }}>
+                    <Stack direction="row" spacing={0.8} alignItems="center" justifyContent="space-between">
+                      <Stack direction="row" spacing={0.8} alignItems="center">
+                        <AutoAwesome sx={{ color: '#f8d56f' }} />
+                        <Typography sx={{ fontWeight: 700, fontSize: 18 }}>
+                          {tt('Auto-generert presentasjon', 'Auto-generated presentation')}
+                        </Typography>
+                      </Stack>
+                      <Chip
+                        size="small"
+                        label={simplePresentationStatus.label}
+                        sx={{
+                          bgcolor: simplePresentationStatus.toneBg,
+                          color: simplePresentationStatus.toneText,
+                          fontWeight: 700,
+                        }}
+                      />
+                    </Stack>
+
+                    <Typography sx={{ color: 'rgba(237,240,247,0.78)', fontSize: 13.2, lineHeight: 1.5 }}>
+                      {simplePresentationSummary}
+                    </Typography>
+
+                    <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                      <Chip
+                        size="small"
+                        label={
+                          selectedSkill?.title
+                            ? `${tt('Ferdighet', 'Skill')}: ${selectedSkill.title}`
+                            : `${tt('Kompetanse', 'Competency')}: ${activeCourse?.title || tt('Ikke valgt', 'Not selected')}`
+                        }
+                        sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: '#edf0f7' }}
+                      />
+                      <Chip
+                        size="small"
+                        label={tt(
+                          `${selectedDeck?.slides.length || 0} slides klare`,
+                          `${selectedDeck?.slides.length || 0} slides ready`,
+                        )}
+                        sx={{ bgcolor: 'rgba(126,232,179,0.14)', color: '#caffea' }}
+                      />
+                      <Chip
+                        size="small"
+                        label={`${tt('Tema', 'Theme')}: ${tt(selectedVisualThemePreset.labelNo, selectedVisualThemePreset.labelEn)}`}
+                        sx={{ bgcolor: 'rgba(92,149,255,0.14)', color: '#dce8ff' }}
+                      />
+                    </Stack>
+
+                    {simplePresentationHighlights.length > 0 && (
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                        {simplePresentationHighlights.map((label) => (
+                          <Chip
+                            key={`presentation-simple-highlight-${label}`}
+                            size="small"
+                            label={label}
+                            sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }}
+                          />
+                        ))}
+                      </Stack>
+                    )}
+
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<AutoAwesome />}
+                      onClick={() => void refreshPresentationDesign()}
+                      disabled={!selectedDeck || designPlanBusy}
+                      sx={{
+                        alignSelf: 'flex-start',
+                        ...PRESENTATION_NEUTRAL_OUTLINED_BUTTON_SX,
+                        borderColor: 'rgba(126,232,179,0.34)',
+                        color: '#caffea',
+                        bgcolor: 'rgba(126,232,179,0.08)',
+                      }}
+                    >
+                      {designPlanBusy
+                        ? tt('Oppdaterer ...', 'Refreshing ...')
+                        : tt('Oppdater presentasjon', 'Refresh presentation')}
+                    </Button>
+                  </Box>
+
+                  {selectedDeck && (
+                    <Box sx={{ ...panelSx, p: 1.2, display: 'grid', gap: 0.9 }}>
+                      <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                        {tt('Brand og visning', 'Brand and display')}
+                      </Typography>
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8}>
+                        <Select
+                          size="small"
+                          value={selectedDeck.brandKitId || ''}
+                          onChange={(event) => applyBrandKitToSelectedDeck(String(event.target.value || ''))}
+                          displayEmpty
+                          sx={{
+                            flex: 1,
+                            color: '#edf0f7',
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            '& .MuiOutlinedInput-notchedOutline': {
+                              borderColor: 'rgba(255,255,255,0.2)',
+                            },
+                          }}
+                        >
+                          <MenuItem value="">{tt('Kun base-tema', 'Base theme only')}</MenuItem>
+                          {brandKits.map((kit) => (
+                            <MenuItem key={`presentation-simple-brand-${kit.id}`} value={kit.id}>
+                              {kit.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        <Select
+                          size="small"
+                          value={selectedDeck.visualThemeId}
+                          onChange={(event) =>
+                            updateSelectedDeck((deck) => ({
+                              ...deck,
+                              visualThemeId: toVisualThemeId(String(event.target.value)),
+                            }))
+                          }
+                          sx={{
+                            flex: 1,
+                            color: '#edf0f7',
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            '& .MuiOutlinedInput-notchedOutline': {
+                              borderColor: 'rgba(255,255,255,0.2)',
+                            },
+                          }}
+                        >
+                          {visualThemePresets.map((themePreset) => (
+                            <MenuItem key={`presentation-simple-theme-${themePreset.id}`} value={themePreset.id}>
+                              {tt(themePreset.labelNo, themePreset.labelEn)}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </Stack>
+                    </Box>
+                  )}
+                </>
+              )}
+
+              {shouldShowAdvanced && (
               <Box sx={{ ...panelSx, p: 1.2, display: 'grid', gap: 0.9 }}>
                 <Stack direction="row" spacing={0.8} alignItems="center" justifyContent="space-between">
                   <Stack direction="row" spacing={0.8} alignItems="center">
@@ -7014,8 +10477,26 @@ function AcademyPresentationOverlayStudio({
                     }}
                   >
                     {designPlanBusy
-                      ? tt('Genererer ...', 'Generating ...')
-                      : tt('Generer plan', 'Generate plan')}
+                      ? tt('Genererer struktur ...', 'Generating structure ...')
+                      : tt('Generer designstruktur', 'Generate design structure')}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      if (!selectedDeck) return;
+                      void runAiCritique(selectedDeck);
+                    }}
+                    disabled={!selectedDeck || aiCritiqueBusy}
+                    sx={{
+                      textTransform: 'none',
+                      borderColor: 'rgba(92,149,255,0.42)',
+                      color: '#dce8ff',
+                    }}
+                  >
+                    {aiCritiqueBusy
+                      ? tt('Kjører AI-kritikk ...', 'Running AI critique ...')
+                      : tt('AI-kritikk', 'AI critique')}
                   </Button>
                   <Button
                     size="small"
@@ -7031,9 +10512,24 @@ function AcademyPresentationOverlayStudio({
                   </Button>
                 </Stack>
 
+                {designPlanBusy && (
+                  <Typography sx={{ fontSize: 12.5, color: 'rgba(237,240,247,0.82)' }}>
+                    {tt(
+                      'Bygger narrativ, slide-grammars, budsjetter og reparasjoner. Du kan redigere videre samtidig.',
+                      'Building narrative, slide grammars, budgets, and repairs. You can keep editing while this runs.',
+                    )}
+                  </Typography>
+                )}
+
                 {designPlanError && (
                   <Typography sx={{ fontSize: 12.5, color: 'rgba(255,184,184,0.95)' }}>
                     {designPlanError}
+                  </Typography>
+                )}
+
+                {aiCritiqueError && (
+                  <Typography sx={{ fontSize: 12.5, color: 'rgba(255,184,184,0.95)' }}>
+                    {aiCritiqueError}
                   </Typography>
                 )}
 
@@ -7047,18 +10543,26 @@ function AcademyPresentationOverlayStudio({
                       />
                       <Chip
                         size="small"
-                        label={`${tt('Tema', 'Theme')}: ${designPlan.recommendedVisualThemeId}`}
-                        sx={{ bgcolor: 'rgba(92,149,255,0.22)', color: '#dce8ff' }}
-                      />
-                      <Chip
-                        size="small"
                         label={`${tt('Mode', 'Mode')}: ${designPlan.recommendedDisplayMode}`}
                         sx={{ bgcolor: 'rgba(126,232,179,0.18)', color: '#c9ffe6' }}
                       />
                       <Chip
                         size="small"
+                        label={`${tt('Tema', 'Theme')}: ${designPlan.brandTokens?.labelNo || designPlan.recommendedVisualThemeId}`}
+                        sx={{ bgcolor: 'rgba(92,149,255,0.16)', color: '#dce8ff' }}
+                      />
+                      {!!designPlan.summary.repairActionsCount && (
+                        <Chip
+                          size="small"
+                          label={`${tt('Reparasjoner', 'Repairs')}: ${designPlan.summary.repairActionsCount}`}
+                          sx={{ bgcolor: 'rgba(248,179,33,0.16)', color: '#ffe5ad' }}
+                        />
+                      )}
+                      <Chip
+                        size="small"
                         label={
-                          designPlan.summary.generatedBy.includes('llm')
+                          designPlan.summary.generatedBy.includes('llm') ||
+                          designPlan.summary.generatedBy.includes('orchestrator')
                             ? tt('Kilde: AI-modell', 'Source: AI model')
                             : tt('Kilde: Regelmotor', 'Source: Rule engine')
                         }
@@ -7074,6 +10578,23 @@ function AcademyPresentationOverlayStudio({
                           sx={{ bgcolor: 'rgba(92,149,255,0.18)', color: '#dce8ff' }}
                         />
                       )}
+                      {!!designPlan.summary.brandContextName && (
+                        <Chip
+                          size="small"
+                          label={`${tt('Brand', 'Brand')}: ${designPlan.summary.brandContextName}`}
+                          sx={{ bgcolor: 'rgba(126,232,179,0.14)', color: '#c9ffe6' }}
+                        />
+                      )}
+                      {!!designPlan.summary.retrievalMeta?.matchedCount && (
+                        <Chip
+                          size="small"
+                          label={tt(
+                            `Minne: ${designPlan.summary.retrievalMeta.matchedCount}`,
+                            `Memory: ${designPlan.summary.retrievalMeta.matchedCount}`,
+                          )}
+                          sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: '#edf0f7' }}
+                        />
+                      )}
                     </Stack>
                     <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 12.5 }}>
                       {tt(
@@ -7081,6 +10602,64 @@ function AcademyPresentationOverlayStudio({
                         `Generated ${new Date(designPlan.generatedAt).toLocaleString()}.`,
                       )}
                     </Typography>
+                    {Array.isArray(designPlan.summary.pipeline) && designPlan.summary.pipeline.length > 0 && (
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                        {designPlan.summary.pipeline.map((step) => (
+                          <Chip
+                            key={`presentation-pipeline-${step}`}
+                            size="small"
+                            label={step}
+                            sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(237,240,247,0.82)' }}
+                          />
+                        ))}
+                      </Stack>
+                    )}
+                    {Array.isArray(designPlan.summary.templateMemoryMatches) &&
+                      designPlan.summary.templateMemoryMatches.length > 0 && (
+                        <Box sx={{ ...PRESENTATION_DETAIL_CARD_SX, gap: 0.65, display: 'grid' }}>
+                          <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                            {tt('Minne brukt i AI-planen', 'Memory used in the AI plan')}
+                          </Typography>
+                          <Stack spacing={0.55}>
+                            {designPlan.summary.templateMemoryMatches.map((match) => (
+                              <Box
+                                key={`presentation-memory-match-${match.id}`}
+                                sx={{
+                                  borderRadius: 1,
+                                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
+                                  bgcolor: 'rgba(255,255,255,0.04)',
+                                  px: 0.8,
+                                  py: 0.7,
+                                  display: 'grid',
+                                  gap: 0.45,
+                                }}
+                              >
+                                <Stack direction="row" spacing={0.5} justifyContent="space-between" alignItems="center">
+                                  <Typography sx={{ fontSize: 13.1, fontWeight: 700, color: '#edf0f7' }}>
+                                    {match.name}
+                                  </Typography>
+                                  <Chip
+                                    size="small"
+                                    label={`${Math.round(match.score * 100)}%`}
+                                    sx={{ bgcolor: 'rgba(92,149,255,0.14)', color: '#dce8ff' }}
+                                  />
+                                </Stack>
+                                <Typography sx={{ fontSize: 12.1, color: 'rgba(237,240,247,0.7)' }}>
+                                  {match.summary || `${match.templateId} · ${match.visualThemeId}`}
+                                </Typography>
+                                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                                  <Chip size="small" label={match.templateId} sx={{ bgcolor: 'rgba(248,179,33,0.14)', color: '#ffe5ad' }} />
+                                  <Chip size="small" label={match.visualThemeId} sx={{ bgcolor: 'rgba(126,232,179,0.14)', color: '#c9ffe6' }} />
+                                  <Chip size="small" label={match.displayMode} sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: '#edf0f7' }} />
+                                  {match.brandName && (
+                                    <Chip size="small" label={match.brandName} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }} />
+                                  )}
+                                </Stack>
+                              </Box>
+                            ))}
+                          </Stack>
+                        </Box>
+                      )}
                     <Stack spacing={0.6} sx={{ maxHeight: 214, overflowY: 'auto', pr: 0.2 }}>
                       {designPlan.slides.slice(0, 8).map((slidePlan, index) => {
                         const slideTitle =
@@ -7126,6 +10705,11 @@ function AcademyPresentationOverlayStudio({
                               />
                               <Chip
                                 size="small"
+                                label={slidePlan.grammarId}
+                                sx={{ bgcolor: 'rgba(126,232,179,0.18)', color: '#c9ffe6' }}
+                              />
+                              <Chip
+                                size="small"
                                 label={slidePlan.recommendedLayout}
                                 sx={{ bgcolor: 'rgba(92,149,255,0.16)', color: '#dce8ff' }}
                               />
@@ -7134,6 +10718,13 @@ function AcademyPresentationOverlayStudio({
                                 label={`${tt('Grafikk', 'Graphics')}: ${slidePlan.graphicSlots.length}`}
                                 sx={{ bgcolor: 'rgba(248,179,33,0.16)', color: '#ffe5ad' }}
                               />
+                              {slidePlan.repairActions.length > 0 && (
+                                <Chip
+                                  size="small"
+                                  label={`${tt('Fix', 'Fix')}: ${slidePlan.repairActions.length}`}
+                                  sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: '#edf0f7' }}
+                                />
+                              )}
                             </Stack>
                           </Box>
                         );
@@ -7142,8 +10733,13 @@ function AcademyPresentationOverlayStudio({
                   </Stack>
                 )}
               </Box>
+              )}
 
+              {shouldShowAdvanced && (
               <Box sx={{ ...panelSx, p: 1.2, display: 'grid', gap: 0.9 }}>
+                <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                  {tt('Templatebibliotek', 'Template library')}
+                </Typography>
                 <Stack direction="row" spacing={0.8} alignItems="center">
                   <AutoAwesome sx={{ color: '#f8d56f' }} />
                   <Typography sx={{ fontWeight: 700, fontSize: 18 }}>
@@ -7157,18 +10753,18 @@ function AcademyPresentationOverlayStudio({
                     <Box
                       key={template.id}
                       sx={{
-                        borderRadius: 1,
+                        ...PRESENTATION_DETAIL_CARD_SX,
                         border: active
                           ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.52)'
-                          : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
+                          : PRESENTATION_DETAIL_CARD_SX.border,
                         background: active
                           ? 'linear-gradient(145deg, rgba(248,179,33,0.12), rgba(248,179,33,0.04))'
-                          : 'rgba(255,255,255,0.02)',
-                        p: 1,
-                        display: 'grid',
-                        gap: 0.7,
+                          : PRESENTATION_DETAIL_CARD_SX.background,
                       }}
                     >
+                      <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                        {tt('Template', 'Template')}
+                      </Typography>
                       <Stack direction="row" spacing={0.7} justifyContent="space-between" alignItems="center">
                         <Typography sx={{ fontWeight: 700, color: '#f5f1e7' }}>
                           {tt(template.labelNo, template.labelEn)}
@@ -7192,10 +10788,8 @@ function AcademyPresentationOverlayStudio({
                         size="small"
                         onClick={() => applyTemplate(template.id)}
                         sx={{
+                          ...PRESENTATION_NEUTRAL_OUTLINED_BUTTON_SX,
                           alignSelf: 'flex-start',
-                          textTransform: 'none',
-                          color: '#edf0f7',
-                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                         }}
                       >
                         {tt('Bruk template', 'Use Template')}
@@ -7204,8 +10798,9 @@ function AcademyPresentationOverlayStudio({
                   );
                 })}
               </Box>
+              )}
 
-              {selectedDeck && (
+              {shouldShowAdvanced && selectedDeck && (
                 <Box sx={{ ...panelSx, p: 1.2, display: 'grid', gap: 1 }}>
                   <Stack direction="row" spacing={0.8} alignItems="center">
                     <Tune sx={{ color: '#f8d56f' }} />
@@ -7213,269 +10808,700 @@ function AcademyPresentationOverlayStudio({
                       {tt('Visningsoppsett', 'Display Setup')}
                     </Typography>
                   </Stack>
-
-                  <TextField
-                    size="small"
-                    label={tt('Presentasjonsnavn', 'Presentation Name')}
-                    value={selectedDeck.name}
-                    onChange={(event) => updateSelectedDeck((deck) => ({ ...deck, name: event.target.value }))}
-                    sx={{
-                      '& .MuiInputBase-root': { color: '#edf0f7' },
-                      '& .MuiInputLabel-root': { color: 'rgba(237,240,247,0.64)' },
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    }}
-                  />
-
-                  <Select
-                    size="small"
-                    value={selectedDeck.displayMode}
-                    onChange={(event) => {
-                      const nextDisplayMode = toDisplayMode(String(event.target.value));
-                      const themePreset = getVisualThemePresetById(selectedDeck.visualThemeId);
-                      updateSelectedDeck((deck) => ({
-                        ...deck,
-                        displayMode: nextDisplayMode,
-                        splitLayoutVariant:
-                          nextDisplayMode === 'split-screen'
-                            ? deck.splitLayoutVariant || themePreset.splitLayoutVariant
-                            : 'balanced',
-                        showNavigator: false,
-                      }));
-                    }}
-                    sx={{
-                      color: '#edf0f7',
-                      bgcolor: 'rgba(255,255,255,0.04)',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255,255,255,0.2)',
-                      },
-                    }}
-                  >
-                    <MenuItem value="picture-in-picture">{tt('Bilde-i-bilde', 'Picture in Picture')}</MenuItem>
-                    <MenuItem value="side-panel">{tt('Sidepanel', 'Side Panel')}</MenuItem>
-                    <MenuItem value="split-screen">{tt('Delt skjerm', 'Split Screen')}</MenuItem>
-                    <MenuItem value="full-frame">{tt('Full ramme', 'Full Frame')}</MenuItem>
-                  </Select>
-
-                  <Select
-                    size="small"
-                    value={selectedDeck.visualThemeId}
-                    onChange={(event) => {
-                      const nextThemeId = toVisualThemeId(String(event.target.value));
-                      const themePreset = getVisualThemePresetById(nextThemeId);
-                      updateSelectedDeck((deck) => ({
-                        ...deck,
-                        visualThemeId: nextThemeId,
-                        splitLayoutVariant:
-                          deck.displayMode === 'split-screen'
-                            ? themePreset.splitLayoutVariant
-                            : 'balanced',
-                      }));
-                    }}
-                    sx={{
-                      color: '#edf0f7',
-                      bgcolor: 'rgba(255,255,255,0.04)',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255,255,255,0.2)',
-                      },
-                    }}
-                  >
-                    {visualThemePresets.map((theme) => (
-                      <MenuItem key={theme.id} value={theme.id}>
-                        {tt(theme.labelNo, theme.labelEn)}
-                      </MenuItem>
-                    ))}
-                  </Select>
-
-                  <Select
-                    size="small"
-                    value={selectedDeck.splitLayoutVariant}
-                    disabled={selectedDeck.displayMode !== 'split-screen'}
-                    onChange={(event) =>
-                      updateSelectedDeck((deck) => ({
-                        ...deck,
-                        splitLayoutVariant: toSplitLayoutVariant(String(event.target.value)),
-                      }))
-                    }
-                    sx={{
-                      color: '#edf0f7',
-                      bgcolor: 'rgba(255,255,255,0.04)',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255,255,255,0.2)',
-                      },
-                    }}
-                  >
-                    <MenuItem value="balanced">{tt('Balansert', 'Balanced')}</MenuItem>
-                    <MenuItem value="presenter-focus">{tt('Presentor-fokus', 'Presenter Focus')}</MenuItem>
-                    <MenuItem value="slide-focus">{tt('Slide-fokus', 'Slide Focus')}</MenuItem>
-                  </Select>
-
-                  <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 12.5 }}>
-                    {tt(
-                      'Dette er standard layout for decken. Hver slide kan overstyre layout med Replace Layout i scene-listen.',
-                      'This is the deck default layout. Each slide can override layout via Replace Layout in the scene list.',
-                    )}
-                  </Typography>
-
-                  <Select
-                    size="small"
-                    value={selectedDeck.placement}
-                    onChange={(event) =>
-                      updateSelectedDeck((deck) => ({
-                        ...deck,
-                        placement: toPlacement(String(event.target.value)),
-                      }))
-                    }
-                    sx={{
-                      color: '#edf0f7',
-                      bgcolor: 'rgba(255,255,255,0.04)',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255,255,255,0.2)',
-                      },
-                    }}
-                  >
-                    <MenuItem value="top-right">{tt('Topp hoyre', 'Top Right')}</MenuItem>
-                    <MenuItem value="top-left">{tt('Topp venstre', 'Top Left')}</MenuItem>
-                    <MenuItem value="bottom-right">{tt('Bunn hoyre', 'Bottom Right')}</MenuItem>
-                    <MenuItem value="bottom-left">{tt('Bunn venstre', 'Bottom Left')}</MenuItem>
-                    <MenuItem value="center">{tt('Senter', 'Center')}</MenuItem>
-                  </Select>
-
-                  <Box>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13, mb: 0.4 }}>
-                      {tt('Synlighet', 'Opacity')}: {Math.round(selectedDeck.opacity * 100)}%
-                    </Typography>
-                    <Slider
-                      value={selectedDeck.opacity}
-                      min={0.2}
-                      max={1}
-                      step={0.02}
-                      onChange={(_, value) => {
-                        const next = Array.isArray(value) ? value[0] : value;
-                        updateSelectedDeck((deck) => ({
-                          ...deck,
-                          opacity: clamp(Number(next), 0.2, 1),
-                        }));
+                  <Box sx={PRESENTATION_DETAIL_CARD_SX}>
+                    <Typography sx={PRESENTATION_SECTION_LABEL_SX}>{tt('Deck', 'Deck')}</Typography>
+                    <TextField
+                      size="small"
+                      label={tt('Presentasjonsnavn', 'Presentation Name')}
+                      value={selectedDeck.name}
+                      onChange={(event) => updateSelectedDeck((deck) => ({ ...deck, name: event.target.value }))}
+                      sx={{
+                        '& .MuiInputBase-root': { color: '#edf0f7' },
+                        '& .MuiInputLabel-root': { color: 'rgba(237,240,247,0.64)' },
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                       }}
-                      sx={{ color: '#f8b321' }}
                     />
                   </Box>
 
-                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.12)' }} />
+                  <Box sx={PRESENTATION_DETAIL_CARD_SX}>
+                    <Typography sx={PRESENTATION_SECTION_LABEL_SX}>{tt('Brand kit', 'Brand kit')}</Typography>
+                    <Select
+                      size="small"
+                      value={selectedDeck.brandKitId || ''}
+                      onChange={(event) => applyBrandKitToSelectedDeck(String(event.target.value || ''))}
+                      displayEmpty
+                      sx={{
+                        color: '#edf0f7',
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'rgba(255,255,255,0.2)',
+                        },
+                      }}
+                    >
+                      <MenuItem value="">{tt('Kun base-tema', 'Base theme only')}</MenuItem>
+                      {brandKits.map((kit) => (
+                        <MenuItem key={kit.id} value={kit.id}>
+                          {kit.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
 
-                  <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                    <Typography sx={{ color: 'rgba(237,240,247,0.76)' }}>
-                      {tt('Totale slides', 'Total slides')}
-                    </Typography>
-                    <Chip
-                      label={selectedDeck.slides.length}
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8}>
+                      <Button
+                        size="small"
+                        onClick={createBrandKitFromSelectedDeck}
+                        sx={{
+                          ...PRESENTATION_NEUTRAL_OUTLINED_BUTTON_SX,
+                          alignSelf: 'flex-start',
+                        }}
+                      >
+                        {tt('Nytt brand kit', 'New brand kit')}
+                      </Button>
+                      {selectedBrandKit && (
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={() => deleteBrandKit(selectedBrandKit.id)}
+                          sx={{ textTransform: 'none', alignSelf: 'flex-start' }}
+                        >
+                          {tt('Slett brand kit', 'Delete brand kit')}
+                        </Button>
+                      )}
+                    </Stack>
+
+                    {selectedBrandKit ? (
+                      <Stack spacing={1}>
+                        <TextField
+                          size="small"
+                          label={tt('Navn', 'Name')}
+                          value={selectedBrandKit.name}
+                          onChange={(event) =>
+                            updateBrandKit(selectedBrandKit.id, (kit) => ({
+                              ...kit,
+                              name: event.target.value,
+                            }))
+                          }
+                          sx={{
+                            '& .MuiInputBase-root': { color: '#edf0f7' },
+                            '& .MuiInputLabel-root': { color: 'rgba(237,240,247,0.64)' },
+                            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                          }}
+                        />
+
+                        <Select
+                          size="small"
+                          value={selectedBrandKit.baseThemeId}
+                          onChange={(event) =>
+                            updateBrandKit(selectedBrandKit.id, (kit) => ({
+                              ...kit,
+                              baseThemeId: toVisualThemeId(String(event.target.value)),
+                            }))
+                          }
+                          sx={{
+                            color: '#edf0f7',
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            '& .MuiOutlinedInput-notchedOutline': {
+                              borderColor: 'rgba(255,255,255,0.2)',
+                            },
+                          }}
+                        >
+                          {visualThemePresets.map((themePreset) => (
+                            <MenuItem key={`brand-base-theme-${themePreset.id}`} value={themePreset.id}>
+                              {tt(themePreset.labelNo, themePreset.labelEn)}
+                            </MenuItem>
+                          ))}
+                        </Select>
+
+                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8}>
+                          <TextField
+                            size="small"
+                            type="color"
+                            label={tt('Primær', 'Primary')}
+                            value={selectedBrandKit.primary}
+                            onChange={(event) =>
+                              updateBrandKit(selectedBrandKit.id, (kit) => ({
+                                ...kit,
+                                primary: event.target.value,
+                              }))
+                            }
+                            sx={{ width: { xs: '100%', md: 140 } }}
+                          />
+                          <TextField
+                            size="small"
+                            type="color"
+                            label={tt('Sekundær', 'Secondary')}
+                            value={selectedBrandKit.secondary}
+                            onChange={(event) =>
+                              updateBrandKit(selectedBrandKit.id, (kit) => ({
+                                ...kit,
+                                secondary: event.target.value,
+                              }))
+                            }
+                            sx={{ width: { xs: '100%', md: 140 } }}
+                          />
+                          <TextField
+                            size="small"
+                            type="color"
+                            label={tt('Aksent', 'Accent')}
+                            value={selectedBrandKit.accent}
+                            onChange={(event) =>
+                              updateBrandKit(selectedBrandKit.id, (kit) => ({
+                                ...kit,
+                                accent: event.target.value,
+                              }))
+                            }
+                            sx={{ width: { xs: '100%', md: 140 } }}
+                          />
+                        </Stack>
+
+                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8}>
+                          <Select
+                            size="small"
+                            value={selectedBrandKit.headingFont}
+                            onChange={(event) =>
+                              updateBrandKit(selectedBrandKit.id, (kit) => ({
+                                ...kit,
+                                headingFont: String(event.target.value),
+                              }))
+                            }
+                            sx={{
+                              flex: 1,
+                              color: '#edf0f7',
+                              bgcolor: 'rgba(255,255,255,0.04)',
+                              '& .MuiOutlinedInput-notchedOutline': {
+                                borderColor: 'rgba(255,255,255,0.2)',
+                              },
+                            }}
+                          >
+                            {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
+                              <MenuItem key={`brand-heading-font-${fontOption}`} value={fontOption}>
+                                {fontOption}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                          <Select
+                            size="small"
+                            value={selectedBrandKit.bodyFont}
+                            onChange={(event) =>
+                              updateBrandKit(selectedBrandKit.id, (kit) => ({
+                                ...kit,
+                                bodyFont: String(event.target.value),
+                              }))
+                            }
+                            sx={{
+                              flex: 1,
+                              color: '#edf0f7',
+                              bgcolor: 'rgba(255,255,255,0.04)',
+                              '& .MuiOutlinedInput-notchedOutline': {
+                                borderColor: 'rgba(255,255,255,0.2)',
+                              },
+                            }}
+                          >
+                            {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
+                              <MenuItem key={`brand-body-font-${fontOption}`} value={fontOption}>
+                                {fontOption}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </Stack>
+
+                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8}>
+                          <TextField
+                            size="small"
+                            label={tt('Wordmark / logo', 'Wordmark / logo')}
+                            value={selectedBrandKit.logoText}
+                            onChange={(event) =>
+                              updateBrandKit(selectedBrandKit.id, (kit) => ({
+                                ...kit,
+                                logoText: event.target.value,
+                              }))
+                            }
+                            sx={{
+                              flex: 1,
+                              '& .MuiInputBase-root': { color: '#edf0f7' },
+                              '& .MuiInputLabel-root': { color: 'rgba(237,240,247,0.64)' },
+                              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                            }}
+                          />
+                          <TextField
+                            size="small"
+                            label={tt('Footer', 'Footer')}
+                            value={selectedBrandKit.footerText}
+                            onChange={(event) =>
+                              updateBrandKit(selectedBrandKit.id, (kit) => ({
+                                ...kit,
+                                footerText: event.target.value,
+                              }))
+                            }
+                            sx={{
+                              flex: 1,
+                              '& .MuiInputBase-root': { color: '#edf0f7' },
+                              '& .MuiInputLabel-root': { color: 'rgba(237,240,247,0.64)' },
+                              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                            }}
+                          />
+                        </Stack>
+
+                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} alignItems={{ xs: 'stretch', md: 'center' }}>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={selectedBrandKit.requireLogo}
+                                onChange={(event) =>
+                                  updateBrandKit(selectedBrandKit.id, (kit) => ({
+                                    ...kit,
+                                    requireLogo: event.target.checked,
+                                  }))
+                                }
+                              />
+                            }
+                            label={tt('Krev logo', 'Require logo')}
+                            sx={{ color: '#edf0f7', m: 0 }}
+                          />
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={selectedBrandKit.requireFooter}
+                                onChange={(event) =>
+                                  updateBrandKit(selectedBrandKit.id, (kit) => ({
+                                    ...kit,
+                                    requireFooter: event.target.checked,
+                                  }))
+                                }
+                              />
+                            }
+                            label={tt('Krev footer', 'Require footer')}
+                            sx={{ color: '#edf0f7', m: 0 }}
+                          />
+                          <TextField
+                            size="small"
+                            label={tt('Min. kontrast', 'Min. contrast')}
+                            value={selectedBrandKit.minContrastRatio}
+                            onChange={(event) =>
+                              updateBrandKit(selectedBrandKit.id, (kit) => ({
+                                ...kit,
+                                minContrastRatio: clamp(Number(event.target.value) || 4.5, 3, 7),
+                              }))
+                            }
+                            sx={{
+                              width: { xs: '100%', md: 140 },
+                              '& .MuiInputBase-root': { color: '#edf0f7' },
+                              '& .MuiInputLabel-root': { color: 'rgba(237,240,247,0.64)' },
+                              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                            }}
+                          />
+                        </Stack>
+                      </Stack>
+                    ) : (
+                      <Typography sx={{ color: 'rgba(237,240,247,0.68)', fontSize: 12.8 }}>
+                        {tt(
+                          'Velg eller opprett et brand kit for logo, footer, farger, fonter og brand-kontroll.',
+                          'Select or create a brand kit for logo, footer, colors, fonts, and brand control.',
+                        )}
+                      </Typography>
+                    )}
+                  </Box>
+
+                  <Box sx={PRESENTATION_DETAIL_CARD_SX}>
+                    <Typography sx={PRESENTATION_SECTION_LABEL_SX}>{tt('Layout', 'Layout')}</Typography>
+                    <Select
                       size="small"
-                      sx={{
-                        color: '#fce3a1',
-                        bgcolor: 'rgba(248,179,33,0.12)',
-                        border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)',
+                      value={selectedDeck.displayMode}
+                      onChange={(event) => {
+                        const nextDisplayMode = toDisplayMode(String(event.target.value));
+                        updateSelectedDeck((deck) => ({
+                          ...deck,
+                          displayMode: nextDisplayMode,
+                          splitLayoutVariant:
+                            nextDisplayMode === 'split-screen'
+                              ? deck.splitLayoutVariant || 'balanced'
+                              : 'balanced',
+                          showNavigator: false,
+                        }));
                       }}
-                    />
-                  </Stack>
-                  <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                    <Typography sx={{ color: 'rgba(237,240,247,0.76)' }}>
-                      {tt('Tidsdekning', 'Timeline coverage')}
-                    </Typography>
-                    <Chip
-                      label={`${Math.round(
-                        selectedDeck.slides.reduce((sum, slide) => sum + slide.duration, 0),
-                      )}s`}
+                      sx={{
+                        color: '#edf0f7',
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'rgba(255,255,255,0.2)',
+                        },
+                      }}
+                    >
+                      <MenuItem value="picture-in-picture">{tt('Bilde-i-bilde', 'Picture in Picture')}</MenuItem>
+                      <MenuItem value="side-panel">{tt('Sidepanel', 'Side Panel')}</MenuItem>
+                      <MenuItem value="split-screen">{tt('Delt skjerm', 'Split Screen')}</MenuItem>
+                      <MenuItem value="full-frame">{tt('Full ramme', 'Full Frame')}</MenuItem>
+                    </Select>
+
+                    <Select
                       size="small"
+                      value={selectedDeck.splitLayoutVariant}
+                      disabled={selectedDeck.displayMode !== 'split-screen'}
+                      onChange={(event) =>
+                        updateSelectedDeck((deck) => ({
+                          ...deck,
+                          splitLayoutVariant: toSplitLayoutVariant(String(event.target.value)),
+                        }))
+                      }
                       sx={{
-                        color: '#d7f3ff',
-                        bgcolor: 'rgba(79,195,247,0.14)',
-                        border: 'var(--academy-hairline-width, 1px) solid rgba(79,195,247,0.34)',
+                        color: '#edf0f7',
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'rgba(255,255,255,0.2)',
+                        },
                       }}
-                    />
-                  </Stack>
+                    >
+                      <MenuItem value="balanced">{tt('Balansert', 'Balanced')}</MenuItem>
+                      <MenuItem value="presenter-focus">{tt('Presentor-fokus', 'Presenter Focus')}</MenuItem>
+                      <MenuItem value="slide-focus">{tt('Slide-fokus', 'Slide Focus')}</MenuItem>
+                    </Select>
+
+                    <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 12.5 }}>
+                      {tt(
+                        'Dette er standard layout for decken. Hver slide kan overstyre layout med Replace Layout i scene-listen.',
+                        'This is the deck default layout. Each slide can override layout via Replace Layout in the scene list.',
+                      )}
+                    </Typography>
+                  </Box>
+
+                  <Box sx={PRESENTATION_DETAIL_CARD_SX}>
+                    <Typography sx={PRESENTATION_SECTION_LABEL_SX}>{tt('Plassering', 'Placement')}</Typography>
+                    <Select
+                      size="small"
+                      value={selectedDeck.placement}
+                      onChange={(event) =>
+                        updateSelectedDeck((deck) => ({
+                          ...deck,
+                          placement: toPlacement(String(event.target.value)),
+                        }))
+                      }
+                      sx={{
+                        color: '#edf0f7',
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'rgba(255,255,255,0.2)',
+                        },
+                      }}
+                    >
+                      <MenuItem value="top-right">{tt('Topp hoyre', 'Top Right')}</MenuItem>
+                      <MenuItem value="top-left">{tt('Topp venstre', 'Top Left')}</MenuItem>
+                      <MenuItem value="bottom-right">{tt('Bunn hoyre', 'Bottom Right')}</MenuItem>
+                      <MenuItem value="bottom-left">{tt('Bunn venstre', 'Bottom Left')}</MenuItem>
+                      <MenuItem value="center">{tt('Senter', 'Center')}</MenuItem>
+                    </Select>
+
+                    <Box>
+                      <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13, mb: 0.4 }}>
+                        {tt('Synlighet', 'Opacity')}: {Math.round(selectedDeck.opacity * 100)}%
+                      </Typography>
+                      <Slider
+                        value={selectedDeck.opacity}
+                        min={0.2}
+                        max={1}
+                        step={0.02}
+                        onChange={(_, value) => {
+                          const next = Array.isArray(value) ? value[0] : value;
+                          updateSelectedDeck((deck) => ({
+                            ...deck,
+                            opacity: clamp(Number(next), 0.2, 1),
+                          }));
+                        }}
+                        sx={{ color: '#f8b321' }}
+                      />
+                    </Box>
+                  </Box>
+
+                  <Box sx={PRESENTATION_DETAIL_CARD_SX}>
+                    <Typography sx={PRESENTATION_SECTION_LABEL_SX}>{tt('Status', 'Status')}</Typography>
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                      <Typography sx={{ color: 'rgba(237,240,247,0.76)' }}>
+                        {tt('Totale slides', 'Total slides')}
+                      </Typography>
+                      <Chip
+                        label={selectedDeck.slides.length}
+                        size="small"
+                        sx={{
+                          color: '#fce3a1',
+                          bgcolor: 'rgba(248,179,33,0.12)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)',
+                        }}
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                      <Typography sx={{ color: 'rgba(237,240,247,0.76)' }}>
+                        {tt('Tidsdekning', 'Timeline coverage')}
+                      </Typography>
+                      <Chip
+                        label={`${Math.round(
+                          selectedDeck.slides.reduce((sum, slide) => sum + slide.duration, 0),
+                        )}s`}
+                        size="small"
+                        sx={{
+                          color: '#d7f3ff',
+                          bgcolor: 'rgba(79,195,247,0.14)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(79,195,247,0.34)',
+                        }}
+                      />
+                    </Stack>
+                  </Box>
                 </Box>
               )}
 
+              {shouldShowAdvanced && (
               <Box sx={{ ...panelSx, p: 1.2, display: 'grid', gap: 0.9 }}>
+                <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                  {tt('Publiseringsflyt', 'Publishing workflow')}
+                </Typography>
                 <Typography sx={{ fontWeight: 700, fontSize: 17 }}>
                   {tt('Publiseringsstatus', 'Publishing Status')}
                 </Typography>
-                <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
-                  <Chip
-                    size="small"
-                    label={
-                      qualitySummary.canPublish
-                        ? tt('Klar for publisering', 'Ready to publish')
-                        : tt('Må løse kritiske funn', 'Critical findings must be fixed')
-                    }
+                <Box sx={PRESENTATION_DETAIL_CARD_SX}>
+                  <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                    {tt('Klargjøring', 'Readiness')}
+                  </Typography>
+                  <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                    <Chip
+                      size="small"
+                      label={
+                        qualitySummary.canPublish
+                          ? tt('Klar for publisering', 'Ready to publish')
+                          : tt('Må løse kritiske funn', 'Critical findings must be fixed')
+                      }
+                      sx={{
+                        bgcolor: qualitySummary.canPublish ? 'rgba(126,232,179,0.18)' : 'rgba(255,122,122,0.2)',
+                        color: qualitySummary.canPublish ? '#cbffe8' : '#ffd7d7',
+                        fontWeight: 700,
+                      }}
+                    />
+                    <Chip
+                      size="small"
+                      label={tt(
+                        `${qualitySummary.errorCount} kritiske`,
+                        `${qualitySummary.errorCount} critical`,
+                      )}
+                      sx={{ bgcolor: 'rgba(255,122,122,0.16)', color: '#ffd6d6' }}
+                    />
+                    <Chip
+                      size="small"
+                      label={tt(
+                        `${qualitySummary.warningCount} varsler`,
+                        `${qualitySummary.warningCount} warnings`,
+                      )}
+                      sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: '#edf0f7' }}
+                    />
+                  </Stack>
+                </Box>
+                <Box sx={PRESENTATION_DETAIL_CARD_SX}>
+                  <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                    {tt('Fremdrift', 'Progress')}
+                  </Typography>
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min(
+                      100,
+                      Math.round(
+                        ((selectedDeck?.slides.length || 0) / 5) * 50 +
+                          ((selectedDeck?.sourceName ? 1 : 0) * 25) +
+                          ((selectedDeck?.template ? 1 : 0) * 25),
+                      ),
+                    )}
                     sx={{
-                      bgcolor: qualitySummary.canPublish ? 'rgba(126,232,179,0.18)' : 'rgba(255,122,122,0.2)',
-                      color: qualitySummary.canPublish ? '#cbffe8' : '#ffd7d7',
-                      fontWeight: 700,
+                      height: 8,
+                      borderRadius: 999,
+                      bgcolor: 'rgba(255,255,255,0.1)',
+                      '& .MuiLinearProgress-bar': {
+                        borderRadius: 999,
+                        background: 'linear-gradient(90deg, #f8b321, #ffd45e)',
+                      },
                     }}
                   />
-                  <Chip
-                    size="small"
-                    label={tt(
-                      `${qualitySummary.errorCount} kritiske`,
-                      `${qualitySummary.errorCount} critical`,
+                  <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>
+                    {tt(
+                      'Lagre for utkast eller publiser for a synkronisere presentasjonen i spilleren.',
+                      'Save for draft or publish to sync the presentation in the player.',
                     )}
-                    sx={{ bgcolor: 'rgba(255,122,122,0.16)', color: '#ffd6d6' }}
-                  />
-                  <Chip
-                    size="small"
-                    label={tt(
-                      `${qualitySummary.warningCount} varsler`,
-                      `${qualitySummary.warningCount} warnings`,
-                    )}
-                    sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: '#edf0f7' }}
-                  />
-                </Stack>
-                <LinearProgress
-                  variant="determinate"
-                  value={Math.min(
-                    100,
-                    Math.round(
-                      ((selectedDeck?.slides.length || 0) / 5) * 50 +
-                        ((selectedDeck?.sourceName ? 1 : 0) * 25) +
-                        ((selectedDeck?.template ? 1 : 0) * 25),
-                    ),
-                  )}
-                  sx={{
-                    height: 8,
-                    borderRadius: 999,
-                    bgcolor: 'rgba(255,255,255,0.1)',
-                    '& .MuiLinearProgress-bar': {
-                      borderRadius: 999,
-                      background: 'linear-gradient(90deg, #f8b321, #ffd45e)',
-                    },
-                  }}
-                />
-                <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>
-                  {tt(
-                    'Lagre for utkast eller publiser for a synkronisere presentasjonen i spilleren.',
-                    'Save for draft or publish to sync presentation overlays into the player.',
-                  )}
-                </Typography>
-                {qualityIssues.length > 0 && (
-                  <Stack spacing={0.45}>
-                    {qualityIssues.slice(0, 6).map((issue) => (
-                      <Typography
-                        key={issue.id}
+                  </Typography>
+                </Box>
+                {selectedDeck && (
+                  <Box sx={PRESENTATION_DETAIL_CARD_SX}>
+                    <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                      {tt('Designscore', 'Design score')}
+                    </Typography>
+                    <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Chip
+                        size="small"
+                        label={tt(
+                          `Total ${qualitySummary.designScore}/100`,
+                          `Overall ${qualitySummary.designScore}/100`,
+                        )}
                         sx={{
+                          bgcolor:
+                            qualitySummary.designScore >= 86
+                              ? 'rgba(126,232,179,0.18)'
+                              : qualitySummary.designScore >= 72
+                                ? 'rgba(248,179,33,0.18)'
+                                : 'rgba(255,122,122,0.2)',
                           color:
-                            issue.severity === 'error'
-                              ? 'rgba(255,210,210,0.94)'
-                              : 'rgba(255,229,184,0.9)',
-                          fontSize: 12.2,
-                          lineHeight: 1.35,
+                            qualitySummary.designScore >= 86
+                              ? '#caffea'
+                              : qualitySummary.designScore >= 72
+                                ? '#ffe6b8'
+                                : '#ffd6d6',
+                          fontWeight: 700,
                         }}
-                      >
-                        {issue.severity === 'error' ? '•' : '◦'} {tt(issue.messageNo, issue.messageEn)}
+                      />
+                      <Chip size="small" label={tt(`Innhold ${designEvaluation.content}`, `Content ${designEvaluation.content}`)} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }} />
+                      <Chip size="small" label={tt(`Hierarki ${designEvaluation.hierarchy}`, `Hierarchy ${designEvaluation.hierarchy}`)} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }} />
+                      <Chip size="small" label={tt(`Balanse ${designEvaluation.balance}`, `Balance ${designEvaluation.balance}`)} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }} />
+                      <Chip size="small" label={tt(`Visuals ${designEvaluation.visuals}`, `Visuals ${designEvaluation.visuals}`)} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }} />
+                      <Chip size="small" label={tt(`Grammar ${designEvaluation.grammar}`, `Grammar ${designEvaluation.grammar}`)} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }} />
+                      <Chip
+                        size="small"
+                        label={tt(`Brand ${qualitySummary.brandScore}`, `Brand ${qualitySummary.brandScore}`)}
+                        sx={{
+                          bgcolor:
+                            qualitySummary.brandScore >= 86
+                              ? 'rgba(126,232,179,0.18)'
+                              : qualitySummary.brandScore >= 72
+                                ? 'rgba(248,179,33,0.18)'
+                                : 'rgba(255,122,122,0.2)',
+                          color:
+                            qualitySummary.brandScore >= 86
+                              ? '#caffea'
+                              : qualitySummary.brandScore >= 72
+                                ? '#ffe6b8'
+                            : '#ffd6d6',
+                        }}
+                      />
+                      {qualitySummary.aiScore !== null && (
+                        <Chip
+                          size="small"
+                          label={tt(`AI ${qualitySummary.aiScore}`, `AI ${qualitySummary.aiScore}`)}
+                          sx={{
+                            bgcolor:
+                              qualitySummary.aiScore >= 86
+                                ? 'rgba(126,232,179,0.18)'
+                                : qualitySummary.aiScore >= 72
+                                  ? 'rgba(92,149,255,0.18)'
+                                  : 'rgba(255,122,122,0.2)',
+                            color:
+                              qualitySummary.aiScore >= 86
+                                ? '#caffea'
+                                : qualitySummary.aiScore >= 72
+                                  ? '#dce8ff'
+                                  : '#ffd6d6',
+                          }}
+                        />
+                      )}
+                      {canvasContrastRatio !== null && (
+                        <Chip
+                          size="small"
+                          label={tt(
+                            `Kontrast ${canvasContrastRatio.toFixed(1)}:1`,
+                            `Contrast ${canvasContrastRatio.toFixed(1)}:1`,
+                          )}
+                          sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }}
+                        />
+                      )}
+                    </Stack>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 12.6, lineHeight: 1.45 }}>
+                      {tt(
+                        'Scoren vurderer tekstbudsjett, visuelt hierarki, balanse, slide grammar, brand policy og om visuals er faktiske assets.',
+                        'The score evaluates text budget, visual hierarchy, balance, slide grammar, brand policy, and whether visuals are real assets.',
+                      )}
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<AutoAwesome />}
+                      onClick={repairDeckDesign}
+                      disabled={designPlanBusy}
+                      sx={{
+                        alignSelf: 'flex-start',
+                        ...PRESENTATION_NEUTRAL_OUTLINED_BUTTON_SX,
+                        borderColor: 'rgba(126,232,179,0.34)',
+                        color: '#caffea',
+                        bgcolor: 'rgba(126,232,179,0.08)',
+                      }}
+                    >
+                      {tt('Repair deck', 'Repair deck')}
+                    </Button>
+                    {aiCritique && (
+                      <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 12.2 }}>
+                        {tt(
+                          `AI-kritikk: ${aiCritique.model} · ${new Date(aiCritique.generatedAt).toLocaleTimeString()}`,
+                          `AI critique: ${aiCritique.model} · ${new Date(aiCritique.generatedAt).toLocaleTimeString()}`,
+                        )}
                       </Typography>
-                    ))}
-                  </Stack>
+                    )}
+                  </Box>
+                )}
+                {aiCritique && aiCritique.findings.length > 0 && (
+                  <Box sx={PRESENTATION_DETAIL_CARD_SX}>
+                    <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                      {tt('AI-funn', 'AI findings')}
+                    </Typography>
+                    <Stack spacing={0.55}>
+                      {aiCritique.findings.slice(0, 5).map((finding) => (
+                        <Box
+                          key={`presentation-ai-finding-${finding.id}`}
+                          sx={{
+                            borderRadius: 1,
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            px: 0.8,
+                            py: 0.7,
+                            display: 'grid',
+                            gap: 0.35,
+                          }}
+                        >
+                          <Typography
+                            sx={{
+                              color:
+                                finding.severity === 'error'
+                                  ? 'rgba(255,210,210,0.94)'
+                                  : 'rgba(216,230,255,0.92)',
+                              fontSize: 12.3,
+                              lineHeight: 1.35,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {tt(finding.messageNo, finding.messageEn)}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(237,240,247,0.68)', fontSize: 12 }}>
+                            {tt(finding.repairHintNo, finding.repairHintEn)}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+                {qualityIssues.length > 0 && (
+                  <Box sx={PRESENTATION_DETAIL_CARD_SX}>
+                    <Typography sx={PRESENTATION_SECTION_LABEL_SX}>
+                      {tt('Åpne funn', 'Open findings')}
+                    </Typography>
+                    <Stack spacing={0.45}>
+                      {qualityIssues.slice(0, 6).map((issue) => (
+                        <Typography
+                          key={issue.id}
+                          sx={{
+                            color:
+                              issue.severity === 'error'
+                                ? 'rgba(255,210,210,0.94)'
+                                : 'rgba(255,229,184,0.9)',
+                            fontSize: 12.2,
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {issue.severity === 'error' ? '•' : '◦'} {tt(issue.messageNo, issue.messageEn)}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  </Box>
                 )}
               </Box>
+              )}
             </Box>
           </Box>
         </Box>
@@ -7486,7 +11512,7 @@ function AcademyPresentationOverlayStudio({
 
 export default withUniversalIntegration(AcademyPresentationOverlayStudio, {
   componentId: 'academy-presentation-overlay-studio',
-  componentName: 'Academy Presentation Overlay Studio',
+  componentName: 'Academy Presentation Studio',
   componentType: 'editor',
   componentCategory: 'academy',
   featureIds: ['academy-presentation-overlay', 'academy-ppt-upload', 'academy-slide-placement'],

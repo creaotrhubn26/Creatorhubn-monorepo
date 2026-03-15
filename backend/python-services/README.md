@@ -19,6 +19,13 @@ Service path: `backend/python-services/pyannote_diarization_service.py`.
 For Story Arc Studio audio cleanup in `/api/audio/mix` when `mixContext.noiseReductionEngine = "demucs"`.
 Script path: `backend/scripts/audio_demucs_denoise.py`.
 
+### 5. Story Arc Vision Stack (wedding visual analysis)
+- Shot detection: `PySceneDetect`
+- Pose: `MediaPipe Pose`
+- Face: `insightface` + `retina-face`
+- Object: `ultralytics` (YOLOv8/YOLOv9 runtime)
+- Action recognition: `pytorchvideo` (SlowFast/X3D model support)
+
 ## Installation
 
 ```bash
@@ -26,6 +33,13 @@ cd python-services
 python3.10 -m venv venv_py310
 source venv_py310/bin/activate
 pip install -r requirements.txt
+```
+
+Quick verify package versions:
+
+```bash
+backend/python-services/venv_py310/bin/pip show scenedetect mediapipe ultralytics insightface retina-face pytorchvideo torch torchaudio torchvision
+backend/python-services/venv_py310/bin/pip check
 ```
 
 ### Story Arc Full Stack (transcription + diarization + alignment + denoise)
@@ -47,7 +61,7 @@ Model manifest:
 # Start both services
 python faster_whisper_service.py &   # STT on port 5000
 python edge_tts_service.py &          # TTS on port 5100
-python pyannote_diarization_service.py &  # Diarization on port 5001
+python pyannote_diarization_service.py &  # Diarization on port 5502
 
 # Production
 gunicorn -w 2 -b 0.0.0.0:5000 faster_whisper_service:app &
@@ -70,14 +84,16 @@ gunicorn -w 2 -b 0.0.0.0:5100 edge_tts_service:app &
 - `PYANNOTE_DIARIZATION_MODEL`: default `pyannote/speaker-diarization-3.1`
 - `PYANNOTE_SEGMENTATION_MODEL`: default `pyannote/segmentation-3.0`
 - `PYANNOTE_ENABLE_SEGMENTATION_CONFIDENCE`: `true|false` (default `true`)
+- `PYANNOTE_WARMUP_ON_STARTUP`: Run one startup warmup pass (`true` by default)
 - `PYANNOTE_PYTHON_BIN`: Optional override for interpreter used by `backend/scripts/start-pyannote-service.sh`
-- `PORT`: Service port (default: 5001)
+- `PORT`: Service port (default: 5502)
 
 ### Backend (.env)
 - `USE_FASTER_WHISPER=true`: Enable free local services (prioritized over OpenAI)
 - `FASTER_WHISPER_URL`: URL of faster-whisper service (default: http://localhost:5000)
 - `EDGE_TTS_URL`: URL of edge-tts service (default: http://localhost:5100)
-- `PYANNOTE_DIARIZATION_URL`: URL of pyannote diarization service (default: http://localhost:5001)
+- `PYANNOTE_DIARIZATION_URL`: URL of pyannote diarization service (default: http://localhost:5502)
+- `WHISPERX_TRANSCRIPTION_URL`: URL of whisperx transcription service (default: http://localhost:5003)
 - `AUDIO_MIX_DEMUCS_SCRIPT_PATH`: Optional override for Demucs script path
 - `AUDIO_MIX_DEMUCS_PYTHON_BIN`: Python binary used to run Demucs script (default: `backend/python-services/venv_py310/bin/python` if present, otherwise `backend/python-services/venv/bin/python`, otherwise `python3`)
 - `AUDIO_MIX_DEMUCS_MODEL`: Default Demucs model (default: `htdemucs`)
@@ -114,6 +130,11 @@ Use `--scan-dir /path/to/dataset` for larger real datasets and increase:
 ### Faster-Whisper
 - `POST /v1/audio/transcriptions` — Transcribe audio (OpenAI-compatible format)
 - `GET /health` — Health check
+
+### Pyannote diarization
+- `POST /v1/audio/diarization` — Speaker diarization
+- `GET /health` — Health + warmup state
+- `POST /warmup` — Force/cache warmup to reduce first-request latency
 
 ## Docker
 

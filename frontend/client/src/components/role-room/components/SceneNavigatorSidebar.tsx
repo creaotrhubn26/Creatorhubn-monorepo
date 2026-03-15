@@ -290,7 +290,6 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
   onToggleCollapse,
   width = 280,
   collapsedWidth = 48,
-  darkMode = true,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedActs, setExpandedActs] = useState<Set<string>>(new Set(['1', '2', '3', 'pinned']));
@@ -406,7 +405,11 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
     e.stopPropagation();
     setPinnedSceneIds(prev => {
       const next = new Set(prev);
-      next.has(sceneId) ? next.delete(sceneId) : next.add(sceneId);
+      if (next.has(sceneId)) {
+        next.delete(sceneId);
+      } else {
+        next.add(sceneId);
+      }
       return next;
     });
   }, []);
@@ -460,8 +463,8 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
   }, [currentScene]);
 
   // Colors and styling
-  const bgColor = darkMode ? '#1a1a2e' : '#fff';
-  const textColor = darkMode ? '#e0e0e0' : '#333';
+  const bgColor = '#1a1a2e';
+  const textColor = '#e0e0e0';
   const accentColor = '#a78bfa';
   const intColor = '#60a5fa';
   const extColor = '#34d399';

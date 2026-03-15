@@ -223,18 +223,18 @@ function DashboardPanelInner({
   }, [candidates]);
 
   const statCards = [
-    { title: 'Roller totalt', value: stats.totalRoles, color: '#f48fb1', icon: RolesIcon, tabIndex: 1 },
-    { title: 'Åpne roller', value: stats.openRoles, color: '#10b981', icon: RolesIcon, tabIndex: 1 },
-    { title: 'Kandidater', value: stats.totalCandidates, color: '#10b981', icon: CandidatesIcon, tabIndex: 2 },
-    { title: 'Kommende avtaler', value: stats.upcomingSchedules, color: '#ffb800', icon: AuditionsIcon, tabIndex: 8 },
+    { title: 'Roller totalt', value: stats.totalRoles, color: '#f48fb1', icon: RolesIcon, tabIndex: 2 },
+    { title: 'Åpne roller', value: stats.openRoles, color: '#10b981', icon: RolesIcon, tabIndex: 2 },
+    { title: 'Kandidater', value: stats.totalCandidates, color: '#10b981', icon: CandidatesIcon, tabIndex: 3 },
+    { title: 'Kommende avtaler', value: stats.upcomingSchedules, color: '#ffb800', icon: AuditionsIcon, tabIndex: 4 },
   ];
 
   const _quickLinks = [
-    { title: 'Team', description: 'Administrer crew', color: '#00d4ff', icon: TeamIcon, tabIndex: 3 },
-    { title: 'Steder', description: 'Lokasjoner', color: '#4caf50', icon: LocationIcon, tabIndex: 4 },
-    { title: 'Utstyr', description: 'Rekvisitter', color: '#9333ea', icon: PropsIcon, tabIndex: 5 },
-    { title: 'Kamera', description: 'Shot lists', color: '#e91e63', icon: ShotListIcon, tabIndex: 6 },
-    { title: 'Kalender', description: 'Produksjonsplan', color: '#9c27b0', icon: CalendarIcon, tabIndex: 7 },
+    { title: 'Team', description: 'Administrer crew', color: '#00d4ff', icon: TeamIcon, tabIndex: 7 },
+    { title: 'Lokasjoner', description: 'Lokasjoner', color: '#4caf50', icon: LocationIcon, tabIndex: 5 },
+    { title: 'Utstyr', description: 'Rekvisitter', color: '#9333ea', icon: PropsIcon, tabIndex: 8 },
+    { title: 'Kamera', description: 'Shot lists', color: '#e91e63', icon: ShotListIcon, tabIndex: 9 },
+    { title: 'Kalender', description: 'Produksjonsplan', color: '#9c27b0', icon: CalendarIcon, tabIndex: 6 },
   ];
 
   return (

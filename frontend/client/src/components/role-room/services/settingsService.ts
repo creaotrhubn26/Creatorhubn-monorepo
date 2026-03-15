@@ -30,6 +30,11 @@ const writeCache = (userId: string, namespace: string, data: unknown, projectId?
   settingsCache.set(key, data);
 };
 
+const deleteCache = (userId: string, namespace: string, projectId?: string) => {
+  const key = cacheKey(userId, namespace, projectId);
+  settingsCache.delete(key);
+};
+
 export const settingsService = {
   async getSetting<T>(namespace: string, options?: { userId?: string; projectId?: string }): Promise<T | null> {
     const userId = options?.userId || getCurrentUserId();
@@ -87,6 +92,7 @@ export const settingsService = {
   async deleteSetting(namespace: string, options?: { userId?: string; projectId?: string }): Promise<boolean> {
     const userId = options?.userId || getCurrentUserId();
     const projectId = options?.projectId;
+    deleteCache(userId, namespace, projectId);
     try {
       const params = new URLSearchParams({ user_id: userId, namespace });
       if (projectId) params.set('project_id', projectId);

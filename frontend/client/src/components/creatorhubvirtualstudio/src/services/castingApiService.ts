@@ -94,6 +94,46 @@ export interface CastingSchedule {
   updated_at?: string;
 }
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+
+const readFirstNonEmptyString = (...values: unknown[]): string | undefined => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+};
+
+const normalizeCrewMember = (crew: CastingCrew): CastingCrew => {
+  const source = asRecord(crew) ?? {};
+  const nested = asRecord(source.crew_data) ?? asRecord(source.crewData);
+  const role = readFirstNonEmptyString(
+    source.role,
+    source.crewRole,
+    source.crew_role,
+    source.position,
+    source.title,
+    source.jobTitle,
+    source.job_title,
+    nested?.role,
+    nested?.crewRole,
+    nested?.position,
+    nested?.title,
+    source.department,
+  ) || 'Crew-medlem';
+
+  if (crew.role === role) {
+    return crew;
+  }
+
+  return {
+    ...crew,
+    role,
+  };
+};
+
 export const favoritesApi = {
   get: async (projectId: string, favoriteType: string): Promise<string[]> => {
     try {
@@ -210,7 +250,7 @@ export const rolesApi = {
 export const crewApi = {
   getAll: async (projectId: string): Promise<CastingCrew[]> => {
     const result = await apiRequest<{ crew: CastingCrew[] }>(`/projects/${projectId}/crew`);
-    return result.crew;
+    return Array.isArray(result.crew) ? result.crew.map(normalizeCrewMember) : [];
   },
   
   save: async (crew: Partial<CastingCrew>): Promise<CastingCrew> => {
@@ -218,7 +258,7 @@ export const crewApi = {
       method: 'POST',
       body: JSON.stringify(crew),
     });
-    return result.crew;
+    return normalizeCrewMember(result.crew);
   },
   
   delete: async (crewId: string): Promise<boolean> => {

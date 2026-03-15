@@ -1,7 +1,7 @@
 import { useTheming } from '../../utils/theming-helper';
 import QuickMessageTemplates from './QuickMessageTemplates';
 import * as React from 'react';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { apiRequest } from '../../lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -22,8 +22,6 @@ import {
   Badge,
   Chip,
   Paper,
-  Tabs,
-  Tab,
   Divider,
   Button,
   Menu,
@@ -31,9 +29,9 @@ import {
   Tooltip,
   Switch,
   FormControlLabel,
-  Portal,
-  Popover,
-  ListItemIcon,
+  LinearProgress,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import {
   Close,
@@ -52,11 +50,6 @@ import {
   Email,
   Chat,
   Google,
-  Add,
-  AlternateEmail,
-  Settings,
-  PersonAdd,
-  Sync,
   AdminPanelSettings,
   Notifications,
   NotificationsActive,
@@ -88,8 +81,8 @@ import {
   Download,
   Translate,
   History,
+  RequestQuote,
 } from '@mui/icons-material';
-import { LinearProgress } from '@mui/material';
 	// Import dynamic profession system
 	import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 	import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
@@ -100,6 +93,11 @@ import { LinearProgress } from '@mui/material';
 	import { useCommunicationStatus } from '../../contexts/CommunicationStatusContext';
 	import { usePushNotifications } from '../../hooks/usePushNotifications';
 	import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import FullscreenCommunicationTabs from './fullscreen/FullscreenCommunicationTabs';
+import GoogleChatActionsPopover from './fullscreen/GoogleChatActionsPopover';
+import QuoteCreationModal from './QuoteCreationModal';
+import ChatWidgetErrorBoundary from './ChatWidgetErrorBoundary';
+import { logChatWidgetEvent } from './chat-widget-logger';
 
 interface FullscreenChatWidgetProps {
   open: boolean;
@@ -151,14 +149,21 @@ interface GoogleProjectSpace {
 }
 
 interface AdminUserListItem {
+  id?: string;
   status?: 'online' | 'away' | 'offline';
   name: string;
   firstName?: string;
   lastName?: string;
+  profession?: string;
   isVip?: boolean;
   isPremium?: boolean;
   email?: string;
   messages?: number;
+}
+
+interface AdminUsersResponse {
+  users?: AdminUserListItem[];
+  data?: AdminUserListItem[];
 }
 
 interface LeadListItem {
@@ -174,6 +179,111 @@ interface SaleListItem {
   value: string;
 }
 
+interface CurrentLead {
+  id?: string;
+  status?: string;
+  value?: number | string;
+}
+
+interface GoogleChatSpaceItem extends ChatContact {
+  isGoogleSpace?: boolean;
+  spaceName?: string;
+  projectData?: {
+    projectName: string;
+    clientName: string;
+    projectType: string;
+    milestones?: unknown;
+    memberCount?: number;
+  };
+}
+
+interface EvendiConversation {
+  id: string;
+  couple_name?: string;
+  last_message?: string;
+  last_message_sender?: 'vendor' | 'couple';
+  vendor_unread_count?: number;
+}
+
+interface EvendiMessage {
+  id: string;
+  body: string;
+  created_at: string;
+  sender_type: 'vendor' | 'couple';
+}
+
+interface UserWithProfession {
+  profession?: string;
+  email?: string;
+  id?: string;
+  sub?: string;
+}
+
+interface DisplayProfessionConfig {
+  color?: string;
+  displayName?: string;
+  name?: string;
+}
+
+type BroadcastAudienceKey = 'all' | 'photographers' | 'videographers' | 'musicProducers' | 'premium';
+
+interface BroadcastAudienceOption {
+  key: BroadcastAudienceKey;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  recipientCount: number;
+  accentColor: string;
+}
+
+interface BroadcastDispatchPayload {
+  audience: BroadcastAudienceKey;
+  audienceLabel: string;
+  recipientCount: number;
+  message: string;
+  scheduledFor?: string;
+  scheduledDispatch?: boolean;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const normalizeQuoteResponsePayload = (payload: Record<string, unknown>): Record<string, unknown> => {
+  if (isRecord(payload.data)) {
+    return payload.data;
+  }
+  if (isRecord(payload.quote)) {
+    return payload.quote;
+  }
+  return payload;
+};
+
+const getQuoteString = (quote: Record<string, unknown>, keys: string[]): string => {
+  for (const key of keys) {
+    const value = quote[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return '';
+};
+
+const getQuoteNumber = (quote: Record<string, unknown>, keys: string[]): number | undefined => {
+  for (const key of keys) {
+    const value = quote[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value.replace(',', '.'));
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+};
+
 export default function FullscreenChatWidget({ 
   open, 
   onClose, 
@@ -184,43 +294,68 @@ export default function FullscreenChatWidget({
 }: FullscreenChatWidgetProps) {
   // Get user and profession context with dynamic system
 	  const { user } = useAuth();
-	  const { auth } = useEnhancedMasterIntegration();
+	  const { auth, communication } = useEnhancedMasterIntegration();
 	  
   const { status: communicationStatus, testGoogleChat } = useCommunicationStatus();
   const { getCurrentUserProfession, professionConfigs, isLoading: professionsLoading } = useDynamicProfessions();
-  const userProfession = profession || (user as any)?.profession || getCurrentUserProfession();
-  const professionConfig = professionConfigs?.[userProfession];
+  const { profession: adapterProfession } = useProfessionAdapter();
+  const { professionConfigs: dynamicProfessionConfigs, isLoading: professionConfigsLoading } = useProfessionConfigs();
+  const typedUser = user as UserWithProfession | null;
+  const userProfession = profession || adapterProfession || typedUser?.profession || getCurrentUserProfession();
+  const professionConfig = (professionConfigs?.[userProfession] || dynamicProfessionConfigs?.[userProfession]) as DisplayProfessionConfig | undefined;
+  const professionIcon = getProfessionIcon(userProfession);
+  const isProfessionLoading = professionsLoading || professionConfigsLoading;
   
   // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(userProfession);
   const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null);
   const [messageInput, setMessageInput] = useState('');
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isPageVisible, setIsPageVisible] = useState(() => typeof document === 'undefined' || document.visibilityState === 'visible');
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [activeTab, setActiveTab] = useState(initialChatType === 'support' ? 2 : 0); // Default to support tab if support ticket
+  const [statusToast, setStatusToast] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
+    open: false,
+    message: '',
+    severity: 'info',
+  });
 
   // Evendi Chat Bridge State
-  const [evendiConvs, setEvendiConvs] = useState<any[]>([]);
+  const [evendiConvs, setEvendiConvs] = useState<EvendiConversation[]>([]);
   const [selEvendiConv, setSelEvendiConv] = useState<string | null>(null);
-  const [evendiMsgs, setEvendiMsgs] = useState<any[]>([]);
+  const [evendiMsgs, setEvendiMsgs] = useState<EvendiMessage[]>([]);
   const [evendiInput, setEvendiInput] = useState('');
   const [evendiBusy, setEvendiBusy] = useState(false);
 
   const fetchEvendiConvsFull = async () => {
     try {
       setEvendiBusy(true);
-      const data = await apiRequest('/api/evendi/conversations');
-      setEvendiConvs(data.conversations || []);
-    } catch { setEvendiConvs([]); }
+      const data = await apiRequest('/api/evendi/conversations') as { conversations?: EvendiConversation[] };
+      setEvendiConvs(Array.isArray(data.conversations) ? data.conversations : []);
+    } catch (error) {
+      logChatWidgetEvent('FullscreenChatWidget', 'error', 'Kunne ikke hente Evendi-samtaler', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      showToast('Kunne ikke hente Evendi-samtaler', 'error');
+      setEvendiConvs([]);
+    }
     finally { setEvendiBusy(false); }
   };
   const fetchEvendiMsgsFull = async (cid: string) => {
     try {
       setEvendiBusy(true);
-      const data = await apiRequest(`/api/evendi/conversations/${cid}/messages`);
-      setEvendiMsgs(data.messages || []);
+      const data = await apiRequest(`/api/evendi/conversations/${cid}/messages`) as { messages?: EvendiMessage[] };
+      setEvendiMsgs(Array.isArray(data.messages) ? data.messages : []);
       setSelEvendiConv(cid);
-    } catch {}
+    } catch (error) {
+      logChatWidgetEvent('FullscreenChatWidget', 'error', 'Kunne ikke hente Evendi-meldinger', {
+        conversationId: cid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      showToast('Kunne ikke hente Evendi-meldinger', 'error');
+      setEvendiMsgs([]);
+    }
     finally { setEvendiBusy(false); }
   };
   const sendEvendiMsgFull = async () => {
@@ -233,14 +368,21 @@ export default function FullscreenChatWidget({
       setEvendiInput('');
       fetchEvendiMsgsFull(selEvendiConv);
       fetchEvendiConvsFull();
-    } catch {}
+      showToast('Evendi-melding sendt', 'success');
+    } catch (error) {
+      logChatWidgetEvent('FullscreenChatWidget', 'error', 'Kunne ikke sende Evendi-melding', {
+        conversationId: selEvendiConv,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      showToast('Kunne ikke sende Evendi-melding', 'error');
+    }
   };
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   
 	  // Real data API queries for admin
-	  const { data: adminUsers } = useQuery({
+	  const { data: adminUsers } = useQuery<AdminUsersResponse>({
 	    queryKey: ['/api/admin/communication/users'],
 	    queryFn: async () => {
 	      return apiRequest('/api/admin/communication/users');
@@ -285,6 +427,10 @@ export default function FullscreenChatWidget({
   const [showAdminQuickActions, setShowAdminQuickActions] = useState(false);
   const [adminTemplatesOpen, setAdminTemplatesOpen] = useState(false);
   const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
+  const [broadcastAudience, setBroadcastAudience] = useState<BroadcastAudienceKey>('all');
+  const [broadcastContent, setBroadcastContent] = useState('');
+  const [broadcastScheduleEnabled, setBroadcastScheduleEnabled] = useState(false);
+  const [broadcastScheduledAt, setBroadcastScheduledAt] = useState('');
   const [chatStatsOpen, setChatStatsOpen] = useState(false);
   const [userModerationOpen, setUserModerationOpen] = useState(false);
   const [automationPanelOpen, setAutomationPanelOpen] = useState(false);
@@ -295,10 +441,42 @@ export default function FullscreenChatWidget({
   const [securityPanelOpen, setSecurityPanelOpen] = useState(false);
   const [internationalizationPanelOpen, setInternationalizationPanelOpen] = useState(false);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+  const broadcastTimerIdsRef = useRef<number[]>([]);
+  const quoteClientData = useMemo(() => ({
+    id: selectedContact?.id || 'unknown-client',
+    name: selectedContact?.name || 'Ukjent klient',
+    email: selectedContact?.email || '',
+    profession: userProfession,
+    projectType: selectedContact?.type || 'chat',
+  }), [selectedContact, userProfession]);
   
   // Push notifications
   const currentUserId = user?.id || user?.sub;
   const { pushEnabled, isSupported } = usePushNotifications(currentUserId);
+
+  const showToast = useCallback(
+    (message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+      setStatusToast({ open: true, message, severity });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      broadcastTimerIdsRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      broadcastTimerIdsRef.current = [];
+    };
+  }, []);
 
   // Admin message templates
   const adminMessageTemplates = [
@@ -424,15 +602,74 @@ export default function FullscreenChatWidget({
       icon: <Language sx={{ color: '#673AB7'}} />,
       description: 'Oversettelse og språkstøtte',
       action: () => setInternationalizationPanelOpen(true)
-}
+    },
+    {
+      label: 'Sentiment Analyse',
+      icon: <SentimentIcon sx={{ color: '#8b5cf6'}} />,
+      description: 'Analyser tone og kundesentiment',
+      action: () => setBiPanelOpen(true)
+    },
+    {
+      label: 'SLA Timer',
+      icon: <Timer sx={{ color: '#0ea5e9'}} />,
+      description: 'Sjekk responstid og SLA',
+      action: () => setWorkflowPanelOpen(true)
+    },
+    {
+      label: 'Hjelpesenter',
+      icon: <HelpOutline sx={{ color: '#2563eb'}} />,
+      description: 'Kunnskapsbase og supportflyt',
+      action: () => setUserModerationOpen(true)
+    },
+    {
+      label: 'Interne Notater',
+      icon: <Note sx={{ color: '#14b8a6'}} />,
+      description: 'Legg inn adminnotater',
+      action: () => setAdminTemplatesOpen(true)
+    },
+    {
+      label: 'Oppgavekort',
+      icon: <Assignment sx={{ color: '#fb923c'}} />,
+      description: 'Opprett oppgaver fra chat',
+      action: () => setWorkflowPanelOpen(true)
+    },
+    {
+      label: 'Backup Center',
+      icon: <Backup sx={{ color: '#f43f5e'}} />,
+      description: 'Administrer backup av kommunikasjon',
+      action: () => setSecurityPanelOpen(true)
+    },
+    {
+      label: 'Eksporter Data',
+      icon: <Download sx={{ color: '#0891b2'}} />,
+      description: 'Last ned rapporter og logger',
+      action: () => setChatStatsOpen(true)
+    },
+    {
+      label: 'Maskinoversettelse',
+      icon: <Translate sx={{ color: '#7c3aed'}} />,
+      description: 'Automatisk språkhåndtering',
+      action: () => setInternationalizationPanelOpen(true)
+    }
   ];
   
   // Google Chat with sales integration and CRM features
   const [salesMode, setSalesMode] = useState(false);
-  const [currentLead, setCurrentLead] = useState<any>(null);
+  const [currentLead, setCurrentLead] = useState<CurrentLead | null>(null);
   const [googleChatMenuAnchor, setGoogleChatMenuAnchor] = useState<null | HTMLElement>(null);
-  const [googleChatSpaces, setGoogleChatSpaces] = useState<any[]>([]);
+  const [googleChatSpaces, setGoogleChatSpaces] = useState<GoogleChatSpaceItem[]>([]);
   const [isConnectedToGoogle, setIsConnectedToGoogle] = useState(false); // Real connection status
+
+  useEffect(() => {
+    setIsConnectedToGoogle(communicationStatus.googleChatStatus === 'connected');
+  }, [communicationStatus.googleChatStatus]);
+
+  useEffect(() => {
+    if (supportTicketId) {
+      setActiveTab(0);
+      setSearchQuery((prev) => prev || supportTicketId);
+    }
+  }, [supportTicketId]);
 
   // Initialize Google Chat spaces when connected
   useEffect(() => {
@@ -442,7 +679,7 @@ export default function FullscreenChatWidget({
         .then(response => response.json())
         .then(data => {
           if (data.success) {
-            const formattedSpaces = (Array.isArray(data.spaces) ? data.spaces : []).map((space: GoogleProjectSpace) => ({
+            const formattedSpaces: GoogleChatSpaceItem[] = (Array.isArray(data.spaces) ? data.spaces : []).map((space: GoogleProjectSpace) => ({
               id: space.spaced,
               name: space.spaceName,
               spaceName: space.spaceName,
@@ -466,14 +703,17 @@ export default function FullscreenChatWidget({
       }
     })
         .catch((error) => {
-          console.error('❌ Failed to fetch Google Chat spaces: ', error);
+          logChatWidgetEvent('FullscreenChatWidget', 'error', 'Failed to fetch Google Chat spaces', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          showToast('Kunne ikke hente Google Chat spaces', 'error');
           setGoogleChatSpaces([]);
     });
 }
-}, [isConnectedToGoogle, googleChatSpaces.length]);
+}, [isConnectedToGoogle, googleChatSpaces.length, showToast]);
   
   // CRM suggestion system states
-  const [needsHelpMessage, setNeedsHelpMessage] = useState<any>(null);
+  const [needsHelpMessage, setNeedsHelpMessage] = useState<ChatMessage | null>(null);
   const [showHelpIndicator, setShowHelpIndicator] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -482,11 +722,10 @@ export default function FullscreenChatWidget({
 	    try {
 	      // Generate project ID based on user and timestamp
 	      const projectId = `${userEmail?.split('@')[0]}_${Date.now()}`;
-	      
-	      console.log('🚀 Creating project space for user: ', {
+	      logChatWidgetEvent('FullscreenChatWidget', 'info', 'Creating Google Chat project space', {
 	        projectId,
 	        userId: userEmail,
-	        profession: profession,
+	        profession: userProfession,
 	      });
 
 	      const authHeaders = await auth.getAuthHeader();
@@ -499,60 +738,70 @@ export default function FullscreenChatWidget({
 	        body: JSON.stringify({
 	          projectId,
 	          userId: userEmail || user?.id || user?.email || 'unknown-user',
-	          profession: userProfession,
-	        }),
-	      });
-	      
-	      console.log('📡 API Response Status:', response.status, response.statusText);
-	      console.log('📡 Response headers:', response.headers);
+		          profession: userProfession,
+		        }),
+		      });
 	      
 	      if (!response.ok) {
 	        const errorText = await response.text();
-	        console.error('❌ API Error Response:', errorText);
+	        logChatWidgetEvent('FullscreenChatWidget', 'error', 'Google Chat project space API failed', {
+	          status: response.status,
+	          errorText,
+	        });
 	        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 	      }
 	      
 	      const responseText = await response.text();
-	      console.log('📡 Raw response:', responseText.substring(0, 200) + '...');
 	      
 	      let data;
 	      try {
 	        data = JSON.parse(responseText);
 	      } catch (parseError) {
-	        console.error('❌ JSON Parse Error:', parseError);
-	        console.error('❌ Response was not JSON. Got:', responseText.substring(0, 500));
+	        logChatWidgetEvent('FullscreenChatWidget', 'error', 'Failed to parse Google Chat project space response', {
+	          responseSnippet: responseText.substring(0, 500),
+	          error: parseError instanceof Error ? parseError.message : String(parseError),
+	        });
 	        throw new Error('Server returned HTML instead of JSON - possible routing issue');
 	      }
 	      
-	      console.log('🚀 Project space creation result:', data);
-	      
 	      // Refresh project spaces to show the new space
 	      if (data.success) {
-	        console.log('✅ Project space created successfully! Refreshing spaces...');
+	        logChatWidgetEvent('FullscreenChatWidget', 'info', 'Project space created successfully', {
+	          projectId,
+	        });
+	        showToast('Google Chat project space opprettet', 'success');
 	        setGoogleChatSpaces([]);
 	        // Refresh spaces list
 	        queryClient.invalidateQueries({ queryKey: ['/api/google-chat/project-spaces'] });
 	      } else {
-	        console.error('❌ Project space creation failed:', data);
+	        logChatWidgetEvent('FullscreenChatWidget', 'warn', 'Project space creation response returned unsuccessful status', {
+	          response: data,
+	        });
+	        showToast('Project space ble ikke opprettet', 'warning');
 	      }
 	    } catch (error) {
-	      console.error('💥 Error creating project space:', error);
-	      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+	      logChatWidgetEvent('FullscreenChatWidget', 'error', 'Error creating project space', {
+	        error: error instanceof Error ? error.message : String(error),
+	      });
+	      showToast('Kunne ikke opprette project space', 'error');
 	    }
 	  };
 
   // Get profession color dynamically
   const getProfessionColor = () => {
-    return (professionConfig as any)?.color || '#ff8c00';
+    return professionConfig?.color || '#ff8c00';
 };
 
-  // Fetch conversations - only real data from database
-  const effectiveEmail = userEmail || user?.email || 'admin@local.dev';
-  const { data: conversationsResponse } = useQuery({
-    queryKey: ['/api/communication/conversations', effectiveEmail],
-    queryFn: () => apiRequest(`/api/communication/conversations?userEmail=${effectiveEmail}`),
-    enabled: open,
-    refetchInterval: 30000 });
+	  // Fetch conversations - only real data from database
+	  const effectiveEmail = userEmail || user?.email || 'admin@local.dev';
+  const conversationRefetchInterval = isPageVisible ? 15000 : 60000;
+  const messageRefetchInterval = isPageVisible ? 2500 : 8000;
+	  const { data: conversationsResponse } = useQuery({
+	    queryKey: ['/api/communication/conversations', effectiveEmail],
+	    queryFn: () => apiRequest(`/api/communication/conversations?userEmail=${effectiveEmail}`),
+	    enabled: open,
+	    refetchInterval: open ? conversationRefetchInterval : false,
+	  });
 
   const contacts: ChatContact[] = (conversationsResponse?.conversations || []).map((conv: any) => ({
     id: conv.id,
@@ -567,12 +816,12 @@ export default function FullscreenChatWidget({
 }));
 
 	  // Fetch sales leads for CRM integration
-	  const { data: salesLeads } = useQuery({
-	    queryKey: ['/api/sales/leads'],
-	    queryFn: () => apiRequest('/api/sales/leads'),
-	    enabled: open && salesMode,
-	    refetchInterval: 60000,
-	  });
+		  const { data: salesLeads } = useQuery({
+		    queryKey: ['/api/sales/leads'],
+		    queryFn: () => apiRequest('/api/sales/leads'),
+		    enabled: open && salesMode,
+		    refetchInterval: open && salesMode ? (isPageVisible ? 30000 : 90000) : false,
+		  });
 	
 	  // Smart response suggestions based on message analysis
 	  const analyzeMessageMutation = useMutation({
@@ -586,7 +835,9 @@ export default function FullscreenChatWidget({
 	      });
 	    },
 	    onSuccess: (data) => {
-	      console.log('Message analysis result:', data);
+	      logChatWidgetEvent('FullscreenChatWidget', 'debug', 'Message analysis completed', {
+	        hasSuggestions: Array.isArray(data?.suggestions) ? data.suggestions.length : 0,
+	      });
 	      setResponseSuggestions(data);
 	    },
 	  });
@@ -598,11 +849,12 @@ export default function FullscreenChatWidget({
   const [responseSuggestions, setResponseSuggestions] = useState<any>(null);
 
 	  // Fetch messages for selected contact
-	  const { data: messagesResponse } = useQuery({
-	    queryKey: ['/api/communication/messages', selectedContact?.id],
-	    queryFn: () => apiRequest(`/api/communication/messages/${selectedContact?.id}`),
-	    enabled: !!selectedContact,
-	  });
+		  const { data: messagesResponse } = useQuery({
+		    queryKey: ['/api/communication/messages', selectedContact?.id],
+		    queryFn: () => apiRequest(`/api/communication/messages/${selectedContact?.id}`),
+		    enabled: !!selectedContact,
+        refetchInterval: selectedContact ? messageRefetchInterval : false,
+		  });
 
   const messages: ChatMessage[] = (messagesResponse?.messages || []).map((msg: any) => ({
     id: msg.id,
@@ -658,7 +910,7 @@ export default function FullscreenChatWidget({
       analyzeMessageMutation.mutate({
         customerMessage: latestCustomerMessage,
         conversationHistory: messages.slice(-1), // Last 10 messages for full context
-        leadId: currentLead?.d,
+        leadId: currentLead?.id,
         customerProfile: {
           name: selectedContact.name,
           email: selectedContact.email,
@@ -709,6 +961,65 @@ export default function FullscreenChatWidget({
 	    },
 	  });
 
+  const sendBroadcastMutation = useMutation({
+    mutationFn: async (payload: BroadcastDispatchPayload) => {
+      await apiRequest('/api/chat/messages', {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Email': userEmail || 'system',
+        },
+        method: 'POST',
+        body: JSON.stringify({
+          conversationId: `broadcast-${payload.audience}`,
+          senderId: userEmail || 'system',
+          content: payload.message,
+          messageType: 'broadcast',
+          metadata: {
+            audience: payload.audience,
+            audienceLabel: payload.audienceLabel,
+            recipientCount: payload.recipientCount,
+            scheduledFor: payload.scheduledFor || null,
+            scheduledDispatch: Boolean(payload.scheduledDispatch),
+            initiatedBy: userEmail || 'system',
+            profession: userProfession,
+          },
+        }),
+      });
+
+      communication.sendBroadcast(
+        'chat:admin:broadcast',
+        {
+          audience: payload.audience,
+          audienceLabel: payload.audienceLabel,
+          recipientCount: payload.recipientCount,
+          message: payload.message,
+          scheduledFor: payload.scheduledFor || null,
+          initiatedBy: userEmail || 'system',
+          profession: userProfession,
+        },
+        'high',
+      );
+
+      return payload;
+    },
+    onSuccess: (payload) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/communication/conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/communication/messages'] });
+
+      if (payload.scheduledDispatch) {
+        showToast(`Planlagt broadcast sendt til ${payload.recipientCount} mottakere`, 'success');
+      } else {
+        showToast(`Broadcast sendt til ${payload.recipientCount} mottakere`, 'success');
+      }
+    },
+    onError: (error) => {
+      logChatWidgetEvent('FullscreenChatWidget', 'error', 'Kunne ikke sende broadcast-melding', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      showToast('Kunne ikke sende broadcast-melding', 'error');
+    },
+  });
+
   const handleSendMessage = () => {
     if (!messageInput.trim() || !selectedContact) return;
 
@@ -718,16 +1029,75 @@ export default function FullscreenChatWidget({
         content: messageInput,
         conversationId: selectedContact.id
 });
-} else {
+    } else if (activeTab === 1) {
       // Send email
       sendEmailMutation.mutate({
         to: selectedContact.email,
-        subject: `Melding fra ${(professionConfig as any)?.displayName || profession}`,
+        subject: `Melding fra ${professionConfig?.displayName || professionConfig?.name || profession}`,
         content: messageInput,
         fromEmail: userEmail
 });
-}
+    } else {
+      return;
+    }
 };
+
+  const handleOpenQuoteModal = () => {
+    if (!selectedContact) {
+      showToast('Velg en samtale først for å sende tilbud', 'info');
+      return;
+    }
+    setQuoteModalOpen(true);
+  };
+
+  const handleQuoteCreatedFromChat = async (quotePayload: Record<string, unknown>) => {
+    const normalizedQuote = normalizeQuoteResponsePayload(quotePayload);
+    const quoteId = getQuoteString(normalizedQuote, ['id', 'quoteId']);
+    const quoteNumber = getQuoteString(normalizedQuote, ['quoteNumber', 'number']) || (quoteId ? `Tilbud #${quoteId}` : 'Nytt tilbud');
+    const total = getQuoteNumber(normalizedQuote, ['totalPrice', 'totalAmount', 'basePrice']);
+    const formattedTotal = typeof total === 'number'
+      ? new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK' }).format(total)
+      : '';
+    const summary = formattedTotal
+      ? `📄 ${quoteNumber} opprettet (${formattedTotal}).`
+      : `📄 ${quoteNumber} opprettet.`;
+
+    try {
+      if (selectedContact) {
+        await apiRequest('/api/communication/messages', {
+          method: 'POST',
+          body: JSON.stringify({
+            conversationId: selectedContact.id,
+            content: summary,
+            messageType: 'text',
+          }),
+        });
+      }
+
+      communication.sendBroadcast(
+        'quote:created',
+        {
+          ...normalizedQuote,
+          source: 'fullscreen-chat-widget',
+          conversationId: selectedContact?.id || null,
+          timestamp: new Date().toISOString(),
+        },
+        'high',
+      );
+      communication.sendBroadcast('quote:available-for-contract', normalizedQuote, 'medium');
+
+      queryClient.invalidateQueries({ queryKey: ['/api/communication/messages'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/communication/conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/quotes'] });
+      showToast('Tilbud opprettet og sendt i chat', 'success');
+    } catch (error) {
+      logChatWidgetEvent('FullscreenChatWidget', 'error', 'Could not share quote in chat', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      showToast('Tilbud opprettet, men kunne ikke deles i chat', 'warning');
+    }
+  };
 
   const handleKeyPress = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -736,10 +1106,184 @@ export default function FullscreenChatWidget({
 }
 };
 
+  const openAcademyPath = (path: string) => {
+    window.location.assign(path);
+  };
+
+  const academyQuickLinks = [
+    {
+      id: 'academy-home',
+      title: 'Academy Hjem',
+      description: 'Åpne Academy-startsiden',
+      path: '/academy',
+      icon: <AutoAwesome sx={{ color: getProfessionColor() }} />,
+    },
+    {
+      id: 'academy-courses',
+      title: 'Kurs & Moduler',
+      description: 'Gå til kursoversikt og innhold',
+      path: '/academy/courses',
+      icon: <Assignment sx={{ color: getProfessionColor() }} />,
+    },
+    {
+      id: 'academy-dashboard',
+      title: 'Academy Dashboard',
+      description: 'Se elevaktivitet og status',
+      path: '/academy-dashboard',
+      icon: <TrendingUp sx={{ color: getProfessionColor() }} />,
+    },
+    {
+      id: 'academy-analytics',
+      title: 'Academy Analyse',
+      description: 'Åpne academy-analyser og innsikt',
+      path: '/academy/analytics',
+      icon: <Analytics sx={{ color: getProfessionColor() }} />,
+    },
+  ];
+
   const filteredContacts = contacts.filter(contact =>
     contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     contact.email.toLowerCase().includes(searchQuery.toLowerCase())
 );
+
+  const adminUserList: AdminUserListItem[] = Array.isArray(adminUsers?.users)
+    ? adminUsers.users
+    : Array.isArray(adminUsers?.data)
+      ? adminUsers.data
+      : [];
+
+  const totalKnownUsers = adminUserList.length > 0 ? adminUserList.length : contacts.length;
+  const estimateAudienceCount = (
+    matcher: (user: AdminUserListItem) => boolean,
+    fallbackRatio: number,
+  ): number => {
+    const explicitCount = adminUserList.filter(matcher).length;
+    if (explicitCount > 0) return explicitCount;
+    if (totalKnownUsers <= 0) return 0;
+    return Math.max(1, Math.round(totalKnownUsers * fallbackRatio));
+  };
+
+  const broadcastAudienceOptions: BroadcastAudienceOption[] = [
+    {
+      key: 'all',
+      title: '🌍 Alle Brukere',
+      description: 'Send til hele plattformen',
+      icon: <Groups />,
+      recipientCount: totalKnownUsers,
+      accentColor: '#ff6b60',
+    },
+    {
+      key: 'photographers',
+      title: '📸 Kun Fotografer',
+      description: 'Send kun til fotografer',
+      icon: <PersonOutline />,
+      recipientCount: estimateAudienceCount(
+        (entry) => (entry.profession || '').toLowerCase().includes('foto'),
+        0.43,
+      ),
+      accentColor: '#ff6b60',
+    },
+    {
+      key: 'videographers',
+      title: '🎥 Kun Videografer',
+      description: 'Send kun til videografer',
+      icon: <PersonOutline />,
+      recipientCount: estimateAudienceCount(
+        (entry) => (entry.profession || '').toLowerCase().includes('video'),
+        0.32,
+      ),
+      accentColor: '#ff6b60',
+    },
+    {
+      key: 'musicProducers',
+      title: '🎵 Kun Musikkprodusenter',
+      description: 'Send kun til musikkprodusenter',
+      icon: <PersonOutline />,
+      recipientCount: estimateAudienceCount(
+        (entry) => (entry.profession || '').toLowerCase().includes('musikk'),
+        0.15,
+      ),
+      accentColor: '#ff6b60',
+    },
+    {
+      key: 'premium',
+      title: '⭐ Kun Premium Brukere',
+      description: 'Send kun til premium-abonnenter',
+      icon: theming.getThemedIcon('star'),
+      recipientCount: estimateAudienceCount((entry) => Boolean(entry.isPremium), 0.1),
+      accentColor: '#FFD700',
+    },
+  ];
+
+  const selectedBroadcastAudience = broadcastAudienceOptions.find((option) => option.key === broadcastAudience)
+    ?? broadcastAudienceOptions[0];
+  const minimumBroadcastDateTime = new Date(Date.now() + 60_000).toISOString().slice(0, 16);
+
+  const resetBroadcastComposer = () => {
+    setBroadcastAudience('all');
+    setBroadcastContent('');
+    setBroadcastScheduleEnabled(false);
+    setBroadcastScheduledAt('');
+  };
+
+  const handleCloseBroadcastModal = () => {
+    setBroadcastModalOpen(false);
+    resetBroadcastComposer();
+  };
+
+  const queueScheduledBroadcast = (payload: BroadcastDispatchPayload, scheduledForIso: string) => {
+    const delay = Math.max(new Date(scheduledForIso).getTime() - Date.now(), 0);
+    const timeoutId = window.setTimeout(() => {
+      sendBroadcastMutation.mutate({
+        ...payload,
+        scheduledFor: scheduledForIso,
+        scheduledDispatch: true,
+      });
+      broadcastTimerIdsRef.current = broadcastTimerIdsRef.current.filter((id) => id !== timeoutId);
+    }, delay);
+
+    broadcastTimerIdsRef.current.push(timeoutId);
+  };
+
+  const handleSendBroadcast = () => {
+    const trimmedMessage = broadcastContent.trim();
+    if (!trimmedMessage) {
+      showToast('Skriv en broadcast-melding før sending', 'warning');
+      return;
+    }
+
+    const payload: BroadcastDispatchPayload = {
+      audience: selectedBroadcastAudience.key,
+      audienceLabel: selectedBroadcastAudience.title,
+      recipientCount: selectedBroadcastAudience.recipientCount,
+      message: trimmedMessage,
+    };
+
+    if (broadcastScheduleEnabled) {
+      if (!broadcastScheduledAt) {
+        showToast('Velg tidspunkt for planlagt utsending', 'warning');
+        return;
+      }
+
+      const scheduledDate = new Date(broadcastScheduledAt);
+      if (Number.isNaN(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) {
+        showToast('Velg et fremtidig tidspunkt for utsending', 'warning');
+        return;
+      }
+
+      const scheduledForIso = scheduledDate.toISOString();
+      queueScheduledBroadcast(payload, scheduledForIso);
+      showToast(`Broadcast planlagt for ${scheduledDate.toLocaleString('nb-NO')}`, 'info');
+      handleCloseBroadcastModal();
+      return;
+    }
+
+    sendBroadcastMutation.mutate(payload, {
+      onSuccess: () => {
+        handleCloseBroadcastModal();
+      },
+    });
+  };
 
   const formatTime = (timestamp: string) => {
     try {
@@ -756,8 +1300,18 @@ export default function FullscreenChatWidget({
     }
 };
 
+  const showConnectionPanel =
+    isConnectedToGoogle ||
+    communicationStatus.googleChatStatus !== 'not_configured' ||
+    Boolean(communicationStatus.googleChatResponse);
+  const monthlyBusinessRevenue = businessData?.monthlyRevenue ?? businessData?.revenue ?? salesData?.currentMonth ?? '0 NOK';
+  const neutralSurface = 'rgba(15, 23, 42, 0.05)';
+  const neutralText = '#1f2937';
+
   return (
-    <Dialog
+    <ChatWidgetErrorBoundary widgetName="FullscreenChatWidget">
+      <>
+        <Dialog
       open={open}
       onClose={onClose}
       maxWidth="lg"
@@ -789,7 +1343,10 @@ export default function FullscreenChatWidget({
               justifyContent: 'space-between'
       }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Google sx={{ fontSize: 28}} />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Google sx={{ fontSize: 28}} />
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>{professionIcon}</Box>
+                </Box>
                 <Typography variant="h6" sx={{  fontWeight: 600}}>
                   Google Chat Professional
                 </Typography>
@@ -797,12 +1354,19 @@ export default function FullscreenChatWidget({
                   label={isConnectedToGoogle ? "TILKOBLET" : "FRAKOBLET"}
                   size="small" 
                   sx={{ 
-                    bgcolor: isConnectedToGoogle ? '#4CAF50' : '#', 
+                    bgcolor: isConnectedToGoogle ? '#4CAF50' : '#ef4444', 
                     color: 'white',
                     fontSize: '0.75rem',
                     fontWeight: 'bold'
             }}
                 />
+                {isProfessionLoading && (
+                  <Chip
+                    size="small"
+                    label="Laster profesjon..."
+                    sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'white' }}
+                  />
+                )}
                 {/* Google Chat API Status Indicator */}
                 <Box
                   sx={{
@@ -816,7 +1380,7 @@ export default function FullscreenChatWidget({
                       width:  8,
                       height:  8,
                       borderRadius: '50%',
-                      backgroundColor: communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#',
+                      backgroundColor: communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#ef4444',
                       border: '1px solid white'
               }}
                     title={
@@ -853,14 +1417,9 @@ export default function FullscreenChatWidget({
               }}
                   onClick={(e) => {
                     const target = e.currentTarget;
-                    console.log('Google Chat menu button clicked! Current state:', Boolean(googleChatMenuAnchor));
                     if (googleChatMenuAnchor) {
-                      console.log('Closing menu');
                       setGoogleChatMenuAnchor(null);
                 } else {
-                      console.log('Opening menu');
-                      console.log('Setting anchor element immediately');
-                      console.log('Target element:', target.nodeName, target.getBoundingClientRect());
                       setGoogleChatMenuAnchor(target);
                 }
               }}
@@ -874,13 +1433,13 @@ export default function FullscreenChatWidget({
                 }
               }}
                 >
-                  {theming.getThemedIcon('moreVert')}
+                  <MoreVert />
                 </IconButton>
                 <IconButton 
                   onClick={onClose}
                   sx={{ color: 'white'}}
                 >
-                  {theming.getThemedIcon('close')}
+                  <Close />
                 </IconButton>
               </Box>
             </Box>
@@ -906,6 +1465,22 @@ export default function FullscreenChatWidget({
                   CRM Integration Active
                 </Typography>
               </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <TrendingUp sx={{ fontSize: 14 }} />
+                <Typography variant="caption">
+                  {typeof monthlyBusinessRevenue === 'number'
+                    ? `${monthlyBusinessRevenue.toLocaleString('no-NO')} NOK`
+                    : monthlyBusinessRevenue}
+                </Typography>
+              </Box>
+              {communicationStatus.googleChatLastCheck && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Schedule sx={{ fontSize: 14 }} />
+                  <Typography variant="caption">
+                    {communicationStatus.googleChatLastCheck.toLocaleTimeString('no-NO')}
+                  </Typography>
+                </Box>
+              )}
             </Box>
           </Box>
 
@@ -928,7 +1503,7 @@ export default function FullscreenChatWidget({
           </Box>
 
           {/* Connection Status - Always show as connected for demo */}
-          {true && (
+          {showConnectionPanel && (
             <>
               {/* Search Google Chat Spaces */}
               <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider'}}>
@@ -941,9 +1516,16 @@ export default function FullscreenChatWidget({
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
-                        {theming.getThemedIcon('')}
+                        <SearchIcon color="action" />
                       </InputAdornment>
-                    )
+                    ),
+                    endAdornment: searchQuery ? (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={() => setSearchQuery('')}>
+                          <Search fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : undefined,
               }}
                 />
                 
@@ -953,7 +1535,7 @@ export default function FullscreenChatWidget({
                   p: 1,
                   borderRadius: 1,
                   bgcolor: communicationStatus.googleChatStatus === 'connected' ? '#e8f5e8' : '#ffebee',
-                  border: `1px solid ${communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#'}20`
+                  border: `1px solid ${communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#f44336'}20`
             }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -995,16 +1577,22 @@ export default function FullscreenChatWidget({
                 ).map((contact, index) => (
                   <ListItem
                     key={contact.id}
-                onClick={() => setSelectedContact(contact)}
+                onClick={() => {
+                  setSelectedContact(contact);
+                  if (salesMode && (contact.score || contact.value)) {
+                    setCurrentLead(contact);
+                  }
+                }}
                 sx={{
-	                  borderBottom: 1,
-	                  borderColor: 'divider',
-	                  py: 2,
-	                  px: 2,
-	                  position: 'relative',
-	                  transition: 'all 0.2s ease','&:hover': {
-	                    bgcolor: `${getProfessionColor()}08`,
-	                    transform: 'translateX(4px)',
+		                  borderBottom: 1,
+		                  borderColor: 'divider',
+		                  py: 2,
+		                  px: 2,
+		                  position: 'relative',
+                      animationDelay: `${Math.min(index * 24, 240)}ms`,
+		                  transition: 'all 0.2s ease','&:hover': {
+		                    bgcolor: `${getProfessionColor()}08`,
+		                    transform: 'translateX(4px)',
 	                  }, '&.Mui-selected': {
 	                    bgcolor: `${getProfessionColor()}15`,
 	                    borderLeft: `4px solid ${getProfessionColor()}`, '&:before': {
@@ -1158,40 +1746,56 @@ export default function FullscreenChatWidget({
                 justifyContent: 'space-between'
         }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap:  2}}>
-                  <Avatar src={selectedContact.avatar}>
-                    {selectedContact.name.charAt(0)}
-                  </Avatar>
-                  <Box>
-                    <Typography variant="h6" sx={{ ...{ color: theming.colors.primary }}}>{selectedContact.name}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {selectedContact.email}
-                    </Typography>
-                    {salesMode && currentLead && (
-                      <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5}}>
-                        <Chip 
-                          label={currentLead.status?.toUpperCase()}
-                          size="small"
-                          sx={{ 
-                            bgcolor: currentLead.status === 'hot' ? '#ff5722' : 
-                                    currentLead.status === 'warm' ? '#ff9800' : 
-                                    currentLead.status === 'qualified' ? '#4caf50' : '#9e9e90',
-                            color: 'white',
-                            fontSize: '0.7rem'
-                    }}
-                        />
-                        <Chip 
-                          label={`${currentLead.value || 0} NOK`}
-                          size="small"
-                          variant="outlined"
-                          sx={{ 
-                            borderColor: getProfessionColor(),
-                            color: getProfessionColor(),
-                            fontSize: '0.7rem'
-                    }}
-                        />
+                  {activeTab === 3 ? (
+                    <>
+                      <Avatar sx={{ bgcolor: 'rgba(245, 158, 11, 0.16)' }}>
+                        <img src="/academy-favicon.svg" alt="Academy" style={{ width: 20, height: 20 }} />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="h6" sx={{ ...{ color: theming.colors.primary }}}>CreatorHub Academy</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Kurs, moduler og læringsdashbord
+                        </Typography>
                       </Box>
-                    )}
-                  </Box>
+                    </>
+                  ) : (
+                    <>
+                      <Avatar src={selectedContact.avatar}>
+                        {selectedContact.name.charAt(0)}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="h6" sx={{ ...{ color: theming.colors.primary }}}>{selectedContact.name}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {selectedContact.email}
+                        </Typography>
+                        {salesMode && currentLead && (
+                          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5}}>
+                            <Chip 
+                              label={currentLead.status?.toUpperCase()}
+                              size="small"
+                              sx={{ 
+                                bgcolor: currentLead.status === 'hot' ? '#ff5722' : 
+                                        currentLead.status === 'warm' ? '#ff9800' : 
+                                        currentLead.status === 'qualified' ? '#4caf50' : '#9e9e90',
+                                color: 'white',
+                                fontSize: '0.7rem'
+                        }}
+                            />
+                            <Chip 
+                              label={`${currentLead.value || 0} NOK`}
+                              size="small"
+                              variant="outlined"
+                              sx={{ 
+                                borderColor: getProfessionColor(),
+                                color: getProfessionColor(),
+                                fontSize: '0.7rem'
+                        }}
+                            />
+                          </Box>
+                        )}
+                      </Box>
+                    </>
+                  )}
                 </Box>
                 
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center'}}>
@@ -1217,208 +1821,45 @@ export default function FullscreenChatWidget({
                   />
                   <Tooltip title="Ring">
                     <IconButton>
-                      {theming.getThemedIcon('phone')}
+                      <Phone />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Videosamtale">
                     <IconButton>
-                      {theming.getThemedIcon('videoCall')}
+                      <VideoCall />
                     </IconButton>
                   </Tooltip>
                   <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-                    {theming.getThemedIcon('moreVert')}
+                    <MoreVert />
                   </IconButton>
                 </Box>
               </Box>
 
-              {/* Modern Communication Tabs */}
-              <Box sx={{ 
-                p: 1.5,
-                borderBottom: 1,
-                borderColor: 'divider',
-                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(2, 4, 8, 250, 252, 0.8))',
-                backdropFilter: 'blur(10px)'
-        }}>
-                <Box sx={{ 
-                  display: 'flex',
-                  bgcolor: 'rgba(0,0,0,0.03)',
-                  borderRadius: '16px',
-                  p: 0.5,
-                  gap: 0.5,
-                  position: 'relative'
-          }}>
-                  {/* Animated background indicator */}
-                  <Box sx={{
-                    position: 'absolute',
-                    top:  4,
-                    left: activeTab === 0 ? 4 : activeTab === 1 ? '33.3%' : '66.6%',
-                    width: 'calc(33.3% - 4px)',
-                    height: 'calc(100% - 8px)',
-                    bgcolor: 'white',
-                    borderRadius: '12px',
-                    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-                    border: `2px solid ${activeTab === 2 ? '#E91E63' : getProfessionColor()}20`,
-                    transition: 'all 0.3s cubic-bezier(0, 0.0, 0.2, 1)',
-                    zIndex: 0}} />
-                  
-                  {/* Chat Tab */}
-                  <Box 
-                    onClick={() => setActiveTab(0)}
-                    sx={{
-                      flex:  1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap:  1,
-                      py: 1.5,
-                      px:  2,
-                      cursor: 'pointer',
-                      zIndex: 1,
-                      borderRadius: '12px',
-                      transition: 'all 0.2s ease',
-                      color: activeTab === 0 ? getProfessionColor() : 'text.secondary',
-	                      fontWeight: activeTab === 0 ? 600 : 400, '&:hover': {
-	                        color: getProfessionColor(),
-	                        transform: activeTab !== 0 ? 'scale(1.02)' : 'none',
-	                      }}}
-                  >
-                    <Chat sx={{ 
-                      fontSize:  20,
-                      transition: 'all 0.2s ease',
-                      transform: activeTab === 0 ? 'scale(1.1)' : 'scale(1)'
-              }} />
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
-                        fontWeight: 'inherit',
-                        fontSize: '0.95rem'
-                }}
-                    >
-                      Direktemelding
-                    </Typography>
-                    
-                    {/* Unread indicator for chat */}
-		                    {activeTab !== 0 && (selectedContact?.unreadCount ?? 0) > 0 && (
-	                      <Box
-	                        sx={{
-	                          width: 8,
-	                          height: 8,
-	                          bgcolor: getProfessionColor(),
-	                          borderRadius: '50%',
-	                          ml: 0.5,
-	                          animation: 'pulse 2s ease-in-out infinite','@keyframes pulse': {
-	                            '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.5 },
-	                          }}}
-	                      />
-	                    )}
-                  </Box>
-
-                  {/* Email Tab */}
-                  <Box 
-                    onClick={() => setActiveTab(1)}
-                    sx={{
-                      flex:  1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap:  1,
-                      py: 1.5,
-                      px:  2,
-                      cursor: 'pointer',
-                      zIndex: 1,
-                      borderRadius: '12px',
-                      transition: 'all 0.2s ease',
-                      color: activeTab === 1 ? getProfessionColor() : 'text.secondary',
-	                      fontWeight: activeTab === 1 ? 600 : 400, '&:hover': {
-	                        color: getProfessionColor(),
-	                        transform: activeTab !== 1 ? 'scale(1.02)' : 'none',
-	                      }}}
-                  >
-                    <Email sx={{ 
-                      fontSize:  20,
-                      transition: 'all 0.2s ease',
-                      transform: activeTab === 1 ? 'scale(1.1)' : 'scale(1)'
-              }} />
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
-                        fontWeight: 'inherit',
-                        fontSize: '0.95rem'
-                }}
-                    >
-                      E-post
-                    </Typography>
-                    
-                    {/* New email indicator */}
-                    {activeTab !== 1 && (
-                      <Box sx={{
-                        width:  6,
-                        height:  6,
-                        bgcolor: getProfessionColor(),
-                        borderRadius: '50%',
-                        ml: 0.5,
-                        opacity: 0.6 }} />
-                    )}
-                  </Box>
-
-                  {/* Evendi Tab */}
-                  <Box
-                    onClick={() => { setActiveTab(2); if (!evendiConvs.length) fetchEvendiConvsFull(); }}
-                    sx={{
-                      flex: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 1,
-                      py: 1.5,
-                      px: 2,
-                      cursor: 'pointer',
-                      zIndex: 1,
-                      borderRadius: '12px',
-                      transition: 'all 0.2s ease',
-                      color: activeTab === 2 ? '#E91E63' : 'text.secondary',
-                      fontWeight: activeTab === 2 ? 600 : 400,
-                      '&:hover': { color: '#E91E63', transform: activeTab !== 2 ? 'scale(1.02)' : 'none' }
-                    }}
-                  >
-                    <img src="/evendi-logo.png" alt="" style={{ width: 20, height: 20, borderRadius: '50%', opacity: activeTab === 2 ? 1 : 0.6 }} />
-                    <Typography variant="body2" sx={{ fontWeight: 'inherit', fontSize: '0.95rem' }}>
-                      Evendi
-                    </Typography>
-                  </Box>
-                </Box>
-
-                {/* Tab Description */}
-                <Typography 
-                  variant="caption" 
-                  color="text.secondary"
-                  sx={{ 
-                    display: 'block',
-                    textAlign: 'center',
-                    mt:  1,
-                    fontSize: '0.75rem'
-            }}
-                >
-                  {activeTab === 0 
-                    ? 'Sanntids chat med øyeblikkelig levering'
-                    : activeTab === 1
-                    ? 'Profesjonell e-postkorrespondanse'
-                    : 'Meldinger fra par på evendi.no'
-              }
-                </Typography>
-              </Box>
+	              {/* Modern Communication Tabs */}
+                <FullscreenCommunicationTabs
+                  activeTab={activeTab}
+                  accentColor={getProfessionColor()}
+                  onChangeTab={(newValue) => {
+                    setActiveTab(newValue);
+                    if (newValue === 2 && !evendiConvs.length) {
+                      void fetchEvendiConvsFull();
+                    }
+                  }}
+                />
+	              <Divider />
 
               {/* Messages Area */}
-              <Box sx={{ 
-                flex: 1,
-                overflow: 'auto', 
-                p:  2,
-                background: 'linear-gradient(135deg, rgba(2, 4, 8, 250, 252, 0.8), rgba(2, 4, 1, 245, 249, 0.6))',
-                backgroundImage: `
-                  radial-gradient(circle at 25% 2%, rgba(255, 1400.1) 0%, transparent 50%),
-                  radial-gradient(circle at 75% 75%, rgba(255, 1400.05) 0%, transparent 50%)
-                `
-          }}>
+	              {(activeTab === 0 || activeTab === 1) && (
+                  <Box sx={{ 
+	                flex: 1,
+	                overflow: 'auto', 
+	                p:  2,
+	                background: 'linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,250,252,0.98))',
+	                backgroundImage: `
+	                  radial-gradient(circle at 25% 20%, rgba(255, 140, 0, 0.08) 0%, transparent 52%),
+	                  radial-gradient(circle at 75% 75%, rgba(255, 140, 0, 0.04) 0%, transparent 50%)
+	                `
+	          }}>
                 {messages.length === 0 ? (
                   <Box sx={{
                     display: 'flex',
@@ -1604,7 +2045,8 @@ export default function FullscreenChatWidget({
                   ))
                 )}
                 <div ref={messagesEndRef} />
-              </Box>
+                  </Box>
+                )}
 
               {/* Evendi Chat Bridge - Tab 2 */}
               {activeTab === 2 && (
@@ -1704,6 +2146,81 @@ export default function FullscreenChatWidget({
                 </Box>
               )}
 
+              {/* Academy Tab */}
+              {activeTab === 3 && (
+                <Box
+                  sx={{
+                    flex: 1,
+                    overflow: 'auto',
+                    p: 2,
+                    background: 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.98))',
+                  }}
+                >
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 2.5,
+                      borderRadius: 2.5,
+                      border: '1px solid rgba(15, 23, 42, 0.12)',
+                      ...theming.getThemedCardSx(),
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, mb: 2 }}>
+                      <img
+                        src="/creatorhub-academy-logo.svg"
+                        alt="CreatorHub Academy"
+                        style={{ height: 34, width: 'auto' }}
+                      />
+                      <Chip
+                        label="Academy"
+                        size="small"
+                        sx={{
+                          bgcolor: `${getProfessionColor()}18`,
+                          color: getProfessionColor(),
+                          fontWeight: 700,
+                        }}
+                      />
+                    </Box>
+
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Få rask tilgang til Academy fra chat-widgeten. Velg hvor du vil gå videre.
+                    </Typography>
+
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+                      {academyQuickLinks.map((item) => (
+                        <Button
+                          key={item.id}
+                          variant="outlined"
+                          fullWidth
+                          startIcon={item.icon}
+                          onClick={() => openAcademyPath(item.path)}
+                          sx={{
+                            justifyContent: 'flex-start',
+                            borderColor: `${getProfessionColor()}55`,
+                            color: 'text.primary',
+                            textTransform: 'none',
+                            py: 1.2,
+                            '&:hover': {
+                              borderColor: getProfessionColor(),
+                              bgcolor: `${getProfessionColor()}10`,
+                            },
+                          }}
+                        >
+                          <Box sx={{ textAlign: 'left' }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                              {item.title}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {item.description}
+                            </Typography>
+                          </Box>
+                        </Button>
+                      ))}
+                    </Box>
+                  </Paper>
+                </Box>
+              )}
+
               {/* Email Composer - Only for Email Tab */}
               {activeTab === 1 ? (
                 <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider'}}>
@@ -1723,11 +2240,11 @@ export default function FullscreenChatWidget({
 	                    <Typography variant="caption" color="text.secondary">
 	                      E-post sendes via Gmail-integrasjon
 	                    </Typography>
-	                    <Button
-	                      variant="contained"
-	                      startIcon={theming.getThemedIcon('email')}
-	                      onClick={handleSendMessage}
-	                      disabled={!messageInput.trim() || sendEmailMutation.isPending}
+		                    <Button
+		                      variant="contained"
+		                      startIcon={<Email />}
+		                      onClick={handleSendMessage}
+		                      disabled={!messageInput.trim() || sendEmailMutation.isPending}
 	                      sx={{
 	                        ...theming.getThemedButtonSx(),
 	                        bgcolor: getProfessionColor(), '&:hover': { bgcolor: getProfessionColor() }}}
@@ -1739,14 +2256,14 @@ export default function FullscreenChatWidget({
               ) : null}
 
               {/* Dynamic Input Area - Adapts to Active Tab */}
-              {(activeTab === 0) && (
-                <Box sx={{ 
-                  p: 2,
-                  borderTop: 1,
-                  borderColor: 'divider',
-                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(2, 4, 8, 250, 252, 0.8))',
-                  backdropFilter: 'blur(10px)'
-          }}>
+	              {(activeTab === 0) && (
+	                <Box sx={{ 
+	                  p: 2,
+	                  borderTop: 1,
+	                  borderColor: 'divider',
+	                  background: 'linear-gradient(180deg, rgba(255,255,255,0.97), rgba(248,250,252,0.98))',
+	                  backdropFilter: 'blur(10px)'
+	          }}>
                   {/* Admin Quick Actions - Only visible for admin */}
                   {isAdmin && selectedContact && (
                     <Box sx={{ mb:  2 }}>
@@ -1755,77 +2272,98 @@ export default function FullscreenChatWidget({
                           <AdminPanelSettings sx={{ fontSize:  16, mr: 0.5}} />
                           Admin Hurtighandlinger
                         </Typography>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => setAdminTemplatesOpen(true)}
-                          sx={{ 
-                            borderColor: '#ff8c00', 
-                            color: '#ff8c00','&:hover': { borderColor: '#e67e00', bgcolor: '#ff8c0010',}
-                      }}
-                        >
-                          Meldingsmaler
-                        </Button>
-                      </Box>
-                      
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb:  2 }}>
-                        {adminQuickActions.map((action, index) => (
-                          <Button key={index}
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button
                             size="small"
-                            variant="contained"
-                            startIcon={action.icon}
-                            onClick={() => {
-                              const message = action.action(selectedContact.name);
-                              setMessageInput(message);
-                        }}
+                            variant="outlined"
+                            onClick={() => setShowAdminQuickActions((prev) => !prev)}
                             sx={{
-                              bgcolor: '#ff8c00',
-                              color: 'white','&:hover': { bgcolor: '#e67e00' },
-                              fontSize: '0.75rem',
-                              px:  1,
-                              py: 0.5 }}
+                              borderColor: '#ff8c00',
+                              color: '#ff8c00',
+                              '&:hover': { borderColor: '#e67e00', bgcolor: '#ff8c0010' }
+                            }}
                           >
-                            {action.label}
+                            {showAdminQuickActions ? 'Skjul panel' : 'Vis panel'}
                           </Button>
-                        ))}
-                      </Box>
-
-                      {/* Advanced Admin Functions */}
-                      <Box sx={{ borderTop: 1, borderColor: 'divider', pt:  2 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#ff6b60', mb:  1 }}>
-                          🚀 Avanserte Admin Funksjoner
-                        </Typography>
-                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
-                          {adminAdvancedActions.map((action, index) => (
-                            <Button
-                              key={index}
-                              size="small"
-                              variant="outlined"
-                              startIcon={action.icon}
-                              onClick={action.action}
-                              sx={{
-                                borderColor: '#ff6b60',
-                                color: '#ff6b60','&:hover': { 
-                                  borderColor: '#', 
-                                  bgcolor: '#ff6b6b10',
-                                  transform: 'translateY(-1px)'
-                          },
-                                fontSize: '0.75rem',
-                                px:  1,
-                                py: 0.5}}
-                            >
-                              <Box sx={{ textAlign: 'left'}}>
-                                <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600 }}>
-                                  {action.label}
-                                </Typography>
-                                <Typography variant="caption" sx={{ fontSize: '0.65rem', display: 'block', opacity: 0.8}}>
-                                  {action.description}
-                                </Typography>
-                              </Box>
-                            </Button>
-                          ))}
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => setAdminTemplatesOpen(true)}
+                            sx={{
+                              borderColor: '#ff8c00',
+                              color: '#ff8c00',
+                              '&:hover': { borderColor: '#e67e00', bgcolor: '#ff8c0010' }
+                            }}
+                          >
+                            Meldingsmaler
+                          </Button>
                         </Box>
                       </Box>
+                      
+                      {showAdminQuickActions && (
+                        <>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb:  2 }}>
+                            {adminQuickActions.map((action, index) => (
+                              <Button key={index}
+                                size="small"
+                                variant="contained"
+                                startIcon={action.icon}
+                                onClick={() => {
+                                  const message = action.action(selectedContact.name);
+                                  setMessageInput(message);
+                                }}
+                                sx={{
+                                  bgcolor: '#ff8c00',
+                                  color: 'white',
+                                  '&:hover': { bgcolor: '#e67e00' },
+                                  fontSize: '0.75rem',
+                                  px:  1,
+                                  py: 0.5 }}
+                              >
+                                {action.label}
+                              </Button>
+                            ))}
+                          </Box>
+
+                          {/* Advanced Admin Functions */}
+                          <Box sx={{ borderTop: 1, borderColor: 'divider', pt:  2 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#ff6b60', mb:  1 }}>
+                              🚀 Avanserte Admin Funksjoner
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
+                              {adminAdvancedActions.map((action, index) => (
+                                <Button
+                                  key={index}
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={action.icon}
+                                  onClick={action.action}
+                                  sx={{
+                                    borderColor: '#ff6b60',
+                                    color: '#ff6b60',
+                                    '&:hover': {
+                                      borderColor: '#ff6b60',
+                                      bgcolor: '#ff6b6b10',
+                                      transform: 'translateY(-1px)'
+                                    },
+                                    fontSize: '0.75rem',
+                                    px:  1,
+                                    py: 0.5}}
+                                >
+                                  <Box sx={{ textAlign: 'left'}}>
+                                    <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600 }}>
+                                      {action.label}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ fontSize: '0.65rem', display: 'block', opacity: 0.8}}>
+                                      {action.description}
+                                    </Typography>
+                                  </Box>
+                                </Button>
+                              ))}
+                            </Box>
+                          </Box>
+                        </>
+                      )}
                     </Box>
                   )}
 
@@ -1926,6 +2464,25 @@ export default function FullscreenChatWidget({
                                   <EmojiEmotions />
                                 </IconButton>
                               </Tooltip>
+                              <Tooltip title="Opprett tilbud">
+                                <IconButton
+                                  size="small"
+                                  onClick={handleOpenQuoteModal}
+                                  disabled={!selectedContact || activeTab !== 0}
+                                  sx={{
+                                    color: getProfessionColor(),
+                                    '&:hover': {
+                                      bgcolor: `${getProfessionColor()}10`,
+                                      color: getProfessionColor(),
+                                    },
+                                    '&.Mui-disabled': {
+                                      color: 'rgba(0,0,0,0.26)',
+                                    },
+                                  }}
+                                >
+                                  <RequestQuote sx={{ fontSize: 18 }} />
+                                </IconButton>
+                              </Tooltip>
                               
                               <Tooltip title={
                                 sendMessageMutation.isPending || sendEmailMutation.isPending 
@@ -1979,7 +2536,7 @@ export default function FullscreenChatWidget({
                                         right: -2,
                                         width:  8,
                                         height:  8,
-                                        bgcolor: activeTab === 0 ? '#4CAF50' : '#',
+                                        bgcolor: activeTab === 0 ? '#4CAF50' : '#ff8c00',
                                         borderRadius: '50%',
                                         border: '1px solid white'
                                 }} />
@@ -2046,12 +2603,13 @@ export default function FullscreenChatWidget({
 
                       {analyzeMessageMutation.data.suggestions?.map((suggestion: any, index: number) => (
                         <Paper
-                          key={suggestion.d}
+                          key={suggestion.id || `${suggestion.category || 'suggestion'}-${index}`}
                           sx={{
                             p:  2,
                             mb: 1.5,
                             cursor: 'pointer',
                             border: '1px solid transparent',
+                            animationDelay: `${Math.min(index * 30, 180)}ms`,
                             transition: 'all 0.2s ease','&:hover': {
                               borderColor: getProfessionColor(),
                               boxShadow: `0 2px 8px ${getProfessionColor()}20`,
@@ -2234,7 +2792,7 @@ export default function FullscreenChatWidget({
                       width:  8, 
                       height:  8, 
                       borderRadius: '50%', 
-                      bgcolor: '#', 
+                      bgcolor: neutralSurface, 
                       mr:  1,
                       animation: 'pulse 1.5s infinite' 
               }}
@@ -2355,126 +2913,41 @@ export default function FullscreenChatWidget({
           </MenuItem>
         </Menu>
 
-        {/* Google Chat Actions Menu - Using Popover for better Dialog compatibility */}
-        <Popover
-          id="google-chat-popover"
+        <GoogleChatActionsPopover
           open={Boolean(googleChatMenuAnchor)}
           anchorEl={googleChatMenuAnchor}
-          onClose={() => {
-            console.log('Google Chat menu closing via Popover');
+          accentColor={getProfessionColor()}
+          displayName={professionConfig?.displayName || professionConfig?.name || userProfession}
+          googleChatStatus={communicationStatus.googleChatStatus}
+          onClose={() => setGoogleChatMenuAnchor(null)}
+          onCreateProjectSpace={() => {
+            void handleCreateProjectSpace();
             setGoogleChatMenuAnchor(null);
-      }}
-          anchorOrigin={{
-            vertical: 'bottom',
-            horizontal: 'left'}}
-          transformOrigin={{
-            vertical: 'top',
-            horizontal: 'left'}}
-	      sx={{
-	        zIndex: 999, '& .MuiPopover-paper': {
-		          border: `2px solid ${getProfessionColor()}`,
-		          borderRadius:  2,
-		          mt:  1,
-		          minWidth: 20,
-		          maxWidth: 30,
-		          boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-		          backdropFilter: 'blur(8px)',
-		          bgcolor: 'background.paper'
-	      }
-	  }}
-        >
-          <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider'}}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1}}>
-              <Google sx={{ color: getProfessionColor()}} />
-              <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
-                Google Chat Professional
-              </Typography>
-            </Box>
-            <Typography variant="caption" color="text.secondary">
-              Advanced collaboration tools for {(professionConfig as any)?.displayName || userProfession}
-            </Typography>
-          </Box>
-          
-          <List sx={{ py:  0}}>
-            <ListItem
-              onClick={() => {
-                console.log('🚀 Creating test project space...');
-                handleCreateProjectSpace();
-                setGoogleChatMenuAnchor(null);
           }}
-	              sx={{ 
-	                py: 1.5, '&:hover': {
-	                  bgcolor: `${getProfessionColor()}20`,
-	                }}}
-            >
-              <ListItemIcon>
-                <Add sx={{ color: getProfessionColor()}} />
-              </ListItemIcon>
-              <ListItemText 
-                primary="🚀 Opprett: Bryllup Anna & Lars" 
-                secondary="Opprett Google Chat space for prosjektsamarbeid"
-              />
-            </ListItem>
-            
-            <ListItem
-              onClick={() => {
-                console.log('Join space clicked');
-                setGoogleChatMenuAnchor(null);
-        }}
-              sx={{ py: 1.5}}
-            >
-              <ListItemIcon>
-                <PersonAdd sx={{ color: getProfessionColor()}} />
-              </ListItemIcon>
-              <ListItemText primary="Join Space" />
-            </ListItem>
-            
-            <ListItem
-              onClick={() => {
-                console.log('Sync CRM clicked');
-                setGoogleChatMenuAnchor(null);
+          onJoinSpace={() => {
+            setMessageInput((prev) => `${prev}${prev ? ' ' : ''}#joined-space`);
+            setGoogleChatMenuAnchor(null);
           }}
-              sx={{ py: 1.5}}
-            >
-              <ListItemIcon>
-                <Sync sx={{ color: getProfessionColor()}} />
-              </ListItemIcon>
-              <ListItemText primary="Sync CRM Contacts" />
-            </ListItem>
-            
-            <ListItem
-              onClick={async () => {
-                console.log('Testing Google Chat API...');
-                await testGoogleChat();
-                setGoogleChatMenuAnchor(null);
+          onSyncCrm={() => {
+            queryClient.invalidateQueries({ queryKey: ['/api/crm/analytics/leads'] });
+            queryClient.invalidateQueries({ queryKey: ['/api/crm/analytics/sales'] });
+            showToast('CRM-kontakter synkronisert', 'success');
+            setGoogleChatMenuAnchor(null);
           }}
-	              sx={{ 
-	                py: 1.5, '&:hover': {
-	                  bgcolor: `${getProfessionColor()}20`,
-	                }}}
-            >
-              <ListItemIcon>
-                <Speed sx={{ color: getProfessionColor()}} />
-              </ListItemIcon>
-              <ListItemText 
-                primary="Test Google Chat API" 
-                secondary={`Status: ${communicationStatus.googleChatStatus === 'connected' ? 'Connected' : 'Disconnected'}`}
-              />
-            </ListItem>
-            <ListItem
-              onClick={() => {
-                console.log('Chat settings clicked');
-                setGoogleChatMenuAnchor(null);
+          onMention={() => {
+            setMessageInput((prev) => `${prev}${prev ? ' ' : ''}@team `);
+            setGoogleChatMenuAnchor(null);
           }}
-              sx={{ py: 1.5}}
-            >
-              <ListItemIcon>
-                <Settings sx={{ color: getProfessionColor()}} />
-              </ListItemIcon>
-              <ListItemText primary="Chat Settings" />
-            </ListItem>
-          </List>
-        </Popover>
+          onTestApi={async () => {
+            await testGoogleChat();
+            showToast('Google Chat API test fullført', 'info');
+            setGoogleChatMenuAnchor(null);
+          }}
+          onOpenSettings={() => {
+            setAnchorEl(googleChatMenuAnchor);
+            setGoogleChatMenuAnchor(null);
+          }}
+        />
 
         {/* Admin Message Templates Dialog - Only for admin */}
         {isAdmin && (
@@ -2513,7 +2986,7 @@ export default function FullscreenChatWidget({
                 <Box key={catIndex}>
                   <Box sx={{ 
                     p: 2,
-                    bgcolor: '#', 
+                    bgcolor: neutralSurface, 
                     borderBottom: 1,
                     borderColor: 'divider',
                     display: 'flex',
@@ -2533,9 +3006,9 @@ export default function FullscreenChatWidget({
                           p: 2,
                           mb: 1,
                           cursor: 'pointer',
-                          border: '1px solid #',
+                          border: '1px solid rgba(15, 23, 42, 0.12)',
                           transition: 'all 0.2s ease','&:hover': {
-                            bgcolor: '#ff8c001',
+                            bgcolor: '#ff8c0010',
                             borderColor: '#ff8c00',
                             transform: 'translateY(-1px)',
                             boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
@@ -2580,7 +3053,7 @@ export default function FullscreenChatWidget({
         {isAdmin && (
           <Dialog
             open={broadcastModalOpen}
-            onClose={() => setBroadcastModalOpen(false)}
+            onClose={handleCloseBroadcastModal}
             maxWidth="lg"
             fullWidth
             sx={{
@@ -2601,7 +3074,7 @@ export default function FullscreenChatWidget({
               📢 Massekommunikasjon - Broadcast System
               <Box sx={{ flexGrow:  1 }} />
               <IconButton 
-                onClick={() => setBroadcastModalOpen(false)}
+                onClick={handleCloseBroadcastModal}
                 sx={{ color: 'white'}}
               >
                 {theming.getThemedIcon('close')}
@@ -2617,103 +3090,41 @@ export default function FullscreenChatWidget({
                   </Typography>
                   
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2}}>
-                    <Button variant="contained"
-                      startIcon={<Groups />}
-                      fullWidth
-                      sx={{ 
-                        bgcolor: '#ff6b60', 
-                        justifyContent: 'flex-start',
-	                        py: 2, '&:hover': { bgcolor: '#ff5252' }}}
-                    >
-                      <Box sx={{ textAlign: 'left'}}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
-                          🌍 Alle Brukere
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block', opacity: 0.9}}>
-                          Send til hele plattformen (ca. 1,247 brukere)
-                        </Typography>
-                      </Box>
-                    </Button>
-
-                    <Button
-                      variant="outlined"
-                      startIcon={<PersonOutline />}
-                      fullWidth
-                      sx={{ 
-                        borderColor: '#ff6b60',
-                        color: '#ff6b60',
-                        justifyContent: 'flex-start',
-	                        py: 2, '&:hover': { borderColor: '#ff6b60', bgcolor: '#ff6b6b10' }}}
-                    >
-                      <Box sx={{ textAlign: 'left'}}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
-                          📸 Kun Fotografer
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block', opacity: 0.8}}>
-                          Send til alle fotografer (542 brukere)
-                        </Typography>
-                      </Box>
-                    </Button>
-
-                    <Button
-                      variant="outlined"
-                      startIcon={<PersonOutline />}
-                      fullWidth
-                      sx={{ 
-                        borderColor: '#ff6b60',
-                        color: '#ff6b60',
-                        justifyContent: 'flex-start',
-	                        py: 2, '&:hover': { borderColor: '#ff6b60', bgcolor: '#ff6b6b10' }}}
-                    >
-                      <Box sx={{ textAlign: 'left'}}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
-                          🎥 Kun Videografere
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block', opacity: 0.8}}>
-                          Send til alle videografere (398 brukere)
-                        </Typography>
-                      </Box>
-                    </Button>
-
-                    <Button
-                      variant="outlined"
-                      startIcon={<PersonOutline />}
-                      fullWidth
-                      sx={{ 
-                        borderColor: '#ff6b60',
-                        color: '#ff6b60',
-                        justifyContent: 'flex-start',
-	                        py: 2, '&:hover': { borderColor: '#ff6b60', bgcolor: '#ff6b6b10' }}}
-                    >
-                      <Box sx={{ textAlign: 'left'}}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
-                          🎵 Kun Musikkprodusenter
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block', opacity: 0.8}}>
-                          Send til alle musikkprodusenter (187 brukere)
-                        </Typography>
-                      </Box>
-                    </Button>
-
-                    <Button
-                      variant="outlined"
-                      startIcon={theming.getThemedIcon('star')}
-                      fullWidth
-                      sx={{ 
-	                        borderColor: '#FFD700',
-	                        color: '#FFD700',
-                        justifyContent: 'flex-start',
-	                        py: 2, '&:hover': { borderColor: '#FFD700', bgcolor: '#FFD70010' }}}
-                    >
-                      <Box sx={{ textAlign: 'left'}}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
-                          ⭐ Kun Premium Brukere
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block', opacity: 0.8}}>
-                          Send til premium-abonnenter (89 brukere)
-                        </Typography>
-                      </Box>
-                    </Button>
+                    {broadcastAudienceOptions.map((audienceOption) => {
+                      const selected = audienceOption.key === broadcastAudience;
+                      return (
+                        <Button
+                          key={audienceOption.key}
+                          onClick={() => setBroadcastAudience(audienceOption.key)}
+                          variant={selected ? 'contained' : 'outlined'}
+                          startIcon={audienceOption.icon}
+                          fullWidth
+                          sx={{
+                            bgcolor: selected ? audienceOption.accentColor : 'transparent',
+                            borderColor: audienceOption.accentColor,
+                            color: selected ? 'white' : audienceOption.accentColor,
+                            justifyContent: 'flex-start',
+                            py: 2,
+                            '&:hover': {
+                              borderColor: audienceOption.accentColor,
+                              bgcolor: selected ? audienceOption.accentColor : `${audienceOption.accentColor}10`,
+                            },
+                          }}
+                        >
+                          <Box sx={{ textAlign: 'left' }}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                              {audienceOption.title}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              sx={{ display: 'block', opacity: selected ? 0.95 : 0.8 }}
+                            >
+                              {audienceOption.description} ({audienceOption.recipientCount} brukere)
+                            </Typography>
+                          </Box>
+                        </Button>
+                      );
+                    })}
                   </Box>
                 </Box>
 
@@ -2730,26 +3141,61 @@ export default function FullscreenChatWidget({
                     label="Broadcast Melding"
                     placeholder="Skriv din systemmelding her..."
                     variant="outlined"
+                    value={broadcastContent}
+                    onChange={(event) => setBroadcastContent(event.target.value)}
                     sx={{ mb:  2}}
                   />
 
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2}}>
                     <FormControlLabel
-	                      control={<Switch color="primary" />}
+	                      control={
+                          <Switch
+                            color="primary"
+                            checked={broadcastScheduleEnabled}
+                            onChange={(event) => {
+                              setBroadcastScheduleEnabled(event.target.checked);
+                              if (!event.target.checked) {
+                                setBroadcastScheduledAt('');
+                              }
+                            }}
+                          />
+                        }
                       label="Tidsplanlagt sending"
                     />
                     <Button
                       startIcon={theming.getThemedIcon('schedule')}
                       size="small"
                       variant="outlined"
+                      onClick={() => setBroadcastScheduleEnabled(true)}
+                      disabled={broadcastScheduleEnabled}
                     >
-                      Velg tid
+                      {broadcastScheduleEnabled && broadcastScheduledAt ? 'Tid valgt' : 'Velg tid'}
                     </Button>
                   </Box>
 
-                  <Box sx={{ bgcolor: '#', p: 2, borderRadius: 2, mb:  2}}>
+                  {broadcastScheduleEnabled && (
+                    <TextField
+                      fullWidth
+                      type="datetime-local"
+                      size="small"
+                      label="Sendetidspunkt"
+                      value={broadcastScheduledAt}
+                      onChange={(event) => setBroadcastScheduledAt(event.target.value)}
+                      inputProps={{ min: minimumBroadcastDateTime }}
+                      InputLabelProps={{ shrink: true }}
+                      sx={{ mb: 2 }}
+                    />
+                  )}
+
+                  <Box sx={{ bgcolor: neutralSurface, p: 2, borderRadius: 2, mb:  2}}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb:  1}}>
                       📊 Forventet leveranse
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      • Målgruppe: {selectedBroadcastAudience.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      • Estimert mottakere: {selectedBroadcastAudience.recipientCount}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       • Push-notifikasjoner: Øyeblikkelig
@@ -2766,11 +3212,21 @@ export default function FullscreenChatWidget({
                     fullWidth
                     size="large"
                     startIcon={<Broadcast />}
+                    onClick={handleSendBroadcast}
+                    disabled={
+                      !broadcastContent.trim() ||
+                      sendBroadcastMutation.isPending ||
+                      (broadcastScheduleEnabled && !broadcastScheduledAt)
+                    }
                     sx={{ 
                       bgcolor: '#ff6b60',
 	                      py: 1.5, '&:hover': { bgcolor: '#ff5252' }}}
                   >
-                    📢 Send Broadcast Melding
+                    {sendBroadcastMutation.isPending
+                      ? 'Sender broadcast...'
+                      : broadcastScheduleEnabled
+                        ? '⏰ Planlegg Broadcast'
+                        : '📢 Send Broadcast Melding'}
                   </Button>
                 </Box>
               </Box>
@@ -3031,8 +3487,8 @@ export default function FullscreenChatWidget({
             <DialogContent sx={{ p:  3}}>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap:  3}}>
                 {/* Auto-Response Control */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🤖 Smart Auto-Svar
                   </Typography>
                   
@@ -3074,7 +3530,7 @@ export default function FullscreenChatWidget({
                       { trigger: 'pris spørsmå', response: 'Hei! Besøk våre prisplaner under "Innstillinger" for oppdaterte priser.',},
                       { trigger: 'teknisk feil', response: 'Takk for rapporten! Jeg videresender dette til vårt teknisk team.',}
                     ].map((item, index) => (
-                      <Paper key={index} sx={{ p: 2, bgcolor: '#', borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
+                      <Paper key={index} sx={{ p: 2, bgcolor: neutralSurface, borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
                         <Typography variant="caption" sx={{ fontWeight: 600, color: '#9C27B0'}}>
                           Trigger: "{item.trigger}"
                         </Typography>
@@ -3247,8 +3703,8 @@ export default function FullscreenChatWidget({
                     fullWidth
                     startIcon={theming.getThemedIcon('trendingUp')}
                     sx={{ 
-                      borderColor: '#',
-                      color: '#','&:hover': { borderColor: '#', bgcolor: '#4CAF50',}
+                      borderColor: neutralText,
+                      color: neutralText,'&:hover': { borderColor: neutralText, bgcolor: '#4CAF50',}
                 }}
                   >
                     📊 Se detaljert analyse
@@ -3303,7 +3759,7 @@ export default function FullscreenChatWidget({
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap:  3}}>
                 {/* Left Panel - User List & Controls */}
                 <Box>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🔍 Bruker Søk & Filter
                   </Typography>
                   
@@ -3331,15 +3787,15 @@ export default function FullscreenChatWidget({
                   </Box>
 
                   <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600}}>
-                    👥 Aktive Samtaler ({adminUsers?.data?.length || 0} brukere)
+                    👥 Aktive Samtaler ({adminUserList.length} brukere)
                   </Typography>
 
                   <List sx={{ maxHeight: '400px', overflow: 'auto'}}>
-                    {(adminUsers?.data || []).map((user: AdminUserListItem, index: number) => (
+                    {adminUserList.map((user: AdminUserListItem, index: number) => (
                       <ListItem
                         key={index}
                         sx={{ 
-                          border: '1px solid #',
+                          border: '1px solid rgba(15, 23, 42, 0.12)',
                           borderRadius:  2,
                           mb:  1,
                           cursor: 'pointer','&:hover': { bgcolor: '#f5f5f5',}
@@ -3359,9 +3815,9 @@ export default function FullscreenChatWidget({
                           primary={
                             <Box sx={{ display: 'flex', alignItems: 'center', gap:  1}}>
                               <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
-                                {user.firstName || user.name} {user.lastName || ', '}
+                                {user.firstName || user.name} {user.lastName || ''}
                               </Typography>
-                              {user.isVip && <Star sx={{ color: '#', fontSize: 16}} />}
+                              {user.isVip && <Star sx={{ color: neutralText, fontSize: 16}} />}
                               {user.isPremium && <Chip label="Premium" size="small" color="success" sx={{ fontSize: '0.6rem', height: 16}} />}
                             </Box>
                       }
@@ -3370,7 +3826,7 @@ export default function FullscreenChatWidget({
                               <Typography variant="caption" color="text.secondary">
                                 {user.email}
                               </Typography>
-                              <Typography variant="caption" sx={{ display: 'block', color: '#', fontWeight: 600}}>
+                              <Typography variant="caption" sx={{ display: 'block', color: neutralText, fontWeight: 600}}>
                                 {user.messages || 0} meldinger
                               </Typography>
                             </Box>
@@ -3386,12 +3842,12 @@ export default function FullscreenChatWidget({
 
                 {/* Right Panel - User Details & Actions */}
                 <Box>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     ⚙️ Modereringshandlinger
                   </Typography>
 
                   {/* Quick Actions */}
-                  <Paper sx={{ p:  3, mb:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Paper sx={{ p:  3, mb:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
                     <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600}}>
                       🚀 Raske Handlinger
                     </Typography>
@@ -3413,7 +3869,7 @@ export default function FullscreenChatWidget({
                   </Paper>
 
                   {/* VIP Management */}
-                  <Paper sx={{ p:  3, mb:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Paper sx={{ p:  3, mb:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
                     <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: '#FFD700'}}>
                       ⭐ VIP Kunde Management
                     </Typography>
@@ -3484,11 +3940,11 @@ export default function FullscreenChatWidget({
                     </Typography>
                     
                     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap:  2 }}>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: neutralSurface, borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>89</Typography>
                         <Typography variant="caption">VIP Kunder</Typography>
                       </Box>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: neutralSurface, borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>542</Typography>
                         <Typography variant="caption">Premium</Typography>
                       </Box>
@@ -3551,8 +4007,8 @@ export default function FullscreenChatWidget({
             <DialogContent sx={{ p:  3}}>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap:  3 }}>
                 {/* Lead Tracking */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🎯 Lead Tracking & Konvertering
                   </Typography>
                   
@@ -3585,7 +4041,7 @@ export default function FullscreenChatWidget({
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1}}>
                     {(leadsData?.hotLeads || []).map((lead: LeadListItem, index: number) => (
-                      <Paper key={index} sx={{ p: 2, bgcolor: '#', borderRadius: 1, border: '1px solid #4CAF50',  ...theming.getThemedCardSx() }}>
+                      <Paper key={index} sx={{ p: 2, bgcolor: neutralSurface, borderRadius: 1, border: '1px solid #4CAF50',  ...theming.getThemedCardSx() }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                           <Box>
                             <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
@@ -3608,8 +4064,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* CRM Integration */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🤝 CRM Integration
                   </Typography>
                   
@@ -3669,8 +4125,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Customer Journey Analysis */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🛤️ Customer Journey Analyse
                   </Typography>
                   
@@ -3690,7 +4146,7 @@ export default function FullscreenChatWidget({
                           justifyContent: 'space-between', 
                           alignItems: 'center',
                           p: 1.5,
-                          bgcolor: '#',
+                          bgcolor: neutralSurface,
                           borderRadius:  1,
                           border: '1px solid #9C27B0'
                   }}>
@@ -3701,7 +4157,7 @@ export default function FullscreenChatWidget({
                             <Typography variant="caption" sx={{ display: 'block', fontWeight: 600}}>
                               {stage.avgTime}
                             </Typography>
-                            <Typography variant="caption" sx={{ color: '#', fontWeight: 600}}>
+                            <Typography variant="caption" sx={{ color: neutralText, fontWeight: 600}}>
                               {stage.conversion}
                             </Typography>
                           </Box>
@@ -3714,12 +4170,12 @@ export default function FullscreenChatWidget({
                     💡 Anbefalinger
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1 }}>
-                    <Paper sx={{ p: 1, bgcolor: '#', borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
+                    <Paper sx={{ p: 1, bgcolor: neutralSurface, borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#e65100'}}>
                         ⚠️ 23% leads mistes i "Interessebekreftelse"-fasen
                       </Typography>
                     </Paper>
-                    <Paper sx={{ p: 1, bgcolor: '#', borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
+                    <Paper sx={{ p: 1, bgcolor: neutralSurface, borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#2e7d32'}}>
                         💡 Raskere oppfølging kan øke konvertering 15%
                       </Typography>
@@ -3767,7 +4223,7 @@ export default function FullscreenChatWidget({
                         justifyContent: 'space-between', 
                         alignItems: 'center',
                         p: 1.5,
-                        bgcolor: '#',
+                        bgcolor: neutralSurface,
                         borderRadius:  1,
                         border: '1px solid #ff8c00'
                 }}>
@@ -3788,8 +4244,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Pipeline & Forecasting */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🔮 Sales Pipeline & Prognose
                   </Typography>
                   
@@ -3821,7 +4277,7 @@ export default function FullscreenChatWidget({
                     📅 Neste måned prognose
                   </Typography>
                   <Box sx={{ p: 2, bgcolor: '#ffebee', borderRadius: 1, border: '1px solid #f44336'}}>
-                    <Typography variant="h6" sx={{  fontWeight: 600, color: '#', textAlign: 'center' }}>
+                    <Typography variant="h6" sx={{  fontWeight: 600, color: neutralText, textAlign: 'center' }}>
                       1.2M NOK
                     </Typography>
                     <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', color: '#f44336'}}>
@@ -3831,14 +4287,14 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Smart Insights */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🧠 Smart Insights & Anbefalinger
                   </Typography>
                   
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
-                    <Paper sx={{ p: 2, bgcolor: '#', borderRadius: 1, border: '1px solid #673AB7',  ...theming.getThemedCardSx() }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#', mb:  1 }}>
+                    <Paper sx={{ p: 2, bgcolor: neutralSurface, borderRadius: 1, border: '1px solid #673AB7',  ...theming.getThemedCardSx() }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: neutralText, mb:  1 }}>
                         💡 AI Anbefaling
                       </Typography>
                       <Typography variant="body2">
@@ -3847,8 +4303,8 @@ export default function FullscreenChatWidget({
                       </Typography>
                     </Paper>
 
-                    <Paper sx={{ p: 2, bgcolor: '#', borderRadius: 1, border: '1px solid #4CAF50',  ...theming.getThemedCardSx() }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#', mb:  1 }}>
+                    <Paper sx={{ p: 2, bgcolor: neutralSurface, borderRadius: 1, border: '1px solid #4CAF50',  ...theming.getThemedCardSx() }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: neutralText, mb:  1 }}>
                         📈 Trendoppdatering
                       </Typography>
                       <Typography variant="body2">"Sosiale medier pakker" øker 45% denne måneden. 
@@ -3856,7 +4312,7 @@ export default function FullscreenChatWidget({
                       </Typography>
                     </Paper>
 
-                    <Paper sx={{ p: 2, bgcolor: '#', borderRadius: 1, border: '1px solid #ff8c00',  ...theming.getThemedCardSx() }}>
+                    <Paper sx={{ p: 2, bgcolor: neutralSurface, borderRadius: 1, border: '1px solid #ff8c00',  ...theming.getThemedCardSx() }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#ff8c00', mb:  1 }}>
                         ⚠️ Advarsel
                       </Typography>
@@ -3969,8 +4425,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Task Generation */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     📋 Automatisk Oppgave-generering
                   </Typography>
                   
@@ -4031,8 +4487,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Queue Management */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     📬 Intelligent Kø-håndtering
                   </Typography>
                   
@@ -4088,8 +4544,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Team Performance */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     👥 Team Ytelse & Fordeling
                   </Typography>
                   
@@ -4139,7 +4595,7 @@ export default function FullscreenChatWidget({
                     fullWidth
                     startIcon={<Groups sx={theming.getThemedButtonSx()} />}
                     sx={{ 
-                      bgcolor: '#','&:hover': { bgcolor: '#45a049',}
+                      bgcolor: neutralSurface,'&:hover': { bgcolor: '#45a049',}
                 }}
                   >
                     📊 Detaljert Team Rapport
@@ -4147,8 +4603,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Automation Rules */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🤖 Avanserte Automatiseringsregler
                   </Typography>
                   
@@ -4184,7 +4640,7 @@ export default function FullscreenChatWidget({
                         </Box>
                       </Paper>
 
-                      <Paper sx={{ p: 2, bgcolor: '#', borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
+                      <Paper sx={{ p: 2, bgcolor: neutralSurface, borderRadius:  1 ,  ...theming.getThemedCardSx() }}>
                         <Typography variant="body2" sx={{ fontWeight: 600, mb:  1 }}>
                           Regel 3: Customer success oppfølging
                         </Typography>
@@ -4212,8 +4668,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Workflow Analytics */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     📈 Arbeidsflyt Analyse & Optimalisering
                   </Typography>
                   
@@ -4222,11 +4678,11 @@ export default function FullscreenChatWidget({
                       🎯 KPI Oversikt
                     </Typography>
                     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat, (1fr)', gap:  2}}>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: neutralSurface, borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>{chatStats?.responseTime || '2.1 min'}</Typography>
                         <Typography variant="caption">Avg responstid</Typography>
                       </Box>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: neutralSurface, borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>{chatStats?.resolutionRate || '94.2%'}</Typography>
                         <Typography variant="caption">First contact resolution</Typography>
                       </Box>
@@ -4234,7 +4690,7 @@ export default function FullscreenChatWidget({
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>{chatStats?.satisfaction || '4.8/5'}</Typography>
                         <Typography variant="caption">Kundetilfredshet</Typography>
                       </Box>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: neutralSurface, borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>{chatStats?.automationRate || '67%'}</Typography>
                         <Typography variant="caption">Automatiseringsrate</Typography>
                       </Box>
@@ -4305,8 +4761,8 @@ export default function FullscreenChatWidget({
             <DialogContent sx={{ p:  3}}>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap:  3 }}>
                 {/* GDPR Compliance */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🛡️ GDPR Compliance Center
                   </Typography>
                   
@@ -4366,8 +4822,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Google Drive Backup */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     ☁️ Google Drive Chat Backup
                   </Typography>
                   
@@ -4426,7 +4882,7 @@ export default function FullscreenChatWidget({
                     startIcon={<Google />}
                     sx={{ 
                       mt:  2,
-                      bgcolor: '#','&:hover': { bgcolor: '#3367d6',}
+                      bgcolor: neutralSurface,'&:hover': { bgcolor: '#3367d6',}
                 }}
                   >
                     🔄 Start Manuell Backup
@@ -4434,8 +4890,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Data Anonymization */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🕶️ Data Anonymisering & Pseudonymisering
                   </Typography>
                   
@@ -4499,7 +4955,7 @@ export default function FullscreenChatWidget({
                         { user: 'maria@videographer.no', type: 'Slett data', status: 'Venter', time: '6 timer siden',},
                         { user: 'erik@musicproducer.no', type: 'Data innsyn', status: 'Fullført', time: '1 dag siden',}
                       ].map((request, index) => (
-                        <Paper key={index} sx={{ p: 2, bgcolor: '#', borderRadius: 1, border: '1px solid #ff8c00',  ...theming.getThemedCardSx() }}>
+                        <Paper key={index} sx={{ p: 2, bgcolor: neutralSurface, borderRadius: 1, border: '1px solid #ff8c00',  ...theming.getThemedCardSx() }}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                             <Box>
                               <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
@@ -4534,8 +4990,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Audit Trail */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     📜 Audit Trail & Aktivitetslogg
                   </Typography>
                   
@@ -4578,7 +5034,7 @@ export default function FullscreenChatWidget({
                     fullWidth
                     startIcon={<History sx={theming.getThemedButtonSx()} />}
                     sx={{ 
-                      bgcolor: '#','&:hover': { bgcolor: '#45a049',}
+                      bgcolor: neutralSurface,'&:hover': { bgcolor: '#45a049',}
                 }}
                   >
                     📊 Full Audit Rapport
@@ -4586,8 +5042,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Security Monitoring */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🛡️ Sikkerhetsmonitering
                   </Typography>
                   
@@ -4596,15 +5052,15 @@ export default function FullscreenChatWidget({
                       🚨 Sikkerhetsstatus
                     </Typography>
                     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat, (1fr)', gap:  2}}>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: neutralSurface, borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>0</Typography>
                         <Typography variant="caption">Aktive trusler</Typography>
                       </Box>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: neutralSurface, borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>3</Typography>
                         <Typography variant="caption">Varsler</Typography>
                       </Box>
-                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#', borderRadius:  1}}>
+                      <Box sx={{ textAlign: 'center', p: 2, bgcolor: neutralSurface, borderRadius:  1}}>
                         <Typography variant="h6" sx={{  fontWeight: 600, color: theming.colors.primary }}>{chatStats?.securityScore || '99.8%'}</Typography>
                         <Typography variant="caption">Oppetid</Typography>
                       </Box>
@@ -4681,7 +5137,7 @@ export default function FullscreenChatWidget({
             <DialogContent sx={{ p:  3}}>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap:  3 }}>
                 {/* Language Detection */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2,  ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2,  ...theming.getThemedCardSx() }}>
                   <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, fontWeight: 600 }}>
                     🔍 Automatisk Språkdeteksjon
                   </Typography>
@@ -4727,7 +5183,7 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Translation Service */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2,  ...theming.getThemedCardSx() }}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2,  ...theming.getThemedCardSx() }}>
                   <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, fontWeight: 600 }}>
                     🔄 Live Oversettelsestjeneste
                   </Typography>
@@ -4785,8 +5241,8 @@ export default function FullscreenChatWidget({
                 </Paper>
 
                 {/* Cultural Adaptation */}
-                <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600}}>
+                <Paper sx={{ p:  3, border: '1px solid rgba(15, 23, 42, 0.12)', borderRadius:  2,  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h6" sx={{  mb: 2, color: neutralText, fontWeight: 600}}>
                     🌏 Kulturell Tilpasning
                   </Typography>
                   
@@ -4911,6 +5367,15 @@ export default function FullscreenChatWidget({
         )}
       </DialogContent>
 
+      <QuoteCreationModal
+        open={quoteModalOpen}
+        onClose={() => setQuoteModalOpen(false)}
+        clientData={quoteClientData}
+        onQuoteCreated={(quoteData) => {
+          void handleQuoteCreatedFromChat(quoteData);
+        }}
+      />
+
       {/* Push Notification Settings Dialog */}
       {isSupported && (
         <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
@@ -4925,6 +5390,23 @@ export default function FullscreenChatWidget({
           </DialogActions>
         </Dialog>
       )}
-    </Dialog>
+        </Dialog>
+        <Snackbar
+          open={statusToast.open}
+          autoHideDuration={3500}
+          onClose={() => setStatusToast((prev) => ({ ...prev, open: false }))}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert
+            onClose={() => setStatusToast((prev) => ({ ...prev, open: false }))}
+            severity={statusToast.severity}
+            variant="filled"
+            sx={{ width: '100%' }}
+          >
+            {statusToast.message}
+          </Alert>
+        </Snackbar>
+      </>
+    </ChatWidgetErrorBoundary>
   );
 }

@@ -22,19 +22,20 @@ import {
   MonetizationOn,
   Movie,
   MoreHoriz,
-  PlayArrow,
   Publish,
   Quiz,
   Save,
   Search,
   Subtitles,
+  VisibilityOff,
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
-import AcademyBrandMark from './AcademyBrandMark';
+import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
+import AcademyLeftSidebar from './AcademyLeftSidebar';
 import AcademyVideoPlayerStudio from './AcademyVideoPlayerStudio';
 
 interface ModuleLesson {
@@ -285,7 +286,7 @@ function ModuleManager({
   const addModule = useCallback(() => {
     const module: ModuleEntity = {
       id: `module-${Date.now()}`,
-      title: `${tt('Ny modul', 'New Module')} ${moduleItems.length + 1}`,
+      title: `${tt('Ny kompetanse', 'New Competency')} ${moduleItems.length + 1}`,
       description: tt('Modulbeskrivelse', 'Module description'),
       status: 'draft',
       releaseMode: 'manual',
@@ -452,122 +453,60 @@ function ModuleManager({
     <Box
       sx={{
         minHeight: '100vh',
-        color: '#f4ede1',
-        background:
-          'radial-gradient(circle at 14% -5%, rgba(245,166,35,0.22), rgba(0,0,0,0) 40%), radial-gradient(circle at 84% 10%, rgba(74,104,151,0.22), rgba(0,0,0,0) 44%), linear-gradient(180deg, #060910 0%, #05070d 56%, #04060a 100%)',
+        color: '#edf0f7',
+        bgcolor: '#06080d',
+        fontFamily: '"Manrope", "Barlow", "Segoe UI", sans-serif',
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
       <Box
         sx={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          background:
+            'radial-gradient(circle at 74% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%)',
+        }}
+      />
+      <Box
+        sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: '250px 1fr 420px' },
+          gridTemplateColumns: {
+            xs: '1fr',
+            lg: 'minmax(220px, 250px) minmax(0, 1fr)',
+            xl: 'minmax(220px, 250px) minmax(0, 1fr) minmax(320px, var(--academy-right-panel-width, 390px))',
+          },
           minHeight: '100vh',
+          position: 'relative',
+          zIndex: 1,
           width: 'min(100%, var(--academy-shell-max-width, 1920px))',
           mx: 'auto',
+          overflowX: 'hidden',
         }}
       >
+        <AcademyLeftSidebar
+          activeNav={leftNav}
+          onNavigate={(navId, route) => {
+            setLeftNav(navId);
+            setLocation(route);
+          }}
+          onCreateCourse={() => {
+            setLeftNav('curriculum');
+            setLocation('/academy/curriculum?createCompetency=1');
+          }}
+          tt={tt}
+          navLabel={navLabel}
+        />
+
         <Box
           sx={{
-            borderRight: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)',
-            background: 'linear-gradient(180deg, rgba(7,10,16,0.96) 0%, rgba(6,8,13,0.96) 100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+            background: 'linear-gradient(180deg, rgba(8,12,18,0.94) 0%, rgba(7,10,16,0.92) 100%)',
           }}
         >
-          <Box sx={{ p: 2, borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)' }}>
-            <AcademyBrandMark />
-          </Box>
-
-          <Box sx={{ p: 1.5 }}>
-            <Button
-              fullWidth
-              startIcon={<Add />}
-              onClick={() => setLocation('/academy/course-creator')}
-              sx={{
-                justifyContent: 'flex-start',
-                textTransform: 'none',
-                color: '#ffdca8',
-                border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
-                borderRadius: '8px',
-                mb: 1.2,
-              }}
-            >
-              {tt('Opprett nytt kurs', 'Create New Course')}
-            </Button>
-
-            <Stack spacing={0.6}>
-              {[
-                ['overview', 'Overview'],
-                ['curriculum', 'Curriculum'],
-                ['lessons', 'Lessons'],
-                ['media', 'Media'],
-                ['assignments', 'Assignments'],
-                ['cohorts', 'Cohort Settings'],
-                ['analytics', 'Analytics'],
-                ['monetization', 'Monetization'],
-                ['lower-thirds', 'Animated Lower Thirds'],
-                ['settings', 'Settings'],
-              ].map(([key, label]) => {
-                const active = leftNav === key;
-                return (
-                  <Button
-                    key={key}
-                    onClick={() => {
-                      setLeftNav(key);
-                      const leftNavRoutes: Record<string, string> = {
-                        overview: '/academy-dashboard',
-                        curriculum: '/academy/curriculum',
-                        lessons: '/academy/lesson-editor',
-                        media: '/academy/media',
-                        assignments: '/academy/assignments',
-                        cohorts: '/academy/cohort-settings',
-                        analytics: '/academy/analytics',
-                        monetization: '/academy/monetization',
-                        'lower-thirds': '/academy/lower-thirds',
-                        settings: '/academy/course-creator',
-                      };
-                      const targetRoute = leftNavRoutes[key];
-                      if (targetRoute) {
-                        setLocation(targetRoute);
-                      }
-                    }}
-                    sx={{
-                      justifyContent: 'flex-start',
-                      textTransform: 'none',
-                      color: active ? '#ffe2b5' : 'rgba(244,237,225,0.74)',
-                      borderRadius: '8px',
-                      fontFamily: 'Rajdhani, sans-serif',
-                      fontWeight: active ? 700 : 500,
-                      background: active
-                        ? 'linear-gradient(90deg, rgba(245,166,35,0.32) 0%, rgba(245,166,35,0.08) 100%)'
-                        : 'transparent',
-                      border: active ? 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.42)' : 'var(--academy-hairline-width, 1px) solid transparent',
-                    }}
-                  >
-                    {navLabel(label)}
-                  </Button>
-                );
-              })}
-            </Stack>
-          </Box>
-
-          <Box sx={{ mt: 'auto', p: 1.5, borderTop: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)' }}>
-            <Button
-              fullWidth
-              startIcon={<Add />}
-              onClick={addModule}
-              sx={{
-                justifyContent: 'flex-start',
-                textTransform: 'none',
-                color: '#f4ede1',
-                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
-                borderRadius: '8px',
-              }}
-            >
-              {tt('Ny modul', 'New Module')}
-            </Button>
-          </Box>
-        </Box>
-
-        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
           <Box
             sx={{
               px: { xs: 2, md: 3 },
@@ -577,17 +516,42 @@ function ModuleManager({
               backdropFilter: 'blur(6px)',
             }}
           >
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ gap: 1, flexWrap: 'wrap' }}>
-              <Stack direction="row" spacing={1.4} alignItems="center" sx={{ minWidth: 260, flex: 1 }}>
+            <Stack
+              direction="row"
+              justifyContent="space-between"
+              alignItems={{ xs: 'flex-start', xl: 'center' }}
+              sx={{ gap: 1, flexWrap: 'wrap', minWidth: 0 }}
+            >
+              <Stack direction="row" spacing={1.4} alignItems="center" sx={{ minWidth: 260, flex: '1 1 320px' }}>
                 <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.11em', opacity: 0.78 }}>
                   CREATOR STUDIO
                 </Typography>
-                <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: { xs: '1.8rem', md: '2.2rem' } }}>
-                  {tt('Moduladministrator', 'Module Manager')}
+                <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 'clamp(1.22rem, 1.05rem + 0.45vw, 1.62rem)' }}>
+                  {tt('Kursarkitektur', 'Course Architecture')}
                 </Typography>
               </Stack>
 
-              <Stack direction="row" spacing={1} alignItems="center">
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                sx={{
+                  flex: '1 1 480px',
+                  minWidth: 0,
+                  justifyContent: { xs: 'flex-start', xl: 'flex-end' },
+                  py: 0.2,
+                  rowGap: 0.4,
+                  flexWrap: 'nowrap',
+                  overflowX: 'auto',
+                  pb: 0.2,
+                  '& > *': { flexShrink: 0, whiteSpace: 'nowrap' },
+                  '&::-webkit-scrollbar': { height: 6 },
+                  '&::-webkit-scrollbar-thumb': {
+                    backgroundColor: 'rgba(255,255,255,0.18)',
+                    borderRadius: 999,
+                  },
+                }}
+              >
                 <Button
                   startIcon={<Edit />}
                   onClick={() => setLocation('/academy/annotation-editor')}
@@ -599,7 +563,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  {tt('Annotering', 'Annotation')}
+                  {tt('Annoteringsstudio', 'Annotation Studio')}
                 </Button>
                 <Button
                   startIcon={<Quiz />}
@@ -612,7 +576,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  {tt('Quiz', 'Quiz')}
+                  {tt('Quiz Studio', 'Quiz Studio')}
                 </Button>
                 <Button
                   startIcon={<Campaign />}
@@ -638,11 +602,11 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  {tt('LowerThirds', 'LowerThirds')}
+                  {tt('Supring Studio', 'Lower Thirds Studio')}
                 </Button>
                 <Button
                   startIcon={<Movie />}
-                  onClick={() => setLocation('/academy/video-player')}
+                  onClick={() => setLocation('/academy/player-studio')}
                   sx={{
                     textTransform: 'none',
                     color: '#f4ede1',
@@ -666,8 +630,9 @@ function ModuleManager({
                 >
                   {tt('Monetiser', 'Monetize')}
                 </Button>
+                <AcademyLocaleSwitcher />
                 <Button
-                  startIcon={<PlayArrow />}
+                  startIcon={<VisibilityOff />}
                   onClick={() => setPreviewMode(true)}
                   sx={{
                     textTransform: 'none',
@@ -677,7 +642,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  {tt('Forhåndsvis', 'Preview')}
+                  {tt('Forhåndsvis (student)', 'Preview (learner)')}
                 </Button>
                 <Button
                   startIcon={<Save />}
@@ -757,7 +722,7 @@ function ModuleManager({
                 size="small"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
-                placeholder={tt('Søk moduler...', 'Search Modules...')}
+                placeholder={tt('Søk kompetanser...', 'Search Competencies...')}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -786,7 +751,7 @@ function ModuleManager({
                   '&:hover': { background: 'linear-gradient(180deg, #ffe08d 0%, #f6b640 100%)' },
                 }}
               >
-                {tt('Legg til modul', 'Add Module')}
+                {tt('Legg til kompetanse', 'Add Competency')}
               </Button>
             </Stack>
 
@@ -835,7 +800,7 @@ function ModuleManager({
                             fontWeight: 700,
                           }}
                         />
-                        <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '2rem', lineHeight: 1 }}>
+                        <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 'clamp(1.1rem, 0.98rem + 0.25vw, 1.28rem)', lineHeight: 1 }}>
                           {module.title}
                         </Typography>
                       </Stack>
@@ -907,7 +872,7 @@ function ModuleManager({
                                   '& .MuiInputBase-input': {
                                     color: '#f4ede1',
                                     fontFamily: 'Barlow Condensed, sans-serif',
-                                    fontSize: '1.5rem',
+                                    fontSize: 'clamp(1.18rem, 1.02rem + 0.35vw, 1.35rem)',
                                     lineHeight: 1,
                                   },
                                 }}
@@ -966,32 +931,35 @@ function ModuleManager({
               })}
             </Stack>
 
-            <Box sx={{ mt: 1.4, display: 'flex', justifyContent: 'center' }}>
-              <Button
-                startIcon={<Add />}
-                onClick={addModule}
-                sx={{
-                  textTransform: 'none',
-                  color: '#f4ede1',
-                  borderRadius: '9px',
-                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
-                  px: 2.4,
-                }}
-              >
-                {tt('Legg til modul', 'Add Module')}
-              </Button>
-            </Box>
           </Box>
         </Box>
 
         <Box
+          className="academy-right-panel"
           sx={{
-            borderLeft: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)',
+            gridColumn: { xs: '1', lg: '1 / -1', xl: 'auto' },
+            borderLeft: { xs: 'none', xl: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)' },
+            borderTop: { xs: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)', xl: 'none' },
             background: 'linear-gradient(180deg, rgba(7,10,16,0.96) 0%, rgba(6,8,13,0.96) 100%)',
             p: { xs: 2, lg: 1.5 },
+            minWidth: 0,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: { xs: 'visible', xl: 'hidden' },
           }}
         >
-          <Stack direction="row" spacing={1} sx={{ mb: 1.1 }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              mb: 1.1,
+              minWidth: 0,
+              rowGap: 0.45,
+              flexWrap: 'wrap',
+              '& > *': { flexShrink: 0, whiteSpace: 'nowrap' },
+            }}
+          >
             {([
               ['module', 'Module Manager'],
               ['schedule', 'Schedule'],
@@ -1014,7 +982,7 @@ function ModuleManager({
                 }}
               >
                 {key === 'module'
-                  ? tt('Moduladministrator', 'Module Manager')
+                  ? tt('Kursarkitektur', 'Course Architecture')
                   : key === 'schedule'
                     ? tt('Planlegging', 'Schedule')
                     : key === 'prerequisites'
@@ -1348,7 +1316,7 @@ function ModuleManager({
 
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', my: 1.2 }} />
 
-            <Stack direction="row" spacing={1} sx={{ mt: 1.4 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.4 }}>
               <Button
                 onClick={() => setLocation('/academy/course-creator')}
                 sx={{
@@ -1360,19 +1328,6 @@ function ModuleManager({
                 }}
               >
                 {tt('Avbryt', 'Cancel')}
-              </Button>
-              <Button
-                onClick={() => void saveModules(false)}
-                disabled={saving}
-                sx={{
-                  textTransform: 'none',
-                  color: '#1f1304',
-                  borderRadius: '8px',
-                  flex: 1,
-                  background: 'linear-gradient(180deg, #ffd36d 0%, #f5a623 100%)',
-                }}
-              >
-                {tt('Lagre', 'Save')}
               </Button>
             </Stack>
 

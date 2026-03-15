@@ -42,7 +42,8 @@ interface QuoteGeneratorModalProps {
   packages: any[];
   pricing: any[];
   additionalCosts: any[];
-  discounts: any[]
+  discounts: any[];
+  onQuoteGenerated?: (savedQuote: Record<string, unknown>) => void;
 }
 
 const QuoteGeneratorModal: React.FC<QuoteGeneratorModalProps> = ({
@@ -51,7 +52,8 @@ const QuoteGeneratorModal: React.FC<QuoteGeneratorModalProps> = ({
   packages,
   pricing,
   additionalCosts,
-  discounts
+  discounts,
+  onQuoteGenerated,
 }) => {
   const [clientId, setClientId] = useState('');
   const [selectedServices, setSelectedServices] = useState<any[]>([]);
@@ -72,13 +74,25 @@ const QuoteGeneratorModal: React.FC<QuoteGeneratorModalProps> = ({
 } = useClientServicePricing();
 
   const generateQuoteMutation = useMutation({
-    mutationFn: async (quoteData: any) => {
+    mutationFn: async (quoteData: Record<string, unknown>) => {
       return apiRequest('/api/price-administration/quotes', {
         method: 'POST',
         body: JSON.stringify(quoteData),
       });
     },
-    onSuccess: () => {
+    onSuccess: (savedQuoteResponse: unknown, quoteData: Record<string, unknown>) => {
+      const isRecord = (value: unknown): value is Record<string, unknown> =>
+        typeof value === 'object' && value !== null && !Array.isArray(value);
+
+      const savedQuote = isRecord(savedQuoteResponse)
+        ? (isRecord(savedQuoteResponse.data)
+            ? savedQuoteResponse.data
+            : (isRecord(savedQuoteResponse.quote) ? savedQuoteResponse.quote : savedQuoteResponse))
+        : quoteData;
+
+      if (onQuoteGenerated) {
+        onQuoteGenerated(savedQuote);
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/price-administration/quotes'] });
       handleClose();
     },

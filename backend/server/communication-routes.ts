@@ -11,6 +11,7 @@
  */
 
 import { Router } from 'express';
+import type { Request, Response } from 'express';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq, desc, and, sql, isNull } from 'drizzle-orm';
 import * as schema from '../migrations/schema.js';
@@ -20,6 +21,101 @@ type DB = NodePgDatabase<typeof schema>;
 
 export function createCommunicationRouter(db: DB): Router {
   const router = Router();
+
+  const toNonEmptyString = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  const normalizeChannelId = (raw: unknown): string => {
+    const parsed = toNonEmptyString(raw);
+    if (!parsed) return `chat-${crypto.randomUUID()}`;
+    if (parsed.startsWith('spaces/')) return parsed.replace('spaces/', '');
+    return parsed;
+  };
+
+  const normalizeFeedbackType = (category: unknown): 'bug' | 'feature' | 'usability' | 'general' | 'ui_ux' => {
+    const normalized = toNonEmptyString(category)?.toLowerCase();
+    if (normalized === 'bug' || normalized === 'technical_issue') return 'bug';
+    if (normalized === 'feature_request' || normalized === 'feature') return 'feature';
+    if (normalized === 'ui_ux' || normalized === 'design') return 'ui_ux';
+    if (normalized === 'usability') return 'usability';
+    return 'general';
+  };
+
+  const normalizePriority = (priority: unknown): 'low' | 'medium' | 'high' | 'critical' => {
+    const normalized = toNonEmptyString(priority)?.toLowerCase();
+    if (normalized === 'low' || normalized === 'medium' || normalized === 'high' || normalized === 'critical') {
+      return normalized;
+    }
+    return 'medium';
+  };
+
+  const normalizeStatus = (status: unknown): 'open' | 'in_progress' | 'resolved' | 'closed' => {
+    const normalized = toNonEmptyString(status)?.toLowerCase();
+    if (normalized === 'open' || normalized === 'in_progress' || normalized === 'resolved' || normalized === 'closed') {
+      return normalized;
+    }
+    return 'open';
+  };
+
+  const ensureChannelExists = async (channelId: string, channelName?: string, channelType: string = 'chat') => {
+    const existing = await db
+      .select({ id: schema.communicationChannels.id })
+      .from(schema.communicationChannels)
+      .where(eq(schema.communicationChannels.id, channelId))
+      .limit(1);
+
+    if (existing.length > 0) return;
+
+    const now = new Date().toISOString();
+    await db.insert(schema.communicationChannels).values({
+      id: channelId,
+      name: channelName || `Chat ${channelId}`,
+      type: channelType,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  };
+
+  const persistMessage = async (params: {
+    channelId: string;
+    senderId: string;
+    content: string;
+    messageType: string;
+    metadata?: Record<string, unknown>;
+    timestamp?: string;
+  }) => {
+    const messageId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const createdAt = params.timestamp || now;
+
+    await db.insert(schema.communicationMessages).values({
+      id: messageId,
+      channelId: params.channelId,
+      senderId: params.senderId,
+      messageType: params.messageType,
+      content: params.content,
+      metadata: params.metadata || {},
+      isRead: false,
+      isPriority: false,
+      isSystemGenerated: false,
+      createdAt,
+      updatedAt: now,
+    });
+
+    await db
+      .update(schema.communicationChannels)
+      .set({ updatedAt: now })
+      .where(eq(schema.communicationChannels.id, params.channelId));
+
+    return {
+      id: messageId,
+      timestamp: createdAt,
+    };
+  };
 
   // ─── GET /api/communication/conversations ─────────────────
   router.get('/api/communication/conversations', async (req, res) => {
@@ -143,49 +239,36 @@ export function createCommunicationRouter(db: DB): Router {
     }
   });
 
-  // ─── POST /api/communication/messages ─────────────────────
-  router.post('/api/communication/messages', async (req, res) => {
+  const handleSendCommunicationMessage = async (req: Request, res: Response) => {
     try {
-      const { content, conversationId } = req.body;
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const content = toNonEmptyString(payload.content) || toNonEmptyString(payload.message);
+      const conversationId = normalizeChannelId(payload.conversationId || payload.contactId || payload.channelId);
       const senderId =
-        req.headers['x-user-id'] as string ||
-        req.headers['x-user-email'] as string ||
+        toNonEmptyString(req.headers['x-user-id']) ||
+        toNonEmptyString(req.headers['x-user-email']) ||
         'anonymous';
 
-      if (!content || !conversationId) {
-        return res.status(400).json({ error: 'content and conversationId are required' });
+      if (!content) {
+        return res.status(400).json({ error: 'content is required' });
       }
 
-      const messageId = crypto.randomUUID();
-      const now = new Date().toISOString();
-
-      await db.insert(schema.communicationMessages).values({
-        id: messageId,
+      await ensureChannelExists(conversationId, `Chat ${conversationId}`, 'chat');
+      const persisted = await persistMessage({
         channelId: conversationId,
         senderId,
-        messageType: 'text',
         content,
-        isRead: false,
-        isPriority: false,
-        isSystemGenerated: false,
-        createdAt: now,
-        updatedAt: now,
+        messageType: 'text',
       });
-
-      // Update channel's updatedAt
-      await db
-        .update(schema.communicationChannels)
-        .set({ updatedAt: now })
-        .where(eq(schema.communicationChannels.id, conversationId));
 
       res.json({
         success: true,
         message: {
-          id: messageId,
+          id: persisted.id,
           channelId: conversationId,
           senderId,
           content,
-          timestamp: now,
+          timestamp: persisted.timestamp,
           type: 'text',
           status: 'sent',
         },
@@ -194,84 +277,526 @@ export function createCommunicationRouter(db: DB): Router {
       console.error('Error sending message:', error);
       res.status(500).json({ error: 'Failed to send message' });
     }
+  };
+
+  // ─── POST /api/communication/messages ─────────────────────
+  router.post('/api/communication/messages', async (req, res) => {
+    await handleSendCommunicationMessage(req, res);
+  });
+
+  // Compatibility alias used by older chat widgets
+  router.post('/api/communication/send-message', async (req, res) => {
+    await handleSendCommunicationMessage(req, res);
   });
 
   // ─── POST /api/chat/messages ──────────────────────────────
   // Used by UniversalChatWidget (sends full ChatMessage object)
   router.post('/api/chat/messages', async (req, res) => {
     try {
-      const msg = req.body;
+      const msg = (req.body || {}) as Record<string, unknown>;
       const senderId =
-        msg.senderId ||
-        req.headers['x-user-email'] as string ||
+        toNonEmptyString(msg.senderId) ||
+        toNonEmptyString(req.headers['x-user-email']) ||
         'anonymous';
-      const channelId = msg.conversationId || 'general';
-      const content = msg.content || '';
+      const channelId = normalizeChannelId(msg.conversationId || 'general');
+      const content = toNonEmptyString(msg.content);
 
-      if (!content.trim()) {
+      if (!content) {
         return res.status(400).json({ error: 'Message content is required' });
       }
 
-      const messageId = msg.id || crypto.randomUUID();
-      const now = new Date().toISOString();
-
-      // Ensure channel exists
-      const existing = await db
-        .select({ id: schema.communicationChannels.id })
-        .from(schema.communicationChannels)
-        .where(eq(schema.communicationChannels.id, channelId))
-        .limit(1);
-
-      if (existing.length === 0) {
-        // Auto-create the channel
-        await db.insert(schema.communicationChannels).values({
-          id: channelId,
-          name: `Chat ${channelId}`,
-          type: 'chat',
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      await db.insert(schema.communicationMessages).values({
-        id: messageId,
+      await ensureChannelExists(channelId, `Chat ${channelId}`, 'chat');
+      const persisted = await persistMessage({
         channelId,
         senderId,
-        messageType: msg.messageType || 'text',
+        messageType: toNonEmptyString(msg.messageType) || 'text',
         content,
-        metadata: msg.metadata || {},
-        isRead: false,
-        isPriority: false,
-        isSystemGenerated: false,
-        createdAt: msg.timestamp || now,
-        updatedAt: now,
+        metadata: typeof msg.metadata === 'object' && msg.metadata !== null
+          ? msg.metadata as Record<string, unknown>
+          : {},
+        timestamp: toNonEmptyString(msg.timestamp) || undefined,
       });
 
-      res.json({ success: true, id: messageId });
+      res.json({ success: true, id: persisted.id });
     } catch (error) {
       console.error('Error saving chat message:', error);
       res.status(500).json({ error: 'Failed to save message' });
     }
   });
 
+  const handleSendEmail = async (req: Request, res: Response) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const conversationId = normalizeChannelId(payload.conversationId || payload.chatId || payload.threadId);
+      const content = toNonEmptyString(payload.message) || toNonEmptyString(payload.content);
+      const senderId =
+        toNonEmptyString(req.headers['x-user-id']) ||
+        toNonEmptyString(req.headers['x-user-email']) ||
+        'anonymous';
+      const recipient = toNonEmptyString(payload.to);
+      const subject = toNonEmptyString(payload.subject) || 'Melding fra CreatorHub';
+
+      if (!content) {
+        return res.status(400).json({ error: 'message is required' });
+      }
+
+      await ensureChannelExists(conversationId, `Email ${conversationId}`, 'email');
+      const persisted = await persistMessage({
+        channelId: conversationId,
+        senderId,
+        content,
+        messageType: 'email',
+        metadata: {
+          to: recipient,
+          subject,
+          deliveryStatus: 'queued',
+          transport: 'creatorhub-email',
+        },
+      });
+
+      res.json({
+        success: true,
+        message: {
+          id: persisted.id,
+          conversationId,
+          senderId,
+          to: recipient,
+          subject,
+          content,
+          timestamp: persisted.timestamp,
+          status: 'queued',
+        },
+      });
+    } catch (error) {
+      console.error('Error sending email:', error);
+      res.status(500).json({ error: 'Failed to send email' });
+    }
+  };
+
   // ─── POST /api/communication/email/send ───────────────────
-  router.post('/api/communication/email/send', async (_req, res) => {
-    // Stub — email sending not implemented
-    res.json({ success: true, message: 'Email queued (stub)' });
+  router.post('/api/communication/email/send', async (req, res) => {
+    await handleSendEmail(req, res);
+  });
+
+  // Compatibility alias used by UniversalChatWidget
+  router.post('/api/emails/send', async (req, res) => {
+    await handleSendEmail(req, res);
+  });
+
+  // ─── POST /api/helpdesk/tickets ───────────────────────────
+  router.post('/api/helpdesk/tickets', async (req, res) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const title = toNonEmptyString(payload.title);
+      const description = toNonEmptyString(payload.description);
+      const userId =
+        toNonEmptyString(payload.userId) ||
+        toNonEmptyString(req.headers['x-user-id']) ||
+        'anonymous';
+      const userEmail =
+        toNonEmptyString(payload.userEmail) ||
+        toNonEmptyString(req.headers['x-user-email']);
+      const profession = toNonEmptyString(payload.profession) || 'general';
+      const dashboardFeature = toNonEmptyString(payload.dashboardFeature) || 'chat-widget';
+      const rawCategory = toNonEmptyString(payload.category) || 'question';
+
+      if (!title || !description) {
+        return res.status(400).json({ error: 'title and description are required' });
+      }
+
+      const ticketId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const isAnonymous = userId === 'anonymous' || Boolean(payload.isAnonymous);
+
+      await db.insert(schema.prototypeFeedback).values({
+        id: ticketId,
+        userId,
+        userEmail: userEmail || null,
+        userName: toNonEmptyString(payload.userName),
+        profession,
+        dashboardType: dashboardFeature,
+        feedbackType: normalizeFeedbackType(rawCategory),
+        title,
+        description,
+        rating: Number.isFinite(Number(payload.rating)) ? Number(payload.rating) : 5,
+        priority: normalizePriority(payload.priority),
+        component: 'helpdesk',
+        tags: [rawCategory, dashboardFeature],
+        isAnonymous,
+        status: 'open',
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      res.status(201).json({
+        success: true,
+        ticket: {
+          id: ticketId,
+          title,
+          description,
+          category: rawCategory,
+          priority: normalizePriority(payload.priority),
+          status: 'open',
+          userId,
+          userEmail,
+          createdAt: now,
+        },
+      });
+    } catch (error) {
+      console.error('Error creating helpdesk ticket:', error);
+      res.status(500).json({ error: 'Failed to create helpdesk ticket' });
+    }
+  });
+
+  // ─── Google Chat bridge routes (database-backed fallback) ─
+  router.get('/api/google/chat/spaces', async (_req, res) => {
+    try {
+      const channels = await db
+        .select({
+          id: schema.communicationChannels.id,
+          name: schema.communicationChannels.name,
+          description: schema.communicationChannels.description,
+          type: schema.communicationChannels.type,
+          updatedAt: schema.communicationChannels.updatedAt,
+        })
+        .from(schema.communicationChannels)
+        .where(eq(schema.communicationChannels.isActive, true))
+        .orderBy(desc(schema.communicationChannels.updatedAt))
+        .limit(50);
+
+      const spaces = await Promise.all(
+        channels.map(async (channel) => {
+          const last = await db
+            .select({
+              content: schema.communicationMessages.content,
+              createdAt: schema.communicationMessages.createdAt,
+            })
+            .from(schema.communicationMessages)
+            .where(eq(schema.communicationMessages.channelId, channel.id))
+            .orderBy(desc(schema.communicationMessages.createdAt))
+            .limit(1);
+
+          return {
+            name: `spaces/${channel.id}`,
+            displayName: channel.name || `Space ${channel.id}`,
+            spaceType: 'SPACE',
+            spaceDetails: {
+              description: channel.description || '',
+            },
+            lastMessage: last[0]
+              ? {
+                  text: String(last[0].content || ''),
+                  createTime: last[0].createdAt,
+                }
+              : null,
+            metadata: {
+              source: 'creatorhub-fallback',
+              type: channel.type,
+              updatedAt: channel.updatedAt,
+            },
+          };
+        })
+      );
+
+      res.json({ spaces });
+    } catch (error) {
+      console.error('Error fetching google chat spaces:', error);
+      res.status(500).json({ error: 'Failed to fetch Google Chat spaces' });
+    }
+  });
+
+  router.get('/api/google/chat/messages', async (req, res) => {
+    try {
+      const rawSpace = toNonEmptyString(req.query.space || req.query.threadId || req.query.channelId);
+      if (!rawSpace) {
+        return res.status(400).json({ error: 'space is required' });
+      }
+      const channelId = normalizeChannelId(rawSpace);
+      const limit = Number.parseInt(String(req.query.limit || '100'), 10) || 100;
+
+      const messages = await db
+        .select({
+          id: schema.communicationMessages.id,
+          senderId: schema.communicationMessages.senderId,
+          content: schema.communicationMessages.content,
+          messageType: schema.communicationMessages.messageType,
+          isRead: schema.communicationMessages.isRead,
+          deliveredAt: schema.communicationMessages.deliveredAt,
+          createdAt: schema.communicationMessages.createdAt,
+        })
+        .from(schema.communicationMessages)
+        .where(eq(schema.communicationMessages.channelId, channelId))
+        .orderBy(schema.communicationMessages.createdAt)
+        .limit(limit);
+
+      res.json({
+        messages: messages.map((message) => ({
+          id: message.id,
+          senderId: message.senderId,
+          content: message.content,
+          timestamp: message.createdAt,
+          type: message.messageType || 'text',
+          status: message.isRead ? 'read' : message.deliveredAt ? 'delivered' : 'sent',
+        })),
+      });
+    } catch (error) {
+      console.error('Error fetching google chat messages:', error);
+      res.status(500).json({ error: 'Failed to fetch Google Chat messages' });
+    }
+  });
+
+  const handleGoogleSend = async (req: Request, res: Response) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const rawSpace = toNonEmptyString(payload.space) || toNonEmptyString(payload.threadId) || toNonEmptyString(payload.conversationId);
+      if (!rawSpace) {
+        return res.status(400).json({ error: 'space is required' });
+      }
+      const channelId = normalizeChannelId(rawSpace);
+      const content = toNonEmptyString(payload.message) || toNonEmptyString(payload.content);
+      const senderId =
+        toNonEmptyString(req.headers['x-user-id']) ||
+        toNonEmptyString(req.headers['x-user-email']) ||
+        'google-chat-user';
+
+      if (!content) {
+        return res.status(400).json({ error: 'message is required' });
+      }
+
+      await ensureChannelExists(channelId, `Google Space ${channelId}`, 'team');
+      const persisted = await persistMessage({
+        channelId,
+        senderId,
+        content,
+        messageType: 'text',
+        metadata: {
+          source: 'google-chat-bridge',
+        },
+      });
+
+      res.json({
+        success: true,
+        messageId: persisted.id,
+        space: `spaces/${channelId}`,
+      });
+    } catch (error) {
+      console.error('Error sending google chat message:', error);
+      res.status(500).json({ error: 'Failed to send Google Chat message' });
+    }
+  };
+
+  router.post('/api/google/chat/send', async (req, res) => {
+    await handleGoogleSend(req, res);
+  });
+
+  router.post('/api/google/chat/send-message', async (req, res) => {
+    await handleGoogleSend(req, res);
+  });
+
+  router.post('/api/google/chat/create-space', async (req, res) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const displayName = toNonEmptyString(payload.displayName) || 'Nytt Google Chat-rom';
+      const normalizedSlug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const channelId = `google-${normalizedSlug || 'space'}-${Date.now()}`;
+      const now = new Date().toISOString();
+
+      await db.insert(schema.communicationChannels).values({
+        id: channelId,
+        name: displayName,
+        type: 'team',
+        description: toNonEmptyString(payload.description),
+        settings: {
+          platform: 'google-chat',
+          spaceType: toNonEmptyString(payload.spaceType) || 'SPACE',
+          threaded: Boolean(payload.threaded),
+        },
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      res.status(201).json({
+        success: true,
+        space: {
+          name: `spaces/${channelId}`,
+          displayName,
+          spaceType: toNonEmptyString(payload.spaceType) || 'SPACE',
+        },
+      });
+    } catch (error) {
+      console.error('Error creating google chat space:', error);
+      res.status(500).json({ error: 'Failed to create Google Chat space' });
+    }
+  });
+
+  router.post('/api/google/chat/create-project-space', async (req, res) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const projectId = toNonEmptyString(payload.projectId) || crypto.randomUUID();
+      const profession = toNonEmptyString(payload.profession) || 'project';
+      const displayName = `Prosjekt ${projectId}`;
+      const channelId = `gproject-${projectId.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`;
+      const now = new Date().toISOString();
+
+      await db.insert(schema.communicationChannels).values({
+        id: channelId,
+        name: displayName,
+        type: 'team',
+        description: `Google project space for ${profession}`,
+        settings: {
+          platform: 'google-chat',
+          projectId,
+          profession,
+          userId: toNonEmptyString(payload.userId),
+        },
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      res.status(201).json({
+        success: true,
+        spaceId: `spaces/${channelId}`,
+        spaceName: displayName,
+        channelId,
+      });
+    } catch (error) {
+      console.error('Error creating google project space:', error);
+      res.status(500).json({ error: 'Failed to create Google project space' });
+    }
+  });
+
+  router.get('/api/google-chat/project-spaces/current-user', async (_req, res) => {
+    try {
+      const channels = await db
+        .select({
+          id: schema.communicationChannels.id,
+          name: schema.communicationChannels.name,
+          description: schema.communicationChannels.description,
+          settings: schema.communicationChannels.settings,
+          updatedAt: schema.communicationChannels.updatedAt,
+        })
+        .from(schema.communicationChannels)
+        .where(eq(schema.communicationChannels.isActive, true))
+        .orderBy(desc(schema.communicationChannels.updatedAt))
+        .limit(30);
+
+      const spaces = channels.map((channel) => {
+        const settings = (channel.settings || {}) as Record<string, unknown>;
+        const projectId = toNonEmptyString(settings.projectId) || channel.id;
+        const projectName = toNonEmptyString(settings.projectName) || channel.name || 'Prosjekt';
+        const clientName = toNonEmptyString(settings.clientName) || 'Kunde';
+
+        return {
+          spaced: `spaces/${channel.id}`,
+          spaceName: channel.name || `Space ${channel.id}`,
+          projectType: toNonEmptyString(settings.projectType) || 'team',
+          status: 'active',
+          projectName,
+          clientName,
+          lastActivity: channel.updatedAt || new Date().toISOString(),
+          unreadCount: 0,
+          milestones: [],
+          memberCount: Number(settings.memberCount || 2),
+          projectId,
+        };
+      });
+
+      res.json({ success: true, spaces });
+    } catch (error) {
+      console.error('Error fetching project spaces:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch project spaces' });
+    }
+  });
+
+  router.get('/api/google/chat/threads', async (_req, res) => {
+    try {
+      const channels = await db
+        .select({
+          id: schema.communicationChannels.id,
+          name: schema.communicationChannels.name,
+          settings: schema.communicationChannels.settings,
+          updatedAt: schema.communicationChannels.updatedAt,
+        })
+        .from(schema.communicationChannels)
+        .where(eq(schema.communicationChannels.isActive, true))
+        .orderBy(desc(schema.communicationChannels.updatedAt))
+        .limit(30);
+
+      const threads = channels.map((channel) => {
+        const settings = (channel.settings || {}) as Record<string, unknown>;
+        return {
+          id: channel.id,
+          subject: channel.name || 'Chat-tråd',
+          participants: Array.isArray(settings.participants)
+            ? settings.participants.filter((value): value is string => typeof value === 'string')
+            : [],
+          lastMessage: toNonEmptyString(settings.lastMessage) || '',
+          lastActivity: channel.updatedAt || new Date().toISOString(),
+          unreadCount: Number(settings.unreadCount || 0),
+          status: 'active',
+        };
+      });
+
+      res.json(threads);
+    } catch (error) {
+      console.error('Error fetching chat threads:', error);
+      res.status(500).json({ error: 'Failed to fetch chat threads' });
+    }
+  });
+
+  router.post('/api/google/chat/create-thread', async (req, res) => {
+    try {
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const threadId = `thread-${Date.now()}`;
+      const emailId = toNonEmptyString(payload.emailId) || 'email';
+      const now = new Date().toISOString();
+
+      await db.insert(schema.communicationChannels).values({
+        id: threadId,
+        name: `Thread ${emailId}`,
+        type: 'chat',
+        settings: {
+          platform: 'google-chat',
+          sourceEmailId: emailId,
+          participants: [],
+          unreadCount: 0,
+        },
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      res.status(201).json({ success: true, threadId });
+    } catch (error) {
+      console.error('Error creating chat thread:', error);
+      res.status(500).json({ error: 'Failed to create chat thread' });
+    }
   });
 
   // ─── POST /api/chat/analyze-message ───────────────────────
   router.post('/api/chat/analyze-message', async (req, res) => {
-    // Stub — AI analysis not implemented
-    res.json({
-      suggestions: [
-        'Takk for din henvendelse! Jeg ser på det med en gang.',
-        'Kan du gi meg litt mer informasjon?',
-      ],
-      sentiment: 'neutral',
-      priority: 'normal',
-    });
+    const payload = (req.body || {}) as Record<string, unknown>;
+    const content = toNonEmptyString(payload.content) || '';
+    const lower = content.toLowerCase();
+
+    const suggestions: string[] = [];
+    if (lower.includes('pris') || lower.includes('tilbud') || lower.includes('kost')) {
+      suggestions.push('Takk for interessen! Jeg kan sende et konkret pristilbud basert på behovene deres.');
+    }
+    if (lower.includes('når') || lower.includes('dato') || lower.includes('ledig')) {
+      suggestions.push('Jeg kan sjekke tilgjengelighet med en gang. Hvilken dato vurderer dere?');
+    }
+    if (suggestions.length === 0) {
+      suggestions.push('Takk for meldingen! Jeg følger opp så raskt jeg kan.');
+      suggestions.push('Kan du dele litt mer kontekst, så kan jeg gi et mer presist svar?');
+    }
+
+    const sentiment = lower.includes('takk') || lower.includes('flott') ? 'positive' : 'neutral';
+    const priority = lower.includes('haster') || lower.includes('urgent') ? 'high' : 'normal';
+
+    res.json({ suggestions, sentiment, priority });
   });
 
   // ─── GET /api/admin/communication/users ───────────────────

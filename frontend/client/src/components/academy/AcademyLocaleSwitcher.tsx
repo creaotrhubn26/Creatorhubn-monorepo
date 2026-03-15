@@ -1,6 +1,5 @@
 import React from 'react';
 import { Box, ToggleButton, ToggleButtonGroup, Tooltip } from '@mui/material';
-import TranslateIcon from '@mui/icons-material/Translate';
 import { useLocation } from 'wouter';
 import { useAcademyLocale } from './academyLocale';
 
@@ -19,17 +18,13 @@ export default function AcademyLocaleSwitcher() {
   return (
     <Box
       sx={{
-        position: 'fixed',
-        right: { xs: 12, md: 18 },
-        bottom: { xs: 12, md: 18 },
-        zIndex: 1800,
-        borderRadius: '10px',
-        border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.32)',
-        bgcolor: 'rgba(8,11,18,0.9)',
-        backdropFilter: 'blur(10px)',
-        boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
-        px: 0.8,
-        py: 0.6,
+        display: 'inline-flex',
+        alignItems: 'center',
+        borderRadius: '8px',
+        border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.3)',
+        bgcolor: 'rgba(8,11,18,0.55)',
+        px: 0.35,
+        py: 0.28,
       }}
     >
       <ToggleButtonGroup
@@ -41,38 +36,36 @@ export default function AcademyLocaleSwitcher() {
             setLanguage(next);
           }
         }}
+        sx={{
+          '& .MuiToggleButton-root': {
+            borderColor: 'rgba(255,255,255,0.22)',
+            color: '#f8f1e7',
+            minWidth: 58,
+            px: 1.05,
+            py: 0.35,
+            fontSize: 12,
+            fontWeight: 700,
+            borderRadius: '7px !important',
+            textTransform: 'none',
+          },
+          '& .MuiToggleButton-root.Mui-selected': {
+            color: '#1e1306',
+            background: 'linear-gradient(180deg, #ffc64d 0%, #f5a623 100%)',
+          },
+          '& .MuiToggleButtonGroup-grouped': {
+            mx: 0.16,
+            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.22) !important',
+          },
+        }}
       >
         <Tooltip title={tt('Norsk språk', 'Norwegian language')}>
-          <ToggleButton
-            value="no"
-            aria-label="Norwegian"
-            sx={{
-              color: '#f8f1e7',
-              borderColor: 'rgba(255,255,255,0.2)',
-              '&.Mui-selected': {
-                color: '#1e1306',
-                background: 'linear-gradient(180deg, #ffc64d 0%, #f5a623 100%)',
-              },
-            }}
-          >
-            <TranslateIcon sx={{ mr: 0.5, fontSize: 16 }} />
-            NO
+          <ToggleButton value="no" aria-label="Norwegian">
+            🇳🇴 NO
           </ToggleButton>
         </Tooltip>
         <Tooltip title={tt('Engelsk språk', 'English language')}>
-          <ToggleButton
-            value="en"
-            aria-label="English"
-            sx={{
-              color: '#f8f1e7',
-              borderColor: 'rgba(255,255,255,0.2)',
-              '&.Mui-selected': {
-                color: '#1e1306',
-                background: 'linear-gradient(180deg, #ffc64d 0%, #f5a623 100%)',
-              },
-            }}
-          >
-            EN
+          <ToggleButton value="en" aria-label="English">
+            🇺🇸 EN
           </ToggleButton>
         </Tooltip>
       </ToggleButtonGroup>

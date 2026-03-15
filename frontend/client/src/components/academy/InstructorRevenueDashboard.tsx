@@ -3,7 +3,7 @@
  * Shows earnings, pending revenue, and payout management
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -27,6 +27,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Menu,
+  ListItemIcon,
+  ListItemText,
   TextField,
   FormControl,
   InputLabel,
@@ -56,14 +59,14 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import type {
-  InstructorPlan} from '@shared/revenue-calculator';
+import { academyPdfExportService } from '@/services/academyPdfExportService';
 import {
   formatNOK,
   validatePayoutRequest,
   getMinimumPayoutThreshold,
   oreToNok,
   nokToOre,
+  type InstructorPlan,
 } from '@shared/revenue-calculator';
 
 interface RevenueStats {
@@ -104,6 +107,8 @@ const InstructorRevenueDashboard: React.FC = () => {
   const [payoutAmount, setPayoutAmount] = useState<number>(0);
   const [payoutMethod, setPayoutMethod] = useState<'stripe_connect' | 'bank_transfer'>('stripe_connect',
   );
+  const [quickActionsAnchorEl, setQuickActionsAnchorEl] = useState<null | HTMLElement>(null);
+  const quickActionsOpen = Boolean(quickActionsAnchorEl);
 
   // Fetch revenue stats
   const { data: revenueStats, isLoading: statsLoading } = useQuery<RevenueStats>({
@@ -130,6 +135,68 @@ const InstructorRevenueDashboard: React.FC = () => {
   });
 
   const instructorPlan = instructorData?.plan || 'basic';
+
+  const handleExportReport = useCallback(async () => {
+    const now = new Date();
+    await academyPdfExportService.exportReport({
+      fileName: `academy-revenue-${now.toISOString().slice(0, 10)}.pdf`,
+      title: 'Inntektsoversikt',
+      subtitle: 'Instruktørinntekter, kursfordeling og utbetalingshistorikk',
+      courseLabel: `Plan: ${instructorPlan}`,
+      locale: 'nb-NO',
+      sections: [
+        {
+          title: 'Nøkkeltall',
+          metrics: [
+            { label: 'Total opptjent', value: formatNOK(revenueStats?.totalEarnings || 0) },
+            { label: 'Til utbetaling', value: formatNOK(revenueStats?.pendingRevenue || 0) },
+            { label: 'Utbetalt', value: formatNOK(revenueStats?.paidOut || 0) },
+            { label: 'Denne måneden', value: formatNOK(revenueStats?.thisMonthEarnings || 0) },
+            { label: 'Studenter', value: revenueStats?.totalStudents || 0 },
+            { label: 'Aktive kurs', value: revenueStats?.activeCourses || 0 },
+          ],
+        },
+        {
+          title: 'Inntekter per kurs',
+          table: {
+            columns: [
+              'Kurs',
+              'Påmeldinger',
+              'Total omsetning',
+              'Instruktørandel',
+              'Plattformgebyr',
+            ],
+            rows: (courseRevenue || []).map((course) => [
+              course.courseTitle,
+              course.enrollments,
+              formatNOK(course.totalRevenue),
+              formatNOK(course.instructorRevenue),
+              formatNOK(course.platformFee),
+            ]),
+          },
+        },
+        {
+          title: 'Utbetalingshistorikk',
+          table: {
+            columns: ['Dato', 'Beløp', 'Status', 'Metode'],
+            rows: (payoutHistory || []).map((payout) => [
+              new Date(payout.requestedAt).toLocaleDateString('nb-NO'),
+              formatNOK(payout.amount),
+              payout.status,
+              payout.payoutMethod,
+            ]),
+          },
+        },
+      ],
+    });
+
+    analytics.trackEvent('revenue_export_requested', {
+      timestamp: Date.now(),
+      format: 'pdf',
+      totalCourses: courseRevenue?.length || 0,
+    });
+    setQuickActionsAnchorEl(null);
+  }, [analytics, courseRevenue, instructorPlan, payoutHistory, revenueStats]);
 
   // Request payout mutation
   const requestPayoutMutation = useMutation({
@@ -202,16 +269,25 @@ const InstructorRevenueDashboard: React.FC = () => {
             Spor dine kursinntekter og administrer utbetalinger
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
-          startIcon={<Refresh />}
-          onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ['/api/academy/revenue/stats'] });
-            queryClient.invalidateQueries({ queryKey: ['/api/academy/revenue/by-course'] });
-          }}
-        >
-          Oppdater
-        </Button>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Tooltip title="Oppdater alle inntektsdata">
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ['/api/academy/revenue/stats'] });
+                queryClient.invalidateQueries({ queryKey: ['/api/academy/revenue/by-course'] });
+              }}
+            >
+              Oppdater
+            </Button>
+          </Tooltip>
+          <Tooltip title="Flere handlinger">
+            <IconButton onClick={(event) => setQuickActionsAnchorEl(event.currentTarget)}>
+              <MoreVert />
+            </IconButton>
+          </Tooltip>
+        </Stack>
       </Box>
 
       {/* Revenue Overview Cards */}
@@ -328,7 +404,7 @@ const InstructorRevenueDashboard: React.FC = () => {
               </Button>
             </Box>
           ) : (
-            <Alert severity="info">
+            <Alert severity="info" icon={<Warning />}>
               <Typography variant="body2">
                 Minimum utbetalingsbeløp er <strong>{formatNOK(minimumPayout)}</strong>. Du har for
                 øyeblikket <strong>{formatNOK(revenueStats?.pendingRevenue || 0)}</strong>{', '}
@@ -502,7 +578,7 @@ const InstructorRevenueDashboard: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 2 }}>
-            <Alert severity="info">
+            <Alert severity="info" icon={<Info />}>
               <Typography variant="body2">
                 Tilgjengelig balanse:{''}
                 <strong>{formatNOK(revenueStats?.pendingRevenue || 0)}</strong>
@@ -519,6 +595,11 @@ const InstructorRevenueDashboard: React.FC = () => {
               onChange={(e) => setPayoutAmount(Number(e.target.value))}
               fullWidth
               InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <AttachMoney fontSize="small" />
+                  </InputAdornment>
+                ),
                 endAdornment: <InputAdornment position="end">NOK</InputAdornment>}}
               helperText={`Maks: ${formatNOK(revenueStats?.pendingRevenue || 0)}`}
             />
@@ -527,7 +608,15 @@ const InstructorRevenueDashboard: React.FC = () => {
               <InputLabel>Utbetalingsmetode</InputLabel>
               <Select
                 value={payoutMethod}
-                onChange={(e) => setPayoutMethod(e.target.value as any)}
+                onChange={(e) => {
+                  const selectedMethod = e.target.value as string;
+                  if (
+                    selectedMethod === 'stripe_connect' ||
+                    selectedMethod === 'bank_transfer'
+                  ) {
+                    setPayoutMethod(selectedMethod);
+                  }
+                }}
                 label="Utbetalingsmetode"
               >
                 <MenuItem value="stripe_connect">Stripe Connect (automatisk, 1-2 dager)</MenuItem>
@@ -563,9 +652,45 @@ const InstructorRevenueDashboard: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      <Menu
+        anchorEl={quickActionsAnchorEl}
+        open={quickActionsOpen}
+        onClose={() => setQuickActionsAnchorEl(null)}
+      >
+        <MenuItem
+          onClick={handleExportReport}
+        >
+          <ListItemIcon>
+            <Download fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Eksporter rapport (PDF)</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            analytics.trackEvent('revenue_threshold_info_opened', { timestamp: Date.now() });
+            setQuickActionsAnchorEl(null);
+          }}
+        >
+          <ListItemIcon>
+            <Warning fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Vis utbetalingsterskler</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            analytics.trackEvent('revenue_platform_fee_info_opened', { timestamp: Date.now() });
+            setQuickActionsAnchorEl(null);
+          }}
+        >
+          <ListItemIcon>
+            <Info fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Hvordan gebyr beregnes</ListItemText>
+        </MenuItem>
+      </Menu>
     </Box>
-	  );
-	};
+		  );
+		};
 
 const InstructorRevenueDashboardWithIntegration = withUniversalIntegration(
 	  InstructorRevenueDashboard,

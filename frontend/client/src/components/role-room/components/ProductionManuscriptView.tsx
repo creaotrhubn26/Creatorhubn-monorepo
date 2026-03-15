@@ -197,6 +197,7 @@ import {
 } from './production/types';
 import { useSceneHistory } from './production/useSceneHistory';
 import { useEquipmentInventory } from './production/useEquipmentInventory';
+import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 // ============================================
 // 7-TIER RESPONSIVE SYSTEM
@@ -573,6 +574,13 @@ const AVAILABLE_CAMERAS = [
 
 /** Pre-computed lowercase set for case-insensitive camera matching */
 const AVAILABLE_CAMERAS_LOWER = new Set(AVAILABLE_CAMERAS.map(c => c.toLowerCase()));
+
+const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
+  const current = typeof sourceText === 'string' ? sourceText : '';
+  if (!current.trim()) return name;
+  const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
+  return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
+};
 
 export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   manuscript,
@@ -1547,6 +1555,36 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     loadNeeds();
   }, [projectId]);
 
+  // Manuscript zoom handlers — function declarations avoid TDZ issues during HMR
+  function handleManuscriptZoomIn() {
+    setManuscriptZoom(prev => {
+      const v = Math.min(prev + 0.25, 2);
+      saveZoomPreference(v);
+      return v;
+    });
+  }
+
+  function handleManuscriptZoomOut() {
+    setManuscriptZoom(prev => {
+      const v = Math.max(prev - 0.25, 0.5);
+      saveZoomPreference(v);
+      return v;
+    });
+  }
+
+  function handleManuscriptZoomReset() {
+    setManuscriptZoom(1);
+    saveZoomPreference(1);
+  }
+
+  function handleManuscriptFullscreen() {
+    setIsManuscriptFullscreen(prev => {
+      const v = !prev;
+      saveFullscreenPreference(v);
+      return v;
+    });
+  }
+
   // Keyboard shortcuts: Escape, Ctrl/Cmd +/-, Ctrl/Cmd 0, F
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1575,7 +1613,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isManuscriptFullscreen, handleManuscriptZoomIn, handleManuscriptZoomOut, handleManuscriptZoomReset, handleManuscriptFullscreen]);
+  }, [isManuscriptFullscreen]);
 
   // Build timeline data
   const timelineData = useMemo(() => {
@@ -1624,6 +1662,25 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
 
   const selectedSceneMetadata = selectedScene ? getSceneMetadata(selectedScene) : null;
   const selectedSceneDialogue = selectedScene ? getSceneDialogue(selectedScene.id) : [];
+  const productionMentionCandidates = useMemo(() => {
+    const deduped = new Set<string>();
+    for (const role of projectRoles) {
+      if (typeof role.name === 'string' && role.name.trim().length > 0) {
+        deduped.add(role.name.trim());
+      }
+    }
+    for (const candidate of sceneCandidates) {
+      if (typeof candidate.name === 'string' && candidate.name.trim().length > 0) {
+        deduped.add(candidate.name.trim());
+      }
+    }
+    for (const character of selectedScene?.characters ?? []) {
+      if (typeof character === 'string' && character.trim().length > 0) {
+        deduped.add(character.trim());
+      }
+    }
+    return Array.from(deduped).sort((left, right) => left.localeCompare(right, 'no-NO'));
+  }, [projectRoles, sceneCandidates, selectedScene?.characters]);
 
   // Scene creation handler
   const handleCreateScene = () => {
@@ -2165,24 +2222,6 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       return [];
     }
   }, [searchShotCafe]);
-
-  // Manuscript zoom handlers — persist to localStorage
-  const handleManuscriptZoomIn = useCallback(() => {
-    setManuscriptZoom(prev => { const v = Math.min(prev + 0.25, 2); saveZoomPreference(v); return v; });
-  }, []);
-
-  const handleManuscriptZoomOut = useCallback(() => {
-    setManuscriptZoom(prev => { const v = Math.max(prev - 0.25, 0.5); saveZoomPreference(v); return v; });
-  }, []);
-
-  const handleManuscriptZoomReset = useCallback(() => {
-    setManuscriptZoom(1);
-    saveZoomPreference(1);
-  }, []);
-
-  const handleManuscriptFullscreen = useCallback(() => {
-    setIsManuscriptFullscreen(prev => { const v = !prev; saveFullscreenPreference(v); return v; });
-  }, []);
 
   const handleAddReadThroughNote = (lineIndex: number, note: string) => {
     setReadThroughNotes(prev => ({
@@ -4464,6 +4503,18 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             '&.Mui-focused': { borderColor: '#10b981', '& fieldset': { borderColor: '#10b981' } },
                           },
                         }}
+                      />
+                      <GlobalMentionHelper
+                        text={readThroughNotes[readThroughCurrentLine] || ''}
+                        localCandidates={productionMentionCandidates}
+                        autoTagTitle="Auto-tagget i read-through-notat"
+                        suggestionTitle="Mener du?"
+                        onApplySuggestion={(name) =>
+                          handleAddReadThroughNote(
+                            readThroughCurrentLine,
+                            applyMentionSuggestion(readThroughNotes[readThroughCurrentLine], name),
+                          )
+                        }
                       />
                       {readThroughNotes[readThroughCurrentLine] && (
                         <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'rgba(16,185,129,0.08)', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
@@ -7417,6 +7468,20 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               },
             }}
           />
+          {selectedScene && (
+            <GlobalMentionHelper
+              text={quickNotes[selectedScene.id] || ''}
+              localCandidates={productionMentionCandidates}
+              autoTagTitle="Auto-tagget i produksjonsnotat"
+              suggestionTitle="Mener du?"
+              onApplySuggestion={(name) =>
+                handleQuickNoteChange(
+                  selectedScene.id,
+                  applyMentionSuggestion(quickNotes[selectedScene.id], name),
+                )
+              }
+            />
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setShowQuickNotes(false)} sx={{ color: '#9ca3af' }}>
