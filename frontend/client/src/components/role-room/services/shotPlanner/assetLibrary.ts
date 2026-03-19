@@ -1,16 +1,4 @@
-/**
- * 2D Asset Library
- * 
- * Pre-built asset definitions for the shot planner including:
- * - Furniture (sofas, tables, chairs, beds)
- * - Props (TVs, plants, lamps)
- * - Vehicles
- * - Characters/Actors
- * - Architectural elements
- */
-
-import type { Asset2DDefinition, AssetType} from './types';
-import { Point2D } from './types';
+import { Point2D, type Asset2DDefinition, type AssetType } from "./types";
 
 // =============================================================================
 // SVG Icon Paths for Assets

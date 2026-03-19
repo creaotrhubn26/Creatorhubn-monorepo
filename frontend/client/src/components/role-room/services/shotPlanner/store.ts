@@ -1,38 +1,7 @@
-/**
- * Shot Planner Store
- * 
- * Zustand store for managing 2D shot planner state.
- * Handles scenes, cameras, actors, props, shots, and viewport.
- */
-
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type {
-  Scene2D,
-  Camera2D,
-  Actor2D,
-  Prop2D,
-  Shot2D,
-  Point2D,
-  PlannerTool,
-  SelectionState,
-  SceneViewport,
-  LensType,
-  HistoryEntry} from './types';
-import {
-  DEFAULT_SCENE,
-  DEFAULT_CAMERA,
-  DEFAULT_ACTOR,
-  DEFAULT_PROP,
-  LENS_FOV_MAP,
-  ShotType,
-  CameraHeight,
-  CameraAngleType,
-  CameraMovement,
-  calculateFocusFromFocalLength,
-  getFocalLengthFromLensType,
-} from './types';
-import { shotPlannerApi } from './api';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { DEFAULT_SCENE, DEFAULT_CAMERA, DEFAULT_ACTOR, DEFAULT_PROP, LENS_FOV_MAP, ShotType, CameraHeight, CameraAngleType, CameraMovement, calculateFocusFromFocalLength, getFocalLengthFromLensType, type Scene2D, type Camera2D, type Actor2D, type Prop2D, type Shot2D, type Point2D, type PlannerTool, type SelectionState, type SceneViewport, type LensType, type HistoryEntry } from "./types";
+import { shotPlannerApi } from "./api";
 
 // =============================================================================
 // Store State Interface

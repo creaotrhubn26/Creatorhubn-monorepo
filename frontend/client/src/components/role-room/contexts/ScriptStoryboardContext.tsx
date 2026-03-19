@@ -1,14 +1,4 @@
-/**
- * ScriptStoryboardContext - Syncs script position with storyboard frames
- * 
- * Provides shared state between ScreenplayEditor and StoryboardIntegrationView:
- * - Current scene/line position in script
- * - Active storyboard frame
- * - Bidirectional navigation (script → storyboard, storyboard → script)
- */
-
-import type { ReactNode } from 'react';
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
 
 // =============================================================================
 // Types

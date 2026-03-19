@@ -44,6 +44,7 @@ import {
 import { styled } from '@mui/material/styles';
 import { DEFAULT_BRUSH_CONFIG, type BrushConfig } from './AdvancedBrushEngine';
 import settingsService from '../../services/settingsService';
+import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 
 // =============================================================================
 // Types
@@ -405,6 +406,11 @@ function markBrushPresetApiUnavailable(reason?: string): void {
 }
 
 async function checkDatabaseAvailability(): Promise<boolean> {
+  if (shouldUseRoleRoomLocalFallback()) {
+    dbAvailable = false;
+    return false;
+  }
+
   if (dbAvailable !== null) return dbAvailable;
   try {
     const response = await fetch('/api/casting/health');

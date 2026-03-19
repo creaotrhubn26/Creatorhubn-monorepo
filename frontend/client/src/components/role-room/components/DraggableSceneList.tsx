@@ -1,19 +1,7 @@
-import { useState } from 'react';
-import type { DragEvent, FC } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Stack,
-  Card,
-  CardContent,
-  IconButton,
-  Chip,
-  Tooltip,
-  alpha,
-} from '@mui/material';
-import { DragIndicator as DragIcon, Theaters as TheatersIcon, Warning as WarningIcon } from '@mui/icons-material';
-import type { SceneBreakdown } from '../models/casting';
+import { useState, type DragEvent, type FC } from "react";
+import { Box, Typography, Paper, Stack, Card, CardContent, IconButton, Chip, Tooltip, alpha } from "@mui/material";
+import { DragIndicator as DragIcon, Theaters as TheatersIcon, Warning as WarningIcon } from "@mui/icons-material";
+import type { SceneBreakdown } from "../models/casting";
 
 interface DraggableSceneListProps {
   scenes: SceneBreakdown[];

@@ -98,7 +98,6 @@ import { LocationsIcon as LocationIcon, CalendarCustomIcon as CalendarMonthIcon,
 import type { ProductionDay } from '../models/casting';
 import { productionPlanningService } from '../services/productionPlanningService';
 import { castingService } from '../services/castingService';
-import { sceneComposerService } from '../services/sceneComposerService';
 import { externalDataService } from '@/services/ExternalDataService';
 import { WeatherForecastCard } from './WeatherForecastCard';
 import { TravelCostsCard } from './TravelCostsCard';
@@ -172,6 +171,12 @@ interface DayConflictSummary {
   total: number;
 }
 
+interface ScenePreviewState {
+  id: string;
+  name: string;
+  thumbnail?: string;
+}
+
 interface ProductionDayViewProps {
   projectId: string;
   onUpdate?: () => void;
@@ -186,6 +191,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   const isLandscape = useMediaQuery('(orientation: landscape)');
   const isIPadLandscape = useMediaQuery('(min-width: 1024px) and (max-width: 1366px) and (orientation: landscape)');
   const containerPadding = isMobile ? 2 : isTablet ? 3 : 4;
+  const showExtendedLabels = !isMobile && (isDesktop || isIPadLandscape || !isTablet);
 
   // Toast notifications
   const { showSuccess, showError, showInfo, showWarning } = useToast();
@@ -311,6 +317,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const filtersExpanded = !isMobile || showFilters;
 
   // Sort state
   const [sortField, setSortField] = useState<SortField>('date');
@@ -345,6 +352,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   // Undo delete state
   const [deletedDay, setDeletedDay] = useState<ProductionDay | null>(null);
   const [undoSnackbarOpen, setUndoSnackbarOpen] = useState(false);
+  const [scenePreview, setScenePreview] = useState<ScenePreviewState | null>(null);
 
   // Expanded cards state
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -605,7 +613,32 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     });
   };
 
-  const availableScenes = castingService.getAvailableScenes();
+  const availableScenes = castingService.getAvailableScenes(projectId);
+
+  const openLocationInMaps = useCallback((locationId?: string) => {
+    const location = locations.find((entry) => entry.id === locationId);
+    if (!location) {
+      showWarning('Fant ikke lokasjon for å åpne kart');
+      return;
+    }
+
+    const coordinateUrl =
+      location.coordinates?.lat !== undefined && location.coordinates?.lng !== undefined
+        ? `https://www.google.com/maps?q=${location.coordinates.lat},${location.coordinates.lng}`
+        : null;
+    const address = typeof location.address === 'string' ? location.address.trim() : '';
+    const addressUrl = address.length > 0
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+      : null;
+    const targetUrl = coordinateUrl ?? addressUrl;
+
+    if (!targetUrl) {
+      showInfo('Denne lokasjonen har ikke koordinater eller adresse ennå');
+      return;
+    }
+
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+  }, [locations, showInfo, showWarning]);
 
   // Save favorites to settings cache
   useEffect(() => {
@@ -1482,10 +1515,16 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     if (!location?.coordinates) return null;
 
     try {
+      const today = new Date();
+      const targetDate = new Date(date);
+      const dayOffset = Number.isFinite(targetDate.getTime())
+        ? Math.max(0, Math.ceil((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+      const requestedDays = Math.min(Math.max(dayOffset + 1, 1), 7);
       const forecast = await externalDataService.getWeatherForecast({
         lat: location.coordinates.lat,
         lon: location.coordinates.lng,
-        days: 1,
+        days: requestedDays,
       });
       return forecast;
     } catch (error) {
@@ -2082,7 +2121,31 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               }}
             >
               <ExportIcon />
-              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Eksporter</Box>}
+              {showExtendedLabels && <Box component="span" sx={{ ml: 1 }}>Eksporter</Box>}
+            </Button>
+          </Tooltip>
+
+          <Tooltip title={filtersExpanded ? 'Skjul avanserte filtre' : 'Vis avanserte filtre'}>
+            <Button
+              variant="outlined"
+              onClick={() => setShowFilters((previous) => !previous)}
+              aria-pressed={filtersExpanded}
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                color: filtersExpanded ? '#9c27b0' : 'rgba(255,255,255,0.7)',
+                borderColor: filtersExpanded ? '#9c27b0' : 'rgba(255,255,255,0.2)',
+                px: { xs: 1, sm: 2 },
+                ...focusVisibleStyles,
+              }}
+            >
+              <FilterIcon />
+              {showExtendedLabels && (
+                <Box component="span" sx={{ ml: 1, display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+                  Filtre
+                  {filtersExpanded ? <CollapseIcon sx={{ fontSize: 18 }} /> : <ExpandIcon sx={{ fontSize: 18 }} />}
+                </Box>
+              )}
             </Button>
           </Tooltip>
 
@@ -2101,6 +2164,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               }}
             >
               <StatsIcon />
+              {showExtendedLabels && <Box component="span" sx={{ ml: 1 }}>Statistikk</Box>}
             </Button>
           </Tooltip>
 
@@ -2123,7 +2187,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               }}
             >
               <AddIcon />
-              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Legg til</Box>}
+              {showExtendedLabels && <Box component="span" sx={{ ml: 1 }}>Legg til dag</Box>}
             </Button>
             </span>
           </Tooltip>
@@ -2241,83 +2305,98 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             },
           }}
         />
+      </Box>
 
-        <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 } }}>
-          <Select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            aria-label="Filtrer etter status"
-            sx={{
-              color: '#fff',
-              minHeight: TOUCH_TARGET_SIZE,
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#9c27b0' },
-            }}
-          >
-            <MenuItem value="all">Alle statuser</MenuItem>
-            <MenuItem value="planned">Planlagt</MenuItem>
-            <MenuItem value="in_progress">Pågår</MenuItem>
-            <MenuItem value="completed">Fullført</MenuItem>
-            <MenuItem value="cancelled">Kansellert</MenuItem>
-          </Select>
-        </FormControl>
-
-        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
-          <Tooltip title="Kortvisning">
-            <Button
-              variant={viewMode === 'grid' ? 'contained' : 'outlined'}
-              onClick={() => setViewMode('grid')}
-              aria-pressed={viewMode === 'grid'}
+      <Collapse in={filtersExpanded}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', md: 'row' },
+            gap: { xs: 1, sm: 2 },
+            mb: 2,
+            alignItems: { xs: 'stretch', md: 'center' },
+            justifyContent: 'space-between',
+          }}
+        >
+          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 180 } }}>
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              aria-label="Filtrer etter status"
               sx={{
+                color: '#fff',
                 minHeight: TOUCH_TARGET_SIZE,
-                minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: viewMode === 'grid' ? 'rgba(156,39,176,0.2)' : 'transparent',
-                color: viewMode === 'grid' ? '#9c27b0' : 'rgba(255,255,255,0.7)',
-                borderColor: viewMode === 'grid' ? '#9c27b0' : 'rgba(255,255,255,0.2)',
-                ...focusVisibleStyles,
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#9c27b0' },
               }}
             >
-              <GridViewIcon />
-            </Button>
-          </Tooltip>
+              <MenuItem value="all">Alle statuser</MenuItem>
+              <MenuItem value="planned">Planlagt</MenuItem>
+              <MenuItem value="in_progress">Pågår</MenuItem>
+              <MenuItem value="completed">Fullført</MenuItem>
+              <MenuItem value="cancelled">Kansellert</MenuItem>
+            </Select>
+          </FormControl>
 
-          <Tooltip title="Tabellvisning">
-            <Button
-              variant={viewMode === 'table' ? 'contained' : 'outlined'}
-              onClick={() => setViewMode('table')}
-              aria-pressed={viewMode === 'table'}
-              sx={{
-                minHeight: TOUCH_TARGET_SIZE,
-                minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: viewMode === 'table' ? 'rgba(156,39,176,0.2)' : 'transparent',
-                color: viewMode === 'table' ? '#9c27b0' : 'rgba(255,255,255,0.7)',
-                borderColor: viewMode === 'table' ? '#9c27b0' : 'rgba(255,255,255,0.2)',
-                ...focusVisibleStyles,
-              }}
-            >
-              <TableViewIcon />
-            </Button>
-          </Tooltip>
-
-          {selectedIds.size > 0 && (
-            <Tooltip title={`Slett ${selectedIds.size} valgte`}>
+          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <Tooltip title="Kortvisning">
               <Button
-                variant="contained"
-                onClick={handleBulkDelete}
+                variant={viewMode === 'grid' ? 'contained' : 'outlined'}
+                onClick={() => setViewMode('grid')}
+                aria-pressed={viewMode === 'grid'}
                 sx={{
-                  bgcolor: '#ff4444',
                   minHeight: TOUCH_TARGET_SIZE,
+                  minWidth: TOUCH_TARGET_SIZE,
+                  bgcolor: viewMode === 'grid' ? 'rgba(156,39,176,0.2)' : 'transparent',
+                  color: viewMode === 'grid' ? '#9c27b0' : 'rgba(255,255,255,0.7)',
+                  borderColor: viewMode === 'grid' ? '#9c27b0' : 'rgba(255,255,255,0.2)',
                   ...focusVisibleStyles,
-                  '&:hover': { bgcolor: '#cc0000' },
                 }}
               >
-                <DeleteIcon />
-                <Box component="span" sx={{ ml: 0.5 }}>{selectedIds.size}</Box>
+                <GridViewIcon />
+                {showExtendedLabels && <Box component="span" sx={{ ml: 1 }}>Kort</Box>}
               </Button>
             </Tooltip>
-          )}
+
+            <Tooltip title="Tabellvisning">
+              <Button
+                variant={viewMode === 'table' ? 'contained' : 'outlined'}
+                onClick={() => setViewMode('table')}
+                aria-pressed={viewMode === 'table'}
+                sx={{
+                  minHeight: TOUCH_TARGET_SIZE,
+                  minWidth: TOUCH_TARGET_SIZE,
+                  bgcolor: viewMode === 'table' ? 'rgba(156,39,176,0.2)' : 'transparent',
+                  color: viewMode === 'table' ? '#9c27b0' : 'rgba(255,255,255,0.7)',
+                  borderColor: viewMode === 'table' ? '#9c27b0' : 'rgba(255,255,255,0.2)',
+                  ...focusVisibleStyles,
+                }}
+              >
+                <TableViewIcon />
+                {showExtendedLabels && <Box component="span" sx={{ ml: 1 }}>Tabell</Box>}
+              </Button>
+            </Tooltip>
+
+            {selectedIds.size > 0 && (
+              <Tooltip title={`Slett ${selectedIds.size} valgte`}>
+                <Button
+                  variant="contained"
+                  onClick={handleBulkDelete}
+                  sx={{
+                    bgcolor: '#ff4444',
+                    minHeight: TOUCH_TARGET_SIZE,
+                    ...focusVisibleStyles,
+                    '&:hover': { bgcolor: '#cc0000' },
+                  }}
+                >
+                  <DeleteIcon />
+                  <Box component="span" sx={{ ml: 0.5 }}>{selectedIds.size}</Box>
+                </Button>
+              </Tooltip>
+            )}
+          </Box>
         </Box>
-      </Box>
+      </Collapse>
 
       {/* Pro view */}
       <Box
@@ -3497,6 +3576,20 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                   {getLocationName(day.locationId)}
                                 </Typography>
                               </Box>
+                              <Tooltip title="Åpne lokasjon i kart">
+                                <IconButton
+                                  onClick={() => openLocationInMaps(day.locationId)}
+                                  aria-label={`Åpne lokasjon i kart for ${getLocationName(day.locationId)}`}
+                                  sx={{
+                                    color: '#81c784',
+                                    border: '1px solid rgba(129,199,132,0.35)',
+                                    bgcolor: 'rgba(76,175,80,0.12)',
+                                    ...focusVisibleStyles,
+                                  }}
+                                >
+                                  <OpenInNewIcon sx={{ fontSize: 20 }} />
+                                </IconButton>
+                              </Tooltip>
                             </Box>
                             
                             {/* Weather Forecast - Clear & Organized */}
@@ -3797,6 +3890,13 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                 </Box>
                               );
                             })()}
+
+                            {expandedCards.has(day.id) && day.weatherForecast && (
+                              <WeatherForecastCard
+                                forecast={day.weatherForecast}
+                                date={day.date}
+                              />
+                            )}
                           </Stack>
 
                           {/* Expandable details - Improved Layout for iPad Landscape */}
@@ -3884,7 +3984,11 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             justifyContent: 'center',
                                           }}
                                         >
-                                          <MovieIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#ce93d8' }} />
+                                          {dayScenes.some((scene) => typeof scene.thumbnail === 'string' && scene.thumbnail.trim().length > 0) ? (
+                                            <ImageIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#ce93d8' }} />
+                                          ) : (
+                                            <MovieIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#ce93d8' }} />
+                                          )}
                                         </Box>
                                         <Box sx={{ flex: 1 }}>
                                           <Typography sx={{ color: '#ce93d8', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
@@ -3911,11 +4015,11 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             key={scene.id}
                                             label={scene.name}
                                             size="medium"
-                                            onClick={() => {
-                                              window.dispatchEvent(new CustomEvent('ch-load-scene-composition', {
-                                                detail: { sceneId: scene.id }
-                                              }));
-                                            }}
+                                            onClick={() => setScenePreview({
+                                              id: scene.id,
+                                              name: scene.name,
+                                              thumbnail: scene.thumbnail,
+                                            })}
                                             sx={{
                                               bgcolor: 'rgba(156,39,176,0.25)',
                                               color: '#e1bee7',
@@ -5200,6 +5304,103 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             }}
           >
             Informer teamet
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={scenePreview !== null}
+        onClose={() => setScenePreview(null)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: '#1c2128',
+            color: '#fff',
+            borderRadius: 3,
+            border: '1px solid rgba(156,39,176,0.28)',
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
+          <Box>
+            <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
+              Sceneoversikt
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.72)' }}>
+              {scenePreview?.name || 'Valgt scene'}
+            </Typography>
+          </Box>
+          <IconButton onClick={() => setScenePreview(null)} sx={{ color: 'rgba(255,255,255,0.8)' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          {scenePreview?.thumbnail ? (
+            <Box
+              component="img"
+              src={scenePreview.thumbnail}
+              alt={scenePreview.name}
+              sx={{
+                width: '100%',
+                maxHeight: 320,
+                objectFit: 'cover',
+                borderRadius: 2,
+                border: '1px solid rgba(255,255,255,0.12)',
+                mb: 2,
+              }}
+            />
+          ) : (
+            <Box
+              sx={{
+                mb: 2,
+                p: 3,
+                borderRadius: 2,
+                border: '1px dashed rgba(255,255,255,0.2)',
+                bgcolor: 'rgba(255,255,255,0.03)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 1,
+              }}
+            >
+              <ImageIcon sx={{ color: 'rgba(255,255,255,0.6)' }} />
+              <Typography sx={{ color: 'rgba(255,255,255,0.72)' }}>
+                Ingen forhåndsvisning er lagret for denne scenen ennå.
+              </Typography>
+            </Box>
+          )}
+
+          <Stack spacing={1.5}>
+            <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.75rem', textTransform: 'uppercase', mb: 0.5 }}>
+                Scenenavn
+              </Typography>
+              <Typography sx={{ color: '#fff', fontWeight: 600 }}>
+                {scenePreview?.name || 'Ikke navngitt scene'}
+              </Typography>
+            </Box>
+            <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.75rem', textTransform: 'uppercase', mb: 0.5 }}>
+                Scene-ID
+              </Typography>
+              <Typography sx={{ color: '#fff', fontWeight: 600 }}>
+                {scenePreview?.id || 'Ukjent'}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.08)', p: 2 }}>
+          <Button onClick={() => setScenePreview(null)} variant="contained" sx={{ bgcolor: '#9c27b0', '&:hover': { bgcolor: '#7b1fa2' } }}>
+            Lukk
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,42 +1,9 @@
-/**
- * ProBrushToolbar - Professional brush selection toolbar
- * 
- * Matches the style of Apple's Storyboard app with:
- * - Visual brush previews with size dots
- * - Color wheel picker
- * - Quick color palette
- */
-
-import React, { useState, useCallback } from 'react';
-import {
-  Box,
-  IconButton,
-  Stack,
-  Tooltip,
-  Paper,
-  Popover,
-  Slider,
-  Typography,
-  ToggleButton,
-  Divider,
-} from '@mui/material';
-import {
-  Create,
-  Brush,
-  BorderColor,
-  Highlight,
-  Edit,
-  FormatPaint,
-  AutoFixHigh,
-  TextFields,
-  CameraAlt,
-  Undo,
-  Redo,
-} from '@mui/icons-material';
-import { styled } from '@mui/material/styles';
-import type { AdvancedBrushType, BrushConfig} from './AdvancedBrushEngine';
-import { BRUSH_PRESETS } from './AdvancedBrushEngine';
-import ColorWheelPicker from '../ColorWheelPicker';
+import React, { useState, useCallback } from "react";
+import { Box, IconButton, Stack, Tooltip, Paper, Popover, Slider, Typography, ToggleButton, Divider } from "@mui/material";
+import { Create, Brush, BorderColor, Highlight, Edit, FormatPaint, AutoFixHigh, TextFields, CameraAlt, Undo, Redo } from "@mui/icons-material";
+import { styled } from "@mui/material/styles";
+import { BRUSH_PRESETS, type AdvancedBrushType, type BrushConfig } from "./AdvancedBrushEngine";
+import ColorWheelPicker from "../ColorWheelPicker";
 
 // =============================================================================
 // Types

@@ -1,142 +1,23 @@
-import { useState, useMemo, useEffect, useId, useRef, useCallback, type ChangeEvent, type DragEvent, type SyntheticEvent, type HTMLAttributes } from 'react';
-import {
-  Box,
-  Alert,
-  Autocomplete,
-  Typography,
-  Button,
-  IconButton,
-  Card,
-  CardContent,
-  CardMedia,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Chip,
-  Stack,
-  Grid,
-  Tooltip,
-  Collapse,
-  FormControl,
-  FormControlLabel,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TableSortLabel,
-  Paper,
-  useTheme,
-  useMediaQuery,
-  Grow,
-  InputAdornment,
-  LinearProgress,
-  CircularProgress,
-  Tabs,
-  Tab,
-  ImageList,
-  ImageListItem,
-  ImageListItemBar,
-  Divider,
-  Rating,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Search as SearchIcon,
-  FilterList as FilterIcon,
-  ViewModule as GridViewIcon,
-  ViewList as TableViewIcon,
-  Close as CloseIcon,
-  Cancel as CancelIcon,
-  Save as SaveIcon,
-  Image as ImageIcon,
-  Person as PersonIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
-  Schedule as ScheduleIcon,
-  Block as BlockIcon,
-  Refresh as RefreshIcon,
-  ContentCopy as CopyIcon,
-  Bookmark as BookmarkIcon,
-  ShoppingCart as ShoppingCartIcon,
-  OpenInNew as OpenInNewIcon,
-  PlaylistAdd as PlaylistAddIcon,
-  Star as StarIcon,
-  CloudUpload as CloudUploadIcon,
-  Link as LinkIcon,
-  PhotoLibrary as PhotoLibraryIcon,
-  Movie as MovieIcon,
-  History as HistoryIcon,
-  CalendarToday as CalendarTodayIcon,
-  QrCode as QrCodeIcon,
-  QrCodeScanner as QrCodeScannerIcon,
-  Inventory2 as Inventory2Icon,
-  FileDownload as DownloadIcon,
-  FileUpload as UploadIcon,
-  FileCopy as DuplicateIcon,
-  SelectAll as SelectAllIcon,
-  CheckBox as CheckboxIcon,
-  CheckBoxOutlineBlank as CheckboxOutlineIcon,
-  Public as PublicIcon,
-  Lock as LockIcon,
-  Assignment as CheckOutIcon,
-  AssignmentReturn as CheckInIcon,
-  Summarize as ReportIcon,
-  WifiOff as OfflineIcon,
-  Sync as SyncIcon,
-  AssignmentLate as MissingItemIcon,
-  TrendingUp as TrendingUpIcon,
-  Update as UpdateIcon,
-  Newspaper as NewspaperIcon,
-  AttachMoney as AttachMoneyIcon,
-} from '@mui/icons-material';
-import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon, PropsIcon } from './icons/CastingIcons';
-import netflixWordmark from '../../../assets/brands/netflix-wordmark.svg';
-import { useQuery } from '@tanstack/react-query';
-import EquipmentCatalogBrowser, { type CatalogEquipment } from '../../equipment/EquipmentCatalogBrowser';
-import FirmwareManagementInterface from '../../equipment/FirmwareManagementInterface';
-import { useAuth } from '../../../hooks/useAuth';
-import { apiRequest } from '../../../lib/queryClient';
-import type { 
-  Equipment,
-  EquipmentBooking,
-  EquipmentAvailability,
-  EquipmentConflict,
-  EquipmentCheckout,
-  CastingCrew,
-  CastingLocation,
-  EquipmentTemplate,
-  EquipmentTemplateItem,
-  VendorLink} from '../services/castingApiService';
-import { 
-  equipmentApi, 
-  equipmentBookingsApi, 
-  equipmentAvailabilityApi,
-  equipmentConflictsApi,
-  equipmentCheckoutApi,
-  crewApi,
-  locationsApi,
-  equipmentTemplatesApi,
-  vendorLinksApi
-} from '../services/castingApiService';
-import { useToast } from './ToastStack';
-import { equipmentCategoriesService } from '../services/equipmentCategoriesService';
-import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
-import equipPng from './icons/Keep/roleroom_equip.png';
-import WarehouseInventoryDialog, { type WarehouseDialogItem } from './shared/WarehouseInventoryDialog';
-import warehouseInventoryService from '../services/warehouseInventoryService';
-import QrCameraScanner from './shared/QrCameraScanner';
-import globalTagService from '../services/globalTagService';
-import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useState, useMemo, useEffect, useId, useRef, useCallback, type ChangeEvent, type DragEvent, type SyntheticEvent, type HTMLAttributes } from "react";
+import { Box, Alert, Autocomplete, Typography, Button, IconButton, Card, CardContent, CardMedia, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Chip, Stack, Grid, Tooltip, Collapse, FormControl, FormControlLabel, InputLabel, Select, MenuItem, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, useTheme, useMediaQuery, Grow, InputAdornment, LinearProgress, CircularProgress, Tabs, Tab, ImageList, ImageListItem, ImageListItemBar, Divider, Rating } from "@mui/material";
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, FilterList as FilterIcon, ViewModule as GridViewIcon, ViewList as TableViewIcon, Close as CloseIcon, Cancel as CancelIcon, Save as SaveIcon, Image as ImageIcon, Person as PersonIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Block as BlockIcon, Refresh as RefreshIcon, ContentCopy as CopyIcon, Bookmark as BookmarkIcon, ShoppingCart as ShoppingCartIcon, OpenInNew as OpenInNewIcon, PlaylistAdd as PlaylistAddIcon, Star as StarIcon, CloudUpload as CloudUploadIcon, Link as LinkIcon, PhotoLibrary as PhotoLibraryIcon, Movie as MovieIcon, History as HistoryIcon, CalendarToday as CalendarTodayIcon, QrCode as QrCodeIcon, QrCodeScanner as QrCodeScannerIcon, Inventory2 as Inventory2Icon, FileDownload as DownloadIcon, FileUpload as UploadIcon, FileCopy as DuplicateIcon, SelectAll as SelectAllIcon, CheckBox as CheckboxIcon, CheckBoxOutlineBlank as CheckboxOutlineIcon, Public as PublicIcon, Lock as LockIcon, Assignment as CheckOutIcon, AssignmentReturn as CheckInIcon, Summarize as ReportIcon, WifiOff as OfflineIcon, Sync as SyncIcon, AssignmentLate as MissingItemIcon, TrendingUp as TrendingUpIcon, Update as UpdateIcon, Newspaper as NewspaperIcon, AttachMoney as AttachMoneyIcon } from "@mui/icons-material";
+import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon, PropsIcon } from "./icons/CastingIcons";
+import netflixWordmark from "../../../assets/brands/netflix-wordmark.svg";
+import { useQuery } from "@tanstack/react-query";
+import EquipmentCatalogBrowser, { type CatalogEquipment } from "../../equipment/EquipmentCatalogBrowser";
+import FirmwareManagementInterface from "../../equipment/FirmwareManagementInterface";
+import { useAuth } from "../../../hooks/useAuth";
+import { apiRequest } from "../../../lib/queryClient";
+import { equipmentApi, equipmentBookingsApi, equipmentAvailabilityApi, equipmentConflictsApi, equipmentCheckoutApi, crewApi, locationsApi, equipmentTemplatesApi, vendorLinksApi, type Equipment, type EquipmentBooking, type EquipmentAvailability, type EquipmentConflict, type EquipmentCheckout, type CastingCrew, type CastingLocation, type EquipmentTemplate, type EquipmentTemplateItem, type VendorLink } from "../services/castingApiService";
+import { useToast } from "./ToastStack";
+import { equipmentCategoriesService } from "../services/equipmentCategoriesService";
+import { RoleRoomEmptyState } from "./icons/RoleRoomEmptyState";
+import equipPng from "./icons/Keep/roleroom_equip.png";
+import WarehouseInventoryDialog, { type WarehouseDialogItem } from "./shared/WarehouseInventoryDialog";
+import warehouseInventoryService from "../services/warehouseInventoryService";
+import QrCameraScanner from "./shared/QrCameraScanner";
+import globalTagService from "../services/globalTagService";
+import GlobalMentionHelper from "./shared/GlobalMentionHelper";
 
 const TOUCH_TARGET_SIZE = 44;
 

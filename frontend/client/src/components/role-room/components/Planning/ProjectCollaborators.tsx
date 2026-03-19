@@ -1,23 +1,7 @@
-import React from 'react';
-import {
-  Box,
-  Typography,
-  Avatar,
-  Chip,
-  Button,
-  Stack,
-  IconButton,
-  Tooltip,
-  Paper,
-} from '@mui/material';
-import {
-  PersonAdd,
-  Delete,
-  Edit,
-  Email,
-} from '@mui/icons-material';
-import type { ContributorRole } from '../split-sheets/types';
-import { ROLE_DISPLAY_NAMES } from '../split-sheets/types';
+import React from "react";
+import { Box, Typography, Avatar, Chip, Button, Stack, IconButton, Tooltip, Paper } from "@mui/material";
+import { PersonAdd, Delete, Edit, Email } from "@mui/icons-material";
+import { ROLE_DISPLAY_NAMES, type ContributorRole } from "../split-sheets/types";
 
 interface Collaborator {
   id: string;

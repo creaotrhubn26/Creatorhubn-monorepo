@@ -35,8 +35,9 @@ import {
   PRODUCER_DEMO_PROJECT_NAME,
   containsLegacyProducerDemoMarker,
 } from '../constants/producerDemo';
-import { sceneComposerService } from './sceneComposerService';
+import authSessionService from './authSessionService';
 import settingsService, { getCurrentUserId } from './settingsService';
+import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
@@ -93,6 +94,8 @@ function getProjectsFromStorage(): CastingProject[] {
   return cachedProjects;
 }
 
+type AvailableSceneOption = { id: string; name: string; thumbnail?: string };
+
 /**
  * Save projects to local storage fallback
  */
@@ -111,6 +114,56 @@ const readFirstNonEmptyString = (...values: unknown[]): string | undefined => {
     }
   }
   return undefined;
+};
+
+const SCENE_FALLBACK_PREFIX = 'Scene';
+
+const buildAvailableSceneName = (sceneId: string, preferredName?: string): string => {
+  if (typeof preferredName === 'string' && preferredName.trim().length > 0) {
+    return preferredName.trim();
+  }
+  return `${SCENE_FALLBACK_PREFIX} ${sceneId}`;
+};
+
+const getRoleRoomAuthHeaders = (): Record<string, string> => authSessionService.getAuthHeadersSync();
+
+const collectAvailableScenesFromProject = (
+  project: CastingProject | null | undefined,
+  sceneMap: Map<string, AvailableSceneOption>,
+): void => {
+  if (!project) {
+    return;
+  }
+
+  (Array.isArray(project.sceneBreakdowns) ? project.sceneBreakdowns : []).forEach((scene) => {
+    const sceneId = readFirstNonEmptyString(
+      scene.id,
+      typeof scene.sceneNumber === 'number' || typeof scene.sceneNumber === 'string'
+        ? `scene-${String(scene.sceneNumber).trim()}`
+        : undefined,
+    );
+    if (!sceneId || sceneMap.has(sceneId)) {
+      return;
+    }
+    sceneMap.set(sceneId, {
+      id: sceneId,
+      name: buildAvailableSceneName(
+        sceneId,
+        readFirstNonEmptyString(scene.sceneName, scene.heading),
+      ),
+    });
+  });
+
+  (Array.isArray(project.shotLists) ? project.shotLists : []).forEach((shotList) => {
+    const sceneId = readFirstNonEmptyString(shotList.sceneId, shotList.scene_id);
+    if (!sceneId || sceneMap.has(sceneId)) {
+      return;
+    }
+    sceneMap.set(sceneId, {
+      id: sceneId,
+      name: buildAvailableSceneName(sceneId, readFirstNonEmptyString(shotList.sceneName)),
+    });
+  });
 };
 
 const resolveCrewRole = (crewMember: CrewMember): string => {
@@ -211,6 +264,93 @@ function normalizeProjects(projects: CastingProject[]): { projects: CastingProje
   return { projects: normalized, changed };
 }
 
+function mergeProjectUserRoles(
+  project: CastingProject,
+  localProject?: CastingProject | null,
+): { project: CastingProject; changed: boolean } {
+  const primaryRoles = Array.isArray(project.userRoles) ? project.userRoles : [];
+  const fallbackRoles = Array.isArray(localProject?.userRoles) ? localProject.userRoles : [];
+
+  if (primaryRoles.length > 0 || fallbackRoles.length === 0) {
+    return { project, changed: false };
+  }
+
+  return {
+    project: {
+      ...project,
+      userRoles: fallbackRoles,
+    },
+    changed: true,
+  };
+}
+
+function upsertProjectUserRoleInStorage(projectId: string, userRole: UserRole): void {
+  const normalizedLocal = normalizeProjects(getProjectsFromStorage());
+  const projects = normalizedLocal.projects;
+  const projectIndex = projects.findIndex((project) => project.id === projectId);
+  if (projectIndex < 0) {
+    return;
+  }
+
+  const project = projects[projectIndex];
+  const existingRoles = Array.isArray(project.userRoles) ? [...project.userRoles] : [];
+  const nextRole: UserRole = {
+    ...userRole,
+    projectId: userRole.projectId ?? userRole.project_id ?? projectId,
+    userId: userRole.userId ?? userRole.user_id,
+    createdAt: userRole.createdAt ?? userRole.created_at,
+    updatedAt: userRole.updatedAt ?? userRole.updated_at,
+  };
+  const roleIndex = existingRoles.findIndex((role) => {
+    const existingId = String(role.id ?? '');
+    const incomingId = String(nextRole.id ?? '');
+    if (existingId && incomingId && existingId === incomingId) {
+      return true;
+    }
+    const existingUserId = String(role.userId ?? role.user_id ?? '');
+    const incomingUserId = String(nextRole.userId ?? nextRole.user_id ?? '');
+    return existingUserId.length > 0 && existingUserId === incomingUserId;
+  });
+
+  if (roleIndex >= 0) {
+    existingRoles[roleIndex] = nextRole;
+  } else {
+    existingRoles.push(nextRole);
+  }
+
+  projects[projectIndex] = normalizeProject({
+    ...project,
+    userRoles: existingRoles,
+  }).project;
+
+  saveProjectsToStorage(projects);
+  invalidateProjectFetchCache(projectId);
+}
+
+function removeProjectUserRoleFromStorage(projectId: string, userRoleId: string, userId?: string): void {
+  const normalizedLocal = normalizeProjects(getProjectsFromStorage());
+  const projects = normalizedLocal.projects;
+  const projectIndex = projects.findIndex((project) => project.id === projectId);
+  if (projectIndex < 0) {
+    return;
+  }
+
+  const project = projects[projectIndex];
+  const nextRoles = (project.userRoles ?? []).filter((role) => {
+    const matchesId = String(role.id ?? '') === String(userRoleId);
+    const matchesUserId = userId && String(role.userId ?? role.user_id ?? '') === String(userId);
+    return !(matchesId || matchesUserId);
+  });
+
+  projects[projectIndex] = {
+    ...project,
+    userRoles: nextRoles,
+  };
+
+  saveProjectsToStorage(projects);
+  invalidateProjectFetchCache(projectId);
+}
+
 function isTrollDemoProject(project: CastingProject): boolean {
   const projectId = String(project.id || '').trim().toLowerCase();
   const projectName = String(project.name || '').trim().toLowerCase();
@@ -282,6 +422,11 @@ function isTransientProjectFetchError(error: unknown): boolean {
  * Check if database is available
  */
 async function checkDatabaseAvailability(): Promise<boolean> {
+  if (shouldUseRoleRoomLocalFallback()) {
+    dbAvailable = false;
+    return false;
+  }
+
   // Reset dbAvailable if enough time has passed since last failure
   if (dbAvailable === false && Date.now() - dbLastFailure > DB_RETRY_INTERVAL) {
     dbAvailable = null;
@@ -336,7 +481,9 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
 
   const dbOk = await checkDatabaseAvailability();
   if (!dbOk) {
-    console.warn('🎬 Database unavailable, using local projects');
+    if (!shouldUseRoleRoomLocalFallback()) {
+      console.warn('🎬 Database unavailable, using local projects');
+    }
     return localProjects;
   }
   
@@ -348,7 +495,10 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
     const data = await response.json();
     const dbProjectsRaw = Array.isArray(data) ? data : data.projects || [];
     const normalizedDb = normalizeProjects(dbProjectsRaw);
-    const dbProjects = normalizedDb.projects;
+    const dbProjects = normalizedDb.projects.map((project) => {
+      const localProject = localProjects.find((entry) => entry.id === project.id);
+      return mergeProjectUserRoles(project, localProject).project;
+    });
     
     // Only use DB projects if they have richer data than local
     // This prevents overwriting mock data with empty DB data
@@ -391,9 +541,7 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
     // Return local data if it's richer
     return localProjects;
   } catch (error) {
-    if (isTransientProjectFetchError(error)) {
-      console.warn('Project fetch interrupted, using local projects');
-    } else {
+    if (!isTransientProjectFetchError(error)) {
       console.error('Error fetching projects from database:', error);
     }
     // Fall back to local storage
@@ -422,6 +570,10 @@ async function saveProjectToDb(project: CastingProject): Promise<void> {
     projects.push(project);
   }
   saveProjectsToStorage(projects);
+
+  if (shouldUseRoleRoomLocalFallback()) {
+    return;
+  }
   
   // Try to sync with database
   try {
@@ -452,6 +604,10 @@ async function deleteProjectFromDb(id: string): Promise<void> {
   let projects = getProjectsFromStorage();
   projects = projects.filter(p => p.id !== id);
   saveProjectsToStorage(projects);
+
+  if (shouldUseRoleRoomLocalFallback()) {
+    return;
+  }
   
   // Try to sync with database
   try {
@@ -518,6 +674,12 @@ export const castingService = {
     }
 
     const request = (async (): Promise<CastingProject | null> => {
+      if (shouldUseRoleRoomLocalFallback()) {
+        const fallbackProject = localProject || null;
+        projectFetchCache.set(id, { project: fallbackProject, cachedAt: Date.now() });
+        return fallbackProject;
+      }
+
       try {
         const response = await fetch(`/api/casting/projects/${id}`);
         if (!response.ok) {
@@ -533,13 +695,16 @@ export const castingService = {
           ? normalizeProject(dbProjectRaw as CastingProject)
           : { project: null as CastingProject | null, changed: false };
         const dbProject = normalizedDbProject.project;
+        const mergedDbProject = dbProject && localProject
+          ? mergeProjectUserRoles(dbProject, localProject).project
+          : dbProject;
 
-        const dbHasData = (dbProject?.candidates?.length ?? 0) > 0 ||
-                          (dbProject?.roles?.length ?? 0) > 0 ||
-                          (dbProject?.crew?.length ?? 0) > 0 ||
-                          (dbProject?.candidatesCount ?? 0) > 0 ||
-                          (dbProject?.rolesCount ?? 0) > 0 ||
-                          (dbProject?.crewCount ?? 0) > 0;
+        const dbHasData = (mergedDbProject?.candidates?.length ?? 0) > 0 ||
+                          (mergedDbProject?.roles?.length ?? 0) > 0 ||
+                          (mergedDbProject?.crew?.length ?? 0) > 0 ||
+                          (mergedDbProject?.candidatesCount ?? 0) > 0 ||
+                          (mergedDbProject?.rolesCount ?? 0) > 0 ||
+                          (mergedDbProject?.crewCount ?? 0) > 0;
         const localHasData = (localProject?.candidates?.length ?? 0) > 0 ||
                              (localProject?.roles?.length ?? 0) > 0 ||
                              (localProject?.crew?.length ?? 0) > 0 ||
@@ -549,12 +714,12 @@ export const castingService = {
 
         const preferredProject = localHasData && !dbHasData
           ? localProject ?? null
-          : dbProject ?? null;
+          : mergedDbProject ?? null;
 
-        if (dbProject && normalizedDbProject.changed) {
+        if (mergedDbProject && (normalizedDbProject.changed || mergedDbProject !== dbProject)) {
           const mergedProjects = localProjects
-            .filter(project => project.id !== dbProject.id)
-            .concat(dbProject);
+            .filter(project => project.id !== mergedDbProject.id)
+            .concat(mergedDbProject);
           saveProjectsToStorage(mergedProjects);
         }
 
@@ -732,7 +897,7 @@ export const castingService = {
   },
 
   /**
-   * Link role to Scene Composer scene
+   * Link role to a Role Room scene reference.
    */
   async linkRoleToScene(projectId: string, roleId: string, sceneId: string): Promise<void> {
     const project = await this.getProject(projectId);
@@ -762,24 +927,28 @@ export const castingService = {
   },
 
   /**
-   * Get available scenes from Scene Composer
+   * Get available scenes from Role Room project data.
+   * If a project is provided, only scenes from that project are returned.
    */
-  getAvailableScenes(): Array<{ id: string; name: string; thumbnail?: string }> {
-    try {
-      const scenes = sceneComposerService.getAllScenes();
-      return scenes.map(scene => ({
-        id: scene.id,
-        name: scene.name,
-        thumbnail: scene.thumbnail,
-      }));
-    } catch (error) {
-      console.error('Error getting scenes from Scene Composer:', error);
-      return [];
+  getAvailableScenes(projectId?: string): AvailableSceneOption[] {
+    const normalizedLocal = normalizeProjects(getProjectsFromStorage());
+    const localProjects = normalizedLocal.projects;
+    const sceneMap = new Map<string, AvailableSceneOption>();
+
+    if (typeof projectId === 'string' && projectId.trim().length > 0) {
+      const project = localProjects.find((entry) => entry.id === projectId);
+      collectAvailableScenesFromProject(project, sceneMap);
+      return Array.from(sceneMap.values());
     }
+
+    localProjects.forEach((project) => {
+      collectAvailableScenesFromProject(project, sceneMap);
+    });
+    return Array.from(sceneMap.values());
   },
 
   /**
-   * Sync with Scene Composer (validate scene IDs)
+   * Sync scene references against Role Room scene data.
    */
   async syncWithSceneComposer(projectId: string): Promise<void> {
     const project = await this.getProject(projectId);
@@ -787,7 +956,7 @@ export const castingService = {
       throw new Error(`Project ${projectId} not found`);
     }
     
-    const availableScenes = this.getAvailableScenes();
+    const availableScenes = this.getAvailableScenes(projectId);
     const availableSceneIds = new Set(availableScenes.map(s => s.id));
     
     // Remove invalid scene references
@@ -1503,50 +1672,133 @@ export const castingService = {
    * Get user roles for a project
    */
   async getUserRoles(projectId: string): Promise<UserRole[]> {
-    const project = await this.getProject(projectId);
-    return (project?.userRoles || []).map((role) => ({
-      ...role,
-      projectId: role.projectId ?? role.project_id ?? projectId,
-      userId: role.userId ?? role.user_id,
-      createdAt: role.createdAt ?? role.created_at,
-      updatedAt: role.updatedAt ?? role.updated_at,
-    }));
+    if (shouldUseRoleRoomLocalFallback()) {
+      const project = await this.getProject(projectId);
+      return (project?.userRoles || []).map((role) => ({
+        ...role,
+        projectId: role.projectId ?? role.project_id ?? projectId,
+        userId: role.userId ?? role.user_id,
+        createdAt: role.createdAt ?? role.created_at,
+        updatedAt: role.updatedAt ?? role.updated_at,
+      }));
+    }
+
+    try {
+      const response = await fetch(`/api/role-room/projects/${projectId}/roles`, {
+        headers: getRoleRoomAuthHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch user roles: ${response.statusText}`);
+      }
+
+      const rolesRaw = await response.json();
+      const roles = Array.isArray(rolesRaw) ? rolesRaw : [];
+      const normalizedRoles = roles.map((role) => ({
+        ...role,
+        projectId: role.projectId ?? role.project_id ?? projectId,
+        userId: role.userId ?? role.user_id,
+        createdAt: role.createdAt ?? role.created_at,
+        updatedAt: role.updatedAt ?? role.updated_at,
+      })) as UserRole[];
+
+      const normalizedLocal = normalizeProjects(getProjectsFromStorage());
+      const localProjects = normalizedLocal.projects;
+      const localProjectIndex = localProjects.findIndex((project) => project.id === projectId);
+      if (localProjectIndex >= 0) {
+        localProjects[localProjectIndex] = {
+          ...localProjects[localProjectIndex],
+          userRoles: normalizedRoles,
+        };
+        saveProjectsToStorage(localProjects);
+      }
+      invalidateProjectFetchCache(projectId);
+      return normalizedRoles;
+    } catch (error) {
+      if (!isTransientProjectFetchError(error)) {
+        console.warn('Failed to fetch user roles from API, using project fallback:', error);
+      }
+      const project = await this.getProject(projectId);
+      return (project?.userRoles || []).map((role) => ({
+        ...role,
+        projectId: role.projectId ?? role.project_id ?? projectId,
+        userId: role.userId ?? role.user_id,
+        createdAt: role.createdAt ?? role.created_at,
+        updatedAt: role.updatedAt ?? role.updated_at,
+      }));
+    }
   },
 
   /**
    * Save user role to project
    */
   async saveUserRole(projectId: string, userRole: UserRole): Promise<void> {
-    const project = await this.getProject(projectId);
-    if (!project) {
-      throw new Error(`Project ${projectId} not found`);
+    const normalizedRole: UserRole = {
+      ...userRole,
+      projectId,
+      userId: userRole.userId ?? userRole.user_id,
+      createdAt: userRole.createdAt ?? userRole.created_at ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (shouldUseRoleRoomLocalFallback()) {
+      upsertProjectUserRoleInStorage(projectId, normalizedRole);
+      return;
     }
-    
-    if (!project.userRoles) {
-      project.userRoles = [];
+
+    try {
+      const response = await fetch(`/api/role-room/projects/${projectId}/roles`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getRoleRoomAuthHeaders(),
+        },
+        body: JSON.stringify({
+          userId: normalizedRole.userId,
+          email: normalizedRole.email,
+          role: normalizedRole.role,
+          permissions: normalizedRole.permissions ?? {},
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save user role: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.warn('Failed to save user role to API, using local fallback:', error);
     }
-    
-    const index = project.userRoles.findIndex(ur => ur.id === userRole.id);
-    if (index >= 0) {
-      project.userRoles[index] = { ...userRole, updatedAt: new Date().toISOString() };
-    } else {
-      project.userRoles.push(userRole);
-    }
-    
-    await this.saveProject(project);
+
+    upsertProjectUserRoleInStorage(projectId, normalizedRole);
   },
 
   /**
    * Delete user role from project
    */
   async deleteUserRole(projectId: string, userRoleId: string): Promise<void> {
-    const project = await this.getProject(projectId);
-    if (!project) {
-      throw new Error(`Project ${projectId} not found`);
+    const userRoles = await this.getUserRoles(projectId);
+    const matchingRole = userRoles.find((role) => String(role.id ?? '') === String(userRoleId));
+    const roleUserId = matchingRole?.userId ?? matchingRole?.user_id;
+
+    if (shouldUseRoleRoomLocalFallback()) {
+      removeProjectUserRoleFromStorage(projectId, userRoleId, roleUserId);
+      return;
     }
-    
-    project.userRoles = (project.userRoles || []).filter(ur => ur.id !== userRoleId);
-    await this.saveProject(project);
+
+    try {
+      if (roleUserId) {
+        const response = await fetch(`/api/role-room/projects/${projectId}/roles/${roleUserId}`, {
+          method: 'DELETE',
+          headers: getRoleRoomAuthHeaders(),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to delete user role: ${response.statusText}`);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to delete user role from API, using local fallback:', error);
+    }
+
+    removeProjectUserRoleFromStorage(projectId, userRoleId, roleUserId);
   },
 
   // ============================================================================

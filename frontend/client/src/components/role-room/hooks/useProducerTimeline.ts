@@ -6,6 +6,7 @@ import {
   type ProducerTimelineItem,
   type UpdateProducerTimelineItemInput,
 } from '../services/producerWorkflowService';
+import { onProducerWorkflowEvent } from '../services/producerWorkflowEvents';
 
 const EMPTY_TIMELINE: ProducerTimelineItem[] = [];
 
@@ -35,6 +36,19 @@ export function useProducerTimeline(projectId?: string) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!projectId) {
+      return () => undefined;
+    }
+
+    return onProducerWorkflowEvent((payload) => {
+      if (payload.projectId !== projectId || payload.domain !== 'timeline') {
+        return;
+      }
+      void load();
+    });
+  }, [load, projectId]);
 
   const createItem = useCallback(async (payload: CreateProducerTimelineItemInput) => {
     if (!projectId) throw new Error('Mangler projectId');

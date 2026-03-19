@@ -1,4 +1,5 @@
 import authSessionService from '../services/authSessionService';
+import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 
 export type BrandingTextTokenKey =
   | 'casting'
@@ -2637,6 +2638,36 @@ export const DEFAULT_BRANDING_SETTINGS: BrandingSettings = {
 };
 
 const API_BASE = '/api/branding';
+const LOCAL_BRANDING_STORAGE_KEY = 'role_room_branding_settings';
+
+const readLocalBrandingSettings = (): BrandingSettings | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(LOCAL_BRANDING_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    return normalizeSettings(JSON.parse(raw) as Partial<BrandingSettings>);
+  } catch {
+    return null;
+  }
+};
+
+const writeLocalBrandingSettings = (settings: BrandingSettings): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(LOCAL_BRANDING_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage failures
+  }
+};
 
 const canonicalizeRoleRoomIdentityAsset = (
   value: string | undefined,
@@ -2804,6 +2835,11 @@ const getAdminRole = (): string | undefined => {
 };
 
 export const fetchBrandingSettings = async (): Promise<BrandingSettings | null> => {
+  if (shouldUseRoleRoomLocalFallback()) {
+    const localSettings = readLocalBrandingSettings();
+    return localSettings ? setCachedBrandingSettings(localSettings) : getBrandingSettings();
+  }
+
   const response = await fetch(`${API_BASE}/settings`);
   if (!response.ok) {
     throw new Error('Failed to fetch branding settings');
@@ -2817,6 +2853,12 @@ export const updateBrandingSettings = async (
   settings: BrandingSettings
 ): Promise<BrandingSettings> => {
   const normalized = normalizeSettings(settings);
+
+  if (shouldUseRoleRoomLocalFallback()) {
+    writeLocalBrandingSettings(normalized);
+    return setCachedBrandingSettings(normalized);
+  }
+
   const role = getAdminRole();
   const response = await fetch(`${API_BASE}/settings`, {
     method: 'PUT',

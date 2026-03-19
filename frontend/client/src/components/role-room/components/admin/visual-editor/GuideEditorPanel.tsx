@@ -1,102 +1,17 @@
-/**
- * GuideEditorPanel.tsx
- * ─────────────────────────────────────────────────────────────────────────
- * Admin section inside the Role Room visual editor for managing all
- * Role Room guide dialogs (Shot List, Stripboard, Screenplay Editor).
- *
- * Layout:
- *   ┌─────────────┬────────────────────────┬──────────────────────────────┐
- *   │ Guide cards │  Step list             │  Step / Guide editor         │
- *   │  (3 guides) │  (for selected guide)  │  (fields + preview)          │
- *   └─────────────┴────────────────────────┴──────────────────────────────┘
- *
- * All changes are held in-memory until the admin clicks "Save".
- * "Export JSON" / "Import JSON" support full round-trip config backup.
- * ─────────────────────────────────────────────────────────────────────────
- */
-
-import type { DragEvent } from 'react';
-import React, { useState, useCallback, useRef } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  IconButton,
-  Switch,
-  TextField,
-  MenuItem,
-  Tooltip,
-  Chip,
-  Divider,
-  Alert,
-  Snackbar,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Paper,
-  Badge,
-  useTheme,
-  useMediaQuery,
-} from '@mui/material';
-import {
-  Save as SaveIcon,
-  RestartAlt as ResetIcon,
-  FileDownload as ExportIcon,
-  FileUpload as ImportIcon,
-  BugReport as PreviewIcon,
-  DragIndicator as DragHandleIcon,
-  VisibilityOff as HideIcon,
-  Visibility as ShowIcon,
-  Add as AddIcon,
-  Edit as EditIcon,
-  Image as ImageIcon,
-  Close as CloseIcon,
-  CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
-  Info as InfoIcon,
-  Palette as PaletteIcon,
-  MenuBook as GuideBookIcon,
-  Movie as ScreenplayIcon,
-  ViewList as StripboardIcon,
-  PhotoCamera as ShotListIcon,
-  NotificationsActive as BadgeIcon,
-  Notes as NoteIcon,
-  LiveTv as LiveSetIcon,
-  Groups as CrewIcon,
-  TheaterComedy as AuditionIcon,
-  Place as LocationManagementIcon,
-  Analytics as LocationAnalysisIcon,
-  Delete as DeleteIcon,
-  ContentCopy as DuplicateIcon,
-  Tune as AnnotationIcon,
-} from '@mui/icons-material';
-
-import {
-  GUIDE_META,
-  type GuideId,
-  type GuideMeta,
-  type GuideConfig,
-  type GuideStepOverride,
-  type GuideStepAnnotation,
-  buildDefaultRegistry,
-} from './guideTypes';
-import { useGuideConfig } from './useGuideConfig';
-import {
-  GUIDE_ANNOTATION_STYLE_OPTIONS,
-  GuideAnnotatedScreenshot,
-} from '../../shared/guide/GuideAnnotationOverlay';
-
-// ── Lazy imports for guide preview ────────────────────────────────────────
-// Using React.lazy to avoid circular-dep issues and keep the admin bundle lean.
-import { ShotListGuide } from '../../production/ShotListGuide';
-import { StripboardGuide } from '../../production/StripboardGuide';
-import { ScreenplayGuide } from '../../ScreenplayGuide';
-import { LiveSetModeGuide } from '../../production/LiveSetModeGuide';
-import { CrewManagementGuide } from '../../production/CrewManagementGuide';
-import { AuditionGuide } from '../../production/AuditionGuide';
-import { LocationManagementGuide } from '../../production/LocationManagementGuide';
-import { LocationAnalysisGuide } from '../../production/LocationAnalysisGuide';
+import React, { useState, useCallback, useRef, type DragEvent } from "react";
+import { Box, Typography, Button, IconButton, Switch, TextField, MenuItem, Tooltip, Chip, Divider, Alert, Snackbar, Dialog, DialogTitle, DialogContent, DialogActions, Paper, Badge, useTheme, useMediaQuery } from "@mui/material";
+import { Save as SaveIcon, RestartAlt as ResetIcon, FileDownload as ExportIcon, FileUpload as ImportIcon, BugReport as PreviewIcon, DragIndicator as DragHandleIcon, VisibilityOff as HideIcon, Visibility as ShowIcon, Add as AddIcon, Edit as EditIcon, Image as ImageIcon, Close as CloseIcon, CheckCircle as CheckCircleIcon, Warning as WarningIcon, Info as InfoIcon, Palette as PaletteIcon, MenuBook as GuideBookIcon, Movie as ScreenplayIcon, ViewList as StripboardIcon, PhotoCamera as ShotListIcon, NotificationsActive as BadgeIcon, Notes as NoteIcon, LiveTv as LiveSetIcon, Groups as CrewIcon, TheaterComedy as AuditionIcon, Place as LocationManagementIcon, Analytics as LocationAnalysisIcon, Delete as DeleteIcon, ContentCopy as DuplicateIcon, Tune as AnnotationIcon } from "@mui/icons-material";
+import { GUIDE_META, buildDefaultRegistry, type GuideId, type GuideMeta, type GuideConfig, type GuideStepOverride, type GuideStepAnnotation } from "./guideTypes";
+import { useGuideConfig } from "./useGuideConfig";
+import { GUIDE_ANNOTATION_STYLE_OPTIONS, GuideAnnotatedScreenshot } from "../../shared/guide/GuideAnnotationOverlay";
+import { ShotListGuide } from "../../production/ShotListGuide";
+import { StripboardGuide } from "../../production/StripboardGuide";
+import { ScreenplayGuide } from "../../ScreenplayGuide";
+import { LiveSetModeGuide } from "../../production/LiveSetModeGuide";
+import { CrewManagementGuide } from "../../production/CrewManagementGuide";
+import { AuditionGuide } from "../../production/AuditionGuide";
+import { LocationManagementGuide } from "../../production/LocationManagementGuide";
+import { LocationAnalysisGuide } from "../../production/LocationAnalysisGuide";
 
 // ── Constants ─────────────────────────────────────────────────────────────
 

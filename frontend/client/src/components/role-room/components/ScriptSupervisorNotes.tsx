@@ -1,61 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Button,
-  IconButton,
-  Chip,
-  Stack,
-  Card,
-  CardContent,
-  Grid,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Tooltip,
-  Badge,
-  Rating,
-} from '@mui/material';
-import {
-  Assignment as ScriptIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Schedule as TimeIcon,
-  Videocam as CameraIcon,
-  PlayArrow as PlayIcon,
-  Stop as StopIcon,
-  Flag as FlagIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckIcon,
-  Error as ErrorIcon,
-  Note as NoteIcon,
-  Timer as TimerIcon,
-  Speed as SpeedIcon,
-  Replay as RetakeIcon,
-  Star as StarIcon,
-} from '@mui/icons-material';
-import type { SceneBreakdown} from '../models/casting';
-import { CastingShot } from '../models/casting';
-import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import React, { useState, useEffect, useMemo } from "react";
+import { Box, Typography, Paper, Button, IconButton, Chip, Stack, Card, CardContent, Grid, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Divider, List, ListItem, ListItemText, ListItemIcon, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Badge, Rating } from "@mui/material";
+import { Assignment as ScriptIcon, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Schedule as TimeIcon, Videocam as CameraIcon, PlayArrow as PlayIcon, Stop as StopIcon, Flag as FlagIcon, Warning as WarningIcon, CheckCircle as CheckIcon, Error as ErrorIcon, Note as NoteIcon, Timer as TimerIcon, Speed as SpeedIcon, Replay as RetakeIcon, Star as StarIcon } from "@mui/icons-material";
+import { CastingShot, type SceneBreakdown } from "../models/casting";
+import GlobalMentionHelper from "./shared/GlobalMentionHelper";
 
 interface TakeLog {
   id: string;

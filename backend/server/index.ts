@@ -157,9 +157,66 @@ const academyMediaUpload = multer({
   },
 });
 
+const PROJECT_FILE_MAX_BYTES = 512 * 1024 * 1024;
+const projectFileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: PROJECT_FILE_MAX_BYTES,
+  },
+  fileFilter: (_req, file, cb) => {
+    const mimetype = String(file.mimetype || '').toLowerCase();
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const isImage = mimetype.startsWith('image/');
+    const isVideo = mimetype.startsWith('video/');
+    const isAudio = mimetype.startsWith('audio/');
+    const isArchive = [
+      'application/zip',
+      'application/x-zip-compressed',
+      'application/gzip',
+      'application/x-gzip',
+    ].includes(mimetype);
+    const isDocument = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain',
+      'text/csv',
+      'application/json',
+    ].includes(mimetype);
+    const isKnownExtension = [
+      '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx',
+      '.zip', '.gz', '.txt', '.csv', '.json',
+      '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg',
+      '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v',
+      '.mp3', '.wav', '.aac', '.m4a', '.flac', '.ogg', '.opus',
+    ].includes(extension);
+
+    if (
+      isImage
+      || isVideo
+      || isAudio
+      || isArchive
+      || isDocument
+      || isKnownExtension
+      || mimetype === 'application/octet-stream'
+      || mimetype === 'binary/octet-stream'
+    ) {
+      cb(null, true);
+      return;
+    }
+
+    cb(new Error('Ugyldig prosjektfilformat.'));
+  },
+});
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3003;
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const PROJECT_FILE_STORAGE_ROOT = path.join(REPO_ROOT, 'uploads', 'project-files');
 
 const tableColumnsCache = new Map<string, Set<string>>();
 const tableExistsCache = new Map<string, boolean>();
@@ -4305,6 +4362,7 @@ const legacyCandidatePool = new Map<string, any>();
 const legacyRolePool = new Map<string, any>();
 const legacyOffersByProject = new Map<string, any[]>();
 const legacyContractsByProject = new Map<string, any[]>();
+const legacyProjectAgreementsByProject = new Map<string, any[]>();
 const legacyLiveSetSessionsByProject = new Map<string, any[]>();
 const legacyLiveSetEventsByProject = new Map<string, any[]>();
 const compatUserKvStore = new Map<string, { value: unknown; updatedAt: string }>();
@@ -5164,6 +5222,10 @@ function dbLegacyOffersKey(projectId: string): string {
 
 function dbLegacyContractsKey(projectId: string): string {
   return `casting:contracts:${projectId}`;
+}
+
+function dbLegacyProjectAgreementsKey(projectId: string): string {
+  return `casting:project-agreements:${projectId}`;
 }
 
 function dbLegacyLiveSetSessionsKey(projectId: string): string {
@@ -6404,6 +6466,7 @@ app.delete('/api/casting/projects/:projectId', async (req, res) => {
   legacyTeamDashboardSnapshotsByProject.delete(projectId);
   legacyOffersByProject.delete(projectId);
   legacyContractsByProject.delete(projectId);
+  legacyProjectAgreementsByProject.delete(projectId);
   legacyLiveSetSessionsByProject.delete(projectId);
   legacyLiveSetEventsByProject.delete(projectId);
   const manuscriptDeletes = manuscriptsForProject.flatMap((manuscript) => {
@@ -6425,6 +6488,7 @@ app.delete('/api/casting/projects/:projectId', async (req, res) => {
     compatStoreDelete(dbLegacyTeamSnapshotsKey(projectId)),
     compatStoreDelete(dbLegacyOffersKey(projectId)),
     compatStoreDelete(dbLegacyContractsKey(projectId)),
+    compatStoreDelete(dbLegacyProjectAgreementsKey(projectId)),
     compatStoreDelete(dbLegacyLiveSetSessionsKey(projectId)),
     compatStoreDelete(dbLegacyLiveSetEventsKey(projectId)),
     compatStoreDeleteByPrefix(`casting:favorites:${projectId}::`),
@@ -6889,6 +6953,69 @@ function setProjectItems(source: Map<string, any[]>, projectId: string, items: a
   source.set(projectId, items);
 }
 
+function normalizeProjectAgreementStatus(value: unknown): 'draft' | 'sent' | 'signed' {
+  if (value === 'sent' || value === 'signed') {
+    return value;
+  }
+  return 'draft';
+}
+
+function createProjectAgreementRecord(payload: Record<string, any>): Record<string, any> | null {
+  const projectId = typeof payload.projectId === 'string' ? payload.projectId : '';
+  const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+  const counterpartyType = typeof payload.counterpartyType === 'string' ? payload.counterpartyType : '';
+  const counterpartyName = typeof payload.counterpartyName === 'string' ? payload.counterpartyName.trim() : '';
+
+  if (!projectId || !title || !counterpartyType || !counterpartyName) {
+    return null;
+  }
+
+  return {
+    id: `agreement-${Date.now()}`,
+    project_id: projectId,
+    agreement_type: typeof payload.agreementType === 'string' ? payload.agreementType : 'client_nda',
+    counterparty_type: counterpartyType,
+    counterparty_id: typeof payload.counterpartyId === 'string' && payload.counterpartyId.trim()
+      ? payload.counterpartyId
+      : null,
+    title,
+    purpose: typeof payload.purpose === 'string' && payload.purpose.trim() ? payload.purpose.trim() : null,
+    disclosing_party_name:
+      typeof payload.disclosingPartyName === 'string' && payload.disclosingPartyName.trim()
+        ? payload.disclosingPartyName.trim()
+        : null,
+    disclosing_party_company_name:
+      typeof payload.disclosingPartyCompanyName === 'string' && payload.disclosingPartyCompanyName.trim()
+        ? payload.disclosingPartyCompanyName.trim()
+        : null,
+    disclosing_party_organization_number:
+      typeof payload.disclosingPartyOrganizationNumber === 'string' && payload.disclosingPartyOrganizationNumber.trim()
+        ? payload.disclosingPartyOrganizationNumber.trim()
+        : null,
+    counterparty_name: counterpartyName,
+    counterparty_email:
+      typeof payload.counterpartyEmail === 'string' && payload.counterpartyEmail.trim()
+        ? payload.counterpartyEmail.trim()
+        : null,
+    counterparty_company_name:
+      typeof payload.counterpartyCompanyName === 'string' && payload.counterpartyCompanyName.trim()
+        ? payload.counterpartyCompanyName.trim()
+        : null,
+    counterparty_organization_number:
+      typeof payload.counterpartyOrganizationNumber === 'string' && payload.counterpartyOrganizationNumber.trim()
+        ? payload.counterpartyOrganizationNumber.trim()
+        : null,
+    sections: Array.isArray(payload.sections) ? payload.sections : [],
+    start_date: typeof payload.startDate === 'string' && payload.startDate.trim() ? payload.startDate : null,
+    end_date: typeof payload.endDate === 'string' && payload.endDate.trim() ? payload.endDate : null,
+    signed_date: null,
+    status: 'draft',
+    metadata: payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {},
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
 // Offers + Contracts endpoints (shared for /api/casting and /api/role-room consumers)
 app.get('/api/casting/projects/:projectId/offers', async (req, res) => {
   const projectId = req.params.projectId;
@@ -6910,6 +7037,17 @@ app.get('/api/casting/projects/:projectId/contracts', async (req, res) => {
     return;
   }
   res.json({ contracts: getProjectItems(legacyContractsByProject, projectId) });
+});
+
+app.get('/api/casting/projects/:projectId/project-agreements', async (req, res) => {
+  const projectId = req.params.projectId;
+  const dbAgreements = await compatStoreGet<any[]>(dbLegacyProjectAgreementsKey(projectId));
+  if (Array.isArray(dbAgreements)) {
+    setProjectItems(legacyProjectAgreementsByProject, projectId, dbAgreements);
+    res.json({ agreements: dbAgreements });
+    return;
+  }
+  res.json({ agreements: getProjectItems(legacyProjectAgreementsByProject, projectId) });
 });
 
 app.post('/api/casting/offers', async (req, res) => {
@@ -7019,6 +7157,45 @@ app.put('/api/casting/contracts/:contractId/sign', async (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/casting/project-agreements', async (req, res) => {
+  const agreement = createProjectAgreementRecord(req.body || {});
+  if (!agreement) {
+    res.status(400).json({ error: 'projectId, title, counterpartyType and counterpartyName are required' });
+    return;
+  }
+  const current = getProjectItems(legacyProjectAgreementsByProject, agreement.project_id);
+  const next = [...current, agreement];
+  setProjectItems(legacyProjectAgreementsByProject, agreement.project_id, next);
+  await compatStoreSet(dbLegacyProjectAgreementsKey(agreement.project_id), next);
+  res.status(201).json({ agreementId: agreement.id });
+});
+
+app.put('/api/casting/project-agreements/:agreementId/status', async (req, res) => {
+  let location = findByIdInProjectMap(legacyProjectAgreementsByProject, req.params.agreementId);
+  if (!location) {
+    const dbLocation = await findByIdInDbProjectArrays('casting:project-agreements:', req.params.agreementId);
+    if (dbLocation) {
+      setProjectItems(legacyProjectAgreementsByProject, dbLocation.projectId, dbLocation.items);
+      location = { projectId: dbLocation.projectId, index: dbLocation.index };
+    }
+  }
+  if (!location) {
+    res.status(404).json({ error: 'Agreement not found' });
+    return;
+  }
+  const current = getProjectItems(legacyProjectAgreementsByProject, location.projectId);
+  const nextStatus = normalizeProjectAgreementStatus(req.body?.status);
+  current[location.index] = {
+    ...current[location.index],
+    status: nextStatus,
+    signed_date: nextStatus === 'signed' ? new Date().toISOString() : current[location.index]?.signed_date ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  setProjectItems(legacyProjectAgreementsByProject, location.projectId, current);
+  await compatStoreSet(dbLegacyProjectAgreementsKey(location.projectId), current);
+  res.json({ ok: true });
+});
+
 app.get('/api/role-room/projects/:projectId/offers', async (req, res) => {
   const projectId = req.params.projectId;
   const dbOffers = await compatStoreGet<any[]>(dbLegacyOffersKey(projectId));
@@ -7039,6 +7216,17 @@ app.get('/api/role-room/projects/:projectId/contracts', async (req, res) => {
     return;
   }
   res.json({ contracts: getProjectItems(legacyContractsByProject, projectId) });
+});
+
+app.get('/api/role-room/projects/:projectId/project-agreements', async (req, res) => {
+  const projectId = req.params.projectId;
+  const dbAgreements = await compatStoreGet<any[]>(dbLegacyProjectAgreementsKey(projectId));
+  if (Array.isArray(dbAgreements)) {
+    setProjectItems(legacyProjectAgreementsByProject, projectId, dbAgreements);
+    res.json({ agreements: dbAgreements });
+    return;
+  }
+  res.json({ agreements: getProjectItems(legacyProjectAgreementsByProject, projectId) });
 });
 
 app.post('/api/role-room/projects/:projectId/live-set/sessions', async (req, res) => {
@@ -7265,6 +7453,45 @@ app.put('/api/role-room/contracts/:contractId/sign', async (req, res) => {
   };
   setProjectItems(legacyContractsByProject, location.projectId, current);
   await compatStoreSet(dbLegacyContractsKey(location.projectId), current);
+  res.json({ ok: true });
+});
+
+app.post('/api/role-room/project-agreements', async (req, res) => {
+  const agreement = createProjectAgreementRecord(req.body || {});
+  if (!agreement) {
+    res.status(400).json({ error: 'projectId, title, counterpartyType and counterpartyName are required' });
+    return;
+  }
+  const current = getProjectItems(legacyProjectAgreementsByProject, agreement.project_id);
+  const next = [...current, agreement];
+  setProjectItems(legacyProjectAgreementsByProject, agreement.project_id, next);
+  await compatStoreSet(dbLegacyProjectAgreementsKey(agreement.project_id), next);
+  res.status(201).json({ agreementId: agreement.id });
+});
+
+app.put('/api/role-room/project-agreements/:agreementId/status', async (req, res) => {
+  let location = findByIdInProjectMap(legacyProjectAgreementsByProject, req.params.agreementId);
+  if (!location) {
+    const dbLocation = await findByIdInDbProjectArrays('casting:project-agreements:', req.params.agreementId);
+    if (dbLocation) {
+      setProjectItems(legacyProjectAgreementsByProject, dbLocation.projectId, dbLocation.items);
+      location = { projectId: dbLocation.projectId, index: dbLocation.index };
+    }
+  }
+  if (!location) {
+    res.status(404).json({ error: 'Agreement not found' });
+    return;
+  }
+  const current = getProjectItems(legacyProjectAgreementsByProject, location.projectId);
+  const nextStatus = normalizeProjectAgreementStatus(req.body?.status);
+  current[location.index] = {
+    ...current[location.index],
+    status: nextStatus,
+    signed_date: nextStatus === 'signed' ? new Date().toISOString() : current[location.index]?.signed_date ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  setProjectItems(legacyProjectAgreementsByProject, location.projectId, current);
+  await compatStoreSet(dbLegacyProjectAgreementsKey(location.projectId), current);
   res.json({ ok: true });
 });
 
@@ -8440,25 +8667,29 @@ app.post('/api/auth/login', async (req, res) => {
     const sessionToken = crypto.randomUUID();
     const name = [dbUser.first_name, dbUser.last_name].filter(Boolean).join(' ') || dbUser.username;
 
-    const sessionData = {
-      userId: dbUser.id,
-      email: dbUser.email,
-      name,
-      role,
-      loginAt: new Date().toISOString()
-    };
-    activeSessions.set(sessionToken, sessionData);
-
-    console.log(`[Auth] Login: ${dbUser.email} as ${role} (session: ${sessionToken.substring(0, 8)}...)`);
-
     const normalizedRequestedRole = requestedRole || null;
     const roleRoomSessionRole = isRoleRoomLogin
       ? (
           loginAs === 'content_producer'
-            ? 'content_producer'
+            ? (
+                normalizedRequestedRole === 'client' || normalizedRequestedRole === 'client_reviewer'
+                  ? 'client_reviewer'
+                  : 'content_producer'
+              )
             : (normalizedRequestedRole || role)
         )
       : role;
+
+    const sessionData = {
+      userId: dbUser.id,
+      email: dbUser.email,
+      name,
+      role: roleRoomSessionRole,
+      loginAt: new Date().toISOString()
+    };
+    activeSessions.set(sessionToken, sessionData);
+
+    console.log(`[Auth] Login: ${dbUser.email} as ${roleRoomSessionRole} (session: ${sessionToken.substring(0, 8)}...)`);
 
     res.json({
       success: true,
@@ -21854,20 +22085,60 @@ app.post('/api/projects/:projectId/collaborators/invite', async (req, res) => {
   res.json({ success: true, invitation });
 });
 
-app.post('/api/projects/:projectId/files', upload.single('file'), async (req, res) => {
+const parseProjectFileMetadataInput = (rawValue: unknown): Record<string, unknown> => {
+  if (typeof rawValue !== 'string' || rawValue.trim().length === 0) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(rawValue);
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const ensureProjectFileStorageDirectory = async (projectId: string): Promise<string> => {
+  const projectDirectory = path.join(PROJECT_FILE_STORAGE_ROOT, projectId);
+  await fs.mkdir(projectDirectory, { recursive: true });
+  return projectDirectory;
+};
+
+const toPublicProjectFileRecord = (fileRecord: Record<string, unknown>): Record<string, unknown> => {
+  const {
+    storagePath: _storagePath,
+    storedName: _storedName,
+    ...publicRecord
+  } = fileRecord;
+  return publicRecord;
+};
+
+app.post('/api/projects/:projectId/files', projectFileUpload.single('file'), async (req, res) => {
   const { projectId } = req.params;
   if (!req.file) {
     return res.status(400).json({ error: 'file is required' });
   }
+
+  const metadata = parseProjectFileMetadataInput(req.body?.metadata);
+  const projectDirectory = await ensureProjectFileStorageDirectory(projectId);
+  const safeExtension = path.extname(req.file.originalname || '').slice(0, 20);
+  const storedName = `${crypto.randomUUID()}${safeExtension}`;
+  const storagePath = path.join(projectDirectory, storedName);
+  await fs.writeFile(storagePath, req.file.buffer);
+
   const state = ensureCompatProjectState(projectId);
   const fileId = crypto.randomUUID();
   const fileRecord = {
     id: fileId,
     projectId,
     name: req.file.originalname,
+    originalName: req.file.originalname,
+    storedName,
+    storagePath,
     size: req.file.size,
     mimeType: req.file.mimetype,
-    metadata: readString(req.body?.metadata) ? JSON.parse(req.body.metadata) : {},
+    metadata,
     uploadedAt: new Date().toISOString(),
     downloadUrl: `/api/projects/${projectId}/files/${fileId}/download`,
   };
@@ -21875,7 +22146,7 @@ app.post('/api/projects/:projectId/files', upload.single('file'), async (req, re
   compatProjectStateStore.set(projectId, state);
   await compatMergeProjectMetadata(projectId, { files: state.files });
   compatPushProjectAudit(projectId, 'file_uploaded', { fileId, name: req.file.originalname });
-  res.status(201).json(fileRecord);
+  res.status(201).json(toPublicProjectFileRecord(fileRecord));
 });
 
 app.get('/api/projects/:projectId/files', async (req, res) => {
@@ -21885,7 +22156,34 @@ app.get('/api/projects/:projectId/files', async (req, res) => {
   if (metadata && Array.isArray(metadata.files) && state.files.length === 0) {
     state.files = metadata.files as Array<Record<string, unknown>>;
   }
-  res.json(state.files);
+  res.json(state.files.map((fileRecord) => toPublicProjectFileRecord(fileRecord as Record<string, unknown>)));
+});
+
+app.get('/api/projects/:projectId/files/:fileId/download', async (req, res) => {
+  const { projectId, fileId } = req.params;
+  const metadata = await compatReadProjectMetadata(projectId);
+  const state = ensureCompatProjectState(projectId);
+  if (metadata && Array.isArray(metadata.files) && state.files.length === 0) {
+    state.files = metadata.files as Array<Record<string, unknown>>;
+  }
+
+  const fileRecord = state.files.find((file) => file.id === fileId);
+  if (!fileRecord) {
+    return res.status(404).json({ error: 'project_file_not_found' });
+  }
+
+  const storagePath = readString((fileRecord as Record<string, unknown>).storagePath);
+  if (!storagePath || !existsSync(storagePath)) {
+    return res.status(404).json({ error: 'project_file_content_not_found' });
+  }
+
+  const downloadName =
+    readString((fileRecord as Record<string, unknown>).originalName)
+    || readString((fileRecord as Record<string, unknown>).name)
+    || `project-file-${fileId}`;
+
+  res.setHeader('Content-Type', readString((fileRecord as Record<string, unknown>).mimeType) || 'application/octet-stream');
+  res.download(storagePath, downloadName);
 });
 
 app.put('/api/projects/:projectId/files/:fileId', async (req, res) => {
@@ -21903,10 +22201,17 @@ app.put('/api/projects/:projectId/files/:fileId', async (req, res) => {
 app.delete('/api/projects/:projectId/files/:fileId', async (req, res) => {
   const { projectId, fileId } = req.params;
   const state = ensureCompatProjectState(projectId);
+  const fileRecord = state.files.find((file) => file.id === fileId);
+  const storagePath = fileRecord
+    ? readString((fileRecord as Record<string, unknown>).storagePath)
+    : '';
   state.files = state.files.filter((file) => file.id !== fileId);
   compatProjectStateStore.set(projectId, state);
   await compatMergeProjectMetadata(projectId, { files: state.files });
   compatPushProjectAudit(projectId, 'file_deleted', { fileId });
+  if (storagePath && existsSync(storagePath)) {
+    await fs.unlink(storagePath).catch(() => {});
+  }
   res.json({ success: true });
 });
 

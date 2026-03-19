@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
+import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import {
   Box,
   Typography,
@@ -119,7 +120,7 @@ import {
   ConsentsIcon,
 } from './icons/CastingIcons';
 
-import type { CastingProject, Role, Candidate, ContactInfo, Schedule, UserRoleType } from '../models/casting';
+import type { CastingProject, Role, Candidate, ContactInfo, Schedule, UserRole, UserRoleType } from '../models/casting';
 import { RichTextEditor } from './RichTextEditor';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { AuditionSchedulePanel } from './AuditionSchedulePanel';
@@ -128,16 +129,26 @@ import { storyLogicService, type StoryLogicState } from '../services/storyLogicS
 
 // Custom icon: Person holding camera with list/clipboard
 import { castingService } from '../services/castingService';
+import { googleWorkspaceApi } from '../services/castingApiService';
 import { resetMockCastingData } from '../data/mockCastingData';
-import { sceneComposerService } from '../services/sceneComposerService';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
 import { useProducerAccess } from '../hooks/useProducerAccess';
 import { producerWorkflowService } from '../services/producerWorkflowService';
 import {
+  emitProducerWorkflowFocusEvent,
+  type ProducerWorkflowFocusPayload,
+} from '../services/producerWorkflowFocusEvents';
+import { onProducerWorkflowEvent } from '../services/producerWorkflowEvents';
+import {
   buildProducerWorkflowEntityOptions,
   buildProducerWorkflowOwnerOptions,
+  makeProducerPackageEntityId,
 } from '../utils/producerWorkflow';
+import {
+  parseClientPortalIntentFromWindow,
+  type ClientPortalWorkspaceFocus,
+} from '../utils/clientPortal';
 import type { Tutorial } from '../services/tutorialService';
 
 // Lazy load heavy panels for better performance
@@ -162,14 +173,15 @@ const CastingPlannerTutorial = lazy(() => import('./CastingPlannerTutorial').the
 const TutorialEditorPanel = lazy(() => import('./TutorialEditorPanel').then(m => ({ default: m.TutorialEditorPanel })));
 const ConsentManagementPanel = lazy(() => import('./ConsentManagementPanel').then(m => ({ default: m.ConsentManagementPanel })));
 const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(m => ({ default: m.ConsentContractDialog })));
-const OffersContractsPanel = lazy(() => import('./OffersContractsPanel'));
+const ProjectEconomyHub = lazy(() => import('./ProjectEconomyHub'));
 const ProductionCalendarPanel = lazy(() => import('./ProductionCalendarPanel'));
 const CrewCalendarPanel = lazy(() => import('./production/CrewCalendarPanel').then(m => ({ default: m.CrewCalendarPanel })));
 const ProducerTimelinePanel = lazy(() => import('./producer/ProducerTimelinePanel'));
-const ProducerEconomyPanel = lazy(() => import('./producer/ProducerEconomyPanel'));
 const ProducerClientReviewPanel = lazy(() => import('./producer/ProducerClientReviewPanel'));
 const ProducerMediaPanel = lazy(() => import('./producer/ProducerMediaPanel'));
 const ProducerExtrasPanel = lazy(() => import('./producer/ProducerExtrasPanel'));
+const ProducerExportHandoffPanel = lazy(() => import('./producer/ProducerExportHandoffPanel'));
+import RoleRoomGoogleContextBar from './producer/RoleRoomGoogleContextBar';
 
 // Lazy load dialogs and modals for better initial load
 const AdminDashboard = lazy(() => import('./AdminDashboard'));
@@ -334,6 +346,36 @@ const PRODUCER_ECONOMY_TAB_INDEX = 12;
 const PRODUCER_TIMELINE_TAB_INDEX = 13;
 const PRODUCER_REVIEWS_TAB_INDEX = 14;
 const PRODUCER_EXPORT_TAB_INDEX = 15;
+
+const PRODUCER_PROJECT_STATUS_LABELS: Record<NonNullable<CastingProject['producerWorkflowStatus']>, string> = {
+  planning: 'Planlegging',
+  awaiting_client: 'Venter på klient',
+  changes_requested: 'Endringer ønsket',
+  approved: 'Godkjent',
+};
+
+const PRODUCER_PROJECT_STATUS_COLORS: Record<NonNullable<CastingProject['producerWorkflowStatus']>, { background: string; color: string; border: string }> = {
+  planning: {
+    background: 'rgba(148,163,184,0.16)',
+    color: '#cbd5e1',
+    border: '1px solid rgba(148,163,184,0.3)',
+  },
+  awaiting_client: {
+    background: 'rgba(59,130,246,0.16)',
+    color: '#bfdbfe',
+    border: '1px solid rgba(96,165,250,0.36)',
+  },
+  changes_requested: {
+    background: 'rgba(251,191,36,0.16)',
+    color: '#fde68a',
+    border: '1px solid rgba(251,191,36,0.34)',
+  },
+  approved: {
+    background: 'rgba(52,211,153,0.16)',
+    color: '#86efac',
+    border: '1px solid rgba(52,211,153,0.34)',
+  },
+};
 type SelectionPhaseFilter = 'screening' | 'callbacks' | 'final' | 'all';
 type SelectionStage = Exclude<SelectionPhaseFilter, 'all'>;
 
@@ -822,14 +864,6 @@ export function CastingPlannerPanel({
   });
   const producerAccess = useProducerAccess(currentUserRole, permissions);
   const [, setPermissionsLoading] = useState(false);
-  const [producerReviewQuickCreate, setProducerReviewQuickCreate] = useState<{
-    reviewType: string;
-    title: string;
-    description?: string;
-    targetEntityType?: string;
-    targetEntityId?: string;
-    nonce: number;
-  } | null>(null);
   const [producerWorkflowBootstrapVersion, setProducerWorkflowBootstrapVersion] = useState(0);
   
   // Ref to track current project ID for stale response detection
@@ -896,6 +930,32 @@ export function CastingPlannerPanel({
   const [projectCreationModalOpen, setProjectCreationModalOpen] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState<CastingProject | null>(null);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const clientPortalIntent = useMemo(
+    () => parseClientPortalIntentFromWindow(),
+    [],
+  );
+  const roleRoomGoogleIntent = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return {
+        status: null as string | null,
+        transferId: null as string | null,
+        mode: null as 'login' | 'link' | null,
+        message: null as string | null,
+      };
+    }
+    const params = new URLSearchParams(window.location.search);
+    const modeValue = params.get('rrGoogleMode');
+    return {
+      status: params.get('rrGoogleStatus'),
+      transferId: params.get('rrGoogleTransfer'),
+      mode: modeValue === 'login' || modeValue === 'link' ? modeValue : null,
+      message: params.get('rrGoogleMessage'),
+    };
+  }, []);
+  const isExternalClientPortalMode = Boolean(clientPortalIntent);
+  const appliedClientPortalIntentRef = useRef<string | null>(null);
+  const handledGoogleTransferRef = useRef<string | null>(null);
+  const [producerMediaFocus, setProducerMediaFocus] = useState<ClientPortalWorkspaceFocus | null>(null);
 
   const handleOpenTechnicalTeamDashboard = useCallback(() => {
     setTeamDashboardDefaultSegment('technical');
@@ -1005,16 +1065,68 @@ export function CastingPlannerPanel({
     commitTab(tabIndex);
   }, [activeTab, currentProject, exitLiveSetFullscreen, requestLiveSetFullscreen, toast]);
 
-  const queueProducerReviewCreate = useCallback((draft: {
+  const navigateToProducerWorkflowTabWithFocus = useCallback((
+    tabIndex: number,
+    focus?: Omit<ProducerWorkflowFocusPayload, 'projectId' | 'panel'>,
+  ) => {
+    if (!currentProject) {
+      return;
+    }
+
+    const panel = tabIndex === PRODUCER_TIMELINE_TAB_INDEX
+      ? 'timeline'
+      : tabIndex === PRODUCER_REVIEWS_TAB_INDEX
+        ? 'reviews'
+        : 'economy';
+
+    navigateToTab(tabIndex);
+    window.setTimeout(() => {
+      emitProducerWorkflowFocusEvent({
+        projectId: currentProject.id,
+        panel,
+        ...focus,
+      });
+    }, 80);
+  }, [currentProject, navigateToTab]);
+
+  const navigateToProducerMediaWorkspace = useCallback((focus?: ClientPortalWorkspaceFocus) => {
+    setProducerMediaFocus(focus ?? null);
+    navigateToTab(PRODUCER_MEDIA_TAB_INDEX);
+  }, [navigateToTab]);
+
+  const queueProducerReviewCreate = useCallback(async (draft: {
     reviewType: string;
     title: string;
     description?: string;
     targetEntityType?: string;
     targetEntityId?: string;
+    openReviewsAfterCreate?: boolean;
   }) => {
-    setProducerReviewQuickCreate({ ...draft, nonce: Date.now() });
-    navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
-  }, [navigateToTab]);
+    if (!currentProject) {
+      toast.showWarning('Velg prosjekt før du sender til klientgodkjenning.');
+      return;
+    }
+
+    const approvalTemplate = draft.reviewType === 'storyboard'
+      || draft.reviewType === 'manuscript'
+      || draft.reviewType === 'shotlist'
+      ? draft.reviewType
+      : undefined;
+
+    if (!approvalTemplate) {
+      toast.showWarning('Denne klientgodkjenningen må opprettes fra økonomisenteret.');
+      return;
+    }
+
+    toast.showSuccess(`${draft.title} er klargjort i økonomisenteret.`);
+    navigateToProducerWorkflowTabWithFocus(PRODUCER_ECONOMY_TAB_INDEX, {
+      economyView: 'approvals',
+      approvalTemplate,
+      linkedEntityType: draft.targetEntityType,
+      linkedEntityId: draft.targetEntityId,
+      focusedPhase: 'preproduction',
+    });
+  }, [currentProject, navigateToProducerWorkflowTabWithFocus, toast]);
 
   useEffect(() => {
     if (activeTab === LIVE_SET_TAB_INDEX && !currentProject) {
@@ -1312,6 +1424,42 @@ export function CastingPlannerPanel({
     return null;
   };
 
+  const buildPermissionStateFromRole = useCallback((userRole: UserRole | null) => {
+    if (!userRole) {
+      return {
+        canViewAll: false,
+        canEditCasting: false,
+        canEditProduction: false,
+        canEditShotLists: false,
+        canManageCrew: false,
+        canManageLocations: false,
+        canApprove: false,
+        canComment: false,
+        canRequestChanges: false,
+        canViewEconomy: false,
+      };
+    }
+
+    const defaultPermissions = castingAuthService.getDefaultPermissions(userRole.role);
+    const mergedPermissions = {
+      ...defaultPermissions,
+      ...(userRole.permissions ?? {}),
+    };
+
+    return {
+      canViewAll: Boolean(mergedPermissions.canViewAll),
+      canEditCasting: Boolean(mergedPermissions.canEditCasting),
+      canEditProduction: Boolean(mergedPermissions.canEditProduction),
+      canEditShotLists: Boolean(mergedPermissions.canEditShotLists || mergedPermissions.canEditShots),
+      canManageCrew: Boolean(mergedPermissions.canManageCrew),
+      canManageLocations: Boolean(mergedPermissions.canManageLocations),
+      canApprove: Boolean(mergedPermissions.canApprove),
+      canComment: Boolean(mergedPermissions.canComment),
+      canRequestChanges: Boolean(mergedPermissions.canRequestChanges),
+      canViewEconomy: Boolean(mergedPermissions.canViewEconomy),
+    };
+  }, []);
+
   const accountRoleLabel = adminUser?.role ? getHeaderRoleLabel(adminUser.role) : '';
   const projectRoleLabel = currentUserRole?.role ? getHeaderRoleLabel(currentUserRole.role) : '';
   const headerRoleLabel = projectRoleLabel && accountRoleLabel && projectRoleLabel !== accountRoleLabel
@@ -1339,8 +1487,11 @@ export function CastingPlannerPanel({
   const canApproveProducerReview = isClientReviewerSession || producerAccess.canApproveReview;
   const canRequestProducerReviewChanges = isClientReviewerSession || producerAccess.canRequestReviewChanges;
   const canMakeProducerReviewDecision = isClientReviewerSession || producerAccess.canMakeReviewDecision;
-  const canSendBudgetReview = isContentProducerMode && !isClientReviewerMode;
+  const canSendBudgetReview = canEditProducerWorkflow && canViewProducerEconomy && !isClientReviewerMode;
   const producerWorkspaceBadgeLabel = isClientReviewerMode ? 'Klient' : 'Innholdsprodusent';
+  const producerCoreTabMetaLabel = isContentProducerMode || isClientReviewerMode
+    ? producerWorkspaceBadgeLabel
+    : 'Prosjektstyring';
   const producerWorkflowEntityOptions = useMemo(
     () => (currentProject ? buildProducerWorkflowEntityOptions(currentProject) : []),
     [currentProject],
@@ -1349,6 +1500,151 @@ export function CastingPlannerPanel({
     () => (currentProject ? buildProducerWorkflowOwnerOptions(currentProject) : []),
     [currentProject],
   );
+  const producerGoogleContext = useMemo(() => {
+    if (!currentProject || (!isContentProducerMode && !isClientReviewerMode)) {
+      return null;
+    }
+
+    const mediaWorkspace = producerMediaFocus?.workspace
+      ?? (
+        isClientReviewerSession
+        && clientPortalIntent
+        && clientPortalIntent.projectId === currentProject.id
+          ? clientPortalIntent.workspace
+          : undefined
+      )
+      ?? 'brief';
+
+    if (activeTab === PRODUCER_MEDIA_TAB_INDEX) {
+      return {
+        contextLabel: isClientReviewerMode ? 'Klientflate' : 'Workspace',
+        primaryAction: 'drive-sync' as const,
+        secondaryAction: 'calendar-sync' as const,
+        focus: {
+          workspace: mediaWorkspace,
+          sectionId: producerMediaFocus?.sectionId,
+          pageId: producerMediaFocus?.pageId,
+          artifactId: producerMediaFocus?.artifactId,
+        } satisfies ClientPortalWorkspaceFocus,
+      };
+    }
+
+    if (activeTab === PRODUCER_ECONOMY_TAB_INDEX) {
+      return {
+        contextLabel: 'Økonomi',
+        primaryAction: 'drive-sync' as const,
+        secondaryAction: 'calendar-sync' as const,
+        focus: { workspace: 'delivery' } satisfies ClientPortalWorkspaceFocus,
+      };
+    }
+
+    if (activeTab === PRODUCER_TIMELINE_TAB_INDEX) {
+      return {
+        contextLabel: 'Tidslinje',
+        primaryAction: 'calendar-sync' as const,
+        secondaryAction: 'meet-session' as const,
+        focus: { workspace: 'brief' } satisfies ClientPortalWorkspaceFocus,
+      };
+    }
+
+    if (activeTab === PRODUCER_REVIEWS_TAB_INDEX) {
+      return {
+        contextLabel: 'Klientsamarbeid',
+        primaryAction: 'meet-session' as const,
+        secondaryAction: 'calendar-sync' as const,
+        focus: { workspace: 'delivery' } satisfies ClientPortalWorkspaceFocus,
+      };
+    }
+
+    if (activeTab === PRODUCER_EXPORT_TAB_INDEX) {
+      return {
+        contextLabel: 'Levering',
+        primaryAction: 'drive-sync' as const,
+        secondaryAction: 'calendar-sync' as const,
+        focus: { workspace: 'delivery' } satisfies ClientPortalWorkspaceFocus,
+      };
+    }
+
+    if (activeTab === STORY_ARC_TAB_INDEX) {
+      if (storyArcView === 'story-writer') {
+        return {
+          contextLabel: 'Manus',
+          primaryAction: 'drive-sync' as const,
+          secondaryAction: 'calendar-sync' as const,
+          focus: { workspace: 'brief' } satisfies ClientPortalWorkspaceFocus,
+        };
+      }
+      if (storyArcView === 'shot-list') {
+        return {
+          contextLabel: 'Shotlist',
+          primaryAction: 'calendar-sync' as const,
+          secondaryAction: 'drive-sync' as const,
+          focus: { workspace: 'delivery' } satisfies ClientPortalWorkspaceFocus,
+        };
+      }
+      if (storyArcView === 'story-logic') {
+        return {
+          contextLabel: 'Scene-notater',
+          primaryAction: 'drive-sync' as const,
+          secondaryAction: 'calendar-sync' as const,
+          focus: { workspace: 'brief' } satisfies ClientPortalWorkspaceFocus,
+        };
+      }
+      return {
+        contextLabel: 'Storyboard',
+        primaryAction: 'drive-sync' as const,
+        secondaryAction: 'calendar-sync' as const,
+        focus: { workspace: 'delivery' } satisfies ClientPortalWorkspaceFocus,
+      };
+    }
+
+    if (activeTab === LOCATIONS_TAB_INDEX) {
+      return {
+        contextLabel: 'Lokasjoner',
+        primaryAction: 'calendar-sync' as const,
+        secondaryAction: 'drive-sync' as const,
+        focus: { workspace: 'materials' } satisfies ClientPortalWorkspaceFocus,
+      };
+    }
+
+    if (activeTab === EQUIPMENT_TAB_INDEX) {
+      return {
+        contextLabel: 'Utstyr og rekvisitter',
+        primaryAction: 'calendar-sync' as const,
+        secondaryAction: 'drive-sync' as const,
+        focus: { workspace: 'materials' } satisfies ClientPortalWorkspaceFocus,
+      };
+    }
+
+    if (activeTab === CALENDAR_TAB_INDEX) {
+      return {
+        contextLabel: 'Plan og kalender',
+        primaryAction: 'calendar-sync' as const,
+        secondaryAction: 'meet-session' as const,
+        focus: { workspace: 'brief' } satisfies ClientPortalWorkspaceFocus,
+      };
+    }
+
+    if (activeTab === CANDIDATES_TAB_INDEX || activeTab === TEAM_TAB_INDEX) {
+      return {
+        contextLabel: 'Medvirkende og team',
+        primaryAction: 'calendar-sync' as const,
+        secondaryAction: 'meet-session' as const,
+        focus: { workspace: 'materials' } satisfies ClientPortalWorkspaceFocus,
+      };
+    }
+
+    return null;
+  }, [
+    activeTab,
+    clientPortalIntent,
+    currentProject,
+    isClientReviewerMode,
+    isClientReviewerSession,
+    isContentProducerMode,
+    producerMediaFocus,
+    storyArcView,
+  ]);
 
   const isTrollProject = useCallback((project: CastingProject): boolean => {
     const projectId = String(project.id || '').trim().toLowerCase();
@@ -1368,6 +1664,30 @@ export function CastingPlannerPanel({
 
     return projectList.filter((project) => !isContentProducerDemoProject(project));
   }, [isContentProducerDemoProject, isProducerWorkspaceSession, isTrollProject]);
+
+  useEffect(() => onProducerWorkflowEvent((payload) => {
+    if (payload.domain !== 'project') {
+      return;
+    }
+
+    void (async () => {
+      const refreshedProject = await castingService.getProject(payload.projectId);
+      if (!refreshedProject) {
+        return;
+      }
+
+      setProjects((previous) => {
+        const nextProjects = previous.some((project) => project.id === refreshedProject.id)
+          ? previous.map((project) => (project.id === refreshedProject.id ? refreshedProject : project))
+          : [refreshedProject, ...previous];
+        return filterProjectsForSession(nextProjects);
+      });
+
+      if (currentProjectRef.current?.id === refreshedProject.id) {
+        setCurrentProject(refreshedProject);
+      }
+    })();
+  }), [filterProjectsForSession]);
 
   const handleSelectProjectFromSelector = useCallback(async (project: CastingProject) => {
     if (isProducerWorkspaceSession && isTrollProject(project)) {
@@ -1418,6 +1738,14 @@ export function CastingPlannerPanel({
     { color: '#fbbf24', icon: ImportExportIcon },
   ], [professionConfig?.color]);
   const visibleTabValues = useMemo<number[]>(() => {
+    if (isExternalClientPortalMode) {
+      return [
+        PRODUCER_MEDIA_TAB_INDEX,
+        PRODUCER_REVIEWS_TAB_INDEX,
+        PRODUCER_EXPORT_TAB_INDEX,
+      ];
+    }
+
     if (isContentProducerMode) {
       const producerTabs = [
         STORY_ARC_TAB_INDEX,
@@ -1438,6 +1766,7 @@ export function CastingPlannerPanel({
     if (isClientReviewerMode) {
       const reviewerTabs = [
         PRODUCER_TIMELINE_TAB_INDEX,
+        PRODUCER_MEDIA_TAB_INDEX,
         PRODUCER_REVIEWS_TAB_INDEX,
         PRODUCER_EXPORT_TAB_INDEX,
       ];
@@ -1458,9 +1787,10 @@ export function CastingPlannerPanel({
       CALENDAR_TAB_INDEX,
       TEAM_TAB_INDEX,
       EQUIPMENT_TAB_INDEX,
+      ...(canViewProducerEconomy ? [PRODUCER_ECONOMY_TAB_INDEX] : []),
       LIVE_SET_TAB_INDEX,
     ];
-  }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode]);
+  }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode, isExternalClientPortalMode]);
 
   useEffect(() => {
     if (!visibleTabValues.includes(activeTab)) {
@@ -1471,6 +1801,70 @@ export function CastingPlannerPanel({
   const displayedActiveTab = visibleTabValues.includes(activeTab)
     ? activeTab
     : (visibleTabValues[0] ?? 0);
+  const clientPortalTargetTab = useMemo(() => {
+    if (!clientPortalIntent) {
+      return null;
+    }
+    if (clientPortalIntent.tab === 'reviews') {
+      return PRODUCER_REVIEWS_TAB_INDEX;
+    }
+    if (clientPortalIntent.tab === 'export') {
+      return PRODUCER_EXPORT_TAB_INDEX;
+    }
+    return PRODUCER_MEDIA_TAB_INDEX;
+  }, [clientPortalIntent]);
+
+  useEffect(() => {
+    if (!authLoaded || !isClientReviewerSession || !clientPortalIntent || projects.length === 0) {
+      return;
+    }
+
+    const intentKey = [
+      clientPortalIntent.projectId,
+      clientPortalIntent.tab,
+      clientPortalIntent.workspace,
+      clientPortalIntent.sectionId ?? '',
+      clientPortalIntent.pageId ?? '',
+      clientPortalIntent.reviewId ?? '',
+    ].join(':');
+    if (appliedClientPortalIntentRef.current === intentKey) {
+      return;
+    }
+    const targetProject = projects.find((project) => project.id === clientPortalIntent.projectId);
+    if (!targetProject) {
+      return;
+    }
+
+    if (currentProject?.id !== targetProject.id) {
+      let isCancelled = false;
+      void castingService.getProject(targetProject.id).then((resolvedProject) => {
+        if (isCancelled) {
+          return;
+        }
+        setCurrentProject(resolvedProject ?? targetProject);
+        setCurrentProjectId(targetProject.id);
+      });
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    if (clientPortalTargetTab !== null && activeTab !== clientPortalTargetTab) {
+      setActiveTab(clientPortalTargetTab);
+      return;
+    }
+
+    appliedClientPortalIntentRef.current = intentKey;
+    return undefined;
+  }, [
+    activeTab,
+    authLoaded,
+    clientPortalIntent,
+    clientPortalTargetTab,
+    currentProject?.id,
+    isClientReviewerSession,
+    projects,
+  ]);
 
   // Producer workspace sessions must not stick to TROLL from previous state/session.
   // Enforce a role-safe project selection and auto-initialize the producer demo if needed.
@@ -1522,7 +1916,7 @@ export function CastingPlannerPanel({
   ]);
 
   useEffect(() => {
-    if (!currentProject || !isContentProducerDemoProject(currentProject)) {
+    if (!currentProject || !isContentProducerDemoProject(currentProject) || !isContentProducerMode) {
       return;
     }
 
@@ -1551,11 +1945,14 @@ export function CastingPlannerPanel({
     return () => {
       cancelled = true;
     };
-  }, [currentProject, isContentProducerDemoProject]);
+  }, [currentProject, isContentProducerDemoProject, isContentProducerMode]);
 
   const roleDialogAccentColor = '#b86bff';
   const roleDialogAccentSoftColor = alpha(roleDialogAccentColor, 0.2);
   const roleDialogBackdrop = `url(${rolesBackdrop4})`;
+  const standaloneRoleRoomMode = shouldUseRoleRoomLocalFallback();
+  const currentRoleRoomProfessionNamespace = 'roleRoom_castingProfession';
+  const legacyRoleRoomProfessionNamespace = 'virtualStudio_castingProfession';
 
   // Keep the UI fallback aligned with settingsService/castingService demo seeds.
   const getUserId = useCallback((): string => {
@@ -1569,34 +1966,57 @@ export function CastingPlannerPanel({
 
   // Load profession from API or settings cache
   const loadProfession = useCallback(async (): Promise<'photographer' | 'videographer' | null> => {
+    const userId = getUserId();
+
+    const readCachedProfession = async (): Promise<'photographer' | 'videographer' | null> => {
+      try {
+        const cachedCurrent = await settingsService.getSetting<string>(currentRoleRoomProfessionNamespace, { userId });
+        if (cachedCurrent === 'photographer' || cachedCurrent === 'videographer') {
+          return cachedCurrent;
+        }
+
+        const cachedLegacy = await settingsService.getSetting<string>(legacyRoleRoomProfessionNamespace, { userId });
+        if (cachedLegacy === 'photographer' || cachedLegacy === 'videographer') {
+          await settingsService.setSetting(currentRoleRoomProfessionNamespace, cachedLegacy, { userId });
+          return cachedLegacy;
+        }
+      } catch (_error) {
+        // Silently handle settings cache failure
+      }
+
+      return null;
+    };
+
+    if (standaloneRoleRoomMode) {
+      return readCachedProfession();
+    }
+
     try {
-      const userId = getUserId();
       const response = await fetch(`/api/user/kv/casting-profession?user_id=${encodeURIComponent(userId)}`);
       if (response.ok) {
         const data = await response.json();
         if (data.value && (data.value === 'photographer' || data.value === 'videographer')) {
-          await settingsService.setSetting('virtualStudio_castingProfession', data.value, { userId });
+          await settingsService.setSetting(currentRoleRoomProfessionNamespace, data.value, { userId });
           return data.value;
         }
       }
     } catch (_error) {
       // Silently handle API failure
     }
-    try {
-      const cached = await settingsService.getSetting<string>('virtualStudio_castingProfession', { userId: getUserId() });
-      if (cached && (cached === 'photographer' || cached === 'videographer')) {
-        return cached;
-      }
-    } catch (_error) {
-      // Silently handle settings cache failure
-    }
-    return null;
-  }, [getUserId]);
+
+    return readCachedProfession();
+  }, [currentRoleRoomProfessionNamespace, getUserId, legacyRoleRoomProfessionNamespace, standaloneRoleRoomMode]);
 
   // Save profession to API and settings cache
   const saveProfession = useCallback(async (prof: 'photographer' | 'videographer'): Promise<void> => {
+    const userId = getUserId();
+
+    if (standaloneRoleRoomMode) {
+      await settingsService.setSetting(currentRoleRoomProfessionNamespace, prof, { userId });
+      return;
+    }
+
     try {
-      const userId = getUserId();
       await fetch('/api/user/kv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1606,16 +2026,16 @@ export function CastingPlannerPanel({
           user_id: userId,
         }),
       });
-      await settingsService.setSetting('virtualStudio_castingProfession', prof, { userId });
+      await settingsService.setSetting(currentRoleRoomProfessionNamespace, prof, { userId });
     } catch (_error) {
       // Silently handle API save failure
     }
     try {
-      await settingsService.setSetting('virtualStudio_castingProfession', prof, { userId: getUserId() });
+      await settingsService.setSetting(currentRoleRoomProfessionNamespace, prof, { userId });
     } catch (_error) {
       // Silently handle settings cache save failure
     }
-  }, [getUserId]);
+  }, [currentRoleRoomProfessionNamespace, getUserId, standaloneRoleRoomMode]);
 
   // Handle role/persona switching from the header dialog.
   const handleProfessionSelect = useCallback(async ({ categoryId, roleId }: CastingProfessionSelection) => {
@@ -1673,6 +2093,99 @@ export function CastingPlannerPanel({
       setAuthLoaded(true);
     });
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const clearGoogleIntentFromUrl = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('rrGoogleStatus');
+      url.searchParams.delete('rrGoogleTransfer');
+      url.searchParams.delete('rrGoogleMode');
+      url.searchParams.delete('rrGoogleMessage');
+      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    };
+
+    if (roleRoomGoogleIntent.status === 'error') {
+      toast.showError(roleRoomGoogleIntent.message || 'Google Workspace-innlogging feilet');
+      clearGoogleIntentFromUrl();
+      return;
+    }
+
+    if (!authLoaded || roleRoomGoogleIntent.status !== 'success' || !roleRoomGoogleIntent.transferId || !roleRoomGoogleIntent.mode) {
+      return;
+    }
+
+    const transferKey = `${roleRoomGoogleIntent.mode}:${roleRoomGoogleIntent.transferId}`;
+    if (handledGoogleTransferRef.current === transferKey) {
+      return;
+    }
+    handledGoogleTransferRef.current = transferKey;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const transfer = await googleWorkspaceApi.getOauthSessionResult(roleRoomGoogleIntent.transferId!);
+
+        if (cancelled) {
+          return;
+        }
+
+        if (transfer.mode === 'login') {
+          if (transfer.user && transfer.sessionToken) {
+            await authSessionService.applyRoleRoomLogin(
+              {
+                id: transfer.user.id,
+                email: transfer.user.email,
+                role: transfer.user.role,
+                display_name: transfer.user.display_name,
+                name: transfer.user.name,
+                loginAs: transfer.user.loginAs,
+                requestedRole: transfer.user.requestedRole ?? null,
+              },
+              transfer.sessionToken,
+            );
+            setAdminUser(normalizeAdminUser(transfer.user));
+            setLoginDialogOpen(false);
+            toast.showSuccess(`Google-konto koblet for ${transfer.google.email}`);
+          } else {
+            toast.showError('Google-innlogging manglet Role Room-sesjon');
+          }
+          clearGoogleIntentFromUrl();
+          return;
+        }
+
+        if (!adminUser) {
+          toast.showError('Du må være innlogget i Role Room før du kan koble Google Workspace');
+          clearGoogleIntentFromUrl();
+          return;
+        }
+
+        await googleWorkspaceApi.completeLink(roleRoomGoogleIntent.transferId!);
+        toast.showSuccess(`Google Workspace koblet til ${transfer.google.email}`);
+        clearGoogleIntentFromUrl();
+      } catch (googleError) {
+        if (cancelled) {
+          return;
+        }
+        toast.showError(googleError instanceof Error ? googleError.message : 'Kunne ikke fullføre Google Workspace-flyten');
+        clearGoogleIntentFromUrl();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    adminUser,
+    authLoaded,
+    roleRoomGoogleIntent.message,
+    roleRoomGoogleIntent.mode,
+    roleRoomGoogleIntent.status,
+    roleRoomGoogleIntent.transferId,
+    toast,
+  ]);
 
   useEffect(() => {
     const handleAuthSessionUpdated = () => {
@@ -1826,8 +2339,13 @@ export function CastingPlannerPanel({
             const mockProjects = filterProjectsForSession(await castingService.getProjects());
             if (mockProjects.length > 0) {
               setProjects(mockProjects);
-              // DON'T auto-select project - let user choose from the selector
-              // setCurrentProject(mockProjects[0]);
+              if (!isProducerWorkspaceSession) {
+                const preferredProject = mockProjects.find((project) => isTrollProject(project)) ?? mockProjects[0];
+                const fullProject = preferredProject
+                  ? await castingService.getProject(preferredProject.id)
+                  : null;
+                setCurrentProject(fullProject ?? preferredProject ?? null);
+              }
             }
             loadAvailableScenes();
             loadUserRole();
@@ -1917,45 +2435,38 @@ export function CastingPlannerPanel({
 
       const sessionUserId = authSessionService.getSessionSync().currentUserId;
       const isUnauthenticatedDemoSession = !adminUser && (!sessionUserId || sessionUserId === 'default' || sessionUserId === 'default-user');
-      if (isUnauthenticatedDemoSession && isContentProducerDemoProject(currentProject)) {
-        const seededProducerRole = (currentProject.userRoles ?? []).find((role) => role?.role === 'content_producer');
-        if (seededProducerRole) {
-          const normalizedUserId = String(seededProducerRole.userId ?? seededProducerRole.user_id ?? 'default-user');
-          const mergedPermissions = {
-            ...castingAuthService.getDefaultPermissions('content_producer'),
-            ...(seededProducerRole.permissions ?? {}),
-          };
-          const normalizedRole: UserRole = {
-            ...seededProducerRole,
-            userId: normalizedUserId,
-            projectId: projectIdForRequest,
-            permissions: mergedPermissions,
-            createdAt: seededProducerRole.createdAt || seededProducerRole.created_at || new Date().toISOString(),
-            updatedAt: seededProducerRole.updatedAt || seededProducerRole.updated_at || new Date().toISOString(),
-          };
+        if (isUnauthenticatedDemoSession && isContentProducerDemoProject(currentProject)) {
+          const seededProducerRole = (currentProject.userRoles ?? []).find((role) => role?.role === 'content_producer');
+          if (seededProducerRole) {
+            const normalizedUserId = String(seededProducerRole.userId ?? seededProducerRole.user_id ?? 'default-user');
+            const mergedPermissions = {
+              ...castingAuthService.getDefaultPermissions('content_producer'),
+              ...(seededProducerRole.permissions ?? {}),
+            };
+            const normalizedRole: UserRole = {
+              ...seededProducerRole,
+              userId: normalizedUserId,
+              projectId: projectIdForRequest,
+              permissions: mergedPermissions,
+              createdAt: seededProducerRole.createdAt || seededProducerRole.created_at || new Date().toISOString(),
+              updatedAt: seededProducerRole.updatedAt || seededProducerRole.updated_at || new Date().toISOString(),
+            };
 
-          setCurrentUserRole(normalizedRole);
-          setPermissions({
-            canViewAll: Boolean(mergedPermissions.canViewAll),
-            canEditCasting: Boolean(mergedPermissions.canEditCasting),
-            canEditProduction: Boolean(mergedPermissions.canEditProduction),
-            canEditShotLists: Boolean(mergedPermissions.canEditShotLists || mergedPermissions.canEditShots),
-            canManageCrew: Boolean(mergedPermissions.canManageCrew),
-            canManageLocations: Boolean(mergedPermissions.canManageLocations),
-            canApprove: Boolean(mergedPermissions.canApprove),
-            canComment: Boolean(mergedPermissions.canComment),
-            canRequestChanges: Boolean(mergedPermissions.canRequestChanges),
-            canViewEconomy: Boolean(mergedPermissions.canViewEconomy),
-          });
-          void authSessionService.setCurrentUserId(normalizedUserId);
-          setPermissionsLoading(false);
-          return;
+            setCurrentUserRole(normalizedRole);
+            setPermissions(buildPermissionStateFromRole(normalizedRole));
+            void authSessionService.setCurrentUserId(normalizedUserId);
+            setPermissionsLoading(false);
+            return;
+          }
         }
-      }
       
       try {
-        // Check if logged in as admin/owner - grant full permissions
-        if (adminUser && (adminUser.role === 'admin' || adminUser.role === 'owner')) {
+        const isScopedRoleRoomLogin = typeof adminUser?.loginAs === 'string'
+          && adminUser.loginAs.trim().length > 0;
+
+        // Preserve admin bypass only for non-scoped sessions. Explicit Role Room personas
+        // such as content producer and client reviewer must respect their mapped project role.
+        if (adminUser && (adminUser.role === 'admin' || adminUser.role === 'owner') && !isScopedRoleRoomLogin) {
           setCurrentUserRole({
             id: `role-${adminUser.id}-${projectIdForRequest}`,
             userId: String(adminUser.id),
@@ -2033,49 +2544,7 @@ export function CastingPlannerPanel({
         }
         
         setCurrentUserRole(role);
-        
-        // Load all permissions in parallel
-        const [
-          canViewAll,
-          canEditCasting,
-          canEditProduction,
-          canEditShotLists,
-          canManageCrew,
-          canManageLocations,
-          canApprove,
-          canComment,
-          canRequestChanges,
-          canViewEconomy,
-        ] = await Promise.all([
-          castingAuthService.canViewAll(projectIdForRequest, resolvedUserId),
-          castingAuthService.canEditCasting(projectIdForRequest, resolvedUserId),
-          castingAuthService.canEditProduction(projectIdForRequest, resolvedUserId),
-          castingAuthService.canEditShotLists(projectIdForRequest, resolvedUserId),
-          castingAuthService.canManageCrew(projectIdForRequest, resolvedUserId),
-          castingAuthService.canManageLocations(projectIdForRequest, resolvedUserId),
-          castingAuthService.canApprove(projectIdForRequest, resolvedUserId),
-          castingAuthService.canComment(projectIdForRequest, resolvedUserId),
-          castingAuthService.canRequestChanges(projectIdForRequest, resolvedUserId),
-          castingAuthService.canViewEconomy(projectIdForRequest, resolvedUserId),
-        ]);
-        
-        // Check again after permissions fetch - discard stale response
-        if (currentProjectIdRef.current !== projectIdForRequest) {
-          return;
-        }
-        
-        setPermissions({
-          canViewAll,
-          canEditCasting,
-          canEditProduction,
-          canEditShotLists,
-          canManageCrew,
-          canManageLocations,
-          canApprove,
-          canComment,
-          canRequestChanges,
-          canViewEconomy,
-        });
+        setPermissions(buildPermissionStateFromRole(role));
       } catch (error) {
         console.error('Error loading user role:', error);
         // Only update state if this is still the current project
@@ -2095,18 +2564,15 @@ export function CastingPlannerPanel({
               createdAt: now,
               updatedAt: now,
             });
-            setPermissions({
-              canViewAll: Boolean(fallbackPermissions.canViewAll),
-              canEditCasting: Boolean(fallbackPermissions.canEditCasting),
-              canEditProduction: Boolean(fallbackPermissions.canEditProduction),
-              canEditShotLists: Boolean(fallbackPermissions.canEditShotLists || fallbackPermissions.canEditShots),
-              canManageCrew: Boolean(fallbackPermissions.canManageCrew),
-              canManageLocations: Boolean(fallbackPermissions.canManageLocations),
-              canApprove: Boolean(fallbackPermissions.canApprove),
-              canComment: Boolean(fallbackPermissions.canComment),
-              canRequestChanges: Boolean(fallbackPermissions.canRequestChanges),
-              canViewEconomy: Boolean(fallbackPermissions.canViewEconomy),
-            });
+            setPermissions(buildPermissionStateFromRole({
+              id: `role-fallback-${mappedRole}-${projectIdForRequest}`,
+              userId: adminUser?.id !== undefined && adminUser?.id !== null ? String(adminUser.id) : getUserId(),
+              projectId: projectIdForRequest,
+              role: mappedRole,
+              permissions: fallbackPermissions,
+              createdAt: now,
+              updatedAt: now,
+            }));
           } else {
             setCurrentUserRole(null);
             setPermissions({
@@ -2146,32 +2612,56 @@ export function CastingPlannerPanel({
         canViewEconomy: false,
       });
     }
-  }, [currentProject, adminUser, getUserId, isGuestMode]);
+  }, [adminUser, buildPermissionStateFromRole, currentProject, getUserId, isGuestMode, isContentProducerDemoProject]);
 
-  const loadAvailableScenes = useCallback(async () => {
-    // Load scenes from casting service
-    const castingScenes = castingService.getAvailableScenes();
-    // Also load scenes from the scene composer for a more complete list
-    try {
-      const composerScenes = await sceneComposerService.getAllScenesAsync();
-      const composerMapped = composerScenes.map(s => ({
-        id: s.id,
-        name: s.name || `${branding.tokens.labels.sceneFallbackPrefix} ${s.id}`,
-        thumbnail: undefined,
-      }));
-      // Merge both sources, deduplicate by id
-      const merged = [...castingScenes];
-      for (const cs of composerMapped) {
-        if (!merged.some(s => s.id === cs.id)) {
-          merged.push(cs);
-        }
+  const loadAvailableScenes = useCallback(() => {
+    const sceneMap = new Map<string, { id: string; name: string; thumbnail?: string }>();
+    const registerScene = (scene: { id?: string; name?: string; thumbnail?: string }) => {
+      if (typeof scene.id !== 'string' || scene.id.trim().length === 0) {
+        return;
       }
-      setAvailableScenes(merged);
-    } catch {
-      // Fallback to casting scenes only
-      setAvailableScenes(castingScenes);
-    }
-  }, []);
+      if (sceneMap.has(scene.id)) {
+        return;
+      }
+      sceneMap.set(scene.id, {
+        id: scene.id,
+        name:
+          typeof scene.name === 'string' && scene.name.trim().length > 0
+            ? scene.name
+            : `${branding.tokens.labels.sceneFallbackPrefix} ${scene.id}`,
+        thumbnail: typeof scene.thumbnail === 'string' && scene.thumbnail.trim().length > 0 ? scene.thumbnail : undefined,
+      });
+    };
+
+    castingService.getAvailableScenes().forEach(registerScene);
+
+    (currentProject?.sceneBreakdowns ?? []).forEach((scene) => {
+      const sceneId = typeof scene.id === 'string' && scene.id.trim().length > 0
+        ? scene.id
+        : typeof scene.sceneNumber === 'number' || typeof scene.sceneNumber === 'string'
+          ? `scene-${String(scene.sceneNumber).trim()}`
+          : undefined;
+      const sceneName =
+        scene.sceneName ||
+        scene.heading ||
+        (typeof scene.sceneNumber === 'number' || typeof scene.sceneNumber === 'string'
+          ? `${branding.tokens.labels.sceneFallbackPrefix} ${String(scene.sceneNumber).trim()}`
+          : undefined);
+      registerScene({
+        id: sceneId,
+        name: sceneName,
+      });
+    });
+
+    (currentProject?.shotLists ?? []).forEach((shotList) => {
+      registerScene({
+        id: shotList.sceneId || shotList.scene_id,
+        name: shotList.sceneName,
+      });
+    });
+
+    setAvailableScenes(Array.from(sceneMap.values()));
+  }, [branding.tokens.labels.sceneFallbackPrefix, currentProject]);
 
   // Re-run when profession changes in case UI needs updating
   useEffect(() => {
@@ -2306,6 +2796,14 @@ export function CastingPlannerPanel({
           (project) => String(project.id || '').trim().toLowerCase() === castingService.getContentProducerDemoProjectId()
         );
         setCurrentProject(preferredProject ?? loadedProjects[0]);
+      } else if (loadedProjects.length > 0 && !projectIdToLoad && !isProducerWorkspaceSession) {
+        const preferredProject =
+          loadedProjects.find((project) => isTrollProject(project)) ??
+          (loadedProjects.length === 1 ? loadedProjects[0] : null);
+        if (preferredProject) {
+          const fullProject = await castingService.getProject(preferredProject.id);
+          setCurrentProject(fullProject ?? preferredProject);
+        }
       } else if (loadedProjects.length === 0) {
         // Only create empty project if mock data initialization didn't work
         const defaultProject: CastingProject = {
@@ -4031,6 +4529,9 @@ export function CastingPlannerPanel({
           {recentProjects.map((project) => {
             const isActive = currentProject?.id === project.id;
             const candidateCount = project.candidates?.length || 0;
+            const workflowStatus = project.producerWorkflowStatus;
+            const workflowStatusLabel = workflowStatus ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus] : null;
+            const workflowStatusStyle = workflowStatus ? PRODUCER_PROJECT_STATUS_COLORS[workflowStatus] : null;
             return (
               <Box
                 key={project.id}
@@ -4136,6 +4637,22 @@ export function CastingPlannerPanel({
                       </Typography>
                     )}
                   </Box>
+                  {workflowStatusLabel && workflowStatusStyle ? (
+                    <Chip
+                      size="small"
+                      label={workflowStatusLabel}
+                      sx={{
+                        height: { xs: 22, sm: 24 },
+                        bgcolor: workflowStatusStyle.background,
+                        color: workflowStatusStyle.color,
+                        border: workflowStatusStyle.border,
+                        fontSize: { xs: '0.64rem', sm: '0.68rem' },
+                        fontWeight: 700,
+                        '& .MuiChip-label': { px: { xs: 0.7, sm: 0.9 } },
+                        display: { xs: 'none', md: 'flex' },
+                      }}
+                    />
+                  ) : null}
                   <Chip
                     size="small"
                     label={candidateCount}
@@ -4545,11 +5062,11 @@ export function CastingPlannerPanel({
               branding.tokens.labels.team,
               isContentProducerMode ? 'Utstyr/rekvisitter' : branding.tokens.labels.equipment,
               'Live Set',
-              'Media',
+              isExternalClientPortalMode ? 'Workspace' : isClientReviewerMode ? 'Klientflate' : 'Media',
               'Økonomi',
               'Tidslinje',
-              'Klientsamarbeid',
-              'Eksport',
+              isExternalClientPortalMode ? 'Godkjenning' : 'Klientsamarbeid',
+              isExternalClientPortalMode ? 'Levering' : 'Eksport',
             ];
             const tabIds = [
               'tab-oversikt',
@@ -4785,7 +5302,7 @@ export function CastingPlannerPanel({
                             boxShadow: '0 0 10px rgba(96,165,250,0.56)',
                           }}
                         />
-                        {producerWorkspaceBadgeLabel}
+                        {producerCoreTabMetaLabel}
                       </Box>
                     )}
                   </Box>
@@ -4835,6 +5352,21 @@ export function CastingPlannerPanel({
 
       {/* Content */}
       <Box sx={{ flex: 1, overflow: 'hidden', bgcolor: '#0d1117', display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%' }}>
+        {!isLiveSetImmersive && currentProject && producerGoogleContext ? (
+          <RoleRoomGoogleContextBar
+            project={currentProject}
+            projectId={currentProject.id}
+            projectName={currentProject.name}
+            contextLabel={producerGoogleContext.contextLabel}
+            workspaceFocus={producerGoogleContext.focus}
+            primaryAction={producerGoogleContext.primaryAction}
+            secondaryAction={producerGoogleContext.secondaryAction}
+            canManage={!isClientReviewerMode}
+            onOpenWorkspace={(focus) => {
+              navigateToProducerMediaWorkspace(focus);
+            }}
+          />
+        ) : null}
         {projectsLoading ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
             <CircularProgress size={40} sx={{ color: '#8b5cf6' }} />
@@ -5190,23 +5722,6 @@ export function CastingPlannerPanel({
               onQuickContactsChange={handleQuickContactsChange}
             />
             </>
-            )}
-            {currentProject && (
-              <>
-                <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-                <OffersContractsPanel
-                  projectId={currentProject.id}
-                  candidates={currentProject.candidates}
-                  roles={currentProject.roles}
-                  onCandidateStatusChange={async (candidateId, status) => {
-                    const candidate = currentProject.candidates.find(c => c.id === candidateId);
-                    if (candidate) {
-                      await castingService.saveCandidate(currentProject.id, { ...candidate, status: status as Candidate['status'] });
-                      await loadProjects();
-                    }
-                  }}
-                />
-              </>
             )}
           </Box>
           )}
@@ -7236,9 +7751,60 @@ export function CastingPlannerPanel({
             </Box>
           ) : (
             <ProducerMediaPanel
+              project={currentProject}
+              projectId={currentProject.id}
+              projectName={currentProject.name}
               mediaCount={(currentProject.props?.length ?? 0) + (currentProject.shotLists?.length ?? 0)}
               storyboardCount={currentProject.sceneBreakdowns?.length ?? 0}
               shotCount={currentProject.shotLists?.length ?? 0}
+              shotLists={currentProject.shotLists ?? []}
+              readOnly={!canCommentInProducerWorkflow && !canEditProducerWorkflow}
+              canContributeClientInput={canCommentInProducerWorkflow || canEditProducerWorkflow}
+              isClientReviewerMode={isClientReviewerMode}
+              initialWorkspace={
+                producerMediaFocus?.workspace
+                ?? (
+                  isClientReviewerSession
+                  && clientPortalIntent
+                  && clientPortalIntent.projectId === currentProject.id
+                    ? clientPortalIntent.workspace
+                    : undefined
+                )
+              }
+              initialSectionId={
+                producerMediaFocus?.sectionId
+                ?? (
+                  isClientReviewerSession
+                  && clientPortalIntent
+                  && clientPortalIntent.projectId === currentProject.id
+                    ? clientPortalIntent.sectionId
+                    : undefined
+                )
+              }
+              initialPageId={
+                producerMediaFocus?.pageId
+                ?? (
+                  isClientReviewerSession
+                  && clientPortalIntent
+                  && clientPortalIntent.projectId === currentProject.id
+                    ? clientPortalIntent.pageId
+                    : undefined
+                )
+              }
+              initialArtifactId={
+                producerMediaFocus?.artifactId
+                ?? (
+                  isClientReviewerSession
+                  && clientPortalIntent
+                  && clientPortalIntent.projectId === currentProject.id
+                    ? clientPortalIntent.artifactId
+                    : undefined
+                )
+              }
+              onProjectUpdated={async (updatedProject) => {
+                setCurrentProject(updatedProject);
+                await loadProjects();
+              }}
               onOpenStoryboard={() => {
                 navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
               }}
@@ -7251,28 +7817,40 @@ export function CastingPlannerPanel({
               onOpenSceneNotes={() => {
                 navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-logic' });
               }}
-              onSendStoryboardReview={() => {
+              onPrepareStoryboardReview={() => {
+                if (!currentProject) {
+                  return;
+                }
                 queueProducerReviewCreate({
                   reviewType: 'storyboard',
                   title: 'Storyboard klar for klientgodkjenning',
                   description: 'Vennligst gjennomgå storyboard og gi godkjenning eller endringsønsker.',
                   targetEntityType: 'storyboard',
+                  targetEntityId: makeProducerPackageEntityId('storyboard', currentProject.id),
                 });
               }}
-              onSendManuscriptReview={() => {
+              onPrepareManuscriptReview={() => {
+                if (!currentProject) {
+                  return;
+                }
                 queueProducerReviewCreate({
                   reviewType: 'manuscript',
                   title: 'Manus klar for klientgodkjenning',
                   description: 'Vennligst gjennomgå manus og gi godkjenning eller endringsønsker.',
                   targetEntityType: 'manuscript',
+                  targetEntityId: makeProducerPackageEntityId('manuscript', currentProject.id),
                 });
               }}
-              onSendShotListReview={() => {
+              onPrepareShotListReview={() => {
+                if (!currentProject) {
+                  return;
+                }
                 queueProducerReviewCreate({
                   reviewType: 'shotlist',
                   title: 'Shotlist klar for klientgodkjenning',
                   description: 'Vennligst gjennomgå shotlist og gi godkjenning eller endringsønsker.',
                   targetEntityType: 'shotlist',
+                  targetEntityId: makeProducerPackageEntityId('shotlist', currentProject.id),
                 });
               }}
             />
@@ -7287,35 +7865,39 @@ export function CastingPlannerPanel({
               </Typography>
             </Box>
           ) : (
-            <ProducerEconomyPanel
-              key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:economy`}
-              projectId={currentProject.id}
+            <ProjectEconomyHub
+              key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:economy-hub`}
+              project={currentProject}
+              profession={profession ?? 'videographer'}
               readOnly={!canEditProducerWorkflow}
               canSendBudgetReview={canSendBudgetReview}
-              onSendBudgetReview={() => {
-                queueProducerReviewCreate({
-                  reviewType: 'budget_package',
-                  title: 'Budsjettpakke klar for klientgodkjenning',
-                  description: 'Budsjettlinjer er oppdatert. Vennligst godkjenn eller be om endringer.',
-                  targetEntityType: 'economy',
-                });
+              onProjectUpdated={async (updatedProject) => {
+                setCurrentProject(updatedProject);
+                await loadProjects();
               }}
-              contractsPanel={(
-                <OffersContractsPanel
-                  projectId={currentProject.id}
-                  candidates={currentProject.candidates}
-                  roles={currentProject.roles}
-                  onCandidateStatusChange={async (candidateId, status) => {
-                    const candidate = currentProject.candidates.find((entry) => entry.id === candidateId);
-                    if (!candidate) return;
-                    await castingService.saveCandidate(currentProject.id, {
-                      ...candidate,
-                      status: status as Candidate['status'],
-                    });
-                    await loadProjects();
-                  }}
-                />
-              )}
+              onOpenTeam={!isContentProducerMode && !isClientReviewerMode ? () => {
+                navigateToTab(TEAM_TAB_INDEX);
+              } : undefined}
+              onOpenReviews={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                navigateToProducerWorkflowTabWithFocus(PRODUCER_REVIEWS_TAB_INDEX, focus);
+              } : undefined}
+              onOpenTimeline={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                navigateToProducerWorkflowTabWithFocus(PRODUCER_TIMELINE_TAB_INDEX, focus);
+              } : undefined}
+              onOpenMedia={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                navigateToProducerMediaWorkspace(focus);
+              } : undefined}
+              onOpenDeliverableSource={isContentProducerMode || isClientReviewerMode ? (target) => {
+                if (target === 'shotlist') {
+                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+                  return;
+                }
+                if (target === 'manuscript') {
+                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+                  return;
+                }
+                navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
+              } : undefined}
             />
           )}
         </TabPanel>
@@ -7334,6 +7916,22 @@ export function CastingPlannerPanel({
               readOnly={!canEditProducerWorkflow}
               entityOptions={producerWorkflowEntityOptions}
               ownerOptions={producerWorkflowOwnerOptions}
+              onProjectUpdated={async (updatedProject) => {
+                setCurrentProject(updatedProject);
+                await loadProjects();
+              }}
+              onOpenReviews={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                navigateToProducerWorkflowTabWithFocus(PRODUCER_REVIEWS_TAB_INDEX, focus);
+              } : undefined}
+              onOpenEconomy={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                navigateToProducerWorkflowTabWithFocus(PRODUCER_ECONOMY_TAB_INDEX, focus);
+              } : undefined}
+              onOpenShotList={isContentProducerMode || isClientReviewerMode ? () => {
+                navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+              } : undefined}
+              onOpenMedia={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                navigateToProducerMediaWorkspace(focus);
+              } : undefined}
             />
           )}
         </TabPanel>
@@ -7349,77 +7947,69 @@ export function CastingPlannerPanel({
             <ProducerClientReviewPanel
               key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:reviews`}
               projectId={currentProject.id}
+              projectName={currentProject.name}
+              project={currentProject}
+              projectWorkflowStatus={currentProject.producerWorkflowStatus}
+              projectWorkflowMeta={currentProject.producerWorkflowMeta}
               canEdit={canEditProducerWorkflow}
               canComment={canCommentInProducerWorkflow}
               canDecide={canMakeProducerReviewDecision}
               canApproveReview={canApproveProducerReview}
               canRequestReviewChanges={canRequestProducerReviewChanges}
               entityOptions={producerWorkflowEntityOptions}
-              quickCreateRequest={producerReviewQuickCreate}
+              initialReviewId={
+                isClientReviewerSession
+                && clientPortalIntent
+                && clientPortalIntent.projectId === currentProject.id
+                && clientPortalIntent.tab === 'reviews'
+                  ? clientPortalIntent.reviewId
+                  : undefined
+              }
+              onOpenMedia={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                navigateToProducerMediaWorkspace(focus);
+              } : undefined}
+              onOpenTimeline={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                navigateToProducerWorkflowTabWithFocus(PRODUCER_TIMELINE_TAB_INDEX, focus);
+              } : undefined}
+              onOpenEconomy={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                navigateToProducerWorkflowTabWithFocus(PRODUCER_ECONOMY_TAB_INDEX, focus);
+              } : undefined}
             />
           )}
         </TabPanel>
 
         <TabPanel value={activeTab} index={PRODUCER_EXPORT_TAB_INDEX}>
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              p: { xs: 1.5, md: 2 },
-              borderRadius: 2,
-              border: '1px solid rgba(148,163,184,0.22)',
-              background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.82) 100%)',
-            }}
-          >
-            <Stack direction="row" spacing={1} alignItems="center">
-              <ImportExportIcon sx={{ color: '#fbbf24' }} />
-              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-                Eksport & klientsending
+          {!currentProject ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                {branding.tokens.labels.noProjectSelected}
               </Typography>
-            </Stack>
-            <Typography sx={{ color: 'rgba(203,213,225,0.9)' }}>
-              Eksporter produksjonsgrunnlag eller send til klient for gjennomgang/godkjenning.
-            </Typography>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
-              <Button
-                variant="outlined"
-                startIcon={<StoryWriterIcon />}
-                onClick={() => {
-                  setStoryArcView('story-writer');
-                  navigateToTab(STORY_ARC_TAB_INDEX);
-                }}
-                sx={{ textTransform: 'none', fontWeight: 700 }}
-              >
-                Åpne manus for eksport
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<ShotListIcon />}
-                onClick={() => {
-                  setStoryArcView('shot-list');
-                  navigateToTab(STORY_ARC_TAB_INDEX);
-                }}
-                sx={{ textTransform: 'none', fontWeight: 700 }}
-              >
-                Åpne shotlist for eksport
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<ImportExportIcon />}
-                onClick={openSharingModal}
-                sx={{
-                  textTransform: 'none',
-                  fontWeight: 700,
-                  bgcolor: '#fbbf24',
-                  color: '#111827',
-                  '&:hover': { bgcolor: '#f59e0b' },
-                }}
-              >
-                Send til klient
-              </Button>
-            </Stack>
-          </Box>
+            </Box>
+          ) : (
+            <ProducerExportHandoffPanel
+              project={currentProject}
+              onOpenManuscript={() => {
+                setStoryArcView('story-writer');
+                navigateToTab(STORY_ARC_TAB_INDEX);
+              }}
+              onOpenShotList={() => {
+                setStoryArcView('shot-list');
+                navigateToTab(STORY_ARC_TAB_INDEX);
+              }}
+              onOpenMedia={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                navigateToProducerMediaWorkspace(focus);
+              } : undefined}
+              onOpenReviews={isContentProducerMode || isClientReviewerMode ? () => {
+                navigateToProducerWorkflowTabWithFocus(PRODUCER_REVIEWS_TAB_INDEX);
+              } : undefined}
+              onOpenTimeline={isContentProducerMode || isClientReviewerMode ? () => {
+                navigateToProducerWorkflowTabWithFocus(PRODUCER_TIMELINE_TAB_INDEX);
+              } : undefined}
+              onSendToClient={isContentProducerMode || isClientReviewerMode ? async () => {
+                openSharingModal();
+              } : undefined}
+            />
+          )}
         </TabPanel>
 
         <TabPanel value={activeTab} index={LIVE_SET_TAB_INDEX} immersive={isLiveSetImmersive}>
@@ -9740,7 +10330,7 @@ export function CastingPlannerPanel({
                   {projectToEdit ? branding.tokens.labels.editProjectTitle : 'Nytt Role Room prosjekt'}
                 </Typography>
                 <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.68)' }}>
-                  The Role Room flyt: grunnlag, team, split sheet og lagring.
+                  The Role Room flyt: grunnlag, team, økonomi og lagring.
                 </Typography>
               </Box>
             </Box>
@@ -9824,6 +10414,18 @@ export function CastingPlannerPanel({
                       getTerm={getTerm}
                       initialData={projectToEdit || undefined}
                       onProjectIdChange={handleProjectIdChange}
+                      onOpenEconomy={(projectId) => {
+                        const targetProjectId = projectId ?? currentProject?.id ?? projectToEdit?.id ?? null;
+                        if (targetProjectId) {
+                          const targetProject = projects.find((project) => project.id === targetProjectId)
+                            ?? (currentProject?.id === targetProjectId ? currentProject : null)
+                            ?? (projectToEdit?.id === targetProjectId ? projectToEdit : null);
+                          if (targetProject) {
+                            setCurrentProject(targetProject);
+                          }
+                        }
+                        navigateToTab(PRODUCER_ECONOMY_TAB_INDEX);
+                      }}
                       onClose={() => {
                         setProjectCreationModalOpen(false);
                         setProjectToEdit(null);

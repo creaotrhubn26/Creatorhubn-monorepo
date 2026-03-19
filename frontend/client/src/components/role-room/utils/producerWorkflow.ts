@@ -1,4 +1,8 @@
 import type { CastingProject, CrewMember, SceneBreakdown, ShotList, UserRole } from '../models/casting';
+import {
+  normalizeProducerProjectPlanning,
+  PRODUCER_PLANNING_PHASE_LABELS,
+} from './producerProjectPlanning';
 
 export interface ProducerWorkflowEntityOption {
   entityType: string;
@@ -24,6 +28,13 @@ const REVIEW_TYPE_LABELS: Record<string, string> = {
   manuscript: 'Manus',
   shotlist: 'Shotlist',
   budget_package: 'Budsjettpakke',
+  client_approval: 'Klientgodkjenning',
+  change_order: 'Endringsordre',
+  client_intake_request: 'Klientbrief',
+  client_material_request: 'Klientmateriale',
+  framework_alignment: 'Retning / idé / aktivering',
+  phase_checkpoint: 'Fasepunkt',
+  content_delivery: 'Innholdsleveranse',
   scene_notes: 'Scenenotater',
   location_plan: 'Lokasjonsplan',
   equipment_plan: 'Utstyrsplan',
@@ -36,7 +47,13 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   scene: 'Scene',
   shot: 'Shot',
   economy: 'Økonomi',
+  project_agreement: 'Prosjektavtale',
   client_review: 'Klientreview',
+  client_intake: 'Klientbrief',
+  planning_framework: 'Retning / idé / aktivering',
+  phase_plan: 'Faseplan',
+  content_calendar: 'Content-kalender',
+  client_material: 'Klientmateriale',
 };
 
 const REVIEW_STATUS_LABELS: Record<string, string> = {
@@ -66,6 +83,10 @@ export const PRODUCER_REVIEW_TYPE_OPTIONS: ProducerReviewTypeOption[] = [
   { value: 'manuscript', label: 'Manus', defaultTargetEntityType: 'manuscript' },
   { value: 'shotlist', label: 'Shotlist', defaultTargetEntityType: 'shotlist' },
   { value: 'budget_package', label: 'Budsjettpakke', defaultTargetEntityType: 'economy' },
+  { value: 'client_approval', label: 'Klientgodkjenning', defaultTargetEntityType: 'project_agreement' },
+  { value: 'change_order', label: 'Endringsordre', defaultTargetEntityType: 'project_agreement' },
+  { value: 'phase_checkpoint', label: 'Fasepunkt', defaultTargetEntityType: 'phase_plan' },
+  { value: 'content_delivery', label: 'Innholdsleveranse', defaultTargetEntityType: 'content_calendar' },
   { value: 'scene_notes', label: 'Scenenotater', defaultTargetEntityType: 'scene' },
   { value: 'location_plan', label: 'Lokasjonsplan', defaultTargetEntityType: 'scene' },
   { value: 'equipment_plan', label: 'Utstyrsplan', defaultTargetEntityType: 'shotlist' },
@@ -152,6 +173,7 @@ export function buildProducerWorkflowEntityOptions(project: CastingProject): Pro
   if (!projectId) {
     return [];
   }
+  const planning = normalizeProducerProjectPlanning(project);
 
   const sceneOptions = (project.sceneBreakdowns ?? [])
     .filter((scene): scene is SceneBreakdown => Boolean(scene?.id))
@@ -226,7 +248,34 @@ export function buildProducerWorkflowEntityOptions(project: CastingProject): Pro
     },
   ];
 
-  return [...packageOptions, ...sceneOptions, ...shotListOptions];
+  const planningOptions: ProducerWorkflowEntityOption[] = [
+    ...planning.activationPlan.framework
+      .filter((item) => ['strategy', 'concept_development', 'campaign_development'].includes(item.key))
+      .map((item) => ({
+        entityType: 'planning_framework',
+        entityId: `framework:${item.key}`,
+        label: item.key === 'strategy'
+          ? 'Retning'
+          : item.key === 'concept_development'
+            ? 'Idé'
+            : 'Aktivering',
+        description: item.focus || item.output || item.notes || undefined,
+      })),
+    ...planning.phasePlan.map((item) => ({
+      entityType: 'phase_plan',
+      entityId: `phase:${item.phase}`,
+      label: `Faseplan · ${PRODUCER_PLANNING_PHASE_LABELS[item.phase]}`,
+      description: item.clientCheckpoint || item.title,
+    })),
+    ...planning.contentCalendar.map((item) => ({
+      entityType: 'content_calendar',
+      entityId: `content:${item.id}`,
+      label: `Content-kalender · ${item.title}`,
+      description: [item.channel, item.format].filter(Boolean).join(' · ') || PRODUCER_PLANNING_PHASE_LABELS[item.phase],
+    })),
+  ];
+
+  return [...packageOptions, ...planningOptions, ...sceneOptions, ...shotListOptions];
 }
 
 export function buildProducerWorkflowOwnerOptions(project: CastingProject): ProducerWorkflowOwnerOption[] {

@@ -1,35 +1,9 @@
-import { useState, useEffect, type FC } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  IconButton,
-  Card,
-  CardContent,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Chip,
-  InputAdornment,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material';
-import {
-  Delete as DeleteIcon,
-  Search as SearchIcon,
-  Download as DownloadIcon,
-  AccessTime as TimeIcon,
-} from '@mui/icons-material';
-import { AuditionsIcon as AuditionIcon, LocationsIcon as LocationIcon } from './icons/CastingIcons';
-import type { PoolAudition } from '../services/auditionPoolService';
-import { auditionPoolService } from '../services/auditionPoolService';
-import type { CastingProject } from '../models/casting';
+import { useState, useEffect, type FC } from "react";
+import { Box, Typography, Button, IconButton, Card, CardContent, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Chip, InputAdornment, Select, MenuItem, FormControl, InputLabel, useMediaQuery, useTheme } from "@mui/material";
+import { Delete as DeleteIcon, Search as SearchIcon, Download as DownloadIcon, AccessTime as TimeIcon } from "@mui/icons-material";
+import { AuditionsIcon as AuditionIcon, LocationsIcon as LocationIcon } from "./icons/CastingIcons";
+import { auditionPoolService, type PoolAudition } from "../services/auditionPoolService";
+import type { CastingProject } from "../models/casting";
 
 interface AuditionPoolPanelProps {
   projects: CastingProject[];

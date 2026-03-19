@@ -23,7 +23,8 @@ export interface Tutorial {
   createdBy?: string;
 }
 
-const STORAGE_KEY = 'virtual-studio-tutorials';
+const STORAGE_KEY = 'role-room-tutorials';
+const LEGACY_STORAGE_KEY = 'virtual-studio-tutorials';
 
 const defaultCastingPlannerTutorial: Tutorial = {
   id: 'default-casting-planner',
@@ -283,6 +284,14 @@ class TutorialService {
       const remote = await settingsService.getSetting<Tutorial[]>(STORAGE_KEY, { userId });
       if (remote) {
         this.tutorials = this.applyDefaultTutorialUpdates(remote);
+        return;
+      }
+
+      const legacy = await settingsService.getSetting<Tutorial[]>(LEGACY_STORAGE_KEY, { userId });
+      if (legacy) {
+        this.tutorials = this.applyDefaultTutorialUpdates(legacy);
+        await settingsService.setSetting(STORAGE_KEY, this.tutorials, { userId });
+        await settingsService.deleteSetting(LEGACY_STORAGE_KEY, { userId });
         return;
       }
 

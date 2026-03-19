@@ -1,20 +1,5 @@
-/**
- * VisualEditorContext.tsx
- * ─────────────────────────────────────────────────────────────────────────
- * Context for the Role Room visual editor — shared state for editing mode,
- * element selection, and the guide configuration registry.
- * ─────────────────────────────────────────────────────────────────────────
- */
-
-import type { ReactNode } from 'react';
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import {
-  type GuideId,
-  type GuideConfig,
-  type GuideStepOverride,
-  type GuideRegistry,
-  buildDefaultRegistry,
-} from './guideTypes';
+import React, { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { buildDefaultRegistry, type GuideId, type GuideConfig, type GuideStepOverride, type GuideRegistry } from "./guideTypes";
 
 // ── Storage key ───────────────────────────────────────────────────────────
 

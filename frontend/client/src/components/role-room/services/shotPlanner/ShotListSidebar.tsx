@@ -1,71 +1,12 @@
-/**
- * Shot List Sidebar
- * 
- * Left sidebar panel showing scene info and shot list.
- * Includes shot categories (Establishing, Coverage, Details).
- */
-
-import React, { useState } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  IconButton,
-  Button,
-  Chip,
-  Collapse,
-  Tooltip,
-  Menu,
-  MenuItem,
-  Divider,
-  TextField,
-  Select,
-  FormControl,
-  InputLabel,
-  Stack,
-} from '@mui/material';
-import type { SelectChangeEvent } from '@mui/material/Select';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  DragIndicator as DragIcon,
-  ExpandMore as ExpandIcon,
-  ExpandLess as CollapseIcon,
-  Edit as EditIcon,
-  Videocam as CameraIcon,
-  FilterList as FilterIcon,
-  Movie as MovieIcon,
-  PhotoCamera as PhotoIcon,
-  MoreVert as MoreIcon,
-  CheckCircle as CompletedIcon,
-  Schedule as PlannedIcon,
-  PlayCircle as InProgressIcon,
-  ArrowDropDown as DropdownIcon,
-} from '@mui/icons-material';
-import type {
-  DragEndEvent} from '@dnd-kit/core';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { useShotPlannerStore, useShots, useCurrentScene } from './store';
-import type { Shot2D, ShotType } from './types';
-import { SHOT_TYPE_INFO } from './types';
+import React, { useState } from "react";
+import { Box, Typography, Paper, List, ListItem, ListItemText, ListItemIcon, IconButton, Button, Chip, Collapse, Tooltip, Menu, MenuItem, Divider, TextField, Select, FormControl, InputLabel, Stack } from "@mui/material";
+import type { SelectChangeEvent } from "@mui/material/Select";
+import { Add as AddIcon, Delete as DeleteIcon, DragIndicator as DragIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon, Edit as EditIcon, Videocam as CameraIcon, FilterList as FilterIcon, Movie as MovieIcon, PhotoCamera as PhotoIcon, MoreVert as MoreIcon, CheckCircle as CompletedIcon, Schedule as PlannedIcon, PlayCircle as InProgressIcon, ArrowDropDown as DropdownIcon } from "@mui/icons-material";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useShotPlannerStore, useShots, useCurrentScene } from "./store";
+import { SHOT_TYPE_INFO, type Shot2D, type ShotType } from "./types";
 
 // =============================================================================
 // Shot Categories

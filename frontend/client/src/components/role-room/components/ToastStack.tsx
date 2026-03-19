@@ -1,9 +1,8 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import type { FC, ReactNode } from 'react';
-import { Alert, IconButton, Box } from '@mui/material';
-import type { AlertColor } from '@mui/material/Alert';
-import { Close as CloseIcon } from '@mui/icons-material';
-import { motion, AnimatePresence } from 'framer-motion';
+import { createContext, useContext, useState, useCallback, useEffect, type FC, type ReactNode } from "react";
+import { Alert, IconButton, Box } from "@mui/material";
+import type { AlertColor } from "@mui/material/Alert";
+import { Close as CloseIcon } from "@mui/icons-material";
+import { motion, AnimatePresence } from "framer-motion";
 
 export interface Toast {
   id: string;

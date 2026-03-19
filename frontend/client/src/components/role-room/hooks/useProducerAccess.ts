@@ -57,7 +57,7 @@ export function useProducerAccess(
     );
     const canViewEconomy = Boolean(
       mergedPermissions.canViewEconomy ||
-      ['director', 'producer', 'content_producer', 'client_reviewer'].includes(role)
+      ['director', 'producer', 'production_manager', 'content_producer', 'client_reviewer'].includes(role)
     );
     const canApproveReview = Boolean(
       mergedPermissions.canApprove ||

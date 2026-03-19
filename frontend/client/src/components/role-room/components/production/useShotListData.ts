@@ -1,47 +1,7 @@
-/**
- * useShotListData — three-tier fetch strategy with module-level cache
- * ─────────────────────────────────────────────────────────────────────────────
- *
- * Query 1 – FAST (grid): `GET /shot-lists?projectId=...`
- *   Returns ShotListSummary[] derived on the fly.  Grid renders immediately.
- *
- * Query 2 – ON OPEN (detail): `GET /shot-lists/:id`
- *   Returns the full ShotList with all CastingShot[].  Fired only when the
- *   user opens a card.
- *
- * Query 3 – LOOKUP: `GET /crew?projectId=...` and `GET /roles?projectId=...`
- *   Fetches Person[] and role metadata.  Shared across the whole project tab.
- *
- * Cache:
- *   All three tiers use module-level Maps so switching between routes never
- *   re-fetches.  `refresh()` manually busts all three.
- *
- * Shape mirrors the API contracts described in the design doc.  The service
- *   layer (castingService) is used as the data source; swap to a real HTTP
- *   client once the endpoints are live by replacing the three `_fetch*` fns.
- * ─────────────────────────────────────────────────────────────────────────────
- */
-
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useMemo,
-} from 'react';
-import { castingService } from '../../services/castingService';
-import type { ShotList, CastingShot, Person, CrewMember, SceneBreakdown } from '../../models/casting';
-import {
-  computeShotListSummary,
-  computeSummaries,
-  patchSummaryOnStatusChange,
-  patchSummaryOnAssign,
-  isShotAssigned,
-} from '../../models/derivedState';
-import type {
-  ShotListSummary,
-  ProjectShotStats,
-} from '../../models/derivedState';
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { castingService } from "../../services/castingService";
+import type { ShotList, CastingShot, Person, CrewMember, SceneBreakdown } from "../../models/casting";
+import { computeShotListSummary, computeSummaries, patchSummaryOnStatusChange, patchSummaryOnAssign, isShotAssigned, type ShotListSummary, type ProjectShotStats } from "../../models/derivedState";
 
 // ─── Re-export convenient types ───────────────────────────────────────────────
 export type { ShotListSummary, ProjectShotStats };

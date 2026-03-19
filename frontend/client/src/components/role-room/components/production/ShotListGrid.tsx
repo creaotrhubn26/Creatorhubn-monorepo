@@ -1,51 +1,12 @@
-/**
- * ShotListGrid.tsx — Module C
- * ─────────────────────────────────────────────────────────────────────────────
- * Grid of ShotListCards with:
- *   • DndContext wrapping cards (Person-drag → card drop target)
- *   • SortableContext for card reordering
- *   • Multi-select via Shift+click
- *   • Keyboard: Shift+Arrow to extend selection
- *   • Responsive: 1 col (xs) → 2 cols (sm) → 3 cols (md) → 4 cols (xl)
- *   • Empty state w/ illustration
- *   • List-mode (single-column compact rows)
- * ─────────────────────────────────────────────────────────────────────────────
- */
-
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import {
-  Box,
-  Grid,
-  Typography,
-  CircularProgress,
-  Alert,
-  Skeleton,
-} from '@mui/material';
-import type {
-  DragEndEvent,
-  DragStartEvent} from '@dnd-kit/core';
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  closestCenter,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-  rectSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-
-import { ShotListCard } from './ShotListCard';
-import type { ShotListSummary } from '../../models/derivedState';
-import type { Person } from '../../models/casting';
-import type { ViewMode } from './shotListFilters';
+import React, { useState, useCallback, useRef, useEffect } from "react";
+import { Box, Grid, Typography, CircularProgress, Alert, Skeleton } from "@mui/material";
+import { DndContext, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, rectSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { ShotListCard } from "./ShotListCard";
+import type { ShotListSummary } from "../../models/derivedState";
+import type { Person } from "../../models/casting";
+import type { ViewMode } from "./shotListFilters";
 
 // ─── Sortable wrapper ─────────────────────────────────────────────────────────
 

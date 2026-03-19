@@ -1,20 +1,5 @@
-/**
- * Manuscript Template Service
- * Manages screenplay templates and auto-completion
- */
-
-import type {
-  Template,
-  TemplateLibrary,
-  AutoCompleteSuggestion,
-  StructureTemplate
-} from '../data/manuscriptTemplates';
-import {
-  buildTemplateLibrary,
-  AUTO_COMPLETE_SUGGESTIONS,
-  STRUCTURE_TEMPLATES
-} from '../data/manuscriptTemplates';
-import settingsService, { getCurrentUserId } from './settingsService';
+import { buildTemplateLibrary, AUTO_COMPLETE_SUGGESTIONS, STRUCTURE_TEMPLATES, type Template, type TemplateLibrary, type AutoCompleteSuggestion, type StructureTemplate } from "../data/manuscriptTemplates";
+import settingsService, { getCurrentUserId } from "./settingsService";
 
 const STORAGE_KEY = 'virtualStudio_manuscriptTemplates';
 const RECENT_KEY = 'virtualStudio_recentTemplates';

@@ -1,4 +1,18 @@
 import authSessionService from './authSessionService';
+import type {
+  RoleRoomGoogleAgreementSignature,
+  RoleRoomGoogleAgreementSignatureStatus,
+  RoleRoomGoogleCalendarSyncInput,
+  RoleRoomGoogleArtifactRef,
+  RoleRoomGoogleConnection,
+  RoleRoomGoogleDriveSyncInput,
+  RoleRoomGoogleLoginResult,
+  RoleRoomGoogleMeetSessionInput,
+  RoleRoomGoogleOauthStartInput,
+  RoleRoomGooglePersonContact,
+  RoleRoomGoogleProjectBinding,
+  RoleRoomGoogleProjectBindingUpdateInput,
+} from '../models/casting';
 
 const API_BASE = '/api/role-room';
 
@@ -129,6 +143,20 @@ export interface CastingSchedule {
   schedule_data: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface RoleRoomGoogleStatusResponse {
+  configured: boolean;
+  missing: string[];
+  state: 'disconnected' | 'connected' | 'expired' | 'error';
+  connection: RoleRoomGoogleConnection | null;
+  projectBinding?: RoleRoomGoogleProjectBinding | null;
+  artifacts?: RoleRoomGoogleArtifactRef[];
+}
+
+export interface RoleRoomGoogleBindingResponse {
+  binding: RoleRoomGoogleProjectBinding | null;
+  artifacts: RoleRoomGoogleArtifactRef[];
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -447,6 +475,52 @@ export interface CastingContract {
   role_name?: string;
 }
 
+export type ProjectAgreementType =
+  | 'client_nda'
+  | 'startup_collaboration'
+  | 'smb_content_production'
+  | 'internal_training_production'
+  | 'agency_retainer'
+  | 'campaign_production'
+  | 'change_order'
+  | 'client_approval'
+  | 'extra_nda'
+  | 'extra_terms';
+export type ProjectAgreementCounterpartyType = 'client' | 'extra';
+export type ProjectAgreementStatus = 'draft' | 'sent' | 'signed';
+
+export interface ProjectAgreementSection {
+  id: string;
+  heading: string;
+  body: string;
+}
+
+export interface ProjectAgreement {
+  id: string;
+  project_id: string;
+  agreement_type: ProjectAgreementType | string;
+  counterparty_type: ProjectAgreementCounterpartyType | string;
+  counterparty_id?: string;
+  title: string;
+  purpose?: string;
+  disclosing_party_name?: string;
+  disclosing_party_company_name?: string;
+  disclosing_party_organization_number?: string;
+  counterparty_name: string;
+  counterparty_email?: string;
+  counterparty_company_name?: string;
+  counterparty_organization_number?: string;
+  sections?: ProjectAgreementSection[];
+  start_date?: string;
+  end_date?: string;
+  signed_date?: string;
+  status: ProjectAgreementStatus;
+  google_signature?: RoleRoomGoogleAgreementSignature | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface CalendarEvent {
   id: string;
   project_id: string;
@@ -552,6 +626,124 @@ export const contractsApi = {
     });
     return true;
   },
+};
+
+export const projectAgreementsApi = {
+  getAll: async (projectId: string): Promise<ProjectAgreement[]> => {
+    const result = await apiRequest<{ agreements?: ProjectAgreement[] } | ProjectAgreement[]>(
+      `/projects/${projectId}/project-agreements`,
+    );
+    if (Array.isArray(result)) return result;
+    return Array.isArray(result.agreements) ? result.agreements : [];
+  },
+
+  create: async (agreement: {
+    projectId: string;
+    agreementType: ProjectAgreementType | string;
+    counterpartyType: ProjectAgreementCounterpartyType | string;
+    counterpartyId?: string;
+    title: string;
+    purpose?: string;
+    disclosingPartyName?: string;
+    disclosingPartyCompanyName?: string;
+    disclosingPartyOrganizationNumber?: string;
+    counterpartyName: string;
+    counterpartyEmail?: string;
+    counterpartyCompanyName?: string;
+    counterpartyOrganizationNumber?: string;
+    sections?: ProjectAgreementSection[];
+    startDate?: string;
+    endDate?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<string> => {
+    const result = await apiRequest<{ agreementId: string }>('/project-agreements', {
+      method: 'POST',
+      body: JSON.stringify(agreement),
+    });
+    return result.agreementId;
+  },
+
+  updateStatus: async (agreementId: string, status: ProjectAgreementStatus): Promise<boolean> => {
+    await apiRequest(`/project-agreements/${agreementId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+    return true;
+  },
+
+  getGoogleSignatures: async (projectId: string): Promise<RoleRoomGoogleAgreementSignature[]> => {
+    const result = await apiRequest<{ signatures?: RoleRoomGoogleAgreementSignature[] }>(
+      `/projects/${projectId}/google/agreements/signatures`,
+    );
+    return Array.isArray(result.signatures) ? result.signatures : [];
+  },
+
+  prepareGoogleSignature: async (
+    projectId: string,
+    agreementId: string,
+  ): Promise<{
+    agreement: ProjectAgreement;
+    signature: RoleRoomGoogleAgreementSignature;
+    artifacts: RoleRoomGoogleArtifactRef[];
+    binding: RoleRoomGoogleProjectBinding | null;
+  }> => (
+    apiRequest(`/projects/${projectId}/google/agreements/${agreementId}/prepare`, {
+      method: 'POST',
+    })
+  ),
+
+  sendGoogleSignatureRequest: async (
+    projectId: string,
+    agreementId: string,
+  ): Promise<{
+    agreement: ProjectAgreement;
+    signature: RoleRoomGoogleAgreementSignature;
+    artifacts: RoleRoomGoogleArtifactRef[];
+    binding: RoleRoomGoogleProjectBinding | null;
+  }> => (
+    apiRequest(`/projects/${projectId}/google/agreements/${agreementId}/send`, {
+      method: 'POST',
+    })
+  ),
+
+  syncGoogleSignature: async (
+    projectId: string,
+    agreementId: string,
+  ): Promise<{
+    agreement: ProjectAgreement;
+    signature: RoleRoomGoogleAgreementSignature;
+    artifacts: RoleRoomGoogleArtifactRef[];
+    binding: RoleRoomGoogleProjectBinding | null;
+  }> => (
+    apiRequest(`/projects/${projectId}/google/agreements/${agreementId}/sync`, {
+      method: 'POST',
+    })
+  ),
+
+  updateGoogleSignatureStatus: async (
+    projectId: string,
+    agreementId: string,
+    status: RoleRoomGoogleAgreementSignatureStatus,
+    payload?: {
+      reason?: string;
+      signedDriveFileId?: string;
+      webViewUrl?: string;
+      requestUrl?: string;
+    },
+  ): Promise<{
+    agreement: ProjectAgreement;
+    signature: RoleRoomGoogleAgreementSignature;
+    artifacts: RoleRoomGoogleArtifactRef[];
+    binding: RoleRoomGoogleProjectBinding | null;
+  }> => (
+    apiRequest(`/projects/${projectId}/google/agreements/${agreementId}/status`, {
+      method: 'POST',
+      body: JSON.stringify({
+        status,
+        ...payload,
+      }),
+    })
+  ),
 };
 
 export const calendarEventsApi = {
@@ -1473,6 +1665,107 @@ export const shotDetailsApi = {
   },
 };
 
+export const googleWorkspaceApi = {
+  getStatus: async (projectId?: string): Promise<RoleRoomGoogleStatusResponse> => {
+    const params = new URLSearchParams();
+    if (projectId) {
+      params.set('projectId', projectId);
+    }
+    const query = params.toString();
+    return apiRequest<RoleRoomGoogleStatusResponse>(`/google/status${query ? `?${query}` : ''}`);
+  },
+
+  startOauth: async (
+    payload: RoleRoomGoogleOauthStartInput,
+  ): Promise<{ success: boolean; mode: 'login' | 'link'; authorizationUrl: string; stateId: string }> => (
+    apiRequest('/google/oauth/start', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  ),
+
+  getOauthSessionResult: async (transferId: string): Promise<RoleRoomGoogleLoginResult> => (
+    apiRequest<RoleRoomGoogleLoginResult>(`/google/oauth/session-result/${encodeURIComponent(transferId)}`)
+  ),
+
+  completeLink: async (transferId: string): Promise<RoleRoomGoogleStatusResponse> => (
+    apiRequest<RoleRoomGoogleStatusResponse>('/google/link', {
+      method: 'POST',
+      body: JSON.stringify({ transferId }),
+    })
+  ),
+
+  unlink: async (): Promise<RoleRoomGoogleStatusResponse> => (
+    apiRequest<RoleRoomGoogleStatusResponse>('/google/link', {
+      method: 'DELETE',
+    })
+  ),
+
+  getProjectBinding: async (projectId: string): Promise<RoleRoomGoogleBindingResponse> => (
+    apiRequest<RoleRoomGoogleBindingResponse>(`/projects/${projectId}/google/binding`)
+  ),
+
+  saveProjectBinding: async (
+    projectId: string,
+    payload: RoleRoomGoogleProjectBindingUpdateInput,
+  ): Promise<RoleRoomGoogleBindingResponse> => (
+    apiRequest<RoleRoomGoogleBindingResponse>(`/projects/${projectId}/google/binding`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  ),
+
+  syncDrive: async (
+    projectId: string,
+    payload: RoleRoomGoogleDriveSyncInput,
+  ): Promise<RoleRoomGoogleBindingResponse & { syncedArtifacts: RoleRoomGoogleArtifactRef[] }> => (
+    apiRequest<RoleRoomGoogleBindingResponse & { syncedArtifacts: RoleRoomGoogleArtifactRef[] }>(
+      `/projects/${projectId}/google/drive/sync`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    )
+  ),
+
+  syncCalendar: async (
+    projectId: string,
+    payload: RoleRoomGoogleCalendarSyncInput,
+  ): Promise<RoleRoomGoogleBindingResponse & { syncedEvents: RoleRoomGoogleArtifactRef[] }> => (
+    apiRequest<RoleRoomGoogleBindingResponse & { syncedEvents: RoleRoomGoogleArtifactRef[] }>(
+      `/projects/${projectId}/google/calendar/sync`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    )
+  ),
+
+  createMeetSession: async (
+    projectId: string,
+    payload: RoleRoomGoogleMeetSessionInput,
+  ): Promise<RoleRoomGoogleBindingResponse & { event: Record<string, unknown> }> => (
+    apiRequest<RoleRoomGoogleBindingResponse & { event: Record<string, unknown> }>(
+      `/projects/${projectId}/google/meet/session`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    )
+  ),
+
+  searchPeople: async (
+    projectId: string,
+    query: string,
+  ): Promise<{
+    contacts: RoleRoomGooglePersonContact[];
+    contactsContext: Record<string, unknown>;
+  }> => {
+    const params = new URLSearchParams({ q: query });
+    return apiRequest(`/projects/${projectId}/google/people/search?${params.toString()}`);
+  },
+};
+
 export const castingApi = {
   favorites: favoritesApi,
   projects: projectsApi,
@@ -1499,6 +1792,7 @@ export const castingApi = {
   productionDays: productionDaysApi,
   userRoles: userRolesApi,
   shotDetails: shotDetailsApi,
+  googleWorkspace: googleWorkspaceApi,
 };
 
 export default castingApi;

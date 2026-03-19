@@ -1,4 +1,4 @@
-import { useState, useEffect, type FC, type ReactNode, type ReactElement } from 'react';
+import { useState, useEffect, useCallback, useMemo, type FC, type ReactNode, type ReactElement } from 'react';
 import {
   Box,
   Typography,
@@ -33,15 +33,17 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import DrawIcon from '@mui/icons-material/Draw';
 import AddIcon from '@mui/icons-material/Add';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { OffersIcon as LocalOfferIcon, ContractsIcon as DescriptionIcon } from './icons/CastingIcons';
 import { useSnackbar } from 'notistack';
-import type {
-  CastingOffer,
-  CastingContract} from '../services/castingApiService';
 import {
+  type CastingContract,
+  type CastingOffer,
   offersApi,
   contractsApi
 } from '../services/castingApiService';
+import settingsService from '../services/settingsService';
+import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface Candidate {
@@ -56,11 +58,15 @@ interface Role {
   name: string;
 }
 
+const LOCAL_OFFERS_NAMESPACE = 'role-room-offers';
+const LOCAL_CONTRACTS_NAMESPACE = 'role-room-contracts';
+
 interface OffersContractsPanelProps {
   projectId: string;
   candidates?: Candidate[];
   roles?: Role[];
   onCandidateStatusChange?: (candidateId: string, status: string) => void;
+  readOnly?: boolean;
 }
 
 const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
@@ -70,11 +76,48 @@ const applyMentionSuggestion = (sourceText: string | undefined, name: string): s
   return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
 };
 
+const generateLocalId = (prefix: string): string => {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return `${prefix}-${globalThis.crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const normalizeIsoDate = (value?: string): string | undefined => {
+  if (!value || !value.trim()) {
+    return undefined;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return `${value}T00:00:00.000Z`;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+};
+
+const sortOffers = (items: CastingOffer[]): CastingOffer[] => (
+  [...items].sort((left, right) => {
+    const leftDate = left.offer_date ?? '';
+    const rightDate = right.offer_date ?? '';
+    return rightDate.localeCompare(leftDate, 'nb-NO');
+  })
+);
+
+const sortContracts = (items: CastingContract[]): CastingContract[] => (
+  [...items].sort((left, right) => {
+    const leftDate = left.signed_date ?? left.start_date ?? '';
+    const rightDate = right.signed_date ?? right.start_date ?? '';
+    return rightDate.localeCompare(leftDate, 'nb-NO');
+  })
+);
+
 const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
   projectId,
   candidates = [],
   roles = [],
   onCandidateStatusChange,
+  readOnly = false,
 }) => {
   const { enqueueSnackbar } = useSnackbar();
   const [tabValue, setTabValue] = useState(0);
@@ -94,26 +137,112 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
   const [endDate, setEndDate] = useState('');
   const [selectedOfferId, setSelectedOfferId] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
+  const useLocalFallback = shouldUseRoleRoomLocalFallback();
 
-  useEffect(() => {
-    loadData();
-  }, [projectId]);
+  const candidateNameById = useMemo(
+    () => new Map(candidates.map((candidate) => [candidate.id, candidate.name])),
+    [candidates],
+  );
+  const roleNameById = useMemo(
+    () => new Map(roles.map((role) => [role.id, role.name])),
+    [roles],
+  );
+  const acceptedOffers = useMemo(
+    () => offers.filter((offer) => offer.status === 'accepted'),
+    [offers],
+  );
+  const selectableOffers = useMemo(
+    () => acceptedOffers.filter((offer) => !selectedCandidate || offer.candidate_id === selectedCandidate),
+    [acceptedOffers, selectedCandidate],
+  );
 
-  const loadData = async () => {
+  const hydrateOffer = useCallback((offer: CastingOffer): CastingOffer => ({
+    ...offer,
+    candidate_name: candidateNameById.get(offer.candidate_id) ?? offer.candidate_name ?? 'Ukjent kandidat',
+    role_name: offer.role_id ? (roleNameById.get(offer.role_id) ?? offer.role_name) : offer.role_name,
+  }), [candidateNameById, roleNameById]);
+
+  const hydrateContract = useCallback((contract: CastingContract): CastingContract => ({
+    ...contract,
+    candidate_name: candidateNameById.get(contract.candidate_id) ?? contract.candidate_name ?? 'Ukjent kandidat',
+    role_name: contract.role_id ? (roleNameById.get(contract.role_id) ?? contract.role_name) : contract.role_name,
+  }), [candidateNameById, roleNameById]);
+
+  const readLocalOffers = useCallback(async (): Promise<CastingOffer[]> => {
+    const stored = await settingsService.getSetting<CastingOffer[]>(LOCAL_OFFERS_NAMESPACE, { projectId });
+    return sortOffers((stored ?? []).map(hydrateOffer));
+  }, [hydrateOffer, projectId]);
+
+  const writeLocalOffers = useCallback(async (nextOffers: CastingOffer[]): Promise<CastingOffer[]> => {
+    const hydratedOffers = sortOffers(nextOffers.map(hydrateOffer));
+    await settingsService.setSetting(LOCAL_OFFERS_NAMESPACE, hydratedOffers, { projectId });
+    return hydratedOffers;
+  }, [hydrateOffer, projectId]);
+
+  const readLocalContracts = useCallback(async (): Promise<CastingContract[]> => {
+    const stored = await settingsService.getSetting<CastingContract[]>(LOCAL_CONTRACTS_NAMESPACE, { projectId });
+    return sortContracts((stored ?? []).map(hydrateContract));
+  }, [hydrateContract, projectId]);
+
+  const writeLocalContracts = useCallback(async (nextContracts: CastingContract[]): Promise<CastingContract[]> => {
+    const hydratedContracts = sortContracts(nextContracts.map(hydrateContract));
+    await settingsService.setSetting(LOCAL_CONTRACTS_NAMESPACE, hydratedContracts, { projectId });
+    return hydratedContracts;
+  }, [hydrateContract, projectId]);
+
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [offersData, contractsData] = await Promise.all([
-        offersApi.getAll(projectId),
-        contractsApi.getAll(projectId),
-      ]);
+      const [offersData, contractsData] = useLocalFallback
+        ? await Promise.all([readLocalOffers(), readLocalContracts()])
+        : await Promise.all([
+            offersApi.getAll(projectId),
+            contractsApi.getAll(projectId),
+          ]);
       setOffers(offersData);
       setContracts(contractsData);
     } catch (error) {
-      enqueueSnackbar('Kunne ikke laste tilbud og kontrakter', { variant: 'error' });
+      enqueueSnackbar(
+        error instanceof Error ? error.message : 'Kunne ikke laste tilbud og kontrakter',
+        { variant: 'error' },
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }, [enqueueSnackbar, projectId, readLocalContracts, readLocalOffers, useLocalFallback]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!selectedOfferId) {
+      return;
+    }
+
+    const selectedOffer = acceptedOffers.find((offer) => offer.id === selectedOfferId);
+    if (!selectedOffer) {
+      return;
+    }
+
+    setSelectedCandidate(selectedOffer.candidate_id);
+    setSelectedRole(selectedOffer.role_id ?? '');
+    setCompensation(selectedOffer.compensation ?? '');
+    setTerms(selectedOffer.terms ?? '');
+  }, [acceptedOffers, selectedOfferId]);
+
+  useEffect(() => {
+    if (!selectedCandidate) {
+      return;
+    }
+
+    if (selectedOfferId) {
+      const selectedOffer = acceptedOffers.find((offer) => offer.id === selectedOfferId);
+      if (selectedOffer && selectedOffer.candidate_id !== selectedCandidate) {
+        setSelectedOfferId('');
+      }
+    }
+  }, [acceptedOffers, selectedCandidate, selectedOfferId]);
 
   const handleCreateOffer = async () => {
     if (!selectedCandidate) {
@@ -123,24 +252,47 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
     setSubmitting(true);
     try {
-      await offersApi.create({
-        projectId,
-        candidateId: selectedCandidate,
-        roleId: selectedRole || undefined,
-        compensation,
-        terms,
-        notes,
-        responseDeadline: responseDeadline || undefined,
-      });
+      if (useLocalFallback) {
+        const createdOffer: CastingOffer = hydrateOffer({
+          id: generateLocalId('offer'),
+          project_id: projectId,
+          candidate_id: selectedCandidate,
+          role_id: selectedRole || undefined,
+          offer_date: new Date().toISOString(),
+          response_deadline: normalizeIsoDate(responseDeadline),
+          status: 'pending',
+          compensation: compensation || undefined,
+          terms: terms || undefined,
+          notes: notes || undefined,
+          response_date: undefined,
+        });
+        const nextOffers = await writeLocalOffers([...offers, createdOffer]);
+        setOffers(nextOffers);
+      } else {
+        await offersApi.create({
+          projectId,
+          candidateId: selectedCandidate,
+          roleId: selectedRole || undefined,
+          compensation,
+          terms,
+          notes,
+          responseDeadline: responseDeadline || undefined,
+        });
+      }
       enqueueSnackbar('Tilbud sendt!', { variant: 'success' });
       setOfferDialogOpen(false);
       resetOfferForm();
-      loadData();
+      if (!useLocalFallback) {
+        void loadData();
+      }
       if (onCandidateStatusChange) {
         onCandidateStatusChange(selectedCandidate, 'offer_sent');
       }
     } catch (error) {
-      enqueueSnackbar('Kunne ikke sende tilbud', { variant: 'error' });
+      enqueueSnackbar(
+        error instanceof Error ? error.message : 'Kunne ikke sende tilbud',
+        { variant: 'error' },
+      );
     } finally {
       setSubmitting(false);
     }
@@ -148,18 +300,40 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
   const handleRespondToOffer = async (offerId: string, status: 'accepted' | 'declined') => {
     try {
-      await offersApi.respond(offerId, status);
+      let updatedOffer: CastingOffer | undefined;
+      if (useLocalFallback) {
+        const nextOffers = offers.map((offer) => {
+          if (offer.id !== offerId) {
+            return offer;
+          }
+          updatedOffer = hydrateOffer({
+            ...offer,
+            status,
+            response_date: new Date().toISOString(),
+          });
+          return updatedOffer;
+        });
+        setOffers(await writeLocalOffers(nextOffers));
+      } else {
+        await offersApi.respond(offerId, status);
+      }
       const offer = offers.find(o => o.id === offerId);
       enqueueSnackbar(
         status === 'accepted' ? 'Tilbud akseptert!' : 'Tilbud avslått',
         { variant: status === 'accepted' ? 'success' : 'info' }
       );
-      loadData();
-      if (offer && onCandidateStatusChange) {
-        onCandidateStatusChange(offer.candidate_id, status === 'accepted' ? 'confirmed' : 'declined');
+      if (!useLocalFallback) {
+        void loadData();
+      }
+      const nextOffer = updatedOffer ?? offer;
+      if (nextOffer && onCandidateStatusChange) {
+        onCandidateStatusChange(nextOffer.candidate_id, status === 'accepted' ? 'confirmed' : 'declined');
       }
     } catch (error) {
-      enqueueSnackbar('Kunne ikke oppdatere tilbud', { variant: 'error' });
+      enqueueSnackbar(
+        error instanceof Error ? error.message : 'Kunne ikke oppdatere tilbud',
+        { variant: 'error' },
+      );
     }
   };
 
@@ -171,23 +345,48 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
     setSubmitting(true);
     try {
-      await contractsApi.create({
-        projectId,
-        candidateId: selectedCandidate,
-        offerId: selectedOfferId || undefined,
-        roleId: selectedRole || undefined,
-        contractType,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        compensation,
-        terms,
-      });
+      if (useLocalFallback) {
+        const createdContract: CastingContract = hydrateContract({
+          id: generateLocalId('contract'),
+          project_id: projectId,
+          candidate_id: selectedCandidate,
+          offer_id: selectedOfferId || undefined,
+          role_id: selectedRole || undefined,
+          contract_type: contractType || undefined,
+          start_date: normalizeIsoDate(startDate),
+          end_date: normalizeIsoDate(endDate),
+          compensation: compensation || undefined,
+          terms: terms || undefined,
+          signed_date: undefined,
+          status: 'pending',
+          document_url: undefined,
+        });
+        const nextContracts = await writeLocalContracts([...contracts, createdContract]);
+        setContracts(nextContracts);
+      } else {
+        await contractsApi.create({
+          projectId,
+          candidateId: selectedCandidate,
+          offerId: selectedOfferId || undefined,
+          roleId: selectedRole || undefined,
+          contractType,
+          startDate: startDate || undefined,
+          endDate: endDate || undefined,
+          compensation,
+          terms,
+        });
+      }
       enqueueSnackbar('Kontrakt opprettet!', { variant: 'success' });
       setContractDialogOpen(false);
       resetContractForm();
-      loadData();
+      if (!useLocalFallback) {
+        void loadData();
+      }
     } catch (error) {
-      enqueueSnackbar('Kunne ikke opprette kontrakt', { variant: 'error' });
+      enqueueSnackbar(
+        error instanceof Error ? error.message : 'Kunne ikke opprette kontrakt',
+        { variant: 'error' },
+      );
     } finally {
       setSubmitting(false);
     }
@@ -195,15 +394,37 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
   const handleSignContract = async (contractId: string) => {
     try {
-      await contractsApi.sign(contractId);
+      let updatedContract: CastingContract | undefined;
+      if (useLocalFallback) {
+        const nextContracts = contracts.map((contract) => {
+          if (contract.id !== contractId) {
+            return contract;
+          }
+          updatedContract = hydrateContract({
+            ...contract,
+            status: 'signed',
+            signed_date: new Date().toISOString(),
+          });
+          return updatedContract;
+        });
+        setContracts(await writeLocalContracts(nextContracts));
+      } else {
+        await contractsApi.sign(contractId);
+      }
       enqueueSnackbar('Kontrakt signert!', { variant: 'success' });
-      loadData();
+      if (!useLocalFallback) {
+        void loadData();
+      }
       const contract = contracts.find(c => c.id === contractId);
-      if (contract && onCandidateStatusChange) {
-        onCandidateStatusChange(contract.candidate_id, 'contracted');
+      const nextContract = updatedContract ?? contract;
+      if (nextContract && onCandidateStatusChange) {
+        onCandidateStatusChange(nextContract.candidate_id, 'contracted');
       }
     } catch (error) {
-      enqueueSnackbar('Kunne ikke signere kontrakt', { variant: 'error' });
+      enqueueSnackbar(
+        error instanceof Error ? error.message : 'Kunne ikke signere kontrakt',
+        { variant: 'error' },
+      );
     }
   };
 
@@ -280,28 +501,41 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <LocalOfferIcon sx={{ color: '#8b5cf6' }} />
-          Tilbud og Kontrakter
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
-            startIcon={<LocalOfferIcon />}
-            onClick={() => setOfferDialogOpen(true)}
-            sx={{ borderColor: '#8b5cf6', color: '#8b5cf6' }}
-          >
-            Nytt tilbud
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<DescriptionIcon />}
-            onClick={() => setContractDialogOpen(true)}
-            sx={{ bgcolor: '#8b5cf6' }}
-          >
-            Ny kontrakt
-          </Button>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <LocalOfferIcon sx={{ color: '#8b5cf6' }} />
+            Tilbud og Kontrakter
+          </Typography>
+          <Tooltip title="Oppdater tilbud og kontrakter">
+            <IconButton
+              size="small"
+              onClick={() => { void loadData(); }}
+              sx={{ color: 'rgba(255,255,255,0.72)' }}
+            >
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
+        {!readOnly ? (
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <Button
+              variant="outlined"
+              startIcon={<LocalOfferIcon />}
+              onClick={() => setOfferDialogOpen(true)}
+              sx={{ borderColor: '#8b5cf6', color: '#8b5cf6' }}
+            >
+              Nytt tilbud
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<DescriptionIcon />}
+              onClick={() => setContractDialogOpen(true)}
+              sx={{ bgcolor: '#8b5cf6' }}
+            >
+              Ny kontrakt
+            </Button>
+          </Box>
+        ) : null}
       </Box>
 
       <Tabs
@@ -317,6 +551,8 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
         <Tab label={`Tilbud (${offers.length})`} icon={<LocalOfferIcon />} iconPosition="start" />
         <Tab label={`Kontrakter (${contracts.length})`} icon={<DescriptionIcon />} iconPosition="start" />
       </Tabs>
+
+      <Divider sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
 
       {tabValue === 0 && (
         <Box>
@@ -373,7 +609,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                         </Typography>
                       )}
 
-                      {offer.status === 'pending' && (
+                      {!readOnly && offer.status === 'pending' && (
                         <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                           <Button
                             size="small"
@@ -458,7 +694,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                         </Box>
                       )}
 
-                      {contract.status !== 'signed' && (
+                      {!readOnly && contract.status !== 'signed' && (
                         <Button
                           fullWidth
                           variant="contained"
@@ -478,13 +714,13 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
         </Box>
       )}
 
-      <Dialog open={offerDialogOpen} onClose={() => setOfferDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={!readOnly && offerDialogOpen} onClose={() => setOfferDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <LocalOfferIcon sx={{ color: '#8b5cf6' }} />
           Send tilbud
         </DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+      <DialogContent>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <FormControl fullWidth>
               <InputLabel>Kandidat *</InputLabel>
               <Select
@@ -577,13 +813,29 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={contractDialogOpen} onClose={() => setContractDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={!readOnly && contractDialogOpen} onClose={() => setContractDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <DescriptionIcon sx={{ color: '#06b6d4' }} />
           Opprett kontrakt
         </DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+      <DialogContent>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <FormControl fullWidth>
+              <InputLabel>Basert på tilbud</InputLabel>
+              <Select
+                value={selectedOfferId}
+                onChange={(e) => setSelectedOfferId(e.target.value)}
+                label="Basert på tilbud"
+              >
+                <MenuItem value="">Opprett uten tilbud</MenuItem>
+                {selectableOffers.map((offer) => (
+                  <MenuItem key={offer.id} value={offer.id}>
+                    {`${offer.candidate_name || 'Ukjent kandidat'}${offer.role_name ? ` · ${offer.role_name}` : ''}`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
             <FormControl fullWidth>
               <InputLabel>Kandidat *</InputLabel>
               <Select

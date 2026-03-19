@@ -5,6 +5,7 @@ import {
   type ProducerEconomyItem,
   type UpdateProducerEconomyItemInput,
 } from '../services/producerWorkflowService';
+import { onProducerWorkflowEvent } from '../services/producerWorkflowEvents';
 
 export function useProducerEconomy(projectId?: string) {
   const [items, setItems] = useState<ProducerEconomyItem[]>([]);
@@ -32,6 +33,19 @@ export function useProducerEconomy(projectId?: string) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!projectId) {
+      return () => undefined;
+    }
+
+    return onProducerWorkflowEvent((payload) => {
+      if (payload.projectId !== projectId || payload.domain !== 'economy') {
+        return;
+      }
+      void load();
+    });
+  }, [load, projectId]);
 
   const createItem = useCallback(async (payload: CreateProducerEconomyItemInput) => {
     if (!projectId) throw new Error('Mangler projectId');

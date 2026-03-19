@@ -4,47 +4,43 @@ import {
   PRODUCER_DEMO_REVIEW_SEED,
   PRODUCER_DEMO_TIMELINE_SEED,
 } from '../constants/producerDemo';
+import type {
+  CastingProject,
+  ProducerClientIntake,
+  ProducerClientMaterial,
+  ProducerClientMaterialType,
+  ProducerWorkflowProjectMeta,
+  ProducerWorkflowProjectStatus,
+} from '../models/casting';
 import authSessionService from './authSessionService';
-
-const API_BASE = '/api/role-room';
-
-function getAuthHeaders(): Record<string, string> {
-  return authSessionService.getAuthHeadersSync();
-}
-
-async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const raw = await response.text().catch(() => '');
-    let parsed: unknown = null;
-    if (raw) {
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        parsed = raw;
-      }
-    }
-    const detail = typeof parsed === 'object' && parsed && 'error' in parsed
-      ? String((parsed as { error?: unknown }).error ?? `Request failed (${response.status})`)
-      : raw || `Request failed (${response.status})`;
-    throw new Error(detail);
-  }
-
-  return response.json();
-}
+import { castingService } from './castingService';
+import { emitProducerWorkflowEvent } from './producerWorkflowEvents';
+import { getCurrentUserId, settingsService } from './settingsService';
+import {
+  getProducerPlanningClientMoments,
+  summarizeProducerClientGrounding,
+} from '../utils/producerProjectPlanning';
 
 export type ProducerPhase = 'preproduction' | 'production' | 'postproduction';
 export type ProducerReviewDecision = 'approved' | 'rejected' | 'changes_requested';
 
 let contentProducerWorkflowInitPromise: Promise<void> | null = null;
+const API_BASE = '/api/role-room';
+
+const TIMELINE_NAMESPACE = 'role-room-producer-timeline';
+const ECONOMY_NAMESPACE = 'role-room-producer-economy';
+const REVIEWS_NAMESPACE = 'role-room-producer-reviews';
+const SYNTHETIC_REVIEW_SOURCES = new Set(['codex-smoke', 'cli-smoke', 'smoke-test']);
+const SYNTHETIC_REVIEW_TITLE_PATTERN = /^(auto review|smoke review|rbac review|qa review(?:\s+\d+)?|qa budget sync|budget package \d+|codex-review-)/i;
+const CLIENT_INTAKE_TIMELINE_ENTITY_ID = 'client-intake';
+const CLIENT_MATERIAL_TIMELINE_ENTITY_ID = 'client-materials';
+const CLIENT_INTAKE_TIMELINE_SOURCE = 'client-intake-status';
+const CLIENT_MATERIAL_TIMELINE_SOURCE = 'client-material-status';
+const CLIENT_GROUNDING_REVIEW_SOURCE = 'client-grounding';
+const CLIENT_INTAKE_REVIEW_TYPE = 'client_intake_request';
+const CLIENT_MATERIAL_REVIEW_TYPE = 'client_material_request';
+
+type LooseRecord = Record<string, unknown>;
 
 export interface ProducerTimelineItem {
   id: string;
@@ -163,6 +159,21 @@ export interface CreateProducerReviewInput {
   metadata?: Record<string, unknown>;
 }
 
+export type UpdateProducerReviewInput = Partial<CreateProducerReviewInput>;
+
+export interface CreateProducerClientMaterialInput {
+  entryType: ProducerClientMaterialType;
+  title: string;
+  description?: string;
+  externalUrl?: string;
+  phase?: ProducerPhase;
+  linkedShotListId?: string;
+  status?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type UpdateProducerClientMaterialInput = Partial<CreateProducerClientMaterialInput>;
+
 export interface AddProducerReviewCommentInput {
   commentText: string;
   timestampSeconds?: number;
@@ -174,9 +185,1096 @@ export interface SetProducerReviewDecisionInput {
   timestampSeconds?: number;
 }
 
+function normalizeClientIntake(value: unknown): ProducerClientIntake {
+  const record = asRecord(value);
+  return {
+    projectGoal: readFirstNonEmptyString(record.project_goal, record.projectGoal) ?? '',
+    deliverables: readFirstNonEmptyString(record.deliverables) ?? '',
+    targetAudience: readFirstNonEmptyString(record.target_audience, record.targetAudience) ?? '',
+    keyMessage: readFirstNonEmptyString(record.key_message, record.keyMessage) ?? '',
+    timingConstraints: readFirstNonEmptyString(record.timing_constraints, record.timingConstraints) ?? '',
+    brandNotes: readFirstNonEmptyString(record.brand_notes, record.brandNotes) ?? '',
+    materialOverview: readFirstNonEmptyString(record.material_overview, record.materialOverview) ?? '',
+    referenceLinks: readFirstNonEmptyString(record.reference_links, record.referenceLinks) ?? '',
+    contactName: readFirstNonEmptyString(record.contact_name, record.contactName) ?? '',
+    contactEmail: readFirstNonEmptyString(record.contact_email, record.contactEmail) ?? '',
+    contactPhone: readFirstNonEmptyString(record.contact_phone, record.contactPhone) ?? '',
+    additionalNotes: readFirstNonEmptyString(record.additional_notes, record.additionalNotes) ?? '',
+    updatedAt: readFirstNonEmptyString(record.updated_at, record.updatedAt) ?? undefined,
+    updatedByRole: readFirstNonEmptyString(record.updated_by_role, record.updatedByRole) ?? undefined,
+  };
+}
+
+function normalizeClientMaterial(value: unknown, projectId: string): ProducerClientMaterial {
+  const record = asRecord(value);
+  const createdAt = readFirstNonEmptyString(record.created_at, record.createdAt) ?? nowIso();
+  const updatedAt = readFirstNonEmptyString(record.updated_at, record.updatedAt) ?? createdAt;
+  const rawPhase = readFirstNonEmptyString(record.phase);
+  const phase = rawPhase === 'preproduction' || rawPhase === 'production' || rawPhase === 'postproduction'
+    ? rawPhase
+    : null;
+
+  return {
+    id: readFirstNonEmptyString(record.id) ?? generateId('producer-client-material'),
+    project_id: readFirstNonEmptyString(record.project_id, record.projectId) ?? projectId,
+    entry_type: (
+      readFirstNonEmptyString(record.entry_type, record.entryType) as ProducerClientMaterialType | undefined
+    ) ?? 'document',
+    title: readFirstNonEmptyString(record.title) ?? 'Uten tittel',
+    description: readFirstNonEmptyString(record.description) ?? null,
+    external_url: readFirstNonEmptyString(record.external_url, record.externalUrl) ?? null,
+    phase,
+    linked_shot_list_id: readFirstNonEmptyString(record.linked_shot_list_id, record.linkedShotListId) ?? null,
+    status: readFirstNonEmptyString(record.status) ?? 'provided',
+    metadata: normalizeMetadata(record.metadata),
+    created_by_user_id: readFirstNonEmptyString(record.created_by_user_id, record.createdByUserId) ?? null,
+    created_by_role: readFirstNonEmptyString(record.created_by_role, record.createdByRole) ?? null,
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+}
+
+function hasMeaningfulClientIntake(intake: ProducerClientIntake): boolean {
+  return [
+    intake.projectGoal,
+    intake.deliverables,
+    intake.targetAudience,
+    intake.keyMessage,
+    intake.timingConstraints,
+    intake.brandNotes,
+    intake.materialOverview,
+    intake.referenceLinks,
+    intake.contactName,
+    intake.contactEmail,
+    intake.contactPhone,
+    intake.additionalNotes,
+  ].some((value) => typeof value === 'string' && value.trim().length > 0);
+}
+
+function buildClientIntakeTimelinePayload(
+  intake: ProducerClientIntake,
+  materials: ProducerClientMaterial[],
+): CreateProducerTimelineItemInput | null {
+  if (!hasMeaningfulClientIntake(intake)) {
+    return null;
+  }
+
+  const grounding = summarizeProducerClientGrounding(intake, materials);
+  const missingEssentials = grounding.missingEssentials.slice(0, 3);
+  const detailParts = [
+    intake.projectGoal ? `Mål: ${intake.projectGoal}` : null,
+    intake.deliverables ? `Leveranser: ${intake.deliverables}` : null,
+    intake.targetAudience ? `Målgruppe: ${intake.targetAudience}` : null,
+    intake.keyMessage ? `Budskap: ${intake.keyMessage}` : null,
+    [intake.contactName, intake.contactEmail, intake.contactPhone]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join(' · '),
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  if (missingEssentials.length > 0) {
+    detailParts.push(`Manglende avklaringer: ${missingEssentials.join(', ')}`);
+  }
+
+  return {
+    phase: 'preproduction',
+    title: grounding.briefReadyCount >= grounding.totalBriefFields
+      ? 'Klientbrief er klar for produksjon'
+      : 'Klientbrief trenger avklaringer',
+    description: detailParts.join(' · '),
+    dueAt: undefined,
+    status: grounding.briefReadyCount >= grounding.totalBriefFields
+      ? 'completed'
+      : grounding.briefReadyCount >= 3
+        ? 'in_progress'
+        : 'blocked',
+    linkedEntityType: 'client_intake',
+    linkedEntityId: CLIENT_INTAKE_TIMELINE_ENTITY_ID,
+    metadata: {
+      source: CLIENT_INTAKE_TIMELINE_SOURCE,
+      briefReadyCount: grounding.briefReadyCount,
+      totalBriefFields: grounding.totalBriefFields,
+      missingEssentials,
+      updatedAt: intake.updatedAt ?? null,
+      updatedByRole: intake.updatedByRole ?? null,
+      contactName: intake.contactName ?? '',
+      contactEmail: intake.contactEmail ?? '',
+      materialCount: grounding.materialCount,
+    },
+  };
+}
+
+function getMaterialPriorityValue(material: ProducerClientMaterial): 'critical' | 'important' | 'reference' {
+  const metadata = asRecord(material.metadata);
+  const priority = readFirstNonEmptyString(metadata.priority);
+  if (priority === 'critical' || priority === 'reference') {
+    return priority;
+  }
+  return 'important';
+}
+
+function getClientMaterialTimelinePhase(materials: ProducerClientMaterial[]): ProducerPhase {
+  const phases = materials
+    .map((material) => material.phase)
+    .filter((phase): phase is ProducerPhase => (
+      phase === 'preproduction' || phase === 'production' || phase === 'postproduction'
+    ));
+
+  if (phases.includes('preproduction')) {
+    return 'preproduction';
+  }
+  if (phases.includes('production')) {
+    return 'production';
+  }
+  return 'postproduction';
+}
+
+function buildClientMaterialsTimelinePayload(
+  intake: ProducerClientIntake,
+  materials: ProducerClientMaterial[],
+): CreateProducerTimelineItemInput | null {
+  if (materials.length === 0) {
+    return null;
+  }
+
+  const grounding = summarizeProducerClientGrounding(intake, materials);
+  const criticalCount = materials.filter((material) => getMaterialPriorityValue(material) === 'critical').length;
+  const outdatedCount = materials.filter((material) => material.status === 'outdated').length;
+  const inReviewCount = materials.filter((material) => material.status === 'in_review').length;
+  const approvedCount = materials.filter((material) => material.status === 'approved').length;
+  const brandAssetCount = grounding.materialsByType.brand_asset ?? 0;
+  const latestMaterialAt = materials
+    .map((material) => Date.parse(material.updated_at ?? material.created_at ?? ''))
+    .filter((timestamp) => Number.isFinite(timestamp))
+    .sort((left, right) => right - left)[0];
+
+  const status = outdatedCount > 0
+    ? 'blocked'
+    : approvedCount === materials.length
+      ? 'completed'
+      : 'in_progress';
+
+  const summaryParts = [
+    `${materials.length} material${materials.length === 1 ? '' : 'er'} registrert`,
+    criticalCount > 0 ? `${criticalCount} kritisk${criticalCount === 1 ? '' : 'e'}` : null,
+    brandAssetCount > 0 ? `${brandAssetCount} merkevarefil${brandAssetCount === 1 ? '' : 'er'}` : 'Merkevarefiler mangler',
+    grounding.topMaterialTitles.length > 0 ? `Nøkler: ${grounding.topMaterialTitles.slice(0, 3).join(', ')}` : null,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return {
+    phase: getClientMaterialTimelinePhase(materials),
+    title: outdatedCount > 0
+      ? 'Klientmateriale trenger oppdatering'
+      : criticalCount > 0
+        ? 'Klientmateriale krever gjennomgang'
+        : 'Klientmateriale er klart til bruk',
+    description: summaryParts.join(' · '),
+    status,
+    linkedEntityType: 'client_material',
+    linkedEntityId: CLIENT_MATERIAL_TIMELINE_ENTITY_ID,
+    metadata: {
+      source: CLIENT_MATERIAL_TIMELINE_SOURCE,
+      materialCount: materials.length,
+      criticalCount,
+      outdatedCount,
+      inReviewCount,
+      approvedCount,
+      materialsByType: grounding.materialsByType,
+      materialsByPhase: grounding.materialsByPhase,
+      topMaterialTitles: grounding.topMaterialTitles,
+      latestMaterialAt: Number.isFinite(latestMaterialAt) ? new Date(latestMaterialAt).toISOString() : null,
+      materialOverview: intake.materialOverview ?? '',
+    },
+  };
+}
+
+function buildClientIntakeReviewPayload(
+  intake: ProducerClientIntake,
+  materials: ProducerClientMaterial[],
+): CreateProducerReviewInput | null {
+  const grounding = summarizeProducerClientGrounding(intake, materials);
+  if (grounding.briefReadyCount >= grounding.totalBriefFields) {
+    return null;
+  }
+
+  const missingEssentials = grounding.missingEssentials.slice(0, 5);
+  const detailParts = [
+    'Klienten må fylle inn briefen før plan, økonomi og leveranser kan låses.',
+    missingEssentials.length > 0 ? `Mangler: ${missingEssentials.join(', ')}` : null,
+    hasText(intake.projectGoal) ? `Nåværende mål: ${intake.projectGoal}` : null,
+    hasText(intake.deliverables) ? `Leveranser: ${intake.deliverables}` : null,
+    hasText(intake.contactName) || hasText(intake.contactEmail)
+      ? `Kontakt: ${[intake.contactName, intake.contactEmail].filter(hasText).join(' · ')}`
+      : null,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return {
+    reviewType: CLIENT_INTAKE_REVIEW_TYPE,
+    title: grounding.briefReadyCount === 0
+      ? 'Klienten må fylle inn prosjektbrief'
+      : 'Klientbrief trenger flere avklaringer',
+    description: detailParts.join(' · '),
+    targetEntityType: 'client_intake',
+    targetEntityId: CLIENT_INTAKE_TIMELINE_ENTITY_ID,
+    metadata: {
+      source: CLIENT_GROUNDING_REVIEW_SOURCE,
+      groundingEntity: 'client_intake',
+      focusedPhase: 'preproduction',
+      phase: 'preproduction',
+      briefReadyCount: grounding.briefReadyCount,
+      totalBriefFields: grounding.totalBriefFields,
+      missingEssentials,
+      materialCount: grounding.materialCount,
+    },
+  };
+}
+
+function buildClientMaterialsReviewPayload(
+  intake: ProducerClientIntake,
+  materials: ProducerClientMaterial[],
+): CreateProducerReviewInput | null {
+  const grounding = summarizeProducerClientGrounding(intake, materials);
+  const outdatedCount = materials.filter((material) => material.status === 'outdated').length;
+  const brandAssetCount = grounding.materialsByType.brand_asset ?? 0;
+  const referenceCount = grounding.materialsByType.reference ?? 0;
+  const documentCount = grounding.materialsByType.document ?? 0;
+  const feedbackCount = grounding.materialsByType.feedback ?? 0;
+  const expectsFeedback = materials.some((material) => (
+    material.status === 'in_review'
+    || material.phase === 'postproduction'
+  ));
+
+  const missingItems = [
+    materials.length === 0 ? 'Ingen klientmaterialer er lastet opp ennå' : null,
+    outdatedCount > 0 ? `${outdatedCount} material${outdatedCount === 1 ? '' : 'er'} trenger oppdatering` : null,
+    brandAssetCount === 0 ? 'Logo og merkevarefiler mangler' : null,
+    referenceCount === 0 && !hasText(intake.referenceLinks) ? 'Referanser eller visuell retning mangler' : null,
+    documentCount === 0 ? 'Dokumentasjon eller prosjektkrav mangler' : null,
+    expectsFeedback && feedbackCount === 0 ? 'Ingen klienttilbakemelding er registrert ennå' : null,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  if (missingItems.length === 0) {
+    return null;
+  }
+
+  const detailParts = [
+    'Klienten må laste opp eller oppdatere materiale for at produsenten skal kunne planlegge og levere konsistent.',
+    `Behov nå: ${missingItems.join(', ')}`,
+    grounding.topMaterialTitles.length > 0
+      ? `Tilgjengelig nå: ${grounding.topMaterialTitles.slice(0, 3).join(', ')}`
+      : null,
+    hasText(intake.materialOverview) ? `Materialoversikt: ${intake.materialOverview}` : null,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return {
+    reviewType: CLIENT_MATERIAL_REVIEW_TYPE,
+    title: materials.length === 0
+      ? 'Klienten må legge inn prosjektmateriale'
+      : 'Klientmateriale må suppleres eller oppdateres',
+    description: detailParts.join(' · '),
+    targetEntityType: 'client_material',
+    targetEntityId: CLIENT_MATERIAL_TIMELINE_ENTITY_ID,
+    metadata: {
+      source: CLIENT_GROUNDING_REVIEW_SOURCE,
+      groundingEntity: 'client_material',
+      focusedPhase: 'preproduction',
+      phase: 'preproduction',
+      materialCount: grounding.materialCount,
+      materialsByType: grounding.materialsByType,
+      materialsByPhase: grounding.materialsByPhase,
+      missingItems,
+      topMaterialTitles: grounding.topMaterialTitles,
+    },
+  };
+}
+
+function matchesTimelinePayload(
+  item: ProducerTimelineItem,
+  payload: CreateProducerTimelineItemInput,
+): boolean {
+  const payloadMetadata = payload.metadata ?? {};
+  return item.phase === payload.phase
+    && item.title === payload.title
+    && (item.description ?? null) === (payload.description ?? null)
+    && (item.status ?? 'planned') === (payload.status ?? 'planned')
+    && (item.linked_entity_type ?? null) === (payload.linkedEntityType ?? null)
+    && (item.linked_entity_id ?? null) === (payload.linkedEntityId ?? null)
+    && JSON.stringify(item.metadata ?? {}) === JSON.stringify(payloadMetadata);
+}
+
+async function syncClientGroundingTimeline(projectId: string): Promise<void> {
+  const [timelineItems, intake, materials] = await Promise.all([
+    producerWorkflowService.getTimeline(projectId),
+    producerWorkflowService.getClientIntake(projectId),
+    producerWorkflowService.getClientMaterials(projectId),
+  ]);
+
+  const timelineDefinitions = [
+    {
+      source: CLIENT_INTAKE_TIMELINE_SOURCE,
+      linkedEntityType: 'client_intake',
+      linkedEntityId: CLIENT_INTAKE_TIMELINE_ENTITY_ID,
+      payload: buildClientIntakeTimelinePayload(intake, materials),
+    },
+    {
+      source: CLIENT_MATERIAL_TIMELINE_SOURCE,
+      linkedEntityType: 'client_material',
+      linkedEntityId: CLIENT_MATERIAL_TIMELINE_ENTITY_ID,
+      payload: buildClientMaterialsTimelinePayload(intake, materials),
+    },
+  ] as const;
+
+  for (const definition of timelineDefinitions) {
+    const existing = timelineItems.find((item) => {
+      const metadata = asRecord(item.metadata);
+      return readFirstNonEmptyString(metadata.source) === definition.source
+        || (
+          item.linked_entity_type === definition.linkedEntityType
+          && item.linked_entity_id === definition.linkedEntityId
+        );
+    });
+
+    if (!definition.payload) {
+      if (existing) {
+        await producerWorkflowService.deleteTimelineItem(projectId, existing.id);
+      }
+      continue;
+    }
+
+    if (!existing) {
+      await producerWorkflowService.createTimelineItem(projectId, definition.payload);
+      continue;
+    }
+
+    if (!matchesTimelinePayload(existing, definition.payload)) {
+      await producerWorkflowService.updateTimelineItem(projectId, existing.id, definition.payload);
+    }
+  }
+}
+
+async function syncClientGroundingReviews(projectId: string): Promise<void> {
+  const [currentReviews, intake, materials] = await Promise.all([
+    producerWorkflowService.getReviews(projectId),
+    producerWorkflowService.getClientIntake(projectId),
+    producerWorkflowService.getClientMaterials(projectId),
+  ]);
+
+  const reviewDefinitions = [
+    {
+      reviewType: CLIENT_INTAKE_REVIEW_TYPE,
+      targetEntityType: 'client_intake',
+      targetEntityId: CLIENT_INTAKE_TIMELINE_ENTITY_ID,
+      payload: buildClientIntakeReviewPayload(intake, materials),
+      resolvedReason: 'Klientbriefen er nå fylt ut og klar til bruk i videre planlegging.',
+    },
+    {
+      reviewType: CLIENT_MATERIAL_REVIEW_TYPE,
+      targetEntityType: 'client_material',
+      targetEntityId: CLIENT_MATERIAL_TIMELINE_ENTITY_ID,
+      payload: buildClientMaterialsReviewPayload(intake, materials),
+      resolvedReason: 'Klientmaterialet er nå oppdatert og kan brukes i plan, produksjon og levering.',
+    },
+  ] as const;
+
+  for (const definition of reviewDefinitions) {
+    const relatedReviews = currentReviews
+      .filter((review) => {
+        const metadata = asRecord(review.metadata);
+        return readFirstNonEmptyString(metadata.source) === CLIENT_GROUNDING_REVIEW_SOURCE
+          && (
+            review.review_type === definition.reviewType
+            || (
+              review.target_entity_type === definition.targetEntityType
+              && review.target_entity_id === definition.targetEntityId
+            )
+          );
+      })
+      .sort((left, right) => getReviewActivityTimestamp(right) - getReviewActivityTimestamp(left));
+
+    const openReview = relatedReviews.find((review) => isPendingReviewStatus(review.status));
+
+    if (!definition.payload) {
+      if (openReview) {
+        await producerWorkflowService.setReviewDecisionWithTimeline(projectId, openReview.id, {
+          decision: 'approved',
+          reason: definition.resolvedReason,
+        });
+      }
+      continue;
+    }
+
+    if (!openReview) {
+      await producerWorkflowService.createReviewWithTimeline(projectId, definition.payload);
+      continue;
+    }
+
+    if (!isReviewEquivalentToPayload(openReview, definition.payload)) {
+      await producerWorkflowService.updateReviewWithTimeline(projectId, openReview.id, definition.payload);
+    }
+  }
+}
+
+function asRecord(value: unknown): LooseRecord {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as LooseRecord;
+  }
+  return {};
+}
+
+function buildAuthHeaders(): Record<string, string> {
+  const headers = authSessionService.getAuthHeadersSync();
+  const session = authSessionService.getSessionSync();
+  const adminUser = session.adminUser;
+
+  if (typeof session.currentUserId === 'string' && session.currentUserId.trim().length > 0) {
+    headers['x-role-room-user-id'] = session.currentUserId.trim();
+  }
+  if (typeof adminUser?.email === 'string' && adminUser.email.trim().length > 0) {
+    headers['x-role-room-email'] = adminUser.email.trim();
+  }
+  if (typeof adminUser?.role === 'string' && adminUser.role.trim().length > 0) {
+    headers['x-role-room-role'] = adminUser.role.trim();
+  }
+  if (typeof adminUser?.loginAs === 'string' && adminUser.loginAs.trim().length > 0) {
+    headers['x-role-room-login-as'] = adminUser.loginAs.trim();
+  }
+  if (typeof adminUser?.requestedRole === 'string' && adminUser.requestedRole.trim().length > 0) {
+    headers['x-role-room-requested-role'] = adminUser.requestedRole.trim();
+  }
+
+  return headers;
+}
+
+async function producerWorkflowRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildAuthHeaders(),
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const rawBody = await response.text().catch(() => '');
+    let parsedBody: unknown = null;
+    if (rawBody) {
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        parsedBody = rawBody;
+      }
+    }
+
+    const errorRecord = asRecord(parsedBody);
+    const detail =
+      readFirstNonEmptyString(errorRecord.error, errorRecord.message, errorRecord.detail)
+      ?? (typeof parsedBody === 'string' && parsedBody.trim().length > 0 ? parsedBody.trim() : undefined)
+      ?? `Producer workflow request failed (${response.status})`;
+
+    throw new Error(detail);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const responseText = await response.text();
+  if (!responseText.trim()) {
+    return undefined as T;
+  }
+
+  return JSON.parse(responseText) as T;
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function generateId(prefix: string): string {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return `${prefix}-${globalThis.crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function readFirstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
 function readSeedKey(metadata?: Record<string, unknown> | null): string | null {
   const value = metadata?.seedKey;
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeMetadata(metadata: unknown): Record<string, unknown> | undefined {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return undefined;
+  }
+  return { ...(metadata as Record<string, unknown>) };
+}
+
+function normalizePhase(value: unknown): ProducerPhase {
+  if (value === 'production' || value === 'postproduction') {
+    return value;
+  }
+  return 'preproduction';
+}
+
+function normalizeBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    return value.toLowerCase() === 'true';
+  }
+  return fallback;
+}
+
+function normalizeNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
+
+function getActorUserId(): string {
+  const session = authSessionService.getSessionSync();
+  return (
+    readFirstNonEmptyString(
+      session.currentUserId,
+      session.adminUser?.email,
+      session.adminUser?.id !== undefined && session.adminUser?.id !== null ? String(session.adminUser.id) : undefined,
+      getCurrentUserId(),
+    )
+    ?? 'default-user'
+  );
+}
+
+type ProducerWorkspaceSessionRole = 'production_team' | 'content_producer' | 'client_reviewer';
+
+function getCurrentProducerWorkspaceSessionRole(): ProducerWorkspaceSessionRole {
+  const session = authSessionService.getSessionSync();
+  const normalizedRole = readFirstNonEmptyString(session.adminUser?.role)?.toLowerCase();
+  const normalizedLoginAs = readFirstNonEmptyString(session.adminUser?.loginAs)?.toLowerCase();
+  const normalizedRequestedRole = readFirstNonEmptyString(session.adminUser?.requestedRole)?.toLowerCase();
+
+  if (normalizedLoginAs === 'content_producer') {
+    if (normalizedRequestedRole === 'client' || normalizedRequestedRole === 'client_reviewer') {
+      return 'client_reviewer';
+    }
+    return 'content_producer';
+  }
+
+  if (normalizedRequestedRole === 'client' || normalizedRequestedRole === 'client_reviewer') {
+    return 'client_reviewer';
+  }
+
+  if (normalizedRequestedRole === 'content_producer') {
+    return 'content_producer';
+  }
+
+  if (normalizedRole === 'client_reviewer') {
+    return 'client_reviewer';
+  }
+
+  if (normalizedRole === 'content_producer') {
+    return 'content_producer';
+  }
+
+  return 'production_team';
+}
+
+function canCurrentSessionMutateProducerWorkflow(): boolean {
+  return getCurrentProducerWorkspaceSessionRole() !== 'client_reviewer';
+}
+
+function compareIso(left?: string | null, right?: string | null): number {
+  if (!left && !right) return 0;
+  if (!left) return 1;
+  if (!right) return -1;
+  return left.localeCompare(right, 'nb-NO');
+}
+
+function sortTimelineItems(items: ProducerTimelineItem[]): ProducerTimelineItem[] {
+  const phaseRank: Record<ProducerPhase, number> = {
+    preproduction: 0,
+    production: 1,
+    postproduction: 2,
+  };
+
+  return [...items].sort((left, right) => {
+    const phaseDelta = phaseRank[left.phase] - phaseRank[right.phase];
+    if (phaseDelta !== 0) {
+      return phaseDelta;
+    }
+    const sortDelta = left.sort_order - right.sort_order;
+    if (sortDelta !== 0) {
+      return sortDelta;
+    }
+    const dueDelta = compareIso(left.due_at, right.due_at);
+    if (dueDelta !== 0) {
+      return dueDelta;
+    }
+    return compareIso(left.created_at, right.created_at);
+  });
+}
+
+function sortEconomyItems(items: ProducerEconomyItem[]): ProducerEconomyItem[] {
+  const phaseRank: Record<ProducerPhase, number> = {
+    preproduction: 0,
+    production: 1,
+    postproduction: 2,
+  };
+
+  return [...items].sort((left, right) => {
+    const phaseDelta = phaseRank[left.phase] - phaseRank[right.phase];
+    if (phaseDelta !== 0) {
+      return phaseDelta;
+    }
+    const sortDelta = left.sort_order - right.sort_order;
+    if (sortDelta !== 0) {
+      return sortDelta;
+    }
+    return compareIso(left.created_at, right.created_at);
+  });
+}
+
+function sortReviewComments(items: ProducerReviewComment[]): ProducerReviewComment[] {
+  return [...items].sort((left, right) => compareIso(left.created_at, right.created_at));
+}
+
+function sortReviews(items: ProducerClientReview[]): ProducerClientReview[] {
+  return [...items].sort((left, right) => compareIso(right.requested_at, left.requested_at));
+}
+
+function normalizeTimelineItem(value: unknown, projectId: string, index = 0): ProducerTimelineItem {
+  const record = asRecord(value);
+  const createdAt = readFirstNonEmptyString(record.created_at, record.createdAt) ?? nowIso();
+  const updatedAt = readFirstNonEmptyString(record.updated_at, record.updatedAt) ?? createdAt;
+
+  return {
+    id: readFirstNonEmptyString(record.id) ?? generateId('producer-timeline'),
+    project_id: readFirstNonEmptyString(record.project_id, record.projectId) ?? projectId,
+    phase: normalizePhase(record.phase),
+    title: readFirstNonEmptyString(record.title) ?? 'Ny milepæl',
+    description: readFirstNonEmptyString(record.description) ?? null,
+    owner_user_id: readFirstNonEmptyString(record.owner_user_id, record.ownerUserId) ?? null,
+    due_at: readFirstNonEmptyString(record.due_at, record.dueAt) ?? null,
+    status: readFirstNonEmptyString(record.status) ?? 'planned',
+    linked_entity_type: readFirstNonEmptyString(record.linked_entity_type, record.linkedEntityType) ?? null,
+    linked_entity_id: readFirstNonEmptyString(record.linked_entity_id, record.linkedEntityId) ?? null,
+    sort_order: normalizeNumber(record.sort_order ?? record.sortOrder, index),
+    metadata: normalizeMetadata(record.metadata),
+    created_by: readFirstNonEmptyString(record.created_by, record.createdBy) ?? getActorUserId(),
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+}
+
+function normalizeEconomyItem(value: unknown, projectId: string, index = 0): ProducerEconomyItem {
+  const record = asRecord(value);
+  const createdAt = readFirstNonEmptyString(record.created_at, record.createdAt) ?? nowIso();
+  const updatedAt = readFirstNonEmptyString(record.updated_at, record.updatedAt) ?? createdAt;
+
+  return {
+    id: readFirstNonEmptyString(record.id) ?? generateId('producer-economy'),
+    project_id: readFirstNonEmptyString(record.project_id, record.projectId) ?? projectId,
+    phase: normalizePhase(record.phase),
+    category: readFirstNonEmptyString(record.category) ?? 'Ukategorisert',
+    item_name: readFirstNonEmptyString(record.item_name, record.itemName) ?? 'Ny kostlinje',
+    description: readFirstNonEmptyString(record.description) ?? null,
+    estimate: normalizeNumber(record.estimate),
+    approved: normalizeNumber(record.approved),
+    actual: normalizeNumber(record.actual),
+    currency: readFirstNonEmptyString(record.currency) ?? 'NOK',
+    status: readFirstNonEmptyString(record.status) ?? 'draft',
+    client_visible: normalizeBoolean(record.client_visible ?? record.clientVisible, true),
+    linked_entity_type: readFirstNonEmptyString(record.linked_entity_type, record.linkedEntityType) ?? null,
+    linked_entity_id: readFirstNonEmptyString(record.linked_entity_id, record.linkedEntityId) ?? null,
+    sort_order: normalizeNumber(record.sort_order ?? record.sortOrder, index),
+    metadata: normalizeMetadata(record.metadata),
+    created_by: readFirstNonEmptyString(record.created_by, record.createdBy) ?? getActorUserId(),
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+}
+
+function normalizeReviewComment(value: unknown, projectId: string, reviewId: string): ProducerReviewComment {
+  const record = asRecord(value);
+  const createdAt = readFirstNonEmptyString(record.created_at, record.createdAt) ?? nowIso();
+  const updatedAt = readFirstNonEmptyString(record.updated_at, record.updatedAt) ?? createdAt;
+  const rawTimestamp = record.timestamp_seconds ?? record.timestampSeconds;
+  const normalizedTimestamp =
+    rawTimestamp === null || rawTimestamp === undefined
+      ? null
+      : normalizeNumber(rawTimestamp, Number.NaN);
+
+  return {
+    id: readFirstNonEmptyString(record.id) ?? generateId('producer-review-comment'),
+    review_id: readFirstNonEmptyString(record.review_id, record.reviewId) ?? reviewId,
+    project_id: readFirstNonEmptyString(record.project_id, record.projectId) ?? projectId,
+    author_user_id: readFirstNonEmptyString(record.author_user_id, record.authorUserId) ?? null,
+    author_role: readFirstNonEmptyString(record.author_role, record.authorRole) ?? null,
+    comment_text: readFirstNonEmptyString(record.comment_text, record.commentText) ?? '',
+    timestamp_seconds: Number.isFinite(normalizedTimestamp) ? normalizedTimestamp : null,
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+}
+
+function normalizeReview(value: unknown, projectId: string): ProducerClientReview {
+  const record = asRecord(value);
+  const reviewId = readFirstNonEmptyString(record.id) ?? generateId('producer-review');
+  const createdAt = readFirstNonEmptyString(record.created_at, record.createdAt) ?? nowIso();
+  const requestedAt = readFirstNonEmptyString(record.requested_at, record.requestedAt) ?? createdAt;
+  const updatedAt = readFirstNonEmptyString(record.updated_at, record.updatedAt) ?? requestedAt;
+  const rawComments = Array.isArray(record.comments) ? record.comments : [];
+
+  return {
+    id: reviewId,
+    project_id: readFirstNonEmptyString(record.project_id, record.projectId) ?? projectId,
+    review_type: readFirstNonEmptyString(record.review_type, record.reviewType) ?? 'shotlist',
+    title: readFirstNonEmptyString(record.title) ?? 'Ny klientgodkjenning',
+    description: readFirstNonEmptyString(record.description) ?? null,
+    target_entity_type: readFirstNonEmptyString(record.target_entity_type, record.targetEntityType) ?? null,
+    target_entity_id: readFirstNonEmptyString(record.target_entity_id, record.targetEntityId) ?? null,
+    requested_by_user_id: readFirstNonEmptyString(record.requested_by_user_id, record.requestedByUserId) ?? getActorUserId(),
+    requested_at: requestedAt,
+    due_at: readFirstNonEmptyString(record.due_at, record.dueAt) ?? null,
+    status: readFirstNonEmptyString(record.status) ?? 'pending',
+    decision_by_user_id: readFirstNonEmptyString(record.decision_by_user_id, record.decisionByUserId) ?? null,
+    decision_at: readFirstNonEmptyString(record.decision_at, record.decisionAt) ?? null,
+    decision_reason: readFirstNonEmptyString(record.decision_reason, record.decisionReason) ?? null,
+    metadata: normalizeMetadata(record.metadata),
+    created_at: createdAt,
+    updated_at: updatedAt,
+    comments: sortReviewComments(
+      rawComments
+        .map((comment) => normalizeReviewComment(comment, projectId, reviewId))
+        .filter((comment) => comment.comment_text.trim().length > 0),
+    ),
+  };
+}
+
+async function readLegacyTimelineStore(projectId: string): Promise<ProducerTimelineItem[]> {
+  const stored = await settingsService.getSetting<ProducerTimelineItem[]>(TIMELINE_NAMESPACE, { projectId });
+  if (!Array.isArray(stored)) {
+    return [];
+  }
+  return sortTimelineItems(stored.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+}
+
+async function clearLegacyTimelineStore(projectId: string): Promise<void> {
+  await settingsService.setSetting(TIMELINE_NAMESPACE, [], { projectId });
+}
+
+async function readLegacyEconomyStore(projectId: string): Promise<ProducerEconomyItem[]> {
+  const stored = await settingsService.getSetting<ProducerEconomyItem[]>(ECONOMY_NAMESPACE, { projectId });
+  if (!Array.isArray(stored)) {
+    return [];
+  }
+  return sortEconomyItems(stored.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+}
+
+async function clearLegacyEconomyStore(projectId: string): Promise<void> {
+  await settingsService.setSetting(ECONOMY_NAMESPACE, [], { projectId });
+}
+
+async function readLegacyReviewStore(projectId: string): Promise<ProducerClientReview[]> {
+  const stored = await settingsService.getSetting<ProducerClientReview[]>(REVIEWS_NAMESPACE, { projectId });
+  if (!Array.isArray(stored)) {
+    return [];
+  }
+  return sortReviews(stored.map((review) => normalizeReview(review, projectId)));
+}
+
+async function clearLegacyReviewStore(projectId: string): Promise<void> {
+  await settingsService.setSetting(REVIEWS_NAMESPACE, [], { projectId });
+}
+
+function buildDefinedBody(entries: Array<[string, unknown]>): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const [key, value] of entries) {
+    if (value !== undefined) {
+      body[key] = value;
+    }
+  }
+  return body;
+}
+
+async function fetchTimeline(projectId: string): Promise<ProducerTimelineItem[]> {
+  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/timeline`);
+  const items = Array.isArray(response.items) ? response.items : [];
+  return sortTimelineItems(items.map((item, index) => normalizeTimelineItem(item, projectId, index)));
+}
+
+async function fetchEconomy(projectId: string): Promise<ProducerEconomyItem[]> {
+  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/economy/items`);
+  const items = Array.isArray(response.items) ? response.items : [];
+  return sortEconomyItems(items.map((item, index) => normalizeEconomyItem(item, projectId, index)));
+}
+
+async function fetchReviews(projectId: string): Promise<ProducerClientReview[]> {
+  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/reviews`);
+  const items = Array.isArray(response.items) ? response.items : [];
+  return sortReviews(items.map((review) => normalizeReview(review, projectId)));
+}
+
+async function fetchClientIntake(projectId: string): Promise<ProducerClientIntake> {
+  const response = await producerWorkflowRequest<{ intake?: unknown | null }>(`/projects/${projectId}/producer/client-intake`);
+  return normalizeClientIntake(response.intake ?? {});
+}
+
+async function fetchClientMaterials(projectId: string): Promise<ProducerClientMaterial[]> {
+  const response = await producerWorkflowRequest<{ items?: unknown[] }>(`/projects/${projectId}/producer/client-materials`);
+  const items = Array.isArray(response.items) ? response.items : [];
+  return items
+    .map((item) => normalizeClientMaterial(item, projectId))
+    .sort((left, right) => compareIso(right.updated_at, left.updated_at));
+}
+
+async function migrateLegacyTimelineIfNeeded(projectId: string, currentItems: ProducerTimelineItem[]): Promise<ProducerTimelineItem[]> {
+  if (currentItems.length > 0) {
+    return currentItems;
+  }
+
+  if (!canCurrentSessionMutateProducerWorkflow()) {
+    return currentItems;
+  }
+
+  const legacyItems = await readLegacyTimelineStore(projectId);
+  if (legacyItems.length === 0) {
+    return currentItems;
+  }
+
+  for (const item of legacyItems) {
+    await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline`, {
+      method: 'POST',
+      body: JSON.stringify({
+        phase: item.phase,
+        title: item.title,
+        description: item.description ?? null,
+        ownerUserId: item.owner_user_id ?? null,
+        dueAt: item.due_at ?? null,
+        status: item.status,
+        linkedEntityType: item.linked_entity_type ?? null,
+        linkedEntityId: item.linked_entity_id ?? null,
+        sortOrder: item.sort_order,
+        metadata: item.metadata ?? {},
+      }),
+    });
+  }
+
+  await clearLegacyTimelineStore(projectId);
+  return fetchTimeline(projectId);
+}
+
+async function migrateLegacyEconomyIfNeeded(projectId: string, currentItems: ProducerEconomyItem[]): Promise<ProducerEconomyItem[]> {
+  if (currentItems.length > 0) {
+    return currentItems;
+  }
+
+  if (!canCurrentSessionMutateProducerWorkflow()) {
+    return currentItems;
+  }
+
+  const legacyItems = await readLegacyEconomyStore(projectId);
+  if (legacyItems.length === 0) {
+    return currentItems;
+  }
+
+  for (const item of legacyItems) {
+    await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items`, {
+      method: 'POST',
+      body: JSON.stringify({
+        phase: item.phase,
+        category: item.category,
+        itemName: item.item_name,
+        description: item.description ?? null,
+        estimate: normalizeNumber(item.estimate),
+        approved: normalizeNumber(item.approved),
+        actual: normalizeNumber(item.actual),
+        currency: item.currency,
+        status: item.status,
+        clientVisible: item.client_visible,
+        linkedEntityType: item.linked_entity_type ?? null,
+        linkedEntityId: item.linked_entity_id ?? null,
+        sortOrder: item.sort_order,
+        metadata: item.metadata ?? {},
+      }),
+    });
+  }
+
+  await clearLegacyEconomyStore(projectId);
+  return fetchEconomy(projectId);
+}
+
+async function migrateLegacyReviewsIfNeeded(projectId: string, currentItems: ProducerClientReview[]): Promise<ProducerClientReview[]> {
+  if (currentItems.length > 0) {
+    return currentItems;
+  }
+
+  if (!canCurrentSessionMutateProducerWorkflow()) {
+    return currentItems;
+  }
+
+  const legacyReviews = await readLegacyReviewStore(projectId);
+  if (legacyReviews.length === 0) {
+    return currentItems;
+  }
+
+  for (const review of legacyReviews) {
+    const createdResponse = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews`, {
+      method: 'POST',
+      body: JSON.stringify({
+        reviewType: review.review_type,
+        title: review.title,
+        description: review.description ?? null,
+        targetEntityType: review.target_entity_type ?? null,
+        targetEntityId: review.target_entity_id ?? null,
+        dueAt: review.due_at ?? null,
+        metadata: review.metadata ?? {},
+      }),
+    });
+
+    let migratedReview = normalizeReview(createdResponse.review, projectId);
+
+    for (const comment of review.comments ?? []) {
+      await producerWorkflowRequest<{ comment?: unknown }>(`/projects/${projectId}/producer/reviews/${migratedReview.id}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          commentText: comment.comment_text,
+          timestampSeconds: comment.timestamp_seconds ?? undefined,
+        }),
+      });
+    }
+
+    if (
+      review.status === 'approved'
+      || review.status === 'rejected'
+      || review.status === 'changes_requested'
+    ) {
+      const updatedResponse = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${migratedReview.id}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({
+          decision: review.status,
+          reason: review.decision_reason ?? undefined,
+          timestampSeconds: normalizeNumber(review.metadata?.decisionTimestampSeconds, Number.NaN),
+        }),
+      });
+      migratedReview = normalizeReview(updatedResponse.review, projectId);
+    }
+  }
+
+  await clearLegacyReviewStore(projectId);
+  return fetchReviews(projectId);
+}
+
+function getReviewTimelinePhase(
+  reviewType?: string,
+  targetEntityType?: string,
+  metadata?: Record<string, unknown> | null,
+): ProducerPhase {
+  const normalizedReviewType = (reviewType ?? '').trim().toLowerCase();
+  const normalizedTargetEntityType = (targetEntityType ?? '').trim().toLowerCase();
+  const metadataRecord = asRecord(metadata);
+  const focusedPhase = readFirstNonEmptyString(metadataRecord.focusedPhase, metadataRecord.phase);
+
+  if (focusedPhase === 'preproduction' || focusedPhase === 'production' || focusedPhase === 'postproduction') {
+    return focusedPhase;
+  }
+
+  if (normalizedReviewType === 'budget_package' || normalizedTargetEntityType === 'economy') {
+    return 'preproduction';
+  }
+
+  if (normalizedReviewType === 'change_order') {
+    return 'production';
+  }
+
+  if (normalizedTargetEntityType === 'project_agreement') {
+    return 'preproduction';
+  }
+
+  if (normalizedReviewType === 'phase_checkpoint' || normalizedTargetEntityType === 'phase_plan') {
+    return 'preproduction';
+  }
+
+  if (normalizedReviewType === 'framework_alignment' || normalizedTargetEntityType === 'planning_framework') {
+    return 'preproduction';
+  }
+
+  if (normalizedReviewType === 'content_delivery' || normalizedTargetEntityType === 'content_calendar') {
+    return 'postproduction';
+  }
+
+  if (['storyboard', 'manuscript', 'shotlist', 'scene_notes', 'location_plan', 'equipment_plan'].includes(normalizedReviewType)) {
+    return 'preproduction';
+  }
+
+  if (normalizedTargetEntityType === 'shot') {
+    return 'production';
+  }
+
+  if (normalizedTargetEntityType === 'scene') {
+    return 'preproduction';
+  }
+
+  return 'preproduction';
+}
+
+function getReviewTimelineStatus(reviewStatus?: string): string {
+  switch ((reviewStatus ?? '').trim().toLowerCase()) {
+    case 'approved':
+      return 'completed';
+    case 'rejected':
+    case 'changes_requested':
+      return 'blocked';
+    case 'in_progress':
+      return 'in_progress';
+    default:
+      return 'planned';
+  }
+}
+
+function getReviewTimelineTitle(review: ProducerClientReview): string {
+  return `Klientgodkjenning · ${review.title}`;
+}
+
+function getReviewTimelineDescription(review: ProducerClientReview): string {
+  const parts = [
+    review.description?.trim(),
+    review.status === 'approved'
+      ? 'Godkjent av klient.'
+      : review.status === 'changes_requested'
+        ? 'Klienten har bedt om endringer.'
+        : review.status === 'rejected'
+          ? 'Klienten har avslått leveransen.'
+          : 'Venter på klientgodkjenning.',
+    review.decision_reason?.trim(),
+  ].filter((value): value is string => Boolean(value && value.length > 0));
+
+  return parts.join(' ');
+}
+
+function isReviewTimelineItem(item: ProducerTimelineItem, reviewId: string): boolean {
+  if (item.linked_entity_type === 'client_review' && item.linked_entity_id === reviewId) {
+    return true;
+  }
+
+  const metadata = item.metadata ?? {};
+  return readFirstNonEmptyString(metadata.reviewId) === reviewId;
 }
 
 function hasMatchingComment(
@@ -194,18 +1292,675 @@ function hasMatchingComment(
   ));
 }
 
+function isBudgetPackageReview(review: ProducerClientReview): boolean {
+  return review.review_type === 'budget_package'
+    || review.target_entity_type === 'economy';
+}
+
+function isAgreementReview(review: ProducerClientReview): boolean {
+  return review.review_type === 'change_order'
+    || review.target_entity_type === 'project_agreement';
+}
+
+function isDeliverableReview(review: ProducerClientReview): boolean {
+  return review.review_type === 'storyboard'
+    || review.review_type === 'manuscript'
+    || review.review_type === 'shotlist';
+}
+
+function isPlanningManagedReview(review: ProducerClientReview): boolean {
+  const metadata = asRecord(review.metadata);
+  return readFirstNonEmptyString(metadata.source) === 'producer-planning'
+    && (
+      review.review_type === 'framework_alignment'
+      || review.review_type === 'phase_checkpoint'
+      || review.review_type === 'content_delivery'
+    );
+}
+
+export function isClientGroundingManagedReview(review: ProducerClientReview): boolean {
+  const metadata = asRecord(review.metadata);
+  return readFirstNonEmptyString(metadata.source) === CLIENT_GROUNDING_REVIEW_SOURCE
+    && (
+      review.review_type === CLIENT_INTAKE_REVIEW_TYPE
+      || review.review_type === CLIENT_MATERIAL_REVIEW_TYPE
+    );
+}
+
+function buildPlanningReviewPayload(
+  moment: ReturnType<typeof getProducerPlanningClientMoments>[number],
+): CreateProducerReviewInput {
+  const targetEntityType = moment.type === 'framework_alignment'
+    ? 'planning_framework'
+    : moment.type === 'phase_checkpoint'
+      ? 'phase_plan'
+      : 'content_calendar';
+  const descriptionParts = [
+    moment.detail,
+    moment.owner ? `Ansvarlig: ${moment.owner}` : '',
+    moment.date ? `Planlagt: ${moment.date}` : '',
+    `Planstatus: ${moment.statusLabel}`,
+  ].filter((value): value is string => value.trim().length > 0);
+
+  return {
+    reviewType: moment.type,
+    title: moment.title,
+    description: descriptionParts.join(' · '),
+    targetEntityType,
+    targetEntityId: moment.id,
+    dueAt: moment.date,
+    metadata: {
+      source: 'producer-planning',
+      planningMomentId: moment.id,
+      planningMomentType: moment.type,
+      focusedPhase: moment.phase,
+      phase: moment.phase,
+      planningFrameworkKey: moment.type === 'framework_alignment'
+        ? readFirstNonEmptyString(moment.id.split(':')[1])
+        : null,
+      linkedShotListId: moment.linkedShotListId ?? null,
+      statusLabel: moment.statusLabel,
+      owner: moment.owner ?? null,
+      priority: moment.priority,
+    },
+  };
+}
+
+function shouldDeletePlanningReview(review: ProducerClientReview): boolean {
+  return isPlanningManagedReview(review)
+    && isPendingReviewStatus(review.status)
+    && (review.comments?.length ?? 0) === 0;
+}
+
+function isReviewEquivalentToPayload(
+  review: ProducerClientReview,
+  payload: CreateProducerReviewInput,
+): boolean {
+  return review.review_type === payload.reviewType
+    && review.title === payload.title
+    && (review.description ?? null) === (payload.description ?? null)
+    && (review.target_entity_type ?? null) === (payload.targetEntityType ?? null)
+    && (review.target_entity_id ?? null) === (payload.targetEntityId ?? null)
+    && (review.due_at ?? null) === (payload.dueAt ?? null)
+    && JSON.stringify(review.metadata ?? {}) === JSON.stringify(payload.metadata ?? {});
+}
+
+function readFocusedPhaseFromReview(review: Pick<ProducerClientReview, 'metadata'>): ProducerPhase | 'all' {
+  const metadata = asRecord(review.metadata);
+  const value = readFirstNonEmptyString(metadata.focusedPhase, metadata.phase);
+  if (value === 'preproduction' || value === 'production' || value === 'postproduction') {
+    return value;
+  }
+  return 'all';
+}
+
+function compareProjectWorkflowMeta(
+  left?: ProducerWorkflowProjectMeta,
+  right?: ProducerWorkflowProjectMeta,
+): boolean {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function isPendingReviewStatus(reviewStatus?: string | null): boolean {
+  return reviewStatus !== 'approved'
+    && reviewStatus !== 'rejected'
+    && reviewStatus !== 'changes_requested';
+}
+
+function getReviewActivityTimestamp(review: ProducerClientReview): number {
+  const candidateValues = [
+    review.updated_at,
+    review.decision_at,
+    review.requested_at,
+    review.created_at,
+  ];
+
+  let highestTimestamp = 0;
+  for (const value of candidateValues) {
+    if (!value) {
+      continue;
+    }
+    const timestamp = new Date(value).getTime();
+    if (Number.isFinite(timestamp) && timestamp > highestTimestamp) {
+      highestTimestamp = timestamp;
+    }
+  }
+
+  return highestTimestamp;
+}
+
+function isSyntheticProducerReview(review: ProducerClientReview): boolean {
+  const metadata = asRecord(review.metadata);
+  const source = readFirstNonEmptyString(metadata.source);
+
+  if (source && SYNTHETIC_REVIEW_SOURCES.has(source)) {
+    return true;
+  }
+
+  return SYNTHETIC_REVIEW_TITLE_PATTERN.test(review.title.trim());
+}
+
+function buildProducerReviewOperationalKey(review: ProducerClientReview): string {
+  const metadata = asRecord(review.metadata);
+  const planningMomentId = readFirstNonEmptyString(
+    metadata.planningMomentId,
+    metadata.planning_moment_id,
+  );
+
+  if (isPlanningManagedReview(review) && planningMomentId) {
+    return `planning:${planningMomentId}`;
+  }
+
+  const agreementId = readFirstNonEmptyString(
+    metadata.agreementId,
+    metadata.agreement_id,
+    review.target_entity_type === 'project_agreement' ? review.target_entity_id : undefined,
+  );
+
+  if (
+    review.review_type === 'change_order'
+    || review.review_type === 'client_approval'
+    || review.target_entity_type === 'project_agreement'
+    || agreementId
+  ) {
+    return `agreement:${agreementId ?? review.target_entity_id ?? review.title}`;
+  }
+
+  if (review.review_type === 'budget_package' || review.target_entity_type === 'economy') {
+    const budgetPackageId = readFirstNonEmptyString(
+      metadata.packageId,
+      metadata.package_id,
+      metadata.budgetPackageId,
+      metadata.budget_package_id,
+      review.target_entity_id,
+    );
+    const focusedPhase = readFirstNonEmptyString(metadata.focusedPhase, metadata.phase, 'all');
+    return `budget:${budgetPackageId ?? focusedPhase}`;
+  }
+
+  if (review.review_type === 'storyboard' || review.review_type === 'manuscript' || review.review_type === 'shotlist') {
+    const deliverableId = readFirstNonEmptyString(
+      review.target_entity_id,
+      metadata.linkedShotListId,
+      metadata.linked_shot_list_id,
+      metadata.packageId,
+      metadata.package_id,
+    ) ?? review.review_type;
+    return `deliverable:${review.review_type}:${deliverableId}`;
+  }
+
+  const targetEntityType = readFirstNonEmptyString(
+    review.target_entity_type,
+    metadata.targetEntityType,
+    metadata.target_entity_type,
+  ) ?? 'project';
+  const targetEntityId = readFirstNonEmptyString(
+    review.target_entity_id,
+    metadata.targetEntityId,
+    metadata.target_entity_id,
+    review.title,
+  ) ?? review.id;
+
+  return `review:${review.review_type}:${targetEntityType}:${targetEntityId}`;
+}
+
+export function getProducerOperationalReviews(reviews: ProducerClientReview[]): ProducerClientReview[] {
+  const nonSyntheticReviews = reviews.filter((review) => !isSyntheticProducerReview(review));
+  const sourceReviews = nonSyntheticReviews.length > 0 ? nonSyntheticReviews : reviews;
+  const reviewsByOperationalKey = new Map<string, ProducerClientReview>();
+
+  for (const review of sourceReviews) {
+    const key = buildProducerReviewOperationalKey(review);
+    const existing = reviewsByOperationalKey.get(key);
+
+    if (!existing) {
+      reviewsByOperationalKey.set(key, review);
+      continue;
+    }
+
+    const existingTimestamp = getReviewActivityTimestamp(existing);
+    const nextTimestamp = getReviewActivityTimestamp(review);
+
+    if (nextTimestamp > existingTimestamp) {
+      reviewsByOperationalKey.set(key, review);
+      continue;
+    }
+
+    if (nextTimestamp === existingTimestamp) {
+      const existingIsPending = isPendingReviewStatus(existing.status);
+      const nextIsPending = isPendingReviewStatus(review.status);
+      if (nextIsPending && !existingIsPending) {
+        reviewsByOperationalKey.set(key, review);
+        continue;
+      }
+
+      if ((review.updated_at ?? '') > (existing.updated_at ?? '')) {
+        reviewsByOperationalKey.set(key, review);
+      }
+    }
+  }
+
+  return sortReviews([...reviewsByOperationalKey.values()]);
+}
+
+export function summarizeProducerReviewStatuses(reviews: ProducerClientReview[]): ProducerWorkflowProjectMeta {
+  const operationalReviews = getProducerOperationalReviews(reviews);
+
+  return operationalReviews.reduce<ProducerWorkflowProjectMeta>(
+    (acc, review) => {
+      acc.totalReviews += 1;
+      if (review.status === 'approved') {
+        acc.approvedReviews += 1;
+        acc.lastApprovedReviewId = review.id;
+      } else if (review.status === 'changes_requested') {
+        acc.changesRequestedReviews += 1;
+      } else if (review.status === 'rejected') {
+        acc.rejectedReviews += 1;
+      } else {
+        acc.pendingReviews += 1;
+        if (!acc.lastPendingReviewId) {
+          acc.lastPendingReviewId = review.id;
+        }
+      }
+
+      if (isBudgetPackageReview(review)) {
+        acc.budgetReviewCount += 1;
+      } else if (isAgreementReview(review)) {
+        acc.agreementReviewCount += 1;
+      } else if (isDeliverableReview(review)) {
+        acc.deliverableReviewCount += 1;
+      }
+
+      if (review.requested_at && (!acc.lastReviewRequestedAt || review.requested_at > acc.lastReviewRequestedAt)) {
+        acc.lastReviewRequestedAt = review.requested_at;
+      }
+      if (review.decision_at && (!acc.lastDecisionAt || review.decision_at > acc.lastDecisionAt)) {
+        acc.lastDecisionAt = review.decision_at;
+      }
+      return acc;
+    },
+    {
+      totalReviews: 0,
+      pendingReviews: 0,
+      approvedReviews: 0,
+      rejectedReviews: 0,
+      changesRequestedReviews: 0,
+      budgetReviewCount: 0,
+      agreementReviewCount: 0,
+      deliverableReviewCount: 0,
+      lastReviewRequestedAt: null,
+      lastDecisionAt: null,
+      lastApprovedReviewId: null,
+      lastPendingReviewId: null,
+    },
+  );
+}
+
+function getProjectWorkflowDriverReview(
+  reviews: ProducerClientReview[],
+  status: ProducerWorkflowProjectStatus,
+): ProducerClientReview | null {
+  const sortedReviews = getProducerOperationalReviews(reviews).sort((left, right) => {
+    const leftTimestamp = new Date(left.decision_at ?? left.requested_at).getTime();
+    const rightTimestamp = new Date(right.decision_at ?? right.requested_at).getTime();
+    return rightTimestamp - leftTimestamp;
+  });
+
+  if (status === 'changes_requested') {
+    return sortedReviews.find((review) => (
+      review.status === 'changes_requested' || review.status === 'rejected'
+    )) ?? null;
+  }
+
+  if (status === 'awaiting_client') {
+    return sortedReviews.find((review) => isPendingReviewStatus(review.status)) ?? null;
+  }
+
+  if (status === 'approved') {
+    return sortedReviews.find((review) => review.status === 'approved') ?? null;
+  }
+
+  return null;
+}
+
+function getProjectWorkflowTimelineStatus(
+  projectStatus: ProducerWorkflowProjectStatus,
+): string {
+  switch (projectStatus) {
+    case 'approved':
+      return 'completed';
+    case 'changes_requested':
+      return 'blocked';
+    case 'awaiting_client':
+      return 'in_progress';
+    default:
+      return 'planned';
+  }
+}
+
+function getProjectWorkflowTimelineTitle(
+  projectStatus: ProducerWorkflowProjectStatus,
+): string {
+  switch (projectStatus) {
+    case 'awaiting_client':
+      return 'Prosjektstatus · Venter på klient';
+    case 'changes_requested':
+      return 'Prosjektstatus · Endringer ønsket';
+    case 'approved':
+      return 'Prosjektstatus · Godkjent';
+    default:
+      return 'Prosjektstatus · Planlegging';
+  }
+}
+
+function getProjectWorkflowTimelineDescription(
+  projectName: string,
+  projectStatus: ProducerWorkflowProjectStatus,
+  projectMeta: ProducerWorkflowProjectMeta,
+  driverReview: ProducerClientReview | null,
+): string {
+  const driverSummary = driverReview
+    ? `${driverReview.title} (${driverReview.review_type})`
+    : projectName;
+
+  const counts = [
+    `${projectMeta.pendingReviews} venter`,
+    `${projectMeta.changesRequestedReviews} krever endringer`,
+    `${projectMeta.approvedReviews} godkjent`,
+  ].join(' · ');
+
+  if (projectStatus === 'changes_requested') {
+    return `Klientens siste beslutning på ${driverSummary} krever endringer før prosjektet kan gå videre. ${counts}.`;
+  }
+
+  if (projectStatus === 'awaiting_client') {
+    return `Prosjektet venter på klientbeslutning knyttet til ${driverSummary}. ${counts}.`;
+  }
+
+  if (projectStatus === 'approved') {
+    return `Prosjektet er godkjent basert på klientbeslutningen for ${driverSummary}. ${counts}.`;
+  }
+
+  return `Prosjektet er i planlegging. ${counts}.`;
+}
+
+function isProjectWorkflowStatusTimelineItem(
+  item: ProducerTimelineItem,
+  projectId: string,
+): boolean {
+  const metadata = asRecord(item.metadata);
+  return item.linked_entity_type === 'project'
+    && item.linked_entity_id === projectId
+    && readFirstNonEmptyString(metadata.source) === 'project-workflow-status';
+}
+
+async function syncProjectWorkflowStatusTimelineSnapshot(
+  project: CastingProject,
+  projectMeta: ProducerWorkflowProjectMeta,
+  projectStatus: ProducerWorkflowProjectStatus,
+  reviews: ProducerClientReview[],
+): Promise<void> {
+  const timelineItems = await fetchTimeline(project.id);
+  const existingStatusItems = timelineItems.filter((item) => isProjectWorkflowStatusTimelineItem(item, project.id));
+
+  if (projectMeta.totalReviews <= 0) {
+    if (existingStatusItems.length === 0) {
+      return;
+    }
+
+    await Promise.all(existingStatusItems.map(async (item) => {
+      await producerWorkflowRequest<{ success?: boolean }>(`/projects/${project.id}/producer/timeline/${item.id}`, {
+        method: 'DELETE',
+      });
+    }));
+    emitProducerWorkflowEvent({
+      projectId: project.id,
+      domain: 'timeline',
+      mutation: 'deleted',
+      entityId: project.id,
+    });
+    return;
+  }
+
+  const driverReview = getProjectWorkflowDriverReview(reviews, projectStatus);
+  const focusedPhase = driverReview ? readFocusedPhaseFromReview(driverReview) : 'preproduction';
+  const timelinePhase = focusedPhase === 'all'
+    ? getReviewTimelinePhase(driverReview?.review_type, driverReview?.target_entity_type ?? undefined)
+    : focusedPhase;
+  const statusUpdatedAt = driverReview?.decision_at ?? driverReview?.requested_at ?? nowIso();
+  const agreementId = driverReview
+    ? (
+      driverReview.target_entity_type === 'project_agreement'
+        ? driverReview.target_entity_id ?? undefined
+        : readFirstNonEmptyString(asRecord(driverReview.metadata).agreementId)
+    )
+    : undefined;
+
+  const metadata: Record<string, unknown> = {
+    source: 'project-workflow-status',
+    projectWorkflowStatus: projectStatus,
+    totalReviews: projectMeta.totalReviews,
+    pendingReviews: projectMeta.pendingReviews,
+    approvedReviews: projectMeta.approvedReviews,
+    rejectedReviews: projectMeta.rejectedReviews,
+    changesRequestedReviews: projectMeta.changesRequestedReviews,
+    lastReviewRequestedAt: projectMeta.lastReviewRequestedAt ?? null,
+    lastDecisionAt: projectMeta.lastDecisionAt ?? null,
+    reviewId: driverReview?.id ?? null,
+    reviewType: driverReview?.review_type ?? null,
+    targetEntityType: driverReview?.target_entity_type ?? null,
+    targetEntityId: driverReview?.target_entity_id ?? null,
+    focusedPhase,
+    statusUpdatedAt,
+  };
+
+  if (agreementId) {
+    metadata.agreementId = agreementId;
+  }
+  if (driverReview && isDeliverableReview(driverReview)) {
+    metadata.approvalTemplate = driverReview.review_type;
+  }
+
+  const payload = {
+    phase: timelinePhase,
+    title: getProjectWorkflowTimelineTitle(projectStatus),
+    description: getProjectWorkflowTimelineDescription(project.name, projectStatus, projectMeta, driverReview),
+    dueAt: driverReview?.due_at ?? projectMeta.lastDecisionAt ?? projectMeta.lastReviewRequestedAt ?? null,
+    status: getProjectWorkflowTimelineStatus(projectStatus),
+    linkedEntityType: 'project',
+    linkedEntityId: project.id,
+    sortOrder: existingStatusItems[0]?.sort_order ?? timelineItems.length,
+    metadata,
+  };
+
+  if (existingStatusItems[0]) {
+    await producerWorkflowRequest<{ item?: unknown }>(`/projects/${project.id}/producer/timeline/${existingStatusItems[0].id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(buildDefinedBody([
+        ['phase', payload.phase],
+        ['title', payload.title],
+        ['description', payload.description],
+        ['dueAt', payload.dueAt],
+        ['status', payload.status],
+        ['linkedEntityType', payload.linkedEntityType],
+        ['linkedEntityId', payload.linkedEntityId],
+        ['sortOrder', payload.sortOrder],
+        ['metadata', payload.metadata],
+      ])),
+    });
+
+    if (existingStatusItems.length > 1) {
+      await Promise.all(existingStatusItems.slice(1).map(async (item) => {
+        await producerWorkflowRequest<{ success?: boolean }>(`/projects/${project.id}/producer/timeline/${item.id}`, {
+          method: 'DELETE',
+        });
+      }));
+    }
+
+    emitProducerWorkflowEvent({
+      projectId: project.id,
+      domain: 'timeline',
+      mutation: 'updated',
+      entityId: existingStatusItems[0].id,
+    });
+    return;
+  }
+
+  await producerWorkflowRequest<{ item?: unknown }>(`/projects/${project.id}/producer/timeline`, {
+    method: 'POST',
+    body: JSON.stringify({
+      phase: payload.phase,
+      title: payload.title,
+      description: payload.description,
+      ownerUserId: null,
+      dueAt: payload.dueAt,
+      status: payload.status,
+      linkedEntityType: payload.linkedEntityType,
+      linkedEntityId: payload.linkedEntityId,
+      sortOrder: payload.sortOrder,
+      metadata: payload.metadata,
+    }),
+  });
+
+  emitProducerWorkflowEvent({
+    projectId: project.id,
+    domain: 'timeline',
+    mutation: 'created',
+    entityId: project.id,
+  });
+}
+
+function buildProducerWorkflowProjectMeta(reviews: ProducerClientReview[]): ProducerWorkflowProjectMeta {
+  return summarizeProducerReviewStatuses(reviews);
+}
+
+function deriveProducerWorkflowProjectStatus(
+  meta: ProducerWorkflowProjectMeta,
+): ProducerWorkflowProjectStatus {
+  if (meta.changesRequestedReviews > 0 || meta.rejectedReviews > 0) {
+    return 'changes_requested';
+  }
+  if (meta.pendingReviews > 0) {
+    return 'awaiting_client';
+  }
+  if (meta.approvedReviews > 0) {
+    return 'approved';
+  }
+  return 'planning';
+}
+
+async function syncProjectWorkflowStatusSnapshot(
+  projectId: string,
+  reviews: ProducerClientReview[],
+): Promise<CastingProject | null> {
+  const project = await castingService.getProject(projectId);
+  if (!project) {
+    return null;
+  }
+
+  const nextMeta = buildProducerWorkflowProjectMeta(reviews);
+  const nextStatus = deriveProducerWorkflowProjectStatus(nextMeta);
+  const currentStatus = project.producerWorkflowStatus ?? 'planning';
+  const currentMeta = project.producerWorkflowMeta;
+  const canMutateProducerWorkflow = canCurrentSessionMutateProducerWorkflow();
+
+  if (currentStatus === nextStatus && compareProjectWorkflowMeta(currentMeta, nextMeta)) {
+    if (canMutateProducerWorkflow) {
+      await syncProjectWorkflowStatusTimelineSnapshot(project, nextMeta, nextStatus, reviews);
+    }
+    return project;
+  }
+
+  if (!canMutateProducerWorkflow) {
+    return {
+      ...project,
+      producerWorkflowStatus: nextStatus,
+      producerWorkflowMeta: nextMeta,
+    };
+  }
+
+  const nextProject: CastingProject = {
+    ...project,
+    producerWorkflowStatus: nextStatus,
+    producerWorkflowMeta: nextMeta,
+    updatedAt: nowIso(),
+  };
+  await castingService.saveProject(nextProject);
+  await syncProjectWorkflowStatusTimelineSnapshot(nextProject, nextMeta, nextStatus, reviews);
+  emitProducerWorkflowEvent({
+    projectId,
+    domain: 'project',
+    mutation: 'updated',
+    entityId: projectId,
+  });
+  return nextProject;
+}
+
+function shouldIncludeEconomyItemInBudgetPackage(
+  item: ProducerEconomyItem,
+  focusedPhase: ProducerPhase | 'all',
+): boolean {
+  if (!item.client_visible) {
+    return false;
+  }
+
+  if (focusedPhase !== 'all' && item.phase !== focusedPhase) {
+    return false;
+  }
+
+  return true;
+}
+
+function getEconomyStatusFromBudgetReview(
+  currentStatus: string,
+  reviewStatus: string,
+): string {
+  if (currentStatus === 'completed') {
+    return currentStatus;
+  }
+
+  switch (reviewStatus) {
+    case 'approved':
+      return 'approved';
+    case 'rejected':
+    case 'changes_requested':
+      return 'blocked';
+    default:
+      return 'pending_approval';
+  }
+}
+
 export const producerWorkflowService = {
   async getTimeline(projectId: string): Promise<ProducerTimelineItem[]> {
-    const result = await apiRequest<{ items: ProducerTimelineItem[] }>(`/projects/${projectId}/producer/timeline`);
-    return Array.isArray(result.items) ? result.items : [];
+    const remoteItems = await fetchTimeline(projectId);
+    return migrateLegacyTimelineIfNeeded(projectId, remoteItems);
   },
 
   async createTimelineItem(projectId: string, payload: CreateProducerTimelineItemInput): Promise<ProducerTimelineItem> {
-    const result = await apiRequest<{ item: ProducerTimelineItem }>(`/projects/${projectId}/producer/timeline`, {
+    const items = await this.getTimeline(projectId);
+    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline`, {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        phase: payload.phase,
+        title: payload.title,
+        description: payload.description ?? null,
+        ownerUserId: payload.ownerUserId ?? null,
+        dueAt: payload.dueAt ?? null,
+        status: payload.status ?? 'planned',
+        linkedEntityType: payload.linkedEntityType ?? null,
+        linkedEntityId: payload.linkedEntityId ?? null,
+        sortOrder: payload.sortOrder ?? items.length,
+        metadata: payload.metadata ?? {},
+      }),
     });
-    return result.item;
+    const created = normalizeTimelineItem(response.item, projectId, items.length);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'timeline',
+      mutation: 'created',
+      entityId: created.id,
+    });
+    return created;
   },
 
   async updateTimelineItem(
@@ -213,103 +1968,610 @@ export const producerWorkflowService = {
     itemId: string,
     payload: UpdateProducerTimelineItemInput,
   ): Promise<ProducerTimelineItem> {
-    const result = await apiRequest<{ item: ProducerTimelineItem }>(
-      `/projects/${projectId}/producer/timeline/${itemId}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify(payload),
-      },
-    );
-    return result.item;
+    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/timeline/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(buildDefinedBody([
+        ['phase', payload.phase],
+        ['title', payload.title],
+        ['description', payload.description],
+        ['ownerUserId', payload.ownerUserId],
+        ['dueAt', payload.dueAt],
+        ['status', payload.status],
+        ['linkedEntityType', payload.linkedEntityType],
+        ['linkedEntityId', payload.linkedEntityId],
+        ['sortOrder', payload.sortOrder],
+        ['metadata', payload.metadata],
+      ])),
+    });
+    const persisted = normalizeTimelineItem(response.item, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'timeline',
+      mutation: 'updated',
+      entityId: persisted.id,
+    });
+    return persisted;
   },
 
   async deleteTimelineItem(projectId: string, itemId: string): Promise<void> {
-    await apiRequest<{ success: true; itemId: string }>(
-      `/projects/${projectId}/producer/timeline/${itemId}`,
-      { method: 'DELETE' },
-    );
+    await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/timeline/${itemId}`, {
+      method: 'DELETE',
+    });
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'timeline',
+      mutation: 'deleted',
+      entityId: itemId,
+    });
+  },
+
+  async ensureClientGroundingTimeline(projectId: string): Promise<void> {
+    if (!canCurrentSessionMutateProducerWorkflow()) {
+      return;
+    }
+
+    await syncClientGroundingTimeline(projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'timeline',
+      mutation: 'reloaded',
+      entityId: projectId,
+    });
+  },
+
+  async ensureClientGroundingReviews(projectId: string): Promise<ProducerClientReview[]> {
+    if (!canCurrentSessionMutateProducerWorkflow()) {
+      return this.getReviews(projectId);
+    }
+
+    await syncClientGroundingReviews(projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'reviews',
+      mutation: 'reloaded',
+      entityId: projectId,
+    });
+    return this.getReviews(projectId);
   },
 
   async getEconomyItems(projectId: string): Promise<ProducerEconomyItem[]> {
-    const result = await apiRequest<{ items: ProducerEconomyItem[] }>(`/projects/${projectId}/producer/economy/items`);
-    return Array.isArray(result.items) ? result.items : [];
+    const remoteItems = await fetchEconomy(projectId);
+    return migrateLegacyEconomyIfNeeded(projectId, remoteItems);
+  },
+
+  async getClientIntake(projectId: string): Promise<ProducerClientIntake> {
+    return fetchClientIntake(projectId);
+  },
+
+  async updateClientIntake(
+    projectId: string,
+    intake: ProducerClientIntake,
+  ): Promise<ProducerClientIntake> {
+    const response = await producerWorkflowRequest<{ intake?: unknown | null }>(`/projects/${projectId}/producer/client-intake`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        projectGoal: intake.projectGoal ?? '',
+        deliverables: intake.deliverables ?? '',
+        targetAudience: intake.targetAudience ?? '',
+        keyMessage: intake.keyMessage ?? '',
+        timingConstraints: intake.timingConstraints ?? '',
+        brandNotes: intake.brandNotes ?? '',
+        materialOverview: intake.materialOverview ?? '',
+        referenceLinks: intake.referenceLinks ?? '',
+        contactName: intake.contactName ?? '',
+        contactEmail: intake.contactEmail ?? '',
+        contactPhone: intake.contactPhone ?? '',
+        additionalNotes: intake.additionalNotes ?? '',
+      }),
+    });
+    const normalized = normalizeClientIntake(response.intake ?? {});
+    await syncClientGroundingTimeline(projectId);
+    await syncClientGroundingReviews(projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'project',
+      mutation: 'updated',
+      entityId: projectId,
+    });
+    return normalized;
+  },
+
+  async getClientMaterials(projectId: string): Promise<ProducerClientMaterial[]> {
+    return fetchClientMaterials(projectId);
+  },
+
+  async createClientMaterial(
+    projectId: string,
+    payload: CreateProducerClientMaterialInput,
+  ): Promise<ProducerClientMaterial> {
+    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/client-materials`, {
+      method: 'POST',
+      body: JSON.stringify({
+        entryType: payload.entryType,
+        title: payload.title,
+        description: payload.description ?? null,
+        externalUrl: payload.externalUrl ?? null,
+        phase: payload.phase ?? null,
+        linkedShotListId: payload.linkedShotListId ?? null,
+        status: payload.status ?? 'provided',
+        metadata: payload.metadata ?? {},
+      }),
+    });
+    const item = normalizeClientMaterial(response.item, projectId);
+    await syncClientGroundingTimeline(projectId);
+    await syncClientGroundingReviews(projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'project',
+      mutation: 'created',
+      entityId: item.id,
+    });
+    return item;
+  },
+
+  async updateClientMaterial(
+    projectId: string,
+    materialId: string,
+    payload: UpdateProducerClientMaterialInput,
+  ): Promise<ProducerClientMaterial> {
+    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/client-materials/${materialId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(buildDefinedBody([
+        ['entryType', payload.entryType],
+        ['title', payload.title],
+        ['description', payload.description],
+        ['externalUrl', payload.externalUrl],
+        ['phase', payload.phase],
+        ['linkedShotListId', payload.linkedShotListId],
+        ['status', payload.status],
+        ['metadata', payload.metadata],
+      ])),
+    });
+    const item = normalizeClientMaterial(response.item, projectId);
+    await syncClientGroundingTimeline(projectId);
+    await syncClientGroundingReviews(projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'project',
+      mutation: 'updated',
+      entityId: item.id,
+    });
+    return item;
+  },
+
+  async deleteClientMaterial(projectId: string, materialId: string): Promise<void> {
+    await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/client-materials/${materialId}`, {
+      method: 'DELETE',
+    });
+    await syncClientGroundingTimeline(projectId);
+    await syncClientGroundingReviews(projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'project',
+      mutation: 'deleted',
+      entityId: materialId,
+    });
   },
 
   async createEconomyItem(projectId: string, payload: CreateProducerEconomyItemInput): Promise<ProducerEconomyItem> {
-    const result = await apiRequest<{ item: ProducerEconomyItem }>(`/projects/${projectId}/producer/economy/items`, {
+    const items = await this.getEconomyItems(projectId);
+    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items`, {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        phase: payload.phase,
+        category: payload.category,
+        itemName: payload.itemName,
+        description: payload.description ?? null,
+        estimate: payload.estimate ?? 0,
+        approved: payload.approved ?? 0,
+        actual: payload.actual ?? 0,
+        currency: payload.currency ?? 'NOK',
+        status: payload.status ?? 'draft',
+        clientVisible: payload.clientVisible ?? true,
+        linkedEntityType: payload.linkedEntityType ?? null,
+        linkedEntityId: payload.linkedEntityId ?? null,
+        sortOrder: payload.sortOrder ?? items.length,
+        metadata: payload.metadata ?? {},
+      }),
     });
-    return result.item;
+    const created = normalizeEconomyItem(response.item, projectId, items.length);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'economy',
+      mutation: 'created',
+      entityId: created.id,
+    });
+    return created;
   },
 
   async updateEconomyItem(
     projectId: string,
     itemId: string,
-    payload: UpdateProducerEconomyItemInput
+    payload: UpdateProducerEconomyItemInput,
   ): Promise<ProducerEconomyItem> {
-    const result = await apiRequest<{ item: ProducerEconomyItem }>(
-      `/projects/${projectId}/producer/economy/items/${itemId}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify(payload),
-      },
-    );
-    return result.item;
+    const response = await producerWorkflowRequest<{ item?: unknown }>(`/projects/${projectId}/producer/economy/items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(buildDefinedBody([
+        ['phase', payload.phase],
+        ['category', payload.category],
+        ['itemName', payload.itemName],
+        ['description', payload.description],
+        ['estimate', payload.estimate],
+        ['approved', payload.approved],
+        ['actual', payload.actual],
+        ['currency', payload.currency],
+        ['status', payload.status],
+        ['clientVisible', payload.clientVisible],
+        ['linkedEntityType', payload.linkedEntityType],
+        ['linkedEntityId', payload.linkedEntityId],
+        ['sortOrder', payload.sortOrder],
+        ['metadata', payload.metadata],
+      ])),
+    });
+    const persisted = normalizeEconomyItem(response.item, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'economy',
+      mutation: 'updated',
+      entityId: persisted.id,
+    });
+    return persisted;
   },
 
   async deleteEconomyItem(projectId: string, itemId: string): Promise<void> {
-    await apiRequest<{ success: true; itemId: string }>(
-      `/projects/${projectId}/producer/economy/items/${itemId}`,
-      { method: 'DELETE' },
-    );
+    await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/economy/items/${itemId}`, {
+      method: 'DELETE',
+    });
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'economy',
+      mutation: 'deleted',
+      entityId: itemId,
+    });
   },
 
   async getReviews(projectId: string): Promise<ProducerClientReview[]> {
-    const result = await apiRequest<{ items: ProducerClientReview[] }>(`/projects/${projectId}/producer/reviews`);
-    return Array.isArray(result.items) ? result.items : [];
+    const remoteItems = await fetchReviews(projectId);
+    const reviews = await migrateLegacyReviewsIfNeeded(projectId, remoteItems);
+    await syncProjectWorkflowStatusSnapshot(projectId, reviews);
+    return reviews;
   },
 
   async createReview(projectId: string, payload: CreateProducerReviewInput): Promise<ProducerClientReview> {
-    const result = await apiRequest<{ review: ProducerClientReview }>(`/projects/${projectId}/producer/reviews`, {
+    const response = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews`, {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        reviewType: payload.reviewType,
+        title: payload.title,
+        description: payload.description ?? null,
+        targetEntityType: payload.targetEntityType ?? null,
+        targetEntityId: payload.targetEntityId ?? null,
+        dueAt: payload.dueAt ?? null,
+        metadata: payload.metadata ?? {},
+      }),
     });
-    return result.review;
+    const created = normalizeReview(response.review, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'reviews',
+      mutation: 'created',
+      entityId: created.id,
+    });
+    return created;
+  },
+
+  async updateReview(
+    projectId: string,
+    reviewId: string,
+    payload: UpdateProducerReviewInput,
+  ): Promise<ProducerClientReview> {
+    const response = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${reviewId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(buildDefinedBody([
+        ['reviewType', payload.reviewType],
+        ['title', payload.title],
+        ['description', payload.description],
+        ['targetEntityType', payload.targetEntityType],
+        ['targetEntityId', payload.targetEntityId],
+        ['dueAt', payload.dueAt],
+        ['metadata', payload.metadata],
+      ])),
+    });
+    const updated = normalizeReview(response.review, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'reviews',
+      mutation: 'updated',
+      entityId: updated.id,
+    });
+    return updated;
+  },
+
+  async updateReviewWithTimeline(
+    projectId: string,
+    reviewId: string,
+    payload: UpdateProducerReviewInput,
+  ): Promise<ProducerClientReview> {
+    const review = await this.updateReview(projectId, reviewId, payload);
+    await this.syncReviewTimelineItem(projectId, review);
+    await this.syncBudgetReviewEconomyItems(projectId, review);
+    await syncProjectWorkflowStatusSnapshot(projectId, [review, ...(await fetchReviews(projectId)).filter((item) => item.id !== review.id)]);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'timeline',
+      mutation: 'updated',
+      entityId: review.id,
+    });
+    return review;
+  },
+
+  async deleteReview(projectId: string, reviewId: string): Promise<void> {
+    await producerWorkflowRequest<undefined>(`/projects/${projectId}/producer/reviews/${reviewId}`, {
+      method: 'DELETE',
+    });
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'reviews',
+      mutation: 'deleted',
+      entityId: reviewId,
+    });
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'timeline',
+      mutation: 'deleted',
+      entityId: reviewId,
+    });
+    await syncProjectWorkflowStatusSnapshot(projectId, await fetchReviews(projectId));
+  },
+
+  async syncReviewTimelineItem(projectId: string, review: ProducerClientReview): Promise<void> {
+    const timelineItems = await this.getTimeline(projectId);
+    const existingTimelineItem = timelineItems.find((item) => isReviewTimelineItem(item, review.id));
+    const metadata = {
+      ...(review.metadata ?? {}),
+      source: 'review-sync',
+      reviewId: review.id,
+      reviewType: review.review_type,
+      reviewStatus: review.status,
+      targetEntityType: review.target_entity_type ?? null,
+      targetEntityId: review.target_entity_id ?? null,
+    };
+    const payload = {
+      phase: getReviewTimelinePhase(review.review_type, review.target_entity_type ?? undefined, review.metadata ?? null),
+      title: getReviewTimelineTitle(review),
+      description: getReviewTimelineDescription(review),
+      dueAt: review.due_at ?? undefined,
+      status: getReviewTimelineStatus(review.status),
+      linkedEntityType: 'client_review',
+      linkedEntityId: review.id,
+      metadata,
+    };
+
+    if (existingTimelineItem) {
+      await this.updateTimelineItem(projectId, existingTimelineItem.id, payload);
+      return;
+    }
+
+    await this.createTimelineItem(projectId, payload);
+  },
+
+  async createReviewWithTimeline(projectId: string, payload: CreateProducerReviewInput): Promise<ProducerClientReview> {
+    const review = await this.createReview(projectId, payload);
+    await this.syncReviewTimelineItem(projectId, review);
+    await this.syncBudgetReviewEconomyItems(projectId, review);
+    await syncProjectWorkflowStatusSnapshot(projectId, [review, ...(await fetchReviews(projectId)).filter((item) => item.id !== review.id)]);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'timeline',
+      mutation: 'reloaded',
+      entityId: review.id,
+    });
+    return review;
+  },
+
+  async syncPlanningClientReviews(
+    projectId: string,
+    planning: Parameters<typeof getProducerPlanningClientMoments>[0],
+  ): Promise<ProducerClientReview[]> {
+    const planningMoments = getProducerPlanningClientMoments(planning);
+    const currentReviews = await this.getReviews(projectId);
+    const planningManagedReviews = currentReviews.filter((review) => isPlanningManagedReview(review));
+    const reviewsByMomentId = new Map<string, ProducerClientReview>();
+
+    for (const review of planningManagedReviews) {
+      const metadata = asRecord(review.metadata);
+      const momentId = readFirstNonEmptyString(metadata.planningMomentId, review.target_entity_id);
+      if (momentId) {
+        reviewsByMomentId.set(momentId, review);
+      }
+    }
+
+    const touchedMomentIds = new Set<string>();
+    let changed = false;
+
+    for (const moment of planningMoments) {
+      const payload = buildPlanningReviewPayload(moment);
+      const existing = reviewsByMomentId.get(moment.id);
+      touchedMomentIds.add(moment.id);
+
+      if (!existing) {
+        await this.createReviewWithTimeline(projectId, payload);
+        changed = true;
+        continue;
+      }
+
+      if (!isReviewEquivalentToPayload(existing, payload)) {
+        await this.updateReviewWithTimeline(projectId, existing.id, payload);
+        changed = true;
+      }
+    }
+
+    for (const review of planningManagedReviews) {
+      const metadata = asRecord(review.metadata);
+      const momentId = readFirstNonEmptyString(metadata.planningMomentId, review.target_entity_id);
+      if (!momentId || touchedMomentIds.has(momentId)) {
+        continue;
+      }
+      if (!shouldDeletePlanningReview(review)) {
+        continue;
+      }
+      await this.deleteReview(projectId, review.id);
+      changed = true;
+    }
+
+    if (!changed) {
+      return currentReviews;
+    }
+
+    const refreshedReviews = await this.getReviews(projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'reviews',
+      mutation: 'reloaded',
+      entityId: projectId,
+    });
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'timeline',
+      mutation: 'reloaded',
+      entityId: projectId,
+    });
+    return refreshedReviews;
+  },
+
+  async ensurePlanningClientReviews(
+    projectId: string,
+    planning: Parameters<typeof getProducerPlanningClientMoments>[0],
+  ): Promise<ProducerClientReview[]> {
+    if (!canCurrentSessionMutateProducerWorkflow()) {
+      return this.getReviews(projectId);
+    }
+
+    return this.syncPlanningClientReviews(projectId, planning);
+  },
+
+  async syncBudgetReviewEconomyItems(projectId: string, review: ProducerClientReview): Promise<void> {
+    if (!isBudgetPackageReview(review)) {
+      return;
+    }
+
+    const focusedPhase = readFocusedPhaseFromReview(review);
+    const economyItems = await this.getEconomyItems(projectId);
+    const affectedItems = economyItems.filter((item) => shouldIncludeEconomyItemInBudgetPackage(item, focusedPhase));
+
+    await Promise.all(affectedItems.map(async (item) => {
+      const nextStatus = getEconomyStatusFromBudgetReview(item.status, review.status);
+      const metadata = {
+        ...(item.metadata ?? {}),
+        lastBudgetReviewId: review.id,
+        lastBudgetReviewStatus: review.status,
+        lastBudgetReviewRequestedAt: review.requested_at,
+        lastBudgetReviewDecisionAt: review.decision_at ?? null,
+        budgetPackageFocusedPhase: focusedPhase,
+        budgetPackageEntityId: review.target_entity_id ?? null,
+      };
+
+      const currentMetadata = asRecord(item.metadata);
+      const metadataUnchanged = readFirstNonEmptyString(currentMetadata.lastBudgetReviewId) === review.id
+        && readFirstNonEmptyString(currentMetadata.lastBudgetReviewStatus) === review.status
+        && readFirstNonEmptyString(currentMetadata.budgetPackageFocusedPhase) === focusedPhase
+        && readFirstNonEmptyString(currentMetadata.budgetPackageEntityId) === (review.target_entity_id ?? undefined)
+        && readFirstNonEmptyString(currentMetadata.lastBudgetReviewRequestedAt) === review.requested_at
+        && readFirstNonEmptyString(currentMetadata.lastBudgetReviewDecisionAt) === (review.decision_at ?? undefined);
+
+      if (item.status === nextStatus && metadataUnchanged) {
+        return;
+      }
+
+      await this.updateEconomyItem(projectId, item.id, {
+        status: nextStatus,
+        metadata,
+      });
+    }));
   },
 
   async addReviewComment(
     projectId: string,
     reviewId: string,
-    payload: AddProducerReviewCommentInput
+    payload: AddProducerReviewCommentInput,
   ): Promise<ProducerReviewComment> {
-    const result = await apiRequest<{ comment: ProducerReviewComment }>(
-      `/projects/${projectId}/producer/reviews/${reviewId}/comments`,
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      },
-    );
-    return result.comment;
+    const response = await producerWorkflowRequest<{ comment?: unknown }>(`/projects/${projectId}/producer/reviews/${reviewId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({
+        commentText: payload.commentText,
+        timestampSeconds: payload.timestampSeconds ?? null,
+      }),
+    });
+    const comment = normalizeReviewComment(response.comment, projectId, reviewId);
+
+    const reviews = await this.getReviews(projectId);
+    const updatedReview = reviews.find((review) => review.id === reviewId);
+    if (updatedReview) {
+      await this.syncReviewTimelineItem(projectId, updatedReview);
+      emitProducerWorkflowEvent({
+        projectId,
+        domain: 'timeline',
+        mutation: 'updated',
+        entityId: updatedReview.id,
+      });
+    }
+
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'reviews',
+      mutation: 'updated',
+      entityId: reviewId,
+    });
+    return comment;
   },
 
   async setReviewDecision(
     projectId: string,
     reviewId: string,
-    payload: SetProducerReviewDecisionInput
+    payload: SetProducerReviewDecisionInput,
   ): Promise<ProducerClientReview> {
-    const result = await apiRequest<{ review: ProducerClientReview }>(
-      `/projects/${projectId}/producer/reviews/${reviewId}/decision`,
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      },
-    );
-    return result.review;
+    const response = await producerWorkflowRequest<{ review?: unknown }>(`/projects/${projectId}/producer/reviews/${reviewId}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({
+        decision: payload.decision,
+        reason: payload.reason ?? null,
+        timestampSeconds: payload.timestampSeconds ?? null,
+      }),
+    });
+    const persisted = normalizeReview(response.review, projectId);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'reviews',
+      mutation: 'updated',
+      entityId: persisted.id,
+    });
+    return persisted;
+  },
+
+  async setReviewDecisionWithTimeline(
+    projectId: string,
+    reviewId: string,
+    payload: SetProducerReviewDecisionInput,
+  ): Promise<ProducerClientReview> {
+    const review = await this.setReviewDecision(projectId, reviewId, payload);
+    await this.syncReviewTimelineItem(projectId, review);
+    await this.syncBudgetReviewEconomyItems(projectId, review);
+    await syncProjectWorkflowStatusSnapshot(projectId, [review, ...(await fetchReviews(projectId)).filter((item) => item.id !== review.id)]);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'timeline',
+      mutation: 'updated',
+      entityId: review.id,
+    });
+    return review;
   },
 
   async initializeContentProducerDemoWorkflow(projectId: string): Promise<void> {
     if (projectId !== CONTENT_PRODUCER_DEMO_PROJECT_ID) {
+      return;
+    }
+
+    if (!canCurrentSessionMutateProducerWorkflow()) {
       return;
     }
 
@@ -397,12 +2659,13 @@ export const producerWorkflowService = {
           }
 
           for (const commentSeed of seed.comments) {
-            if (hasMatchingComment(commentSeed.commentText, commentSeed.timestampSeconds, review.comments)) {
+            const commentTimestampSeconds = 'timestampSeconds' in commentSeed ? commentSeed.timestampSeconds : undefined;
+            if (hasMatchingComment(commentSeed.commentText, commentTimestampSeconds, review.comments)) {
               continue;
             }
             const createdComment = await this.addReviewComment(projectId, review.id, {
               commentText: commentSeed.commentText,
-              timestampSeconds: commentSeed.timestampSeconds,
+              timestampSeconds: commentTimestampSeconds,
             });
             review = {
               ...review,
@@ -412,12 +2675,20 @@ export const producerWorkflowService = {
               existingReviewsBySeedKey.set(seedKey, review);
             }
           }
+
+          await this.syncReviewTimelineItem(projectId, review);
         }
+
+        await syncProjectWorkflowStatusSnapshot(projectId, await fetchReviews(projectId));
       })().finally(() => {
         contentProducerWorkflowInitPromise = null;
       });
     }
 
     await contentProducerWorkflowInitPromise;
+  },
+
+  async syncProjectWorkflowStatus(projectId: string): Promise<CastingProject | null> {
+    return syncProjectWorkflowStatusSnapshot(projectId, await fetchReviews(projectId));
   },
 };

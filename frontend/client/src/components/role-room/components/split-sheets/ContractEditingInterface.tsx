@@ -3,12 +3,9 @@
  * Full-featured contract editor with integration to legal suggestions and references
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
 import {
   Box,
   Typography,
@@ -18,22 +15,11 @@ import {
   Card,
   CardContent,
   IconButton,
-  Alert,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Divider,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Tooltip,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -47,19 +33,10 @@ import {
   Cancel as CancelIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
-  Edit as EditIcon,
   Description as ContractIcon,
   Gavel as LegalIcon,
   Lightbulb as SuggestionIcon,
   Link as LinkIcon,
-  FormatBold as BoldIcon,
-  FormatItalic as ItalicIcon,
-  FormatListBulleted as BulletListIcon,
-  FormatListNumbered as NumberListIcon,
-  Title as HeadingIcon,
-  HorizontalRule as DividerLineIcon,
-  Undo as UndoIcon,
-  Redo as RedoIcon,
   ExpandMore as ExpandMoreIcon,
   Person as PersonIcon,
   AttachMoney as MoneyIcon,
@@ -93,8 +70,21 @@ export default function ContractEditingInterface({
 }: ContractEditingInterfaceProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const queryClient = useQueryClient();
   const brandColor = theme.palette.primary.main;
+  const professionLabels: Record<NonNullable<ContractEditingInterfaceProps['profession']>, string> = {
+    photographer: 'Fotoproduksjon',
+    videographer: 'Videoproduksjon',
+    music_producer: 'Musikkproduksjon',
+    vendor: 'Leverandoravtale',
+  };
+  const professionDescriptions: Record<NonNullable<ContractEditingInterfaceProps['profession']>, string> = {
+    photographer: 'Bruk kontrakten til a avklare leveranse, bruk, kreditering og rettigheter for fotooppdraget.',
+    videographer: 'Bruk kontrakten til a avklare leveranse, godkjenninger, opptaksdager og bruk av videomaterialet.',
+    music_producer: 'Bruk kontrakten til a avklare andeler, rettigheter, leveranse og betalingsplan for musikkproduksjonen.',
+    vendor: 'Bruk kontrakten til a avklare leveranseomfang, frister, ansvar og betalingsplan for leverandoren.',
+  };
+  const professionLabel = professionLabels[profession];
+  const professionDescription = professionDescriptions[profession];
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -140,7 +130,6 @@ export default function ContractEditingInterface({
   const suggestions = suggestionsData?.data || [];
   const references = referencesData?.data || [];
   const acceptedSuggestions = suggestions.filter((s: any) => s.status === 'accepted');
-  const availableReferences = references;
 
   // Initialize contract data
   useEffect(() => {
@@ -293,6 +282,46 @@ export default function ContractEditingInterface({
         >
           <ContractIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
           {contractId ? 'Rediger Kontrakt' : 'Opprett Kontrakt'}
+        </Typography>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={{ xs: 1, sm: 1.25, md: 1.5 }}
+          useFlexGap
+          sx={{ mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 } }}
+        >
+          <Chip
+            label={professionLabel}
+            color="primary"
+            variant="outlined"
+            sx={{
+              alignSelf: 'flex-start',
+              fontWeight: 600,
+              borderColor: brandColor,
+              color: brandColor,
+            }}
+          />
+          {splitSheetData?.title && (
+            <Chip
+              label={`Koblet til avtale: ${splitSheetData.title}`}
+              variant="outlined"
+              sx={{
+                alignSelf: 'flex-start',
+                borderColor: 'rgba(255,255,255,0.16)',
+                color: 'text.secondary',
+              }}
+            />
+          )}
+        </Stack>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            maxWidth: 880,
+            lineHeight: 1.65,
+            fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' },
+          }}
+        >
+          {professionDescription}
         </Typography>
       </Box>
 
@@ -924,4 +953,3 @@ export default function ContractEditingInterface({
     </Box>
   );
 }
-

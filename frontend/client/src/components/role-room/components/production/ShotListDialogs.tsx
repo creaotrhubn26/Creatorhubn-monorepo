@@ -1,48 +1,10 @@
-/**
- * ShotListDialogs.tsx — Module E
- * ─────────────────────────────────────────────────────────────────────────────
- * All dialogs / drawers for the Shot List panel:
- *   • CreateEditShotListDialog — create or edit a ShotList
- *   • ExportDialog             — export options (CSV / PDF)
- *   • DeleteConfirmDialog      — confirmation before delete
- *   • BatchAssignDialog        — assign person to multiple lists at once
- * ─────────────────────────────────────────────────────────────────────────────
- */
-
-import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Box,
-  Typography,
-  Divider,
-  Chip,
-  Stack,
-  FormControlLabel,
-  Switch,
-  Alert,
-  CircularProgress,
-  Autocomplete,
-} from '@mui/material';
-import {
-  FileDownload as ExportIcon,
-  PictureAsPdf as PdfIcon,
-  Warning as WarnIcon,
-} from '@mui/icons-material';
-
-import type { ShotList, ProductionContext } from '../../models/casting';
-import type { Person } from '../../models/casting';
-import type { ShotListSummary } from '../../models/derivedState';
-import globalTagService from '../../services/globalTagService';
-import GlobalMentionHelper from '../shared/GlobalMentionHelper';
+import React, { useState, useEffect } from "react";
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, Typography, Divider, Chip, Stack, FormControlLabel, Switch, Alert, CircularProgress, Autocomplete } from "@mui/material";
+import { FileDownload as ExportIcon, PictureAsPdf as PdfIcon, Warning as WarnIcon } from "@mui/icons-material";
+import type { ShotList, ProductionContext, Person } from "../../models/casting";
+import type { ShotListSummary } from "../../models/derivedState";
+import globalTagService from "../../services/globalTagService";
+import GlobalMentionHelper from "../shared/GlobalMentionHelper";
 
 // ─── Shared dialog paper styles ───────────────────────────────────────────────
 const PAPER_SX = {

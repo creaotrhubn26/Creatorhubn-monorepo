@@ -1,83 +1,12 @@
-/**
- * ShootingDayPlanner Component
- * Day-of-Days (DOOD) overview and shooting day management
- * Features: Calendar view, cast availability, conflict detection
- */
-
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  Button,
-  IconButton,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Grid,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Tooltip,
-  Alert,
-  Tabs,
-  Tab,
-  Divider,
-  Avatar,
-  Badge,
-  Card,
-  CardContent,
-  CardHeader,
-  LinearProgress,
-} from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { nb } from 'date-fns/locale';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Event as EventIcon,
-  Place as PlaceIcon,
-  Person as PersonIcon,
-  Schedule as ScheduleIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  CalendarMonth as CalendarIcon,
-  AccessTime as TimeIcon,
-  Restaurant as MealIcon,
-  LocalHospital as HospitalIcon,
-  LocalParking as ParkingIcon,
-  Visibility as ViewIcon,
-  Print as PrintIcon,
-  Save as SaveIcon,
-  WbSunny as SunnyIcon,
-  Cloud as CloudyIcon,
-  AcUnit as SnowIcon,
-  Water as RainIcon,
-  Refresh as RefreshIcon,
-} from '@mui/icons-material';
-import type {
-  ShootingDay,
-  CastMember,
-  CrewMember,
-  StripboardStrip} from '../../services/productionWorkflowService';
-import {
-  productionWorkflowService
-} from '../../services/productionWorkflowService';
-import GlobalMentionHelper from '../shared/GlobalMentionHelper';
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { Box, Paper, Typography, Button, IconButton, Chip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Alert, Tabs, Tab, Divider, Avatar, Badge, Card, CardContent, CardHeader, LinearProgress } from "@mui/material";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { nb } from "date-fns/locale";
+import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Event as EventIcon, Place as PlaceIcon, Person as PersonIcon, Schedule as ScheduleIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Cancel as CancelIcon, CalendarMonth as CalendarIcon, AccessTime as TimeIcon, Restaurant as MealIcon, LocalHospital as HospitalIcon, LocalParking as ParkingIcon, Visibility as ViewIcon, Print as PrintIcon, Save as SaveIcon, WbSunny as SunnyIcon, Cloud as CloudyIcon, AcUnit as SnowIcon, Water as RainIcon, Refresh as RefreshIcon } from "@mui/icons-material";
+import { productionWorkflowService, type ShootingDay, type CastMember, type CrewMember, type StripboardStrip } from "../../services/productionWorkflowService";
+import GlobalMentionHelper from "../shared/GlobalMentionHelper";
 
 // ============================================
 // TYPES

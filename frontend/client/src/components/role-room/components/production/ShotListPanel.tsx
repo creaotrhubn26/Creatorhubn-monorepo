@@ -1,57 +1,18 @@
-/**
- * ShotListPanel.tsx
- * ─────────────────────────────────────────────────────────────────────────────
- * Main orchestrator for the Shot List UI.  Wires together:
- *
- *   A) ShotListTopBar      — breadcrumb + batch actions + "New Shot List"
- *   B) ShotListFilterBar   — filter / sort / search / view toggle
- *   C) ShotListGrid        — cards with DnD + multi-select
- *   D) ShotListSidebar     — cast & crew (draggable to assign)
- *   E) ShotListDialogs     — create / edit / export / delete / batch-assign
- *
- * Data layer:
- *   useShotListData        — three-tier caching (summaries / detail / crew)
- *   derivedState.ts        — all displayed numbers are computed, never stored
- *   shotListFilters.ts     — pure filter + sort
- *
- * Realtime:
- *   useShotListRealTime    — broadcasts ShotAssigned, ShotStatusChanged, etc.
- * ─────────────────────────────────────────────────────────────────────────────
- */
-
-import React, { useState, useMemo, useCallback, useReducer, useEffect } from 'react';
-import { Box, useMediaQuery, useTheme } from '@mui/material';
-
-// ── Modules ──────────────────────────────────────────────────────────────────
-import { ShotListTopBar }    from './ShotListTopBar';
-import { ShotListFilterBar } from './ShotListFilterBar';
-import { ShotListGrid }      from './ShotListGrid';
-import { ShotListSidebar }   from './ShotListSidebar';
-import { ShotListGuide }     from './ShotListGuide';
-import {
-  CreateEditShotListDialog,
-  ExportDialog,
-  DeleteConfirmDialog,
-  BatchAssignDialog,
-} from './ShotListDialogs';
-
-// ── Data layer ────────────────────────────────────────────────────────────────
-import { useShotListData }   from './useShotListData';
-import {
-  applyFilters,
-  getSceneOptions,
-  DEFAULT_FILTERS,
-  type ShotListFilters,
-} from './shotListFilters';
-import { computeProjectStats } from '../../models/derivedState';
-import { inheritAssignmentsFromShotList } from '../../models/casting';
-
-// ── Services ──────────────────────────────────────────────────────────────────
-import { castingService }    from '../../services/castingService';
-import { useShotListRealTime } from '../../hooks/useShotListRealTime';
-import { useAuth }           from '@/hooks/useAuth';
-
-import type { ShotList, CastingShot } from '../../models/casting';
+import React, { useState, useMemo, useCallback, useReducer, useEffect } from "react";
+import { Box, useMediaQuery, useTheme } from "@mui/material";
+import { ShotListTopBar } from "./ShotListTopBar";
+import { ShotListFilterBar } from "./ShotListFilterBar";
+import { ShotListGrid } from "./ShotListGrid";
+import { ShotListSidebar } from "./ShotListSidebar";
+import { ShotListGuide } from "./ShotListGuide";
+import { CreateEditShotListDialog, ExportDialog, DeleteConfirmDialog, BatchAssignDialog } from "./ShotListDialogs";
+import { useShotListData } from "./useShotListData";
+import { applyFilters, getSceneOptions, DEFAULT_FILTERS, type ShotListFilters } from "./shotListFilters";
+import { computeProjectStats } from "../../models/derivedState";
+import { inheritAssignmentsFromShotList, type ShotList, type CastingShot } from "../../models/casting";
+import { castingService } from "../../services/castingService";
+import { useShotListRealTime } from "../../hooks/useShotListRealTime";
+import { useAuth } from "@/hooks/useAuth";
 
 // ─── Dialog state (reducer to avoid prop-drilling many booleans) ──────────────
 

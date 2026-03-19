@@ -1,17 +1,4 @@
-/**
- * Demo Scene Setup - "The Safehouse"
- * 
- * Creates a complete demo scene matching the screenshot with:
- * - Floorplan (walls, doors, floor tiles)
- * - Furniture (sofa, coffee table, kitchen counter, stools)
- * - 3 Characters positioned around the room
- * - 3 Cameras (A, B, C) with FOV cones
- * - 180° line of action
- * - Props and details
- */
-
-import type { Scene2D} from './types';
-import { Camera2D, Actor2D, Prop2D } from './types';
+import { Camera2D, Actor2D, Prop2D, type Scene2D } from "./types";
 
 export const createSafehouseScene = (): Scene2D => {
   const sceneWidth = 900;

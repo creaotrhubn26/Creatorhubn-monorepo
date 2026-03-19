@@ -1,108 +1,14 @@
-import React, { useEffect, useMemo, useCallback, useRef, useState } from 'react';
-import {
-  Alert,
-  Avatar,
-  Badge,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Collapse,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Drawer,
-  FormControl,
-  FormControlLabel,
-  IconButton,
-  InputAdornment,
-  InputLabel,
-  LinearProgress,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemText,
-  MenuItem,
-  Paper,
-  Select,
-  Snackbar,
-  Stack,
-  Switch,
-  Tab,
-  Tabs,
-  TextField,
-  Tooltip,
-  Typography,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material';
-import type {
-  DragEndEvent,
-  DragStartEvent} from '@dnd-kit/core';
-import {
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useDroppable,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import {
-  Add as AddIcon,
-  Assignment as TaskIcon,
-  AutoFixHigh as AutoBalanceIcon,
-  CheckCircle as CompleteIcon,
-  Close as CloseIcon,
-  Description as CallSheetIcon,
-  Download as DownloadIcon,
-  ExpandLess as ExpandLessIcon,
-  ExpandMore as ExpandMoreIcon,
-  History as HistoryIcon,
-  Hub as DependencyIcon,
-  Lock as LockIcon,
-  Person as PersonIcon,
-  PlayArrow as InProgressIcon,
-  Save as SaveIcon,
-  Search as SearchIcon,
-  Send as SendIcon,
-  TableChart as TableIcon,
-  Timeline as TimelineIcon,
-  ViewKanban as KanbanIcon,
-  Warning as WarningIcon,
-} from '@mui/icons-material';
-import { CalendarCustomIcon as CalendarIcon } from './icons/CastingIcons';
-import { CallSheetGenerator } from './CallSheetGenerator';
-import {
-  type CastingShot,
-  type CrewMember,
-  type ProductionDay,
-  type SceneBreakdown,
-  type ShotList,
-  type ShotPriority,
-  type ShotStatus,
-} from '../models/casting';
-import { castingService } from '../services/castingService';
-import {
-  TECHNICAL_CREW_SUBGROUP_LABELS,
-  type TechnicalCrewSubgroup,
-  getRoleCapacity,
-  getRoleColor,
-  getRoleLabel,
-  getTechnicalSubgroupForMember,
-  isTechnicalCrewMember as isTechnicalCrewMemberFromShared,
-} from './shared/technicalCrew';
+import React, { useEffect, useMemo, useCallback, useRef, useState } from "react";
+import { Alert, Avatar, Badge, Box, Button, Card, CardContent, Chip, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, Drawer, FormControl, FormControlLabel, IconButton, InputAdornment, InputLabel, LinearProgress, List, ListItem, ListItemAvatar, ListItemText, MenuItem, Paper, Select, Snackbar, Stack, Switch, Tab, Tabs, TextField, Tooltip, Typography, useMediaQuery, useTheme } from "@mui/material";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Add as AddIcon, Assignment as TaskIcon, AutoFixHigh as AutoBalanceIcon, CheckCircle as CompleteIcon, Close as CloseIcon, Description as CallSheetIcon, Download as DownloadIcon, ExpandLess as ExpandLessIcon, ExpandMore as ExpandMoreIcon, History as HistoryIcon, Hub as DependencyIcon, Lock as LockIcon, Person as PersonIcon, PlayArrow as InProgressIcon, Save as SaveIcon, Search as SearchIcon, Send as SendIcon, TableChart as TableIcon, Timeline as TimelineIcon, ViewKanban as KanbanIcon, Warning as WarningIcon } from "@mui/icons-material";
+import { CalendarCustomIcon as CalendarIcon } from "./icons/CastingIcons";
+import { CallSheetGenerator } from "./CallSheetGenerator";
+import type { CastingShot, CrewMember, ProductionDay, SceneBreakdown, ShotList, ShotPriority, ShotStatus } from "../models/casting";
+import { castingService } from "../services/castingService";
+import { TECHNICAL_CREW_SUBGROUP_LABELS, getRoleCapacity, getRoleColor, getRoleLabel, getTechnicalSubgroupForMember, isTechnicalCrewMember as isTechnicalCrewMemberFromShared, type TechnicalCrewSubgroup } from "./shared/technicalCrew";
 
 type ViewMode = 'kanban' | 'table' | 'timeline' | 'calendar' | 'workload';
 export type TeamDashboardCrewSegment = 'all' | 'technical';

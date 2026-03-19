@@ -1,52 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  IconButton,
-  Paper,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  Chip,
-  Divider,
-  Grid,
-  Tooltip,
-  Collapse,
-  Alert,
-  useMediaQuery,
-  useTheme,
-  SwipeableDrawer,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  ContentCopy as DuplicateIcon,
-  DragIndicator as DragIcon,
-  ExpandMore as ExpandIcon,
-  ExpandLess as CollapseIcon,
-  PlayArrow as PreviewIcon,
-  Save as _SaveIcon,
-  Close as CloseIcon,
-  School as TutorialIcon,
-  ArrowUpward as MoveUpIcon,
-  ArrowDownward as MoveDownIcon,
-  Check as ActiveIcon,
-  Menu as MenuIcon,
-  ArrowBack as BackIcon,
-} from '@mui/icons-material';
-import type { Tutorial, TutorialStep } from '../services/tutorialService';
-import { tutorialService } from '../services/tutorialService';
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { Box, Typography, Button, IconButton, Paper, TextField, Select, MenuItem, FormControl, InputLabel, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText, Chip, Divider, Grid, Tooltip, Collapse, Alert, useMediaQuery, useTheme, SwipeableDrawer } from "@mui/material";
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, ContentCopy as DuplicateIcon, DragIndicator as DragIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon, PlayArrow as PreviewIcon, Save as _SaveIcon, Close as CloseIcon, School as TutorialIcon, ArrowUpward as MoveUpIcon, ArrowDownward as MoveDownIcon, Check as ActiveIcon, Menu as MenuIcon, ArrowBack as BackIcon } from "@mui/icons-material";
+import { tutorialService, type Tutorial, type TutorialStep } from "../services/tutorialService";
 
 interface TutorialEditorPanelProps {
   open: boolean;

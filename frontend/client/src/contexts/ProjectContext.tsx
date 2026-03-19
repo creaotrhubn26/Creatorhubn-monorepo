@@ -3,13 +3,8 @@
  * Provides project-specific settings, data, and operations
  */
 
-import type { ReactNode } from 'react';
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { useDynamicProfessions } from '../components/universal/hooks/useDynamicProfessions';
-import { useProfessionConfigs } from '../hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '../hooks/useProfessionAdapter';
-import getProfessionIcon from '../utils/profession-icons';
 
 // Project data interface
 export interface ProjectData {
@@ -118,7 +113,7 @@ export interface ProjectContextType {
   getProjectFiles: (projectId: string) => Promise<any[]>;
   deleteProjectFile: (projectId: string, fileId: string) => Promise<void>;
   updateProjectFile: (projectId: string, fileId: string, updates: any) => Promise<void>;
-  shareProjectFile: (projectId: string, fileId: string, shareData: any) => Promise<void>;
+  shareProjectFile: (projectId: string, fileId: string, shareData: any) => Promise<{ success: boolean; shareUrl?: string; expiresAt?: string }>;
   
   // Project workflow functions
   updateProjectStatus: (projectId: string, status: string) => Promise<void>;
@@ -217,17 +212,7 @@ const ProjectContext = createContext<ProjectContextType | null>(null);
 // Provider component
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  
-  // Profession system hooks
-  const { professionConfigs, getUserProfessionColor } = useDynamicProfessions();
-  const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
-  const professionAdapter = useProfessionAdapter();
-  const currentProfession = professionAdapter.profession || 'photographer';
-  const professionIcon = getProfessionIcon(currentProfession);
-  const professionConfig = professionConfigs?.[currentProfession];
-  const enhancedProfessionConfig = apiProfessionConfigs?.[currentProfession] || professionConfig;
-  const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
-  
+
   const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -1034,6 +1019,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         throw new Error('Failed to share project file');
     }
+      return await response.json();
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to share project file';
       setError(errorMessage);

@@ -1,19 +1,4 @@
-/**
- * domain/productionStats.ts
- *
- * Derived production statistics.
- * Pure functions — NO React, NO state.
- *
- * All values in ProductionStats are COMPUTED from the schedule graph.
- * Nothing is manually set. When the schedule changes, call
- * computeProductionStats() again (put it in a useMemo).
- */
-
-import type {
-  Scene, Strip, ShootDay, CastMember, Breakdown, BreakdownCategory,
-  ProductionStats, ConflictType,
-} from './types';
-import type { Conflict } from './types';
+import type { Scene, Strip, ShootDay, CastMember, Breakdown, BreakdownCategory, ProductionStats, ConflictType, Conflict } from "./types";
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 

@@ -1,30 +1,7 @@
-/**
- * Simple Split Sheet Editor
- * Simplified split sheet editor for project creation modal
- * Inspired by the existing SplitSheetEditor but without complex dependencies
- */
-
-import React, { useState, useMemo, useCallback } from 'react';
-import {
-  Box,
-  Typography,
-  TextField,
-  Button,
-  Stack,
-  Card,
-  CardContent,
-  IconButton,
-  Alert,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Chip,
-  Divider,
-} from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, Person as PersonIcon } from '@mui/icons-material';
-import type { SplitSheetContributor, ContributorRole } from '../split-sheets/types';
-import { ROLE_DISPLAY_NAMES } from '../split-sheets/types';
+import React, { useState, useMemo, useCallback } from "react";
+import { Box, Typography, TextField, Button, Stack, Card, CardContent, IconButton, Alert, FormControl, InputLabel, Select, MenuItem, Chip, Divider } from "@mui/material";
+import { Add as AddIcon, Delete as DeleteIcon, Person as PersonIcon } from "@mui/icons-material";
+import { ROLE_DISPLAY_NAMES, type SplitSheetContributor, type ContributorRole } from "../split-sheets/types";
 
 interface SimpleSplitSheetEditorProps {
   contributors: SplitSheetContributor[];

@@ -1,18 +1,5 @@
-/**
- * Shot Planner Visualizations
- * 
- * Helper functions to draw advanced visualization elements:
- * - Camera frustums with range labels
- * - Motion paths for camera movement
- * - Line of action between characters
- * - 180-degree safety line
- * - Measurement and guide lines
- * - Focus/depth of field visualization
- */
-
-import * as PIXI from 'pixi.js';
-import type { Point2D, Camera2D, Actor2D} from './types';
-import { Shot2D } from './types';
+import * as PIXI from "pixi.js";
+import { Shot2D, type Point2D, type Camera2D, type Actor2D } from "./types";
 
 // =============================================================================
 // Colors & Styles

@@ -13,11 +13,16 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
+import { existsSync } from 'fs';
+import fs from 'fs/promises';
+import path from 'path';
 import QRCode from 'qrcode';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, and, desc, sql, or, gte, lte, isNull, isNotNull } from 'drizzle-orm';
+import { google } from 'googleapis';
 import { z } from 'zod';
+import { fileURLToPath } from 'url';
 import * as roleRoomSchema from '../migrations/role-room-schema.js';
 
 // ── Types ────────────────────────────────────────────────────
@@ -69,6 +74,136 @@ interface ProjectSyncPayload {
 
 type ProducerPhase = 'preproduction' | 'production' | 'postproduction';
 type ProducerReviewDecision = 'approved' | 'rejected' | 'changes_requested';
+type RoleRoomGoogleConnectionState = 'disconnected' | 'connected' | 'expired' | 'error';
+type RoleRoomGoogleOauthMode = 'login' | 'link';
+
+interface RoleRoomGoogleConnectionRow {
+  id: string;
+  user_id: string;
+  role_room_email: string | null;
+  google_email: string | null;
+  google_subject: string | null;
+  access_token_encrypted: string | null;
+  refresh_token_encrypted: string | null;
+  expiry_date: string | null;
+  scopes: unknown;
+  connection_state: RoleRoomGoogleConnectionState | null;
+  last_error: string | null;
+  profile: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string | null;
+}
+
+interface RoleRoomGoogleProjectBindingRow {
+  id: string;
+  project_id: string;
+  connected_user_id: string | null;
+  drive_root_folder_id: string | null;
+  calendar_id: string | null;
+  contacts_context: Record<string, unknown> | null;
+  meet_creation_enabled: boolean | null;
+  audit_signature_storage_enabled: boolean | null;
+  folder_layout: Record<string, unknown> | null;
+  sync_status: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  last_drive_sync_at: string | null;
+  last_calendar_sync_at: string | null;
+}
+
+interface RoleRoomGoogleArtifactRow {
+  id: string;
+  project_id: string;
+  local_entity_type: string;
+  local_entity_id: string;
+  artifact_type: string;
+  source_label: string | null;
+  drive_file_id: string | null;
+  calendar_event_id: string | null;
+  meet_url: string | null;
+  web_view_url: string | null;
+  web_content_link: string | null;
+  mime_type: string | null;
+  folder_key: string | null;
+  sync_status: string | null;
+  metadata: Record<string, unknown> | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+type RoleRoomGoogleAgreementSignatureStatus =
+  | 'not_started'
+  | 'prepared'
+  | 'sent'
+  | 'opened_in_google'
+  | 'signed'
+  | 'rejected'
+  | 'changes_requested'
+  | 'error';
+
+interface RoleRoomGoogleAgreementSignatureRow {
+  id: string;
+  project_id: string;
+  agreement_id: string;
+  provider: string;
+  status: RoleRoomGoogleAgreementSignatureStatus | null;
+  document_title: string | null;
+  drive_source_file_id: string | null;
+  signed_drive_file_id: string | null;
+  audit_artifact_id: string | null;
+  request_url: string | null;
+  web_view_url: string | null;
+  requested_by: string | null;
+  requested_by_email: string | null;
+  counterparty_name: string | null;
+  counterparty_email: string | null;
+  prepared_at: string | null;
+  sent_at: string | null;
+  signed_at: string | null;
+  declined_at: string | null;
+  last_opened_at: string | null;
+  last_synced_at: string | null;
+  signature_hash: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface RoleRoomGoogleOauthState {
+  mode: RoleRoomGoogleOauthMode;
+  returnPath: string;
+  loginAs?: string | null;
+  requestedRole?: string | null;
+  projectId?: string | null;
+  createdByUserId?: string | null;
+  createdAt: number;
+}
+
+interface RoleRoomGoogleTransferPayload {
+  mode: RoleRoomGoogleOauthMode;
+  createdAt: number;
+  sessionToken?: string;
+  user?: {
+    id: string;
+    email: string;
+    role: string;
+    name: string;
+    display_name: string;
+    loginAs?: string;
+    requestedRole?: string | null;
+  };
+  googleEmail: string;
+  googleSubject: string;
+  profile: Record<string, unknown>;
+  tokenBundle?: {
+    accessToken?: string | null;
+    refreshToken?: string | null;
+    expiryDate?: number | null;
+    scopes: string[];
+  };
+}
 
 interface ProjectRoleRecord {
   role: string;
@@ -80,6 +215,24 @@ interface ApiKeyUserContext {
   email?: string;
   role?: string;
   scopes: string[];
+}
+
+function buildSessionScopes(role?: string): string[] {
+  const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : '';
+
+  if (normalizedRole === 'admin' || normalizedRole === 'super_admin') {
+    return ['read', 'write', 'admin'];
+  }
+
+  if (normalizedRole === 'client' || normalizedRole === 'client_reviewer') {
+    return ['read'];
+  }
+
+  if (normalizedRole) {
+    return ['read', 'write'];
+  }
+
+  return ['read'];
 }
 
 // ── Utility Helpers ──────────────────────────────────────────
@@ -98,6 +251,251 @@ function nowISO(): string {
 
 function makeId(): string {
   return crypto.randomUUID();
+}
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const PROJECT_FILE_STORAGE_ROOT = path.join(REPO_ROOT, 'uploads', 'project-files');
+const ROLE_ROOM_GOOGLE_SCOPES = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/contacts.readonly',
+] as const;
+const ROLE_ROOM_GOOGLE_DRIVE_FOLDERS = [
+  { key: 'brief', label: '01 Brief' },
+  { key: 'materials', label: '02 Materiale' },
+  { key: 'brand', label: '03 Merkevare' },
+  { key: 'delivery', label: '04 Levering' },
+  { key: 'approvals', label: '05 Godkjenning' },
+  { key: 'meetings', label: '06 Møter' },
+] as const;
+const ROLE_ROOM_GOOGLE_STATE_TTL_MS = 15 * 60 * 1000;
+
+const roleRoomGoogleOauthStateStore = new Map<string, RoleRoomGoogleOauthState>();
+const roleRoomGoogleTransferStore = new Map<string, RoleRoomGoogleTransferPayload>();
+
+function readStringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readBooleanValue(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readRecordValue(value: unknown): Record<string, unknown> | null {
+  return isRecordValue(value) ? value : null;
+}
+
+function readJsonObject(value: unknown): Record<string, unknown> {
+  if (isRecordValue(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(value);
+      return isRecordValue(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function readStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      .map((entry) => entry.trim());
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+          .map((entry) => entry.trim());
+      }
+    } catch {
+      return [value.trim()];
+    }
+  }
+  return [];
+}
+
+function pruneExpiredRoleRoomGoogleState(): void {
+  const now = Date.now();
+  for (const [key, value] of roleRoomGoogleOauthStateStore.entries()) {
+    if (now - value.createdAt > ROLE_ROOM_GOOGLE_STATE_TTL_MS) {
+      roleRoomGoogleOauthStateStore.delete(key);
+    }
+  }
+  for (const [key, value] of roleRoomGoogleTransferStore.entries()) {
+    if (now - value.createdAt > ROLE_ROOM_GOOGLE_STATE_TTL_MS) {
+      roleRoomGoogleTransferStore.delete(key);
+    }
+  }
+}
+
+function deriveRoleRoomGoogleEncryptionKey(): Buffer | null {
+  const secret = readStringValue(
+    process.env.ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY
+    ?? process.env.SESSION_SECRET
+    ?? process.env.JWT_SECRET
+    ?? process.env.AUTH_SECRET,
+  );
+  if (!secret) {
+    return null;
+  }
+  return crypto.createHash('sha256').update(secret).digest();
+}
+
+function encryptRoleRoomGoogleToken(value: string): string {
+  const key = deriveRoleRoomGoogleEncryptionKey();
+  if (!key) {
+    throw new Error('ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY mangler');
+  }
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1.${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+
+function decryptRoleRoomGoogleToken(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const key = deriveRoleRoomGoogleEncryptionKey();
+  if (!key) {
+    return null;
+  }
+  const [version, ivPart, tagPart, encryptedPart] = value.split('.');
+  if (version !== 'v1' || !ivPart || !tagPart || !encryptedPart) {
+    return null;
+  }
+  try {
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      key,
+      Buffer.from(ivPart, 'base64url'),
+    );
+    decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(encryptedPart, 'base64url')),
+      decipher.final(),
+    ]);
+    return decrypted.toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+function getRoleRoomGoogleRedirectUri(req?: Request): string | null {
+  const configured = readStringValue(process.env.ROLE_ROOM_GOOGLE_REDIRECT_URI);
+  if (configured) {
+    return configured;
+  }
+  if (!req) {
+    return null;
+  }
+  const host = req.get('host');
+  if (!host) {
+    return null;
+  }
+  const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
+  const protocol = forwardedProto ?? req.protocol ?? 'http';
+  return `${protocol}://${host}/api/role-room/google/oauth/callback`;
+}
+
+function getRoleRoomGoogleConfig(req?: Request) {
+  const clientId = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID);
+  const clientSecret = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET);
+  const redirectUri = getRoleRoomGoogleRedirectUri(req);
+  const encryptionKey = deriveRoleRoomGoogleEncryptionKey();
+  return {
+    clientId,
+    clientSecret,
+    redirectUri,
+    configured: Boolean(clientId && clientSecret && redirectUri && encryptionKey),
+    missing: [
+      !clientId ? 'ROLE_ROOM_GOOGLE_CLIENT_ID' : null,
+      !clientSecret ? 'ROLE_ROOM_GOOGLE_CLIENT_SECRET' : null,
+      !redirectUri ? 'ROLE_ROOM_GOOGLE_REDIRECT_URI' : null,
+      !encryptionKey ? 'ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY' : null,
+    ].filter((entry): entry is string => Boolean(entry)),
+  };
+}
+
+function createRoleRoomGoogleOAuthClient(req?: Request) {
+  const config = getRoleRoomGoogleConfig(req);
+  if (!config.clientId || !config.clientSecret || !config.redirectUri) {
+    return null;
+  }
+  return new google.auth.OAuth2(config.clientId, config.clientSecret, config.redirectUri);
+}
+
+function sanitizeRoleRoomReturnPath(rawValue: unknown, req?: Request): string {
+  const fallback = '/casting.html';
+  const value = readStringValue(rawValue);
+  if (!value) {
+    return fallback;
+  }
+  if (value.startsWith('/')) {
+    return value;
+  }
+  if (req) {
+    try {
+      const host = req.get('host');
+      const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
+      const protocol = forwardedProto ?? req.protocol ?? 'http';
+      const expectedOrigin = `${protocol}://${host}`;
+      const parsed = new URL(value);
+      if (parsed.origin === expectedOrigin) {
+        return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      }
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+function appendQueryParamsToPath(pathname: string, params: Record<string, string | null | undefined>): string {
+  const safePath = pathname.trim().length > 0 ? pathname : '/casting.html';
+  const [pathOnly, hashPart = ''] = safePath.split('#', 2);
+  const [basePath, queryString = ''] = pathOnly.split('?', 2);
+  const searchParams = new URLSearchParams(queryString);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === '') {
+      searchParams.delete(key);
+      return;
+    }
+    searchParams.set(key, value);
+  });
+  const nextQuery = searchParams.toString();
+  return `${basePath}${nextQuery ? `?${nextQuery}` : ''}${hashPart ? `#${hashPart}` : ''}`;
+}
+
+function getRoleRoomGoogleFolderKeyForFile(fileRecord: Record<string, unknown>): string {
+  const metadata = readJsonObject(fileRecord.metadata);
+  const source = readStringValue(metadata.source) ?? '';
+  const entryType = readStringValue(metadata.entryType) ?? '';
+  if (source === 'role_room_client_handoff_package' || source === 'role_room_delivery_workspace') {
+    return 'delivery';
+  }
+  if (source === 'role_room_client_material' && entryType === 'brand_asset') {
+    return 'brand';
+  }
+  if (source === 'role_room_client_material') {
+    return 'materials';
+  }
+  return 'brief';
 }
 
 // ── CORS Configuration ──────────────────────────────────────
@@ -168,6 +566,16 @@ function deriveDevUserIdFromBearer(token: string): string {
   return `dev-${hashApiKey(trimmed).slice(0, 16)}`;
 }
 
+function readOptionalHeaderValue(req: Request, headerName: string): string | undefined {
+  const raw = req.headers[headerName.toLowerCase()];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 // ── API Key Middleware ───────────────────────────────────────
 
 /**
@@ -188,7 +596,7 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
           userId: session.userId,
           email: session.email,
           role: session.role,
-          scopes: ['read', 'write', 'admin'],
+          scopes: buildSessionScopes(session.role),
         };
         next();
         return;
@@ -197,10 +605,15 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
 
     // ── 1b. Dev-mode bypass for local UI integration ───────
     if (devBypassEnabled) {
-      const userId = bearer ? deriveDevUserIdFromBearer(bearer) : 'dev-local-user';
+      const headerUserId = readOptionalHeaderValue(req, 'x-role-room-user-id');
+      const headerEmail = readOptionalHeaderValue(req, 'x-role-room-email');
+      const headerRole = readOptionalHeaderValue(req, 'x-role-room-role')?.toLowerCase();
+      const userId = headerUserId ?? (bearer ? deriveDevUserIdFromBearer(bearer) : 'dev-local-user');
       (req as Request & { apiKeyUser: ApiKeyUserContext }).apiKeyUser = {
         userId,
-        scopes: ['read', 'write', 'admin'],
+        email: headerEmail,
+        role: headerRole,
+        scopes: headerRole ? buildSessionScopes(headerRole) : ['read', 'write', 'admin'],
       };
       next();
       return;
@@ -319,6 +732,1554 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (error) {
       console.warn('Role Room compatStoreSet failed:', { storeKey, error });
     }
+  }
+
+  function legacyProjectAgreementsKey(projectId: string): string {
+    return `casting:project-agreements:${projectId}`;
+  }
+
+  function getOptionalRequestUser(req: Request): ApiKeyUserContext | null {
+    const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
+    if (apiKeyReq.apiKeyUser?.userId) {
+      return apiKeyReq.apiKeyUser;
+    }
+
+    const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
+    if (bearer && activeSessions) {
+      const session = activeSessions.get(bearer);
+      if (session) {
+        return {
+          userId: session.userId,
+          email: session.email,
+          role: session.role,
+          scopes: buildSessionScopes(session.role),
+        };
+      }
+    }
+
+    if (isRoleRoomDevBypassEnabled()) {
+      const headerUserId = readOptionalHeaderValue(req, 'x-role-room-user-id');
+      const headerEmail = readOptionalHeaderValue(req, 'x-role-room-email');
+      const headerRole = readOptionalHeaderValue(req, 'x-role-room-role')?.toLowerCase();
+      const userId = headerUserId ?? (bearer ? deriveDevUserIdFromBearer(bearer) : 'dev-local-user');
+      return {
+        userId,
+        email: headerEmail,
+        role: headerRole,
+        scopes: headerRole ? buildSessionScopes(headerRole) : ['read', 'write', 'admin'],
+      };
+    }
+
+    return null;
+  }
+
+  let roleRoomGoogleTablesReadyPromise: Promise<boolean> | null = null;
+  async function ensureRoleRoomGoogleTables(): Promise<boolean> {
+    if (roleRoomGoogleTablesReadyPromise) return roleRoomGoogleTablesReadyPromise;
+    roleRoomGoogleTablesReadyPromise = (async () => {
+      try {
+        const castingProjectsReady = await ensureCastingProjectsTable();
+        if (!castingProjectsReady) {
+          return false;
+        }
+
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS role_room_google_connections (
+            id UUID PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            role_room_email VARCHAR(255),
+            google_email VARCHAR(255),
+            google_subject VARCHAR(255),
+            access_token_encrypted TEXT,
+            refresh_token_encrypted TEXT,
+            expiry_date TIMESTAMPTZ,
+            scopes JSONB NOT NULL DEFAULT '[]'::jsonb,
+            connection_state VARCHAR(32) NOT NULL DEFAULT 'disconnected',
+            last_error TEXT,
+            profile JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_used_at TIMESTAMPTZ
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_google_connections_user_id_unique ON role_room_google_connections(user_id);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_google_connections_subject_unique ON role_room_google_connections(google_subject);
+          CREATE INDEX IF NOT EXISTS idx_rr_google_connections_email ON role_room_google_connections(google_email);
+
+          CREATE TABLE IF NOT EXISTS role_room_google_project_bindings (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            connected_user_id VARCHAR(255),
+            drive_root_folder_id VARCHAR(255),
+            calendar_id VARCHAR(255),
+            contacts_context JSONB NOT NULL DEFAULT '{}'::jsonb,
+            meet_creation_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            audit_signature_storage_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            folder_layout JSONB NOT NULL DEFAULT '{}'::jsonb,
+            sync_status JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_drive_sync_at TIMESTAMPTZ,
+            last_calendar_sync_at TIMESTAMPTZ
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_google_project_binding_project_unique ON role_room_google_project_bindings(project_id);
+
+          CREATE TABLE IF NOT EXISTS role_room_google_artifacts (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            local_entity_type VARCHAR(100) NOT NULL,
+            local_entity_id VARCHAR(255) NOT NULL,
+            artifact_type VARCHAR(64) NOT NULL,
+            source_label VARCHAR(255),
+            drive_file_id VARCHAR(255),
+            calendar_event_id VARCHAR(255),
+            meet_url TEXT,
+            web_view_url TEXT,
+            web_content_link TEXT,
+            mime_type VARCHAR(255),
+            folder_key VARCHAR(64),
+            sync_status VARCHAR(32) NOT NULL DEFAULT 'synced',
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_by VARCHAR(255),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_google_artifact_local_unique
+            ON role_room_google_artifacts(project_id, local_entity_type, local_entity_id, artifact_type);
+          CREATE INDEX IF NOT EXISTS idx_rr_google_artifacts_project ON role_room_google_artifacts(project_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_google_artifacts_drive_file ON role_room_google_artifacts(drive_file_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_google_artifacts_calendar_event ON role_room_google_artifacts(calendar_event_id);
+
+          CREATE TABLE IF NOT EXISTS role_room_google_agreement_signatures (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            agreement_id VARCHAR(255) NOT NULL,
+            provider VARCHAR(64) NOT NULL DEFAULT 'google_workspace',
+            status VARCHAR(64) NOT NULL DEFAULT 'not_started',
+            document_title TEXT,
+            drive_source_file_id VARCHAR(255),
+            signed_drive_file_id VARCHAR(255),
+            audit_artifact_id VARCHAR(255),
+            request_url TEXT,
+            web_view_url TEXT,
+            requested_by VARCHAR(255),
+            requested_by_email VARCHAR(255),
+            counterparty_name TEXT,
+            counterparty_email VARCHAR(255),
+            prepared_at TIMESTAMPTZ,
+            sent_at TIMESTAMPTZ,
+            signed_at TIMESTAMPTZ,
+            declined_at TIMESTAMPTZ,
+            last_opened_at TIMESTAMPTZ,
+            last_synced_at TIMESTAMPTZ,
+            signature_hash TEXT,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_google_agreement_signature_unique
+            ON role_room_google_agreement_signatures(project_id, agreement_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_google_agreement_signatures_project
+            ON role_room_google_agreement_signatures(project_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_google_agreement_signatures_status
+            ON role_room_google_agreement_signatures(status);
+          CREATE INDEX IF NOT EXISTS idx_rr_google_agreement_signatures_drive_source
+            ON role_room_google_agreement_signatures(drive_source_file_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_google_agreement_signatures_signed_drive
+            ON role_room_google_agreement_signatures(signed_drive_file_id);
+        `);
+
+        return true;
+      } catch (error) {
+        console.warn('Role Room Google tables unavailable:', error);
+        return false;
+      }
+    })();
+    return roleRoomGoogleTablesReadyPromise;
+  }
+
+  async function getRoleRoomGoogleConnectionByUserId(userId: string): Promise<RoleRoomGoogleConnectionRow | null> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      return null;
+    }
+    const result = await pool.query<RoleRoomGoogleConnectionRow>(
+      `SELECT * FROM role_room_google_connections WHERE user_id = $1 LIMIT 1`,
+      [userId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function getRoleRoomGoogleProjectBinding(projectId: string): Promise<RoleRoomGoogleProjectBindingRow | null> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      return null;
+    }
+    const result = await pool.query<RoleRoomGoogleProjectBindingRow>(
+      `SELECT * FROM role_room_google_project_bindings WHERE project_id = $1 LIMIT 1`,
+      [projectId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function upsertRoleRoomGoogleConnection(
+    userId: string,
+    roleRoomEmail: string | null,
+    googleProfile: { email: string; subject: string; profile: Record<string, unknown> },
+    tokenBundle: NonNullable<RoleRoomGoogleTransferPayload['tokenBundle']>,
+  ): Promise<RoleRoomGoogleConnectionRow> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      throw new Error('Role Room Google tables unavailable');
+    }
+
+    const accessTokenEncrypted = tokenBundle.accessToken ? encryptRoleRoomGoogleToken(tokenBundle.accessToken) : null;
+    const refreshTokenEncrypted = tokenBundle.refreshToken ? encryptRoleRoomGoogleToken(tokenBundle.refreshToken) : null;
+    const expiryDate = typeof tokenBundle.expiryDate === 'number' && Number.isFinite(tokenBundle.expiryDate)
+      ? new Date(tokenBundle.expiryDate).toISOString()
+      : null;
+
+    const result = await pool.query<RoleRoomGoogleConnectionRow>(
+      `INSERT INTO role_room_google_connections (
+        id, user_id, role_room_email, google_email, google_subject,
+        access_token_encrypted, refresh_token_encrypted, expiry_date, scopes,
+        connection_state, last_error, profile, created_at, updated_at, last_used_at
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9::jsonb,
+        'connected', NULL, $10::jsonb, NOW(), NOW(), NOW()
+      )
+      ON CONFLICT (user_id) DO UPDATE SET
+        role_room_email = EXCLUDED.role_room_email,
+        google_email = EXCLUDED.google_email,
+        google_subject = EXCLUDED.google_subject,
+        access_token_encrypted = COALESCE(EXCLUDED.access_token_encrypted, role_room_google_connections.access_token_encrypted),
+        refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_google_connections.refresh_token_encrypted),
+        expiry_date = COALESCE(EXCLUDED.expiry_date, role_room_google_connections.expiry_date),
+        scopes = EXCLUDED.scopes,
+        connection_state = 'connected',
+        last_error = NULL,
+        profile = EXCLUDED.profile,
+        updated_at = NOW(),
+        last_used_at = NOW()
+      RETURNING *`,
+      [
+        crypto.randomUUID(),
+        userId,
+        roleRoomEmail,
+        googleProfile.email,
+        googleProfile.subject,
+        accessTokenEncrypted,
+        refreshTokenEncrypted,
+        expiryDate,
+        JSON.stringify(tokenBundle.scopes ?? []),
+        JSON.stringify(googleProfile.profile),
+      ],
+    );
+    return result.rows[0];
+  }
+
+  async function buildAuthorizedRoleRoomGoogleClient(userId: string) {
+    const connection = await getRoleRoomGoogleConnectionByUserId(userId);
+    const oauthClient = createRoleRoomGoogleOAuthClient();
+    if (!connection || !oauthClient) {
+      return null;
+    }
+
+    const accessToken = decryptRoleRoomGoogleToken(connection.access_token_encrypted);
+    const refreshToken = decryptRoleRoomGoogleToken(connection.refresh_token_encrypted);
+    oauthClient.setCredentials({
+      access_token: accessToken ?? undefined,
+      refresh_token: refreshToken ?? undefined,
+      expiry_date: connection.expiry_date ? Date.parse(connection.expiry_date) : undefined,
+    });
+
+    try {
+      await oauthClient.getAccessToken();
+      const nextAccessToken = readStringValue(oauthClient.credentials.access_token);
+      const nextRefreshToken = readStringValue(oauthClient.credentials.refresh_token) ?? refreshToken;
+      const nextExpiryDate = typeof oauthClient.credentials.expiry_date === 'number'
+        ? new Date(oauthClient.credentials.expiry_date).toISOString()
+        : connection.expiry_date;
+
+      await pool.query(
+        `UPDATE role_room_google_connections
+         SET access_token_encrypted = $2,
+             refresh_token_encrypted = COALESCE($3, refresh_token_encrypted),
+             expiry_date = $4,
+             connection_state = 'connected',
+             last_error = NULL,
+             last_used_at = NOW(),
+             updated_at = NOW()
+         WHERE user_id = $1`,
+        [
+          userId,
+          nextAccessToken ? encryptRoleRoomGoogleToken(nextAccessToken) : connection.access_token_encrypted,
+          nextRefreshToken ? encryptRoleRoomGoogleToken(nextRefreshToken) : null,
+          nextExpiryDate,
+        ],
+      );
+    } catch (error) {
+      await pool.query(
+        `UPDATE role_room_google_connections
+         SET connection_state = 'error',
+             last_error = $2,
+             updated_at = NOW()
+         WHERE user_id = $1`,
+        [userId, error instanceof Error ? error.message : 'Google token refresh failed'],
+      ).catch(() => undefined);
+      throw error;
+    }
+
+    return { oauthClient, connection };
+  }
+
+  async function readLegacyProjectMetadata(projectId: string): Promise<Record<string, unknown>> {
+    try {
+      const result = await pool.query(
+        `SELECT metadata FROM legacy.projects WHERE id = $1 LIMIT 1`,
+        [projectId],
+      );
+      if (!result.rowCount || result.rowCount === 0) {
+        return {};
+      }
+      return readJsonObject(result.rows[0]?.metadata);
+    } catch {
+      return {};
+    }
+  }
+
+  async function readLegacyProjectFiles(projectId: string): Promise<Record<string, unknown>[]> {
+    const metadata = await readLegacyProjectMetadata(projectId);
+    return Array.isArray(metadata.files)
+      ? metadata.files.filter((entry): entry is Record<string, unknown> => isRecordValue(entry))
+      : [];
+  }
+
+  async function upsertRoleRoomGoogleArtifact(
+    projectId: string,
+    payload: {
+      localEntityType: string;
+      localEntityId: string;
+      artifactType: string;
+      sourceLabel?: string | null;
+      driveFileId?: string | null;
+      calendarEventId?: string | null;
+      meetUrl?: string | null;
+      webViewUrl?: string | null;
+      webContentLink?: string | null;
+      mimeType?: string | null;
+      folderKey?: string | null;
+      syncStatus?: string | null;
+      metadata?: Record<string, unknown>;
+      createdBy?: string | null;
+    },
+  ): Promise<RoleRoomGoogleArtifactRow> {
+    const result = await pool.query<RoleRoomGoogleArtifactRow>(
+      `INSERT INTO role_room_google_artifacts (
+        id, project_id, local_entity_type, local_entity_id, artifact_type,
+        source_label, drive_file_id, calendar_event_id, meet_url, web_view_url,
+        web_content_link, mime_type, folder_key, sync_status, metadata, created_by,
+        created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15::jsonb, $16,
+        NOW(), NOW()
+      )
+      ON CONFLICT (project_id, local_entity_type, local_entity_id, artifact_type)
+      DO UPDATE SET
+        source_label = EXCLUDED.source_label,
+        drive_file_id = COALESCE(EXCLUDED.drive_file_id, role_room_google_artifacts.drive_file_id),
+        calendar_event_id = COALESCE(EXCLUDED.calendar_event_id, role_room_google_artifacts.calendar_event_id),
+        meet_url = COALESCE(EXCLUDED.meet_url, role_room_google_artifacts.meet_url),
+        web_view_url = COALESCE(EXCLUDED.web_view_url, role_room_google_artifacts.web_view_url),
+        web_content_link = COALESCE(EXCLUDED.web_content_link, role_room_google_artifacts.web_content_link),
+        mime_type = COALESCE(EXCLUDED.mime_type, role_room_google_artifacts.mime_type),
+        folder_key = COALESCE(EXCLUDED.folder_key, role_room_google_artifacts.folder_key),
+        sync_status = COALESCE(EXCLUDED.sync_status, role_room_google_artifacts.sync_status),
+        metadata = EXCLUDED.metadata,
+        updated_at = NOW()
+      RETURNING *`,
+      [
+        crypto.randomUUID(),
+        projectId,
+        payload.localEntityType,
+        payload.localEntityId,
+        payload.artifactType,
+        payload.sourceLabel ?? null,
+        payload.driveFileId ?? null,
+        payload.calendarEventId ?? null,
+        payload.meetUrl ?? null,
+        payload.webViewUrl ?? null,
+        payload.webContentLink ?? null,
+        payload.mimeType ?? null,
+        payload.folderKey ?? null,
+        payload.syncStatus ?? 'synced',
+        JSON.stringify(payload.metadata ?? {}),
+        payload.createdBy ?? null,
+      ],
+    );
+    return result.rows[0];
+  }
+
+  async function ensureRoleRoomGoogleDriveFolder(
+    driveApi: ReturnType<typeof google.drive>,
+    folderName: string,
+    parentFolderId?: string | null,
+  ): Promise<string> {
+    const parentQuery = parentFolderId ? ` and '${parentFolderId}' in parents` : '';
+    const existing = await driveApi.files.list({
+      q: `mimeType='application/vnd.google-apps.folder' and name='${folderName.replace(/'/g, "\\'")}' and trashed=false${parentQuery}`,
+      fields: 'files(id,name)',
+      pageSize: 1,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    const existingId = existing.data.files?.[0]?.id;
+    if (existingId) {
+      return existingId;
+    }
+    const created = await driveApi.files.create({
+      requestBody: {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: parentFolderId ? [parentFolderId] : undefined,
+      },
+      fields: 'id',
+      supportsAllDrives: true,
+    });
+    if (!created.data.id) {
+      throw new Error(`Kunne ikke opprette Drive-mappen ${folderName}`);
+    }
+    return created.data.id;
+  }
+
+  async function ensureRoleRoomGoogleDriveLayout(
+    driveApi: ReturnType<typeof google.drive>,
+    projectName: string,
+    rootFolderId?: string | null,
+  ): Promise<{ rootFolderId: string; folderLayout: Record<string, string> }> {
+    const resolvedRootFolderId = rootFolderId
+      ?? await ensureRoleRoomGoogleDriveFolder(driveApi, `Role Room · ${projectName}`);
+    const folderLayout: Record<string, string> = {};
+    for (const folder of ROLE_ROOM_GOOGLE_DRIVE_FOLDERS) {
+      folderLayout[folder.key] = await ensureRoleRoomGoogleDriveFolder(driveApi, folder.label, resolvedRootFolderId);
+    }
+    return {
+      rootFolderId: resolvedRootFolderId,
+      folderLayout,
+    };
+  }
+
+  async function getRoleRoomGoogleConnectionBySubject(subject: string): Promise<RoleRoomGoogleConnectionRow | null> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      return null;
+    }
+    const result = await pool.query<RoleRoomGoogleConnectionRow>(
+      `SELECT * FROM role_room_google_connections WHERE google_subject = $1 LIMIT 1`,
+      [subject],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function getRoleRoomGoogleArtifactsByProject(projectId: string): Promise<RoleRoomGoogleArtifactRow[]> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      return [];
+    }
+    const result = await pool.query<RoleRoomGoogleArtifactRow>(
+      `SELECT * FROM role_room_google_artifacts WHERE project_id = $1 ORDER BY created_at ASC`,
+      [projectId],
+    );
+    return result.rows;
+  }
+
+  function buildRoleRoomGoogleAgreementSignatureResponse(
+    signature: RoleRoomGoogleAgreementSignatureRow,
+  ) {
+    const metadata = readJsonObject(signature.metadata);
+    return {
+      id: signature.id,
+      projectId: signature.project_id,
+      agreementId: signature.agreement_id,
+      provider: 'google_workspace' as const,
+      status: signature.status ?? 'not_started',
+      documentTitle: readStringValue(signature.document_title),
+      driveSourceFileId: readStringValue(signature.drive_source_file_id),
+      signedDriveFileId: readStringValue(signature.signed_drive_file_id),
+      auditArtifactId: readStringValue(signature.audit_artifact_id),
+      sourceArtifactId: readStringValue(metadata.sourceArtifactId),
+      pdfSnapshotArtifactId: readStringValue(metadata.pdfSnapshotArtifactId),
+      signedPdfArtifactId: readStringValue(metadata.signedPdfArtifactId),
+      requestUrl: readStringValue(signature.request_url),
+      webViewUrl: readStringValue(signature.web_view_url),
+      requestedBy: readStringValue(signature.requested_by),
+      requestedByEmail: readStringValue(signature.requested_by_email),
+      counterpartyName: readStringValue(signature.counterparty_name),
+      counterpartyEmail: readStringValue(signature.counterparty_email),
+      preparedAt: signature.prepared_at,
+      sentAt: signature.sent_at,
+      signedAt: signature.signed_at,
+      declinedAt: signature.declined_at,
+      lastOpenedAt: signature.last_opened_at,
+      lastSyncedAt: signature.last_synced_at,
+      signatureHash: readStringValue(signature.signature_hash),
+      metadata,
+      createdAt: signature.created_at,
+      updatedAt: signature.updated_at,
+    };
+  }
+
+  async function getRoleRoomGoogleAgreementSignatureByAgreementId(
+    projectId: string,
+    agreementId: string,
+  ): Promise<RoleRoomGoogleAgreementSignatureRow | null> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      return null;
+    }
+    const result = await pool.query<RoleRoomGoogleAgreementSignatureRow>(
+      `SELECT * FROM role_room_google_agreement_signatures
+       WHERE project_id = $1 AND agreement_id = $2
+       LIMIT 1`,
+      [projectId, agreementId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function getRoleRoomGoogleAgreementSignaturesByProject(
+    projectId: string,
+  ): Promise<RoleRoomGoogleAgreementSignatureRow[]> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      return [];
+    }
+    const result = await pool.query<RoleRoomGoogleAgreementSignatureRow>(
+      `SELECT * FROM role_room_google_agreement_signatures
+       WHERE project_id = $1
+       ORDER BY updated_at DESC, created_at DESC`,
+      [projectId],
+    );
+    return result.rows;
+  }
+
+  async function upsertRoleRoomGoogleAgreementSignature(
+    projectId: string,
+    agreementId: string,
+    payload: {
+      status?: RoleRoomGoogleAgreementSignatureStatus;
+      documentTitle?: string | null;
+      driveSourceFileId?: string | null;
+      signedDriveFileId?: string | null;
+      auditArtifactId?: string | null;
+      requestUrl?: string | null;
+      webViewUrl?: string | null;
+      requestedBy?: string | null;
+      requestedByEmail?: string | null;
+      counterpartyName?: string | null;
+      counterpartyEmail?: string | null;
+      preparedAt?: string | null;
+      sentAt?: string | null;
+      signedAt?: string | null;
+      declinedAt?: string | null;
+      lastOpenedAt?: string | null;
+      lastSyncedAt?: string | null;
+      signatureHash?: string | null;
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<RoleRoomGoogleAgreementSignatureRow> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      throw new Error('Role Room Google tables unavailable');
+    }
+
+    const existing = await getRoleRoomGoogleAgreementSignatureByAgreementId(projectId, agreementId);
+    const nextMetadata = {
+      ...(existing?.metadata ?? {}),
+      ...(payload.metadata ?? {}),
+    };
+
+    const result = await pool.query<RoleRoomGoogleAgreementSignatureRow>(
+      `INSERT INTO role_room_google_agreement_signatures (
+        id, project_id, agreement_id, provider, status, document_title,
+        drive_source_file_id, signed_drive_file_id, audit_artifact_id,
+        request_url, web_view_url, requested_by, requested_by_email,
+        counterparty_name, counterparty_email,
+        prepared_at, sent_at, signed_at, declined_at, last_opened_at, last_synced_at,
+        signature_hash, metadata, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, 'google_workspace', $4, $5,
+        $6, $7, $8,
+        $9, $10, $11, $12,
+        $13, $14,
+        $15, $16, $17, $18, $19, $20,
+        $21, $22::jsonb, NOW(), NOW()
+      )
+      ON CONFLICT (project_id, agreement_id) DO UPDATE SET
+        status = COALESCE(EXCLUDED.status, role_room_google_agreement_signatures.status),
+        document_title = COALESCE(EXCLUDED.document_title, role_room_google_agreement_signatures.document_title),
+        drive_source_file_id = COALESCE(EXCLUDED.drive_source_file_id, role_room_google_agreement_signatures.drive_source_file_id),
+        signed_drive_file_id = COALESCE(EXCLUDED.signed_drive_file_id, role_room_google_agreement_signatures.signed_drive_file_id),
+        audit_artifact_id = COALESCE(EXCLUDED.audit_artifact_id, role_room_google_agreement_signatures.audit_artifact_id),
+        request_url = COALESCE(EXCLUDED.request_url, role_room_google_agreement_signatures.request_url),
+        web_view_url = COALESCE(EXCLUDED.web_view_url, role_room_google_agreement_signatures.web_view_url),
+        requested_by = COALESCE(EXCLUDED.requested_by, role_room_google_agreement_signatures.requested_by),
+        requested_by_email = COALESCE(EXCLUDED.requested_by_email, role_room_google_agreement_signatures.requested_by_email),
+        counterparty_name = COALESCE(EXCLUDED.counterparty_name, role_room_google_agreement_signatures.counterparty_name),
+        counterparty_email = COALESCE(EXCLUDED.counterparty_email, role_room_google_agreement_signatures.counterparty_email),
+        prepared_at = COALESCE(EXCLUDED.prepared_at, role_room_google_agreement_signatures.prepared_at),
+        sent_at = COALESCE(EXCLUDED.sent_at, role_room_google_agreement_signatures.sent_at),
+        signed_at = COALESCE(EXCLUDED.signed_at, role_room_google_agreement_signatures.signed_at),
+        declined_at = COALESCE(EXCLUDED.declined_at, role_room_google_agreement_signatures.declined_at),
+        last_opened_at = COALESCE(EXCLUDED.last_opened_at, role_room_google_agreement_signatures.last_opened_at),
+        last_synced_at = COALESCE(EXCLUDED.last_synced_at, role_room_google_agreement_signatures.last_synced_at),
+        signature_hash = COALESCE(EXCLUDED.signature_hash, role_room_google_agreement_signatures.signature_hash),
+        metadata = EXCLUDED.metadata,
+        updated_at = NOW()
+      RETURNING *`,
+      [
+        existing?.id ?? crypto.randomUUID(),
+        projectId,
+        agreementId,
+        payload.status ?? existing?.status ?? 'not_started',
+        payload.documentTitle ?? existing?.document_title ?? null,
+        payload.driveSourceFileId ?? existing?.drive_source_file_id ?? null,
+        payload.signedDriveFileId ?? existing?.signed_drive_file_id ?? null,
+        payload.auditArtifactId ?? existing?.audit_artifact_id ?? null,
+        payload.requestUrl ?? existing?.request_url ?? null,
+        payload.webViewUrl ?? existing?.web_view_url ?? null,
+        payload.requestedBy ?? existing?.requested_by ?? null,
+        payload.requestedByEmail ?? existing?.requested_by_email ?? null,
+        payload.counterpartyName ?? existing?.counterparty_name ?? null,
+        payload.counterpartyEmail ?? existing?.counterparty_email ?? null,
+        payload.preparedAt ?? existing?.prepared_at ?? null,
+        payload.sentAt ?? existing?.sent_at ?? null,
+        payload.signedAt ?? existing?.signed_at ?? null,
+        payload.declinedAt ?? existing?.declined_at ?? null,
+        payload.lastOpenedAt ?? existing?.last_opened_at ?? null,
+        payload.lastSyncedAt ?? existing?.last_synced_at ?? null,
+        payload.signatureHash ?? existing?.signature_hash ?? null,
+        JSON.stringify(nextMetadata),
+      ],
+    );
+    return result.rows[0];
+  }
+
+  async function readLegacyProjectAgreements(projectId: string): Promise<Record<string, unknown>[]> {
+    const stored = await compatStoreGet<Record<string, unknown>[]>(legacyProjectAgreementsKey(projectId));
+    return Array.isArray(stored)
+      ? stored.filter((entry): entry is Record<string, unknown> => isRecordValue(entry))
+      : [];
+  }
+
+  async function writeLegacyProjectAgreements(projectId: string, agreements: Record<string, unknown>[]): Promise<void> {
+    await compatStoreSet(legacyProjectAgreementsKey(projectId), agreements);
+  }
+
+  async function updateLegacyProjectAgreement(
+    projectId: string,
+    agreementId: string,
+    updater: (agreement: Record<string, unknown>) => Record<string, unknown>,
+  ): Promise<Record<string, unknown> | null> {
+    const agreements = await readLegacyProjectAgreements(projectId);
+    let updatedAgreement: Record<string, unknown> | null = null;
+    const nextAgreements = agreements.map((agreement) => {
+      if (readStringValue(agreement.id) !== agreementId) {
+        return agreement;
+      }
+      updatedAgreement = updater(agreement);
+      return updatedAgreement;
+    });
+    if (!updatedAgreement) {
+      return null;
+    }
+    await writeLegacyProjectAgreements(projectId, nextAgreements);
+    return updatedAgreement;
+  }
+
+  function serializeRoleRoomAgreementDocument(agreement: Record<string, unknown>): string {
+    const sections = Array.isArray(agreement.sections)
+      ? agreement.sections.filter((section): section is Record<string, unknown> => isRecordValue(section))
+      : [];
+    const parts = [
+      readStringValue(agreement.title) ?? 'Prosjektavtale',
+      '',
+      `Avtaletype: ${readStringValue(agreement.agreement_type) ?? 'ukjent'}`,
+      `Motpart: ${readStringValue(agreement.counterparty_name) ?? 'ukjent'}`,
+      `Selskap: ${readStringValue(agreement.counterparty_company_name) ?? 'ikke oppgitt'}`,
+      `E-post: ${readStringValue(agreement.counterparty_email) ?? 'ikke oppgitt'}`,
+      '',
+      `Formål: ${readStringValue(agreement.purpose) ?? 'ikke oppgitt'}`,
+      '',
+    ];
+
+    for (const section of sections) {
+      parts.push(readStringValue(section.heading) ?? 'Paragraf');
+      parts.push(readStringValue(section.body) ?? '');
+      parts.push('');
+    }
+
+    return parts.join('\n').trim();
+  }
+
+  async function createRoleRoomGoogleAgreementDocument(
+    docsApi: ReturnType<typeof google.docs>,
+    driveApi: ReturnType<typeof google.drive>,
+    agreement: Record<string, unknown>,
+    parentFolderId: string,
+  ): Promise<{ fileId: string; webViewUrl: string | null; webContentLink: string | null; mimeType: string | null }> {
+    const title = readStringValue(agreement.title) ?? 'Prosjektavtale';
+    const createdDocument = await docsApi.documents.create({
+      requestBody: {
+        title,
+      },
+    });
+    const fileId = readStringValue(createdDocument.data.documentId);
+    if (!fileId) {
+      throw new Error('Kunne ikke opprette Google-dokument for avtalen');
+    }
+
+    const documentText = serializeRoleRoomAgreementDocument(agreement);
+    await docsApi.documents.batchUpdate({
+      documentId: fileId,
+      requestBody: {
+        requests: [
+          {
+            insertText: {
+              location: { index: 1 },
+              text: documentText,
+            },
+          },
+        ],
+      },
+    });
+
+    const currentFile = await driveApi.files.get({
+      fileId,
+      fields: 'parents',
+      supportsAllDrives: true,
+    });
+    const previousParents = readStringArray(currentFile.data.parents).join(',');
+    const movedFile = await driveApi.files.update({
+      fileId,
+      addParents: parentFolderId,
+      removeParents: previousParents || undefined,
+      fields: 'id,webViewLink,webContentLink,mimeType',
+      supportsAllDrives: true,
+    });
+
+    return {
+      fileId,
+      webViewUrl: readStringValue(movedFile.data.webViewLink),
+      webContentLink: readStringValue(movedFile.data.webContentLink),
+      mimeType: readStringValue(movedFile.data.mimeType),
+    };
+  }
+
+  function toRoleRoomGoogleDownloadBuffer(payload: unknown): Buffer {
+    if (Buffer.isBuffer(payload)) {
+      return payload;
+    }
+    if (payload instanceof ArrayBuffer) {
+      return Buffer.from(payload);
+    }
+    if (ArrayBuffer.isView(payload)) {
+      return Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength);
+    }
+    if (typeof payload === 'string') {
+      return Buffer.from(payload, 'utf8');
+    }
+    throw new Error('Ukjent Google-nedlastingsformat');
+  }
+
+  async function getRoleRoomGoogleArtifactByType(
+    projectId: string,
+    localEntityType: string,
+    localEntityId: string,
+    artifactType: string,
+  ): Promise<RoleRoomGoogleArtifactRow | null> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      return null;
+    }
+    const result = await pool.query<RoleRoomGoogleArtifactRow>(
+      `SELECT * FROM role_room_google_artifacts
+       WHERE project_id = $1
+         AND local_entity_type = $2
+         AND local_entity_id = $3
+         AND artifact_type = $4
+       LIMIT 1`,
+      [projectId, localEntityType, localEntityId, artifactType],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function exportRoleRoomGoogleAgreementPdfArtifact(
+    driveApi: ReturnType<typeof google.drive>,
+    projectId: string,
+    agreement: Record<string, unknown>,
+    sourceFileId: string,
+    parentFolderId: string,
+    artifactType: 'google_signature_pdf_snapshot' | 'google_signature_signed_pdf',
+    createdBy: string,
+  ): Promise<RoleRoomGoogleArtifactRow> {
+    const agreementId = readStringValue(agreement.id);
+    if (!agreementId) {
+      throw new Error('Avtalen mangler id for PDF-eksport');
+    }
+
+    const pdfResponse = await driveApi.files.export(
+      {
+        fileId: sourceFileId,
+        mimeType: 'application/pdf',
+      },
+      {
+        responseType: 'arraybuffer',
+      },
+    );
+    const pdfBuffer = toRoleRoomGoogleDownloadBuffer(pdfResponse.data);
+    const title = readStringValue(agreement.title) ?? 'Prosjektavtale';
+    const suffix = artifactType === 'google_signature_signed_pdf' ? 'signert' : 'grunnlag';
+    const fileName = `${title} · ${suffix}.pdf`;
+    const existingArtifact = await getRoleRoomGoogleArtifactByType(
+      projectId,
+      'project_agreement',
+      agreementId,
+      artifactType,
+    );
+    const driveResponse = existingArtifact?.drive_file_id
+      ? await driveApi.files.update({
+          fileId: existingArtifact.drive_file_id,
+          requestBody: { name: fileName },
+          media: { mimeType: 'application/pdf', body: pdfBuffer },
+          fields: 'id,webViewLink,webContentLink,mimeType',
+          supportsAllDrives: true,
+        })
+      : await driveApi.files.create({
+          requestBody: {
+            name: fileName,
+            parents: [parentFolderId],
+          },
+          media: { mimeType: 'application/pdf', body: pdfBuffer },
+          fields: 'id,webViewLink,webContentLink,mimeType',
+          supportsAllDrives: true,
+        });
+
+    return upsertRoleRoomGoogleArtifact(projectId, {
+      localEntityType: 'project_agreement',
+      localEntityId: agreementId,
+      artifactType,
+      sourceLabel: artifactType,
+      driveFileId: readStringValue(driveResponse.data.id),
+      webViewUrl: readStringValue(driveResponse.data.webViewLink),
+      webContentLink: readStringValue(driveResponse.data.webContentLink),
+      mimeType: readStringValue(driveResponse.data.mimeType) ?? 'application/pdf',
+      folderKey: 'approvals',
+      syncStatus: 'synced',
+      metadata: {
+        agreementTitle: title,
+        artifactKind: suffix,
+      },
+      createdBy,
+    });
+  }
+
+  async function shareRoleRoomGoogleAgreementSourceFile(
+    driveApi: ReturnType<typeof google.drive>,
+    fileId: string,
+    counterpartyEmail: string,
+  ): Promise<void> {
+    try {
+      await driveApi.permissions.create({
+        fileId,
+        requestBody: {
+          type: 'user',
+          role: 'reader',
+          emailAddress: counterpartyEmail,
+        },
+        sendNotificationEmail: true,
+        supportsAllDrives: true,
+        fields: 'id',
+      });
+    } catch (error) {
+      const apiError = isRecordValue(error) ? error : null;
+      const nestedResponse = apiError && isRecordValue(apiError.response) ? apiError.response : null;
+      const errorCode = apiError && typeof apiError.code === 'number'
+        ? apiError.code
+        : nestedResponse && typeof nestedResponse.status === 'number'
+          ? nestedResponse.status
+          : null;
+      if (errorCode === 409) {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async function syncRoleRoomGoogleDriveArtifactFromGoogle(
+    driveApi: ReturnType<typeof google.drive>,
+    payload: {
+      projectId: string;
+      localEntityType: string;
+      localEntityId: string;
+      artifactType: string;
+      driveFileId?: string | null;
+      sourceLabel?: string | null;
+      folderKey?: string | null;
+      metadata?: Record<string, unknown>;
+      createdBy?: string | null;
+    },
+  ): Promise<RoleRoomGoogleArtifactRow | null> {
+    const driveFileId = readStringValue(payload.driveFileId);
+    if (!driveFileId) {
+      return null;
+    }
+
+    const existingArtifact = await getRoleRoomGoogleArtifactByType(
+      payload.projectId,
+      payload.localEntityType,
+      payload.localEntityId,
+      payload.artifactType,
+    );
+    const nextMetadata = {
+      ...(existingArtifact ? readJsonObject(existingArtifact.metadata) : {}),
+      ...(payload.metadata ?? {}),
+    };
+    const syncedAt = new Date().toISOString();
+
+    try {
+      const fileResponse = await driveApi.files.get({
+        fileId: driveFileId,
+        fields: 'id,name,webViewLink,webContentLink,mimeType,modifiedTime,trashed',
+        supportsAllDrives: true,
+      });
+
+      return upsertRoleRoomGoogleArtifact(payload.projectId, {
+        localEntityType: payload.localEntityType,
+        localEntityId: payload.localEntityId,
+        artifactType: payload.artifactType,
+        sourceLabel: payload.sourceLabel ?? readStringValue(existingArtifact?.source_label),
+        driveFileId: readStringValue(fileResponse.data.id) ?? driveFileId,
+        webViewUrl: readStringValue(fileResponse.data.webViewLink),
+        webContentLink: readStringValue(fileResponse.data.webContentLink),
+        mimeType: readStringValue(fileResponse.data.mimeType),
+        folderKey: payload.folderKey ?? readStringValue(existingArtifact?.folder_key),
+        syncStatus: readBooleanValue(fileResponse.data.trashed) ? 'trashed' : 'synced',
+        metadata: {
+          ...nextMetadata,
+          driveFileName: readStringValue(fileResponse.data.name),
+          driveModifiedTime: readStringValue(fileResponse.data.modifiedTime),
+          syncedFromGoogleAt: syncedAt,
+          trashed: readBooleanValue(fileResponse.data.trashed),
+          lastSyncError: null,
+        },
+        createdBy: payload.createdBy ?? readStringValue(existingArtifact?.created_by),
+      });
+    } catch (error) {
+      const apiError = isRecordValue(error) ? error : null;
+      const nestedResponse = apiError && isRecordValue(apiError.response) ? apiError.response : null;
+      const errorCode = apiError && typeof apiError.code === 'number'
+        ? apiError.code
+        : nestedResponse && typeof nestedResponse.status === 'number'
+          ? nestedResponse.status
+          : null;
+      const syncStatus = errorCode === 404 ? 'missing' : 'error';
+
+      return upsertRoleRoomGoogleArtifact(payload.projectId, {
+        localEntityType: payload.localEntityType,
+        localEntityId: payload.localEntityId,
+        artifactType: payload.artifactType,
+        sourceLabel: payload.sourceLabel ?? readStringValue(existingArtifact?.source_label),
+        driveFileId,
+        webViewUrl: readStringValue(existingArtifact?.web_view_url),
+        webContentLink: readStringValue(existingArtifact?.web_content_link),
+        mimeType: readStringValue(existingArtifact?.mime_type),
+        folderKey: payload.folderKey ?? readStringValue(existingArtifact?.folder_key),
+        syncStatus,
+        metadata: {
+          ...nextMetadata,
+          syncedFromGoogleAt: syncedAt,
+          lastSyncError: error instanceof Error ? error.message : 'Google Drive sync failed',
+          lastSyncErrorCode: errorCode,
+        },
+        createdBy: payload.createdBy ?? readStringValue(existingArtifact?.created_by),
+      });
+    }
+  }
+
+  function getAgreementStatusFromGoogleSignature(
+    signatureStatus: RoleRoomGoogleAgreementSignatureStatus,
+  ): 'draft' | 'sent' | 'signed' {
+    if (signatureStatus === 'signed') {
+      return 'signed';
+    }
+    if (signatureStatus === 'prepared' || signatureStatus === 'not_started') {
+      return 'draft';
+    }
+    return 'sent';
+  }
+
+  function buildAgreementSignatureMetadataSnapshot(
+    signature: RoleRoomGoogleAgreementSignatureRow,
+  ): Record<string, unknown> {
+    const metadata = readJsonObject(signature.metadata);
+    return {
+      googleSignatureId: signature.id,
+      googleSignatureStatus: signature.status ?? 'not_started',
+      googleSignatureDriveFileId: readStringValue(signature.drive_source_file_id),
+      googleSignatureSignedDriveFileId: readStringValue(signature.signed_drive_file_id),
+      googleSignatureAuditArtifactId: readStringValue(signature.audit_artifact_id),
+      googleSignatureSourceArtifactId: readStringValue(metadata.sourceArtifactId),
+      googleSignaturePdfSnapshotArtifactId: readStringValue(metadata.pdfSnapshotArtifactId),
+      googleSignatureSignedPdfArtifactId: readStringValue(metadata.signedPdfArtifactId),
+      googleSignatureRequestUrl: readStringValue(signature.request_url),
+      googleSignatureWebViewUrl: readStringValue(signature.web_view_url),
+      googleSignatureSignedAt: signature.signed_at,
+      googleSignatureLastSyncedAt: signature.last_synced_at,
+    };
+  }
+
+  async function syncAgreementSignatureSnapshot(
+    projectId: string,
+    agreementId: string,
+    signature: RoleRoomGoogleAgreementSignatureRow,
+  ): Promise<Record<string, unknown> | null> {
+    return updateLegacyProjectAgreement(projectId, agreementId, (agreement) => {
+      const metadata = readJsonObject(agreement.metadata);
+      const nextMetadata = {
+        ...metadata,
+        ...buildAgreementSignatureMetadataSnapshot(signature),
+      };
+      return {
+        ...agreement,
+        status: getAgreementStatusFromGoogleSignature(signature.status ?? 'not_started'),
+        signed_date: signature.status === 'signed' ? signature.signed_at ?? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+        metadata: nextMetadata,
+        google_signature: buildRoleRoomGoogleAgreementSignatureResponse(signature),
+      };
+    });
+  }
+
+  async function updateRoleRoomGoogleProjectBinding(
+    projectId: string,
+    payload: {
+      connectedUserId?: string | null;
+      driveRootFolderId?: string | null;
+      calendarId?: string | null;
+      contactsContext?: Record<string, unknown>;
+      meetCreationEnabled?: boolean | null;
+      auditSignatureStorageEnabled?: boolean | null;
+      folderLayout?: Record<string, unknown>;
+      syncStatus?: Record<string, unknown>;
+      lastDriveSyncAt?: string | null;
+      lastCalendarSyncAt?: string | null;
+    },
+  ): Promise<RoleRoomGoogleProjectBindingRow> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      throw new Error('Role Room Google tables unavailable');
+    }
+
+    const existing = await getRoleRoomGoogleProjectBinding(projectId);
+    const nextContactsContext = {
+      ...(existing?.contacts_context ?? {}),
+      ...(payload.contactsContext ?? {}),
+    };
+    const nextFolderLayout = {
+      ...(existing?.folder_layout ?? {}),
+      ...(payload.folderLayout ?? {}),
+    };
+    const nextSyncStatus = {
+      ...(existing?.sync_status ?? {}),
+      ...(payload.syncStatus ?? {}),
+    };
+
+    const result = await pool.query<RoleRoomGoogleProjectBindingRow>(
+      `INSERT INTO role_room_google_project_bindings (
+        id, project_id, connected_user_id, drive_root_folder_id, calendar_id,
+        contacts_context, meet_creation_enabled, audit_signature_storage_enabled,
+        folder_layout, sync_status, created_at, updated_at, last_drive_sync_at, last_calendar_sync_at
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6::jsonb, $7, $8,
+        $9::jsonb, $10::jsonb, NOW(), NOW(), $11, $12
+      )
+      ON CONFLICT (project_id) DO UPDATE SET
+        connected_user_id = COALESCE(EXCLUDED.connected_user_id, role_room_google_project_bindings.connected_user_id),
+        drive_root_folder_id = COALESCE(EXCLUDED.drive_root_folder_id, role_room_google_project_bindings.drive_root_folder_id),
+        calendar_id = COALESCE(EXCLUDED.calendar_id, role_room_google_project_bindings.calendar_id),
+        contacts_context = EXCLUDED.contacts_context,
+        meet_creation_enabled = COALESCE(EXCLUDED.meet_creation_enabled, role_room_google_project_bindings.meet_creation_enabled),
+        audit_signature_storage_enabled = COALESCE(EXCLUDED.audit_signature_storage_enabled, role_room_google_project_bindings.audit_signature_storage_enabled),
+        folder_layout = EXCLUDED.folder_layout,
+        sync_status = EXCLUDED.sync_status,
+        updated_at = NOW(),
+        last_drive_sync_at = COALESCE(EXCLUDED.last_drive_sync_at, role_room_google_project_bindings.last_drive_sync_at),
+        last_calendar_sync_at = COALESCE(EXCLUDED.last_calendar_sync_at, role_room_google_project_bindings.last_calendar_sync_at)
+      RETURNING *`,
+      [
+        existing?.id ?? crypto.randomUUID(),
+        projectId,
+        payload.connectedUserId ?? existing?.connected_user_id ?? null,
+        payload.driveRootFolderId ?? existing?.drive_root_folder_id ?? null,
+        payload.calendarId ?? existing?.calendar_id ?? null,
+        JSON.stringify(nextContactsContext),
+        payload.meetCreationEnabled ?? existing?.meet_creation_enabled ?? true,
+        payload.auditSignatureStorageEnabled ?? existing?.audit_signature_storage_enabled ?? true,
+        JSON.stringify(nextFolderLayout),
+        JSON.stringify(nextSyncStatus),
+        payload.lastDriveSyncAt ?? existing?.last_drive_sync_at ?? null,
+        payload.lastCalendarSyncAt ?? existing?.last_calendar_sync_at ?? null,
+      ],
+    );
+    return result.rows[0];
+  }
+
+  async function readCastingProjectRow(projectId: string): Promise<CastingProjectRow | null> {
+    if (!(await ensureCastingProjectsTable())) {
+      return null;
+    }
+    const result = await pool.query<CastingProjectRow>(
+      `SELECT * FROM casting_projects WHERE id = $1 LIMIT 1`,
+      [projectId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function getRoleRoomProjectName(projectId: string): Promise<string> {
+    const castingProject = await readCastingProjectRow(projectId);
+    if (readStringValue(castingProject?.name)) {
+      return readStringValue(castingProject?.name) ?? normalizeRoleRoomProjectName(projectId);
+    }
+
+    const legacyMetadata = await readLegacyProjectMetadata(projectId);
+    const fallbackName = readStringValue(legacyMetadata.title)
+      ?? readStringValue(legacyMetadata.name)
+      ?? readStringValue(legacyMetadata.projectName);
+    return fallbackName ?? normalizeRoleRoomProjectName(projectId);
+  }
+
+  type RoleRoomGoogleResolvedUser = {
+    userId: string;
+    email: string;
+    name: string;
+    role: string;
+  };
+
+  async function findRoleRoomUserByEmail(email: string): Promise<RoleRoomGoogleResolvedUser | null> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const result = await pool.query(
+      `SELECT id, email, username, first_name, last_name, role
+       FROM users
+       WHERE LOWER(email) = LOWER($1)
+       LIMIT 1`,
+      [normalizedEmail],
+    );
+
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (!row) {
+      return null;
+    }
+
+    return {
+      userId: String(row.id),
+      email: readStringValue(row.email) ?? normalizedEmail,
+      name: [
+        readStringValue(row.first_name),
+        readStringValue(row.last_name),
+      ].filter((value): value is string => Boolean(value)).join(' ')
+        || readStringValue(row.username)
+        || normalizedEmail.split('@')[0]
+        || 'Role Room',
+      role: readStringValue(row.role)?.toLowerCase() ?? 'user',
+    };
+  }
+
+  async function ensureRoleRoomUserByEmail(email: string, profile?: Record<string, unknown>): Promise<RoleRoomGoogleResolvedUser> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingUser = await findRoleRoomUserByEmail(normalizedEmail);
+    if (existingUser) {
+      return existingUser;
+    }
+
+    const usernameBase = normalizedEmail
+      .split('@')[0]
+      ?.toLowerCase()
+      .replace(/[^a-z0-9._-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 48)
+      || 'role-room-user';
+    const inferredFirstName = readStringValue(profile?.given_name)
+      ?? readStringValue(profile?.name)
+      ?? usernameBase;
+    const nextUsername = `${usernameBase}-${hashApiKey(normalizedEmail).slice(0, 6)}`;
+
+    const inserted = await pool.query(
+      `INSERT INTO users (email, username, first_name, role, password, created_at, updated_at)
+       VALUES ($1, $2, $3, 'user', '', NOW(), NOW())
+       RETURNING id, email, username, first_name, last_name, role`,
+      [normalizedEmail, nextUsername, inferredFirstName],
+    );
+
+    return {
+      userId: String(inserted.rows[0].id),
+      email: readStringValue(inserted.rows[0].email) ?? normalizedEmail,
+      name: [
+        readStringValue(inserted.rows[0].first_name),
+        readStringValue(inserted.rows[0].last_name),
+      ].filter((value): value is string => Boolean(value)).join(' ')
+        || readStringValue(inserted.rows[0].username)
+        || normalizedEmail.split('@')[0]
+        || 'Role Room',
+      role: readStringValue(inserted.rows[0].role)?.toLowerCase() ?? 'user',
+    };
+  }
+
+  function resolveRoleRoomSessionRole(
+    loginAs: string | null | undefined,
+    requestedRole: string | null | undefined,
+    fallbackRole: string,
+  ): string {
+    const normalizedLoginAs = readStringValue(loginAs)?.toLowerCase() ?? '';
+    const normalizedRequestedRole = readStringValue(requestedRole)?.toLowerCase() ?? '';
+    const normalizedFallbackRole = readStringValue(fallbackRole)?.toLowerCase() ?? 'user';
+
+    if (normalizedLoginAs === 'content_producer') {
+      return normalizedRequestedRole === 'client' || normalizedRequestedRole === 'client_reviewer'
+        ? 'client_reviewer'
+        : 'content_producer';
+    }
+
+    if (normalizedLoginAs === 'production_team') {
+      return normalizedRequestedRole || normalizedFallbackRole;
+    }
+
+    return normalizedFallbackRole;
+  }
+
+  async function resolveRoleRoomGoogleLoginUser(
+    googleEmail: string,
+    googleProfile: Record<string, unknown>,
+    state: RoleRoomGoogleOauthState,
+  ): Promise<(RoleRoomGoogleResolvedUser & { autoAssignProjectRole?: string | null }) | null> {
+    const normalizedEmail = googleEmail.trim().toLowerCase();
+    const localUser = await findRoleRoomUserByEmail(normalizedEmail);
+    if (localUser) {
+      return {
+        ...localUser,
+        role: resolveRoleRoomSessionRole(state.loginAs, state.requestedRole, localUser.role),
+      };
+    }
+
+    const projectId = readStringValue(state.projectId);
+    if (!projectId) {
+      return null;
+    }
+
+    const scopedRoleResult = await pool.query(
+      `SELECT role
+       FROM casting_user_roles
+       WHERE project_id = $1
+         AND (
+           LOWER(COALESCE(email, '')) = LOWER($2)
+           OR LOWER(COALESCE(user_id, '')) = LOWER($2)
+         )
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [projectId, normalizedEmail],
+    );
+
+    const intakeResult = await pool.query(
+      `SELECT contact_name
+       FROM role_room_client_intake
+       WHERE project_id = $1
+         AND LOWER(COALESCE(contact_email, '')) = LOWER($2)
+       LIMIT 1`,
+      [projectId, normalizedEmail],
+    ).catch(() => ({ rows: [], rowCount: 0 }));
+
+    const legacyProjectResult = await pool.query(
+      `SELECT client_name, client_email
+       FROM legacy.projects
+       WHERE id = $1
+         AND LOWER(COALESCE(client_email, '')) = LOWER($2)
+       LIMIT 1`,
+      [projectId, normalizedEmail],
+    ).catch(() => ({ rows: [], rowCount: 0 }));
+
+    const castingProjectResult = await pool.query(
+      `SELECT metadata
+       FROM casting_projects
+       WHERE id = $1
+       LIMIT 1`,
+      [projectId],
+    );
+    const castingMetadata = readJsonObject(castingProjectResult.rows[0]?.metadata);
+    const metadataClientEmail = readStringValue(castingMetadata.clientEmail)
+      ?? readStringValue(castingMetadata.client_email);
+
+    const hasScopedAccess = Boolean(
+      scopedRoleResult.rowCount
+      || intakeResult.rowCount
+      || legacyProjectResult.rowCount
+      || (metadataClientEmail && metadataClientEmail.toLowerCase() === normalizedEmail),
+    );
+
+    if (!hasScopedAccess) {
+      return null;
+    }
+
+    const ensuredUser = await ensureRoleRoomUserByEmail(normalizedEmail, {
+      ...googleProfile,
+      name: readStringValue(intakeResult.rows[0]?.contact_name)
+        ?? readStringValue(legacyProjectResult.rows[0]?.client_name)
+        ?? readStringValue(googleProfile.name),
+    });
+
+    return {
+      ...ensuredUser,
+      role: 'client_reviewer',
+      autoAssignProjectRole: readStringValue(scopedRoleResult.rows[0]?.role)?.toLowerCase() ?? 'client_reviewer',
+    };
+  }
+
+  async function ensureRoleRoomProjectRoleAssignment(
+    projectId: string,
+    userId: string,
+    email: string,
+    role: string,
+    addedBy: string | null,
+  ): Promise<void> {
+    await pool.query(
+      `INSERT INTO casting_user_roles (id, project_id, user_id, email, role, permissions, added_by)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+       ON CONFLICT (project_id, user_id) DO UPDATE SET
+         email = EXCLUDED.email,
+         role = EXCLUDED.role,
+         permissions = EXCLUDED.permissions,
+         updated_at = NOW()`,
+      [
+        crypto.randomUUID(),
+        projectId,
+        userId,
+        email,
+        role,
+        JSON.stringify(buildProjectRolePermissions(role)),
+        addedBy,
+      ],
+    );
+  }
+
+  function buildRoleRoomGoogleConnectionResponse(
+    connection: RoleRoomGoogleConnectionRow | null,
+    config: ReturnType<typeof getRoleRoomGoogleConfig>,
+  ) {
+    if (!connection) {
+      return {
+        configured: config.configured,
+        missing: config.missing,
+        state: 'disconnected' as const,
+        connection: null,
+      };
+    }
+
+    return {
+      configured: config.configured,
+      missing: config.missing,
+      state: connection.connection_state ?? 'disconnected',
+      connection: {
+        id: connection.id,
+        userId: connection.user_id,
+        roleRoomEmail: readStringValue(connection.role_room_email),
+        googleEmail: readStringValue(connection.google_email),
+        googleSubject: readStringValue(connection.google_subject),
+        scopes: readStringArray(connection.scopes),
+        state: connection.connection_state ?? 'disconnected',
+        lastError: readStringValue(connection.last_error),
+        profile: readJsonObject(connection.profile),
+        expiryDate: connection.expiry_date,
+        createdAt: connection.created_at,
+        updatedAt: connection.updated_at,
+        lastUsedAt: connection.last_used_at,
+      },
+    };
+  }
+
+  function buildRoleRoomGoogleProjectBindingResponse(
+    binding: RoleRoomGoogleProjectBindingRow | null,
+    artifacts: RoleRoomGoogleArtifactRow[],
+  ) {
+    if (!binding) {
+      return {
+        binding: null,
+        artifacts: [],
+      };
+    }
+
+    return {
+      binding: {
+        id: binding.id,
+        projectId: binding.project_id,
+        connectedUserId: readStringValue(binding.connected_user_id),
+        driveRootFolderId: readStringValue(binding.drive_root_folder_id),
+        calendarId: readStringValue(binding.calendar_id),
+        contactsContext: readJsonObject(binding.contacts_context),
+        meetCreationEnabled: binding.meet_creation_enabled ?? true,
+        auditSignatureStorageEnabled: binding.audit_signature_storage_enabled ?? true,
+        folderLayout: readJsonObject(binding.folder_layout),
+        syncStatus: readJsonObject(binding.sync_status),
+        createdAt: binding.created_at,
+        updatedAt: binding.updated_at,
+        lastDriveSyncAt: binding.last_drive_sync_at,
+        lastCalendarSyncAt: binding.last_calendar_sync_at,
+      },
+      artifacts: artifacts.map((artifact) => ({
+        id: artifact.id,
+        projectId: artifact.project_id,
+        localEntityType: artifact.local_entity_type,
+        localEntityId: artifact.local_entity_id,
+        artifactType: artifact.artifact_type,
+        sourceLabel: readStringValue(artifact.source_label),
+        driveFileId: readStringValue(artifact.drive_file_id),
+        calendarEventId: readStringValue(artifact.calendar_event_id),
+        meetUrl: readStringValue(artifact.meet_url),
+        webViewUrl: readStringValue(artifact.web_view_url),
+        webContentLink: readStringValue(artifact.web_content_link),
+        mimeType: readStringValue(artifact.mime_type),
+        folderKey: readStringValue(artifact.folder_key),
+        syncStatus: readStringValue(artifact.sync_status),
+        metadata: readJsonObject(artifact.metadata),
+        createdBy: readStringValue(artifact.created_by),
+        createdAt: artifact.created_at,
+        updatedAt: artifact.updated_at,
+      })),
+    };
+  }
+
+  async function createRoleRoomGoogleCalendar(
+    calendarApi: ReturnType<typeof google.calendar>,
+    projectName: string,
+  ): Promise<string> {
+    const created = await calendarApi.calendars.insert({
+      requestBody: {
+        summary: `Role Room · ${projectName}`,
+        description: `Ekstern prosjektkalender for ${projectName}`,
+        timeZone: process.env.TZ ?? 'Europe/Oslo',
+      },
+    });
+
+    const calendarId = readStringValue(created.data.id);
+    if (!calendarId) {
+      throw new Error('Kunne ikke opprette Google-kalender for prosjektet');
+    }
+    return calendarId;
+  }
+
+  async function syncRoleRoomGoogleCalendarEvent(
+    calendarApi: ReturnType<typeof google.calendar>,
+    calendarId: string,
+    projectId: string,
+    eventPayload: Record<string, unknown>,
+    userId: string,
+  ): Promise<RoleRoomGoogleArtifactRow> {
+    const localEntityType = readStringValue(eventPayload.entityType) ?? 'timeline_item';
+    const localEntityId = readStringValue(eventPayload.entityId) ?? crypto.randomUUID();
+    const title = readStringValue(eventPayload.title) ?? 'Role Room-hendelse';
+    const description = readStringValue(eventPayload.description);
+    const startValue = readStringValue(eventPayload.start);
+    const endValue = readStringValue(eventPayload.end);
+    const location = readStringValue(eventPayload.location);
+    const phase = readStringValue(eventPayload.phase);
+    const allDay = readBooleanValue(eventPayload.allDay) === true;
+    const includeMeet = readBooleanValue(eventPayload.includeMeet) === true;
+    const attendees = Array.isArray(eventPayload.attendees)
+      ? eventPayload.attendees
+          .filter((entry): entry is Record<string, unknown> => {
+            if (!isRecordValue(entry)) {
+              return false;
+            }
+            return Boolean(readStringValue(entry.email));
+          })
+          .map((entry) => ({
+            email: readStringValue(entry.email) ?? '',
+            displayName: readStringValue(entry.displayName) ?? undefined,
+          }))
+      : [];
+
+    if (!startValue) {
+      throw new Error(`Kalenderhendelsen ${title} mangler start`);
+    }
+
+    const existingArtifactResult = await pool.query<RoleRoomGoogleArtifactRow>(
+      `SELECT * FROM role_room_google_artifacts
+       WHERE project_id = $1
+         AND local_entity_type = $2
+         AND local_entity_id = $3
+         AND artifact_type = 'calendar_event'
+       LIMIT 1`,
+      [projectId, localEntityType, localEntityId],
+    );
+    const existingArtifact = existingArtifactResult.rows[0] ?? null;
+
+    const requestBody: Record<string, unknown> = {
+      summary: title,
+      description: description ?? undefined,
+      location: location ?? undefined,
+      attendees,
+      extendedProperties: {
+        private: {
+          roleRoomProjectId: projectId,
+          roleRoomEntityType: localEntityType,
+          roleRoomEntityId: localEntityId,
+          roleRoomPhase: phase ?? '',
+        },
+      },
+    };
+
+    if (allDay) {
+      const startDate = startValue.slice(0, 10);
+      const endDate = (endValue ?? startValue).slice(0, 10);
+      requestBody.start = { date: startDate };
+      requestBody.end = { date: endDate };
+    } else {
+      requestBody.start = { dateTime: startValue, timeZone: process.env.TZ ?? 'Europe/Oslo' };
+      requestBody.end = { dateTime: endValue ?? startValue, timeZone: process.env.TZ ?? 'Europe/Oslo' };
+    }
+
+    if (includeMeet) {
+      requestBody.conferenceData = {
+        createRequest: {
+          requestId: crypto.randomUUID(),
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
+      };
+    }
+
+    const response = existingArtifact?.calendar_event_id
+      ? await calendarApi.events.patch({
+          calendarId,
+          eventId: existingArtifact.calendar_event_id,
+          conferenceDataVersion: includeMeet ? 1 : 0,
+          requestBody,
+        })
+      : await calendarApi.events.insert({
+          calendarId,
+          conferenceDataVersion: includeMeet ? 1 : 0,
+          requestBody,
+        });
+
+    return upsertRoleRoomGoogleArtifact(projectId, {
+      localEntityType,
+      localEntityId,
+      artifactType: 'calendar_event',
+      sourceLabel: title,
+      calendarEventId: readStringValue(response.data.id),
+      meetUrl: readStringValue(response.data.hangoutLink),
+      webViewUrl: readStringValue(response.data.htmlLink),
+      mimeType: 'application/vnd.google-apps.calendar-event',
+      folderKey: 'meetings',
+      syncStatus: 'synced',
+      metadata: {
+        phase,
+        allDay,
+        attendees,
+        status: readStringValue(response.data.status) ?? 'confirmed',
+      },
+      createdBy: userId,
+    });
   }
 
   const PRODUCER_PHASES: readonly ProducerPhase[] = ['preproduction', 'production', 'postproduction'];
@@ -540,47 +2501,307 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     };
   }
 
+  function getSessionRoleRecord(req: Request): ProjectRoleRecord | null {
+    const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
+    const normalizedRole = typeof apiKeyReq.apiKeyUser?.role === 'string'
+      ? apiKeyReq.apiKeyUser.role.trim().toLowerCase()
+      : '';
+
+    if (!normalizedRole) {
+      return null;
+    }
+
+    return {
+      role: normalizedRole,
+      permissions: getDefaultProjectRolePermissions(normalizedRole),
+    };
+  }
+
+  function getEffectiveProjectRoleRecord(req: Request, roleRecord: ProjectRoleRecord | null): ProjectRoleRecord | null {
+    return roleRecord ?? getSessionRoleRecord(req);
+  }
+
   function canReadProducerData(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
     if (requireScope(req, 'admin')) return true;
-    if (!roleRecord) return false;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
     if ([
       'director',
       'producer',
       'production_manager',
       'content_producer',
       'client_reviewer',
-    ].includes(roleRecord.role)) return true;
-    return roleRecord.permissions.canViewAll === true
-      || roleRecord.permissions.canEditProduction === true
-      || roleRecord.permissions.canComment === true;
+    ].includes(effectiveRoleRecord.role)) return true;
+    return effectiveRoleRecord.permissions.canViewAll === true
+      || effectiveRoleRecord.permissions.canEditProduction === true
+      || effectiveRoleRecord.permissions.canComment === true;
   }
 
   function canReadProducerEconomy(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
     if (requireScope(req, 'admin')) return true;
-    if (!roleRecord) return false;
-    if (['director', 'producer', 'content_producer'].includes(roleRecord.role)) return true;
-    return roleRecord.permissions.canViewEconomy === true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['director', 'producer', 'content_producer', 'client_reviewer'].includes(effectiveRoleRecord.role)) return true;
+    return effectiveRoleRecord.permissions.canViewEconomy === true;
   }
 
   function canWriteProducerData(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
     if (requireScope(req, 'admin')) return true;
-    if (!roleRecord) return false;
-    if (['director', 'producer', 'production_manager', 'content_producer'].includes(roleRecord.role)) return true;
-    return roleRecord.permissions.canEditProduction === true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['director', 'producer', 'production_manager', 'content_producer'].includes(effectiveRoleRecord.role)) return true;
+    return effectiveRoleRecord.permissions.canEditProduction === true;
   }
 
   function canCommentProducerReview(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
     if (requireScope(req, 'admin')) return true;
-    if (!roleRecord) return false;
-    if (['director', 'producer', 'content_producer', 'client_reviewer'].includes(roleRecord.role)) return true;
-    return roleRecord.permissions.canComment === true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['director', 'producer', 'content_producer', 'client_reviewer'].includes(effectiveRoleRecord.role)) return true;
+    return effectiveRoleRecord.permissions.canComment === true;
   }
 
   function canDecideProducerReview(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
     if (requireScope(req, 'admin')) return true;
-    if (!roleRecord) return false;
-    if (['director', 'producer', 'client_reviewer'].includes(roleRecord.role)) return true;
-    return roleRecord.permissions.canApprove === true || roleRecord.permissions.canRequestChanges === true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['director', 'producer', 'client_reviewer'].includes(effectiveRoleRecord.role)) return true;
+    return effectiveRoleRecord.permissions.canApprove === true || effectiveRoleRecord.permissions.canRequestChanges === true;
+  }
+
+  function canWriteProducerClientInput(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['director', 'producer', 'content_producer', 'client_reviewer'].includes(effectiveRoleRecord.role)) return true;
+    return effectiveRoleRecord.permissions.canEditProduction === true || effectiveRoleRecord.permissions.canComment === true;
+  }
+
+  type ProducerReviewRow = {
+    id: string;
+    review_type?: string | null;
+    title?: string | null;
+    description?: string | null;
+    target_entity_type?: string | null;
+    target_entity_id?: string | null;
+    due_at?: string | null;
+    status?: string | null;
+    decision_reason?: string | null;
+    metadata?: Record<string, unknown> | null;
+  };
+
+  type ProducerClientIntakeRow = {
+    project_id: string;
+    project_goal?: string | null;
+    deliverables?: string | null;
+    target_audience?: string | null;
+    key_message?: string | null;
+    timing_constraints?: string | null;
+    brand_notes?: string | null;
+    material_overview?: string | null;
+    reference_links?: string | null;
+    contact_name?: string | null;
+    contact_email?: string | null;
+    contact_phone?: string | null;
+    additional_notes?: string | null;
+    metadata?: Record<string, unknown> | null;
+    updated_by_user_id?: string | null;
+    updated_by_role?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  };
+
+  type ProducerClientMaterialRow = {
+    id: string;
+    project_id: string;
+    entry_type?: string | null;
+    title?: string | null;
+    description?: string | null;
+    external_url?: string | null;
+    phase?: string | null;
+    linked_shot_list_id?: string | null;
+    status?: string | null;
+    metadata?: Record<string, unknown> | null;
+    created_by_user_id?: string | null;
+    created_by_role?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  };
+
+  function readProducerPhaseFromMetadata(metadata?: Record<string, unknown> | null): string | null {
+    const phase = typeof metadata?.focusedPhase === 'string'
+      ? metadata.focusedPhase.trim().toLowerCase()
+      : typeof metadata?.phase === 'string'
+        ? metadata.phase.trim().toLowerCase()
+        : '';
+
+    if (phase === 'preproduction' || phase === 'production' || phase === 'postproduction') {
+      return phase;
+    }
+    return null;
+  }
+
+  function getProducerReviewTimelinePhase(
+    reviewType?: string | null,
+    targetEntityType?: string | null,
+    metadata?: Record<string, unknown> | null,
+  ): string {
+    const normalizedReviewType = String(reviewType ?? '').trim().toLowerCase();
+    const normalizedTargetEntityType = String(targetEntityType ?? '').trim().toLowerCase();
+    const metadataPhase = readProducerPhaseFromMetadata(metadata);
+
+    if (metadataPhase) {
+      return metadataPhase;
+    }
+
+    if (normalizedReviewType === 'budget_package' || normalizedTargetEntityType === 'economy') {
+      return 'preproduction';
+    }
+
+    if (normalizedReviewType === 'change_order') {
+      return 'production';
+    }
+
+    if (normalizedReviewType === 'phase_checkpoint' || normalizedTargetEntityType === 'phase_plan') {
+      return 'preproduction';
+    }
+
+    if (normalizedReviewType === 'content_delivery' || normalizedTargetEntityType === 'content_calendar') {
+      return 'postproduction';
+    }
+
+    if (['storyboard', 'manuscript', 'shotlist', 'scene_notes', 'location_plan', 'equipment_plan'].includes(normalizedReviewType)) {
+      return 'preproduction';
+    }
+
+    if (normalizedTargetEntityType === 'shot') {
+      return 'production';
+    }
+
+    return 'preproduction';
+  }
+
+  function getProducerReviewTimelineStatus(reviewStatus?: string | null): string {
+    switch (String(reviewStatus ?? '').trim().toLowerCase()) {
+      case 'approved':
+        return 'completed';
+      case 'rejected':
+      case 'changes_requested':
+        return 'blocked';
+      case 'in_progress':
+        return 'in_progress';
+      default:
+        return 'planned';
+    }
+  }
+
+  function getProducerReviewTimelineDescription(review: ProducerReviewRow): string | null {
+    const parts = [
+      typeof review.description === 'string' && review.description.trim() ? review.description.trim() : null,
+      review.status === 'approved'
+        ? 'Godkjent av klient.'
+        : review.status === 'changes_requested'
+          ? 'Klienten har bedt om endringer.'
+          : review.status === 'rejected'
+            ? 'Klienten har avslått leveransen.'
+            : 'Venter på klientgodkjenning.',
+      typeof review.decision_reason === 'string' && review.decision_reason.trim() ? review.decision_reason.trim() : null,
+    ].filter((value): value is string => Boolean(value));
+
+    return parts.length > 0 ? parts.join(' ') : null;
+  }
+
+  async function upsertProducerReviewTimelineItem(
+    projectId: string,
+    review: ProducerReviewRow,
+    userId: string | null,
+  ): Promise<void> {
+    const existingResult = await pool.query(
+      `SELECT id
+       FROM role_room_phase_timeline_items
+       WHERE project_id = $1
+         AND linked_entity_type = 'client_review'
+         AND linked_entity_id = $2
+       ORDER BY created_at ASC`,
+      [projectId, review.id],
+    );
+
+    const title = `Klientgodkjenning · ${String(review.title ?? 'Review').trim()}`;
+    const description = getProducerReviewTimelineDescription(review);
+    const phase = getProducerReviewTimelinePhase(review.review_type, review.target_entity_type, review.metadata ?? null);
+    const status = getProducerReviewTimelineStatus(review.status);
+    const metadata = JSON.stringify({
+      ...(review.metadata ?? {}),
+      source: 'review-sync',
+      reviewId: review.id,
+      reviewType: review.review_type ?? null,
+      reviewStatus: review.status ?? null,
+      targetEntityType: review.target_entity_type ?? null,
+      targetEntityId: review.target_entity_id ?? null,
+    });
+
+    const primaryExistingId = existingResult.rows[0]?.id as string | undefined;
+
+    if (primaryExistingId) {
+      await pool.query(
+        `UPDATE role_room_phase_timeline_items
+         SET phase = $1,
+             title = $2,
+             description = $3,
+             due_at = $4,
+             status = $5,
+             metadata = $6::jsonb,
+             updated_at = NOW()
+         WHERE id = $7`,
+        [
+          phase,
+          title,
+          description,
+          review.due_at ?? null,
+          status,
+          metadata,
+          primaryExistingId,
+        ],
+      );
+
+      const duplicateIds = existingResult.rows
+        .slice(1)
+        .map((row) => row.id)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0);
+
+      if (duplicateIds.length > 0) {
+        await pool.query(
+          `DELETE FROM role_room_phase_timeline_items
+           WHERE project_id = $1
+             AND id = ANY($2::uuid[])`,
+          [projectId, duplicateIds],
+        );
+      }
+
+      return;
+    }
+
+    await pool.query(
+      `INSERT INTO role_room_phase_timeline_items (
+        id, project_id, phase, title, description, due_at, status,
+        linked_entity_type, linked_entity_id, sort_order, metadata, created_by, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7,
+        'client_review', $8, 0, $9::jsonb, $10, NOW(), NOW()
+      )`,
+      [
+        crypto.randomUUID(),
+        projectId,
+        phase,
+        title,
+        description,
+        review.due_at ?? null,
+        status,
+        review.id,
+        metadata,
+        userId,
+      ],
+    );
   }
 
   let producerWorkflowTablesReadyPromise: Promise<boolean> | null = null;
@@ -668,6 +2889,46 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           );
           CREATE INDEX IF NOT EXISTS idx_rr_review_comments_project ON role_room_client_review_comments(project_id);
           CREATE INDEX IF NOT EXISTS idx_rr_review_comments_review ON role_room_client_review_comments(review_id);
+
+          CREATE TABLE IF NOT EXISTS role_room_client_intake (
+            project_id VARCHAR(255) PRIMARY KEY REFERENCES casting_projects(id) ON DELETE CASCADE,
+            project_goal TEXT,
+            deliverables TEXT,
+            target_audience TEXT,
+            key_message TEXT,
+            timing_constraints TEXT,
+            brand_notes TEXT,
+            material_overview TEXT,
+            reference_links TEXT,
+            contact_name TEXT,
+            contact_email TEXT,
+            contact_phone TEXT,
+            additional_notes TEXT,
+            metadata JSONB DEFAULT '{}'::jsonb,
+            updated_by_user_id TEXT,
+            updated_by_role TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS role_room_client_materials (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            entry_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            external_url TEXT,
+            phase TEXT,
+            linked_shot_list_id TEXT,
+            status TEXT DEFAULT 'provided',
+            metadata JSONB DEFAULT '{}'::jsonb,
+            created_by_user_id TEXT,
+            created_by_role TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_client_materials_project ON role_room_client_materials(project_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_client_materials_phase ON role_room_client_materials(phase);
         `);
         return true;
       } catch (error) {
@@ -717,6 +2978,1501 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       });
     } catch (err) {
       res.status(500).json({ status: 'error', message: String(err) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // Role Room Google Workspace Layer
+  // ═══════════════════════════════════════════════════════════
+
+  router.get('/google/status', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const config = getRoleRoomGoogleConfig(req);
+      const requestUser = getOptionalRequestUser(req);
+      const projectId = readStringValue(req.query.projectId);
+
+      const connection = requestUser?.userId
+        ? await getRoleRoomGoogleConnectionByUserId(requestUser.userId)
+        : null;
+
+      let projectBindingResponse: ReturnType<typeof buildRoleRoomGoogleProjectBindingResponse> | null = null;
+      if (projectId && requestUser?.userId && await ensureProjectAccess(projectId)) {
+        const roleRecord = await getProjectRoleRecord(projectId, [
+          requestUser.userId,
+          requestUser.email ?? '',
+        ]);
+        if (canReadProducerData(req, roleRecord)) {
+          const binding = await getRoleRoomGoogleProjectBinding(projectId);
+          const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+          projectBindingResponse = buildRoleRoomGoogleProjectBindingResponse(binding, artifacts);
+        }
+      }
+
+      res.json({
+        ...buildRoleRoomGoogleConnectionResponse(connection, config),
+        projectBinding: projectBindingResponse?.binding ?? null,
+        artifacts: projectBindingResponse?.artifacts ?? [],
+      });
+    } catch (error) {
+      console.error('Role Room Google status error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente Google-status' });
+    }
+  });
+
+  router.post('/google/oauth/start', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const config = getRoleRoomGoogleConfig(req);
+      if (!config.configured) {
+        res.status(400).json({
+          error: 'Google Workspace er ikke konfigurert',
+          missing: config.missing,
+        });
+        return;
+      }
+
+      const mode = readStringValue(req.body?.mode)?.toLowerCase() === 'link' ? 'link' : 'login';
+      const requestUser = getOptionalRequestUser(req);
+      if (mode === 'link' && !requestUser?.userId) {
+        res.status(401).json({ error: 'Må være innlogget for å koble Google Workspace' });
+        return;
+      }
+
+      const oauthClient = createRoleRoomGoogleOAuthClient(req);
+      if (!oauthClient) {
+        res.status(500).json({ error: 'Google OAuth-klient er ikke tilgjengelig' });
+        return;
+      }
+
+      const stateId = crypto.randomUUID();
+      const loginAs = readStringValue(req.body?.loginAs)?.toLowerCase() ?? null;
+      const requestedRole = readStringValue(req.body?.requestedRole ?? req.body?.role)?.toLowerCase() ?? null;
+      const projectId = readStringValue(req.body?.projectId);
+      const returnPath = sanitizeRoleRoomReturnPath(req.body?.returnPath, req);
+
+      roleRoomGoogleOauthStateStore.set(stateId, {
+        mode,
+        returnPath,
+        loginAs,
+        requestedRole,
+        projectId,
+        createdByUserId: requestUser?.userId ?? null,
+        createdAt: Date.now(),
+      });
+
+      const authorizationUrl = oauthClient.generateAuthUrl({
+        access_type: 'offline',
+        scope: [...ROLE_ROOM_GOOGLE_SCOPES],
+        include_granted_scopes: true,
+        prompt: 'consent',
+        state: stateId,
+        login_hint: requestUser?.email ?? readStringValue(req.body?.email) ?? undefined,
+      });
+
+      res.json({
+        success: true,
+        mode,
+        authorizationUrl,
+        stateId,
+      });
+    } catch (error) {
+      console.error('Role Room Google oauth start error:', error);
+      res.status(500).json({ error: 'Kunne ikke starte Google OAuth' });
+    }
+  });
+
+  router.get('/google/oauth/callback', async (req: Request, res: Response) => {
+    pruneExpiredRoleRoomGoogleState();
+    const config = getRoleRoomGoogleConfig(req);
+    const fallbackReturnPath = sanitizeRoleRoomReturnPath(req.query.returnPath, req);
+
+    const redirectWithError = (returnPath: string, message: string) => {
+      res.redirect(
+        appendQueryParamsToPath(returnPath, {
+          rrGoogleStatus: 'error',
+          rrGoogleMessage: message,
+        }),
+      );
+    };
+
+    if (!config.configured) {
+      redirectWithError(fallbackReturnPath, 'Google Workspace er ikke konfigurert');
+      return;
+    }
+
+    const stateId = readStringValue(req.query.state);
+    const code = readStringValue(req.query.code);
+    const oauthState = stateId ? roleRoomGoogleOauthStateStore.get(stateId) : null;
+    if (!oauthState || !code) {
+      redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Ugyldig Google-forespørsel');
+      return;
+    }
+
+    roleRoomGoogleOauthStateStore.delete(stateId!);
+
+    try {
+      const oauthClient = createRoleRoomGoogleOAuthClient(req);
+      if (!oauthClient) {
+        redirectWithError(oauthState.returnPath, 'Google OAuth-klient er ikke tilgjengelig');
+        return;
+      }
+
+      const tokenResult = await oauthClient.getToken(code);
+      oauthClient.setCredentials(tokenResult.tokens);
+
+      const oauth2Api = google.oauth2({ version: 'v2', auth: oauthClient });
+      const profileResponse = await oauth2Api.userinfo.get();
+      const googleEmail = readStringValue(profileResponse.data.email);
+      const googleSubject = readStringValue(profileResponse.data.id);
+      const googleProfile = readJsonObject({
+        id: profileResponse.data.id ?? null,
+        email: profileResponse.data.email ?? null,
+        verified_email: profileResponse.data.verified_email ?? null,
+        name: profileResponse.data.name ?? null,
+        given_name: profileResponse.data.given_name ?? null,
+        family_name: profileResponse.data.family_name ?? null,
+        picture: profileResponse.data.picture ?? null,
+      });
+
+      if (!googleEmail || !googleSubject) {
+        redirectWithError(oauthState.returnPath, 'Google-kontoen mangler e-post eller identitet');
+        return;
+      }
+
+      const existingSubjectConnection = await getRoleRoomGoogleConnectionBySubject(googleSubject);
+      if (
+        existingSubjectConnection
+        && oauthState.mode === 'link'
+        && existingSubjectConnection.user_id !== oauthState.createdByUserId
+      ) {
+        redirectWithError(oauthState.returnPath, 'Denne Google-kontoen er allerede koblet til en annen bruker');
+        return;
+      }
+
+      const tokenBundle: NonNullable<RoleRoomGoogleTransferPayload['tokenBundle']> = {
+        accessToken: readStringValue(tokenResult.tokens.access_token),
+        refreshToken: readStringValue(tokenResult.tokens.refresh_token),
+        expiryDate: typeof tokenResult.tokens.expiry_date === 'number' ? tokenResult.tokens.expiry_date : null,
+        scopes: readStringArray(tokenResult.tokens.scope?.split(' ') ?? tokenResult.tokens.scope ?? ROLE_ROOM_GOOGLE_SCOPES),
+      };
+
+      if (oauthState.mode === 'login') {
+        const resolvedUser = await resolveRoleRoomGoogleLoginUser(googleEmail, googleProfile, oauthState);
+        if (!resolvedUser) {
+          redirectWithError(oauthState.returnPath, 'Google-kontoen er ikke invitert til dette Role Room-prosjektet');
+          return;
+        }
+
+        if (oauthState.projectId && await ensureProjectAccess(oauthState.projectId)) {
+          await ensureRoleRoomProjectRoleAssignment(
+            oauthState.projectId,
+            resolvedUser.userId,
+            resolvedUser.email,
+            resolvedUser.autoAssignProjectRole ?? resolvedUser.role,
+            resolvedUser.userId,
+          );
+        }
+
+        await upsertRoleRoomGoogleConnection(
+          resolvedUser.userId,
+          resolvedUser.email,
+          {
+            email: googleEmail,
+            subject: googleSubject,
+            profile: googleProfile,
+          },
+          tokenBundle,
+        );
+
+        const sessionToken = crypto.randomUUID();
+        const sessionData: SessionData = {
+          userId: resolvedUser.userId,
+          email: resolvedUser.email,
+          name: resolvedUser.name,
+          role: resolvedUser.role,
+          loginAt: new Date().toISOString(),
+        };
+        activeSessions?.set(sessionToken, sessionData);
+
+        const transferId = crypto.randomUUID();
+        roleRoomGoogleTransferStore.set(transferId, {
+          mode: 'login',
+          createdAt: Date.now(),
+          sessionToken,
+          user: {
+            id: resolvedUser.userId,
+            email: resolvedUser.email,
+            role: resolvedUser.role,
+            name: resolvedUser.name,
+            display_name: resolvedUser.name,
+            loginAs: oauthState.loginAs ?? undefined,
+            requestedRole: oauthState.requestedRole ?? null,
+          },
+          googleEmail,
+          googleSubject,
+          profile: googleProfile,
+        });
+
+        res.redirect(
+          appendQueryParamsToPath(oauthState.returnPath, {
+            rrGoogleStatus: 'success',
+            rrGoogleMode: 'login',
+            rrGoogleTransfer: transferId,
+          }),
+        );
+        return;
+      }
+
+      const transferId = crypto.randomUUID();
+      roleRoomGoogleTransferStore.set(transferId, {
+        mode: 'link',
+        createdAt: Date.now(),
+        googleEmail,
+        googleSubject,
+        profile: googleProfile,
+        tokenBundle,
+      });
+
+      res.redirect(
+        appendQueryParamsToPath(oauthState.returnPath, {
+          rrGoogleStatus: 'success',
+          rrGoogleMode: 'link',
+          rrGoogleTransfer: transferId,
+        }),
+      );
+    } catch (error) {
+      console.error('Role Room Google callback error:', error);
+      redirectWithError(
+        oauthState.returnPath,
+        error instanceof Error ? error.message : 'Google-innlogging feilet',
+      );
+    }
+  });
+
+  router.get('/google/oauth/session-result/:transferId', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const transferId = readStringValue(req.params.transferId);
+      if (!transferId) {
+        res.status(400).json({ error: 'transferId mangler' });
+        return;
+      }
+
+      const payload = roleRoomGoogleTransferStore.get(transferId);
+      if (!payload) {
+        res.status(404).json({ error: 'Google-overføringen er utløpt eller brukt' });
+        return;
+      }
+
+      if (payload.mode === 'login') {
+        roleRoomGoogleTransferStore.delete(transferId);
+      }
+
+      res.json({
+        success: true,
+        transferId,
+        mode: payload.mode,
+        sessionToken: payload.sessionToken ?? null,
+        user: payload.user ?? null,
+        google: {
+          email: payload.googleEmail,
+          subject: payload.googleSubject,
+          profile: payload.profile,
+        },
+      });
+    } catch (error) {
+      console.error('Role Room Google session result error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente Google-overføringen' });
+    }
+  });
+
+  router.post('/google/link', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const transferId = readStringValue(req.body?.transferId);
+      if (!transferId) {
+        res.status(400).json({ error: 'transferId er påkrevd' });
+        return;
+      }
+
+      const payload = roleRoomGoogleTransferStore.get(transferId);
+      if (!payload || payload.mode !== 'link' || !payload.tokenBundle) {
+        res.status(404).json({ error: 'Fant ikke en gyldig Google-kobling å fullføre' });
+        return;
+      }
+
+      const existingSubjectConnection = await getRoleRoomGoogleConnectionBySubject(payload.googleSubject);
+      if (existingSubjectConnection && existingSubjectConnection.user_id !== userId) {
+        res.status(409).json({ error: 'Denne Google-kontoen er allerede koblet til en annen bruker' });
+        return;
+      }
+
+      const roleRoomEmail = getOptionalRequestUser(req)?.email ?? null;
+      const connection = await upsertRoleRoomGoogleConnection(
+        userId,
+        roleRoomEmail,
+        {
+          email: payload.googleEmail,
+          subject: payload.googleSubject,
+          profile: payload.profile,
+        },
+        payload.tokenBundle,
+      );
+
+      roleRoomGoogleTransferStore.delete(transferId);
+      res.json(buildRoleRoomGoogleConnectionResponse(connection, getRoleRoomGoogleConfig(req)));
+    } catch (error) {
+      console.error('Role Room Google link error:', error);
+      res.status(500).json({ error: 'Kunne ikke koble Google Workspace til brukeren' });
+    }
+  });
+
+  router.delete('/google/link', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      await ensureRoleRoomGoogleTables();
+      await pool.query(`DELETE FROM role_room_google_connections WHERE user_id = $1`, [userId]);
+      await pool.query(
+        `UPDATE role_room_google_project_bindings
+         SET connected_user_id = NULL,
+             updated_at = NOW()
+         WHERE connected_user_id = $1`,
+        [userId],
+      );
+
+      res.json({
+        success: true,
+        ...buildRoleRoomGoogleConnectionResponse(null, getRoleRoomGoogleConfig(req)),
+      });
+    } catch (error) {
+      console.error('Role Room Google unlink error:', error);
+      res.status(500).json({ error: 'Kunne ikke koble fra Google Workspace' });
+    }
+  });
+
+  router.get('/projects/:projectId/google/binding', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til Google Workspace-bindingen' });
+        return;
+      }
+
+      const binding = await getRoleRoomGoogleProjectBinding(projectId);
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+      res.json(buildRoleRoomGoogleProjectBindingResponse(binding, artifacts));
+    } catch (error) {
+      console.error('Role Room Google binding fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente Google Workspace-bindingen' });
+    }
+  });
+
+  router.post('/projects/:projectId/google/binding', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å konfigurere Google Workspace' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const driveApi = google.drive({ version: 'v3', auth: googleClient.oauthClient });
+      const calendarApi = google.calendar({ version: 'v3', auth: googleClient.oauthClient });
+
+      const existingBinding = await getRoleRoomGoogleProjectBinding(projectId);
+      const projectName = await getRoleRoomProjectName(projectId);
+      const createDriveLayout = readBooleanValue(req.body?.createDriveLayout)
+        ?? !existingBinding?.drive_root_folder_id;
+      const createCalendar = readBooleanValue(req.body?.createCalendar)
+        ?? !existingBinding?.calendar_id;
+      const requestedDriveRootFolderId = readStringValue(req.body?.driveRootFolderId) ?? existingBinding?.drive_root_folder_id ?? null;
+      const requestedCalendarId = readStringValue(req.body?.calendarId) ?? existingBinding?.calendar_id ?? null;
+
+      let driveRootFolderId = requestedDriveRootFolderId;
+      let folderLayout = {
+        ...readJsonObject(existingBinding?.folder_layout),
+        ...readJsonObject(req.body?.folderLayout),
+      };
+      if (!driveRootFolderId || createDriveLayout) {
+        const driveLayout = await ensureRoleRoomGoogleDriveLayout(driveApi, projectName, driveRootFolderId);
+        driveRootFolderId = driveLayout.rootFolderId;
+        folderLayout = {
+          ...folderLayout,
+          ...driveLayout.folderLayout,
+        };
+      }
+
+      let calendarId = requestedCalendarId;
+      if (!calendarId || createCalendar) {
+        calendarId = await createRoleRoomGoogleCalendar(calendarApi, projectName);
+      }
+
+      const binding = await updateRoleRoomGoogleProjectBinding(projectId, {
+        connectedUserId: userId,
+        driveRootFolderId,
+        calendarId,
+        contactsContext: readJsonObject(req.body?.contactsContext),
+        meetCreationEnabled: readBooleanValue(req.body?.meetCreationEnabled),
+        auditSignatureStorageEnabled: readBooleanValue(req.body?.auditSignatureStorageEnabled),
+        folderLayout,
+        syncStatus: {
+          ...readJsonObject(existingBinding?.sync_status),
+          state: 'connected',
+          lastConfiguredBy: userId,
+        },
+      });
+
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+      res.json(buildRoleRoomGoogleProjectBindingResponse(binding, artifacts));
+    } catch (error) {
+      console.error('Role Room Google binding save error:', error);
+      res.status(500).json({ error: 'Kunne ikke lagre Google Workspace-bindingen' });
+    }
+  });
+
+  router.get('/projects/:projectId/google/agreements/signatures', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å hente signaturflyten' });
+        return;
+      }
+
+      const signatures = await getRoleRoomGoogleAgreementSignaturesByProject(projectId);
+      res.json({
+        signatures: signatures.map((signature) => buildRoleRoomGoogleAgreementSignatureResponse(signature)),
+      });
+    } catch (error) {
+      console.error('Role Room Google agreement signature fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente Google-signaturer for avtaler' });
+    }
+  });
+
+  router.post('/projects/:projectId/google/agreements/:agreementId/prepare', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId, agreementId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å klargjøre Google-signatur' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const requestUser = getOptionalRequestUser(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const agreements = await readLegacyProjectAgreements(projectId);
+      const agreement = agreements.find((entry) => readStringValue(entry.id) === agreementId);
+      if (!agreement) {
+        res.status(404).json({ error: 'Avtalen ble ikke funnet' });
+        return;
+      }
+
+      const driveApi = google.drive({ version: 'v3', auth: googleClient.oauthClient });
+      const docsApi = google.docs({ version: 'v1', auth: googleClient.oauthClient });
+      const existingBinding = await getRoleRoomGoogleProjectBinding(projectId);
+      const projectName = await getRoleRoomProjectName(projectId);
+      const driveLayout = !existingBinding?.drive_root_folder_id
+        ? await ensureRoleRoomGoogleDriveLayout(driveApi, projectName)
+        : {
+            rootFolderId: existingBinding.drive_root_folder_id,
+            folderLayout: {
+              ...readJsonObject(existingBinding.folder_layout),
+            },
+          };
+
+      if (!readStringValue(driveLayout.folderLayout.approvals)) {
+        const refreshedDriveLayout = await ensureRoleRoomGoogleDriveLayout(
+          driveApi,
+          projectName,
+          driveLayout.rootFolderId,
+        );
+        driveLayout.folderLayout = {
+          ...driveLayout.folderLayout,
+          ...refreshedDriveLayout.folderLayout,
+        };
+      }
+
+      const approvalsFolderId = readStringValue(driveLayout.folderLayout.approvals) ?? driveLayout.rootFolderId;
+      const document = await createRoleRoomGoogleAgreementDocument(docsApi, driveApi, agreement, approvalsFolderId);
+      const signatureHash = crypto
+        .createHash('sha256')
+        .update(serializeRoleRoomAgreementDocument(agreement))
+        .digest('hex');
+
+      const artifact = await upsertRoleRoomGoogleArtifact(projectId, {
+        localEntityType: 'project_agreement',
+        localEntityId: agreementId,
+        artifactType: 'google_signature_source',
+        sourceLabel: 'google_signature_source',
+        driveFileId: document.fileId,
+        webViewUrl: document.webViewUrl,
+        webContentLink: document.webContentLink,
+        mimeType: document.mimeType,
+        folderKey: 'approvals',
+        syncStatus: 'synced',
+        metadata: {
+          agreementTitle: readStringValue(agreement.title),
+          counterpartyName: readStringValue(agreement.counterparty_name),
+          signatureHash,
+        },
+        createdBy: userId,
+      });
+      const pdfSnapshotArtifact = await exportRoleRoomGoogleAgreementPdfArtifact(
+        driveApi,
+        projectId,
+        agreement,
+        document.fileId,
+        approvalsFolderId,
+        'google_signature_pdf_snapshot',
+        userId,
+      );
+
+      const now = new Date().toISOString();
+      const signature = await upsertRoleRoomGoogleAgreementSignature(projectId, agreementId, {
+        status: 'prepared',
+        documentTitle: readStringValue(agreement.title) ?? 'Prosjektavtale',
+        driveSourceFileId: document.fileId,
+        requestUrl: document.webViewUrl,
+        webViewUrl: document.webViewUrl,
+        requestedBy: userId,
+        requestedByEmail: requestUser?.email ?? readStringValue(googleClient.connection.role_room_email),
+        counterpartyName: readStringValue(agreement.counterparty_name),
+        counterpartyEmail: readStringValue(agreement.counterparty_email),
+        preparedAt: now,
+        lastSyncedAt: now,
+        signatureHash,
+        metadata: {
+          sourceArtifactId: artifact.id,
+          pdfSnapshotArtifactId: pdfSnapshotArtifact.id,
+          agreementType: readStringValue(agreement.agreement_type),
+          counterpartyType: readStringValue(agreement.counterparty_type),
+        },
+      });
+
+      const updatedAgreement = await syncAgreementSignatureSnapshot(projectId, agreementId, signature);
+      if (!updatedAgreement) {
+        res.status(500).json({ error: 'Kunne ikke oppdatere avtalen etter klargjøring' });
+        return;
+      }
+
+      const binding = await updateRoleRoomGoogleProjectBinding(projectId, {
+        connectedUserId: userId,
+        driveRootFolderId: driveLayout.rootFolderId,
+        folderLayout: driveLayout.folderLayout,
+        syncStatus: {
+          drive: {
+            state: 'synced',
+            lastPreparedAgreementId: agreementId,
+            syncedAt: now,
+          },
+        },
+        lastDriveSyncAt: now,
+      });
+
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+      res.status(201).json({
+        binding: buildRoleRoomGoogleProjectBindingResponse(binding, artifacts).binding,
+        artifacts: buildRoleRoomGoogleProjectBindingResponse(binding, artifacts).artifacts,
+        agreement: updatedAgreement,
+        signature: buildRoleRoomGoogleAgreementSignatureResponse(signature),
+      });
+    } catch (error) {
+      console.error('Role Room Google agreement signature prepare error:', error);
+      res.status(500).json({ error: 'Kunne ikke klargjøre Google-signatur for avtalen' });
+    }
+  });
+
+  router.post('/projects/:projectId/google/agreements/:agreementId/send', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId, agreementId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å sende signeringslenken' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const agreements = await readLegacyProjectAgreements(projectId);
+      const agreement = agreements.find((entry) => readStringValue(entry.id) === agreementId);
+      if (!agreement) {
+        res.status(404).json({ error: 'Avtalen ble ikke funnet' });
+        return;
+      }
+
+      const existingSignature = await getRoleRoomGoogleAgreementSignatureByAgreementId(projectId, agreementId);
+      if (!existingSignature || !readStringValue(existingSignature.drive_source_file_id)) {
+        res.status(404).json({ error: 'Avtalen må klargjøres i Google før den kan sendes til signering' });
+        return;
+      }
+
+      const counterpartyEmail = readStringValue(agreement.counterparty_email) ?? readStringValue(existingSignature.counterparty_email);
+      if (!counterpartyEmail) {
+        res.status(400).json({ error: 'Avtalen mangler e-postadresse for motparten' });
+        return;
+      }
+
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const driveApi = google.drive({ version: 'v3', auth: googleClient.oauthClient });
+      await shareRoleRoomGoogleAgreementSourceFile(
+        driveApi,
+        existingSignature.drive_source_file_id,
+        counterpartyEmail,
+      );
+
+      const now = new Date().toISOString();
+      const signature = await upsertRoleRoomGoogleAgreementSignature(projectId, agreementId, {
+        status: 'sent',
+        sentAt: existingSignature.sent_at ?? now,
+        lastSyncedAt: now,
+        requestUrl: readStringValue(existingSignature.request_url) ?? readStringValue(existingSignature.web_view_url),
+        metadata: {
+          ...readJsonObject(existingSignature.metadata),
+          dispatchedAt: now,
+          dispatchedToEmail: counterpartyEmail,
+        },
+      });
+
+      const updatedAgreement = await syncAgreementSignatureSnapshot(projectId, agreementId, signature);
+      if (!updatedAgreement) {
+        res.status(500).json({ error: 'Kunne ikke oppdatere avtalen etter utsendelse' });
+        return;
+      }
+
+      const binding = await getRoleRoomGoogleProjectBinding(projectId);
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+      res.json({
+        binding: binding ? buildRoleRoomGoogleProjectBindingResponse(binding, artifacts).binding : null,
+        artifacts: buildRoleRoomGoogleProjectBindingResponse(binding, artifacts).artifacts,
+        agreement: updatedAgreement,
+        signature: buildRoleRoomGoogleAgreementSignatureResponse(signature),
+      });
+    } catch (error) {
+      console.error('Role Room Google agreement signature send error:', error);
+      res.status(500).json({ error: 'Kunne ikke sende Google-signaturflyten til motparten' });
+    }
+  });
+
+  router.post('/projects/:projectId/google/agreements/:agreementId/sync', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId, agreementId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å synkronisere Google-signaturflyten' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const agreements = await readLegacyProjectAgreements(projectId);
+      const agreement = agreements.find((entry) => readStringValue(entry.id) === agreementId);
+      if (!agreement) {
+        res.status(404).json({ error: 'Avtalen ble ikke funnet' });
+        return;
+      }
+
+      const existingSignature = await getRoleRoomGoogleAgreementSignatureByAgreementId(projectId, agreementId);
+      if (!existingSignature) {
+        res.status(404).json({ error: 'Google-signatur er ikke klargjort for denne avtalen ennå' });
+        return;
+      }
+
+      const binding = await getRoleRoomGoogleProjectBinding(projectId);
+      const driveApi = google.drive({ version: 'v3', auth: googleClient.oauthClient });
+      const signatureMetadata = readJsonObject(existingSignature.metadata);
+      const existingPdfSnapshotArtifact = await getRoleRoomGoogleArtifactByType(
+        projectId,
+        'project_agreement',
+        agreementId,
+        'google_signature_pdf_snapshot',
+      );
+      const existingSignedPdfArtifact = await getRoleRoomGoogleArtifactByType(
+        projectId,
+        'project_agreement',
+        agreementId,
+        'google_signature_signed_pdf',
+      );
+      const existingAuditArtifact = await getRoleRoomGoogleArtifactByType(
+        projectId,
+        'project_agreement',
+        agreementId,
+        'google_signature_audit',
+      );
+      const syncedArtifacts = (await Promise.all([
+        syncRoleRoomGoogleDriveArtifactFromGoogle(driveApi, {
+          projectId,
+          localEntityType: 'project_agreement',
+          localEntityId: agreementId,
+          artifactType: 'google_signature_source',
+          driveFileId: readStringValue(existingSignature.drive_source_file_id),
+          sourceLabel: 'google_signature_source',
+          folderKey: 'approvals',
+          metadata: {
+            agreementTitle: readStringValue(agreement.title),
+            counterpartyName: readStringValue(agreement.counterparty_name),
+          },
+          createdBy: userId,
+        }),
+        syncRoleRoomGoogleDriveArtifactFromGoogle(driveApi, {
+          projectId,
+          localEntityType: 'project_agreement',
+          localEntityId: agreementId,
+          artifactType: 'google_signature_pdf_snapshot',
+          driveFileId: readStringValue(existingPdfSnapshotArtifact?.drive_file_id),
+          sourceLabel: 'google_signature_pdf_snapshot',
+          folderKey: 'approvals',
+          metadata: {
+            agreementTitle: readStringValue(agreement.title),
+            artifactKind: 'grunnlag',
+          },
+          createdBy: userId,
+        }),
+        syncRoleRoomGoogleDriveArtifactFromGoogle(driveApi, {
+          projectId,
+          localEntityType: 'project_agreement',
+          localEntityId: agreementId,
+          artifactType: 'google_signature_signed_pdf',
+          driveFileId: readStringValue(existingSignature.signed_drive_file_id)
+            ?? readStringValue(existingSignedPdfArtifact?.drive_file_id),
+          sourceLabel: 'google_signature_signed_pdf',
+          folderKey: 'approvals',
+          metadata: {
+            agreementTitle: readStringValue(agreement.title),
+            artifactKind: 'signert',
+          },
+          createdBy: userId,
+        }),
+        syncRoleRoomGoogleDriveArtifactFromGoogle(driveApi, {
+          projectId,
+          localEntityType: 'project_agreement',
+          localEntityId: agreementId,
+          artifactType: 'google_signature_audit',
+          driveFileId: readStringValue(existingAuditArtifact?.drive_file_id),
+          sourceLabel: 'google_signature_audit',
+          folderKey: 'approvals',
+          metadata: {
+            agreementTitle: readStringValue(agreement.title),
+            artifactKind: 'audit',
+          },
+          createdBy: userId,
+        }),
+      ])).filter((artifact): artifact is RoleRoomGoogleArtifactRow => Boolean(artifact));
+
+      const sourceArtifact = syncedArtifacts.find((artifact) => artifact.artifact_type === 'google_signature_source') ?? await getRoleRoomGoogleArtifactByType(
+        projectId,
+        'project_agreement',
+        agreementId,
+        'google_signature_source',
+      );
+      const pdfSnapshotArtifact = syncedArtifacts.find((artifact) => artifact.artifact_type === 'google_signature_pdf_snapshot') ?? await getRoleRoomGoogleArtifactByType(
+        projectId,
+        'project_agreement',
+        agreementId,
+        'google_signature_pdf_snapshot',
+      );
+      const signedPdfArtifact = syncedArtifacts.find((artifact) => artifact.artifact_type === 'google_signature_signed_pdf') ?? await getRoleRoomGoogleArtifactByType(
+        projectId,
+        'project_agreement',
+        agreementId,
+        'google_signature_signed_pdf',
+      );
+      const auditArtifact = syncedArtifacts.find((artifact) => artifact.artifact_type === 'google_signature_audit') ?? await getRoleRoomGoogleArtifactByType(
+        projectId,
+        'project_agreement',
+        agreementId,
+        'google_signature_audit',
+      );
+
+      const now = new Date().toISOString();
+      const inferredStatus = signedPdfArtifact?.sync_status === 'synced'
+        ? 'signed'
+        : sourceArtifact && (sourceArtifact.sync_status === 'missing' || sourceArtifact.sync_status === 'error')
+          ? 'error'
+          : existingSignature.status ?? 'not_started';
+
+      const signature = await upsertRoleRoomGoogleAgreementSignature(projectId, agreementId, {
+        status: inferredStatus,
+        documentTitle: readStringValue(existingSignature.document_title) ?? readStringValue(agreement.title),
+        driveSourceFileId: readStringValue(sourceArtifact?.drive_file_id) ?? readStringValue(existingSignature.drive_source_file_id),
+        signedDriveFileId: readStringValue(signedPdfArtifact?.drive_file_id) ?? readStringValue(existingSignature.signed_drive_file_id),
+        auditArtifactId: readStringValue(auditArtifact?.id) ?? readStringValue(existingSignature.audit_artifact_id),
+        requestUrl: readStringValue(existingSignature.request_url) ?? readStringValue(sourceArtifact?.web_view_url),
+        webViewUrl: readStringValue(sourceArtifact?.web_view_url) ?? readStringValue(existingSignature.web_view_url),
+        lastSyncedAt: now,
+        signedAt: inferredStatus === 'signed'
+          ? existingSignature.signed_at ?? readStringValue(signedPdfArtifact?.updated_at) ?? now
+          : undefined,
+        metadata: {
+          ...signatureMetadata,
+          sourceArtifactId: readStringValue(sourceArtifact?.id) ?? readStringValue(signatureMetadata.sourceArtifactId),
+          pdfSnapshotArtifactId: readStringValue(pdfSnapshotArtifact?.id) ?? readStringValue(signatureMetadata.pdfSnapshotArtifactId),
+          signedPdfArtifactId: readStringValue(signedPdfArtifact?.id) ?? readStringValue(signatureMetadata.signedPdfArtifactId),
+          auditArtifactId: readStringValue(auditArtifact?.id) ?? readStringValue(signatureMetadata.auditArtifactId),
+          syncedFromGoogleAt: now,
+        },
+      });
+
+      const updatedAgreement = await syncAgreementSignatureSnapshot(projectId, agreementId, signature);
+      if (!updatedAgreement) {
+        res.status(500).json({ error: 'Kunne ikke oppdatere avtalen etter Google-synkronisering' });
+        return;
+      }
+
+      const updatedBinding = binding
+        ? await updateRoleRoomGoogleProjectBinding(projectId, {
+            syncStatus: {
+              drive: {
+                ...(readRecordValue(readJsonObject(binding.sync_status).drive) ?? {}),
+                state: 'synced',
+                lastAgreementSignatureSyncAt: now,
+                lastAgreementId: agreementId,
+              },
+            },
+            lastDriveSyncAt: now,
+          })
+        : null;
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+      res.json({
+        binding: updatedBinding ? buildRoleRoomGoogleProjectBindingResponse(updatedBinding, artifacts).binding : null,
+        artifacts: buildRoleRoomGoogleProjectBindingResponse(updatedBinding ?? binding, artifacts).artifacts,
+        agreement: updatedAgreement,
+        signature: buildRoleRoomGoogleAgreementSignatureResponse(signature),
+      });
+    } catch (error) {
+      console.error('Role Room Google agreement signature sync error:', error);
+      res.status(500).json({ error: 'Kunne ikke synkronisere Google-signaturflyten for avtalen' });
+    }
+  });
+
+  router.post('/projects/:projectId/google/agreements/:agreementId/status', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId, agreementId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const requestedStatus = readStringValue(req.body?.status) as RoleRoomGoogleAgreementSignatureStatus | undefined;
+      const allowedStatuses: RoleRoomGoogleAgreementSignatureStatus[] = [
+        'prepared',
+        'sent',
+        'opened_in_google',
+        'signed',
+        'rejected',
+        'changes_requested',
+        'error',
+      ];
+      if (!requestedStatus || !allowedStatuses.includes(requestedStatus)) {
+        res.status(400).json({ error: 'Ugyldig Google-signaturstatus' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      const canUpdateSignature = requestedStatus === 'signed'
+        || requestedStatus === 'rejected'
+        || requestedStatus === 'changes_requested'
+        ? (canWriteProducerData(req, roleRecord) || canDecideProducerReview(req, roleRecord))
+        : canWriteProducerData(req, roleRecord);
+      if (!canUpdateSignature) {
+        res.status(403).json({ error: 'Mangler tilgang til å oppdatere signaturstatus' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const requestUser = getOptionalRequestUser(req);
+      const agreements = await readLegacyProjectAgreements(projectId);
+      const agreement = agreements.find((entry) => readStringValue(entry.id) === agreementId);
+      if (!agreement) {
+        res.status(404).json({ error: 'Avtalen ble ikke funnet' });
+        return;
+      }
+
+      const existingSignature = await getRoleRoomGoogleAgreementSignatureByAgreementId(projectId, agreementId);
+      if (!existingSignature) {
+        res.status(404).json({ error: 'Google-signatur er ikke klargjort for denne avtalen ennå' });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const nextMetadata = {
+        ...readJsonObject(existingSignature.metadata),
+        reason: readStringValue(req.body?.reason) ?? readStringValue(existingSignature.metadata?.reason),
+      };
+
+      let auditArtifactId: string | null = readStringValue(existingSignature.audit_artifact_id);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId).catch(() => null);
+      const binding = await getRoleRoomGoogleProjectBinding(projectId);
+      let signedPdfArtifactId = readStringValue(existingSignature.metadata?.signedPdfArtifactId);
+      let signedDriveFileId = readStringValue(req.body?.signedDriveFileId) ?? readStringValue(existingSignature.signed_drive_file_id);
+
+      if (googleClient && binding?.audit_signature_storage_enabled && (
+        requestedStatus === 'signed'
+        || requestedStatus === 'rejected'
+        || requestedStatus === 'changes_requested'
+      )) {
+        const driveApi = google.drive({ version: 'v3', auth: googleClient.oauthClient });
+        const projectName = await getRoleRoomProjectName(projectId);
+        const driveLayout = !binding.drive_root_folder_id
+          ? await ensureRoleRoomGoogleDriveLayout(driveApi, projectName)
+          : {
+              rootFolderId: binding.drive_root_folder_id,
+              folderLayout: {
+                ...readJsonObject(binding.folder_layout),
+              },
+            };
+        const approvalsFolderId = readStringValue(driveLayout.folderLayout.approvals) ?? driveLayout.rootFolderId;
+        const auditPayload = {
+          agreementId,
+          agreementTitle: readStringValue(agreement.title),
+          status: requestedStatus,
+          actorUserId: userId,
+          actorEmail: requestUser?.email ?? readStringValue(existingSignature.requested_by_email),
+          counterpartyName: readStringValue(agreement.counterparty_name),
+          counterpartyEmail: readStringValue(agreement.counterparty_email),
+          reason: readStringValue(req.body?.reason) ?? null,
+          signatureHash: readStringValue(existingSignature.signature_hash),
+          timestamp: now,
+        };
+        const auditBuffer = Buffer.from(JSON.stringify(auditPayload, null, 2), 'utf8');
+        const existingAuditArtifactResult = await pool.query<RoleRoomGoogleArtifactRow>(
+          `SELECT * FROM role_room_google_artifacts
+           WHERE project_id = $1
+             AND local_entity_type = 'project_agreement'
+             AND local_entity_id = $2
+             AND artifact_type = 'google_signature_audit'
+           LIMIT 1`,
+          [projectId, agreementId],
+        );
+        const existingAuditArtifact = existingAuditArtifactResult.rows[0] ?? null;
+        const driveResponse = existingAuditArtifact?.drive_file_id
+          ? await driveApi.files.update({
+              fileId: existingAuditArtifact.drive_file_id,
+              requestBody: { name: `${readStringValue(agreement.title) ?? 'Prosjektavtale'} · signaturspor.json` },
+              media: { mimeType: 'application/json', body: auditBuffer },
+              fields: 'id,webViewLink,webContentLink,mimeType',
+              supportsAllDrives: true,
+            })
+          : await driveApi.files.create({
+              requestBody: {
+                name: `${readStringValue(agreement.title) ?? 'Prosjektavtale'} · signaturspor.json`,
+                parents: [approvalsFolderId],
+              },
+              media: { mimeType: 'application/json', body: auditBuffer },
+              fields: 'id,webViewLink,webContentLink,mimeType',
+              supportsAllDrives: true,
+            });
+        const auditArtifact = await upsertRoleRoomGoogleArtifact(projectId, {
+          localEntityType: 'project_agreement',
+          localEntityId: agreementId,
+          artifactType: 'google_signature_audit',
+          sourceLabel: 'google_signature_audit',
+          driveFileId: readStringValue(driveResponse.data.id),
+          webViewUrl: readStringValue(driveResponse.data.webViewLink),
+          webContentLink: readStringValue(driveResponse.data.webContentLink),
+          mimeType: readStringValue(driveResponse.data.mimeType) ?? 'application/json',
+          folderKey: 'approvals',
+          syncStatus: 'synced',
+          metadata: auditPayload,
+          createdBy: userId,
+        });
+        auditArtifactId = auditArtifact.id;
+
+        if (requestedStatus === 'signed' && readStringValue(existingSignature.drive_source_file_id)) {
+          const signedPdfArtifact = await exportRoleRoomGoogleAgreementPdfArtifact(
+            driveApi,
+            projectId,
+            agreement,
+            readStringValue(existingSignature.drive_source_file_id)!,
+            approvalsFolderId,
+            'google_signature_signed_pdf',
+            userId,
+          );
+          signedPdfArtifactId = signedPdfArtifact.id;
+          signedDriveFileId = signedPdfArtifact.drive_file_id;
+        }
+      }
+
+      const signature = await upsertRoleRoomGoogleAgreementSignature(projectId, agreementId, {
+        status: requestedStatus,
+        signedDriveFileId,
+        requestUrl: readStringValue(req.body?.requestUrl),
+        webViewUrl: readStringValue(req.body?.webViewUrl) ?? readStringValue(existingSignature.web_view_url),
+        auditArtifactId,
+        sentAt: requestedStatus === 'sent'
+          ? now
+          : requestedStatus === 'opened_in_google'
+            ? existingSignature.sent_at ?? now
+            : undefined,
+        signedAt: requestedStatus === 'signed' ? now : undefined,
+        declinedAt: requestedStatus === 'rejected' || requestedStatus === 'changes_requested' ? now : undefined,
+        lastOpenedAt: requestedStatus === 'opened_in_google' ? now : undefined,
+        lastSyncedAt: now,
+        metadata: {
+          ...nextMetadata,
+          signedPdfArtifactId,
+        },
+      });
+
+      const updatedAgreement = await syncAgreementSignatureSnapshot(projectId, agreementId, signature);
+      if (!updatedAgreement) {
+        res.status(500).json({ error: 'Kunne ikke oppdatere avtalen etter signaturstatusendring' });
+        return;
+      }
+
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+      res.json({
+        binding: binding ? buildRoleRoomGoogleProjectBindingResponse(binding, artifacts).binding : null,
+        artifacts: buildRoleRoomGoogleProjectBindingResponse(binding, artifacts).artifacts,
+        agreement: updatedAgreement,
+        signature: buildRoleRoomGoogleAgreementSignatureResponse(signature),
+      });
+    } catch (error) {
+      console.error('Role Room Google agreement signature status error:', error);
+      res.status(500).json({ error: 'Kunne ikke oppdatere Google-signaturstatusen' });
+    }
+  });
+
+  router.post('/projects/:projectId/google/drive/sync', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å synkronisere Drive' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const driveApi = google.drive({ version: 'v3', auth: googleClient.oauthClient });
+      const existingBinding = await getRoleRoomGoogleProjectBinding(projectId);
+      const projectName = await getRoleRoomProjectName(projectId);
+      const driveLayout = await ensureRoleRoomGoogleDriveLayout(
+        driveApi,
+        projectName,
+        existingBinding?.drive_root_folder_id ?? null,
+      );
+
+      const legacyFiles = await readLegacyProjectFiles(projectId);
+      const filteredLocalFiles = Array.isArray(req.body?.fileIds) && req.body.fileIds.length > 0
+        ? legacyFiles.filter((fileRecord) => {
+            const fileId = readStringValue(fileRecord.id);
+            return fileId ? req.body.fileIds.includes(fileId) : false;
+          })
+        : legacyFiles;
+
+      const uploadedArtifacts: RoleRoomGoogleArtifactRow[] = [];
+
+      for (const fileRecord of filteredLocalFiles) {
+        const fileId = readStringValue(fileRecord.id);
+        const storagePath = readStringValue(fileRecord.storagePath);
+        const originalName = readStringValue(fileRecord.name) ?? readStringValue(fileRecord.originalName) ?? fileId;
+        if (!fileId || !storagePath || !originalName || !existsSync(storagePath)) {
+          continue;
+        }
+
+        const folderKey = getRoleRoomGoogleFolderKeyForFile(fileRecord);
+        const parentFolderId = driveLayout.folderLayout[folderKey] ?? driveLayout.rootFolderId;
+        const existingArtifactResult = await pool.query<RoleRoomGoogleArtifactRow>(
+          `SELECT * FROM role_room_google_artifacts
+           WHERE project_id = $1
+             AND local_entity_type = 'project_file'
+             AND local_entity_id = $2
+             AND artifact_type = 'drive_file'
+           LIMIT 1`,
+          [projectId, fileId],
+        );
+        const existingArtifact = existingArtifactResult.rows[0] ?? null;
+        const fileBuffer = await fs.readFile(storagePath);
+        const media = {
+          mimeType: readStringValue(fileRecord.mimeType) ?? 'application/octet-stream',
+          body: Buffer.from(fileBuffer),
+        };
+
+        const driveResponse = existingArtifact?.drive_file_id
+          ? await driveApi.files.update({
+              fileId: existingArtifact.drive_file_id,
+              requestBody: { name: originalName },
+              media,
+              fields: 'id,webViewLink,webContentLink,mimeType',
+              supportsAllDrives: true,
+            })
+          : await driveApi.files.create({
+              requestBody: {
+                name: originalName,
+                parents: [parentFolderId],
+              },
+              media,
+              fields: 'id,webViewLink,webContentLink,mimeType',
+              supportsAllDrives: true,
+            });
+
+        uploadedArtifacts.push(await upsertRoleRoomGoogleArtifact(projectId, {
+          localEntityType: 'project_file',
+          localEntityId: fileId,
+          artifactType: 'drive_file',
+          sourceLabel: readStringValue(readJsonObject(fileRecord.metadata).source) ?? 'project_file',
+          driveFileId: readStringValue(driveResponse.data.id),
+          webViewUrl: readStringValue(driveResponse.data.webViewLink),
+          webContentLink: readStringValue(driveResponse.data.webContentLink),
+          mimeType: readStringValue(driveResponse.data.mimeType) ?? readStringValue(fileRecord.mimeType),
+          folderKey,
+          syncStatus: 'synced',
+          metadata: {
+            ...readJsonObject(fileRecord.metadata),
+            name: originalName,
+            size: fileRecord.size ?? null,
+          },
+          createdBy: userId,
+        }));
+      }
+
+      const generatedArtifacts = Array.isArray(req.body?.generatedArtifacts)
+        ? req.body.generatedArtifacts.filter(
+          (entry: unknown): entry is Record<string, unknown> => isRecordValue(entry),
+        )
+        : [];
+
+      for (const generatedArtifact of generatedArtifacts) {
+        const localEntityType = readStringValue(generatedArtifact.localEntityType) ?? 'generated_artifact';
+        const localEntityId = readStringValue(generatedArtifact.localEntityId) ?? crypto.randomUUID();
+        const artifactType = readStringValue(generatedArtifact.artifactType) ?? 'drive_file';
+        const title = readStringValue(generatedArtifact.title) ?? `${artifactType}-${localEntityId}`;
+        const folderKey = readStringValue(generatedArtifact.folderKey) ?? 'delivery';
+        const mimeType = readStringValue(generatedArtifact.mimeType) ?? 'application/json';
+        const contentBase64 = readStringValue(generatedArtifact.contentBase64);
+        const contentText = readStringValue(generatedArtifact.contentText);
+        const contentBuffer = contentBase64
+          ? Buffer.from(contentBase64, 'base64')
+          : Buffer.from(contentText ?? JSON.stringify(readJsonObject(generatedArtifact.content), null, 2), 'utf8');
+
+        const existingArtifactResult = await pool.query<RoleRoomGoogleArtifactRow>(
+          `SELECT * FROM role_room_google_artifacts
+           WHERE project_id = $1
+             AND local_entity_type = $2
+             AND local_entity_id = $3
+             AND artifact_type = $4
+           LIMIT 1`,
+          [projectId, localEntityType, localEntityId, artifactType],
+        );
+        const existingArtifact = existingArtifactResult.rows[0] ?? null;
+        const parentFolderId = driveLayout.folderLayout[folderKey] ?? driveLayout.rootFolderId;
+
+        const driveResponse = existingArtifact?.drive_file_id
+          ? await driveApi.files.update({
+              fileId: existingArtifact.drive_file_id,
+              requestBody: { name: title },
+              media: { mimeType, body: contentBuffer },
+              fields: 'id,webViewLink,webContentLink,mimeType',
+              supportsAllDrives: true,
+            })
+          : await driveApi.files.create({
+              requestBody: {
+                name: title,
+                parents: [parentFolderId],
+              },
+              media: { mimeType, body: contentBuffer },
+              fields: 'id,webViewLink,webContentLink,mimeType',
+              supportsAllDrives: true,
+            });
+
+        uploadedArtifacts.push(await upsertRoleRoomGoogleArtifact(projectId, {
+          localEntityType,
+          localEntityId,
+          artifactType,
+          sourceLabel: readStringValue(generatedArtifact.sourceLabel) ?? artifactType,
+          driveFileId: readStringValue(driveResponse.data.id),
+          webViewUrl: readStringValue(driveResponse.data.webViewLink),
+          webContentLink: readStringValue(driveResponse.data.webContentLink),
+          mimeType: readStringValue(driveResponse.data.mimeType) ?? mimeType,
+          folderKey,
+          syncStatus: 'synced',
+          metadata: readJsonObject(generatedArtifact.metadata),
+          createdBy: userId,
+        }));
+      }
+
+      const binding = await updateRoleRoomGoogleProjectBinding(projectId, {
+        connectedUserId: userId,
+        driveRootFolderId: driveLayout.rootFolderId,
+        folderLayout: driveLayout.folderLayout,
+        syncStatus: {
+          drive: {
+            state: 'synced',
+            syncedArtifacts: uploadedArtifacts.length,
+            syncedAt: new Date().toISOString(),
+          },
+        },
+        lastDriveSyncAt: new Date().toISOString(),
+      });
+
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+      res.json({
+        ...buildRoleRoomGoogleProjectBindingResponse(binding, artifacts),
+        syncedArtifacts: uploadedArtifacts,
+      });
+    } catch (error) {
+      console.error('Role Room Google drive sync error:', error);
+      res.status(500).json({ error: 'Kunne ikke synkronisere filer til Google Drive' });
+    }
+  });
+
+  router.post('/projects/:projectId/google/calendar/sync', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å synkronisere kalenderen' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const events = Array.isArray(req.body?.events)
+        ? req.body.events.filter(
+          (entry: unknown): entry is Record<string, unknown> => isRecordValue(entry),
+        )
+        : [];
+      if (events.length === 0) {
+        res.status(400).json({ error: 'Ingen kalenderhendelser å synkronisere' });
+        return;
+      }
+
+      const calendarApi = google.calendar({ version: 'v3', auth: googleClient.oauthClient });
+      const existingBinding = await getRoleRoomGoogleProjectBinding(projectId);
+      const calendarId = readStringValue(req.body?.calendarId)
+        ?? existingBinding?.calendar_id
+        ?? await createRoleRoomGoogleCalendar(calendarApi, await getRoleRoomProjectName(projectId));
+
+      const syncedEvents: RoleRoomGoogleArtifactRow[] = [];
+      for (const event of events) {
+        syncedEvents.push(await syncRoleRoomGoogleCalendarEvent(calendarApi, calendarId, projectId, event, userId));
+      }
+
+      const binding = await updateRoleRoomGoogleProjectBinding(projectId, {
+        connectedUserId: userId,
+        calendarId,
+        syncStatus: {
+          calendar: {
+            state: 'synced',
+            syncedEvents: syncedEvents.length,
+            syncedAt: new Date().toISOString(),
+          },
+        },
+        lastCalendarSyncAt: new Date().toISOString(),
+      });
+
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+      res.json({
+        ...buildRoleRoomGoogleProjectBindingResponse(binding, artifacts),
+        syncedEvents,
+      });
+    } catch (error) {
+      console.error('Role Room Google calendar sync error:', error);
+      res.status(500).json({ error: 'Kunne ikke synkronisere kalenderen' });
+    }
+  });
+
+  router.post('/projects/:projectId/google/meet/session', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å opprette møtesesjoner' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const calendarApi = google.calendar({ version: 'v3', auth: googleClient.oauthClient });
+      const existingBinding = await getRoleRoomGoogleProjectBinding(projectId);
+      const calendarId = existingBinding?.calendar_id
+        ?? await createRoleRoomGoogleCalendar(calendarApi, await getRoleRoomProjectName(projectId));
+
+      const eventArtifact = await syncRoleRoomGoogleCalendarEvent(calendarApi, calendarId, projectId, {
+        ...readJsonObject(req.body),
+        includeMeet: true,
+        entityType: readStringValue(req.body?.entityType) ?? 'meet_session',
+        entityId: readStringValue(req.body?.entityId) ?? crypto.randomUUID(),
+      }, userId);
+
+      const binding = await updateRoleRoomGoogleProjectBinding(projectId, {
+        connectedUserId: userId,
+        calendarId,
+        syncStatus: {
+          meet: {
+            state: 'ready',
+            lastMeetUrl: readStringValue(eventArtifact.meet_url),
+            syncedAt: new Date().toISOString(),
+          },
+        },
+        lastCalendarSyncAt: new Date().toISOString(),
+      });
+
+      const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+      res.status(201).json({
+        ...buildRoleRoomGoogleProjectBindingResponse(binding, artifacts),
+        event: {
+          id: eventArtifact.id,
+          meetUrl: readStringValue(eventArtifact.meet_url),
+          calendarEventId: readStringValue(eventArtifact.calendar_event_id),
+          webViewUrl: readStringValue(eventArtifact.web_view_url),
+        },
+      });
+    } catch (error) {
+      console.error('Role Room Google Meet session error:', error);
+      res.status(500).json({ error: 'Kunne ikke opprette Google Meet-sesjonen' });
+    }
+  });
+
+  router.get('/projects/:projectId/google/people/search', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      const query = readStringValue(req.query.q ?? req.query.name);
+      if (!query) {
+        res.json({ contacts: [] });
+        return;
+      }
+
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til kontaktsøk' });
+        return;
+      }
+
+      const userId = getUserId(req);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      if (!googleClient) {
+        res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
+        return;
+      }
+
+      const peopleApi = google.people({ version: 'v1', auth: googleClient.oauthClient });
+      const result = await peopleApi.people.searchContacts({
+        query,
+        pageSize: 10,
+        readMask: 'names,emailAddresses,phoneNumbers,organizations',
+      });
+
+      const contacts = (result.data.results ?? []).map((entry) => {
+        const person = entry.person;
+        const name = readStringValue(person?.names?.[0]?.displayName);
+        const email = readStringValue(person?.emailAddresses?.[0]?.value);
+        const phone = readStringValue(person?.phoneNumbers?.[0]?.value);
+        const organization = readStringValue(person?.organizations?.[0]?.name);
+        return {
+          resourceName: readStringValue(person?.resourceName),
+          name,
+          email,
+          phone,
+          organization,
+        };
+      }).filter((entry) => entry.name || entry.email || entry.phone);
+
+      const binding = await updateRoleRoomGoogleProjectBinding(projectId, {
+        connectedUserId: userId,
+        contactsContext: {
+          lastQuery: query,
+          lastResultCount: contacts.length,
+          lastQueriedAt: new Date().toISOString(),
+        },
+      });
+
+      res.json({
+        contacts,
+        contactsContext: readJsonObject(binding.contacts_context),
+      });
+    } catch (error) {
+      console.error('Role Room Google people search error:', error);
+      res.status(500).json({ error: 'Kunne ikke søke i Google-kontakter' });
     }
   });
 
@@ -1545,10 +5301,109 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           JSON.stringify(metadata && typeof metadata === 'object' ? metadata : {}),
         ],
       );
+      await upsertProducerReviewTimelineItem(projectId, result.rows[0] as ProducerReviewRow, userId);
       res.status(201).json({ review: result.rows[0] });
     } catch (error) {
       console.error('Producer review create error:', error);
       res.status(500).json({ error: 'Kunne ikke opprette review' });
+    }
+  });
+
+  router.patch('/projects/:projectId/producer/reviews/:reviewId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const reviewId = req.params.reviewId;
+    const {
+      reviewType,
+      title,
+      description,
+      targetEntityType,
+      targetEntityId,
+      dueAt,
+      metadata,
+    } = req.body as Record<string, unknown>;
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å oppdatere review' });
+        return;
+      }
+
+      const existingResult = await pool.query(
+        `SELECT * FROM role_room_client_reviews WHERE id = $1 AND project_id = $2 LIMIT 1`,
+        [reviewId, projectId],
+      );
+      if (existingResult.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke review' });
+        return;
+      }
+
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      let parameterIndex = 1;
+      const pushUpdate = (fragment: string, value: unknown) => {
+        sets.push(`${fragment} = $${parameterIndex}`);
+        values.push(value);
+        parameterIndex += 1;
+      };
+
+      if (reviewType !== undefined) {
+        if (typeof reviewType !== 'string' || !reviewType.trim()) {
+          res.status(400).json({ error: 'reviewType må være en ikke-tom streng' });
+          return;
+        }
+        pushUpdate('review_type', reviewType.trim());
+      }
+      if (title !== undefined) {
+        if (typeof title !== 'string' || !title.trim()) {
+          res.status(400).json({ error: 'title må være en ikke-tom streng' });
+          return;
+        }
+        pushUpdate('title', title.trim());
+      }
+      if (description !== undefined) {
+        pushUpdate('description', typeof description === 'string' && description.trim().length > 0 ? description.trim() : null);
+      }
+      if (targetEntityType !== undefined) {
+        pushUpdate('target_entity_type', typeof targetEntityType === 'string' && targetEntityType.trim().length > 0 ? targetEntityType.trim() : null);
+      }
+      if (targetEntityId !== undefined) {
+        pushUpdate('target_entity_id', typeof targetEntityId === 'string' && targetEntityId.trim().length > 0 ? targetEntityId.trim() : null);
+      }
+      if (dueAt !== undefined) {
+        pushUpdate('due_at', typeof dueAt === 'string' && dueAt.trim().length > 0 ? dueAt.trim() : null);
+      }
+      if (metadata !== undefined) {
+        pushUpdate('metadata', JSON.stringify(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}));
+        sets[sets.length - 1] = `${sets[sets.length - 1]}::jsonb`;
+      }
+
+      if (sets.length === 0) {
+        res.status(400).json({ error: 'Ingen review-felter å oppdatere' });
+        return;
+      }
+
+      values.push(reviewId);
+      values.push(projectId);
+      const updatedResult = await pool.query(
+        `UPDATE role_room_client_reviews
+         SET ${sets.join(', ')},
+             updated_at = NOW()
+         WHERE id = $${parameterIndex} AND project_id = $${parameterIndex + 1}
+         RETURNING *`,
+        values,
+      );
+
+      await upsertProducerReviewTimelineItem(projectId, updatedResult.rows[0] as ProducerReviewRow, getUserId(req));
+      res.json({ review: updatedResult.rows[0] });
+    } catch (error) {
+      console.error('Producer review patch error:', error);
+      res.status(500).json({ error: 'Kunne ikke oppdatere review' });
     }
   });
 
@@ -1585,6 +5440,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const id = crypto.randomUUID();
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
       const result = await pool.query(
         `INSERT INTO role_room_client_review_comments (
           id, review_id, project_id, author_user_id, author_role, comment_text, timestamp_seconds, created_at, updated_at
@@ -1595,7 +5451,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           reviewId,
           projectId,
           userId,
-          roleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown'),
+          effectiveRoleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown'),
           commentText.trim(),
           typeof timestampSeconds === 'number' ? Math.max(0, Math.floor(timestampSeconds)) : null,
         ],
@@ -1640,7 +5496,6 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const reviewRow = reviewResult.rows[0] as { title?: string; id?: string };
       const updated = await pool.query(
         `UPDATE role_room_client_reviews
          SET status = $1,
@@ -1654,6 +5509,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       );
 
       if (typeof reason === 'string' && reason.trim()) {
+        const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
         await pool.query(
           `INSERT INTO role_room_client_review_comments (
             id, review_id, project_id, author_user_id, author_role, comment_text, timestamp_seconds, created_at, updated_at
@@ -1663,35 +5519,380 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             reviewId,
             projectId,
             userId,
-            roleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown'),
+            effectiveRoleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown'),
             reason.trim(),
             typeof timestampSeconds === 'number' ? Math.max(0, Math.floor(timestampSeconds)) : null,
           ],
         );
       }
 
-      await pool.query(
-        `INSERT INTO role_room_phase_timeline_items (
-          id, project_id, phase, title, description, status, linked_entity_type, linked_entity_id, sort_order, metadata, created_by, created_at, updated_at
-        ) VALUES (
-          $1, $2, 'production', $3, $4, $5, 'client_review', $6, 0, $7::jsonb, $8, NOW(), NOW()
-        )`,
-        [
-          crypto.randomUUID(),
-          projectId,
-          `Klientbeslutning: ${reviewRow.title ?? 'Review'}`,
-          typeof reason === 'string' ? reason : null,
-          decision,
-          reviewRow.id ?? reviewId,
-          JSON.stringify({ decision }),
-          userId,
-        ],
-      );
-
+      await upsertProducerReviewTimelineItem(projectId, updated.rows[0] as ProducerReviewRow, userId);
       res.json({ review: updated.rows[0] });
     } catch (error) {
       console.error('Producer review decision error:', error);
       res.status(500).json({ error: 'Kunne ikke oppdatere review-beslutning' });
+    }
+  });
+
+  router.delete('/projects/:projectId/producer/reviews/:reviewId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const reviewId = req.params.reviewId;
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å slette review' });
+        return;
+      }
+
+      const deletedResult = await pool.query(
+        `DELETE FROM role_room_client_reviews
+         WHERE id = $1 AND project_id = $2
+         RETURNING id`,
+        [reviewId, projectId],
+      );
+      if (deletedResult.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke review' });
+        return;
+      }
+
+      await pool.query(
+        `DELETE FROM role_room_phase_timeline_items
+         WHERE project_id = $1
+           AND linked_entity_type = 'client_review'
+           AND linked_entity_id = $2`,
+        [projectId, reviewId],
+      );
+
+      res.status(204).send();
+    } catch (error) {
+      console.error('Producer review delete error:', error);
+      res.status(500).json({ error: 'Kunne ikke slette review' });
+    }
+  });
+
+  router.get('/projects/:projectId/producer/client-intake', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til klientbrief' });
+        return;
+      }
+
+      const result = await pool.query(
+        `SELECT * FROM role_room_client_intake WHERE project_id = $1 LIMIT 1`,
+        [projectId],
+      );
+      res.json({ intake: result.rows[0] ?? null });
+    } catch (error) {
+      console.error('Producer client intake fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente klientbrief' });
+    }
+  });
+
+  router.put('/projects/:projectId/producer/client-intake', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+    const body = req.body as Record<string, unknown>;
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerClientInput(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å oppdatere klientbrief' });
+        return;
+      }
+
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const values = [
+        projectId,
+        typeof body.projectGoal === 'string' ? body.projectGoal.trim() : null,
+        typeof body.deliverables === 'string' ? body.deliverables.trim() : null,
+        typeof body.targetAudience === 'string' ? body.targetAudience.trim() : null,
+        typeof body.keyMessage === 'string' ? body.keyMessage.trim() : null,
+        typeof body.timingConstraints === 'string' ? body.timingConstraints.trim() : null,
+        typeof body.brandNotes === 'string' ? body.brandNotes.trim() : null,
+        typeof body.materialOverview === 'string' ? body.materialOverview.trim() : null,
+        typeof body.referenceLinks === 'string' ? body.referenceLinks.trim() : null,
+        typeof body.contactName === 'string' ? body.contactName.trim() : null,
+        typeof body.contactEmail === 'string' ? body.contactEmail.trim() : null,
+        typeof body.contactPhone === 'string' ? body.contactPhone.trim() : null,
+        typeof body.additionalNotes === 'string' ? body.additionalNotes.trim() : null,
+        JSON.stringify(body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata) ? body.metadata : {}),
+        userId,
+        effectiveRoleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown'),
+      ];
+
+      const result = await pool.query(
+        `INSERT INTO role_room_client_intake (
+          project_id, project_goal, deliverables, target_audience, key_message, timing_constraints,
+          brand_notes, material_overview, reference_links, contact_name, contact_email, contact_phone,
+          additional_notes, metadata, updated_by_user_id, updated_by_role, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9, $10, $11, $12,
+          $13, $14::jsonb, $15, $16, NOW(), NOW()
+        )
+        ON CONFLICT (project_id) DO UPDATE SET
+          project_goal = EXCLUDED.project_goal,
+          deliverables = EXCLUDED.deliverables,
+          target_audience = EXCLUDED.target_audience,
+          key_message = EXCLUDED.key_message,
+          timing_constraints = EXCLUDED.timing_constraints,
+          brand_notes = EXCLUDED.brand_notes,
+          material_overview = EXCLUDED.material_overview,
+          reference_links = EXCLUDED.reference_links,
+          contact_name = EXCLUDED.contact_name,
+          contact_email = EXCLUDED.contact_email,
+          contact_phone = EXCLUDED.contact_phone,
+          additional_notes = EXCLUDED.additional_notes,
+          metadata = EXCLUDED.metadata,
+          updated_by_user_id = EXCLUDED.updated_by_user_id,
+          updated_by_role = EXCLUDED.updated_by_role,
+          updated_at = NOW()
+        RETURNING *`,
+        values,
+      );
+
+      res.json({ intake: result.rows[0] });
+    } catch (error) {
+      console.error('Producer client intake save error:', error);
+      res.status(500).json({ error: 'Kunne ikke lagre klientbrief' });
+    }
+  });
+
+  router.get('/projects/:projectId/producer/client-materials', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til klientmateriale' });
+        return;
+      }
+
+      const result = await pool.query(
+        `SELECT * FROM role_room_client_materials
+         WHERE project_id = $1
+         ORDER BY created_at DESC, updated_at DESC`,
+        [projectId],
+      );
+      res.json({ items: result.rows });
+    } catch (error) {
+      console.error('Producer client materials fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente klientmateriale' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/client-materials', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+    const {
+      entryType,
+      title,
+      description,
+      externalUrl,
+      phase,
+      linkedShotListId,
+      status,
+      metadata,
+    } = req.body as Record<string, unknown>;
+
+    if (typeof title !== 'string' || !title.trim()) {
+      res.status(400).json({ error: 'title er påkrevd' });
+      return;
+    }
+    if (typeof entryType !== 'string' || !entryType.trim()) {
+      res.status(400).json({ error: 'entryType er påkrevd' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerClientInput(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å opprette klientmateriale' });
+        return;
+      }
+
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const result = await pool.query(
+        `INSERT INTO role_room_client_materials (
+          id, project_id, entry_type, title, description, external_url, phase,
+          linked_shot_list_id, status, metadata, created_by_user_id, created_by_role, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10::jsonb, $11, $12, NOW(), NOW()
+        )
+        RETURNING *`,
+        [
+          crypto.randomUUID(),
+          projectId,
+          entryType.trim(),
+          title.trim(),
+          typeof description === 'string' && description.trim().length > 0 ? description.trim() : null,
+          typeof externalUrl === 'string' && externalUrl.trim().length > 0 ? externalUrl.trim() : null,
+          typeof phase === 'string' && phase.trim().length > 0 ? phase.trim() : null,
+          typeof linkedShotListId === 'string' && linkedShotListId.trim().length > 0 ? linkedShotListId.trim() : null,
+          typeof status === 'string' && status.trim().length > 0 ? status.trim() : 'provided',
+          JSON.stringify(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}),
+          userId,
+          effectiveRoleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown'),
+        ],
+      );
+
+      res.status(201).json({ item: result.rows[0] });
+    } catch (error) {
+      console.error('Producer client material create error:', error);
+      res.status(500).json({ error: 'Kunne ikke opprette klientmateriale' });
+    }
+  });
+
+  router.patch('/projects/:projectId/producer/client-materials/:materialId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const materialId = req.params.materialId;
+    const {
+      entryType,
+      title,
+      description,
+      externalUrl,
+      phase,
+      linkedShotListId,
+      status,
+      metadata,
+    } = req.body as Record<string, unknown>;
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerClientInput(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å oppdatere klientmateriale' });
+        return;
+      }
+
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      let parameterIndex = 1;
+      const pushUpdate = (column: string, value: unknown, castJson = false) => {
+        sets.push(`${column} = $${parameterIndex}${castJson ? '::jsonb' : ''}`);
+        values.push(value);
+        parameterIndex += 1;
+      };
+
+      if (entryType !== undefined) {
+        pushUpdate('entry_type', typeof entryType === 'string' && entryType.trim().length > 0 ? entryType.trim() : null);
+      }
+      if (title !== undefined) {
+        if (typeof title !== 'string' || !title.trim()) {
+          res.status(400).json({ error: 'title må være en ikke-tom streng' });
+          return;
+        }
+        pushUpdate('title', title.trim());
+      }
+      if (description !== undefined) {
+        pushUpdate('description', typeof description === 'string' && description.trim().length > 0 ? description.trim() : null);
+      }
+      if (externalUrl !== undefined) {
+        pushUpdate('external_url', typeof externalUrl === 'string' && externalUrl.trim().length > 0 ? externalUrl.trim() : null);
+      }
+      if (phase !== undefined) {
+        pushUpdate('phase', typeof phase === 'string' && phase.trim().length > 0 ? phase.trim() : null);
+      }
+      if (linkedShotListId !== undefined) {
+        pushUpdate('linked_shot_list_id', typeof linkedShotListId === 'string' && linkedShotListId.trim().length > 0 ? linkedShotListId.trim() : null);
+      }
+      if (status !== undefined) {
+        pushUpdate('status', typeof status === 'string' && status.trim().length > 0 ? status.trim() : null);
+      }
+      if (metadata !== undefined) {
+        pushUpdate('metadata', JSON.stringify(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}), true);
+      }
+
+      if (sets.length === 0) {
+        res.status(400).json({ error: 'Ingen klientmateriale-felter å oppdatere' });
+        return;
+      }
+
+      values.push(materialId);
+      values.push(projectId);
+      const result = await pool.query(
+        `UPDATE role_room_client_materials
+         SET ${sets.join(', ')},
+             updated_at = NOW()
+         WHERE id = $${parameterIndex} AND project_id = $${parameterIndex + 1}
+         RETURNING *`,
+        values,
+      );
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke klientmateriale' });
+        return;
+      }
+
+      res.json({ item: result.rows[0] });
+    } catch (error) {
+      console.error('Producer client material patch error:', error);
+      res.status(500).json({ error: 'Kunne ikke oppdatere klientmateriale' });
+    }
+  });
+
+  router.delete('/projects/:projectId/producer/client-materials/:materialId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+
+    const projectId = req.params.projectId;
+    const materialId = req.params.materialId;
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerClientInput(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å slette klientmateriale' });
+        return;
+      }
+
+      const result = await pool.query(
+        `DELETE FROM role_room_client_materials
+         WHERE id = $1 AND project_id = $2
+         RETURNING id`,
+        [materialId, projectId],
+      );
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke klientmateriale' });
+        return;
+      }
+
+      res.status(204).send();
+    } catch (error) {
+      console.error('Producer client material delete error:', error);
+      res.status(500).json({ error: 'Kunne ikke slette klientmateriale' });
     }
   });
 

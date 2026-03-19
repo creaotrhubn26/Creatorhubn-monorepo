@@ -7,10 +7,9 @@ import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
-import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
 import { EnhancedMasterIntegrationProvider } from '@/integration/EnhancedMasterIntegrationProvider';
 import { AuthProvider } from '@/contexts/AuthContext';
-import { DemoModeProvider } from '@/contexts/DemoModeContext';
+import { ROLE_ROOM_LANDING_CONFIG } from './config/landing';
 
 const castingQueryClient = new QueryClient({
   defaultOptions: {
@@ -24,11 +23,7 @@ const castingQueryClient = new QueryClient({
 function CastingStandaloneAppContent() {
   // Check if user is logged in - determines which view to show
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  // Admin-controlled demoMode toggle — fetched from published page customizations
-  const { data: pageData } = usePublishedPageCustomizations('landing-desktop');
-  const lpSection = (pageData?.sections?.loginPanel as Record<string, unknown> | undefined) ?? {};
-  const demoModeEnabled = lpSection.demoMode !== false;
+  const demoModeEnabled = ROLE_ROOM_LANDING_CONFIG.demoModeEnabled;
 
   // Guest / bypass mode — no login required (only honoured when demoMode is on)
   const [guestMode, setGuestMode] = useState(() => {
@@ -140,16 +135,14 @@ function CastingStandaloneApp() {
 
   return (
     <QueryClientProvider client={castingQueryClient}>
-      <DemoModeProvider>
-        <MuiThemeProvider theme={muiTheme}>
-          <CssBaseline />
-          <AuthProvider>
-            <EnhancedMasterIntegrationProvider>
-              <CastingStandaloneAppContent />
-            </EnhancedMasterIntegrationProvider>
-          </AuthProvider>
-        </MuiThemeProvider>
-      </DemoModeProvider>
+      <MuiThemeProvider theme={muiTheme}>
+        <CssBaseline />
+        <AuthProvider>
+          <EnhancedMasterIntegrationProvider>
+            <CastingStandaloneAppContent />
+          </EnhancedMasterIntegrationProvider>
+        </AuthProvider>
+      </MuiThemeProvider>
     </QueryClientProvider>
   );
 }

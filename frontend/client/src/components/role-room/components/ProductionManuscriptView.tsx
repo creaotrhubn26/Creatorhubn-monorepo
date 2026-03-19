@@ -1,203 +1,27 @@
-import { useState, useEffect, useRef, useMemo, useCallback, useReducer, memo, type FC, type ReactNode, type ChangeEvent, type MouseEvent } from 'react';
-import {
-  Box,
-  Typography,
-  Stack,
-  IconButton,
-  Select,
-  MenuItem,
-  FormControl,
-  Tooltip,
-  Collapse,
-  Menu,
-  TextField,
-  InputAdornment,
-  Divider,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Badge,
-  Drawer,
-  Chip,
-  Checkbox,
-  CircularProgress,
-  Alert,
-  useMediaQuery,
-  useTheme,
-  Skeleton,
-} from '@mui/material';
-import {
-  Theaters as SceneIcon,
-  Videocam as CameraIcon,
-  Lightbulb as LightIcon,
-  Mic as MicIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Movie as MovieIcon,
-  Add as AddIcon,
-  Close as CloseIcon,
-  Image as ImageIcon,
-  GridView as GridViewIcon,
-  ViewList as ViewListIcon,
-  PlayArrow as PlayIcon,
-  Warning as WarningIcon,
-  Print as PrintIcon,
-  Check as CheckIcon,
-  Edit as EditIcon,
-  ZoomIn as ZoomInIcon,
-  ZoomOut as ZoomOutIcon,
-  Fullscreen as FullscreenIcon,
-  Search as SearchIcon,
-  DragIndicator as DragIcon,
-  Download as DownloadIcon,
-  FileDownload as ExportIcon,
-  Pause as PauseIcon,
-  Timer as TimerIcon,
-  RecordVoiceOver as ReadThroughIcon,
-  People as PeopleIcon,
-  ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon,
-  Person as PersonIcon,
-  Notes as NoteIcon,
-  FileCopy as FileCopyIcon,
-  Bookmark as BookmarkIcon,
-  Assignment as AssignmentIcon,
-  Phone as PhoneIcon,
-  Email as EmailIcon,
-  VideoLibrary as VideoLibraryIcon,
-  FiberManualRecord as LiveIcon,
-  ViewWeek as StripboardIcon,
-  CalendarMonth as CalendarIcon,
-  Description as CallSheetIcon,
-  Refresh as RefreshIcon,
-  Settings as SettingsIcon,
-  WbSunny as SunIcon,
-  NightsStay as MoonIcon,
-  WbTwilight as TwilightIcon,
-  Home as HomeIcon,
-  Park as ParkIcon,
-  PushPin as PinIcon,
-  FormatQuote as QuoteIcon,
-  PhotoCamera as PhotoIcon,
-  CameraAlt as CameraAltIcon,
-  Inventory as InventoryIcon,
-  TheaterComedy as TheaterIcon,
-  Cancel as CancelIcon,
-  CheckCircle as CheckCircleIcon,
-  Chat as ChatIcon,
-  CameraRoll as CameraRollIcon,
-} from '@mui/icons-material';
-import type {
-  DragEndEvent} from '@dnd-kit/core';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import type { SceneBreakdown, DialogueLine, Act, Manuscript, CastingShot, ShotList, Candidate, Role, ShotType } from '../models/casting';
-import type { StoryLogicState } from '../services/storyLogicService';
-import { ProductionEstimateDialog } from './ProductionEstimateDialog';
-import { castingService } from '../services/castingService';
-import { sceneNeedsService } from '../services/sceneNeedsService';
-import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
-import {
-  speak as ttsSpeak,
-  stopTTS,
-  pauseTTS,
-  resumeTTS,
-  isTTSPlaying,
-  assignCharacterVoices,
-  preloadTTS,
-  clearTTSCache,
-  TTS_VOICES,
-  TTS_LANGUAGES,
-  type TTSVoice,
-  type TTSLanguage,
-} from '../services/ttsService';
-
-// Production Workflow Components
-import LiveSetMode from './production/LiveSetMode';
-import StripboardPanel from './production/StripboardPanel';
-import ShootingDayPlanner from './production/ShootingDayPlanner';
-import CallSheetGenerator from './CallSheetGenerator';
-import {
-  productionWorkflowService,
-  generateCallSheetHTML,
-  downloadCallSheetPDF,
-  DEFAULT_CALL_SHEET_OPTIONS,
-} from './production';
-import type { ShootingDay, LiveSetStatus } from './production';
-import AddShotDialog from './production/AddShotDialog';
-import ProductionNotesPanel from './production/ProductionNotesPanel';
-import {
-  type NoteType,
-  type ProductionNotes,
-  type ShotSearchResult,
-  addShotReducer,
-  deriveSceneStatus,
-  type DerivedSceneStatus,
-  loadZoomPreference,
-  saveZoomPreference,
-  loadFullscreenPreference,
-  saveFullscreenPreference,
-  type SelectedMap,
-  selectedMapToggle,
-  selectedMapFromIds,
-  selectedMapSize,
-  selectedMapHas,
-  selectedMapIds,
-  EMPTY_SELECTION,
-  type SceneFilters,
-  DEFAULT_FILTERS,
-  // Workflow UI FSM
-  type WorkflowUIState,
-  type CallSheetRef,
-  type BulkShotTemplate,
-  workflowReducer,
-  INITIAL_WORKFLOW_STATE,
-  loadWorkflowPreference,
-  saveWorkflowPreference,
-  // Checklist
-  type ChecklistKey,
-  type SceneChecklist,
-  EMPTY_CHECKLIST,
-  deriveReadinessScore,
-  // Search UI FSM
-  type SearchSource,
-  type ShotCafeFilm,
-  type ReferenceImageResult,
-  searchReducer,
-  INITIAL_SEARCH_STATE,
-  // Inspector UI FSM
-  inspectorReducer,
-  INITIAL_INSPECTOR_STATE,
-  loadExpandedSections,
-  saveExpandedSections,
-  // Shot metadata types
-  type ShotMeta as _ShotMeta,
-  type ShotMetadataMap,
-  type ShotPreset,
-  buildDefaultShotMeta,
-  metaToShotProperties,
-  shotPropertiesToMeta,
-  DEFAULT_SHOT_PROPERTIES,
-} from './production/types';
-import { useSceneHistory } from './production/useSceneHistory';
-import { useEquipmentInventory } from './production/useEquipmentInventory';
-import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useState, useEffect, useRef, useMemo, useCallback, useReducer, memo, type FC, type ReactNode, type ChangeEvent, type MouseEvent } from "react";
+import { Box, Typography, Stack, IconButton, Select, MenuItem, FormControl, Tooltip, Collapse, Menu, TextField, InputAdornment, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button, Badge, Drawer, Chip, Checkbox, CircularProgress, Alert, useMediaQuery, useTheme, Skeleton } from "@mui/material";
+import { Theaters as SceneIcon, Videocam as CameraIcon, Lightbulb as LightIcon, Mic as MicIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Movie as MovieIcon, Add as AddIcon, Close as CloseIcon, Image as ImageIcon, GridView as GridViewIcon, ViewList as ViewListIcon, PlayArrow as PlayIcon, Warning as WarningIcon, Print as PrintIcon, Check as CheckIcon, Edit as EditIcon, ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Fullscreen as FullscreenIcon, Search as SearchIcon, DragIndicator as DragIcon, Download as DownloadIcon, FileDownload as ExportIcon, Pause as PauseIcon, Timer as TimerIcon, RecordVoiceOver as ReadThroughIcon, People as PeopleIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon, Person as PersonIcon, Notes as NoteIcon, FileCopy as FileCopyIcon, Bookmark as BookmarkIcon, Assignment as AssignmentIcon, Phone as PhoneIcon, Email as EmailIcon, VideoLibrary as VideoLibraryIcon, FiberManualRecord as LiveIcon, ViewWeek as StripboardIcon, CalendarMonth as CalendarIcon, Description as CallSheetIcon, Refresh as RefreshIcon, Settings as SettingsIcon, WbSunny as SunIcon, NightsStay as MoonIcon, WbTwilight as TwilightIcon, Home as HomeIcon, Park as ParkIcon, PushPin as PinIcon, FormatQuote as QuoteIcon, PhotoCamera as PhotoIcon, CameraAlt as CameraAltIcon, Inventory as InventoryIcon, TheaterComedy as TheaterIcon, Cancel as CancelIcon, CheckCircle as CheckCircleIcon, Chat as ChatIcon, CameraRoll as CameraRollIcon } from "@mui/icons-material";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import type { SceneBreakdown, DialogueLine, Act, Manuscript, CastingShot, ShotList, Candidate, Role, ShotType } from "../models/casting";
+import type { StoryLogicState } from "../services/storyLogicService";
+import { ProductionEstimateDialog } from "./ProductionEstimateDialog";
+import { castingService } from "../services/castingService";
+import { sceneNeedsService } from "../services/sceneNeedsService";
+import { getCandidatePhotoObjectPosition } from "../utils/candidatePhotoFocalPoint";
+import { speak as ttsSpeak, stopTTS, pauseTTS, resumeTTS, isTTSPlaying, assignCharacterVoices, preloadTTS, clearTTSCache, TTS_VOICES, TTS_LANGUAGES, type TTSVoice, type TTSLanguage } from "../services/ttsService";
+import LiveSetMode from "./production/LiveSetMode";
+import StripboardPanel from "./production/StripboardPanel";
+import ShootingDayPlanner from "./production/ShootingDayPlanner";
+import CallSheetGenerator from "./CallSheetGenerator";
+import { productionWorkflowService, generateCallSheetHTML, downloadCallSheetPDF, DEFAULT_CALL_SHEET_OPTIONS, type ShootingDay, type LiveSetStatus } from "./production";
+import AddShotDialog from "./production/AddShotDialog";
+import ProductionNotesPanel from "./production/ProductionNotesPanel";
+import { addShotReducer, deriveSceneStatus, loadZoomPreference, saveZoomPreference, loadFullscreenPreference, saveFullscreenPreference, selectedMapToggle, selectedMapFromIds, selectedMapSize, selectedMapHas, selectedMapIds, EMPTY_SELECTION, DEFAULT_FILTERS, workflowReducer, INITIAL_WORKFLOW_STATE, loadWorkflowPreference, saveWorkflowPreference, EMPTY_CHECKLIST, deriveReadinessScore, searchReducer, INITIAL_SEARCH_STATE, inspectorReducer, INITIAL_INSPECTOR_STATE, loadExpandedSections, saveExpandedSections, buildDefaultShotMeta, metaToShotProperties, shotPropertiesToMeta, DEFAULT_SHOT_PROPERTIES, type NoteType, type ProductionNotes, type ShotSearchResult, type DerivedSceneStatus, type SelectedMap, type SceneFilters, type WorkflowUIState, type CallSheetRef, type BulkShotTemplate, type ChecklistKey, type SceneChecklist, type SearchSource, type ShotCafeFilm, type ReferenceImageResult, type ShotMeta as _ShotMeta, type ShotMetadataMap, type ShotPreset } from "./production/types";
+import { useSceneHistory } from "./production/useSceneHistory";
+import { useEquipmentInventory } from "./production/useEquipmentInventory";
+import GlobalMentionHelper from "./shared/GlobalMentionHelper";
 
 // ============================================
 // 7-TIER RESPONSIVE SYSTEM

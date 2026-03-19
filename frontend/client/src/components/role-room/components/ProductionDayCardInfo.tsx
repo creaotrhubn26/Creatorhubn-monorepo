@@ -1,46 +1,37 @@
-/**
- * ProductionDayCardInfo Component
- * 
- * Displays production day information in shot list cards
- * Shows date, time range, status, and time statistics
- */
-
-import React, { useMemo } from 'react';
+import React, { useMemo } from "react";
+import { Box, Typography, Chip, LinearProgress, Tooltip, alpha } from "@mui/material";
+import { CalendarToday as CalendarIcon, Schedule as ScheduleIcon, AccessTime as TimeIcon, Warning as WarningIcon } from "@mui/icons-material";
+import type { ProductionDay, CastingProject, CastingShot, ProductionContext } from "../models/casting";
+import { productionPlanningService } from "../services/productionPlanningService";
 import {
-  Box,
-  Typography,
-  Chip,
-  LinearProgress,
-  Tooltip,
-} from '@mui/material';
-import { alpha } from '@mui/material';
-import {
-  CalendarToday as CalendarIcon,
-  Schedule as ScheduleIcon,
-  AccessTime as TimeIcon,
-  Warning as WarningIcon,
-} from '@mui/icons-material';
-import type { ProductionDay, CastingShot } from '../models/casting';
-import { productionPlanningService } from '../services/productionPlanningService';
+  estimateProductionDaySchedule,
+  resolveProductionEstimateContext,
+} from "../services/contentProductionEstimateService";
 
 interface ProductionDayCardInfoProps {
   productionDay: ProductionDay | null;
   shots: CastingShot[];
+  project?: CastingProject | null;
+  productionContext?: ProductionContext | null;
   compact?: boolean;
 }
 
 export function ProductionDayCardInfo({ 
   productionDay, 
   shots,
+  project = null,
+  productionContext = null,
   compact = false 
 }: ProductionDayCardInfoProps) {
   const stats = useMemo(() => {
     if (!productionDay) return null;
 
+    const context = resolveProductionEstimateContext(project, productionContext);
     const availableTime = productionPlanningService.calculateAvailableTime(productionDay);
-    const estimatedTime = productionPlanningService.calculateEstimatedTime(shots);
+    const scheduleEstimate = estimateProductionDaySchedule(productionDay, shots, context);
+    const estimatedTime = scheduleEstimate.realisticFieldMinutes;
     const actualTime = productionPlanningService.calculateActualTime(shots);
-    const isTimePressure = productionPlanningService.isTimePressureMode(productionDay, shots);
+    const isTimePressure = scheduleEstimate.status === 'tight' || scheduleEstimate.status === 'overloaded';
     const deadline = productionPlanningService.calculateDeadline(productionDay);
     const remainingShots = shots.filter((shot) => shot.status !== 'completed').length;
     const minutesToDeadline = deadline
@@ -67,8 +58,9 @@ export function ProductionDayCardInfo({
       fitsInDay,
       remainingShots,
       minutesToDeadline,
+      scheduleEstimate,
     };
-  }, [productionDay, shots]);
+  }, [productionDay, shots, project, productionContext]);
 
   if (!productionDay) {
     return null;
@@ -125,8 +117,9 @@ export function ProductionDayCardInfo({
   };
 
   if (compact) {
+    const schedule = stats?.scheduleEstimate;
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
         <CalendarIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.87)' }} />
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
           {formatDate(productionDay.date)} • {productionDay.callTime} - {productionDay.wrapTime}
@@ -142,6 +135,32 @@ export function ProductionDayCardInfo({
             border: `1px solid ${alpha(getStatusColor(productionDay.status), 0.3)}`,
           }}
         />
+        {schedule && (
+          <>
+            <Chip
+              label={`Realistisk last ${formatTimeMinutes(schedule.realisticFieldMinutes)}`}
+              size="small"
+              sx={{
+                height: 18,
+                fontSize: '9px',
+                bgcolor: alpha('#00d4ff', 0.14),
+                color: '#7dd3fc',
+                border: `1px solid ${alpha('#00d4ff', 0.28)}`,
+              }}
+            />
+            <Chip
+              label={`Output ${Math.floor(schedule.estimatedOutputSeconds / 60)}:${String(schedule.estimatedOutputSeconds % 60).padStart(2, '0')}`}
+              size="small"
+              sx={{
+                height: 18,
+                fontSize: '9px',
+                bgcolor: alpha('#f59e0b', 0.14),
+                color: '#fcd34d',
+                border: `1px solid ${alpha('#f59e0b', 0.28)}`,
+              }}
+            />
+          </>
+        )}
       </Box>
     );
   }
@@ -226,11 +245,29 @@ export function ProductionDayCardInfo({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <TimeIcon sx={{ fontSize: 12, color: 'rgba(255,255,255,0.87)' }} />
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '10px' }}>
-                  Estimert tid:
+                  Realistisk last:
                 </Typography>
               </Box>
               <Typography variant="caption" sx={{ color: '#fff', fontSize: '10px', fontWeight: 600 }}>
                 {formatTimeMinutes(stats.estimatedTime)}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '10px' }}>
+                Aktiv opptakstid:
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#fff', fontSize: '10px', fontWeight: 600 }}>
+                {formatTimeMinutes(stats.scheduleEstimate.rawCaptureMinutes)}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '10px' }}>
+                Forventet leveranse:
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#fff', fontSize: '10px', fontWeight: 600 }}>
+                {Math.floor(stats.scheduleEstimate.estimatedOutputSeconds / 60)}:{String(stats.scheduleEstimate.estimatedOutputSeconds % 60).padStart(2, '0')}
               </Typography>
             </Box>
             
@@ -299,7 +336,7 @@ export function ProductionDayCardInfo({
                 >
                   <WarningIcon sx={{ fontSize: 14, color: '#9333ea' }} />
                   <Typography variant="caption" sx={{ color: '#9333ea', fontSize: '10px', fontWeight: 600 }}>
-                    Time pressure: {formatTimeMinutes(Math.abs(stats.availableTime - stats.estimatedTime))} over tid
+                    Tidskonflikt: {formatTimeMinutes(Math.abs(stats.availableTime - stats.estimatedTime))} over realistisk dagslast
                   </Typography>
                 </Box>
               </Tooltip>
@@ -310,4 +347,3 @@ export function ProductionDayCardInfo({
     </Box>
   );
 }
-

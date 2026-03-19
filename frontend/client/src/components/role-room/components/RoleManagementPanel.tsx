@@ -1,89 +1,19 @@
-import React, { useState, useId, useMemo, useEffect, memo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Box,
-  Typography,
-  Button,
-  IconButton,
-  Card,
-  CardContent,
-  Chip,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Divider,
-  LinearProgress,
-  Tabs,
-  Tab,
-  Avatar,
-  Tooltip,
-  Checkbox,
-  Collapse,
-  Alert,
-  Snackbar,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TableSortLabel,
-  Paper,
-  Stack,
-  useTheme,
-  useMediaQuery,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Search as SearchIcon,
-  Star as StarIcon,
-  StarBorder as StarBorderIcon,
-  ExpandMore as ExpandIcon,
-  ExpandLess as CollapseIcon,
-  GridView as GridViewIcon,
-  ViewList as TableViewIcon,
-  FileDownload as ExportIcon,
-  ContentCopy as DuplicateIcon,
-  People as PeopleIcon,
-  Movie as MovieIcon,
-  Person as PersonIcon,
-  Assignment as AssignmentIcon,
-  Inventory as InventoryIcon,
-  WarningAmber as WarningIcon,
-  AutoAwesome as AutoAwesomeIcon,
-  KeyboardCommandKey as CommandIcon,
-  RestartAlt as UndoStatusIcon,
-  Redo as RedoStatusIcon,
-  Checklist as ChecklistIcon,
-  CompareArrows as CompareArrowsIcon,
-  Schedule as ScheduleIcon,
-  Tune as TuneIcon,
-} from '@mui/icons-material';
-import settingsService from '../services/settingsService';
-import { RolesIcon as TheaterComedyIcon, StatsIcon } from './icons/CastingIcons';
-import type { Role } from '../models/casting';
-import { castingService } from '../services/castingService';
-import { useToast } from './ToastStack';
-import { useBrandingSettings } from '../hooks/useBrandingSettings';
-import type { PoolRole } from '../services/rolePoolService';
-import { rolePoolService } from '../services/rolePoolService';
-import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
-import castingDirectorPng from './icons/Keep/roleroom_casting_director.png';
-import type {
-  RoleWorkflowStatus} from '../config/roleWorkflow';
-import {
-  ROLE_WORKFLOW_ORDER,
-  getRoleWorkflowMeta,
-} from '../config/roleWorkflow';
-import { emitRoleSyncEvent, onRoleSyncEvent } from '../services/roleSyncEvents';
-import { roleQueryKeys } from '../services/roleQueryKeys';
+import React, { useState, useId, useMemo, useEffect, memo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Box, Typography, Button, IconButton, Card, CardContent, Chip, TextField, Select, MenuItem, FormControl, Dialog, DialogTitle, DialogContent, DialogActions, Divider, LinearProgress, Tabs, Tab, Avatar, Tooltip, Checkbox, Collapse, Alert, Snackbar, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, Stack, useTheme, useMediaQuery } from "@mui/material";
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, Star as StarIcon, StarBorder as StarBorderIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon, GridView as GridViewIcon, ViewList as TableViewIcon, FileDownload as ExportIcon, ContentCopy as DuplicateIcon, People as PeopleIcon, Movie as MovieIcon, Person as PersonIcon, Assignment as AssignmentIcon, Inventory as InventoryIcon, WarningAmber as WarningIcon, AutoAwesome as AutoAwesomeIcon, KeyboardCommandKey as CommandIcon, RestartAlt as UndoStatusIcon, Redo as RedoStatusIcon, Checklist as ChecklistIcon, CompareArrows as CompareArrowsIcon, Schedule as ScheduleIcon, Tune as TuneIcon } from "@mui/icons-material";
+import settingsService from "../services/settingsService";
+import { RolesIcon as TheaterComedyIcon, StatsIcon } from "./icons/CastingIcons";
+import type { Role } from "../models/casting";
+import { castingService } from "../services/castingService";
+import { useToast } from "./ToastStack";
+import { useBrandingSettings } from "../hooks/useBrandingSettings";
+import { rolePoolService, type PoolRole } from "../services/rolePoolService";
+import { RoleRoomEmptyState } from "./icons/RoleRoomEmptyState";
+import castingDirectorPng from "./icons/Keep/roleroom_casting_director.png";
+import { ROLE_WORKFLOW_ORDER, getRoleWorkflowMeta, type RoleWorkflowStatus } from "../config/roleWorkflow";
+import { emitRoleSyncEvent, onRoleSyncEvent } from "../services/roleSyncEvents";
+import { roleQueryKeys } from "../services/roleQueryKeys";
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
 const TOUCH_TARGET_SIZE = 44;

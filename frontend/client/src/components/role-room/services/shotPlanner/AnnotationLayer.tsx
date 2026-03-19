@@ -1,40 +1,7 @@
-/**
- * Annotation Layer - Drawing with Apple Pencil on Shot Planner
- * 
- * Allows directors to annotate shot plans with:
- * - Freehand drawing
- * - Pressure-sensitive strokes
- * - Multiple brush types
- * - Annotation layers
- */
-
-import React, { useRef, useEffect, useCallback, useState } from 'react';
-import {
-  Box,
-  Paper,
-  Button,
-  IconButton,
-  Tooltip,
-  Stack,
-  ToggleButton,
-  ToggleButtonGroup,
-  Slider,
-  Typography,
-  Divider,
-  Menu,
-  MenuItem,
-} from '@mui/material';
-import {
-  Edit as DrawIcon,
-  Undo as UndoIcon,
-  Redo as RedoIcon,
-  Delete as ClearIcon,
-  Close as CloseIcon,
-  Palette as BrushIcon,
-  Settings as SettingsIcon,
-} from '@mui/icons-material';
-import type { PencilPoint } from '../../hooks/useApplePencil';
-import { useApplePencil } from '../../hooks/useApplePencil';
+import React, { useRef, useEffect, useCallback, useState } from "react";
+import { Box, Paper, Button, IconButton, Tooltip, Stack, ToggleButton, ToggleButtonGroup, Slider, Typography, Divider, Menu, MenuItem } from "@mui/material";
+import { Edit as DrawIcon, Undo as UndoIcon, Redo as RedoIcon, Delete as ClearIcon, Close as CloseIcon, Palette as BrushIcon, Settings as SettingsIcon } from "@mui/icons-material";
+import { useApplePencil, type PencilPoint } from "../../hooks/useApplePencil";
 
 // Brush configuration
 interface BrushConfig {

@@ -1,53 +1,8 @@
-import React, { useState } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Button,
-  IconButton,
-  Chip,
-  Stack,
-  Card,
-  CardContent,
-  Grid,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Checkbox,
-  FormControlLabel,
-  Slider,
-  Tooltip,
-  LinearProgress,
-  Divider,
-  Badge,
-} from '@mui/material';
-import {
-  AutoFixHigh as VfxIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Visibility as ViewIcon,
-  CropFree as TrackingIcon,
-  Gradient as GreenScreenIcon,
-  Layers as CompositeIcon,
-  Animation as AnimationIcon,
-  ThreeDRotation as ThreeDIcon,
-  Brush as PaintIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckIcon,
-  Schedule as ScheduleIcon,
-  AttachMoney as BudgetIcon,
-  Person as ArtistIcon,
-} from '@mui/icons-material';
-import type { SceneBreakdown} from '../models/casting';
-import { CastingShot } from '../models/casting';
-import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import React, { useState } from "react";
+import { Box, Typography, Paper, Button, IconButton, Chip, Stack, Card, CardContent, Grid, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Checkbox, FormControlLabel, Slider, Tooltip, LinearProgress, Divider, Badge } from "@mui/material";
+import { AutoFixHigh as VfxIcon, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Visibility as ViewIcon, CropFree as TrackingIcon, Gradient as GreenScreenIcon, Layers as CompositeIcon, Animation as AnimationIcon, ThreeDRotation as ThreeDIcon, Brush as PaintIcon, Warning as WarningIcon, CheckCircle as CheckIcon, Schedule as ScheduleIcon, AttachMoney as BudgetIcon, Person as ArtistIcon } from "@mui/icons-material";
+import { CastingShot, type SceneBreakdown } from "../models/casting";
+import GlobalMentionHelper from "./shared/GlobalMentionHelper";
 
 type VfxCategory = 'greenscreen' | 'tracking' | 'composite' | 'cgi' | 'cleanup' | 'animation' | 'matte_painting' | 'particle' | 'other';
 type VfxComplexity = 'simple' | 'medium' | 'complex' | 'hero';

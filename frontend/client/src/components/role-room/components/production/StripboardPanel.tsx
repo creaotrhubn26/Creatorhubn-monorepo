@@ -150,7 +150,15 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
   }, [groupBy]);
 
   const toggleStripSelection = useCallback((id: string) => {
-    setSelectedStrips(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSelectedStrips(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }, []);
 
   const handleAddStrip = useCallback(() => {
@@ -212,21 +220,43 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
   }, [assignDayId, selectedStrip, selectedStrips, strips, setStrips]);
 
   const handleToggleDay = useCallback((dayId: string | null) => {
-    setExpandedDays(prev => { const n = new Set(prev); n.has(dayId) ? n.delete(dayId) : n.add(dayId); return n; });
+    setExpandedDays(prev => {
+      const next = new Set(prev);
+      if (next.has(dayId)) {
+        next.delete(dayId);
+      } else {
+        next.add(dayId);
+      }
+      return next;
+    });
   }, []);
 
   const handleToggleLocation = useCallback((location: string) => {
-    setExpandedLocations(prev => { const n = new Set(prev); n.has(location) ? n.delete(location) : n.add(location); return n; });
+    setExpandedLocations(prev => {
+      const next = new Set(prev);
+      if (next.has(location)) {
+        next.delete(location);
+      } else {
+        next.add(location);
+      }
+      return next;
+    });
   }, []);
 
   const handleExpandAll = useCallback(() => {
-    viewMode === 'location'
-      ? setExpandedLocations(new Set(stripsByLocation.map(g => g.location)))
-      : setExpandedDays(new Set(stripsByDay.map(d => d.dayId)));
+    if (viewMode === 'location') {
+      setExpandedLocations(new Set(stripsByLocation.map(group => group.location)));
+      return;
+    }
+    setExpandedDays(new Set(stripsByDay.map(day => day.dayId)));
   }, [viewMode, stripsByLocation, stripsByDay]);
 
   const handleCollapseAll = useCallback(() => {
-    viewMode === 'location' ? setExpandedLocations(new Set()) : setExpandedDays(new Set());
+    if (viewMode === 'location') {
+      setExpandedLocations(new Set());
+      return;
+    }
+    setExpandedDays(new Set());
   }, [viewMode]);
 
   const handleMobileMenuOpen  = useCallback((e: MouseEvent<HTMLElement>) => setMobileMenuAnchor(e.currentTarget), []);

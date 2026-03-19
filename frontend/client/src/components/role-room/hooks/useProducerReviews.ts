@@ -6,7 +6,9 @@ import {
   type ProducerClientReview,
   type ProducerReviewComment,
   type SetProducerReviewDecisionInput,
+  summarizeProducerReviewStatuses,
 } from '../services/producerWorkflowService';
+import { onProducerWorkflowEvent } from '../services/producerWorkflowEvents';
 
 export function useProducerReviews(projectId?: string) {
   const [items, setItems] = useState<ProducerClientReview[]>([]);
@@ -36,9 +38,22 @@ export function useProducerReviews(projectId?: string) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!projectId) {
+      return () => undefined;
+    }
+
+    return onProducerWorkflowEvent((payload) => {
+      if (payload.projectId !== projectId || payload.domain !== 'reviews') {
+        return;
+      }
+      void load();
+    });
+  }, [load, projectId]);
+
   const createReview = useCallback(async (payload: CreateProducerReviewInput) => {
     if (!projectId) throw new Error('Mangler projectId');
-    const created = await producerWorkflowService.createReview(projectId, payload);
+    const created = await producerWorkflowService.createReviewWithTimeline(projectId, payload);
     setItems((prev) => [created, ...prev]);
     return created;
   }, [projectId]);
@@ -62,7 +77,7 @@ export function useProducerReviews(projectId?: string) {
   const setDecision = useCallback(
     async (reviewId: string, payload: SetProducerReviewDecisionInput) => {
       if (!projectId) throw new Error('Mangler projectId');
-      const updated = await producerWorkflowService.setReviewDecision(projectId, reviewId, payload);
+      const updated = await producerWorkflowService.setReviewDecisionWithTimeline(projectId, reviewId, payload);
       setItems((prev) => prev.map((review) => (review.id === reviewId ? { ...review, ...updated } : review)));
       return updated;
     },
@@ -70,17 +85,13 @@ export function useProducerReviews(projectId?: string) {
   );
 
   const summary = useMemo(() => {
-    return items.reduce(
-      (acc, review) => {
-        const status = review.status || 'pending';
-        if (status === 'approved') acc.approved += 1;
-        else if (status === 'rejected') acc.rejected += 1;
-        else if (status === 'changes_requested') acc.changesRequested += 1;
-        else acc.pending += 1;
-        return acc;
-      },
-      { pending: 0, approved: 0, rejected: 0, changesRequested: 0 },
-    );
+    const reviewSummary = summarizeProducerReviewStatuses(items);
+    return {
+      pending: reviewSummary.pendingReviews,
+      approved: reviewSummary.approvedReviews,
+      rejected: reviewSummary.rejectedReviews,
+      changesRequested: reviewSummary.changesRequestedReviews,
+    };
   }, [items]);
 
   return {
@@ -94,4 +105,3 @@ export function useProducerReviews(projectId?: string) {
     setDecision,
   };
 }
-

@@ -1,16 +1,4 @@
-/**
- * Script Word Bank Database Service
- * 
- * Database-backed vocabulary service for screenplay analysis.
- * Provides shared learning across all users with admin curation.
- * Falls back to settings-backed word bank when database unavailable.
- * 
- * Uses the existing FastAPI backend with Neon PostgreSQL.
- * API endpoints: /api/wordbank/*
- */
-
-import type { WordCategory, WordEntry } from './scriptWordBank';
-import { scriptWordBank } from './scriptWordBank';
+import { scriptWordBank, type WordCategory, type WordEntry } from "./scriptWordBank";
 
 // API base URL - matches existing backend pattern
 const API_BASE = '/api/wordbank';

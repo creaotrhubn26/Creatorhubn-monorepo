@@ -1,36 +1,9 @@
-import { useState } from 'react';
-import type { ChangeEvent, FC } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Box,
-  Typography,
-  Alert,
-  LinearProgress,
-  Stack,
-  Paper,
-  Card,
-  CardContent,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-} from '@mui/material';
-import {
-  FileUpload as FileUploadIcon,
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  Info as InfoIcon,
-} from '@mui/icons-material';
-import type { ManuscriptExport } from '../models/casting';
-import { manuscriptService } from '../services/manuscriptService';
-import { useToast } from './ToastStack';
+import { useState, type ChangeEvent, type FC } from "react";
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, Alert, LinearProgress, Stack, Paper, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip } from "@mui/material";
+import { FileUpload as FileUploadIcon, CheckCircle as CheckCircleIcon, Error as ErrorIcon, Info as InfoIcon } from "@mui/icons-material";
+import type { ManuscriptExport } from "../models/casting";
+import { manuscriptService } from "../services/manuscriptService";
+import { useToast } from "./ToastStack";
 
 interface ImportManuscriptDialogProps {
   open: boolean;

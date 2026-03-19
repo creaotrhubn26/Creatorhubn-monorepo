@@ -269,7 +269,6 @@ export default function SplitSheetPortalView({
     };
 
     fetchProjectData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSplitSheet?.project_id, showSignDialog]);
 
   // Sign split sheet mutation
@@ -1145,7 +1144,6 @@ export default function SplitSheetPortalView({
     </Box>
   );
 }
-
 
 
 

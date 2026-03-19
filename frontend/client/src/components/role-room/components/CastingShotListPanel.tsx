@@ -104,8 +104,10 @@ import {
 } from '@mui/icons-material';
 import { TeamIcon, DashboardCustomIcon as DashboardIcon, StatsIcon } from './icons/CastingIcons';
 import { TeamDashboard, type TeamDashboardCrewSegment } from './TeamDashboard';
-import { PRODUCTION_PRESETS, type ShotList, type CastingShot, type ShotType, type CameraAngle, type CameraMovement, type Role, type ProductionDay, type MediaType, type ShotPriority, type CrewMember, type ShotComment, type ShotStatus, type UserRoleType, type ProductionContext } from '../models/casting';
+import { PRODUCTION_PRESETS, type ShotList, type CastingShot, type ShotType, type CameraAngle, type CameraMovement, type Role, type ProductionDay, type MediaType, type ShotPriority, type CrewMember, type ShotComment, type ShotStatus, type UserRoleType, type ProductionContext, type CastingProject, type Manuscript, type SceneBreakdown, type DialogueLine } from '../models/casting';
 import { castingService } from '../services/castingService';
+import { manuscriptService } from '../services/manuscriptService';
+import { estimateContentProduction } from '../services/contentProductionEstimateService';
 import { RichTextEditor } from './RichTextEditor';
 import { Z_INDEX } from '../config/zIndex';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
@@ -266,6 +268,10 @@ export function CastingShotListPanel({
   // Core state
   const [shotLists, setShotLists] = useState<ShotList[]>([]);
   const [productionDays, setProductionDays] = useState<ProductionDay[]>([]);
+  const [project, setProject] = useState<CastingProject | null>(null);
+  const [projectManuscript, setProjectManuscript] = useState<Manuscript | null>(null);
+  const [manuscriptScenes, setManuscriptScenes] = useState<SceneBreakdown[]>([]);
+  const [manuscriptDialogue, setManuscriptDialogue] = useState<DialogueLine[]>([]);
   // Load shot lists and production days when projectId changes
   useEffect(() => {
     let cancelled = false;
@@ -288,6 +294,49 @@ export function CastingShotListPanel({
     };
     void loadData();
     return () => { cancelled = true; };
+  }, [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProjectNarrativeContext = async () => {
+      if (!projectId) return;
+
+      try {
+        const loadedProject = await castingService.getProject(projectId);
+        const manuscripts = await manuscriptService.getManuscripts(projectId);
+        const primaryManuscript = [...manuscripts].sort((a, b) => {
+          const aTime = Date.parse(a.updatedAt || a.createdAt || '');
+          const bTime = Date.parse(b.updatedAt || b.createdAt || '');
+          return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+        })[0] || null;
+
+        const [loadedScenes, loadedDialogue] = primaryManuscript
+          ? await Promise.all([
+              manuscriptService.getScenes(primaryManuscript.id),
+              manuscriptService.getDialogue(primaryManuscript.id),
+            ])
+          : [[], []];
+
+        if (cancelled) return;
+        setProject(loadedProject);
+        setProjectManuscript(primaryManuscript);
+        setManuscriptScenes(Array.isArray(loadedScenes) ? loadedScenes : []);
+        setManuscriptDialogue(Array.isArray(loadedDialogue) ? loadedDialogue : []);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error loading project narrative context:', error);
+        setProject(null);
+        setProjectManuscript(null);
+        setManuscriptScenes([]);
+        setManuscriptDialogue([]);
+      }
+    };
+
+    void loadProjectNarrativeContext();
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]);
   
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -474,7 +523,7 @@ export function CastingShotListPanel({
     return () => { cancelled = true; };
   }, [projectId, user?.id]);
 
-  const availableScenes = useMemo(() => castingService.getAvailableScenes(), []);
+  const availableScenes = useMemo(() => castingService.getAvailableScenes(projectId), [projectId]);
 
   // O(1) lookup maps for scenes and roles
   const sceneById = useMemo(() => new Map(availableScenes.map(s => [s.id, s])), [availableScenes]);
@@ -727,6 +776,67 @@ export function CastingShotListPanel({
     return value ? new Date(value).toLocaleDateString('nb-NO') : '—';
   };
 
+  const formatMinutesLabel = (minutes: number): string => {
+    if (minutes <= 0) return '0m';
+    const rounded = Math.round(minutes);
+    if (rounded < 60) return `${rounded}m`;
+    const hours = Math.floor(rounded / 60);
+    const remainder = rounded % 60;
+    return remainder > 0 ? `${hours}t ${remainder}m` : `${hours}t`;
+  };
+
+  const formatSecondsLabel = (seconds: number): string => {
+    const normalized = Math.max(0, Math.round(seconds));
+    if (normalized < 60) return `${normalized}s`;
+    const minutes = Math.floor(normalized / 60);
+    const remainder = normalized % 60;
+    return remainder > 0 ? `${minutes}:${String(remainder).padStart(2, '0')}` : `${minutes}:00`;
+  };
+
+  const getEstimateConfidenceLabel = (confidence: 'low' | 'medium' | 'high'): string => {
+    switch (confidence) {
+      case 'high':
+        return 'Solid datagrunnlag';
+      case 'medium':
+        return 'Godt datagrunnlag';
+      default:
+        return 'Foreløpig estimat';
+    }
+  };
+
+  const getDayLoadAppearance = (status: 'healthy' | 'tight' | 'overloaded' | 'unscheduled') => {
+    switch (status) {
+      case 'overloaded':
+        return {
+          label: 'Overbooket',
+          color: '#f97316',
+          bg: 'rgba(249,115,22,0.14)',
+          border: 'rgba(249,115,22,0.28)',
+        };
+      case 'tight':
+        return {
+          label: 'Tett dag',
+          color: '#facc15',
+          bg: 'rgba(250,204,21,0.12)',
+          border: 'rgba(250,204,21,0.24)',
+        };
+      case 'unscheduled':
+        return {
+          label: 'Mangler plan',
+          color: '#94a3b8',
+          bg: 'rgba(148,163,184,0.12)',
+          border: 'rgba(148,163,184,0.22)',
+        };
+      default:
+        return {
+          label: 'God margin',
+          color: '#4ade80',
+          bg: 'rgba(74,222,128,0.12)',
+          border: 'rgba(74,222,128,0.22)',
+        };
+    }
+  };
+
   // Find related storyboard for a shot list
   const findRelatedStoryboard = useCallback((shotList: ShotList) => {
     const sceneName = getSceneName(shotList.sceneId, shotList.sceneName);
@@ -950,6 +1060,19 @@ export function CastingShotListPanel({
       completionPercent,
     };
   }, [shotLists, favorites]);
+
+  const productionEstimate = useMemo(
+    () =>
+      estimateContentProduction({
+        project,
+        manuscript: projectManuscript,
+        scenes: manuscriptScenes,
+        dialogue: manuscriptDialogue,
+        shotLists,
+        productionDays,
+      }),
+    [project, projectManuscript, manuscriptScenes, manuscriptDialogue, shotLists, productionDays],
+  );
 
   // Handlers
   const handleOpenDialog = (shotList?: ShotList) => {
@@ -2863,6 +2986,246 @@ export function CastingShotListPanel({
               />
             </Box>
           )}
+          <Box
+            sx={{
+              width: '100%',
+              mt: 1,
+              pt: 1.5,
+              borderTop: '1px solid rgba(148,163,184,0.18)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1.5,
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', md: 'center' },
+                gap: 1,
+              }}
+            >
+              <Box>
+                <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 700 }}>
+                  Format- og dagsestimat
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
+                  Basert på manus, shotlist, sceneomfang og planlagte produksjonsdager.
+                </Typography>
+              </Box>
+              <Chip
+                label={getEstimateConfidenceLabel(productionEstimate.confidence)}
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(59,130,246,0.14)',
+                  color: '#93c5fd',
+                  border: '1px solid rgba(59,130,246,0.28)',
+                }}
+              />
+            </Box>
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  md: 'repeat(2, minmax(0, 1fr))',
+                  xl: 'repeat(4, minmax(0, 1fr))',
+                },
+                gap: 1.25,
+              }}
+            >
+              {productionEstimate.formatEstimates.map((format) => (
+                <Box
+                  key={format.id}
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    bgcolor: format.emphasis === 'primary' ? 'rgba(233,30,99,0.12)' : 'rgba(15,23,42,0.55)',
+                    border: format.emphasis === 'primary'
+                      ? '1px solid rgba(233,30,99,0.28)'
+                      : '1px solid rgba(148,163,184,0.18)',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 0.5 }}>
+                    <Typography variant="body2" sx={{ color: '#fff', fontWeight: 700 }}>
+                      {format.label}
+                    </Typography>
+                    <Chip
+                      label={format.aspectRatio}
+                      size="small"
+                      sx={{
+                        height: 20,
+                        bgcolor: 'rgba(255,255,255,0.06)',
+                        color: 'rgba(255,255,255,0.72)',
+                        '& .MuiChip-label': { px: 0.75 },
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="h5" sx={{ color: format.emphasis === 'primary' ? '#f9a8d4' : '#fff', fontWeight: 700, mb: 0.5 }}>
+                    {formatSecondsLabel(format.estimatedSeconds)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
+                    {format.description}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  sm: 'repeat(2, minmax(0, 1fr))',
+                  xl: 'repeat(4, minmax(0, 1fr))',
+                },
+                gap: 1.25,
+              }}
+            >
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.18)' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Estimert hoveddekning</Typography>
+                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mt: 0.4 }}>
+                  {formatSecondsLabel(productionEstimate.totalEstimatedOutputSeconds)}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
+                  Samlet forventet rå klippelengde fra planlagte shots.
+                </Typography>
+              </Box>
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.18)' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Realistisk feltbelastning</Typography>
+                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mt: 0.4 }}>
+                  {formatMinutesLabel(productionEstimate.totalRealisticFieldMinutes)}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
+                  Inkluderer rigg, flyt, sceneoverganger og praktiske stopp.
+                </Typography>
+              </Box>
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.18)' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Rå opptakstid</Typography>
+                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mt: 0.4 }}>
+                  {formatMinutesLabel(productionEstimate.totalRawCaptureMinutes)}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
+                  Summen av shot-estimatene før produksjonsmargin legges på.
+                </Typography>
+              </Box>
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.18)' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Foreslåtte opptaksdager</Typography>
+                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mt: 0.4 }}>
+                  {productionEstimate.suggestedShootDays}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
+                  Beregnet ut fra realistisk feltbelastning på omtrent åttetimersdager.
+                </Typography>
+              </Box>
+            </Box>
+
+            {productionEstimate.productionDayLoads.length > 0 && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Produksjonsdager
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      xl: 'repeat(2, minmax(0, 1fr))',
+                    },
+                    gap: 1,
+                  }}
+                >
+                  {productionEstimate.productionDayLoads.map((dayLoad) => {
+                    const appearance = getDayLoadAppearance(dayLoad.status);
+                    return (
+                      <Box
+                        key={dayLoad.dayId}
+                        sx={{
+                          p: 1.25,
+                          borderRadius: 2,
+                          bgcolor: appearance.bg,
+                          border: `1px solid ${appearance.border}`,
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 0.75 }}>
+                          <Box>
+                            <Typography variant="body2" sx={{ color: '#fff', fontWeight: 700 }}>
+                              {dayLoad.label}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                              {dayLoad.sceneCount} scener • {dayLoad.shotCount} shots
+                            </Typography>
+                          </Box>
+                          <Chip
+                            label={appearance.label}
+                            size="small"
+                            sx={{
+                              bgcolor: appearance.bg,
+                              color: appearance.color,
+                              border: `1px solid ${appearance.border}`,
+                            }}
+                          />
+                        </Box>
+                        <Box
+                          sx={{
+                            display: 'grid',
+                            gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, minmax(0, 1fr))' },
+                            gap: 1,
+                          }}
+                        >
+                          <Box>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>På location</Typography>
+                            <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
+                              {dayLoad.onLocationMinutes > 0 ? formatMinutesLabel(dayLoad.onLocationMinutes) : 'Ikke satt'}
+                            </Typography>
+                          </Box>
+                          <Box>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Aktiv opptakstid</Typography>
+                            <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
+                              {formatMinutesLabel(dayLoad.rawCaptureMinutes)}
+                            </Typography>
+                          </Box>
+                          <Box>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Realistisk last</Typography>
+                            <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
+                              {formatMinutesLabel(dayLoad.realisticFieldMinutes)}
+                            </Typography>
+                          </Box>
+                          <Box>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>
+                              {dayLoad.bufferMinutes === null ? 'Forslag til dag' : 'Buffer'}
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: dayLoad.bufferMinutes !== null && dayLoad.bufferMinutes < 0 ? '#fca5a5' : '#fff', fontWeight: 600 }}>
+                              {dayLoad.bufferMinutes === null
+                                ? formatMinutesLabel(dayLoad.realisticFieldMinutes + 30)
+                                : `${dayLoad.bufferMinutes >= 0 ? '+' : ''}${formatMinutesLabel(dayLoad.bufferMinutes)}`}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            )}
+
+            {productionEstimate.notes.length > 0 && (
+              <Alert
+                severity={productionEstimate.overloadedDayCount > 0 ? 'warning' : 'info'}
+                sx={{
+                  bgcolor: productionEstimate.overloadedDayCount > 0 ? 'rgba(249,115,22,0.12)' : 'rgba(59,130,246,0.12)',
+                  color: '#fff',
+                  '& .MuiAlert-icon': {
+                    color: productionEstimate.overloadedDayCount > 0 ? '#fdba74' : '#93c5fd',
+                  },
+                }}
+              >
+                {productionEstimate.notes[0]}
+              </Alert>
+            )}
+          </Box>
           {!isMobile && Object.entries(stats.shotTypeCount).slice(0, 3).map(([type, count]) => (
             <Box key={type} className="shot-stat-item" sx={{ textAlign: 'center' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3591,6 +3954,8 @@ export function CastingShotListPanel({
                       <ProductionDayCardInfo
                         productionDay={shotListProductionDays.get(shotList.id) ?? null}
                         shots={shotList.shots}
+                        project={project}
+                        productionContext={shotList.productionContext}
                         compact
                       />
                     </Box>
@@ -4414,11 +4779,11 @@ export function CastingShotListPanel({
           <Stack spacing={2} sx={{ mt: 1 }}>
             {availableScenes.length > 0 ? (
               <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Scene (fra Scene Composer)</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Scene (fra Role Room)</InputLabel>
                 <Select
                   value={formData.sceneId || ''}
                   onChange={(e) => setFormData({ ...formData, sceneId: e.target.value, sceneName: '' })}
-                  label="Scene (fra Scene Composer)"
+                  label="Scene (fra Role Room)"
                   sx={{
                     color: '#fff',
                     minHeight: TOUCH_TARGET_SIZE,
@@ -4446,7 +4811,7 @@ export function CastingShotListPanel({
                 value={formData.sceneName || ''}
                 onChange={(e) => setFormData({ ...formData, sceneName: e.target.value })}
                 placeholder="F.eks. Åpningsscene, Interiør kjøkken..."
-                helperText={availableScenes.length === 0 ? "Skriv inn et navn for scenen manuelt" : "Brukes når ingen scene er valgt fra Scene Composer"}
+                helperText={availableScenes.length === 0 ? "Skriv inn et navn for scenen manuelt" : "Brukes når ingen scene er valgt fra Role Room-scener"}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',

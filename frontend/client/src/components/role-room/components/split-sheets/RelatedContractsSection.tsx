@@ -17,6 +17,7 @@ import {
   IconButton,
   Tooltip,
   useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Description as ContractIcon,
@@ -39,17 +40,29 @@ export default function RelatedContractsSection({
   onCreateContract,
 }: RelatedContractsSectionProps) {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const brandColor = theme.palette.primary.main;
 
   // Fetch related contracts by project_id - Fixed queryKey
   const { data: contractsData, isLoading } = useQuery({
-    queryKey: ['contracts', 'project', projectId],
+    queryKey: ['contracts', 'project', projectId, 'split-sheet', splitSheetId],
     queryFn: () => apiRequest(`/api/contracts?projectId=${projectId}`),
     enabled: !!projectId,
     retry: false,
   });
 
   const contracts = contractsData?.contracts || [];
+  const getContractSplitSheetId = (contract: any): string | undefined =>
+    contract.split_sheet_id || contract.splitSheetId || contract.splitSheet?.id || undefined;
+  const relatedContracts = contracts.filter((contract: any) => getContractSplitSheetId(contract) === splitSheetId);
+  const fallbackProjectContracts = contracts.filter((contract: any) => getContractSplitSheetId(contract) !== splitSheetId);
+  const visibleContracts = relatedContracts.length > 0 ? relatedContracts : contracts;
+  const visibleScopeLabel =
+    relatedContracts.length > 0
+      ? `Viser ${relatedContracts.length} kontrakt${relatedContracts.length === 1 ? '' : 'er'} knyttet til valgt avtale`
+      : fallbackProjectContracts.length > 0
+        ? 'Ingen egne avtale-kontrakter funnet. Viser prosjektkontrakter i stedet.'
+        : 'Ingen kontrakter funnet for dette prosjektet ennå.';
 
   const getStatusColor = (status: string): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' => {
     switch (status) {
@@ -91,16 +104,28 @@ export default function RelatedContractsSection({
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
             <ContractIcon sx={{ color: brandColor, fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-            <Typography
-              variant="h6"
-              sx={{
-                color: brandColor,
-                fontWeight: 700,
-                fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' },
-              }}
-            >
-              Relaterte Kontrakter
-            </Typography>
+            <Box>
+              <Typography
+                variant="h6"
+                sx={{
+                  color: brandColor,
+                  fontWeight: 700,
+                  fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' },
+                }}
+              >
+                Relaterte Kontrakter
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  fontSize: { xs: '0.75rem', sm: '0.813rem', md: '0.875rem', lg: '0.938rem', xl: '1rem' },
+                  mt: 0.25,
+                }}
+              >
+                {visibleScopeLabel}
+              </Typography>
+            </Box>
           </Box>
           <Button
             variant="outlined"
@@ -128,7 +153,7 @@ export default function RelatedContractsSection({
           <Box sx={{ display: 'flex', justifyContent: 'center', p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
             <CircularProgress size={isMobile ? 24 : 32} sx={{ color: brandColor }} />
           </Box>
-        ) : contracts.length === 0 ? (
+        ) : visibleContracts.length === 0 ? (
           <Alert
             severity="info"
             sx={{
@@ -140,15 +165,18 @@ export default function RelatedContractsSection({
           </Alert>
         ) : (
           <List sx={{ p: 0 }}>
-            {contracts.map((contract: any) => (
+            {visibleContracts.map((contract: any) => {
+              const isLinkedToCurrentSplitSheet = getContractSplitSheetId(contract) === splitSheetId;
+
+              return (
               <ListItem
                 key={contract.id}
                 sx={{
                   border: '1px solid',
-                  borderColor: 'rgba(255,255,255,0.1)',
+                  borderColor: isLinkedToCurrentSplitSheet ? brandColor : 'rgba(255,255,255,0.1)',
                   borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
                   mb: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
-                  bgcolor: 'rgba(255,255,255,0.02)',
+                  bgcolor: isLinkedToCurrentSplitSheet ? 'rgba(0, 212, 255, 0.08)' : 'rgba(255,255,255,0.02)',
                   '&:hover': {
                     bgcolor: 'rgba(255,255,255,0.05)',
                     borderColor: brandColor,
@@ -177,15 +205,28 @@ export default function RelatedContractsSection({
                       >
                         {contract.title || contract.clientName || 'Ukjent kontrakt'}
                       </Typography>
-                      <Chip
-                        label={contract.status || 'draft'}
-                        size="small"
-                        color={getStatusColor(contract.status)}
+                        <Chip
+                          label={contract.status || 'draft'}
+                          size="small"
+                          color={getStatusColor(contract.status)}
                         sx={{
                           fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' },
                           height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 },
-                        }}
-                      />
+                          }}
+                        />
+                      {isLinkedToCurrentSplitSheet && (
+                        <Chip
+                          label="Aktiv avtale"
+                          size="small"
+                          variant="outlined"
+                          sx={{
+                            borderColor: brandColor,
+                            color: brandColor,
+                            fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' },
+                            height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 },
+                          }}
+                        />
+                      )}
                       {contract.signature_status === 'signed' && (
                         <Chip
                           icon={<CheckCircleIcon sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '1.125rem', lg: '1.25rem', xl: '1.375rem' } }} />}
@@ -280,14 +321,14 @@ export default function RelatedContractsSection({
                   </Box>
                 </ListItemSecondaryAction>
               </ListItem>
-            ))}
+            );
+            })}
           </List>
         )}
       </CardContent>
     </Card>
   );
 }
-
 
 
 

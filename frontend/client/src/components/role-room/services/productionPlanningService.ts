@@ -133,7 +133,7 @@ export const productionPlanningService = {
     const productionDay = days.find(pd => pd.id === productionDayId);
     if (!productionDay) return [];
     
-    const availableScenes = castingService.getAvailableScenes();
+    const availableScenes = castingService.getAvailableScenes(projectId);
     return productionDay.scenes
       .map(sceneId => availableScenes.find(s => s.id === sceneId))
       .filter((s): s is { id: string; name: string; thumbnail?: string } => s !== undefined);

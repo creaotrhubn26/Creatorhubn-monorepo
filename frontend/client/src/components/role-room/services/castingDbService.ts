@@ -4,11 +4,16 @@
  */
 
 import type { CastingProject } from '../models/casting';
+import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 
 /**
  * Save casting project to database
  */
 export async function saveCastingProjectToDb(project: CastingProject): Promise<void> {
+  if (shouldUseRoleRoomLocalFallback()) {
+    return;
+  }
+
   try {
     const response = await fetch('/api/casting/projects', {
       method: 'POST',
@@ -31,6 +36,10 @@ export async function saveCastingProjectToDb(project: CastingProject): Promise<v
  * Get all casting projects from database
  */
 export async function getCastingProjectsFromDb(): Promise<CastingProject[]> {
+  if (shouldUseRoleRoomLocalFallback()) {
+    return [];
+  }
+
   try {
     const response = await fetch('/api/casting/projects');
 
@@ -50,6 +59,10 @@ export async function getCastingProjectsFromDb(): Promise<CastingProject[]> {
  * Get casting project by ID from database
  */
 export async function getCastingProjectFromDb(id: string): Promise<CastingProject | null> {
+  if (shouldUseRoleRoomLocalFallback()) {
+    return null;
+  }
+
   try {
     const response = await fetch(`/api/casting/projects/${id}`);
 
@@ -72,6 +85,10 @@ export async function getCastingProjectFromDb(id: string): Promise<CastingProjec
  * Delete casting project from database
  */
 export async function deleteCastingProjectFromDb(id: string): Promise<void> {
+  if (shouldUseRoleRoomLocalFallback()) {
+    return;
+  }
+
   try {
     const response = await fetch(`/api/casting/projects/${id}`, {
       method: 'DELETE',
@@ -90,15 +107,17 @@ export async function deleteCastingProjectFromDb(id: string): Promise<void> {
  * Check if database is available
  */
 export async function isDatabaseAvailable(): Promise<boolean> {
+  if (shouldUseRoleRoomLocalFallback()) {
+    return false;
+  }
+
   try {
     const response = await fetch('/api/casting/health');
     return response.ok;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
-
-
 
 
 

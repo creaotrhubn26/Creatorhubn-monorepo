@@ -1,11 +1,5 @@
-import { useEffect, useState } from 'react';
-import type {
-  BrandingSettings} from '../config/branding';
-import {
-  fetchBrandingSettings,
-  getBrandingSettings,
-  subscribeBrandingSettings,
-} from '../config/branding';
+import { useEffect, useState } from "react";
+import { fetchBrandingSettings, getBrandingSettings, subscribeBrandingSettings, type BrandingSettings } from "../config/branding";
 
 export function useBrandingSettings(): BrandingSettings {
   const [branding, setBranding] = useState<BrandingSettings>(getBrandingSettings());

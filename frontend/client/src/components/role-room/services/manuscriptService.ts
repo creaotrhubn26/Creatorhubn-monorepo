@@ -14,6 +14,7 @@ import {
   PRODUCER_DEMO_PROJECT_NAME,
   containsLegacyProducerDemoMarker,
 } from '../constants/producerDemo';
+import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
@@ -38,6 +39,12 @@ function markManuscriptApiUnavailable(reason?: string): void {
  * Check if database is available
  */
 async function checkDatabaseAvailability(): Promise<boolean> {
+  if (shouldUseRoleRoomLocalFallback()) {
+    manuscriptApiAvailable = false;
+    dbAvailable = false;
+    return false;
+  }
+
   if (manuscriptApiAvailable === false) {
     return false;
   }

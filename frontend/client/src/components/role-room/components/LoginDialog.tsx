@@ -32,8 +32,11 @@ import {
   LockOutlined as LockIcon,
 } from '@mui/icons-material';
 import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
+import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
 import authSessionService from '../services/authSessionService';
-import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
+import { googleWorkspaceApi } from '../services/castingApiService';
+import { parseClientPortalIntentFromWindow } from '../utils/clientPortal';
+import { isRoleRoomStandaloneRuntime } from '../utils/runtime';
 
 /* ─────────────────────────── types ────────────────────────────── */
 
@@ -195,6 +198,23 @@ const LOGIN_PERSONA_OPTIONS: ReadonlyArray<{
     id: 'content_producer',
     label: 'Innholdsprodusent',
     description: 'For innhold, storyboard og leveranser',
+  },
+];
+
+const CONTENT_PRODUCER_ACCESS_OPTIONS: ReadonlyArray<{
+  id: 'film_photographer' | 'client';
+  label: string;
+  description: string;
+}> = [
+  {
+    id: 'film_photographer',
+    label: 'Innholdsprodusent',
+    description: 'Planlegg, produser og lever innhold',
+  },
+  {
+    id: 'client',
+    label: 'Klient',
+    description: 'Legg inn brief, materiale og godkjenning',
   },
 ];
 
@@ -388,7 +408,7 @@ function RoleChip({
     <Box
       component="button"
       type="button"
-      ref={cardRef as any}
+      ref={cardRef}
       onClick={() => onSelect(role.id)}
       sx={{
         position: 'relative',
@@ -426,7 +446,7 @@ function RoleChip({
       {video ? (
         <Box
           component="video"
-          ref={videoRef as any}
+          ref={videoRef}
           src={videoSrc}
           poster={video.replace('.mp4', '_thumb.webp')}
           loop
@@ -705,16 +725,6 @@ export default function LoginDialog({
   const [error, setError] = useState('');
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
-  // live social-proof stats from DB (public endpoint, no auth)
-  const [liveStats, setLiveStats] = useState<{ kreative: number; produksjoner: number; rollerBesatt: number } | null>(null);
-  useEffect(() => {
-    if (!isLandingPage) return;
-    fetch('/api/role-room/public/stats')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setLiveStats(d); })
-      .catch(() => {});
-  }, [isLandingPage]);
-
   const [ucIdx, setUcIdx] = useState(0);
   const [ucVisible, setUcVisible] = useState(true);
   const [forgotPassword, setForgotPassword] = useState(false);
@@ -724,6 +734,7 @@ export default function LoginDialog({
   const [testimonialIdx, setTestimonialIdx] = useState(0);
   const [testimonialVisible, setTestimonialVisible] = useState(true);
   const hasSeenHint = useRef(false);
+  const clientPortalIntent = parseClientPortalIntentFromWindow();
 
   const visibleProfessionCategories =
     loginPersona === 'content_producer'
@@ -737,28 +748,13 @@ export default function LoginDialog({
           .filter((category) => category.roleIds.length > 0)
       : professionCategories;
 
-  /* ── pull published visual-editor settings (landing-desktop page) ── */
-  const { data: pageData } = usePublishedPageCustomizations('landing-desktop');
-  const lp = (pageData?.sections?.loginPanel ?? {}) as Record<string, any>;
-
-  const loginEyebrow  = (lp.eyebrowText as string | undefined) || 'Din inngang';
-  const loginTitle    = (lp.title      as string | undefined) || 'Ta din plass';
-  const loginSubtitle = (lp.subtitle   as string | undefined) || 'Velg hvem du er — og start produksjonen';
+  const loginEyebrow = ROLE_ROOM_LANDING_CONFIG.login.eyebrowText;
+  const loginTitle = ROLE_ROOM_LANDING_CONFIG.login.title;
+  const loginSubtitle = ROLE_ROOM_LANDING_CONFIG.login.subtitle;
 
   /* parse "roleId|Description" lines — fall back to compiled defaults */
   const activeUseCases: { roleId: string; line: string }[] = (() => {
-    const raw = lp.useCases as string | undefined;
-    if (!raw?.trim()) return USE_CASES;
-    return raw
-      .split('\n')
-      .map(l => l.trim())
-      .filter(Boolean)
-      .map(l => {
-        const sep = l.indexOf('|');
-        if (sep === -1) return null;
-        return { roleId: l.slice(0, sep).trim(), line: l.slice(sep + 1).trim() };
-      })
-      .filter(Boolean) as { roleId: string; line: string }[];
+    return USE_CASES;
   })();
 
   /* ── accent colour from selected role ── */
@@ -767,36 +763,12 @@ export default function LoginDialog({
 
   /* ── stats: live DB → visual editor override → hardcoded defaults ── */
   const activeStats: { value: string; label: string }[] = (() => {
-    // 1️⃣ If visual editor has custom stats text, use that unconditionally
-    const raw = lp.stats as string | undefined;
-    if (raw?.trim()) {
-      return raw.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-        const sep = l.indexOf('|');
-        return sep === -1 ? null : { value: l.slice(0, sep).trim(), label: l.slice(sep + 1).trim() };
-      }).filter(Boolean) as { value: string; label: string }[];
-    }
-    // 2️⃣ Live DB counts if available
-    if (liveStats) {
-      const fmt = (n: number) => n.toLocaleString('nb-NO');
-      return [
-        { value: fmt(liveStats.kreative),     label: 'kreative' },
-        { value: fmt(liveStats.produksjoner), label: 'produksjoner' },
-        { value: fmt(liveStats.rollerBesatt), label: 'roller besatt' },
-      ];
-    }
-    // 3️⃣ Hardcoded defaults while loading
     return DEFAULT_STATS;
   })();
 
   /* ── testimonials from visual editor or defaults ── */
   const activeTestimonials = (() => {
-    const raw = lp.testimonials as string | undefined;
-    if (!raw?.trim()) return DEFAULT_TESTIMONIALS;
-    return raw.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-      const parts = l.split('|');
-      if (parts.length < 4) return null;
-      return { roleId: parts[0].trim(), quote: parts[1].trim(), author: parts[2].trim(), title: parts[3].trim() };
-    }).filter(Boolean) as typeof DEFAULT_TESTIMONIALS;
+    return DEFAULT_TESTIMONIALS;
   })();
 
   /* ── per-role testimonial + badge animation on role change ── */
@@ -825,9 +797,10 @@ export default function LoginDialog({
   }, [isLandingPage, selectedRole]);
 
   /* ── CTA button label ── */
-  const ctaButtonLabel = (lp.ctaButtonLabel as string | undefined) || 'Logg Inn';
+  const ctaButtonLabel = ROLE_ROOM_LANDING_CONFIG.login.ctaButtonLabel;
   // demoMode defaults to true — switched OFF in admin hides the guest bypass
-  const demoModeEnabled = lp.demoMode !== false;
+  const demoModeEnabled = ROLE_ROOM_LANDING_CONFIG.demoModeEnabled;
+  const shouldUseStandaloneDemoAuth = demoModeEnabled && isRoleRoomStandaloneRuntime();
 
   /* cycle use-case scenarios every 3.5 s */
   useEffect(() => {
@@ -861,12 +834,29 @@ export default function LoginDialog({
   }, [open]);
 
   useEffect(() => {
-    if (loginPersona !== 'content_producer') return;
-    if (!selectedRole) return;
-    if (selectedRole !== 'film_photographer' && selectedRole !== 'client') {
+    if (!open || !clientPortalIntent) {
+      return;
+    }
+    setLoginPersona('content_producer');
+    setSelectedRole('client');
+  }, [clientPortalIntent, open]);
+
+  useEffect(() => {
+    if (loginPersona === 'content_producer') {
+      if (!selectedRole) {
+        setSelectedRole('film_photographer');
+        return;
+      }
+      if (selectedRole !== 'film_photographer' && selectedRole !== 'client') {
+        setSelectedRole('film_photographer');
+      }
+      return;
+    }
+
+    if (!isLandingPage && (selectedRole === 'film_photographer' || selectedRole === 'client')) {
       setSelectedRole('');
     }
-  }, [loginPersona, selectedRole]);
+  }, [isLandingPage, loginPersona, selectedRole]);
 
   /* submit */
   const handleLogin = useCallback(async () => {
@@ -893,6 +883,34 @@ export default function LoginDialog({
     setError('');
 
     if (selectedRole) await authSessionService.setSelectedProfession(selectedRole);
+
+    const completeLocalLogin = async () => {
+      await authSessionService.setSessionToken(null);
+      const normalizedSessionUserId = email.trim().toLowerCase();
+      const mockUser = {
+        id: normalizedSessionUserId,
+        email: email.trim(),
+        role:
+          loginPersona === 'content_producer'
+            ? (selectedRole === 'client' ? 'client_reviewer' : 'content_producer')
+            : (selectedRole || 'producer'),
+        loginAs: loginPersona || undefined,
+        requestedRole: selectedRole || null,
+        display_name: email.trim().split('@')[0],
+      };
+      await authSessionService.setAdminUser(mockUser);
+      await authSessionService.setCurrentUserId(String(mockUser.id));
+      onLoginSuccess(mockUser);
+    };
+
+    if (shouldUseStandaloneDemoAuth) {
+      try {
+        await completeLocalLogin();
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     try {
       const timeout = new Promise<never>((_, reject) =>
@@ -949,25 +967,49 @@ export default function LoginDialog({
         setError(data.detail ?? data.error ?? 'Ugyldig e-post eller passord');
       }
     } catch {
-      await authSessionService.setSessionToken(null);
-      const mockUser = {
-        id: 1,
-        email: email.trim(),
-        role:
-          loginPersona === 'content_producer'
-            ? (selectedRole === 'client' ? 'client_reviewer' : 'content_producer')
-            : (selectedRole || 'producer'),
-        loginAs: loginPersona || undefined,
-        requestedRole: selectedRole || null,
-        display_name: email.trim().split('@')[0],
-      };
-      await authSessionService.setAdminUser(mockUser);
-      await authSessionService.setCurrentUserId(String(mockUser.id));
-      onLoginSuccess(mockUser);
+      await completeLocalLogin();
     } finally {
       setLoading(false);
     }
-  }, [loading, email, password, selectedRole, loginPersona, isLandingPage, onLoginSuccess]);
+  }, [loading, email, password, selectedRole, loginPersona, isLandingPage, onLoginSuccess, shouldUseStandaloneDemoAuth]);
+
+  const handleGoogleLogin = useCallback(async () => {
+    if (loading) return;
+    if (!loginPersona) {
+      setError('Velg om du logger inn som Produksjonsteam eller Innholdsprodusent');
+      return;
+    }
+    if (isLandingPage && !selectedRole) {
+      setError('Velg en rolle for å fortsette');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const currentPath = typeof window !== 'undefined'
+        ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+        : '/casting.html';
+      const response = await googleWorkspaceApi.startOauth({
+        mode: 'login',
+        loginAs: loginPersona,
+        requestedRole: selectedRole || null,
+        projectId: clientPortalIntent?.projectId,
+        returnPath: currentPath,
+        email: email.trim() || undefined,
+      });
+
+      if (!response.authorizationUrl) {
+        throw new Error('Mangler autorisasjonslenke fra Google Workspace');
+      }
+
+      window.location.assign(response.authorizationUrl);
+    } catch (googleError) {
+      setLoading(false);
+      setError(googleError instanceof Error ? googleError.message : 'Kunne ikke starte Google-innlogging');
+    }
+  }, [loading, loginPersona, isLandingPage, selectedRole, clientPortalIntent?.projectId, email]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !loading) {
@@ -979,6 +1021,7 @@ export default function LoginDialog({
   const selectedRoleLabel = allRoles.find((r) => r.id === selectedRole)?.label;
   const showPersonaChooserInLeftPanel = isLandingPage && !isMobile;
   const showPersonaChooserInRightPanel = true;
+  const showContentProducerAccessChooser = loginPersona === 'content_producer';
   const loginPersonaChooser = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       <Typography
@@ -1065,6 +1108,92 @@ export default function LoginDialog({
       </Box>
     </Box>
   );
+  const contentProducerAccessChooser = showContentProducerAccessChooser ? (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <Typography
+        sx={{
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          color: 'rgba(225,218,246,0.95)',
+          letterSpacing: '0.03em',
+          textTransform: 'uppercase',
+        }}
+      >
+        Tilgang
+      </Typography>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 1,
+        }}
+      >
+        {CONTENT_PRODUCER_ACCESS_OPTIONS.map((option) => {
+          const isSelected = selectedRole === option.id;
+          return (
+            <Button
+              key={option.id}
+              type="button"
+              onClick={() => setSelectedRole(option.id)}
+              aria-pressed={isSelected}
+              sx={{
+                textTransform: 'none',
+                borderRadius: '14px',
+                py: 1,
+                px: 1.25,
+                justifyContent: 'flex-start',
+                alignItems: 'flex-start',
+                textAlign: 'left',
+                border: `1px solid ${
+                  isSelected
+                    ? `rgba(${aR},${aG},${aB},0.45)`
+                    : 'rgba(255,255,255,0.12)'
+                }`,
+                bgcolor: isSelected
+                  ? `rgba(${aR},${aG},${aB},0.16)`
+                  : 'rgba(255,255,255,0.05)',
+                color: isSelected ? glass.text : 'rgba(235,235,245,0.82)',
+                transition: `all 0.25s ${easing}`,
+                '&:hover': {
+                  bgcolor: isSelected
+                    ? `rgba(${aR},${aG},${aB},0.22)`
+                    : 'rgba(255,255,255,0.08)',
+                  borderColor: isSelected
+                    ? `rgba(${aR},${aG},${aB},0.62)`
+                    : 'rgba(255,255,255,0.2)',
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                <Typography
+                  sx={{
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    lineHeight: 1.2,
+                    letterSpacing: '0.01em',
+                  }}
+                >
+                  {option.label}
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: '0.65rem',
+                    lineHeight: 1.3,
+                    color: isSelected
+                      ? `rgba(${aR},${aG},${aB},0.95)`
+                      : 'rgba(185,185,200,0.7)',
+                    transition: 'color 0.25s ease',
+                  }}
+                >
+                  {option.description}
+                </Typography>
+              </Box>
+            </Button>
+          );
+        })}
+      </Box>
+    </Box>
+  ) : null;
 
   /* ── render ── */
   return (
@@ -1235,7 +1364,7 @@ export default function LoginDialog({
           {/* logo */}
           <Box
             component="img"
-            src={lp.logoUrl || ROLE_ROOM_BRAND_ASSETS.wordmark}
+            src={ROLE_ROOM_BRAND_ASSETS.wordmark}
             alt="The Role Room"
             sx={{
               width: { xs: 'min(200px, 55vw)', sm: '60%', md: '72%', lg: '82%' },
@@ -1706,6 +1835,7 @@ export default function LoginDialog({
 
           {/* ── login persona chooser ── */}
           {showPersonaChooserInRightPanel && loginPersonaChooser}
+          {contentProducerAccessChooser}
 
           {/* ── role picker ── */}
           {isLandingPage && (
@@ -1991,7 +2121,7 @@ export default function LoginDialog({
               {/* Google */}
               <Button
                 fullWidth
-                onClick={() => { window.location.href = '/api/auth/google'; }}
+                onClick={handleGoogleLogin}
                 sx={{
                   textTransform: 'none',
                   fontSize: '0.8rem',

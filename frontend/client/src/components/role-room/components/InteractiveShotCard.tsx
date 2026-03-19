@@ -1,38 +1,8 @@
-import { useState, useCallback, type FC, type MouseEvent, type ReactElement, type ReactNode } from 'react';
-import {
-  Box,
-  Typography,
-  IconButton,
-  Chip,
-  Tooltip,
-  LinearProgress,
-  alpha,
-} from '@mui/material';
-import {
-  PhotoCamera,
-  Videocam,
-  CameraRoll,
-  Check,
-  PlayArrow,
-  Schedule,
-  Star,
-  StarBorder,
-  Notes,
-  Lightbulb,
-  CameraAlt,
-  Wallpaper,
-  Timer,
-  Add,
-  Remove,
-} from '@mui/icons-material';
-import type { PanInfo } from 'framer-motion';
-import { motion, useMotionValue, useTransform } from 'framer-motion';
-import type {
-  CastingShot,
-  ShotStatus,
-  MediaType,
-  ShotPriority,
-} from '../models/casting';
+import { useState, useCallback, type FC, type MouseEvent, type ReactElement, type ReactNode } from "react";
+import { Box, Typography, IconButton, Chip, Tooltip, LinearProgress, alpha } from "@mui/material";
+import { PhotoCamera, Videocam, CameraRoll, Check, PlayArrow, Schedule, Star, StarBorder, Notes, Lightbulb, CameraAlt, Wallpaper, Timer, Add, Remove } from "@mui/icons-material";
+import { motion, useMotionValue, useTransform, type PanInfo } from "framer-motion";
+import type { CastingShot, ShotStatus, MediaType, ShotPriority } from "../models/casting";
 
 interface InteractiveShotCardProps {
   shot: CastingShot;

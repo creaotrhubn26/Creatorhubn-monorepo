@@ -1,37 +1,6 @@
-/**
- * useDOOD.ts
- *
- * React hook that wraps the pure doodEngine.
- *
- * Re-computes the full DOOD matrix whenever scenes / strips / shoot-days /
- * cast members change.  Because the computation is O(cast × days) — typically
- * < 5ms for a feature film — we keep it in useMemo and don't bother with
- * incremental updates.
- *
- * Usage:
- *
- *   const {
- *     matrix,          // DOODMatrix — full cast × day grid
- *     summaries,       // DOODActorSummary[] — work/hold/travel counts per actor
- *     getCode,         // (castMemberId, dayId) => DOODCode | undefined
- *     isWorkDay,       // (castMemberId, dayId) => boolean
- *     totalWorkDays,   // total W/SW/WF/SWF entries in the project
- *     totalHoldDays,   // total H entries in the project
- *   } = useDOOD(scenes, strips, shootDays, castMembers);
- */
-
-import { useMemo, useCallback } from 'react';
-import {
-  generateDOOD,
-  getCode as engineGetCode,
-  getWorkDays,
-  summariseDOOD,
-} from './domain/doodEngine';
-import type {
-  Scene, Strip, ShootDay, CastMember,
-  DOODMatrix, DOODCode,
-} from './domain/types';
-import type { DOODActorSummary } from './domain/doodEngine';
+import { useMemo, useCallback } from "react";
+import { generateDOOD, getCode as engineGetCode, getWorkDays, summariseDOOD, type DOODActorSummary } from "./domain/doodEngine";
+import type { Scene, Strip, ShootDay, CastMember, DOODMatrix, DOODCode } from "./domain/types";
 
 // ─── Return shape ─────────────────────────────────────────────────────────────
 

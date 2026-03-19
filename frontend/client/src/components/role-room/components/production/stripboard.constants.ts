@@ -1,20 +1,6 @@
-/**
- * stripboard.constants.ts
- * Color maps, status config and colour-lookup helpers for the Stripboard.
- */
-
-import { type ReactElement } from 'react';
-import {
-  Home as IntIcon,
-  Landscape as ExtIcon,
-  WbTwilight as TwilightIcon,
-  EventNote as EventNoteIcon,
-  PhotoCamera as PhotoCameraIcon,
-  AccessTime as AccessTimeIcon,
-  Pending as PendingIcon,
-} from '@mui/icons-material';
-import React from 'react';
-import type { StripColorConfig } from './stripboard.types';
+import React, { type ReactElement } from "react";
+import { Home as IntIcon, Landscape as ExtIcon, WbTwilight as TwilightIcon, EventNote as EventNoteIcon, PhotoCamera as PhotoCameraIcon, AccessTime as AccessTimeIcon, Pending as PendingIcon } from "@mui/icons-material";
+import type { StripColorConfig } from "./stripboard.types";
 
 // ─── Norwegian Film Standard colour codes ─────────────────────────────────────
 

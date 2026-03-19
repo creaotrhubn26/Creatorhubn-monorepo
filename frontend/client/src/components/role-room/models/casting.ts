@@ -49,6 +49,214 @@ export interface UserRole {
   updated_at?: string;
 }
 
+export type RoleRoomGoogleConnectionState = 'disconnected' | 'connected' | 'expired' | 'error';
+
+export interface RoleRoomGoogleConnection {
+  id: string;
+  userId: string;
+  roleRoomEmail?: string | null;
+  googleEmail?: string | null;
+  googleSubject?: string | null;
+  scopes: string[];
+  state: RoleRoomGoogleConnectionState;
+  lastError?: string | null;
+  profile: Record<string, unknown>;
+  expiryDate?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  lastUsedAt?: string | null;
+}
+
+export interface RoleRoomGoogleArtifactRef {
+  id: string;
+  projectId: string;
+  localEntityType: string;
+  localEntityId: string;
+  artifactType: string;
+  sourceLabel?: string | null;
+  driveFileId?: string | null;
+  calendarEventId?: string | null;
+  meetUrl?: string | null;
+  webViewUrl?: string | null;
+  webContentLink?: string | null;
+  mimeType?: string | null;
+  folderKey?: string | null;
+  syncStatus?: string | null;
+  metadata: Record<string, unknown>;
+  createdBy?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RoleRoomGoogleSyncStatus {
+  drive?: Record<string, unknown>;
+  calendar?: Record<string, unknown>;
+  meet?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface RoleRoomGoogleProjectBinding {
+  id: string;
+  projectId: string;
+  connectedUserId?: string | null;
+  driveRootFolderId?: string | null;
+  calendarId?: string | null;
+  contactsContext: Record<string, unknown>;
+  meetCreationEnabled: boolean;
+  auditSignatureStorageEnabled: boolean;
+  folderLayout: Record<string, unknown>;
+  syncStatus: RoleRoomGoogleSyncStatus;
+  createdAt?: string;
+  updatedAt?: string;
+  lastDriveSyncAt?: string | null;
+  lastCalendarSyncAt?: string | null;
+}
+
+export type RoleRoomGoogleAgreementSignatureStatus =
+  | 'not_started'
+  | 'prepared'
+  | 'sent'
+  | 'opened_in_google'
+  | 'signed'
+  | 'rejected'
+  | 'changes_requested'
+  | 'error';
+
+export interface RoleRoomGoogleAgreementSignature {
+  id: string;
+  projectId: string;
+  agreementId: string;
+  provider: 'google_workspace';
+  status: RoleRoomGoogleAgreementSignatureStatus;
+  documentTitle?: string | null;
+  driveSourceFileId?: string | null;
+  signedDriveFileId?: string | null;
+  auditArtifactId?: string | null;
+  sourceArtifactId?: string | null;
+  pdfSnapshotArtifactId?: string | null;
+  signedPdfArtifactId?: string | null;
+  requestUrl?: string | null;
+  webViewUrl?: string | null;
+  requestedBy?: string | null;
+  requestedByEmail?: string | null;
+  counterpartyName?: string | null;
+  counterpartyEmail?: string | null;
+  preparedAt?: string | null;
+  sentAt?: string | null;
+  signedAt?: string | null;
+  declinedAt?: string | null;
+  lastOpenedAt?: string | null;
+  lastSyncedAt?: string | null;
+  signatureHash?: string | null;
+  metadata: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RoleRoomGoogleLoginResult {
+  success: boolean;
+  mode: 'login' | 'link';
+  transferId: string;
+  sessionToken?: string | null;
+  user?: {
+    id: number | string;
+    email: string;
+    role: string;
+    display_name: string;
+    name?: string;
+    loginAs?: string;
+    requestedRole?: string | null;
+  } | null;
+  google: {
+    email: string;
+    subject: string;
+    profile: Record<string, unknown>;
+  };
+}
+
+export type RoleRoomGoogleFolderKey =
+  | 'brief'
+  | 'materials'
+  | 'brand'
+  | 'delivery'
+  | 'approvals'
+  | 'meetings';
+
+export interface RoleRoomGoogleOauthStartInput {
+  mode?: 'login' | 'link';
+  returnPath?: string;
+  loginAs?: string;
+  requestedRole?: string | null;
+  projectId?: string;
+  email?: string;
+}
+
+export interface RoleRoomGoogleProjectBindingUpdateInput {
+  driveRootFolderId?: string | null;
+  calendarId?: string | null;
+  contactsContext?: Record<string, unknown>;
+  meetCreationEnabled?: boolean;
+  auditSignatureStorageEnabled?: boolean;
+  folderLayout?: Record<string, unknown>;
+  createDriveLayout?: boolean;
+  createCalendar?: boolean;
+}
+
+export interface RoleRoomGoogleGeneratedArtifactInput {
+  localEntityType: string;
+  localEntityId: string;
+  artifactType: 'drive_file';
+  title: string;
+  folderKey: RoleRoomGoogleFolderKey;
+  mimeType?: string;
+  sourceLabel?: string;
+  contentText?: string;
+  contentBase64?: string;
+  content?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RoleRoomGoogleCalendarAttendee {
+  email: string;
+  displayName?: string;
+}
+
+export interface RoleRoomGoogleCalendarEventInput {
+  entityType: string;
+  entityId: string;
+  title: string;
+  description?: string;
+  start: string;
+  end?: string;
+  location?: string;
+  phase?: string;
+  allDay?: boolean;
+  includeMeet?: boolean;
+  attendees?: RoleRoomGoogleCalendarAttendee[];
+}
+
+export interface RoleRoomGoogleCalendarSyncInput {
+  events: RoleRoomGoogleCalendarEventInput[];
+  calendarId?: string;
+}
+
+export interface RoleRoomGoogleDriveSyncInput {
+  fileIds?: string[];
+  generatedArtifacts?: RoleRoomGoogleGeneratedArtifactInput[];
+}
+
+export interface RoleRoomGoogleMeetSessionInput extends RoleRoomGoogleCalendarEventInput {
+  includeMeet?: true;
+}
+
+export interface RoleRoomGooglePersonContact {
+  resourceName?: string | null;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  organization?: string | null;
+}
+
 export type CrewDepartment =
   | 'camera'
   | 'sound'
@@ -92,6 +300,19 @@ export type CrewStatus = 'confirmed' | 'pending' | 'invited' | 'unavailable' | (
 export interface ContactInfo {
   email?: string;
   phone?: string;
+  [key: string]: unknown;
+}
+
+export interface TravelCostBreakdown {
+  kilometers?: number;
+  fuelCost?: number;
+  tollFees?: number;
+  totalCost?: number;
+  [key: string]: unknown;
+}
+
+export interface TravelCostEntry {
+  breakdown?: TravelCostBreakdown;
   [key: string]: unknown;
 }
 
@@ -162,6 +383,8 @@ export interface CrewMember {
   notes?: string;
   assignedScenes?: string[];
   assigned_scenes?: string[];
+  travelCosts?: Record<string, TravelCostEntry>;
+  travel_costs?: Record<string, TravelCostEntry>;
   availability?: Record<string, unknown>;
   createdAt?: string;
   created_at?: string;
@@ -481,6 +704,209 @@ export interface ProductionDay {
   [key: string]: unknown;
 }
 
+export type ProducerPlanningPhase = 'preproduction' | 'production' | 'postproduction';
+
+export type ProducerPlanningStatus =
+  | 'planned'
+  | 'in_progress'
+  | 'at_risk'
+  | 'review'
+  | 'completed';
+
+export type ProducerContentCalendarStatus =
+  | 'planned'
+  | 'in_review'
+  | 'scheduled'
+  | 'published';
+
+export interface ProducerPhasePlanItem {
+  phase: ProducerPlanningPhase;
+  title?: string;
+  objective?: string;
+  startDate?: string;
+  endDate?: string;
+  owner?: string;
+  clientCheckpoint?: string;
+  status?: ProducerPlanningStatus;
+  linkedShotListIds?: string[];
+  notes?: string;
+}
+
+export interface ProducerContentCalendarItem {
+  id: string;
+  title: string;
+  channel?: string;
+  format?: string;
+  publishAt?: string;
+  owner?: string;
+  phase: ProducerPlanningPhase;
+  status?: ProducerContentCalendarStatus;
+  linkedShotListId?: string;
+  notes?: string;
+}
+
+export interface ProducerBrandGuideColor {
+  id: string;
+  label: string;
+  hex: string;
+  usage?: string;
+}
+
+export interface ProducerBrandGuide {
+  logoUrl?: string;
+  fonts?: string[];
+  toneOfVoice?: string;
+  visualStyle?: string;
+  dos?: string[];
+  donts?: string[];
+  colors?: ProducerBrandGuideColor[];
+}
+
+export interface ProducerDeliveryWorkflow {
+  fileNamingConvention?: string;
+  versioningRule?: string;
+  folderStructure?: string;
+  draftVsFinalRule?: string;
+  backupRoutine?: string;
+  deliveryCadence?: string;
+}
+
+export interface ProducerClientIntake {
+  projectGoal?: string;
+  deliverables?: string;
+  targetAudience?: string;
+  keyMessage?: string;
+  timingConstraints?: string;
+  brandNotes?: string;
+  materialOverview?: string;
+  referenceLinks?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  additionalNotes?: string;
+  updatedAt?: string;
+  updatedByRole?: string;
+}
+
+export type ProducerClientMaterialType =
+  | 'brief_note'
+  | 'asset_link'
+  | 'brand_asset'
+  | 'reference'
+  | 'document'
+  | 'feedback';
+
+export interface ProducerClientMaterial {
+  id: string;
+  project_id?: string;
+  entry_type: ProducerClientMaterialType;
+  title: string;
+  description?: string | null;
+  external_url?: string | null;
+  phase?: ProducerPlanningPhase | null;
+  linked_shot_list_id?: string | null;
+  status?: string | null;
+  metadata?: Record<string, unknown>;
+  created_by_user_id?: string | null;
+  created_by_role?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type ProducerPlanningFrameworkStepKey =
+  | 'strategy'
+  | 'concept_development'
+  | 'campaign_development'
+  | 'content_production'
+  | 'execution'
+  | 'evaluation';
+
+export interface ProducerPlanningFrameworkStep {
+  key: ProducerPlanningFrameworkStepKey;
+  focus?: string;
+  output?: string;
+  notes?: string;
+}
+
+export interface ProducerActivationPlan {
+  direction?: string;
+  idea?: string;
+  activation?: string;
+  targetAudience?: string;
+  businessGoal?: string;
+  coreMessage?: string;
+  successSignals?: string[];
+  framework?: ProducerPlanningFrameworkStep[];
+}
+
+export type ProducerWorkspaceSurfaceKey = 'brief' | 'materials' | 'brand' | 'delivery';
+
+export type ProducerWorkspaceLayout = 'focus' | 'split' | 'grid';
+
+export type ProducerWorkspaceTabPlacement = 'top' | 'left';
+
+export type ProducerWorkspacePagePlacement = 'left' | 'right';
+
+export interface ProducerWorkspacePage {
+  id: string;
+  title: string;
+  surface: ProducerWorkspaceSurfaceKey;
+  color?: string;
+  pinned?: boolean;
+  order?: number;
+  parentPageId?: string | null;
+}
+
+export interface ProducerWorkspaceSection {
+  id: string;
+  title: string;
+  color?: string;
+  pinned?: boolean;
+  order?: number;
+  layout?: ProducerWorkspaceLayout;
+  pages: ProducerWorkspacePage[];
+}
+
+export interface ProducerWorkspaceNavigation {
+  sectionTabPlacement?: ProducerWorkspaceTabPlacement;
+  pageTabPlacement?: ProducerWorkspacePagePlacement;
+  navigationPinned?: boolean;
+  activeSectionId?: string;
+  activePageId?: string;
+  sections: ProducerWorkspaceSection[];
+}
+
+export interface ProducerProjectPlanning {
+  activationPlan: ProducerActivationPlan;
+  phasePlan: ProducerPhasePlanItem[];
+  contentCalendar: ProducerContentCalendarItem[];
+  brandGuide: ProducerBrandGuide;
+  deliveryWorkflow: ProducerDeliveryWorkflow;
+  workspaceNavigation?: ProducerWorkspaceNavigation;
+  updatedAt?: string;
+}
+
+export type ProducerWorkflowProjectStatus =
+  | 'planning'
+  | 'awaiting_client'
+  | 'changes_requested'
+  | 'approved';
+
+export interface ProducerWorkflowProjectMeta {
+  totalReviews: number;
+  pendingReviews: number;
+  approvedReviews: number;
+  rejectedReviews: number;
+  changesRequestedReviews: number;
+  budgetReviewCount: number;
+  agreementReviewCount: number;
+  deliverableReviewCount: number;
+  lastReviewRequestedAt?: string | null;
+  lastDecisionAt?: string | null;
+  lastApprovedReviewId?: string | null;
+  lastPendingReviewId?: string | null;
+}
+
 export type PersonType = 'cast' | 'crew' | 'both';
 
 export interface Person {
@@ -514,6 +940,9 @@ export interface CastingProject {
   clientCompanyName?: string;
   clientOrganizationNumber?: string;
   clientCompanyAddress?: string;
+  producerPlanning?: ProducerProjectPlanning;
+  producerWorkflowStatus?: ProducerWorkflowProjectStatus;
+  producerWorkflowMeta?: ProducerWorkflowProjectMeta;
   roles: Role[];
   candidates: Candidate[];
   crew: CrewMember[];

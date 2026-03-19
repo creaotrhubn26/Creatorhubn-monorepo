@@ -1,26 +1,6 @@
-/**
- * ColorWheelPicker - Professional circular color picker for drawing tools
- * 
- * Features:
- * - HSB color wheel
- * - Brightness/saturation control
- * - Recent colors palette
- * - Preset color swatches
- */
-
-import { useRef, useEffect, useState, useCallback } from 'react';
-import type { FC } from 'react';
-import {
-  Box,
-  Paper,
-  Stack,
-  Typography,
-  IconButton,
-  Slider,
-  Popover,
-  Tooltip,
-} from '@mui/material';
-import { styled } from '@mui/material/styles';
+import { useRef, useEffect, useState, useCallback, type FC } from "react";
+import { Box, Paper, Stack, Typography, IconButton, Slider, Popover, Tooltip } from "@mui/material";
+import { styled } from "@mui/material/styles";
 
 // =============================================================================
 // Types

@@ -4,6 +4,8 @@
  * Uses database with localStorage fallback
  */
 
+import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
+
 // Story Logic types (matching StoryLogicPanel)
 export interface ConceptData {
   corePremise: string;
@@ -92,6 +94,11 @@ export const storyLogicService = {
    * Get story logic data for a project
    */
   async getStoryLogic(projectId: string): Promise<StoryLogicState | null> {
+    if (shouldUseRoleRoomLocalFallback()) {
+      const storageData = getStorageData();
+      return storageData[projectId]?.data || null;
+    }
+
     // Try database first
     try {
       const response = await fetch(`/api/projects/${projectId}/story-logic`);
@@ -140,6 +147,10 @@ export const storyLogicService = {
     };
     saveStorageData(storageData);
 
+    if (shouldUseRoleRoomLocalFallback()) {
+      return;
+    }
+
     // Then try to sync with database
     try {
       const response = await fetch(`/api/projects/${projectId}/story-logic`, {
@@ -170,6 +181,10 @@ export const storyLogicService = {
     const storageData = getStorageData();
     delete storageData[projectId];
     saveStorageData(storageData);
+
+    if (shouldUseRoleRoomLocalFallback()) {
+      return;
+    }
 
     // Try to delete from database
     try {

@@ -902,7 +902,8 @@ interface ProfessionOnboardingDialogProps {
   userName?: string;
 }
 
-const ONBOARDING_NAMESPACE = 'virtualStudio_onboardingCompleted';
+const ONBOARDING_NAMESPACE = 'roleRoom_onboardingCompleted';
+const LEGACY_ONBOARDING_NAMESPACE = 'virtualStudio_onboardingCompleted';
 
 export function ProfessionOnboardingDialog({
   open,
@@ -941,9 +942,13 @@ export function ProfessionOnboardingDialog({
   };
 
   const markCompleted = async () => {
-    const cached = (await settingsService.getSetting<Record<string, boolean>>(ONBOARDING_NAMESPACE)) || {};
+    const cached =
+      (await settingsService.getSetting<Record<string, boolean>>(ONBOARDING_NAMESPACE))
+      || (await settingsService.getSetting<Record<string, boolean>>(LEGACY_ONBOARDING_NAMESPACE))
+      || {};
     const updated = { ...cached, [profession]: true };
     await settingsService.setSetting(ONBOARDING_NAMESPACE, updated);
+    await settingsService.deleteSetting(LEGACY_ONBOARDING_NAMESPACE);
   };
 
   const handleComplete = () => {
@@ -1252,13 +1257,18 @@ export function ProfessionOnboardingDialog({
 
 export function useProfessionOnboarding(profession: ProfessionType | null) {
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const onboardingNamespace = 'virtualStudio_onboardingCompleted';
 
   useEffect(() => {
     if (profession) {
       let timer: ReturnType<typeof setTimeout> | null = null;
       const checkStatus = async () => {
-        const cached = await settingsService.getSetting<Record<string, boolean>>(onboardingNamespace);
+        const cached =
+          (await settingsService.getSetting<Record<string, boolean>>(ONBOARDING_NAMESPACE))
+          || (await settingsService.getSetting<Record<string, boolean>>(LEGACY_ONBOARDING_NAMESPACE));
+        if (cached && !(await settingsService.getSetting<Record<string, boolean>>(ONBOARDING_NAMESPACE))) {
+          await settingsService.setSetting(ONBOARDING_NAMESPACE, cached);
+          await settingsService.deleteSetting(LEGACY_ONBOARDING_NAMESPACE);
+        }
         if (cached?.[profession]) return;
 
         timer = setTimeout(() => {
@@ -1271,7 +1281,7 @@ export function useProfessionOnboarding(profession: ProfessionType | null) {
       };
     }
     return undefined;
-  }, [onboardingNamespace, profession]);
+  }, [profession]);
 
   const triggerOnboarding = () => {
     setShowOnboarding(true);
@@ -1285,11 +1295,15 @@ export function useProfessionOnboarding(profession: ProfessionType | null) {
     const target = prof || profession;
     if (!target) return;
     const reset = async () => {
-      const cached = (await settingsService.getSetting<Record<string, boolean>>(onboardingNamespace)) || {};
+      const cached =
+        (await settingsService.getSetting<Record<string, boolean>>(ONBOARDING_NAMESPACE))
+        || (await settingsService.getSetting<Record<string, boolean>>(LEGACY_ONBOARDING_NAMESPACE))
+        || {};
       if (cached[target]) {
         const updated = { ...cached };
         delete updated[target];
-        await settingsService.setSetting(onboardingNamespace, updated);
+        await settingsService.setSetting(ONBOARDING_NAMESPACE, updated);
+        await settingsService.deleteSetting(LEGACY_ONBOARDING_NAMESPACE);
       }
     };
     void reset();

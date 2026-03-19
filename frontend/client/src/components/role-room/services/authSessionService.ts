@@ -1,5 +1,3 @@
-import settingsService from './settingsService';
-
 export type AdminUser = {
   id: number | string;
   email: string;
@@ -25,14 +23,23 @@ export type RoleContextUpdate = {
   selectedProfession?: string | null;
 };
 
+export type RoleRoomLoginUser = {
+  id: number | string;
+  email: string;
+  role: string;
+  display_name: string;
+  name?: string;
+  loginAs?: string;
+  requestedRole?: string | null;
+};
+
 type SessionWindow = Window & {
   __currentUserId?: string;
   __roleRoomAuthToken?: string;
 };
 
-const SESSION_USER_ID = 'auth-session';
-const SESSION_NAMESPACE = 'virtualStudio_authSession';
 const TOKEN_STORAGE_KEY = 'role_room_auth_token';
+const SESSION_STORAGE_KEY = 'role_room_auth_session';
 
 let sessionCache: AuthSession = {};
 let hydrated = false;
@@ -86,6 +93,33 @@ const readTokenMirror = (): string | null => {
   }
 };
 
+const readStoredSession = (): AuthSession | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as AuthSession | null;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredSession = (session: AuthSession): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (session.adminUser || session.currentUserId || session.sessionToken || session.selectedProfession) {
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+      return;
+    }
+    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+};
+
 const broadcastUpdate = () => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event('auth-session-updated'));
@@ -102,7 +136,7 @@ const persistSession = async (session: AuthSession): Promise<void> => {
     updateWindowUserId(undefined);
   }
   persistTokenMirror(session.sessionToken);
-  await settingsService.setSetting(SESSION_NAMESPACE, session, { userId: SESSION_USER_ID });
+  writeStoredSession(session);
   broadcastUpdate();
 };
 
@@ -112,20 +146,13 @@ export const authSessionService = {
     if (hydratePromise) return hydratePromise;
 
     hydratePromise = (async () => {
-      try {
-        const cached = await settingsService.getSetting<AuthSession>(SESSION_NAMESPACE, {
-          userId: SESSION_USER_ID,
-        });
-        if (cached) {
-          sessionCache = cached;
-          updateWindowUserId(cached.currentUserId || (cached.adminUser?.id ? String(cached.adminUser.id) : null));
-          persistTokenMirror(cached.sessionToken);
-          hydrated = true;
-          return cached;
-        }
-
-      } catch {
-        // Ignore hydrate errors
+      const cached = readStoredSession();
+      if (cached) {
+        sessionCache = cached;
+        updateWindowUserId(cached.currentUserId || (cached.adminUser?.id ? String(cached.adminUser.id) : null));
+        persistTokenMirror(cached.sessionToken);
+        hydrated = true;
+        return cached;
       }
 
       hydrated = true;
@@ -235,11 +262,31 @@ export const authSessionService = {
     await persistSession(next);
   },
 
+  async applyRoleRoomLogin(user: RoleRoomLoginUser, sessionToken?: string | null): Promise<void> {
+    const normalizedUser: AdminUser = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      display_name: user.display_name,
+      name: user.name ?? user.display_name,
+      loginAs: user.loginAs,
+      requestedRole: user.requestedRole ?? null,
+    };
+
+    await persistSession({
+      adminUser: normalizedUser,
+      currentUserId: String(user.id),
+      sessionToken: sessionToken ?? null,
+      selectedProfession: user.requestedRole ?? sessionCache.selectedProfession,
+      lastUpdated: new Date().toISOString(),
+    });
+  },
+
   async clearSession(): Promise<void> {
     sessionCache = {};
     updateWindowUserId(undefined);
     persistTokenMirror(undefined);
-    await settingsService.deleteSetting(SESSION_NAMESPACE, { userId: SESSION_USER_ID });
+    writeStoredSession({});
     broadcastUpdate();
   },
 };

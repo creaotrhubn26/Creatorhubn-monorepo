@@ -24,10 +24,13 @@ import { getProducerEconomyStatusLabel } from '../../utils/producerWorkflow';
 
 interface ProducerEconomyPanelProps {
   projectId: string;
+  title?: string;
   readOnly?: boolean;
   canSendBudgetReview?: boolean;
   onSendBudgetReview?: () => void;
   contractsPanel?: ReactNode;
+  focusedPhase?: ProducerPhase | 'all';
+  onFocusedPhaseChange?: (phase: ProducerPhase | 'all') => void;
 }
 
 const PHASE_LABELS: Record<ProducerPhase, string> = {
@@ -49,10 +52,13 @@ interface EconomyDraft {
 
 export default function ProducerEconomyPanel({
   projectId,
+  title = 'Økonomi',
   readOnly = false,
   canSendBudgetReview = true,
   onSendBudgetReview,
   contractsPanel,
+  focusedPhase = 'all',
+  onFocusedPhaseChange,
 }: ProducerEconomyPanelProps) {
   const { items, totals, loading, error, createItem, updateItem, removeItem } = useProducerEconomy(projectId);
 
@@ -102,6 +108,11 @@ export default function ProducerEconomyPanel({
     );
   }, [grouped]);
 
+  const visiblePhaseKeys = useMemo(
+    () => (focusedPhase === 'all' ? (Object.keys(PHASE_LABELS) as ProducerPhase[]) : [focusedPhase]),
+    [focusedPhase],
+  );
+
   useEffect(() => {
     setDraftsById((previous) => {
       const next: Record<string, EconomyDraft> = {};
@@ -123,6 +134,12 @@ export default function ProducerEconomyPanel({
       return next;
     });
   }, [items]);
+
+  useEffect(() => {
+    if (focusedPhase !== 'all') {
+      setPhase(focusedPhase);
+    }
+  }, [focusedPhase]);
 
   const handleCreate = async () => {
     if (!category.trim() || !itemName.trim()) return;
@@ -219,7 +236,7 @@ export default function ProducerEconomyPanel({
         <Stack direction="row" spacing={1} alignItems="center">
           <CurrencyExchangeIcon sx={{ color: '#34d399' }} />
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-            Økonomi
+            {title}
           </Typography>
         </Stack>
         <Stack direction="row" spacing={1} flexWrap="wrap">
@@ -311,8 +328,40 @@ export default function ProducerEconomyPanel({
 
       <Divider sx={{ borderColor: 'rgba(148,163,184,0.2)' }} />
 
-      <Stack spacing={1.5}>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
+        <Button
+          size="small"
+          variant={focusedPhase === 'all' ? 'contained' : 'outlined'}
+          onClick={() => onFocusedPhaseChange?.('all')}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 700,
+            alignSelf: 'flex-start',
+            bgcolor: focusedPhase === 'all' ? '#1d4ed8' : 'transparent',
+          }}
+        >
+          Alle faser
+        </Button>
         {(Object.keys(PHASE_LABELS) as ProducerPhase[]).map((phaseKey) => (
+          <Button
+            key={phaseKey}
+            size="small"
+            variant={focusedPhase === phaseKey ? 'contained' : 'outlined'}
+            onClick={() => onFocusedPhaseChange?.(phaseKey)}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              alignSelf: 'flex-start',
+              bgcolor: focusedPhase === phaseKey ? '#0f766e' : 'transparent',
+            }}
+          >
+            {PHASE_LABELS[phaseKey]}
+          </Button>
+        ))}
+      </Stack>
+
+      <Stack spacing={1.5}>
+        {visiblePhaseKeys.map((phaseKey) => (
           <Box key={phaseKey} sx={{ borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.2)', p: 1.25 }}>
             <Typography sx={{ color: '#e2e8f0', fontWeight: 700, mb: 1 }}>{PHASE_LABELS[phaseKey]}</Typography>
             {grouped[phaseKey].length === 0 ? (

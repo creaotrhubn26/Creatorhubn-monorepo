@@ -1,101 +1,16 @@
-/**
- * Split Sheet Editor
- * Form-based editor for creating and editing split sheets
- * Now with profession-specific theming and role filtering
- */
-
-import React, { useState, useMemo, useEffect } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
-import {
-  Box,
-  Typography,
-  TextField,
-  Button,
-  Stack,
-  Card,
-  CardContent,
-  IconButton,
-  Alert,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Paper,
-  Grid2 as Grid,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  alpha,
-  Avatar,
-  Chip,
-  Divider,
-  InputAdornment,
-  ToggleButton,
-  ToggleButtonGroup,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Save as SaveIcon,
-  Cancel as CancelIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
-  ExpandMore as ExpandMoreIcon,
-  Person as PersonIcon,
-  Email as EmailIcon,
-  Percent as PercentIcon,
-  Language as LanguageIcon,
-  OpenInNew as OpenInNewIcon,
-  AttachMoney as AttachMoneyIcon,
-  Visibility as VisibilityIcon,
-  AccountBalance as PortalIcon,
-  Gavel as GavelIcon,
-  TheaterComedy as TheaterComedyIcon,
-  Movie as MovieIcon,
-  Payments as PaymentsIcon,
-} from '@mui/icons-material';
-import { LocationsIcon as LocationOnIcon } from '../icons/CastingIcons';
-import { useDynamicProfessions } from '../../hooks/useDynamicProfessions';
-import getProfessionIcon from '@/utils/profession-icons';
-import type { 
-  SplitSheet, 
-  SplitSheetContributor,
-  CreateSplitSheetRequest,
-  UpdateSplitSheetRequest,
-  ContributorRole,
-  UnionAgreementSettings,
-  ProductionType,
-  ParticipantType,
-  UnionMembershipType,
-  NSFAgreementType,
-  NFFAgreementType,
-  RightsManagementType,
-} from './types';
-import { 
-  ROLE_DISPLAY_NAMES as ROLE_NAMES,
-  DEFAULT_UNION_AGREEMENT_SETTINGS,
-  PRODUCTION_TYPE_LABELS,
-  PARTICIPANT_TYPE_LABELS,
-  UNION_MEMBERSHIP_LABELS,
-  NSF_AGREEMENT_LABELS,
-  NFF_AGREEMENT_LABELS,
-  RIGHTS_MANAGEMENT_LABELS,
-  UNION_LEGAL_REFERENCES,
-  checkTariffApplicability,
-  NSF_WAGE_REFERENCES,
-  NFF_WAGE_REFERENCES,
-  WAGE_INFO_RESOURCES,
-  getWageReferenceUrl,
-  getRelevantWageReferences,
-} from './types';
-import SplitSheetSongFlowIntegration from './SplitSheetSongFlowIntegration';
-import SplitSheetPortalView from './SplitSheetPortalView';
-import PricingSelector from '../shared/PricingSelector';
-import GlobalMentionHelper from '../shared/GlobalMentionHelper';
+import React, { useState, useMemo, useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { Box, Typography, TextField, Button, Stack, Card, CardContent, IconButton, Alert, FormControl, InputLabel, Select, MenuItem, Grid2 as Grid, Accordion, AccordionSummary, AccordionDetails, alpha, Avatar, Chip, Divider, InputAdornment, ToggleButton, ToggleButtonGroup, Dialog, DialogTitle, DialogContent } from "@mui/material";
+import { Add as AddIcon, Delete as DeleteIcon, Save as SaveIcon, Cancel as CancelIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, ExpandMore as ExpandMoreIcon, Person as PersonIcon, Email as EmailIcon, Percent as PercentIcon, Language as LanguageIcon, OpenInNew as OpenInNewIcon, AttachMoney as AttachMoneyIcon, Visibility as VisibilityIcon, AccountBalance as PortalIcon, Gavel as GavelIcon, TheaterComedy as TheaterComedyIcon, Movie as MovieIcon, Payments as PaymentsIcon } from "@mui/icons-material";
+import { LocationsIcon as LocationOnIcon } from "../icons/CastingIcons";
+import { useDynamicProfessions } from "../../hooks/useDynamicProfessions";
+import getProfessionIcon from "@/utils/profession-icons";
+import { ROLE_DISPLAY_NAMES as ROLE_NAMES, DEFAULT_UNION_AGREEMENT_SETTINGS, PRODUCTION_TYPE_LABELS, PARTICIPANT_TYPE_LABELS, UNION_MEMBERSHIP_LABELS, NSF_AGREEMENT_LABELS, NFF_AGREEMENT_LABELS, RIGHTS_MANAGEMENT_LABELS, UNION_LEGAL_REFERENCES, checkTariffApplicability, NSF_WAGE_REFERENCES, NFF_WAGE_REFERENCES, WAGE_INFO_RESOURCES, getWageReferenceUrl, getRelevantWageReferences, type SplitSheet, type SplitSheetContributor, type CreateSplitSheetRequest, type UpdateSplitSheetRequest, type ContributorRole, type UnionAgreementSettings, type ProductionType, type ParticipantType, type UnionMembershipType, type NSFAgreementType, type NFFAgreementType, type RightsManagementType } from "./types";
+import SplitSheetSongFlowIntegration from "./SplitSheetSongFlowIntegration";
+import SplitSheetPortalView from "./SplitSheetPortalView";
+import PricingSelector from "../shared/PricingSelector";
+import GlobalMentionHelper from "../shared/GlobalMentionHelper";
 
 interface SplitSheetEditorProps {
   splitSheet?: SplitSheet | null;
@@ -104,6 +19,7 @@ interface SplitSheetEditorProps {
   initialContributors?: SplitSheetContributor[];
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
   projectName?: string;
+  agreementLabel?: string;
   onSave: (splitSheet: SplitSheet) => void;
   onCancel: () => void;
   onSaveProject?: () => Promise<boolean>; // Called before saving split sheet to ensure project exists
@@ -123,11 +39,12 @@ export default function SplitSheetEditor({
   initialContributors,
   profession = 'music_producer',
   projectName,
+  agreementLabel = 'Split Sheet',
   onSave,
   onCancel,
   onSaveProject
 }: SplitSheetEditorProps) {
-  const [title, setTitle] = useState(splitSheet?.title || (projectName ? `${projectName} - Split Sheet` : ''));
+  const [title, setTitle] = useState(splitSheet?.title || (projectName ? `${projectName} - ${agreementLabel}` : ''));
   const [description, setDescription] = useState(splitSheet?.description || '');
   const [totalBudget, setTotalBudget] = useState<number>(splitSheet?.metadata?.total_budget || 0);
   const [calculationMethod, setCalculationMethod] = useState<'budget' | 'percentage'>(() => {
@@ -183,13 +100,13 @@ export default function SplitSheetEditor({
   // Update title when projectName changes (sync with project name)
   useEffect(() => {
     if (projectName) {
-      const expectedTitle = `${projectName} - Split Sheet`;
+      const expectedTitle = `${projectName} - ${agreementLabel}`;
       // Only update if title is empty or matches the auto-generated pattern
-      if (!title || (title.endsWith(' - Split Sheet') && !splitSheet?.title)) {
+      if (!title || (title.endsWith(` - ${agreementLabel}`) && !splitSheet?.title)) {
         setTitle(expectedTitle);
       }
     }
-  }, [projectName]);
+  }, [agreementLabel, projectName, splitSheet?.title, title]);
   
   // Get profession-specific styling
   const { getProfessionColor, getProfessionDisplayName } = useDynamicProfessions();
@@ -214,6 +131,7 @@ export default function SplitSheetEditor({
           titlePlaceholder: 'F.eks. "Summer Vibes - Single"',
           descriptionPlaceholder: 'Beskrivelse av låten eller prosjektet...',
           contributorLabel: 'Bidragsyter',
+          contributorsLabel: 'Bidragsytere',
           addContributorLabel: 'Legg til bidragsyter',
         };
       case 'photographer':
@@ -221,6 +139,7 @@ export default function SplitSheetEditor({
           titlePlaceholder: 'F.eks. "Bryllup Hansen/Olsen 2024"',
           descriptionPlaceholder: 'Beskrivelse av fotoprosjektet...',
           contributorLabel: 'Samarbeidspartner',
+          contributorsLabel: 'Samarbeidspartnere',
           addContributorLabel: 'Legg til samarbeidspartner',
         };
       case 'videographer':
@@ -228,19 +147,65 @@ export default function SplitSheetEditor({
           titlePlaceholder: 'F.eks. "Bedriftsvideo - Firma AS"',
           descriptionPlaceholder: 'Beskrivelse av videoproduksjonen...',
           contributorLabel: 'Crew-medlem',
+          contributorsLabel: 'Crew-medlemmer',
           addContributorLabel: 'Legg til crew-medlem',
         };
       default:
         return {
-          titlePlaceholder: 'Tittel på split sheet',
+          titlePlaceholder: `Tittel på ${agreementLabel.toLowerCase()}`,
           descriptionPlaceholder: 'Beskrivelse av prosjektet...',
           contributorLabel: 'Bidragsyter',
+          contributorsLabel: 'Bidragsytere',
           addContributorLabel: 'Legg til bidragsyter',
         };
     }
   };
   
   const labels = getProfessionLabels();
+  const selectedRightsManagers = unionSettings.rightsManagement ?? [];
+  const activeTariffReferences = useMemo(() => {
+    const references: Array<(typeof NSF_WAGE_REFERENCES)[keyof typeof NSF_WAGE_REFERENCES] | (typeof NFF_WAGE_REFERENCES)[keyof typeof NFF_WAGE_REFERENCES]> = [];
+
+    const nsfReferenceMap: Partial<Record<NSFAgreementType, (typeof NSF_WAGE_REFERENCES)[keyof typeof NSF_WAGE_REFERENCES]>> = {
+      filmavtalen: NSF_WAGE_REFERENCES.filmavtalen,
+      tv_drama: NSF_WAGE_REFERENCES.tv_drama,
+      reklamefilm: NSF_WAGE_REFERENCES.reklamefilm,
+      strommeplattform: NSF_WAGE_REFERENCES.streaming,
+      voice: NSF_WAGE_REFERENCES.voice,
+    };
+
+    const nffReferenceMap: Partial<Record<NFFAgreementType, (typeof NFF_WAGE_REFERENCES)[keyof typeof NFF_WAGE_REFERENCES]>> = {
+      spillefilm: NFF_WAGE_REFERENCES.spillefilm,
+      tv_drama: NFF_WAGE_REFERENCES.tv_drama,
+      tv_entertainment: NFF_WAGE_REFERENCES.tv_entertainment,
+      reklame: NFF_WAGE_REFERENCES.reklame,
+      dubbing: NFF_WAGE_REFERENCES.dubbing,
+    };
+
+    if (unionSettings.nsfAgreementApplies && unionSettings.nsfAgreementType && unionSettings.nsfAgreementType !== 'none') {
+      const reference = nsfReferenceMap[unionSettings.nsfAgreementType];
+      if (reference) references.push(reference);
+    }
+
+    if (unionSettings.nffAgreementApplies && unionSettings.nffAgreementType && unionSettings.nffAgreementType !== 'none') {
+      const reference = nffReferenceMap[unionSettings.nffAgreementType];
+      if (reference) references.push(reference);
+    }
+
+    return references;
+  }, [unionSettings.nffAgreementApplies, unionSettings.nffAgreementType, unionSettings.nsfAgreementApplies, unionSettings.nsfAgreementType]);
+
+  const toggleRightsManagement = (type: RightsManagementType) => {
+    const rightsManagement = selectedRightsManagers.includes(type)
+      ? selectedRightsManagers.filter((entry) => entry !== type)
+      : [...selectedRightsManagers, type];
+
+    setUnionSettings({
+      ...unionSettings,
+      rightsManagement,
+      forRightsManagement: rightsManagement.includes('for_filmforbundet'),
+    });
+  };
 
   // Get available roles based on profession
   const getAvailableRoles = (prof: string): ContributorRole[] => {
@@ -646,9 +611,35 @@ export default function SplitSheetEditor({
         {/* Basic Information */}
         <Card sx={{ borderRadius: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
           <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
-              Grunnleggende informasjon
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: { xs: 1.5, sm: 2 }, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, flexWrap: 'wrap' }}>
+              <Box>
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, mb: 0.5 }}>
+                  Grunnleggende informasjon
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Navngi avtalen og beskriv hva teamet skal budsjettere, levere og signere.
+                </Typography>
+              </Box>
+              <Chip
+                icon={React.cloneElement(professionIcon, {
+                  sx: {
+                    fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 },
+                    color: professionColor,
+                  },
+                })}
+                label={`${professionDisplayName} · ${agreementLabel}`}
+                sx={{
+                  borderColor: alpha(professionColor, 0.35),
+                  bgcolor: alpha(professionColor, 0.1),
+                  color: professionColor,
+                  fontWeight: 700,
+                  '& .MuiChip-icon': {
+                    color: professionColor,
+                  },
+                }}
+                variant="outlined"
+              />
+            </Box>
             <Stack spacing={{ xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }}>
               <TextField
                 label="Tittel"
@@ -656,7 +647,7 @@ export default function SplitSheetEditor({
                 onChange={(e) => setTitle(e.target.value)}
                 required
                 fullWidth
-                placeholder="f.eks. 'Midnight Dreams - Split Sheet'"
+                placeholder={labels.titlePlaceholder}
                 tabIndex={0}
                 sx={{
                   '& .MuiInputBase-input': {
@@ -676,7 +667,7 @@ export default function SplitSheetEditor({
                 fullWidth
                 multiline
                 rows={3}
-                placeholder="Beskrivelse av prosjektet eller sporet..."
+                placeholder={labels.descriptionPlaceholder}
                 tabIndex={0}
                 sx={{
                   '& .MuiInputBase-input': {
@@ -858,7 +849,18 @@ export default function SplitSheetEditor({
                             <input
                               type="checkbox"
                               checked={unionSettings.forRightsManagement}
-                              onChange={(e) => setUnionSettings({ ...unionSettings, forRightsManagement: e.target.checked })}
+                              onChange={(e) => {
+                                const nextValue = e.target.checked;
+                                const rightsManagement = nextValue
+                                  ? Array.from(new Set([...selectedRightsManagers, 'for_filmforbundet']))
+                                  : selectedRightsManagers.filter((entry) => entry !== 'for_filmforbundet');
+
+                                setUnionSettings({
+                                  ...unionSettings,
+                                  forRightsManagement: nextValue,
+                                  rightsManagement,
+                                });
+                              }}
                               style={{ width: 16, height: 16 }}
                             />
                             <Box>
@@ -872,6 +874,47 @@ export default function SplitSheetEditor({
                       )}
                     </Box>
                   )}
+
+                  <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(59, 130, 246, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                    <Typography variant="subtitle2" sx={{ color: '#60a5fa', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
+                      <LanguageIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> Rettighetsforvaltning
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25 } }}>
+                      Velg hvilke forvaltere eller rettighetsløp som gjelder for denne avtalen. Valgene lagres som del av økonomigrunnlaget og kan gjenbrukes i kontrakter og klientgjennomgang.
+                    </Typography>
+                    <Stack direction="row" spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }} flexWrap="wrap" useFlexGap>
+                      {(Object.entries(RIGHTS_MANAGEMENT_LABELS) as Array<[RightsManagementType, string]>)
+                        .filter(([key]) => key !== 'none')
+                        .map(([key, label]) => {
+                          const selected = selectedRightsManagers.includes(key);
+
+                          return (
+                            <Chip
+                              key={key}
+                              label={label}
+                              size="small"
+                              clickable
+                              color={selected ? 'primary' : 'default'}
+                              variant={selected ? 'filled' : 'outlined'}
+                              onClick={() => toggleRightsManagement(key)}
+                              sx={{
+                                cursor: 'pointer',
+                                maxWidth: '100%',
+                                '& .MuiChip-label': {
+                                  whiteSpace: 'normal',
+                                },
+                              }}
+                            />
+                          );
+                        })}
+                    </Stack>
+                    <Alert severity="info" sx={{ mt: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25 }, borderRadius: { xs: 1.5, sm: 1.75, md: 2 } }}>
+                      Aktiv rettighetsflyt:{' '}
+                      {selectedRightsManagers.length > 0
+                        ? selectedRightsManagers.map((entry) => RIGHTS_MANAGEMENT_LABELS[entry]).join(', ')
+                        : RIGHTS_MANAGEMENT_LABELS.none}
+                    </Alert>
+                  </Box>
 
                   {/* Compensation Settings */}
                   <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(139, 92, 246, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(139, 92, 246, 0.3)' }}>
@@ -956,6 +999,27 @@ export default function SplitSheetEditor({
                     <Typography variant="body2" color="text.secondary" sx={{ mb: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 }, fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>
                       Bruk offisielle tariffavtaler for å sikre riktig lønn til skuespillere og crew.
                     </Typography>
+
+                    {activeTariffReferences.length > 0 && (
+                      <Box sx={{ mb: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 } }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.7rem', sm: '0.725rem', md: '0.75rem', lg: '0.775rem', xl: '0.8rem', '2xl': '0.825rem', '3xl': '0.85rem' } }}>
+                          Aktive tariffreferanser:
+                        </Typography>
+                        <Stack direction="row" spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }} flexWrap="wrap" useFlexGap>
+                          {activeTariffReferences.map((reference) => (
+                            <Chip
+                              key={`${reference.name}-${reference.url}`}
+                              icon={<AttachMoneyIcon sx={{ fontSize: { xs: 12, sm: 13, md: 14, lg: 15, xl: 16 } }} />}
+                              label={reference.name}
+                              size="small"
+                              variant="outlined"
+                              onClick={() => window.open(reference.url, '_blank')}
+                              sx={{ cursor: 'pointer', height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }}
+                            />
+                          ))}
+                        </Stack>
+                      </Box>
+                    )}
                     
                     {/* Dynamic wage references based on production type */}
                     {(() => {
@@ -1108,7 +1172,7 @@ export default function SplitSheetEditor({
                 }}
                 onSelectQuote={(quote) => {
                   // Auto-populate from quote
-                  if (!title) setTitle(quote.quoteNumber || 'Split Sheet');
+                  if (!title) setTitle(quote.quoteNumber || agreementLabel);
                   if (!description) setDescription(quote.description || '');
                 }}
               />
@@ -1121,7 +1185,7 @@ export default function SplitSheetEditor({
           <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
               <Typography variant="h6" sx={{ fontWeight: 600, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' } }}>
-                Bidragsytere
+                {labels.contributorsLabel}
               </Typography>
             </Box>
             
@@ -1330,14 +1394,14 @@ export default function SplitSheetEditor({
                   }}
                   tabIndex={0}
                 >
-                  Legg til
+                  {labels.addContributorLabel}
                 </Button>
               </Stack>
             </Box>
 
             {contributors.length === 0 ? (
               <Alert severity="info" sx={{ mb: 2 }}>
-                Legg til minst én bidragsyter for å opprette split sheet.
+                Legg til minst én {labels.contributorLabel.toLowerCase()} for å opprette {agreementLabel.toLowerCase()}.
               </Alert>
             ) : (
               <>
@@ -1700,7 +1764,7 @@ export default function SplitSheetEditor({
                               </Avatar>
                               <Box>
                                 <Typography variant="h6" sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, mb: { xs: 0.375, sm: 0.5, md: 0.625, lg: 0.75, xl: 0.875 } }}>
-                                  {contributor.name || `Bidragsyter ${index + 1}`}
+                                  {contributor.name || `${labels.contributorLabel} ${index + 1}`}
                                 </Typography>
                                 {contributor.email && (
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
@@ -1717,7 +1781,7 @@ export default function SplitSheetEditor({
                               color="error"
                               onClick={() => handleRemoveContributor(index)}
                               tabIndex={0}
-                              aria-label={`Slett bidragsyter ${contributor.name}`}
+                              aria-label={`Slett ${labels.contributorLabel.toLowerCase()} ${contributor.name}`}
                               sx={{
                                 '&:hover': {
                                   bgcolor: 'error.light',
@@ -2405,7 +2469,7 @@ export default function SplitSheetEditor({
             {splitSheet?.id && (
               <Button
                 variant="outlined"
-                startIcon={<PortalIcon />}
+                startIcon={<VisibilityIcon />}
                 onClick={() => {
                   console.log('Opening portal view, contributor email:', contributors[0]?.email);
                   setShowPortalView(true);
@@ -2429,7 +2493,7 @@ export default function SplitSheetEditor({
                 }}
                 tabIndex={0}
               >
-                Portal-visning
+                Forhåndsvis portal
               </Button>
             )}
           </Box>
@@ -2473,7 +2537,7 @@ export default function SplitSheetEditor({
           <Alert severity="error">
             {saveMutation.error instanceof Error 
               ? saveMutation.error.message 
-              : 'Feil ved lagring av split sheet. Prøv igjen.'}
+              : `Feil ved lagring av ${agreementLabel.toLowerCase()}. Prøv igjen.`}
             {saveMutation.error && typeof saveMutation.error === 'object' &&'details' in saveMutation.error && (
               <Box sx={{ mt: 1 }}>
                 <Typography variant="caption">
@@ -2547,7 +2611,4 @@ export default function SplitSheetEditor({
     </Box>
   );
 }
-
-
-
 

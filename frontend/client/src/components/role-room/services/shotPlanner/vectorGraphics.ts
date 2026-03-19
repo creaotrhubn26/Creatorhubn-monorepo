@@ -1,13 +1,5 @@
-/**
- * Vector Graphics Library for Shot Planner
- * 
- * All vector primitives for creating the floorplan, furniture, characters,
- * cameras, and UI elements - no sprites/bitmaps.
- */
-
-import * as PIXI from 'pixi.js';
-import type { Point2D, Size2D } from './types';
-import { Actor2D, Camera2D, Prop2D } from './types';
+import * as PIXI from "pixi.js";
+import { Actor2D, Camera2D, Prop2D, type Point2D, type Size2D } from "./types";
 
 // =============================================================================
 // Constants

@@ -1,32 +1,10 @@
-/**
- * Shot Planner Canvas - Pixi.js WebGL Canvas Component
- * 
- * Main 2D canvas for the shot planner using Pixi.js for WebGL rendering.
- * Handles:
- * - Floor plan/set visualization
- * - Camera frustum cones
- * - Actor/character placement
- * - Props and furniture
- * - Grid and measurement
- * - Pan, zoom, and selection
- */
-
-import React, { useRef, useEffect, useCallback, useState } from 'react';
-import * as PIXI from 'pixi.js';
-import { Box } from '@mui/material';
-import type {
-  Camera2D,
-  Actor2D,
-  Prop2D,
-  Point2D} from './types';
-import {
-  Scene2D,
-  PlannerTool,
-  LENS_FOV_MAP,
-} from './types';
-import { useShotPlannerStore, useActiveShot } from './store';
-import * as VectorGfx from './vectorGraphics';
-import * as visualizations from './visualizations';
+import React, { useRef, useEffect, useCallback, useState } from "react";
+import * as PIXI from "pixi.js";
+import { Box } from "@mui/material";
+import { Scene2D, PlannerTool, LENS_FOV_MAP, type Camera2D, type Actor2D, type Prop2D, type Point2D } from "./types";
+import { useShotPlannerStore, useActiveShot } from "./store";
+import * as VectorGfx from "./vectorGraphics";
+import * as visualizations from "./visualizations";
 
 // =============================================================================
 // Constants

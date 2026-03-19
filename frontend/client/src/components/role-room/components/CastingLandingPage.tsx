@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
 import {
   Box,
   Typography,
@@ -20,6 +19,7 @@ import {
   Videocam as VideocamIcon,
 } from '@mui/icons-material';
 import LoginDialog from './LoginDialog';
+import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
 
 interface CastingLandingPageProps {
   onEnter: () => void;
@@ -53,26 +53,21 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   const [cursorTarget, setCursorTarget] = useState<'why'|'how'|'what'|'none'>('none');
   const [cursorVisible, setCursorVisible] = useState(true);
 
-  /* ── pull published visual-editor settings ── */
-  const { data: pageData } = usePublishedPageCustomizations('landing-desktop');
-  // Admin demoMode toggle — false = hide all guest-bypass surfaces
-  const lp: Record<string, unknown> = (pageData?.sections?.loginPanel as Record<string, unknown> | undefined) ?? {};
-  const demoModeEnabled = lp.demoMode !== false;
-  const ip = (pageData?.sections?.intro ?? {}) as Record<string, any>;
-  const introEnabled     = ip.enabled !== false;
-  const introVideoUrl    = (ip.videoUrl         as string | undefined) || '/role-room-assets/the_role_room_intro.mp4';
-  const introSkipLabel   = (ip.skipLabel        as string | undefined) || 'Hopp over';
-  const backdropVideoUrl = (ip.backdropVideoUrl as string | undefined) || '/role-room-assets/landing_backdrop.mp4';
-  const whyLabel         = (ip.whyLabel         as string | undefined) || 'Hvorfor vi finnes';
-  const whyText          = (ip.whyText          as string | undefined) || WHY;
-  const howLabel         = (ip.howLabel         as string | undefined) || 'Slik gjør vi det';
-  const howText          = (ip.howText          as string | undefined) || HOW;
-  const whatLabel        = (ip.whatLabel        as string | undefined) || 'Hva du får';
+  const demoModeEnabled = ROLE_ROOM_LANDING_CONFIG.demoModeEnabled;
+  const introEnabled = ROLE_ROOM_LANDING_CONFIG.intro.enabled;
+  const introVideoUrl = ROLE_ROOM_LANDING_CONFIG.intro.videoUrl;
+  const introSkipLabel = ROLE_ROOM_LANDING_CONFIG.intro.skipLabel;
+  const backdropVideoUrl = ROLE_ROOM_LANDING_CONFIG.intro.backdropVideoUrl;
+  const whyLabel = ROLE_ROOM_LANDING_CONFIG.intro.whyLabel;
+  const whyText = WHY;
+  const howLabel = ROLE_ROOM_LANDING_CONFIG.intro.howLabel;
+  const howText = HOW;
+  const whatLabel = ROLE_ROOM_LANDING_CONFIG.intro.whatLabel;
 
-  /* skip intro entirely if disabled in visual editor */
+  /* skip intro entirely if disabled in role room config */
   useEffect(() => {
-    if (pageData && !introEnabled) setShowIntro(false);
-  }, [pageData, introEnabled]);
+    if (!introEnabled) setShowIntro(false);
+  }, [introEnabled]);
 
   // Chain typewriter: WHY label → HOW label → WHAT label
   useEffect(() => {

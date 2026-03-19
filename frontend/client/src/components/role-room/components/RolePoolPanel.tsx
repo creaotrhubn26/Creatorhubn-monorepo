@@ -1,44 +1,16 @@
-import { useState, useEffect, useMemo, type FC } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Box,
-  Typography,
-  Button,
-  IconButton,
-  Card,
-  CardContent,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Chip,
-  InputAdornment,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Stack,
-  Divider,
-} from '@mui/material';
-import {
-  Delete as DeleteIcon,
-  Search as SearchIcon,
-  Download as DownloadIcon,
-  TheaterComedy as RoleIcon,
-  Event as EventIcon,
-} from '@mui/icons-material';
-import { rolePoolService } from '../services/rolePoolService';
-import type { CastingProject } from '../models/casting';
-import { castingService } from '../services/castingService';
-import type { RoleWorkflowStatus} from '../config/roleWorkflow';
-import { ROLE_WORKFLOW_ORDER, getRoleWorkflowMeta } from '../config/roleWorkflow';
-import { emitRoleSyncEvent, onRoleSyncEvent } from '../services/roleSyncEvents';
-import { roleQueryKeys } from '../services/roleQueryKeys';
-import type { RoleTemplate} from '../config/roleDomain';
-import { createTemplateImportAuditEntry } from '../config/roleDomain';
-import { Z_INDEX } from '../config/zIndex';
-import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useState, useEffect, useMemo, type FC } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Box, Typography, Button, IconButton, Card, CardContent, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Chip, InputAdornment, Select, MenuItem, FormControl, InputLabel, Stack, Divider } from "@mui/material";
+import { Delete as DeleteIcon, Search as SearchIcon, Download as DownloadIcon, TheaterComedy as RoleIcon, Event as EventIcon } from "@mui/icons-material";
+import { rolePoolService } from "../services/rolePoolService";
+import type { CastingProject } from "../models/casting";
+import { castingService } from "../services/castingService";
+import { ROLE_WORKFLOW_ORDER, getRoleWorkflowMeta, type RoleWorkflowStatus } from "../config/roleWorkflow";
+import { emitRoleSyncEvent, onRoleSyncEvent } from "../services/roleSyncEvents";
+import { roleQueryKeys } from "../services/roleQueryKeys";
+import { createTemplateImportAuditEntry, type RoleTemplate } from "../config/roleDomain";
+import { Z_INDEX } from "../config/zIndex";
+import GlobalMentionHelper from "./shared/GlobalMentionHelper";
 
 interface RolePoolPanelProps {
   projects: CastingProject[];

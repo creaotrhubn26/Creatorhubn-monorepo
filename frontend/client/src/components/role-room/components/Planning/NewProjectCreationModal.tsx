@@ -1,6 +1,6 @@
 /**
  * New Project Creation Modal
- * Clean, simplified project creation with The Role Room and Split Sheet integration
+ * Clean, simplified project creation with The Role Room production setup flow
  */
 
 import React, { useState, useCallback, useMemo, useId, useEffect, useRef } from 'react';
@@ -15,8 +15,6 @@ import {
   StepLabel,
   StepContent,
   Divider,
-  Switch,
-  FormControlLabel,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -52,6 +50,7 @@ import {
   CloudDone as CloudDoneIcon,
   CloudOff as CloudOffIcon,
   CloudQueue as CloudQueueIcon,
+  AttachMoney as AttachMoneyIcon,
   MovieFilter as MovieFilterIcon,
   PlayCircleOutline as PlayCircleIcon,
 } from '@mui/icons-material';
@@ -119,10 +118,7 @@ const TROLL_AREA_CONFIG: Record<string, { Icon: any; color: string; label: strin
 import { ContactProjectInfoSummary } from './ContactProjectInfoSummary';
 import { ProjectTypeSelector } from './ProjectTypeSelector';
 import ProjectCollaborators from './ProjectCollaborators';
-import SplitSheetEditor from '../split-sheets/SplitSheetEditor';
-import RelatedContractsSection from '../split-sheets/RelatedContractsSection';
-import ContractEditingInterface from '../split-sheets/ContractEditingInterface';
-import { ROLE_DISPLAY_NAMES, type SplitSheet, type SplitSheetContributor, type ContributorRole, type Contract } from '../split-sheets/types';
+import { ROLE_DISPLAY_NAMES, type SplitSheet, type SplitSheetContributor, type ContributorRole } from '../split-sheets/types';
 import { useToast } from '../ToastStack';
 
 interface ProjectData {
@@ -149,6 +145,12 @@ interface ProjectData {
   splitSheetData: SplitSheet | null;
 }
 
+interface DemoInitArea {
+  status?: string;
+  count?: number;
+  items?: unknown[];
+}
+
 interface NewProjectCreationModalProps {
   profession: string;
   userId?: string;
@@ -159,11 +161,12 @@ interface NewProjectCreationModalProps {
   getTerm?: (key: string) => string;
   onClose?: () => void;
   onProjectIdChange?: (projectId: string | null) => void;
+  onOpenEconomy?: (projectId?: string) => void;
 }
 
 const STEPS = [
   { label: 'Grunndata', description: 'Kontakt, prosjektinfo og type', icon: ContactIcon },
-  { label: 'Produksjonsteam & Split Sheet', description: 'Fordeling og teammedlemmer', icon: SplitSheetIcon },
+  { label: 'Produksjonsteam', description: 'Team, ansvar og videreføring til økonomi', icon: SplitSheetIcon },
 ];
 
 // WCAG 2.2 minimum touch target size (44x44px)
@@ -187,6 +190,7 @@ export default function NewProjectCreationModal({
   getTerm,
   onClose,
   onProjectIdChange,
+  onOpenEconomy,
 }: NewProjectCreationModalProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -250,7 +254,7 @@ export default function NewProjectCreationModal({
   const [trollInitDialogOpen, setTrollInitDialogOpen] = useState(false);
   const [trollInitStatus, setTrollInitStatus] = useState<'idle' | 'loading' | 'complete' | 'error'>('idle');
   const [trollInitError, setTrollInitError] = useState<string | null>(null);
-  const [trollInitAreas, setTrollInitAreas] = useState<Record<string, any>>({});
+  const [trollInitAreas, setTrollInitAreas] = useState<Record<string, DemoInitArea>>({});
 
   const demoProjectTitle = isContentProducerSession ? 'Bedriftsdemo for innholdsproduksjon' : 'TROLL Demo-prosjekt';
   const demoProjectDescription = isContentProducerSession
@@ -655,9 +659,6 @@ export default function NewProjectCreationModal({
   const [editingCollaborator, setEditingCollaborator] = useState<{ id: string; name: string; email: string; role: ContributorRole; availabilityStart?: string; availabilityEnd?: string } | null>(null);
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [newCollaboratorEmail, setNewCollaboratorEmail] = useState('');
-  const [showContractsDialog, setShowContractsDialog] = useState(false);
-  const [showContractEditor, setShowContractEditor] = useState(false);
-  const [editingContractId, setEditingContractId] = useState<string | undefined>(undefined);
   const [newCollaboratorName, setNewCollaboratorName] = useState('');
   const [newCollaboratorOrgNumber, setNewCollaboratorOrgNumber] = useState('');
   const [brregLoading, setBrregLoading] = useState(false);
@@ -678,6 +679,54 @@ export default function NewProjectCreationModal({
     organizationForm: string;
   }>>([]);
   const [clientCompanySearchLoading, setClientCompanySearchLoading] = useState(false);
+
+  const loadedDemoAreaBadges = useMemo(() => {
+    const badges: Array<{
+      key: string;
+      label: string;
+      color: string;
+      count: number;
+      Icon: typeof DashboardIcon;
+    }> = [];
+    let economyCount = 0;
+
+    for (const [key, area] of Object.entries(trollInitAreas)) {
+      const count = typeof area.count === 'number' ? area.count : 0;
+      if (area.status !== 'loaded' || count <= 0) {
+        continue;
+      }
+
+      if (key === 'offers' || key === 'contracts') {
+        economyCount += count;
+        continue;
+      }
+
+      const config = TROLL_AREA_CONFIG[key];
+      if (!config) {
+        continue;
+      }
+
+      badges.push({
+        key,
+        label: config.label,
+        color: config.color,
+        count,
+        Icon: config.Icon,
+      });
+    }
+
+    if (economyCount > 0) {
+      badges.push({
+        key: 'economy',
+        label: 'Økonomi',
+        color: '#34d399',
+        count: economyCount,
+        Icon: AttachMoneyIcon as typeof DashboardIcon,
+      });
+    }
+
+    return badges;
+  }, [trollInitAreas]);
   // Get available roles based on profession (same as split sheet)
   const getAvailableRoles = (prof: string): ContributorRole[] => {
     switch(prof) {
@@ -1302,6 +1351,37 @@ export default function NewProjectCreationModal({
     }
   }, [isCastingPlanner, projectData]);
 
+  const handleOpenEconomyWorkspace = useCallback(async () => {
+    if (!onOpenEconomy) {
+      return;
+    }
+
+    if (!projectData.projectName.trim()) {
+      toast.showWarning('Navngi prosjektet før du åpner økonomi.');
+      return;
+    }
+
+    if (isCastingPlanner) {
+      const saved = await saveProjectToDatabase();
+      if (!saved) {
+        toast.showError('Prosjektet må lagres før økonomi kan åpnes.');
+        return;
+      }
+    }
+
+    onOpenEconomy(projectData.projectId);
+    toast.showInfo('Åpner økonomi-arbeidsflaten for budsjett, tilbud, kontrakter og teamavtaler.');
+    onClose?.();
+  }, [
+    isCastingPlanner,
+    onClose,
+    onOpenEconomy,
+    projectData.projectId,
+    projectData.projectName,
+    saveProjectToDatabase,
+    toast,
+  ]);
+
   const handleSave = async () => {
     setLoading(true);
     
@@ -1446,7 +1526,7 @@ export default function NewProjectCreationModal({
         
         if (!verified) {
           console.error('Failed to verify project in database after', maxRetries, 'attempts');
-          toast.showError(`Prosjektet kunne ikke verifiseres i databasen etter ${maxRetries} forsøk. Split sheet ble ikke opprettet. Vennligst prøv å lagre prosjektet på nytt.`);
+          toast.showError(`Prosjektet kunne ikke verifiseres i databasen etter ${maxRetries} forsøk. Teamavtalen ble ikke opprettet. Vennligst prøv å lagre prosjektet på nytt.`);
           setLoading(false);
           return;
         }
@@ -1486,14 +1566,14 @@ export default function NewProjectCreationModal({
                 expected: finalProjectId,
                 received: createdSplitSheet.project_id,
               });
-              toast.showError('Split sheet ble opprettet, men project_id matcher ikke. Vennligst kontakt support.');
+              toast.showError('Teamavtalen ble opprettet, men project_id matcher ikke. Vennligst kontakt support.');
             }
           } else {
             throw new Error('Split sheet creation returned error: ' + JSON.stringify(splitSheetResponse));
           }
         } catch (splitSheetError: unknown) {
           console.error('Failed to create split sheet:', splitSheetError);
-          toast.showError(`Split sheet kunne ikke opprettes: ${splitSheetError instanceof Error ? splitSheetError.message : 'Ukjent feil'}. Prosjektet er lagret, men split sheet må opprettes manuelt.`);
+          toast.showError(`Teamavtale kunne ikke opprettes: ${splitSheetError instanceof Error ? splitSheetError.message : 'Ukjent feil'}. Prosjektet er lagret, men avtalen må opprettes manuelt i økonomi.`);
         }
       }
 
@@ -1758,31 +1838,26 @@ export default function NewProjectCreationModal({
                   Data lastet fra database:
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                  {Object.entries(trollInitAreas).map(([key, area]: [string, any]) => {
-                    const config = TROLL_AREA_CONFIG[key];
-                    if (!config || area?.status !== 'loaded' || area?.count <= 0) return null;
-                    const { Icon, color, label } = config;
-                    return (
-                      <Box
-                        key={key}
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 0.5,
-                          px: 1,
-                          py: 0.25,
-                          borderRadius: 2,
-                          bgcolor: `${color}20`,
-                          color: color,
-                          fontSize: '0.7rem',
-                          height: 24,
-                        }}
-                      >
-                        <Icon sx={{ fontSize: '0.85rem' }} />
-                        <span>{label}: {area.count}</span>
-                      </Box>
-                    );
-                  })}
+                  {loadedDemoAreaBadges.map(({ key, Icon, color, label, count }) => (
+                    <Box
+                      key={key}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        px: 1,
+                        py: 0.25,
+                        borderRadius: 2,
+                        bgcolor: `${color}20`,
+                        color,
+                        fontSize: '0.7rem',
+                        height: 24,
+                      }}
+                    >
+                      <Icon sx={{ fontSize: '0.85rem' }} />
+                      <span>{label}: {count}</span>
+                    </Box>
+                  ))}
                 </Box>
               </Box>
             )}
@@ -2093,7 +2168,7 @@ export default function NewProjectCreationModal({
           </Typography>
           <Divider sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, mt: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }} />
           <Typography variant="body1" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, fontWeight: 500, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
-            Legg til teammedlemmer som skal være med i prosjektet. Alle teammedlemmer har en rolle i prosjektet. Først sett opp produksjonsteamet, deretter kan du aktivere Split Sheet for å fordele inntekter mellom teammedlemmene.
+            Legg til teammedlemmer som skal være med i prosjektet. Selve budsjettering, teamavtaler, tilbud og kontrakter håndteres samlet i økonomi-arbeidsflaten når teamet er klart.
           </Typography>
           <ProjectCollaborators
             collaborators={projectData.collaborators}
@@ -2127,183 +2202,63 @@ export default function NewProjectCreationModal({
         </CardContent>
       </Card>
 
-      {/* Split Sheet Setup */}
+      {/* Economy handoff */}
       <Card sx={{ mt: { xs: 1, sm: 1.5, md: 2, lg: 2.5, xl: 3 }, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, borderRadius: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
         <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 }, mb: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
             <Typography variant="h6" gutterBottom={false} sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
               <SplitSheetIcon sx={{ color: '#9f7aea', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-              Split Sheet
+              Økonomi og teamavtaler
             </Typography>
-            {projectData.projectId && (
-              <Box sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 },
-                px: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2, xl: 2.25 },
-                py: { xs: 0.625, sm: 0.75, md: 0.875, lg: 1, xl: 1.125 },
-                borderRadius: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2, xl: 2.25 },
-                bgcolor: 'rgba(0, 212, 255, 0.1)',
-                border: '1.5px solid rgba(0, 212, 255, 0.3)',
-              }}>
-                <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.125rem' } }} />
-                <Box>
-                  <Typography variant="caption" sx={{
-                    fontWeight: 700,
-                    fontSize: { xs: '0.6rem', sm: '0.65rem', md: '0.7rem', lg: '0.75rem', xl: '0.8rem' },
-                    color: 'primary.main',
-                    textTransform: 'uppercase',
-                    letterSpacing: { xs: '0.3px', sm: '0.4px', md: '0.5px', lg: '0.6px', xl: '0.75px' },
-                    display: 'block',
-                    lineHeight: 1,
-                  }}>
-                    ID
-                  </Typography>
-                  <Typography variant="caption" sx={{
-                    fontWeight: 700,
-                    fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.8rem', lg: '0.875rem', xl: '0.938rem' },
-                    color: 'primary.main',
-                    fontFamily: 'monospace',
-                    letterSpacing: { xs: '0.2px', sm: '0.3px', md: '0.4px', lg: '0.5px', xl: '0.6px' },
-                    display: 'block',
-                    lineHeight: 1.2,
-                    mt: { xs: 0.125, sm: 0.25, md: 0.375, lg: 0.5, xl: 0.625 },
-                  }}>
-                    {projectData.projectId}
-                  </Typography>
-                </Box>
-              </Box>
-            )}
+            <Chip
+              size="small"
+              label={projectData.splitSheetData ? 'Avtaler klargjort i økonomi' : 'Avtaler opprettes i økonomi'}
+              sx={{
+                bgcolor: projectData.splitSheetData ? 'rgba(34,197,94,0.14)' : 'rgba(59,130,246,0.14)',
+                color: projectData.splitSheetData ? '#86efac' : '#bfdbfe',
+                fontWeight: 700,
+              }}
+            />
           </Box>
           <Divider sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, mt: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }} />
           <Typography variant="body1" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, fontWeight: 500, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
-            Split Sheet lar deg fordele inntekter og rettigheter mellom teammedlemmene. Først sett opp produksjonsteamet over, deretter kan du aktivere Split Sheet her for å fordele prosentandeler.
+            Når prosjektet er navngitt og teamet er satt opp, åpner du økonomi for å jobbe med totalramme, kostlinjer, teamavtaler, tilbud og kontrakter i samme arbeidsflate.
           </Typography>
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={projectData.enableSplitSheet}
-                disabled={projectData.collaborators.length === 0}
-                onChange={(e) => {
-                  const enabled = e.target.checked;
-                  setProjectData((prev) => {
-                    // If enabling and we don't have split sheet data yet, create initial data
-                    if (enabled && !prev.splitSheetData) {
-                      // Use existing project ID (always set when modal opens)
-                      const sharedId = prev.projectId;
-                      
-                      if (!sharedId) {
-                        console.error('Project ID missing when enabling split sheet');
-                        return prev;
-                      }
-                      
-                      return {
-                        ...prev,
-                        enableSplitSheet: enabled,
-                        splitSheetData: {
-                          id: sharedId, // Use same ID as project
-                          title: `${prev.projectName || 'Nytt Prosjekt'} - Split Sheet`,
-                          description: '',
-                          status: 'draft' as const,
-                          project_id: sharedId, // Link to project
-                          contributors: prev.collaborators.length > 0
-                            ? prev.collaborators.map((collab, index) => ({
-                                name: collab.name,
-                                email: collab.email,
-                                role: collab.role, // Same role - no mapping needed
-                                percentage: 0,
-                                order_index: index,
-                                custom_fields: {},
-                              }))
-                            : [],
-                        },
-                      };
-                    }
-                    // When disabling, remove ID from split sheet
-                    return {
-                      ...prev,
-                      enableSplitSheet: enabled,
-                      splitSheetData: enabled 
-                        ? (prev.splitSheetData 
-                            ? { ...prev.splitSheetData, id: prev.projectId, project_id: prev.projectId } 
-                            : null) 
-                        : (prev.splitSheetData 
-                            ? { ...prev.splitSheetData, id: undefined, project_id: undefined } 
-                            : null),
-                    };
-                  });
-                }}
+          <Stack spacing={1.5}>
+            <Alert severity="info" sx={{ alignItems: 'center' }}>
+              Teamkostnader og fordelingsavtaler er flyttet hitfra og inn i prosjektets økonomi-arbeidsflate.
+            </Alert>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} flexWrap="wrap">
+              <Chip
+                size="small"
+                label={`${projectData.collaborators.length} teammedlem${projectData.collaborators.length === 1 ? '' : 'mer'}`}
+                sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }}
               />
-            }
-            label={
-              <Typography variant="body1" sx={{ fontWeight: 600, fontSize: { xs: '0.875rem', sm: '0.938rem', md: '0.95rem', lg: '1rem', xl: '1.063rem' } }}>
-                Aktiver Split Sheet for dette prosjektet
-              </Typography>
-            }
-          />
-          
-          {projectData.collaborators.length === 0 && (
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 }, ml: { xs: 3.5, sm: 4, md: 4.5, lg: 5, xl: 5.5 }, fontSize: { xs: '0.75rem', sm: '0.813rem', md: '0.875rem', lg: '0.938rem', xl: '1rem' } }}>
-              Legg til minst én teammedlem i produksjonsteamet før du kan aktivere Split Sheet.
-            </Typography>
-          )}
-
-          {projectData.enableSplitSheet && (
-            <Box sx={{ mt: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
-              <SplitSheetEditor
-                splitSheet={projectData.splitSheetData}
-                projectId={projectData.projectId}
-                projectName={projectData.projectName}
-                initialContributors={projectData.collaborators.length > 0
-                  ? projectData.collaborators.map((collab, index) => ({
-                      name: collab.name,
-                      email: collab.email,
-                      role: collab.role, // Same role - no mapping needed
-                      percentage: 0,
-                      order_index: index,
-                      custom_fields: {},
-                    }))
-                  : undefined}
-                profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
-                onSaveProject={saveProjectToDatabase}
-                onSave={(splitSheet) => {
-                  // Update local state with database-persisted split sheet
-                  // Ensure split sheet keeps the same ID as project
-                  const updatedSplitSheet = {
-                    ...splitSheet,
-                    id: projectData.projectId || splitSheet.id, // Use project ID if available
-                    project_id: projectData.projectId || splitSheet.project_id, // Link to project
-                  };
-                  
-                  setProjectData((prev) => ({
-                    ...prev,
-                    splitSheetData: updatedSplitSheet,
-                  }));
-                  
-                  // Auto-save draft when split sheet is saved (only for new projects)
-                  if (draftKeyRef.current && !initialData?.id) {
-                    // Use setTimeout to ensure state is updated before saving
-                    setTimeout(() => {
-                      setProjectData((current) => {
-                        saveDraft(
-                          { ...current, splitSheetData: updatedSplitSheet },
-                          activeStep,
-                          false
-                        );
-                        return current;
-                      });
-                    }, 100);
-                  }
-                  
-                  showSuccessToast('Split Sheet lagret til database');
-                }}
-                onCancel={() => {
-                  // Do nothing - editor is embedded
-                }}
-              />
-            </Box>
-          )}
+              {projectData.splitSheetData?.contributors?.length ? (
+                <Chip
+                  size="small"
+                  label={`${projectData.splitSheetData.contributors.length} bidragsytere klargjort i økonomi`}
+                  sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(168,85,247,0.16)', color: '#d8b4fe' }}
+                />
+              ) : null}
+            </Stack>
+            <Button
+              variant="contained"
+              startIcon={<AttachMoneyIcon />}
+              onClick={() => { void handleOpenEconomyWorkspace(); }}
+              disabled={!onOpenEconomy || !projectData.projectName.trim()}
+              sx={{
+                alignSelf: 'flex-start',
+                textTransform: 'none',
+                fontWeight: 700,
+                bgcolor: '#fbbf24',
+                color: '#111827',
+                '&:hover': { bgcolor: '#f59e0b' },
+              }}
+            >
+              Åpne økonomi
+            </Button>
+          </Stack>
         </CardContent>
       </Card>
     </Box>
@@ -2342,64 +2297,82 @@ export default function NewProjectCreationModal({
               eventDate={projectData.eventDate}
             />
             {projectData.projectId && (
-              <Box sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 },
-                p: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2, xl: 2.25 },
-                borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3 },
-                bgcolor: 'rgba(0, 212, 255, 0.1)',
-                border: '2px solid rgba(0, 212, 255, 0.3)',
-                mt: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 },
-              }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
-                  <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1rem', sm: '1.125rem', md: '1.25rem', lg: '1.375rem', xl: '1.5rem' } }} />
-                  <Box>
-                    <Typography variant="caption" sx={{
-                      fontWeight: 700,
-                      fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.75rem', lg: '0.8rem', xl: '0.85rem' },
-                      color: 'primary.main',
-                      textTransform: 'uppercase',
-                      letterSpacing: { xs: '0.5px', sm: '0.75px', md: '1px', lg: '1.25px', xl: '1.5px' },
-                      display: 'block',
-                      mb: { xs: 0.25, sm: 0.375, md: 0.5, lg: 0.625, xl: 0.75 },
-                    }}>
-                      Prosjekt-ID
-                    </Typography>
-                    <Typography variant="body2" sx={{
-                      fontWeight: 700,
-                      fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.95rem', lg: '1rem', xl: '1.125rem' },
-                      color: 'primary.main',
-                      fontFamily: 'monospace',
-                      letterSpacing: { xs: '0.3px', sm: '0.4px', md: '0.5px', lg: '0.6px', xl: '0.75px' },
-                    }}>
-                      {projectData.projectId}
-                    </Typography>
+              <Stack
+                spacing={{ xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 }}
+                sx={{ mt: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}
+              >
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 },
+                  p: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2, xl: 2.25 },
+                  borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3 },
+                  bgcolor: 'rgba(0, 212, 255, 0.1)',
+                  border: '2px solid rgba(0, 212, 255, 0.3)',
+                }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
+                    <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1rem', sm: '1.125rem', md: '1.25rem', lg: '1.375rem', xl: '1.5rem' } }} />
+                    <Box>
+                      <Typography variant="caption" sx={{
+                        fontWeight: 700,
+                        fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.75rem', lg: '0.8rem', xl: '0.85rem' },
+                        color: 'primary.main',
+                        textTransform: 'uppercase',
+                        letterSpacing: { xs: '0.5px', sm: '0.75px', md: '1px', lg: '1.25px', xl: '1.5px' },
+                        display: 'block',
+                        mb: { xs: 0.25, sm: 0.375, md: 0.5, lg: 0.625, xl: 0.75 },
+                      }}>
+                        Prosjekt-ID
+                      </Typography>
+                      <Typography variant="body2" sx={{
+                        fontWeight: 700,
+                        fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.95rem', lg: '1rem', xl: '1.125rem' },
+                        color: 'primary.main',
+                        fontFamily: 'monospace',
+                        letterSpacing: { xs: '0.3px', sm: '0.4px', md: '0.5px', lg: '0.6px', xl: '0.75px' },
+                      }}>
+                        {projectData.projectId}
+                      </Typography>
+                    </Box>
                   </Box>
-                </Box>
-                {initialData?.id && (
-                  <Button
-                    variant="outlined"
-                    startIcon={<ContractIcon />}
-                    onClick={() => setShowContractsDialog(true)}
-                    sx={{
-                      borderColor: 'primary.main',
-                      color: 'primary.main',
-                      '&:hover': {
+                  {initialData?.id && (
+                    <Button
+                      variant="outlined"
+                      startIcon={<ContractIcon />}
+                      onClick={handleOpenEconomyWorkspace}
+                      sx={{
                         borderColor: 'primary.main',
-                        bgcolor: 'rgba(0, 212, 255, 0.1)',
-                      },
-                      minHeight: { xs: 36, sm: 38, md: 40, lg: 42, xl: 44 },
-                      fontSize: { xs: '0.75rem', sm: '0.813rem', md: '0.875rem', lg: '0.938rem', xl: '1rem' },
-                      px: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 },
-                      py: { xs: 0.5, sm: 0.625, md: 0.75, lg: 0.875, xl: 1 },
-                    }}
-                  >
-                    Vis kontrakter
-                  </Button>
-                )}
-              </Box>
+                        color: 'primary.main',
+                        '&:hover': {
+                          borderColor: 'primary.main',
+                          bgcolor: 'rgba(0, 212, 255, 0.1)',
+                        },
+                        minHeight: { xs: 36, sm: 38, md: 40, lg: 42, xl: 44 },
+                        fontSize: { xs: '0.75rem', sm: '0.813rem', md: '0.875rem', lg: '0.938rem', xl: '1rem' },
+                        px: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 },
+                        py: { xs: 0.5, sm: 0.625, md: 0.75, lg: 0.875, xl: 1 },
+                      }}
+                    >
+                      Åpne økonomi
+                    </Button>
+                  )}
+                </Box>
+                <Alert
+                  severity="info"
+                  sx={{
+                    borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
+                    bgcolor: 'rgba(52, 211, 153, 0.1)',
+                    border: '1px solid rgba(52, 211, 153, 0.25)',
+                    color: 'rgba(255,255,255,0.92)',
+                    '& .MuiAlert-icon': {
+                      color: '#34d399',
+                    },
+                  }}
+                >
+                  Budsjett, tilbud og kontrakter håndteres samlet i økonomi-arbeidsflaten etter at prosjektet er opprettet.
+                </Alert>
+              </Stack>
             )}
           </Box>
         )}
@@ -2435,7 +2408,7 @@ export default function NewProjectCreationModal({
                   </Box>
                   <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                     <Chip size="small" label="1. Grunndata" sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }} />
-                    <Chip size="small" label="2. Team & Split Sheet" sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
+                    <Chip size="small" label="2. Team og økonomi" sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
                     <Chip size="small" label="3. Oppsummering" sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff' }} />
                   </Stack>
                 </Stack>
@@ -3730,128 +3703,46 @@ export default function NewProjectCreationModal({
               </CardContent>
             </Card>
 
-            {/* Split Sheet Status */}
+            {/* Economy status */}
             <Card sx={{ borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                   <SplitSheetIcon sx={{ color: '#9f7aea', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-                  Split Sheet
+                  Økonomi og teamavtaler
                 </Typography>
-                {projectData.enableSplitSheet ? (
-                  <>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 }, mb: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 } }}>
-                      <Chip
-                        label="Aktivert"
-                        color="success"
-                        size="small"
-                        sx={{ 
-                          fontWeight: 600,
-                          fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' },
-                          height: { xs: 22, sm: 24, md: 26, lg: 28, xl: 30 },
-                        }}
-                      />
-                      {projectData.splitSheetData?.contributors && projectData.splitSheetData.contributors.length > 0 && (
-                        <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                          {projectData.splitSheetData.contributors.length} teammedlem{projectData.splitSheetData.contributors.length !== 1 ? 'mer' : ''}
-                        </Typography>
-                      )}
-                    </Box>
-                    {projectData.splitSheetData?.title && (
-                      <Typography variant="body2" sx={{ color: 'text.secondary', mb: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }, fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                        Tittel: {projectData.splitSheetData.title}
-                      </Typography>
-                    )}
-                    {projectData.splitSheetData?.metadata?.total_budget && (
-                      <Typography variant="body2" sx={{ color: 'text.secondary', mb: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }, fontWeight: 500, fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                        Totalt budsjett: {Number(projectData.splitSheetData.metadata.total_budget).toLocaleString('no-NO')} NOK (ekskl. MVA)
-                      </Typography>
-                    )}
-                    {projectData.splitSheetData?.contributors && projectData.splitSheetData.contributors.length > 0 && (
-                      <Stack spacing={{ xs: 1.25, sm: 1.5, md: 1.75, lg: 2, xl: 2.25 }} sx={{ mt: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 } }}>
-                        <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-                        <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 600, textTransform: 'uppercase', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, letterSpacing: { xs: '0.3px', sm: '0.4px', md: '0.5px', lg: '0.6px', xl: '0.75px' } }}>
-                          Fordeling
-                        </Typography>
-                        {(projectData.splitSheetData?.contributors || []).map((contributor, index) => {
-                          // Determine calculation method: check metadata first, then check if dagsats exists
-                          const calculationMethod = projectData.splitSheetData?.metadata?.calculation_method 
-                            || ((projectData.splitSheetData?.contributors || []).some((c: any) => 
-                                c.custom_fields?.dagsats && Number(c.custom_fields.dagsats) > 0
-                              ) ? 'budget' : 'percentage');
-                          
-                          const fastHonorar = contributor.custom_fields?.dagsats ? Number(contributor.custom_fields.dagsats) : null;
-                          const hasFastHonorar = fastHonorar !== null && fastHonorar > 0;
-                          const hasPercentage = contributor.percentage && contributor.percentage > 0;
-                          
-                          return (
-                            <Box
-                              key={index}
-                              sx={{
-                                p: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
-                                borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
-                                bgcolor: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                              }}
-                            >
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                  <Typography variant="body1" sx={{ fontWeight: 600, color: 'text.primary', mb: { xs: 0.375, sm: 0.5, md: 0.625, lg: 0.75, xl: 0.875 }, fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' } }}>
-                                    {contributor.name || contributor.email || 'Ukjent'}
-                                  </Typography>
-                                  <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                                    {ROLE_DISPLAY_NAMES[contributor.role] || contributor.role}
-                                  </Typography>
-                                </Box>
-                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: { xs: 0.375, sm: 0.5, md: 0.625, lg: 0.75, xl: 0.875 } }}>
-                                  {calculationMethod === 'budget' && hasFastHonorar && (
-                                    <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 600, fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' } }}>
-                                      {fastHonorar.toLocaleString('no-NO')} NOK
-                                    </Typography>
-                                  )}
-                                  {hasPercentage && (
-                                    <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, fontWeight: calculationMethod === 'percentage' ? 600 : 400 }}>
-                                      {contributor.percentage.toFixed(2)}%
-                                    </Typography>
-                                  )}
-                                </Box>
-                              </Box>
-                            </Box>
-                          );
-                        })}
-                        {projectData.splitSheetData?.metadata?.total_budget && (() => {
-                          const calculationMethod = projectData.splitSheetData?.metadata?.calculation_method 
-                            || ((projectData.splitSheetData?.contributors || []).some((c: any) => 
-                                c.custom_fields?.dagsats && Number(c.custom_fields.dagsats) > 0
-                              ) ? 'budget' : 'percentage');
-                          
-                          if (calculationMethod === 'budget') {
-                            const totalFastHonorar = (projectData.splitSheetData?.contributors || [])
-                              .reduce((sum, c) => sum + (Number(c.custom_fields?.dagsats) || 0), 0);
-                            
-                            return (
-                              <Box sx={{ mt: 1, pt: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                                    Totalt fast honorar (ekskl. MVA):
-                                  </Typography>
-                                  <Typography variant="body1" sx={{ color: 'text.primary', fontWeight: 600 }}>
-                                    {totalFastHonorar.toLocaleString('no-NO')} NOK
-                                  </Typography>
-                                </Box>
-                              </Box>
-                            );
-                          }
-                          
-                          return null;
-                        })()}
-                      </Stack>
-                    )}
-                  </>
-                ) : (
-                  <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                    Ikke aktivert
+                <Stack spacing={1.5}>
+                  <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
+                    Økonomi samler budsjett, teamkostnader, teamavtaler, tilbud og kontrakter i én arbeidsflate. Prosjektoppsettet viser bare status og sender deg videre dit.
                   </Typography>
-                )}
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap">
+                    <Chip
+                      size="small"
+                      label={projectData.splitSheetData ? 'Avtaler klargjort i økonomi' : 'Avtaler opprettes i økonomi'}
+                      sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(168,85,247,0.16)', color: '#d8b4fe' }}
+                    />
+                    <Chip
+                      size="small"
+                      label={`${projectData.collaborators.length} teammedlem${projectData.collaborators.length === 1 ? '' : 'mer'}`}
+                      sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }}
+                    />
+                  </Stack>
+                  <Button
+                    variant="contained"
+                    startIcon={<AttachMoneyIcon />}
+                    onClick={() => { void handleOpenEconomyWorkspace(); }}
+                    disabled={!onOpenEconomy || !projectData.projectName.trim()}
+                    sx={{
+                      alignSelf: 'flex-start',
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      bgcolor: '#fbbf24',
+                      color: '#111827',
+                      '&:hover': { bgcolor: '#f59e0b' },
+                    }}
+                  >
+                    Åpne økonomi
+                  </Button>
+                </Stack>
               </CardContent>
             </Card>
           </Stack>
@@ -3911,112 +3802,6 @@ export default function NewProjectCreationModal({
         </DialogActions>
       </Dialog>
 
-      {/* Contracts Dialog */}
-      {showContractsDialog && projectData.projectId && (
-        <Dialog
-          open={showContractsDialog}
-          onClose={() => setShowContractsDialog(false)}
-          maxWidth="md"
-          fullWidth
-          PaperProps={{
-            sx: {
-              borderRadius: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 },
-              bgcolor: 'rgba(26, 26, 26, 0.95)',
-              border: '1px solid rgba(255,255,255,0.1)',
-            },
-          }}
-        >
-          <DialogTitle
-            sx={{
-              p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 },
-              pb: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <Typography
-              variant="h6"
-              sx={{
-                fontWeight: 700,
-                fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' },
-                color: 'primary.main',
-                display: 'flex',
-                alignItems: 'center',
-                gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 },
-              }}
-            >
-              <ContractIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-              Kontrakter for prosjekt
-            </Typography>
-            <IconButton
-              onClick={() => setShowContractsDialog(false)}
-              sx={{
-                minWidth: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
-                minHeight: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
-              }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
-            <RelatedContractsSection
-              projectId={projectData.projectId}
-              splitSheetId={projectData.splitSheetData?.id || ''}
-              onViewContract={(contract) => {
-                setEditingContractId(contract.id);
-                setShowContractsDialog(false);
-                setShowContractEditor(true);
-              }}
-              onCreateContract={() => {
-                setEditingContractId(undefined);
-                setShowContractsDialog(false);
-                setShowContractEditor(true);
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Contract Editor Dialog */}
-      {showContractEditor && projectData.projectId && (
-        <Dialog
-          open={showContractEditor}
-          onClose={() => {
-            setShowContractEditor(false);
-            setEditingContractId(undefined);
-          }}
-          maxWidth="lg"
-          fullWidth
-          PaperProps={{
-            sx: {
-              borderRadius: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 },
-              bgcolor: 'rgba(26, 26, 26, 0.95)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              maxHeight: '90vh',
-            },
-          }}
-        >
-          <DialogContent sx={{ p: 0 }}>
-            <ContractEditingInterface
-              splitSheetId={projectData.splitSheetData?.id || ''}
-              projectId={projectData.projectId}
-              splitSheetData={projectData.splitSheetData}
-              contractId={editingContractId}
-              onSave={(_contract: Contract) => {
-                setShowContractEditor(false);
-                setEditingContractId(undefined);
-                toast.showSuccess('Kontrakt lagret');
-              }}
-              onCancel={() => {
-                setShowContractEditor(false);
-                setEditingContractId(undefined);
-              }}
-              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
 
       {/* Success Snackbar */}
 

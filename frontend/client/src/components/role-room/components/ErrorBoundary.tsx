@@ -1,12 +1,6 @@
-import type { ReactNode, ReactElement } from 'react';
-import React from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  Paper,
-} from '@mui/material';
-import { ErrorOutline as ErrorIcon } from '@mui/icons-material';
+import React, { type ReactNode, type ReactElement } from "react";
+import { Box, Typography, Button, Paper } from "@mui/material";
+import { ErrorOutline as ErrorIcon } from "@mui/icons-material";
 
 interface Props {
   children: ReactNode;

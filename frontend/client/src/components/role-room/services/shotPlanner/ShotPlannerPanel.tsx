@@ -367,7 +367,7 @@ export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ onClose }) =
   // Sync scenes from database on mount
   useEffect(() => {
     syncScenes();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [syncScenes]);
   
   const handleCreateScene = (name: string, location: string) => {
     createScene(name, location);

@@ -1,45 +1,8 @@
-import { useState, useEffect } from 'react';
-import {
-  Drawer,
-  Box,
-  Typography,
-  IconButton,
-  Button,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Card,
-  CardContent,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControlLabel,
-  Switch,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Divider,
-  Alert,
-  useTheme,
-  useMediaQuery,
-} from '@mui/material';
-import {
-  Close as CloseIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  EventAvailable as AvailableIcon,
-  EventBusy as UnavailableIcon,
-  Schedule as TentativeIcon,
-  Warning as WarningIcon,
-} from '@mui/icons-material';
-import type { CrewAvailability, CrewConflict } from '../services/castingApiService';
-import { crewAvailabilityApi, crewConflictsApi } from '../services/castingApiService';
-import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useState, useEffect } from "react";
+import { Drawer, Box, Typography, IconButton, Button, TextField, Select, MenuItem, FormControl, InputLabel, Card, CardContent, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, List, ListItem, ListItemText, ListItemSecondaryAction, Divider, Alert, useTheme, useMediaQuery } from "@mui/material";
+import { Close as CloseIcon, Add as AddIcon, Delete as DeleteIcon, EventAvailable as AvailableIcon, EventBusy as UnavailableIcon, Schedule as TentativeIcon, Warning as WarningIcon } from "@mui/icons-material";
+import { crewAvailabilityApi, crewConflictsApi, type CrewAvailability, type CrewConflict } from "../services/castingApiService";
+import GlobalMentionHelper from "./shared/GlobalMentionHelper";
 
 interface CrewAvailabilityDrawerProps {
   open: boolean;

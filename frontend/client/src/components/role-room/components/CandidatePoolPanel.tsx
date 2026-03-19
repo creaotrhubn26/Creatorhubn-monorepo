@@ -1,41 +1,9 @@
-import { useState, useEffect, type FC } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  IconButton,
-  Card,
-  CardContent,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Chip,
-  Avatar,
-  InputAdornment,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Search as SearchIcon,
-  Person as PersonIcon,
-  Download as DownloadIcon,
-  Upload as UploadIcon,
-  Close as CloseIcon,
-  Email as EmailIcon,
-  Phone as PhoneIcon,
-} from '@mui/icons-material';
-import type { PoolCandidate } from '../services/candidatePoolService';
-import { candidatePoolService } from '../services/candidatePoolService';
-import type { CastingProject } from '../models/casting';
-import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
+import { useState, useEffect, type FC } from "react";
+import { Box, Typography, Button, IconButton, Card, CardContent, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Avatar, InputAdornment, Select, MenuItem, FormControl, InputLabel, useMediaQuery, useTheme } from "@mui/material";
+import { Add as AddIcon, Delete as DeleteIcon, Search as SearchIcon, Person as PersonIcon, Download as DownloadIcon, Upload as UploadIcon, Close as CloseIcon, Email as EmailIcon, Phone as PhoneIcon } from "@mui/icons-material";
+import { candidatePoolService, type PoolCandidate } from "../services/candidatePoolService";
+import type { CastingProject } from "../models/casting";
+import { getCandidatePhotoObjectPosition } from "../utils/candidatePhotoFocalPoint";
 
 interface CandidatePoolPanelProps {
   projects: CastingProject[];
