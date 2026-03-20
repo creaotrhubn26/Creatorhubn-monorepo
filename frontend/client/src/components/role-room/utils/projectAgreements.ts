@@ -249,6 +249,173 @@ export const PROJECT_AGREEMENT_SIGNATURE_STATUS_LABELS: Record<RoleRoomGoogleAgr
   error: 'Feil i signaturflyt',
 };
 
+export type ProjectAgreementSignatureProgressStepKey =
+  | 'draft'
+  | 'prepared'
+  | 'sent'
+  | 'opened'
+  | 'signed';
+
+export interface ProjectAgreementSignatureProgressStep {
+  key: ProjectAgreementSignatureProgressStepKey;
+  label: string;
+  state: 'complete' | 'current' | 'upcoming';
+}
+
+export interface ProjectAgreementSignatureProgress {
+  steps: ProjectAgreementSignatureProgressStep[];
+  issueLabel?: string;
+  issueTone?: { background: string; color: string };
+}
+
+export interface ProjectAgreementPrimarySignatureAction {
+  key:
+    | 'prepare'
+    | 'send'
+    | 'open'
+    | 'confirm_signed'
+    | 'sync'
+    | 'view'
+    | 'manual_send'
+    | 'manual_sign'
+    | 'none';
+  label: string;
+}
+
+const SIGNATURE_PROGRESS_LABELS: Record<ProjectAgreementSignatureProgressStepKey, string> = {
+  draft: 'Utkast',
+  prepared: 'Klargjort',
+  sent: 'Sendt',
+  opened: 'Åpnet',
+  signed: 'Signert',
+};
+
+const getAgreementSignatureProgressAnchor = (
+  agreement: ProjectAgreement,
+): ProjectAgreementSignatureProgressStepKey => {
+  const signatureStatus = agreement.google_signature?.status;
+  if (signatureStatus === 'signed' || agreement.status === 'signed') {
+    return 'signed';
+  }
+  if (signatureStatus === 'opened_in_google') {
+    return 'opened';
+  }
+  if (signatureStatus === 'sent' || agreement.status === 'sent') {
+    return 'sent';
+  }
+  if (signatureStatus === 'prepared') {
+    return 'prepared';
+  }
+  return 'draft';
+};
+
+export function getAgreementSignatureProgress(
+  agreement: ProjectAgreement,
+): ProjectAgreementSignatureProgress {
+  const anchor = getAgreementSignatureProgressAnchor(agreement);
+  const orderedKeys: ProjectAgreementSignatureProgressStepKey[] = [
+    'draft',
+    'prepared',
+    'sent',
+    'opened',
+    'signed',
+  ];
+  const anchorIndex = orderedKeys.indexOf(anchor);
+  const steps = orderedKeys.map<ProjectAgreementSignatureProgressStep>((key, index) => ({
+    key,
+    label: SIGNATURE_PROGRESS_LABELS[key],
+    state: index < anchorIndex
+      ? 'complete'
+      : index === anchorIndex
+        ? 'current'
+        : 'upcoming',
+  }));
+
+  const signatureStatus = agreement.google_signature?.status;
+  if (signatureStatus === 'changes_requested' || signatureStatus === 'rejected' || signatureStatus === 'error') {
+    return {
+      steps,
+      issueLabel: PROJECT_AGREEMENT_SIGNATURE_STATUS_LABELS[signatureStatus],
+      issueTone: getAgreementSignatureTone(agreement.google_signature),
+    };
+  }
+
+  return { steps };
+}
+
+export function getAgreementPrimarySignatureAction(
+  agreement: ProjectAgreement,
+  options: { hasGoogleAccess: boolean },
+): ProjectAgreementPrimarySignatureAction {
+  const signatureStatus = agreement.google_signature?.status;
+  if (!agreement.google_signature) {
+    if (options.hasGoogleAccess) {
+      return { key: 'prepare', label: 'Klargjør signering' };
+    }
+    if (agreement.status === 'signed') {
+      return { key: 'none', label: 'Signert' };
+    }
+    if (agreement.status === 'sent') {
+      return { key: 'manual_sign', label: 'Marker som signert' };
+    }
+    return { key: 'manual_send', label: 'Marker som sendt' };
+  }
+
+  switch (signatureStatus) {
+    case 'prepared':
+      return { key: 'send', label: 'Send til signering' };
+    case 'sent':
+      return agreement.google_signature?.requestUrl || agreement.google_signature?.webViewUrl
+        ? { key: 'open', label: 'Åpne signatur' }
+        : { key: 'sync', label: 'Hent status fra Google' };
+    case 'opened_in_google':
+      return { key: 'confirm_signed', label: 'Bekreft signert i Google' };
+    case 'signed':
+      return { key: 'view', label: 'Åpne signert avtale' };
+    case 'changes_requested':
+    case 'rejected':
+    case 'error':
+      return { key: 'sync', label: 'Hent siste status' };
+    case 'not_started':
+      return options.hasGoogleAccess
+        ? { key: 'prepare', label: 'Klargjør signering' }
+        : { key: 'manual_send', label: 'Marker som sendt' };
+    default:
+      return { key: 'none', label: 'Ingen handling' };
+  }
+}
+
+export function getAgreementClientFacingStatusSummary(
+  agreement: ProjectAgreement,
+): string {
+  const signatureStatus = agreement.google_signature?.status;
+  if (signatureStatus === 'signed' || agreement.status === 'signed') {
+    return 'Avtalen er signert og låst som gjeldende versjon.';
+  }
+  if (signatureStatus === 'opened_in_google') {
+    return 'Avtalen er åpnet i Google. Når signeringen er fullført, bekreftes den tilbake i prosjektet.';
+  }
+  if (signatureStatus === 'sent') {
+    return 'Avtalen er sendt til signering. Neste steg er å åpne dokumentet i Google og fullføre signeringen.';
+  }
+  if (signatureStatus === 'prepared') {
+    return 'Avtalen er klargjort og neste steg er utsendelse til signering.';
+  }
+  if (signatureStatus === 'changes_requested') {
+    return 'Avtalen har kommet tilbake med ønske om endringer før signering.';
+  }
+  if (signatureStatus === 'rejected') {
+    return 'Avtalen er avslått og må avklares før prosjektet går videre.';
+  }
+  if (signatureStatus === 'error') {
+    return 'Signaturflyten trenger oppfølging før avtalen kan fullføres.';
+  }
+  if (agreement.status === 'sent') {
+    return 'Avtalen er delt og venter på videre behandling.';
+  }
+  return 'Avtalen er fortsatt i utkast og er ikke sendt til signering ennå.';
+}
+
 export function getAgreementSignatureTone(
   signature?: RoleRoomGoogleAgreementSignature | null,
 ): { background: string; color: string } {

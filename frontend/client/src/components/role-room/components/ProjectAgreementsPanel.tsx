@@ -6,6 +6,7 @@ import {
   Card,
   CardContent,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -29,6 +30,7 @@ import {
   Draw as DrawIcon,
   OpenInNew as OpenInNewIcon,
   Send as SendIcon,
+  TaskAlt as TaskAltIcon,
   Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
@@ -73,6 +75,9 @@ import {
   buildDefaultExtraAgreementDraft,
   CLIENT_AGREEMENT_TEMPLATE_GROUPS,
   EXTRA_AGREEMENT_TEMPLATE_OPTIONS,
+  getAgreementClientFacingStatusSummary,
+  getAgreementPrimarySignatureAction,
+  getAgreementSignatureProgress,
   getAgreementSignatureLabel,
   getAgreementSignatureTone,
   getAgreementTemplateConfig,
@@ -195,7 +200,10 @@ const getGoogleSignatureSummaryCopy = (agreement: ProjectAgreement): string => {
   if (signature.status === 'rejected' || signature.status === 'changes_requested') {
     return `${PROJECT_AGREEMENT_SIGNATURE_STATUS_LABELS[signature.status]} i Google${timestamp ? ` · ${timestamp}` : ''}.`;
   }
-  if (signature.status === 'sent' || signature.status === 'opened_in_google') {
+  if (signature.status === 'opened_in_google') {
+    return `Avtalen er åpnet i Google og venter på bekreftet signering tilbake i prosjektet${timestamp ? ` · ${timestamp}` : ''}.`;
+  }
+  if (signature.status === 'sent') {
     return `Avtalen er sendt til Google-signatur${timestamp ? ` · ${timestamp}` : ''}.`;
   }
   return `Avtalen er klargjort for Google-signatur${timestamp ? ` · ${timestamp}` : ''}.`;
@@ -261,6 +269,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
   const [previewAgreement, setPreviewAgreement] = useState<ProjectAgreement | null>(null);
   const [highlightedAgreementId, setHighlightedAgreementId] = useState<string | null>(null);
   const [pendingAgreementFocusId, setPendingAgreementFocusId] = useState<string | null>(null);
+  const [expandedSignatureControlsAgreementId, setExpandedSignatureControlsAgreementId] = useState<string | null>(null);
   const [clientDraft, setClientDraft] = useState<ProjectAgreementDraft>({
     agreementType: 'startup_collaboration',
     title: '',
@@ -295,6 +304,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
   });
   const useLocalFallback = shouldUseRoleRoomLocalFallback();
   const agreementRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const autoSyncedAgreementMarkersRef = useRef<Record<string, string>>({});
 
   const currentUserLabel = useMemo(() => {
     const session = authSessionService.getSessionSync();
@@ -867,67 +877,105 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
     }
   }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, useLocalFallback]);
 
+  const applyGoogleSignatureStatusUpdate = useCallback(async (
+    agreement: ProjectAgreement,
+    status: RoleRoomGoogleAgreementSignatureStatus,
+    options?: { silent?: boolean; skipReload?: boolean; successMessage?: string },
+  ): Promise<ProjectAgreement> => {
+    const { silent = false, skipReload = false, successMessage } = options ?? {};
+    let updatedAgreement: ProjectAgreement;
+    if (useLocalFallback) {
+      const now = new Date().toISOString();
+      const existingSignature = agreement.google_signature;
+      const shouldStoreAudit = status === 'signed' || status === 'rejected' || status === 'changes_requested';
+      const signedPdfArtifactId = status === 'signed'
+        ? existingSignature?.signedPdfArtifactId ?? `local-signed-pdf-${agreement.id}`
+        : existingSignature?.signedPdfArtifactId ?? null;
+      const auditArtifactId = shouldStoreAudit
+        ? existingSignature?.auditArtifactId ?? `local-audit-${agreement.id}`
+        : existingSignature?.auditArtifactId ?? null;
+      updatedAgreement = await persistLocalAgreement({
+        ...agreement,
+        status: status === 'signed' ? 'signed' : status === 'prepared' ? 'draft' : 'sent',
+        signed_date: status === 'signed' ? now : agreement.signed_date,
+        updated_at: now,
+        google_signature: {
+          id: existingSignature?.id ?? `local-google-signature-${agreement.id}`,
+          projectId: project.id,
+          agreementId: agreement.id,
+          provider: 'google_workspace',
+          status,
+          documentTitle: agreement.title,
+          counterpartyName: agreement.counterparty_name,
+          counterpartyEmail: agreement.counterparty_email,
+          preparedAt: existingSignature?.preparedAt ?? now,
+          sentAt: status === 'sent'
+            ? now
+            : status === 'opened_in_google'
+              ? existingSignature?.sentAt ?? now
+              : existingSignature?.sentAt,
+          signedAt: status === 'signed' ? now : existingSignature?.signedAt,
+          declinedAt: status === 'rejected' || status === 'changes_requested' ? now : existingSignature?.declinedAt,
+          lastOpenedAt: status === 'opened_in_google' ? now : existingSignature?.lastOpenedAt,
+          requestUrl: existingSignature?.requestUrl ?? existingSignature?.webViewUrl ?? null,
+          webViewUrl: existingSignature?.webViewUrl ?? existingSignature?.requestUrl ?? null,
+          sourceArtifactId: existingSignature?.sourceArtifactId ?? null,
+          pdfSnapshotArtifactId: existingSignature?.pdfSnapshotArtifactId ?? null,
+          signedPdfArtifactId,
+          auditArtifactId,
+          signedDriveFileId: status === 'signed'
+            ? existingSignature?.signedDriveFileId ?? `local-signed-drive-${agreement.id}`
+            : existingSignature?.signedDriveFileId ?? null,
+          lastSyncedAt: now,
+          metadata: {
+            ...(existingSignature?.metadata ?? {}),
+            ...(shouldStoreAudit ? { auditArtifactId } : {}),
+            ...(status === 'signed' ? { signedPdfArtifactId, syncedFromGoogleAt: now } : {}),
+          },
+        },
+      });
+    } else {
+      const response = await projectAgreementsApi.updateGoogleSignatureStatus(project.id, agreement.id, status);
+      updatedAgreement = response.agreement;
+    }
+
+    await syncAgreementTimeline(updatedAgreement);
+    await syncAgreementReview(updatedAgreement);
+    emitProjectAgreementEvent({
+      projectId: project.id,
+      mutation: 'signature_updated',
+      agreementId: agreement.id,
+    });
+
+    if (
+      updatedAgreement.counterparty_type === 'extra'
+      && updatedAgreement.counterparty_id
+      && onCandidateStatusChange
+      && status === 'signed'
+    ) {
+      onCandidateStatusChange(updatedAgreement.counterparty_id, 'contracted');
+    }
+
+    if (!silent) {
+      enqueueSnackbar(
+        successMessage ?? `Google-signatur oppdatert: ${GOOGLE_SIGNATURE_TRANSITION_LABELS[status].toLowerCase()}.`,
+        { variant: 'success' },
+      );
+    }
+    if (!skipReload) {
+      void loadAgreements();
+      void loadGoogleStatus();
+    }
+    return updatedAgreement;
+  }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, onCandidateStatusChange, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, useLocalFallback]);
+
   const handleUpdateGoogleSignatureStatus = useCallback(async (
     agreement: ProjectAgreement,
     status: RoleRoomGoogleAgreementSignatureStatus,
   ) => {
     setSignatureBusyAgreementId(agreement.id);
     try {
-      let updatedAgreement: ProjectAgreement;
-      if (useLocalFallback) {
-        const now = new Date().toISOString();
-        const existingSignature = agreement.google_signature;
-        updatedAgreement = await persistLocalAgreement({
-          ...agreement,
-          status: status === 'signed' ? 'signed' : status === 'prepared' ? 'draft' : 'sent',
-          signed_date: status === 'signed' ? now : undefined,
-          updated_at: now,
-          google_signature: {
-            id: existingSignature?.id ?? `local-google-signature-${agreement.id}`,
-            projectId: project.id,
-            agreementId: agreement.id,
-            provider: 'google_workspace',
-            status,
-            documentTitle: agreement.title,
-            counterpartyName: agreement.counterparty_name,
-            counterpartyEmail: agreement.counterparty_email,
-            preparedAt: existingSignature?.preparedAt ?? now,
-            sentAt: status === 'sent' ? now : existingSignature?.sentAt,
-            signedAt: status === 'signed' ? now : existingSignature?.signedAt,
-            declinedAt: status === 'rejected' || status === 'changes_requested' ? now : existingSignature?.declinedAt,
-            lastOpenedAt: status === 'opened_in_google' ? now : existingSignature?.lastOpenedAt,
-            lastSyncedAt: now,
-            metadata: existingSignature?.metadata ?? {},
-          },
-        });
-      } else {
-        const response = await projectAgreementsApi.updateGoogleSignatureStatus(project.id, agreement.id, status);
-        updatedAgreement = response.agreement;
-      }
-
-      await syncAgreementTimeline(updatedAgreement);
-      await syncAgreementReview(updatedAgreement);
-      emitProjectAgreementEvent({
-        projectId: project.id,
-        mutation: 'signature_updated',
-        agreementId: agreement.id,
-      });
-
-      if (
-        updatedAgreement.counterparty_type === 'extra'
-        && updatedAgreement.counterparty_id
-        && onCandidateStatusChange
-        && status === 'signed'
-      ) {
-        onCandidateStatusChange(updatedAgreement.counterparty_id, 'contracted');
-      }
-
-      enqueueSnackbar(
-        `Google-signatur oppdatert: ${GOOGLE_SIGNATURE_TRANSITION_LABELS[status].toLowerCase()}.`,
-        { variant: 'success' },
-      );
-      void loadAgreements();
-      void loadGoogleStatus();
+      await applyGoogleSignatureStatusUpdate(agreement, status);
     } catch (error) {
       enqueueSnackbar(
         error instanceof Error ? error.message : 'Kunne ikke oppdatere Google-signaturstatusen',
@@ -936,7 +984,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
     } finally {
       setSignatureBusyAgreementId(null);
     }
-  }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, onCandidateStatusChange, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, useLocalFallback]);
+  }, [applyGoogleSignatureStatusUpdate, enqueueSnackbar]);
 
   const handleSendGoogleSignatureRequest = useCallback(async (agreement: ProjectAgreement) => {
     setSignatureBusyAgreementId(agreement.id);
@@ -1054,21 +1102,24 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
   }, [onOpenMedia]);
 
   const handleSyncGoogleSignature = useCallback(async (agreement: ProjectAgreement) => {
-    setSignatureBusyAgreementId(agreement.id);
-    try {
+    const syncGoogleSignature = async (
+      targetAgreement: ProjectAgreement,
+      options?: { silent?: boolean; reloadAfter?: boolean },
+    ): Promise<ProjectAgreement> => {
+      const { silent = false, reloadAfter = true } = options ?? {};
       let updatedAgreement: ProjectAgreement;
       if (useLocalFallback) {
         const now = new Date().toISOString();
-        const existingSignature = agreement.google_signature;
+        const existingSignature = targetAgreement.google_signature;
         const inferredStatus = existingSignature?.signedPdfArtifactId || existingSignature?.signedDriveFileId
           ? 'signed'
           : existingSignature?.status ?? 'prepared';
         updatedAgreement = await persistLocalAgreement({
-          ...agreement,
-          status: inferredStatus === 'signed' ? 'signed' : agreement.status,
+          ...targetAgreement,
+          status: inferredStatus === 'signed' ? 'signed' : targetAgreement.status,
           signed_date: inferredStatus === 'signed'
-            ? agreement.signed_date ?? existingSignature?.signedAt ?? now
-            : agreement.signed_date,
+            ? targetAgreement.signed_date ?? existingSignature?.signedAt ?? now
+            : targetAgreement.signed_date,
           updated_at: now,
           google_signature: existingSignature ? {
             ...existingSignature,
@@ -1081,7 +1132,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           } : null,
         });
       } else {
-        const response = await projectAgreementsApi.syncGoogleSignature(project.id, agreement.id);
+        const response = await projectAgreementsApi.syncGoogleSignature(project.id, targetAgreement.id);
         updatedAgreement = response.agreement;
       }
 
@@ -1090,11 +1141,21 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       emitProjectAgreementEvent({
         projectId: project.id,
         mutation: 'signature_updated',
-        agreementId: agreement.id,
+        agreementId: targetAgreement.id,
       });
-      enqueueSnackbar('Google-signaturflyten er synkronisert tilbake til prosjektet.', { variant: 'success' });
-      void loadAgreements();
-      void loadGoogleStatus();
+      if (!silent) {
+        enqueueSnackbar('Google-signaturflyten er synkronisert tilbake til prosjektet.', { variant: 'success' });
+      }
+      if (reloadAfter) {
+        void loadAgreements();
+        void loadGoogleStatus();
+      }
+      return updatedAgreement;
+    };
+
+    setSignatureBusyAgreementId(agreement.id);
+    try {
+      await syncGoogleSignature(agreement);
     } catch (error) {
       enqueueSnackbar(
         error instanceof Error ? error.message : 'Kunne ikke synkronisere Google-signaturflyten',
@@ -1104,6 +1165,155 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       setSignatureBusyAgreementId(null);
     }
   }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, useLocalFallback]);
+
+  const syncGoogleSignatureSilently = useCallback(async (agreement: ProjectAgreement) => {
+    let updatedAgreement: ProjectAgreement;
+    if (useLocalFallback) {
+      const now = new Date().toISOString();
+      const existingSignature = agreement.google_signature;
+      const inferredStatus = existingSignature?.signedPdfArtifactId || existingSignature?.signedDriveFileId
+        ? 'signed'
+        : existingSignature?.status ?? 'prepared';
+      updatedAgreement = await persistLocalAgreement({
+        ...agreement,
+        status: inferredStatus === 'signed' ? 'signed' : agreement.status,
+        signed_date: inferredStatus === 'signed'
+          ? agreement.signed_date ?? existingSignature?.signedAt ?? now
+          : agreement.signed_date,
+        updated_at: now,
+        google_signature: existingSignature ? {
+          ...existingSignature,
+          status: inferredStatus,
+          lastSyncedAt: now,
+          metadata: {
+            ...existingSignature.metadata,
+            syncedFromGoogleAt: now,
+          },
+        } : null,
+      });
+    } else {
+      const response = await projectAgreementsApi.syncGoogleSignature(project.id, agreement.id);
+      updatedAgreement = response.agreement;
+    }
+
+    await syncAgreementTimeline(updatedAgreement);
+    await syncAgreementReview(updatedAgreement);
+    emitProjectAgreementEvent({
+      projectId: project.id,
+      mutation: 'signature_updated',
+      agreementId: agreement.id,
+    });
+    return updatedAgreement;
+  }, [persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, useLocalFallback]);
+
+  const handleConfirmGoogleSigned = useCallback(async (agreement: ProjectAgreement) => {
+    setSignatureBusyAgreementId(agreement.id);
+    try {
+      const syncedAgreement = await syncGoogleSignatureSilently(agreement);
+      const syncedStatus = syncedAgreement.google_signature?.status ?? null;
+
+      if (syncedStatus === 'signed' || syncedAgreement.status === 'signed') {
+        enqueueSnackbar('Signeringen er allerede bekreftet og lagret i prosjektet.', { variant: 'success' });
+        void loadAgreements();
+        void loadGoogleStatus();
+        return;
+      }
+
+      if (syncedStatus === 'changes_requested' || syncedStatus === 'rejected') {
+        enqueueSnackbar(
+          syncedStatus === 'changes_requested'
+            ? 'Google-flyten viser at avtalen kom tilbake med endringer. Den ble ikke markert som signert.'
+            : 'Google-flyten viser at avtalen er avvist. Den ble ikke markert som signert.',
+          { variant: 'warning' },
+        );
+        void loadAgreements();
+        void loadGoogleStatus();
+        return;
+      }
+
+      await applyGoogleSignatureStatusUpdate(syncedAgreement, 'signed', {
+        silent: true,
+        skipReload: true,
+      });
+
+      enqueueSnackbar('Signeringen er bekreftet. Signert PDF og signaturspor er lagret i prosjektet.', {
+        variant: 'success',
+      });
+      void loadAgreements();
+      void loadGoogleStatus();
+    } catch (error) {
+      enqueueSnackbar(
+        error instanceof Error ? error.message : 'Kunne ikke bekrefte Google-signeringen',
+        { variant: 'error' },
+      );
+    } finally {
+      setSignatureBusyAgreementId(null);
+    }
+  }, [applyGoogleSignatureStatusUpdate, enqueueSnackbar, loadAgreements, loadGoogleStatus, syncGoogleSignatureSilently]);
+
+  useEffect(() => {
+    if (useLocalFallback || loading || googleStatusLoading) {
+      return;
+    }
+    if (!googleStatus?.configured || googleStatus.state !== 'connected') {
+      return;
+    }
+
+    const syncCandidates = agreements.filter((agreement) => {
+      const signature = agreement.google_signature;
+      if (!signature || (signature.status !== 'sent' && signature.status !== 'opened_in_google')) {
+        return false;
+      }
+      const marker = [
+        signature.status,
+        signature.sentAt ?? '',
+        signature.lastOpenedAt ?? '',
+        signature.lastSyncedAt ?? '',
+        agreement.updated_at ?? '',
+      ].join('|');
+      if (autoSyncedAgreementMarkersRef.current[agreement.id] === marker) {
+        return false;
+      }
+      autoSyncedAgreementMarkersRef.current[agreement.id] = marker;
+      return true;
+    });
+
+    if (syncCandidates.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const results = await Promise.all(syncCandidates.map(async (agreement) => {
+        try {
+          await syncGoogleSignatureSilently(agreement);
+          return true;
+        } catch (error) {
+          console.warn('[ProjectAgreementsPanel] Auto-sync of Google agreement signature failed', error);
+          return false;
+        }
+      }));
+
+      if (!cancelled && results.some(Boolean)) {
+        void loadAgreements();
+        void loadGoogleStatus();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    agreements,
+    googleStatus?.configured,
+    googleStatus?.state,
+    googleStatusLoading,
+    loadAgreements,
+    loadGoogleStatus,
+    loading,
+    syncGoogleSignatureSilently,
+    useLocalFallback,
+  ]);
 
   const renderAgreementCards = (items: ProjectAgreement[]) => {
     if (items.length === 0) {
@@ -1123,10 +1333,42 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           const isStatusDriver = linkedReview?.id === statusDriverReview?.id;
           const linkedReviewStatusLabel = linkedReview ? REVIEW_STATUS_LABELS[linkedReview.status] ?? linkedReview.status : null;
           const signatureTone = getAgreementSignatureTone(agreement.google_signature);
+          const signatureProgress = getAgreementSignatureProgress(agreement);
+          const clientFacingStatusSummary = getAgreementClientFacingStatusSummary(agreement);
           const hasGoogleAccess = useLocalFallback || (
             Boolean(googleStatus?.configured) && googleStatus?.state === 'connected'
           );
+          const primarySignatureAction = getAgreementPrimarySignatureAction(agreement, { hasGoogleAccess });
           const signatureBusy = signatureBusyAgreementId === agreement.id;
+          const showAdvancedSignatureControls = expandedSignatureControlsAgreementId === agreement.id;
+          const runPrimarySignatureAction = () => {
+            switch (primarySignatureAction.key) {
+              case 'prepare':
+                void handlePrepareGoogleSignature(agreement);
+                break;
+              case 'send':
+                void handleSendGoogleSignatureRequest(agreement);
+                break;
+              case 'open':
+              case 'view':
+                openGoogleSignature(agreement);
+                break;
+              case 'confirm_signed':
+                void handleConfirmGoogleSigned(agreement);
+                break;
+              case 'sync':
+                void handleSyncGoogleSignature(agreement);
+                break;
+              case 'manual_send':
+                void handleAgreementStatus(agreement.id, 'sent');
+                break;
+              case 'manual_sign':
+                void handleAgreementStatus(agreement.id, 'signed');
+                break;
+              default:
+                break;
+            }
+          };
           return (
             <Grid size={{ xs: 12, md: 6, xl: 4 }} key={agreement.id}>
               <Card
@@ -1232,6 +1474,62 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   <Typography sx={{ color: signatureTone.color, fontSize: '0.8rem', mb: 0.35 }}>
                     {getGoogleSignatureSummaryCopy(agreement)}
                   </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.79rem', mb: 0.75 }}>
+                    {clientFacingStatusSummary}
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+                      gap: 0.55,
+                      mb: 1,
+                    }}
+                  >
+                    {signatureProgress.steps.map((step) => (
+                      <Box
+                        key={step.key}
+                        sx={{
+                          px: 0.65,
+                          py: 0.55,
+                          borderRadius: 1.1,
+                          border: step.state === 'current'
+                            ? '1px solid rgba(250,204,21,0.36)'
+                            : '1px solid rgba(148,163,184,0.16)',
+                          bgcolor: step.state === 'complete'
+                            ? 'rgba(16,185,129,0.14)'
+                            : step.state === 'current'
+                              ? 'rgba(250,204,21,0.12)'
+                              : 'rgba(15,23,42,0.46)',
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            color: step.state === 'complete'
+                              ? '#86efac'
+                              : step.state === 'current'
+                                ? '#fde68a'
+                                : 'rgba(148,163,184,0.84)',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            textAlign: 'center',
+                          }}
+                        >
+                          {step.label}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                  {signatureProgress.issueLabel ? (
+                    <Chip
+                      size="small"
+                      label={signatureProgress.issueLabel}
+                      sx={{
+                        mb: 1.1,
+                        bgcolor: signatureProgress.issueTone?.background ?? 'rgba(148,163,184,0.16)',
+                        color: signatureProgress.issueTone?.color ?? '#cbd5e1',
+                      }}
+                    />
+                  ) : null}
                   {linkedReview ? (
                     <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.78rem', mb: 1.2 }}>
                       {linkedReview.comments?.length ?? 0} kommentarer
@@ -1244,8 +1542,42 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       Ingen klientreview koblet til avtalen ennå.
                     </Typography>
                   )}
-
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    {!readOnly && primarySignatureAction.key !== 'none' ? (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={
+                          primarySignatureAction.key === 'prepare'
+                            ? <DescriptionIcon />
+                            : primarySignatureAction.key === 'send' || primarySignatureAction.key === 'manual_send'
+                              ? <SendIcon />
+                              : primarySignatureAction.key === 'manual_sign'
+                                ? <DrawIcon />
+                                : primarySignatureAction.key === 'confirm_signed'
+                                  ? <TaskAltIcon />
+                                : <OpenInNewIcon />
+                        }
+                        onClick={runPrimarySignatureAction}
+                        disabled={signatureBusy || googleStatusLoading}
+                        sx={{
+                          flex: 1.1,
+                          textTransform: 'none',
+                          fontWeight: 800,
+                          bgcolor: primarySignatureAction.key === 'view' || primarySignatureAction.key === 'manual_sign'
+                            ? '#10b981'
+                            : primarySignatureAction.key === 'confirm_signed'
+                              ? '#059669'
+                            : primarySignatureAction.key === 'send' || primarySignatureAction.key === 'manual_send'
+                              ? '#f59e0b'
+                              : primarySignatureAction.key === 'prepare'
+                                ? '#8b5cf6'
+                                : '#2563eb',
+                        }}
+                      >
+                        {primarySignatureAction.label}
+                      </Button>
+                    ) : null}
                     <Button
                       size="small"
                       variant="outlined"
@@ -1255,18 +1587,8 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     >
                       Se avtale
                     </Button>
-                    {!readOnly && !agreement.google_signature ? (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<DescriptionIcon />}
-                        onClick={() => { void handlePrepareGoogleSignature(agreement); }}
-                        disabled={!hasGoogleAccess || signatureBusy || googleStatusLoading}
-                        sx={{ flex: 1, textTransform: 'none', fontWeight: 700, borderColor: '#8b5cf6', color: '#c4b5fd' }}
-                      >
-                        Klargjør Google-signatur
-                      </Button>
-                    ) : null}
+                  </Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
                     {!readOnly && agreement.google_signature ? (
                       <Button
                         size="small"
@@ -1274,104 +1596,86 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         startIcon={<OpenInNewIcon />}
                         onClick={() => openGoogleSignature(agreement)}
                         disabled={signatureBusy}
-                        sx={{ flex: 1, textTransform: 'none', fontWeight: 700 }}
+                        sx={{ textTransform: 'none', fontWeight: 700 }}
                       >
                         Åpne i Google
                       </Button>
                     ) : null}
-                    {!readOnly && !agreement.google_signature && !hasGoogleAccess && !googleStatusLoading ? (
+                    {!readOnly && (agreement.google_signature?.requestUrl || agreement.google_signature?.webViewUrl) ? (
                       <Button
                         size="small"
                         variant="outlined"
-                        startIcon={<SendIcon />}
-                        onClick={() => { void handleAgreementStatus(agreement.id, 'sent'); }}
-                        sx={{ flex: 1, textTransform: 'none', fontWeight: 700, borderColor: '#f59e0b', color: '#fbbf24' }}
+                        onClick={() => { void handleCopyGoogleSignatureLink(agreement); }}
+                        disabled={signatureBusy}
+                        sx={{ textTransform: 'none', fontWeight: 700 }}
                       >
-                        Marker som sendt
+                        Kopier signaturlenke
                       </Button>
                     ) : null}
-                    {!readOnly && !agreement.google_signature && !hasGoogleAccess && !googleStatusLoading && agreement.status !== 'signed' ? (
+                    {!readOnly && agreement.google_signature ? (
                       <Button
                         size="small"
-                        variant="contained"
-                        startIcon={<DrawIcon />}
-                        onClick={() => { void handleAgreementStatus(agreement.id, 'signed'); }}
-                        sx={{ flex: 1, textTransform: 'none', fontWeight: 700, bgcolor: '#10b981' }}
+                        variant="text"
+                        onClick={() => {
+                          setExpandedSignatureControlsAgreementId((current) => (
+                            current === agreement.id ? null : agreement.id
+                          ));
+                        }}
+                        sx={{ textTransform: 'none', fontWeight: 700 }}
                       >
-                        Marker som signert
+                        {showAdvancedSignatureControls ? 'Skjul manuelle valg' : 'Vis manuelle valg'}
                       </Button>
                     ) : null}
                   </Stack>
                   {!readOnly && agreement.google_signature ? (
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
-                      {agreement.google_signature.status === 'prepared' ? (
+                    <Collapse in={showAdvancedSignatureControls} unmountOnExit>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
                         <Button
                           size="small"
                           variant="outlined"
-                          startIcon={<SendIcon />}
-                          onClick={() => { void handleSendGoogleSignatureRequest(agreement); }}
-                          disabled={signatureBusy}
-                          sx={{ textTransform: 'none', fontWeight: 700, borderColor: '#f59e0b', color: '#fbbf24' }}
-                        >
-                          Send signaturlenke
-                        </Button>
-                      ) : null}
-                      {(agreement.google_signature.requestUrl || agreement.google_signature.webViewUrl) ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => { void handleCopyGoogleSignatureLink(agreement); }}
+                          onClick={() => { void handleSyncGoogleSignature(agreement); }}
                           disabled={signatureBusy}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Kopier signaturlenke
+                          Sync fra Google
                         </Button>
-                      ) : null}
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => { void handleSyncGoogleSignature(agreement); }}
-                        disabled={signatureBusy}
-                        sx={{ textTransform: 'none', fontWeight: 700 }}
-                      >
-                        Sync fra Google
-                      </Button>
-                      {agreement.google_signature.status !== 'signed' ? (
-                        <Button
-                          size="small"
-                          variant="contained"
-                          startIcon={<DrawIcon />}
-                          onClick={() => { void handleUpdateGoogleSignatureStatus(agreement, 'signed'); }}
-                          disabled={signatureBusy}
-                          sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#10b981' }}
-                        >
-                          Marker signert
-                        </Button>
-                      ) : null}
-                      {agreement.google_signature.status !== 'changes_requested' ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => { void handleUpdateGoogleSignatureStatus(agreement, 'changes_requested'); }}
-                          disabled={signatureBusy}
-                          sx={{ textTransform: 'none', fontWeight: 700, borderColor: '#f59e0b', color: '#fde68a' }}
-                        >
-                          Marker endringer
-                        </Button>
-                      ) : null}
-                      {agreement.google_signature.status !== 'rejected' ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="error"
-                          onClick={() => { void handleUpdateGoogleSignatureStatus(agreement, 'rejected'); }}
-                          disabled={signatureBusy}
-                          sx={{ textTransform: 'none', fontWeight: 700 }}
-                        >
-                          Marker avvist
-                        </Button>
-                      ) : null}
-                    </Stack>
+                        {agreement.google_signature.status !== 'signed' ? (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            startIcon={<DrawIcon />}
+                            onClick={() => { void handleUpdateGoogleSignatureStatus(agreement, 'signed'); }}
+                            disabled={signatureBusy}
+                            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#10b981' }}
+                          >
+                            Bekreft signert
+                          </Button>
+                        ) : null}
+                        {agreement.google_signature.status !== 'changes_requested' ? (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => { void handleUpdateGoogleSignatureStatus(agreement, 'changes_requested'); }}
+                            disabled={signatureBusy}
+                            sx={{ textTransform: 'none', fontWeight: 700, borderColor: '#f59e0b', color: '#fde68a' }}
+                          >
+                            Marker endringer
+                          </Button>
+                        ) : null}
+                        {agreement.google_signature.status !== 'rejected' ? (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={() => { void handleUpdateGoogleSignatureStatus(agreement, 'rejected'); }}
+                            disabled={signatureBusy}
+                            sx={{ textTransform: 'none', fontWeight: 700 }}
+                          >
+                            Marker avvist
+                          </Button>
+                        ) : null}
+                      </Stack>
+                    </Collapse>
                   ) : null}
                   {(onOpenReviews || onOpenTimeline || onOpenMedia) && (
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>

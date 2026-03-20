@@ -16,6 +16,7 @@ import crypto from 'crypto';
 import { existsSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
+import { Readable } from 'stream';
 import QRCode from 'qrcode';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -261,6 +262,7 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'email',
   'profile',
   'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/contacts.readonly',
 ] as const;
@@ -453,6 +455,22 @@ function getRoleRoomRequestOrigin(req?: Request): string | null {
   return `${protocol}://${host}`;
 }
 
+function sanitizeRoleRoomBrowserOrigin(value: unknown): string | null {
+  const candidate = readStringValue(value);
+  if (!candidate) {
+    return null;
+  }
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.origin;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function getRoleRoomGoogleConfig(req?: Request) {
   const clientId = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID);
   const clientSecret = readStringValue(process.env.ROLE_ROOM_GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET);
@@ -526,14 +544,27 @@ function normalizeRoleRoomGoogleAuthError(error: unknown): { message: string; st
   };
 }
 
+function readRoleRoomGoogleUpstreamErrorMessage(error: unknown): string | null {
+  const responseData = (error as { response?: { data?: unknown } } | undefined)?.response?.data;
+  const responseObject = readJsonObject(responseData);
+  const nestedError = readJsonObject(responseObject.error);
+  return readStringValue(nestedError.message)
+    ?? readStringValue(responseObject.error_description)
+    ?? readStringValue(responseObject.message)
+    ?? null;
+}
+
 function sendRoleRoomGoogleError(res: Response, error: unknown, fallbackMessage: string) {
   if (isRoleRoomGoogleAuthError(error)) {
     res.status(error.statusCode).json({ error: error.message, reconnectRequired: true });
     return;
   }
 
+  const upstreamMessage = readRoleRoomGoogleUpstreamErrorMessage(error);
   console.error(fallbackMessage, error);
-  res.status(500).json({ error: fallbackMessage });
+  res.status(500).json({
+    error: upstreamMessage ? `${fallbackMessage}: ${upstreamMessage}` : fallbackMessage,
+  });
 }
 
 function sanitizeRoleRoomReturnPath(rawValue: unknown, req?: Request): string {
@@ -1704,6 +1735,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     throw new Error('Ukjent Google-nedlastingsformat');
   }
 
+  function toRoleRoomGoogleUploadBody(payload: Buffer | Uint8Array | string): Readable {
+    return Readable.from(payload);
+  }
+
   async function getRoleRoomGoogleArtifactByType(
     projectId: string,
     localEntityType: string,
@@ -1762,7 +1797,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       ? await driveApi.files.update({
           fileId: existingArtifact.drive_file_id,
           requestBody: { name: fileName },
-          media: { mimeType: 'application/pdf', body: pdfBuffer },
+          media: { mimeType: 'application/pdf', body: toRoleRoomGoogleUploadBody(pdfBuffer) },
           fields: 'id,webViewLink,webContentLink,mimeType',
           supportsAllDrives: true,
         })
@@ -1771,7 +1806,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             name: fileName,
             parents: [parentFolderId],
           },
-          media: { mimeType: 'application/pdf', body: pdfBuffer },
+          media: { mimeType: 'application/pdf', body: toRoleRoomGoogleUploadBody(pdfBuffer) },
           fields: 'id,webViewLink,webContentLink,mimeType',
           supportsAllDrives: true,
         });
@@ -3326,7 +3361,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       roleRoomGoogleOauthStateStore.set(stateId, {
         mode,
         returnPath,
-        browserOrigin: getRoleRoomRequestOrigin(req),
+        browserOrigin: sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req),
         loginAs,
         requestedRole,
         projectId,
@@ -4273,7 +4308,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           ? await driveApi.files.update({
               fileId: existingAuditArtifact.drive_file_id,
               requestBody: { name: `${readStringValue(agreement.title) ?? 'Prosjektavtale'} · signaturspor.json` },
-              media: { mimeType: 'application/json', body: auditBuffer },
+              media: { mimeType: 'application/json', body: toRoleRoomGoogleUploadBody(auditBuffer) },
               fields: 'id,webViewLink,webContentLink,mimeType',
               supportsAllDrives: true,
             })
@@ -4282,7 +4317,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
                 name: `${readStringValue(agreement.title) ?? 'Prosjektavtale'} · signaturspor.json`,
                 parents: [approvalsFolderId],
               },
-              media: { mimeType: 'application/json', body: auditBuffer },
+              media: { mimeType: 'application/json', body: toRoleRoomGoogleUploadBody(auditBuffer) },
               fields: 'id,webViewLink,webContentLink,mimeType',
               supportsAllDrives: true,
             });
@@ -4419,7 +4454,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const fileBuffer = await fs.readFile(storagePath);
         const media = {
           mimeType: readStringValue(fileRecord.mimeType) ?? 'application/octet-stream',
-          body: Buffer.from(fileBuffer),
+          body: toRoleRoomGoogleUploadBody(fileBuffer),
         };
 
         const driveResponse = existingArtifact?.drive_file_id
@@ -4495,7 +4530,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           ? await driveApi.files.update({
               fileId: existingArtifact.drive_file_id,
               requestBody: { name: title },
-              media: { mimeType, body: contentBuffer },
+              media: { mimeType, body: toRoleRoomGoogleUploadBody(contentBuffer) },
               fields: 'id,webViewLink,webContentLink,mimeType',
               supportsAllDrives: true,
             })
@@ -4504,7 +4539,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
                 name: title,
                 parents: [parentFolderId],
               },
-              media: { mimeType, body: contentBuffer },
+              media: { mimeType, body: toRoleRoomGoogleUploadBody(contentBuffer) },
               fields: 'id,webViewLink,webContentLink,mimeType',
               supportsAllDrives: true,
             });
