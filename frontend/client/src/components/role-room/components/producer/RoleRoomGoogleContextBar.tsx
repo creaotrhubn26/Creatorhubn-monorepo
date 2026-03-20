@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Chip, Stack, Typography } from '@mui/material';
 import {
   CalendarMonthOutlined as CalendarMonthOutlinedIcon,
@@ -111,6 +111,7 @@ export default function RoleRoomGoogleContextBar({
   const [intake, setIntake] = useState<ProducerClientIntake>(EMPTY_INTAKE);
   const [materials, setMaterials] = useState<ProducerClientMaterial[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectFileRecord[]>([]);
+  const lastAutoSyncedCalendarSignatureRef = useRef<string | null>(null);
 
   const planning = useMemo(
     () => normalizeProducerProjectPlanning(project),
@@ -200,6 +201,21 @@ export default function RoleRoomGoogleContextBar({
       reviews: reviewItems,
     }),
     [intake, planning, project, reviewItems],
+  );
+  const calendarEventsSignature = useMemo(
+    () => JSON.stringify(calendarEvents.map((event) => ({
+      entityType: event.entityType,
+      entityId: event.entityId,
+      title: event.title,
+      start: event.start,
+      end: event.end,
+      phase: event.phase ?? null,
+      includeMeet: event.includeMeet ?? false,
+      allDay: event.allDay ?? false,
+      location: event.location ?? null,
+      attendeeEmails: (event.attendees ?? []).map((attendee) => attendee.email).sort(),
+    }))),
+    [calendarEvents],
   );
   const meetSession = useMemo(
     () => buildProducerGoogleMeetSession({
@@ -303,6 +319,7 @@ export default function RoleRoomGoogleContextBar({
         events: calendarEvents,
         calendarId: binding?.calendarId ?? undefined,
       });
+      lastAutoSyncedCalendarSignatureRef.current = calendarEventsSignature;
       enqueueSnackbar('Plan og milepæler er synket til Google Kalender.', { variant: 'success' });
       await refreshAll();
     } catch (error) {
@@ -313,7 +330,7 @@ export default function RoleRoomGoogleContextBar({
     } finally {
       setActionKey(null);
     }
-  }, [binding?.calendarId, calendarEvents, enqueueSnackbar, projectId, refreshAll]);
+  }, [binding?.calendarId, calendarEvents, calendarEventsSignature, enqueueSnackbar, projectId, refreshAll]);
 
   const handleMeetSession = useCallback(async () => {
     try {
@@ -334,6 +351,67 @@ export default function RoleRoomGoogleContextBar({
       setActionKey(null);
     }
   }, [enqueueSnackbar, meetSession, projectId, refreshAll]);
+
+  useEffect(() => {
+    lastAutoSyncedCalendarSignatureRef.current = null;
+  }, [projectId]);
+
+  useEffect(() => {
+    const shouldAutoSyncCalendar = canManage
+      && connection?.state === 'connected'
+      && ['Tidslinje', 'Klientsamarbeid'].includes(contextLabel)
+      && calendarEvents.length > 0
+      && !loading
+      && !loadingProjectData
+      && !actionKey;
+
+    if (!shouldAutoSyncCalendar) {
+      return undefined;
+    }
+
+    if (lastAutoSyncedCalendarSignatureRef.current === calendarEventsSignature) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          setActionKey('calendar-sync');
+          await googleWorkspaceApi.syncCalendar(projectId, {
+            events: calendarEvents,
+            calendarId: binding?.calendarId ?? undefined,
+          });
+          lastAutoSyncedCalendarSignatureRef.current = calendarEventsSignature;
+          await refreshAll();
+        } catch (error) {
+          enqueueSnackbar(
+            error instanceof Error ? error.message : 'Kunne ikke automatisk synkronisere kalenderhendelser.',
+            { variant: 'error' },
+          );
+        } finally {
+          setActionKey(null);
+        }
+      })();
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    actionKey,
+    binding?.calendarId,
+    calendarEvents,
+    calendarEvents.length,
+    calendarEventsSignature,
+    canManage,
+    connection?.state,
+    contextLabel,
+    enqueueSnackbar,
+    loading,
+    loadingProjectData,
+    projectId,
+    refreshAll,
+  ]);
 
   const handleContextAction = useCallback(async (nextAction: 'drive-sync' | 'calendar-sync' | 'meet-session') => {
     if (!connection && canManage) {

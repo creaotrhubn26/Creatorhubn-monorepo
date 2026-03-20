@@ -89,8 +89,31 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`${response.status}: ${errorText}`);
-}
+    let parsedError: Record<string, unknown> | null = null;
+
+    try {
+      const candidate = JSON.parse(errorText) as unknown;
+      if (candidate && typeof candidate === 'object') {
+        parsedError = candidate as Record<string, unknown>;
+      }
+    } catch {
+      parsedError = null;
+    }
+
+    const message = typeof parsedError?.error === 'string'
+      ? parsedError.error
+      : typeof parsedError?.message === 'string'
+        ? parsedError.message
+        : errorText;
+
+    const error = new Error(`${response.status}: ${message}`) as Error & {
+      status?: number;
+      details?: Record<string, unknown> | null;
+    };
+    error.status = response.status;
+    error.details = parsedError;
+    throw error;
+  }
 
   return response.json();
 }

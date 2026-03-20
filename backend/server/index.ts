@@ -302,6 +302,97 @@ app.use((req, _res, next) => {
 const activeSessions: Map<string, { userId: string; email: string; name: string; role: string; loginAt: string }> = new Map();
 app.use('/api/role-room', createRoleRoomRouter(pool, activeSessions));
 
+const forwardRoleRoomGoogleCallback = (req: express.Request, res: express.Response) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(req.query)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (entry != null) {
+          params.append(key, String(entry));
+        }
+      }
+      continue;
+    }
+    if (value != null) {
+      params.set(key, String(value));
+    }
+  }
+
+  const queryString = params.toString();
+  res.redirect(`/api/role-room/google/oauth/callback${queryString ? `?${queryString}` : ''}`);
+};
+
+app.get('/api/auth/google/callback', forwardRoleRoomGoogleCallback);
+app.get('/auth/google/callback', forwardRoleRoomGoogleCallback);
+
+const maybeStartRoleRoomGoogleRedirectBridge = () => {
+  const redirectCandidate = process.env.ROLE_ROOM_GOOGLE_REDIRECT_URI || process.env.GOOGLE_REDIRECT_URI;
+  if (!redirectCandidate) {
+    return;
+  }
+
+  let parsedRedirect: URL;
+  try {
+    parsedRedirect = new URL(redirectCandidate);
+  } catch {
+    return;
+  }
+
+  if (!['localhost', '127.0.0.1'].includes(parsedRedirect.hostname)) {
+    return;
+  }
+
+  const bridgePort = parsedRedirect.port
+    ? Number(parsedRedirect.port)
+    : parsedRedirect.protocol === 'https:'
+      ? 443
+      : 80;
+  if (!Number.isFinite(bridgePort) || bridgePort === PORT) {
+    return;
+  }
+
+  const callbackPaths = new Set(['/api/auth/google/callback', '/auth/google/callback']);
+  if (!callbackPaths.has(parsedRedirect.pathname)) {
+    return;
+  }
+
+  const bridgeApp = express();
+  const bridgeHandler = (req: express.Request, res: express.Response) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(req.query)) {
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          if (entry != null) {
+            params.append(key, String(entry));
+          }
+        }
+        continue;
+      }
+      if (value != null) {
+        params.set(key, String(value));
+      }
+    }
+
+    const queryString = params.toString();
+    res.redirect(`http://localhost:${PORT}/api/role-room/google/oauth/callback${queryString ? `?${queryString}` : ''}`);
+  };
+
+  bridgeApp.get('/api/auth/google/callback', bridgeHandler);
+  bridgeApp.get('/auth/google/callback', bridgeHandler);
+
+  const bridgeServer = createServer(bridgeApp);
+  bridgeServer.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.warn(`Role Room Google redirect bridge skipped: port ${bridgePort} is already in use.`);
+      return;
+    }
+    console.warn('Role Room Google redirect bridge failed:', error);
+  });
+  bridgeServer.listen(bridgePort, '0.0.0.0', () => {
+    console.log(`Role Room Google redirect bridge listening on http://localhost:${bridgePort}`);
+  });
+};
+
 // ── Reference image proxy (shot.cafe + Unsplash) ──────────
 app.use('/api', createReferenceProxyRouter());
 
@@ -53494,6 +53585,7 @@ createWebSocketServer(httpServer, db);
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
+  maybeStartRoleRoomGoogleRedirectBridge();
   if (isStoryArcV2Enabled() && STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
     void runStoryArcV2StartupWarmup();
   }

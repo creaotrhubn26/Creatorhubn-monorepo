@@ -174,6 +174,7 @@ interface RoleRoomGoogleAgreementSignatureRow {
 interface RoleRoomGoogleOauthState {
   mode: RoleRoomGoogleOauthMode;
   returnPath: string;
+  browserOrigin?: string | null;
   loginAs?: string | null;
   requestedRole?: string | null;
   projectId?: string | null;
@@ -401,6 +402,12 @@ function getRoleRoomGoogleRedirectUri(req?: Request): string | null {
   if (configured) {
     return configured;
   }
+
+  const sharedRedirect = readStringValue(process.env.GOOGLE_REDIRECT_URI);
+  if (sharedRedirect) {
+    return sharedRedirect;
+  }
+
   if (!req) {
     return null;
   }
@@ -410,7 +417,40 @@ function getRoleRoomGoogleRedirectUri(req?: Request): string | null {
   }
   const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
   const protocol = forwardedProto ?? req.protocol ?? 'http';
-  return `${protocol}://${host}/api/role-room/google/oauth/callback`;
+  return `${protocol}://${host}/api/auth/google/callback`;
+}
+
+function getRoleRoomRequestOrigin(req?: Request): string | null {
+  if (!req) {
+    return null;
+  }
+
+  const candidateOrigins = [
+    readStringValue(req.headers.origin),
+    readStringValue(req.headers.referer),
+  ];
+
+  for (const candidate of candidateOrigins) {
+    if (!candidate) {
+      continue;
+    }
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.origin;
+      }
+    } catch {
+      // Ignore malformed origin/referer values and continue with host fallback.
+    }
+  }
+
+  const host = req.get('host');
+  if (!host) {
+    return null;
+  }
+  const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
+  const protocol = forwardedProto ?? req.protocol ?? 'http';
+  return `${protocol}://${host}`;
 }
 
 function getRoleRoomGoogleConfig(req?: Request) {
@@ -438,6 +478,62 @@ function createRoleRoomGoogleOAuthClient(req?: Request) {
     return null;
   }
   return new google.auth.OAuth2(config.clientId, config.clientSecret, config.redirectUri);
+}
+
+class RoleRoomGoogleAuthError extends Error {
+  statusCode: number;
+
+  constructor(message: string, statusCode = 401) {
+    super(message);
+    this.name = 'RoleRoomGoogleAuthError';
+    this.statusCode = statusCode;
+  }
+}
+
+function isRoleRoomGoogleAuthError(error: unknown): error is RoleRoomGoogleAuthError {
+  return error instanceof RoleRoomGoogleAuthError;
+}
+
+function normalizeRoleRoomGoogleAuthError(error: unknown): { message: string; state: RoleRoomGoogleConnectionState } {
+  const rawMessage = error instanceof Error ? error.message : String(error ?? 'Google token refresh failed');
+  const payload = JSON.stringify((error as { response?: { data?: unknown } } | undefined)?.response?.data ?? {});
+  const combined = `${rawMessage} ${payload}`.toLowerCase();
+
+  if (combined.includes('invalid_rapt') || combined.includes('reauth related error')) {
+    return {
+      message: 'Google Workspace-koblingen krever ny innlogging. Koble Google på nytt i Role Room.',
+      state: 'expired',
+    };
+  }
+
+  if (combined.includes('unauthorized_client')) {
+    return {
+      message: 'Google Workspace-tokenet tilhører en annen OAuth-klient. Koble Google på nytt i Role Room.',
+      state: 'error',
+    };
+  }
+
+  if (combined.includes('invalid_grant')) {
+    return {
+      message: 'Google Workspace-koblingen er ikke lenger gyldig. Koble Google på nytt i Role Room.',
+      state: 'expired',
+    };
+  }
+
+  return {
+    message: rawMessage,
+    state: 'error',
+  };
+}
+
+function sendRoleRoomGoogleError(res: Response, error: unknown, fallbackMessage: string) {
+  if (isRoleRoomGoogleAuthError(error)) {
+    res.status(error.statusCode).json({ error: error.message, reconnectRequired: true });
+    return;
+  }
+
+  console.error(fallbackMessage, error);
+  res.status(500).json({ error: fallbackMessage });
 }
 
 function sanitizeRoleRoomReturnPath(rawValue: unknown, req?: Request): string {
@@ -480,6 +576,18 @@ function appendQueryParamsToPath(pathname: string, params: Record<string, string
   });
   const nextQuery = searchParams.toString();
   return `${basePath}${nextQuery ? `?${nextQuery}` : ''}${hashPart ? `#${hashPart}` : ''}`;
+}
+
+function buildRoleRoomGoogleReturnUrl(
+  returnPath: string,
+  params: Record<string, string | null | undefined>,
+  browserOrigin?: string | null,
+): string {
+  const nextPath = appendQueryParamsToPath(returnPath, params);
+  if (browserOrigin && nextPath.startsWith('/')) {
+    return `${browserOrigin}${nextPath}`;
+  }
+  return nextPath;
 }
 
 function getRoleRoomGoogleFolderKeyForFile(fileRecord: Record<string, unknown>): string {
@@ -975,9 +1083,119 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return result.rows[0];
   }
 
-  async function buildAuthorizedRoleRoomGoogleClient(userId: string) {
-    const connection = await getRoleRoomGoogleConnectionByUserId(userId);
+  function canBootstrapRoleRoomGoogleConnection(role: string | null | undefined): boolean {
+    const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : '';
+    return [
+      'admin',
+      'super_admin',
+      'director',
+      'producer',
+      'production_manager',
+      'content_producer',
+    ].includes(normalizedRole);
+  }
+
+  function isRoleRoomGoogleEnvBootstrapEnabled(): boolean {
+    const explicit = readStringValue(process.env.ROLE_ROOM_GOOGLE_ALLOW_ENV_BOOTSTRAP);
+    if (explicit === '1' || explicit?.toLowerCase() === 'true') {
+      return true;
+    }
+    if (explicit === '0' || explicit?.toLowerCase() === 'false') {
+      return false;
+    }
+    return isRoleRoomDevBypassEnabled();
+  }
+
+  async function bootstrapRoleRoomGoogleConnectionFromEnv(req: Request, userId: string): Promise<RoleRoomGoogleConnectionRow | null> {
+    if (!isRoleRoomGoogleEnvBootstrapEnabled()) {
+      return null;
+    }
+
+    const requestUser = getOptionalRequestUser(req);
+    if (!canBootstrapRoleRoomGoogleConnection(requestUser?.role)) {
+      return null;
+    }
+
+    const refreshToken = readStringValue(process.env.GOOGLE_WORKSPACE_REFRESH_TOKEN);
     const oauthClient = createRoleRoomGoogleOAuthClient();
+    if (!refreshToken || !oauthClient) {
+      return null;
+    }
+
+    oauthClient.setCredentials({
+      refresh_token: refreshToken,
+    });
+
+    try {
+      await oauthClient.getAccessToken();
+      const oauth2Api = google.oauth2({ version: 'v2', auth: oauthClient });
+      const profileResponse = await oauth2Api.userinfo.get();
+      const googleEmail = readStringValue(profileResponse.data.email)
+        ?? readStringValue(process.env.GOOGLE_WORKSPACE_EMAIL)
+        ?? readStringValue(process.env.GOOGLE_ADMIN_EMAIL)
+        ?? readStringValue(process.env.GOOGLE_IMPERSONATE_USER);
+      const googleSubject = readStringValue(profileResponse.data.id)
+        ?? (googleEmail ? `env-bootstrap:${googleEmail}` : null);
+
+      if (!googleEmail || !googleSubject) {
+        return null;
+      }
+
+      const existingSubjectConnection = await getRoleRoomGoogleConnectionBySubject(googleSubject);
+      if (existingSubjectConnection && existingSubjectConnection.user_id !== userId) {
+        return null;
+      }
+
+      const rawScopes = oauthClient.credentials.scope;
+      const scopes = Array.isArray(rawScopes)
+        ? readStringArray(rawScopes)
+        : typeof rawScopes === 'string' && rawScopes.trim().length > 0
+          ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
+          : [...ROLE_ROOM_GOOGLE_SCOPES];
+
+      return await upsertRoleRoomGoogleConnection(
+        userId,
+        requestUser?.email ?? null,
+        {
+          email: googleEmail,
+          subject: googleSubject,
+          profile: readJsonObject({
+            id: profileResponse.data.id ?? googleSubject,
+            email: profileResponse.data.email ?? googleEmail,
+            verified_email: profileResponse.data.verified_email ?? null,
+            name: profileResponse.data.name ?? googleEmail,
+            given_name: profileResponse.data.given_name ?? null,
+            family_name: profileResponse.data.family_name ?? null,
+            picture: profileResponse.data.picture ?? null,
+            source: 'env_refresh_token',
+          }),
+        },
+        {
+          accessToken: readStringValue(oauthClient.credentials.access_token),
+          refreshToken,
+          expiryDate: typeof oauthClient.credentials.expiry_date === 'number'
+            ? oauthClient.credentials.expiry_date
+            : null,
+          scopes,
+        },
+      );
+    } catch (error) {
+      console.warn('Role Room Google env bootstrap failed:', error);
+      return null;
+    }
+  }
+
+  async function ensureRoleRoomGoogleConnectionForRequest(req: Request, userId: string): Promise<RoleRoomGoogleConnectionRow | null> {
+    const existingConnection = await getRoleRoomGoogleConnectionByUserId(userId);
+    if (existingConnection) {
+      return existingConnection;
+    }
+    return bootstrapRoleRoomGoogleConnectionFromEnv(req, userId);
+  }
+
+  async function buildAuthorizedRoleRoomGoogleClient(req: Request, userId: string) {
+    const connection = await ensureRoleRoomGoogleConnectionForRequest(req, userId);
+    const oauthClient = createRoleRoomGoogleOAuthClient(req);
     if (!connection || !oauthClient) {
       return null;
     }
@@ -1016,15 +1234,16 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         ],
       );
     } catch (error) {
+      const normalizedError = normalizeRoleRoomGoogleAuthError(error);
       await pool.query(
         `UPDATE role_room_google_connections
-         SET connection_state = 'error',
-             last_error = $2,
+         SET connection_state = $2,
+             last_error = $3,
              updated_at = NOW()
          WHERE user_id = $1`,
-        [userId, error instanceof Error ? error.message : 'Google token refresh failed'],
+        [userId, normalizedError.state, normalizedError.message],
       ).catch(() => undefined);
-      throw error;
+      throw new RoleRoomGoogleAuthError(normalizedError.message);
     }
 
     return { oauthClient, connection };
@@ -1947,6 +2166,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return normalizedRequestedRole || normalizedFallbackRole;
     }
 
+    if (normalizedRequestedRole) {
+      if (normalizedRequestedRole === 'client') {
+        return 'client_reviewer';
+      }
+
+      if (
+        [
+          'client_reviewer',
+          'content_producer',
+          'producer',
+          'production_manager',
+          'director',
+        ].includes(normalizedRequestedRole)
+      ) {
+        return normalizedRequestedRole;
+      }
+    }
+
     return normalizedFallbackRole;
   }
 
@@ -2166,6 +2403,41 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       throw new Error('Kunne ikke opprette Google-kalender for prosjektet');
     }
     return calendarId;
+  }
+
+  async function resolveRoleRoomGoogleCalendarId(
+    calendarApi: ReturnType<typeof google.calendar>,
+    projectName: string,
+    preferredCalendarId?: string | null,
+  ): Promise<string> {
+    const existingCalendarId = readStringValue(preferredCalendarId);
+    if (existingCalendarId) {
+      return existingCalendarId;
+    }
+
+    try {
+      return await createRoleRoomGoogleCalendar(calendarApi, projectName);
+    } catch (error) {
+      const apiError = isRecordValue(error) ? error : null;
+      const nestedResponse = apiError && isRecordValue(apiError.response) ? apiError.response : null;
+      const errorCode = apiError && typeof apiError.code === 'number'
+        ? apiError.code
+        : nestedResponse && typeof nestedResponse.status === 'number'
+          ? nestedResponse.status
+          : null;
+      const errorMessage = error instanceof Error ? error.message.toLowerCase() : '';
+
+      const insufficientCalendarScope = errorCode === 403
+        || errorMessage.includes('insufficient')
+        || errorMessage.includes('forbidden')
+        || errorMessage.includes('calendar');
+
+      if (insufficientCalendarScope) {
+        return 'primary';
+      }
+
+      throw error;
+    }
   }
 
   async function syncRoleRoomGoogleCalendarEvent(
@@ -2993,7 +3265,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const projectId = readStringValue(req.query.projectId);
 
       const connection = requestUser?.userId
-        ? await getRoleRoomGoogleConnectionByUserId(requestUser.userId)
+        ? await ensureRoleRoomGoogleConnectionForRequest(req, requestUser.userId)
         : null;
 
       let projectBindingResponse: ReturnType<typeof buildRoleRoomGoogleProjectBindingResponse> | null = null;
@@ -3054,6 +3326,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       roleRoomGoogleOauthStateStore.set(stateId, {
         mode,
         returnPath,
+        browserOrigin: getRoleRoomRequestOrigin(req),
         loginAs,
         requestedRole,
         projectId,
@@ -3061,13 +3334,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         createdAt: Date.now(),
       });
 
+      const loginHint = requestUser?.email ?? readStringValue(req.body?.email);
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
         scope: [...ROLE_ROOM_GOOGLE_SCOPES],
         include_granted_scopes: true,
         prompt: 'consent',
         state: stateId,
-        login_hint: requestUser?.email ?? readStringValue(req.body?.email) ?? undefined,
+        ...(loginHint ? { login_hint: loginHint } : {}),
       });
 
       res.json({
@@ -3086,13 +3360,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     pruneExpiredRoleRoomGoogleState();
     const config = getRoleRoomGoogleConfig(req);
     const fallbackReturnPath = sanitizeRoleRoomReturnPath(req.query.returnPath, req);
+    const requestOrigin = getRoleRoomRequestOrigin(req);
 
-    const redirectWithError = (returnPath: string, message: string) => {
+    const redirectWithError = (returnPath: string, message: string, browserOrigin?: string | null) => {
       res.redirect(
-        appendQueryParamsToPath(returnPath, {
+        buildRoleRoomGoogleReturnUrl(returnPath, {
           rrGoogleStatus: 'error',
           rrGoogleMessage: message,
-        }),
+        }, browserOrigin ?? requestOrigin),
       );
     };
 
@@ -3105,7 +3380,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const code = readStringValue(req.query.code);
     const oauthState = stateId ? roleRoomGoogleOauthStateStore.get(stateId) : null;
     if (!oauthState || !code) {
-      redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Ugyldig Google-forespørsel');
+      redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Ugyldig Google-forespørsel', oauthState?.browserOrigin);
       return;
     }
 
@@ -3114,7 +3389,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     try {
       const oauthClient = createRoleRoomGoogleOAuthClient(req);
       if (!oauthClient) {
-        redirectWithError(oauthState.returnPath, 'Google OAuth-klient er ikke tilgjengelig');
+        redirectWithError(oauthState.returnPath, 'Google OAuth-klient er ikke tilgjengelig', oauthState.browserOrigin);
         return;
       }
 
@@ -3136,7 +3411,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       });
 
       if (!googleEmail || !googleSubject) {
-        redirectWithError(oauthState.returnPath, 'Google-kontoen mangler e-post eller identitet');
+        redirectWithError(oauthState.returnPath, 'Google-kontoen mangler e-post eller identitet', oauthState.browserOrigin);
         return;
       }
 
@@ -3146,7 +3421,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         && oauthState.mode === 'link'
         && existingSubjectConnection.user_id !== oauthState.createdByUserId
       ) {
-        redirectWithError(oauthState.returnPath, 'Denne Google-kontoen er allerede koblet til en annen bruker');
+        redirectWithError(oauthState.returnPath, 'Denne Google-kontoen er allerede koblet til en annen bruker', oauthState.browserOrigin);
         return;
       }
 
@@ -3160,7 +3435,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       if (oauthState.mode === 'login') {
         const resolvedUser = await resolveRoleRoomGoogleLoginUser(googleEmail, googleProfile, oauthState);
         if (!resolvedUser) {
-          redirectWithError(oauthState.returnPath, 'Google-kontoen er ikke invitert til dette Role Room-prosjektet');
+          redirectWithError(oauthState.returnPath, 'Google-kontoen er ikke invitert til dette Role Room-prosjektet', oauthState.browserOrigin);
           return;
         }
 
@@ -3215,11 +3490,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
 
         res.redirect(
-          appendQueryParamsToPath(oauthState.returnPath, {
+          buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
             rrGoogleStatus: 'success',
             rrGoogleMode: 'login',
             rrGoogleTransfer: transferId,
-          }),
+          }, oauthState.browserOrigin ?? requestOrigin),
         );
         return;
       }
@@ -3235,17 +3510,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       });
 
       res.redirect(
-        appendQueryParamsToPath(oauthState.returnPath, {
+        buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
           rrGoogleStatus: 'success',
           rrGoogleMode: 'link',
           rrGoogleTransfer: transferId,
-        }),
+        }, oauthState.browserOrigin ?? requestOrigin),
       );
     } catch (error) {
       console.error('Role Room Google callback error:', error);
       redirectWithError(
         oauthState.returnPath,
         error instanceof Error ? error.message : 'Google-innlogging feilet',
+        oauthState.browserOrigin,
       );
     }
   });
@@ -3389,7 +3665,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const userId = getUserId(req);
-      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
       if (!googleClient) {
         res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
         return;
@@ -3421,10 +3697,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         };
       }
 
-      let calendarId = requestedCalendarId;
-      if (!calendarId || createCalendar) {
-        calendarId = await createRoleRoomGoogleCalendar(calendarApi, projectName);
-      }
+      const calendarId = createCalendar
+        ? await resolveRoleRoomGoogleCalendarId(calendarApi, projectName, requestedCalendarId)
+        : await resolveRoleRoomGoogleCalendarId(calendarApi, projectName, requestedCalendarId ?? existingBinding?.calendar_id);
 
       const binding = await updateRoleRoomGoogleProjectBinding(projectId, {
         connectedUserId: userId,
@@ -3444,8 +3719,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
       res.json(buildRoleRoomGoogleProjectBindingResponse(binding, artifacts));
     } catch (error) {
-      console.error('Role Room Google binding save error:', error);
-      res.status(500).json({ error: 'Kunne ikke lagre Google Workspace-bindingen' });
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke lagre Google Workspace-bindingen');
     }
   });
 
@@ -3489,7 +3763,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       const userId = getUserId(req);
       const requestUser = getOptionalRequestUser(req);
-      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
       if (!googleClient) {
         res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
         return;
@@ -3612,8 +3886,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         signature: buildRoleRoomGoogleAgreementSignatureResponse(signature),
       });
     } catch (error) {
-      console.error('Role Room Google agreement signature prepare error:', error);
-      res.status(500).json({ error: 'Kunne ikke klargjøre Google-signatur for avtalen' });
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke klargjøre Google-signatur for avtalen');
     }
   });
 
@@ -3651,7 +3924,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
       if (!googleClient) {
         res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
         return;
@@ -3692,8 +3965,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         signature: buildRoleRoomGoogleAgreementSignatureResponse(signature),
       });
     } catch (error) {
-      console.error('Role Room Google agreement signature send error:', error);
-      res.status(500).json({ error: 'Kunne ikke sende Google-signaturflyten til motparten' });
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke sende Google-signaturflyten til motparten');
     }
   });
 
@@ -3712,7 +3984,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const userId = getUserId(req);
-      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
       if (!googleClient) {
         res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
         return;
@@ -3893,8 +4165,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         signature: buildRoleRoomGoogleAgreementSignatureResponse(signature),
       });
     } catch (error) {
-      console.error('Role Room Google agreement signature sync error:', error);
-      res.status(500).json({ error: 'Kunne ikke synkronisere Google-signaturflyten for avtalen' });
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke synkronisere Google-signaturflyten for avtalen');
     }
   });
 
@@ -3954,7 +4225,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       };
 
       let auditArtifactId: string | null = readStringValue(existingSignature.audit_artifact_id);
-      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId).catch(() => null);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId).catch(() => null);
       const binding = await getRoleRoomGoogleProjectBinding(projectId);
       let signedPdfArtifactId = readStringValue(existingSignature.metadata?.signedPdfArtifactId);
       let signedDriveFileId = readStringValue(req.body?.signedDriveFileId) ?? readStringValue(existingSignature.signed_drive_file_id);
@@ -4081,8 +4352,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         signature: buildRoleRoomGoogleAgreementSignatureResponse(signature),
       });
     } catch (error) {
-      console.error('Role Room Google agreement signature status error:', error);
-      res.status(500).json({ error: 'Kunne ikke oppdatere Google-signaturstatusen' });
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke oppdatere Google-signaturstatusen');
     }
   });
 
@@ -4101,7 +4371,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const userId = getUserId(req);
-      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
       if (!googleClient) {
         res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
         return;
@@ -4275,8 +4545,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         syncedArtifacts: uploadedArtifacts,
       });
     } catch (error) {
-      console.error('Role Room Google drive sync error:', error);
-      res.status(500).json({ error: 'Kunne ikke synkronisere filer til Google Drive' });
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke synkronisere filer til Google Drive');
     }
   });
 
@@ -4295,7 +4564,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const userId = getUserId(req);
-      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
       if (!googleClient) {
         res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
         return;
@@ -4306,16 +4575,36 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           (entry: unknown): entry is Record<string, unknown> => isRecordValue(entry),
         )
         : [];
-      if (events.length === 0) {
-        res.status(400).json({ error: 'Ingen kalenderhendelser å synkronisere' });
-        return;
-      }
-
       const calendarApi = google.calendar({ version: 'v3', auth: googleClient.oauthClient });
       const existingBinding = await getRoleRoomGoogleProjectBinding(projectId);
-      const calendarId = readStringValue(req.body?.calendarId)
-        ?? existingBinding?.calendar_id
-        ?? await createRoleRoomGoogleCalendar(calendarApi, await getRoleRoomProjectName(projectId));
+      const calendarId = await resolveRoleRoomGoogleCalendarId(
+        calendarApi,
+        await getRoleRoomProjectName(projectId),
+        readStringValue(req.body?.calendarId) ?? existingBinding?.calendar_id,
+      );
+
+      if (events.length === 0) {
+        const binding = await updateRoleRoomGoogleProjectBinding(projectId, {
+          connectedUserId: userId,
+          calendarId,
+          syncStatus: {
+            calendar: {
+              state: 'idle',
+              syncedEvents: 0,
+              syncedAt: new Date().toISOString(),
+            },
+          },
+          lastCalendarSyncAt: new Date().toISOString(),
+        });
+
+        const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
+        res.json({
+          ...buildRoleRoomGoogleProjectBindingResponse(binding, artifacts),
+          syncedEvents: [],
+          message: 'Ingen kalenderhendelser å synkronisere ennå',
+        });
+        return;
+      }
 
       const syncedEvents: RoleRoomGoogleArtifactRow[] = [];
       for (const event of events) {
@@ -4341,8 +4630,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         syncedEvents,
       });
     } catch (error) {
-      console.error('Role Room Google calendar sync error:', error);
-      res.status(500).json({ error: 'Kunne ikke synkronisere kalenderen' });
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke synkronisere kalenderen');
     }
   });
 
@@ -4361,7 +4649,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const userId = getUserId(req);
-      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
       if (!googleClient) {
         res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
         return;
@@ -4369,8 +4657,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       const calendarApi = google.calendar({ version: 'v3', auth: googleClient.oauthClient });
       const existingBinding = await getRoleRoomGoogleProjectBinding(projectId);
-      const calendarId = existingBinding?.calendar_id
-        ?? await createRoleRoomGoogleCalendar(calendarApi, await getRoleRoomProjectName(projectId));
+      const calendarId = await resolveRoleRoomGoogleCalendarId(
+        calendarApi,
+        await getRoleRoomProjectName(projectId),
+        existingBinding?.calendar_id,
+      );
 
       const eventArtifact = await syncRoleRoomGoogleCalendarEvent(calendarApi, calendarId, projectId, {
         ...readJsonObject(req.body),
@@ -4403,8 +4694,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         },
       });
     } catch (error) {
-      console.error('Role Room Google Meet session error:', error);
-      res.status(500).json({ error: 'Kunne ikke opprette Google Meet-sesjonen' });
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke opprette Google Meet-sesjonen');
     }
   });
 
@@ -4429,7 +4719,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const userId = getUserId(req);
-      const googleClient = await buildAuthorizedRoleRoomGoogleClient(userId);
+      const googleClient = await buildAuthorizedRoleRoomGoogleClient(req, userId);
       if (!googleClient) {
         res.status(400).json({ error: 'Google Workspace er ikke koblet til denne brukeren' });
         return;
@@ -4471,8 +4761,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         contactsContext: readJsonObject(binding.contacts_context),
       });
     } catch (error) {
-      console.error('Role Room Google people search error:', error);
-      res.status(500).json({ error: 'Kunne ikke søke i Google-kontakter' });
+      sendRoleRoomGoogleError(res, error, 'Kunne ikke søke i Google-kontakter');
     }
   });
 
