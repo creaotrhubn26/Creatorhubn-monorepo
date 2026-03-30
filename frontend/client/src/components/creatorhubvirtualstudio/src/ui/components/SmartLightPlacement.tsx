@@ -43,8 +43,58 @@ export function SmartLightPlacement({
   detectedPattern,
   tips,
   onClose,
+  imageUrl,
+  onLightPositionSuggest,
 }: SmartLightPlacementProps) {
   const [expanded, setExpanded] = React.useState(true);
+  const [subjectBounds, setSubjectBounds] = useState<{
+    center: [number, number];
+    bbox: [number, number, number, number];
+  } | null>(null);
+  const [suggestedLightPosition, setSuggestedLightPosition] = useState<
+    [number, number, number] | null
+  >(null);
+
+  const detectSubject = useMutation({
+    mutationFn: async () => {
+      if (!imageUrl) {
+        throw new Error('No image available for subject detection');
+      }
+
+      const result = await sam2Service.segmentImageFromUrl(imageUrl, undefined, 'auto', 'small');
+      const primaryMask = result.masks[0];
+
+      if (!primaryMask) {
+        throw new Error('No subject detected');
+      }
+
+      const nextSuggestedPosition: [number, number, number] = [
+        position[0] + (primaryMask.center[0] / result.image_size[0] - 0.5) * 2,
+        position[1] + 0.2,
+        position[2] + Math.max(0.25, primaryMask.bbox[2] / result.image_size[0]),
+      ];
+
+      return {
+        subject: {
+          center: primaryMask.center,
+          bbox: primaryMask.bbox,
+        },
+        suggestedPosition: nextSuggestedPosition,
+      };
+    },
+    onSuccess: ({ subject, suggestedPosition }) => {
+      setSubjectBounds(subject);
+      setSuggestedLightPosition(suggestedPosition);
+      onLightPositionSuggest?.(suggestedPosition);
+    },
+  });
+
+  useEffect(() => {
+    if (!imageUrl) {
+      setSubjectBounds(null);
+      setSuggestedLightPosition(null);
+    }
+  }, [imageUrl]);
 
   if (!detectedPattern && tips.length === 0) {
     return null;
@@ -251,4 +301,3 @@ function TipCard({ tip }: { tip: LightPlacementTip }) {
     </Tooltip>
   );
 }
-

@@ -825,7 +825,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                           {brand}
                         </Typography>
                         <Typography variant="caption" sx={{ 
-                          color: selectedBrand === brand ? 'rgba(25,255,255,0.8)' : 'text.secondary' 
+                          color: selectedBrand === brand ? 'rgba(255,255,255,0.82)' : 'text.secondary' 
                     }}>
                           {getCamerasByBrand(brand).length} modeller
                         </Typography>

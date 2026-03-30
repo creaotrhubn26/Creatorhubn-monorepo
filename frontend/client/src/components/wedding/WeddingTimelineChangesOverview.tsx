@@ -158,7 +158,7 @@ export default function WeddingTimelineChangesOverview({ userId }: WeddingTimeli
 };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('no-N', {
+    return new Date(dateString).toLocaleString('no-NO', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',

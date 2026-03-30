@@ -1426,7 +1426,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               aria-label="Legg til ny rekvisitt"
               sx={{
                 bgcolor: '#9333ea',
-                color: '#000',
+                color: '#fff',
                 fontWeight: 600,
                 minHeight: TOUCH_TARGET_SIZE,
                 flex: { xs: 1, sm: 'none' },
@@ -1929,6 +1929,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     <Checkbox
                       checked={selectedIds.has(prop.id)}
                       onChange={() => handleToggleSelect(prop.id)}
+                      inputProps={{ 'aria-label': `Velg rekvisitt ${prop.name}` }}
                       sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#9333ea' } }}
                     />
                   </TableCell>
@@ -2008,23 +2009,36 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       <Tooltip title={favorites.has(prop.id) ? 'Fjern favoritt' : 'Favoritt'}>
                         <IconButton
                           onClick={() => toggleFavorite(prop.id)}
+                          aria-label={favorites.has(prop.id) ? `Fjern ${prop.name} fra favoritter` : `Legg til ${prop.name} i favoritter`}
                           sx={{ color: favorites.has(prop.id) ? '#ffc107' : 'rgba(255,255,255,0.3)' }}
                         >
                           {favorites.has(prop.id) ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Dupliser">
-                        <IconButton onClick={() => handleDuplicate(prop)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+                        <IconButton
+                          onClick={() => handleDuplicate(prop)}
+                          aria-label={`Dupliser ${prop.name}`}
+                          sx={{ color: 'rgba(255,255,255,0.87)' }}
+                        >
                           <DuplicateIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Rediger">
-                        <IconButton onClick={() => handleOpenDialog(prop)} sx={{ color: '#9333ea' }}>
+                        <IconButton
+                          onClick={() => handleOpenDialog(prop)}
+                          aria-label={`Rediger ${prop.name}`}
+                          sx={{ color: '#9333ea' }}
+                        >
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Slett">
-                        <IconButton onClick={() => handleDeleteWithUndo(prop.id)} sx={{ color: '#ff4444' }}>
+                        <IconButton
+                          onClick={() => handleDeleteWithUndo(prop.id)}
+                          aria-label={`Slett ${prop.name}`}
+                          sx={{ color: '#ff4444' }}
+                        >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -2153,6 +2167,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       <Checkbox
                         checked={selectedIds.has(prop.id)}
                         onChange={() => handleToggleSelect(prop.id)}
+                        inputProps={{ 'aria-label': `Velg rekvisitt ${prop.name}` }}
                         sx={{
                           p: 0.5,
                           color: 'rgba(255,255,255,0.87)',
@@ -2818,6 +2833,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       <IconButton
                         size="small"
                         onClick={() => handleRemoveImage(index)}
+                        aria-label={`Fjern bilde ${index + 1}`}
                         sx={{
                           position: 'absolute',
                           top: 4,
@@ -2996,7 +3012,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             fullWidth={isMobile}
             sx={{
               bgcolor: '#9333ea',
-              color: '#000',
+              color: '#fff',
               fontWeight: 600,
               minHeight: TOUCH_TARGET_SIZE,
               ...focusVisibleStyles,

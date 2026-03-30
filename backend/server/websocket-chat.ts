@@ -50,26 +50,26 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
   wss.on('connection', (ws, req) => {
     const clientId = crypto.randomUUID();
     const url    = new URL(req.url || '/', `http://${req.headers.host}`);
-    const userId = url.searchParams.get('userId') || 'anonymous';
+    let connectedUserId = url.searchParams.get('userId') || 'anonymous';
     const room   = url.searchParams.get('room')   || undefined;
     const role   = url.searchParams.get('role')   || undefined;
 
-    clients.set(clientId, { ws, userId, room, role, connectedAt: new Date() });
-    console.log(`[WS] Client connected: ${userId} (${clientId}). Total: ${clients.size}`);
+    clients.set(clientId, { ws, userId: connectedUserId, room, role, connectedAt: new Date() });
+    console.log(`[WS] Client connected: ${connectedUserId} (${clientId}). Total: ${clients.size}`);
 
     // Send connection confirmation
     ws.send(JSON.stringify({
       type: 'connection_established',
-      payload: { clientId, userId, connectedClients: clients.size },
+      payload: { clientId, userId: connectedUserId, connectedClients: clients.size },
       timestamp: new Date().toISOString(),
     }));
 
     // Broadcast presence update
-    broadcast(clients, {
-      type: 'presence_update',
-      payload: { userId, status: 'online' },
+      broadcast(clients, {
+        type: 'presence_update',
+      payload: { userId: connectedUserId, status: 'online' },
       timestamp: new Date().toISOString(),
-      userId,
+      userId: connectedUserId,
     }, clientId);
 
     ws.on('message', async (rawData) => {
@@ -77,12 +77,53 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
         const data = JSON.parse(rawData.toString());
 
         switch (data.type) {
+          case 'auth': {
+            const claimedUserId =
+              typeof data.userId === 'string' && data.userId.trim().length > 0
+                ? data.userId.trim()
+                : typeof data.payload?.userId === 'string' && data.payload.userId.trim().length > 0
+                  ? data.payload.userId.trim()
+                  : connectedUserId;
+
+            connectedUserId = claimedUserId;
+            const connectedClient = clients.get(clientId);
+            if (connectedClient) {
+              connectedClient.userId = claimedUserId;
+            }
+
+            ws.send(JSON.stringify({
+              type: 'auth_ack',
+              payload: { userId: claimedUserId },
+              timestamp: new Date().toISOString(),
+            }));
+            break;
+          }
+
+          case 'event': {
+            const eventPayload = data.event;
+            if (!eventPayload || typeof eventPayload !== 'object') {
+              ws.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Invalid realtime event payload' },
+                timestamp: new Date().toISOString(),
+              }));
+              break;
+            }
+
+            broadcast(clients, {
+              type: 'event',
+              event: eventPayload,
+              timestamp: new Date().toISOString(),
+            }, clientId);
+            break;
+          }
+
           case 'chat_message': {
             // Persist message to database
             const msgId = data.payload?.id || crypto.randomUUID();
             const channelId = data.conversationId || data.payload?.conversationId || 'general';
             const content = data.payload?.content || '';
-            const senderId = data.userId || userId;
+            const senderId = data.userId || connectedUserId;
             const now = new Date().toISOString();
 
             if (content.trim()) {
@@ -151,7 +192,7 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
               type: 'typing_indicator',
               payload: data.payload,
               timestamp: new Date().toISOString(),
-              userId: data.userId || userId,
+              userId: data.userId || connectedUserId,
               conversationId: data.conversationId,
             }, clientId);
             break;
@@ -162,7 +203,7 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
               type: 'presence_update',
               payload: data.payload,
               timestamp: new Date().toISOString(),
-              userId: data.userId || userId,
+              userId: data.userId || connectedUserId,
             }, clientId);
             break;
           }
@@ -194,6 +235,99 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
             break;
           }
 
+          case 'join_session': {
+            const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
+            if (!sessionId) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Missing sessionId for join_session' },
+                timestamp: new Date().toISOString(),
+              }));
+              break;
+            }
+
+            const client = clients.get(clientId);
+            if (client) {
+              client.room = `session:${sessionId}`;
+            }
+
+            const participant = {
+              id: clientId,
+              userId: connectedUserId,
+              name: connectedUserId,
+              email: '',
+              role: role || 'editor',
+              status: 'online',
+              lastSeen: new Date().toISOString(),
+              permissions: {
+                canEdit: true,
+                canComment: true,
+                canShare: true,
+                canDelete: false,
+                canInvite: true,
+              },
+            };
+
+            ws.send(JSON.stringify({
+              type: 'session_updated',
+              session: {
+                id: sessionId,
+                status: 'active',
+              },
+              timestamp: new Date().toISOString(),
+            }));
+
+            broadcastToRoom(clients, `session:${sessionId}`, {
+              type: 'participant_joined',
+              participant,
+              timestamp: new Date().toISOString(),
+            }, clientId);
+            break;
+          }
+
+          case 'leave_session': {
+            const client = clients.get(clientId);
+            const activeRoom = client?.room;
+            if (client) {
+              client.room = undefined;
+            }
+
+            if (activeRoom) {
+              broadcastToRoom(clients, activeRoom, {
+                type: 'participant_left',
+                participantId: clientId,
+                timestamp: new Date().toISOString(),
+              }, clientId);
+            }
+
+            ws.send(JSON.stringify({
+              type: 'session_updated',
+              session: null,
+              timestamp: new Date().toISOString(),
+            }));
+            break;
+          }
+
+          case 'end_session': {
+            const client = clients.get(clientId);
+            const activeRoom = client?.room;
+            if (client) {
+              client.room = undefined;
+            }
+
+            if (activeRoom) {
+              broadcastToRoom(clients, activeRoom, {
+                type: 'session_updated',
+                session: {
+                  id: activeRoom.replace(/^session:/, ''),
+                  status: 'ended',
+                },
+                timestamp: new Date().toISOString(),
+              }, clientId);
+            }
+            break;
+          }
+
           case 'liveset:roll':
           case 'liveset:cut':
           case 'liveset:circle':
@@ -206,7 +340,7 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
             broadcastToRoom(clients, senderRoom, {
               type:          data.type,
               payload:       data.payload,
-              userId:        data.userId ?? userId,
+              userId:        data.userId ?? connectedUserId,
               projectId:     data.projectId,
               shootingDayId: data.shootingDayId,
               timestamp:     new Date().toISOString(),
@@ -224,13 +358,13 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
 
     ws.on('close', () => {
       clients.delete(clientId);
-      console.log(`[WS] Client disconnected: ${userId} (${clientId}). Total: ${clients.size}`);
+      console.log(`[WS] Client disconnected: ${connectedUserId} (${clientId}). Total: ${clients.size}`);
 
       broadcast(clients, {
         type: 'presence_update',
-        payload: { userId, status: 'offline' },
+        payload: { userId: connectedUserId, status: 'offline' },
         timestamp: new Date().toISOString(),
-        userId,
+        userId: connectedUserId,
       });
     });
 

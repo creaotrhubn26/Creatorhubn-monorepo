@@ -45,7 +45,7 @@ const UploadButton = styled(Button)(({ theme }) => ({
   color: 'white',
   padding: theme.spacing(),
   borderRadius: theme.spacing(),
-  border: '2px dashed rgba(25, 255, 255, 0.3)',
+  border: '2px dashed rgba(255, 255, 255, 0.26)',
   minHeight: '120px',
   width: '100%',
   display: 'flex',
@@ -53,16 +53,16 @@ const UploadButton = styled(Button)(({ theme }) => ({
   gap: theme.spacing(),
   transition: 'all 0.3s ease', '&:hover': {
     background: 'linear-gradient(135deg, #F7931E 0%, #FF6B35 100%)',
-    borderColor: 'rgba(25, 255, 255, 0.5)',
+    borderColor: 'rgba(255, 255, 255, 0.4)',
     transform: 'translateY(-2px)',
     boxShadow: '0 8px 25px rgba(25, 107, 53, 0.3)'
 }
 }));
 
 const BrandPreviewCard = styled(MuiCard)(({ theme }) => ({
-  background: 'rgba(25, 255, 255, 0.05)',
+  background: 'rgba(255, 255, 255, 0.06)',
   backdropFilter: 'blur(10px)',
-  border: '1px solid rgba(25, 255, 255, 0.1)',
+  border: '1px solid rgba(255, 255, 255, 0.12)',
   borderRadius: theme.spacing(),
   padding: theme.spacing(2, ), 
 }));

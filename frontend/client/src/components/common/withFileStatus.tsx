@@ -27,7 +27,7 @@ export function withFileStatus<P extends object>(
     onlyOnHover = false,
   } = options;
 
-  const Wrapped = React.forwardRef<unknown, P>((props, _ref) => {
+  const Wrapped = (props: P) => {
     const [showIndicators, setShowIndicators] = React.useState(!onlyOnHover);
 
     const handleMouseEnter = () => {
@@ -48,8 +48,7 @@ export function withFileStatus<P extends object>(
         onMouseLeave={handleMouseLeave}
         style={{ position: 'relative', display: 'inline-block' }}
       >
-        <Component {...props} />
-        {showIndicators && (
+        {showIndicators ? (
           <FileStatusWrapper
             showFileSystem={showFileSystem}
             showGoogleDrive={showGoogleDrive}
@@ -57,12 +56,14 @@ export function withFileStatus<P extends object>(
             size={size}
             position={position}
           >
-            <div />
+            <Component {...props} />
           </FileStatusWrapper>
+        ) : (
+          <Component {...props} />
         )}
       </div>
     );
-  });
+  };
 
   Wrapped.displayName = `withFileStatus(${Component.displayName ?? Component.name ?? 'Component'})`;
 

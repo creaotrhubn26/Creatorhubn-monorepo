@@ -667,7 +667,7 @@ function generateMockPreparation(meetingId: string, profession: string): Meeting
 // getProfessionDisplayName is now provided by useDynamicProfessions hook
 
 function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('no-N', {
+  return new Date(dateString).toLocaleDateString('no-NO', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

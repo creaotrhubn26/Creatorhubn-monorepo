@@ -988,8 +988,15 @@ export default function LoginDialog({
     setError('');
 
     try {
+      const browserOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
       const currentPath = typeof window !== 'undefined'
-        ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+        ? (() => {
+            const currentUrl = new URL(window.location.href);
+            const roleRoomPath = currentUrl.pathname.includes('casting')
+              ? currentUrl.pathname
+              : '/casting.html';
+            return `${roleRoomPath}${currentUrl.search}${currentUrl.hash}`;
+          })()
         : '/casting.html';
       const response = await googleWorkspaceApi.startOauth({
         mode: 'login',
@@ -997,6 +1004,7 @@ export default function LoginDialog({
         requestedRole: selectedRole || null,
         projectId: clientPortalIntent?.projectId,
         returnPath: currentPath,
+        browserOrigin,
         email: email.trim() || undefined,
       });
 

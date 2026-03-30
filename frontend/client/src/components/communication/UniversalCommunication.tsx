@@ -1,46 +1,41 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
-import { apiRequest, queryClient } from '@/lib/queryClient';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
-  Box,
-  Card as MuiCard,
-  CardContent,
-  Typography,
-  TextField,
-  Button,
   Avatar,
+  Badge,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  IconButton,
   List,
   ListItem,
   ListItemAvatar,
+  ListItemButton,
   ListItemText,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Chip,
-  IconButton,
-  Badge,
-  Grid,
-  Divider,
   Paper,
-  Tabs,
   Tab,
+  Tabs,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
-  Send,
-  VideoCall,
-  Phone,
   AttachFile,
-  MoreVert,
   CheckCircle,
-  Schedule,
-  Group,
   Message,
-  People,
-  Videocam as VideoCamera,
+  MoreVert,
+  Phone,
+  VideoCall,
 } from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
+import { useAuth } from '@/hooks/useAuth';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 
 interface Conversation {
   id: number;
@@ -49,10 +44,10 @@ interface Conversation {
   lastMessage?: string;
   lastMessageAt?: string;
   unreadCount: number;
-  type: 'direct' | 'group' | 'consultation'
+  type: 'direct' | 'group' | 'consultation';
 }
 
-interface Message {
+interface MessageItem {
   id: number;
   conversationId: number;
   senderId: string;
@@ -60,7 +55,7 @@ interface Message {
   content: string;
   messageType: 'text' | 'image' | 'file' | 'system';
   timestamp: string;
-  status: 'sent' | 'delivered' | 'read'
+  status: 'sent' | 'delivered' | 'read';
 }
 
 interface VideoConsultation {
@@ -71,248 +66,434 @@ interface VideoConsultation {
   duration: number;
   status: 'scheduled' | 'active' | 'completed' | 'cancelled';
   meetingUrl?: string;
-  notes?: string
+  notes?: string;
+}
+
+interface ConsultationDraft {
+  title: string;
+  participants: string;
+  scheduledAt: string;
+  duration: number;
+  notes: string;
 }
 
 interface UniversalCommunicationProps {
   profession: string;
   userId?: string;
-  // Integration props for universal workflow connectivity
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void
+  onMeetingCreate?: (meeting: {
+    title: string;
+    participantIds: string[];
+    scheduledAt: string;
+    duration: number;
+    notes?: string;
+  }) => void;
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onWorklogCreate?: (worklog: Record<string, unknown>) => void;
+  selectedProject?: Record<string, unknown>;
+  onProjectSelect?: (project: Record<string, unknown>) => void;
 }
 
-export default function UniversalCommunication({ 
-  profession, 
+const parseArrayPayload = <T,>(
+  payload: unknown,
+  parser: (value: unknown) => T | null,
+): T[] => {
+  const list = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && 'data' in payload && Array.isArray(payload.data)
+      ? payload.data
+      : [];
+
+  return list
+    .map(parser)
+    .filter((item): item is T => item !== null);
+};
+
+const parseConversation = (value: unknown): Conversation | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.id !== 'number' || typeof record.title !== 'string' || !Array.isArray(record.participants)) {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    title: record.title,
+    participants: record.participants.filter((participant): participant is string => typeof participant === 'string'),
+    ...(typeof record.lastMessage === 'string' ? { lastMessage: record.lastMessage } : {}),
+    ...(typeof record.lastMessageAt === 'string' ? { lastMessageAt: record.lastMessageAt } : {}),
+    unreadCount: typeof record.unreadCount === 'number' ? record.unreadCount : 0,
+    type:
+      record.type === 'group' || record.type === 'consultation' ? record.type : 'direct',
+  };
+};
+
+const parseMessage = (value: unknown): MessageItem | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== 'number' ||
+    typeof record.conversationId !== 'number' ||
+    typeof record.senderId !== 'string' ||
+    typeof record.senderName !== 'string' ||
+    typeof record.content !== 'string' ||
+    typeof record.timestamp !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    conversationId: record.conversationId,
+    senderId: record.senderId,
+    senderName: record.senderName,
+    content: record.content,
+    messageType:
+      record.messageType === 'image' || record.messageType === 'file' || record.messageType === 'system'
+        ? record.messageType
+        : 'text',
+    timestamp: record.timestamp,
+    status:
+      record.status === 'delivered' || record.status === 'read'
+        ? record.status
+        : 'sent',
+  };
+};
+
+const parseConsultation = (value: unknown): VideoConsultation | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== 'number' ||
+    typeof record.title !== 'string' ||
+    !Array.isArray(record.participantIds) ||
+    typeof record.scheduledAt !== 'string' ||
+    typeof record.duration !== 'number'
+  ) {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    title: record.title,
+    participantIds: record.participantIds.filter((item): item is string => typeof item === 'string'),
+    scheduledAt: record.scheduledAt,
+    duration: record.duration,
+    status:
+      record.status === 'active' || record.status === 'completed' || record.status === 'cancelled'
+        ? record.status
+        : 'scheduled',
+    ...(typeof record.meetingUrl === 'string' ? { meetingUrl: record.meetingUrl } : {}),
+    ...(typeof record.notes === 'string' ? { notes: record.notes } : {}),
+  };
+};
+
+export default function UniversalCommunication({
+  profession,
   userId,
   onMeetingCreate,
   onProjectUpdate,
   onWorklogCreate,
   selectedProject,
-  onProjectSelect
+  onProjectSelect,
 }: UniversalCommunicationProps) {
-  const [tabValue, setTabValue] = useState(false);
-  
-  // Theming system
+  const { user } = useAuth();
   const theming = useTheming('photographer');
+  const effectiveUserId = userId ?? user?.id ?? 'guest';
+  const [tabValue, setTabValue] = useState(0);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [showVideoDialog, setShowVideoDialog] = useState(false);
+  const [consultationDraft, setConsultationDraft] = useState<ConsultationDraft>({
+    title: '',
+    participants: '',
+    scheduledAt: '',
+    duration: 30,
+    notes: '',
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Fetch conversations - NO MOCK DATA
-  const { data: conversations, isLoading: conversationsLoading } = useQuery({
-    queryKey: ['/api/communication/conversations', profession, userId],
-    queryFn: () => apiRequest(`/api/communication/conversations?profession=${profession}&userId=${userId || 'guest'}`),
-    enabled: !!profession && userId !== 'guest'
-});
+  const { data: conversations = [] } = useQuery({
+    queryKey: ['/api/communication/conversations', profession, effectiveUserId],
+    enabled: Boolean(profession) && effectiveUserId !== 'guest',
+    queryFn: async () => {
+      const payload = await apiRequest(
+        `/api/communication/conversations?profession=${profession}&userId=${effectiveUserId}`,
+      );
+      return parseArrayPayload(payload, parseConversation);
+    },
+  });
 
-  // Fetch messages for selected conversation - NO MOCK DATA
-  const { data: messages, isLoading: messagesLoading } = useQuery({
+  const { data: messages = [] } = useQuery({
     queryKey: ['/api/communication/messages', selectedConversation?.id],
-    queryFn: () => apiRequest(`/api/communication/messages/${selectedConversation?.d}`),
-    enabled: !!selectedConversation && userId !== 'guest'
-});
+    enabled: selectedConversation !== null && effectiveUserId !== 'guest',
+    queryFn: async () => {
+      const payload = await apiRequest(`/api/communication/messages/${selectedConversation?.id}`);
+      return parseArrayPayload(payload, parseMessage);
+    },
+  });
 
-  // Fetch video consultations - NO MOCK DATA
-  const { data: consultations } = useQuery({
-    queryKey: ['/api/communication/consultations', profession, userId],
-    queryFn: () => apiRequest(`/api/communication/consultations?profession=${profession}&userId=${userId || 'guest'}`),
-    enabled: !!profession && userId !== 'guest'
-});
+  const { data: consultations = [] } = useQuery({
+    queryKey: ['/api/communication/consultations', profession, effectiveUserId],
+    enabled: Boolean(profession) && effectiveUserId !== 'guest',
+    queryFn: async () => {
+      const payload = await apiRequest(
+        `/api/communication/consultations?profession=${profession}&userId=${effectiveUserId}`,
+      );
+      return parseArrayPayload(payload, parseConsultation);
+    },
+  });
 
-  // Send message mutation
   const sendMessageMutation = useMutation({
-    mutationFn: async (data: { conversationId: number; content: string; messageType?: string }) => {
-      return apiRequest('/api/communication/messages', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
+    mutationFn: async (payload: { conversationId: number; content: string; messageType?: 'text' | 'file' }) =>
+      apiRequest('/api/communication/messages', {
         method: 'POST',
-        body: JSON.stringify(data)
-  });
-  },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/communication/messages', selectedConversation?.id] });
-      setNewMessage(', ');
-  }
-});
-
-  // Create conversation mutation
-  const createConversationMutation = useMutation({
-    mutationFn: async (data: { title: string; participants: string[]; type: string }) => {
-      return apiRequest('/api/communication/conversations', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'POST',
-        body: JSON.stringify(data)
-  });
-  },
-    onSuccess: (newConversation) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/communication/conversations', ],});
-      setSelectedConversation(newConversation);
-  }
-});
-
-  // Schedule consultation mutation
-  const scheduleConsultationMutation = useMutation({
-    mutationFn: async (data: { title: string; participantIds: string[]; scheduledAt: string; duration: number; notes?: string }) => {
-      return apiRequest('/api/communication/consultations', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'POST',
-        body: JSON.stringify(data)
-  });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/communication/consultations', ],});
-      setShowVideoDialog(false);
-  }
-});
-
-  // WebSocket for real-time messaging
-  useEffect(() => {
-    if (!selectedConversation || !userId || userId === 'guest') return;
-
-    const protocol = window.location.protocol === 'https: ' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/communication/${selectedConversation.id}`;
-    
-    wsRef.current = new WebSocket(wsUrl);
-    
-    wsRef.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'new_message') {
-        queryClient.invalidateQueries({ 
-          queryKey: ['/api/communication/messages', selectedConversation.id] 
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/communication/messages', selectedConversation?.id],
       });
-    }
-  };
 
-    wsRef.current.onerror = (error) => {
-      console.log('WebSocket connection error:', error);
-  };
+      if (selectedProject && onProjectUpdate) {
+        onProjectUpdate({
+          ...selectedProject,
+          communicationEvent: 'message_sent',
+          conversationId: selectedConversation?.id,
+        });
+      }
+
+      if (onWorklogCreate && selectedConversation) {
+        onWorklogCreate({
+          type: 'communication',
+          action: 'message_sent',
+          conversationId: selectedConversation.id,
+          profession,
+        });
+      }
+
+      setNewMessage('');
+    },
+  });
+
+  const createConversationMutation = useMutation({
+    mutationFn: async (payload: { title: string; participants: string[]; type: Conversation['type'] }) =>
+      apiRequest('/api/communication/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/communication/conversations', profession, effectiveUserId] });
+    },
+  });
+
+  const scheduleConsultationMutation = useMutation({
+    mutationFn: async (payload: {
+      title: string;
+      participantIds: string[];
+      scheduledAt: string;
+      duration: number;
+      notes?: string;
+    }) =>
+      apiRequest('/api/communication/consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: async (_result, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/communication/consultations', profession, effectiveUserId] });
+      onMeetingCreate?.(variables);
+      setShowVideoDialog(false);
+      setConsultationDraft({
+        title: '',
+        participants: '',
+        scheduledAt: '',
+        duration: 30,
+        notes: '',
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (!selectedConversation && conversations.length > 0) {
+      setSelectedConversation(conversations[0]);
+    }
+  }, [conversations, selectedConversation]);
+
+  useEffect(() => {
+    if (!selectedConversation || effectiveUserId === 'guest') {
+      return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/communication/${selectedConversation.id}`;
+    wsRef.current = new WebSocket(wsUrl);
+
+    wsRef.current.onmessage = (event) => {
+      const payload = JSON.parse(event.data) as { type?: string };
+      if (payload.type === 'new_message') {
+        void queryClient.invalidateQueries({
+          queryKey: ['/api/communication/messages', selectedConversation.id],
+        });
+      }
+    };
 
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-    }
-  };
-}, [selectedConversation, userId]);
+      wsRef.current?.close();
+    };
+  }, [effectiveUserId, selectedConversation]);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-}, [messages]);
+  }, [messages]);
 
-  const handleSendMessage = () => {
-    if (!newMessage.trim() || !selectedConversation) return;
-    
-    sendMessageMutation.mutate({
-      conversationId: selectedConversation.d,
-      content: newMessage.trim(),
-      messageType: 'text'
-});
-};
+  const unreadCount = useMemo(
+    () => conversations.reduce((total, conversation) => total + conversation.unreadCount, 0),
+    [conversations],
+  );
 
-  const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString('no-N', {
+  const formatTimestamp = (timestamp: string) =>
+    new Date(timestamp).toLocaleString('no-NO', {
       hour: '2-digit',
       minute: '2-digit',
       day: '2-digit',
-      month: '2-digit'
-});
-};
+      month: '2-digit',
+    });
 
-  const getUnreadCount = () => {
-    if (!conversations || conversations.length === 0) return 0;
-    return (conversations || []).reduce((total: number, conv: Conversation) => total + (conv.unreadCount || 0), 0);
-};
+  const handleSendMessage = () => {
+    if (!selectedConversation || !newMessage.trim()) {
+      return;
+    }
 
-  if (userId === 'guest') {
+    sendMessageMutation.mutate({
+      conversationId: selectedConversation.id,
+      content: newMessage.trim(),
+      messageType: 'text',
+    });
+  };
+
+  const handleScheduleConsultation = () => {
+    const participantIds = consultationDraft.participants
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (!consultationDraft.title || !consultationDraft.scheduledAt || participantIds.length === 0) {
+      return;
+    }
+
+    scheduleConsultationMutation.mutate({
+      title: consultationDraft.title,
+      participantIds,
+      scheduledAt: consultationDraft.scheduledAt,
+      duration: consultationDraft.duration,
+      ...(consultationDraft.notes ? { notes: consultationDraft.notes } : {}),
+    });
+  };
+
+  if (effectiveUserId === 'guest') {
     return (
-      <Box sx={{ p:  3, textAlign: 'center' }}>
-        <Message sx={{ fontSize:  48, color: 'text.secondary', mb: 2 }} />
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Message sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
         <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
           Logg inn for å få tilgang til kommunikasjonssystemet
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Chat, video-konsultasjoner og gruppediskusjoner krever innlogging
+          Chat, video-konsultasjoner og gruppediskusjoner krever innlogging.
         </Typography>
       </Box>
     );
-}
+  }
 
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
       <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h5" sx={{  fontWeight: 600}}>
+          <Typography variant="h5" sx={{ fontWeight: 600 }}>
             💬 Kommunikasjonssenter
           </Typography>
-          <Badge badgeContent={getUnreadCount()} color="error">
-            <Message />
-          </Badge>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {selectedProject && (
+              <Chip
+                label="Prosjekt koblet"
+                size="small"
+                onClick={() => onProjectSelect?.(selectedProject)}
+                variant="outlined"
+              />
+            )}
+            <Badge badgeContent={unreadCount} color="error">
+              <Message />
+            </Badge>
+          </Box>
         </Box>
-        
-        <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)} sx={{ mt: 1 }}>
+
+        <Tabs value={tabValue} onChange={(_event, next) => setTabValue(next)} sx={{ mt: 1 }}>
           <Tab label="Samtaler" />
           <Tab label="Video-konsultasjoner" />
           <Tab label="Grupper" />
         </Tabs>
       </Box>
 
-      <Grid container sx={{ flexGrow:  1 }}>
-        {/* Sidebar */}
+      <Grid container sx={{ flexGrow: 1 }}>
         <Grid item xs={12} md={4} sx={{ borderRight: { md: 1 }, borderColor: 'divider' }}>
           {tabValue === 0 && (
             <Box sx={{ height: '100%', overflow: 'auto' }}>
-              {!conversations || conversations.length === 0 ? (
-                <Box sx={{ p:  3, textAlign: 'center' }}>
-                  <Message sx={{ fontSize:  48, color: 'text.secondary', mb: 2 }} />
+              <Box sx={{ p: 2 }}>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={() =>
+                    createConversationMutation.mutate({
+                      title: `${profession} samtale`,
+                      participants: [effectiveUserId],
+                      type: 'direct',
+                    })
+                  }
+                >
+                  Ny samtale
+                </Button>
+              </Box>
+
+              {conversations.length === 0 ? (
+                <Box sx={{ p: 3, textAlign: 'center' }}>
                   <Typography variant="body1" color="text.secondary">
-                    Ingen samtaler ennå
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Start en ny samtale med kunder eller kolleger
+                    Ingen samtaler ennå.
                   </Typography>
                 </Box>
               ) : (
                 <List>
-                  {conversations.map((conversation: Conversation) => (
-                  <ListItem 
-                    key={conversation.d}
-                    onClick={() => setSelectedConversation(conversation)}
-                    sx={{ 
-                      cursor: 'pointer',
-                      bgcolor: selectedConversation?.id === conversation.id ? 'action.selected' : 'transparent', '&:hover': { bgcolor: 'action.hover' }
-                  }}
-                  >
-                    <ListItemAvatar>
-                      <Avatar>
-                        {conversation.type === 'group' ? theming.getThemedIcon('group') : theming.getThemedIcon('people')}
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={conversation.title}
-                      secondary={conversation.lastMessage}
-                      primaryTypographyProps={{ fontWeight: onversation.unreadCount > 0 ? 600 : 400 }}
-                    />
-                    {conversation.unreadCount > 0 && (
-                      <Chip
-                        label={conversation.unreadCount}
-                        size="small"
-                        color="error"
-                        sx={{ ml: 1 }}
-                      />
-                    )}
-                  </ListItem>
+                  {conversations.map((conversation) => (
+                    <ListItem key={conversation.id} disablePadding>
+                      <ListItemButton
+                        selected={selectedConversation?.id === conversation.id}
+                        onClick={() => setSelectedConversation(conversation)}
+                      >
+                        <ListItemAvatar>
+                          <Avatar>{conversation.type === 'group' ? 'G' : 'C'}</Avatar>
+                        </ListItemAvatar>
+                        <ListItemText
+                          primary={conversation.title}
+                          secondary={conversation.lastMessage}
+                          primaryTypographyProps={{
+                            fontWeight: conversation.unreadCount > 0 ? 600 : 400,
+                          }}
+                        />
+                        {conversation.unreadCount > 0 && (
+                          <Chip label={conversation.unreadCount} size="small" color="error" />
+                        )}
+                      </ListItemButton>
+                    </ListItem>
                   ))}
                 </List>
               )}
@@ -321,55 +502,59 @@ export default function UniversalCommunication({
 
           {tabValue === 1 && (
             <Box sx={{ p: 2 }}>
-              <Button variant="contained"
-                startIcon={theming.getThemedIcon('videoCall')}
-                fullWidth
-                onClick={() => setShowVideoDialog(true)}
-                sx={{ mb: 2 }}
-              >
-                Planlegg Video-konsultasjon
+              <Button variant="contained" startIcon={<VideoCall />} fullWidth onClick={() => setShowVideoDialog(true)} sx={{ mb: 2 }}>
+                Planlegg video-konsultasjon
               </Button>
-              {!consultations || consultations.length === 0 ? (
+              {consultations.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2 }}>
-                  Ingen planlagte konsultasjoner
+                  Ingen planlagte konsultasjoner.
                 </Typography>
               ) : (
-                consultations.map((consultation: VideoConsultation) => (
-                <MuiCard key={consultation.id} sx={{ mb: 2 }}>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
-                      {consultation.title}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {formatTimestamp(consultation.scheduledAt)}
-                    </Typography>
-                    <Chip
-                      label={consultation.status}
-                      size="small"
-                      color={consultation.status === 'active' ? 'success' : 'default'}
-                      sx={{ mt: 1 }}
-                    />
-                  </CardContent>
-                </MuiCard>
+                consultations.map((consultation) => (
+                  <Card key={consultation.id} sx={{ mb: 2 }}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        {consultation.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatTimestamp(consultation.scheduledAt)}
+                      </Typography>
+                      <Chip
+                        label={consultation.status}
+                        size="small"
+                        color={consultation.status === 'active' ? 'success' : 'default'}
+                        sx={{ mt: 1 }}
+                      />
+                    </CardContent>
+                  </Card>
                 ))
               )}
             </Box>
           )}
+
+          {tabValue === 2 && (
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Gruppearbeid
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Opprett en ny gruppesamtale fra fanen "Samtaler" for å samle kunder og samarbeidspartnere.
+              </Typography>
+            </Box>
+          )}
         </Grid>
 
-        {/* Main Chat Area */}
         <Grid item xs={12} md={8}>
           {selectedConversation ? (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              {/* Chat Header */}
               <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Avatar sx={{ mr:  2 }}>
-                      {selectedConversation.type === 'group' ? theming.getThemedIcon('group') : theming.getThemedIcon('people')}
-                    </Avatar>
+                    <Avatar sx={{ mr: 2 }}>{selectedConversation.type === 'group' ? 'G' : 'C'}</Avatar>
                     <Box>
-                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>{selectedConversation.title}</Typography>
+                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                        {selectedConversation.title}
+                      </Typography>
                       <Typography variant="body2" color="text.secondary">
                         {selectedConversation.participants.join(', ')}
                       </Typography>
@@ -377,64 +562,68 @@ export default function UniversalCommunication({
                   </Box>
                   <Box>
                     <IconButton>
-                      {theming.getThemedIcon('videoCall')}
+                      <VideoCall />
                     </IconButton>
                     <IconButton>
-                      {theming.getThemedIcon('phone')}
+                      <Phone />
                     </IconButton>
                     <IconButton>
-                      {theming.getThemedIcon('moreVert')}
+                      <MoreVert />
                     </IconButton>
                   </Box>
                 </Box>
               </Box>
 
-              {/* Messages */}
               <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
-                {!messages || messages.length === 0 ? (
-                  <Box sx={{ textAlign: 'center', py:  4 }}>
-                    <Message sx={{ fontSize:  48, color: 'text.secondary', mb: 2 }} />
+                {messages.length === 0 ? (
+                  <Box sx={{ textAlign: 'center', py: 4 }}>
                     <Typography variant="body1" color="text.secondary">
-                      Ingen meldinger ennå
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Send den første meldingen for å starte samtalen
+                      Ingen meldinger ennå.
                     </Typography>
                   </Box>
                 ) : (
-                  messages.map((message: Message) => (
-                  <Box key={message.d} sx={{ mb: 2 }}>
-                    <Paper 
-                      sx={{ 
-                        p: 2,
-                        maxWidth: '70%',
-                        ml: message.senderId === userId ? 'auto' : 0,
-                        bgcolor: message.senderId === userId ? 'primary.main' : 'background.paper',
-                        color: message.senderId === userId ? 'primary.contrastText' : 'text.primary',
-                        ...theming.getThemedCardSx()
-                      }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-                        {message.senderName}
-                      </Typography>
-                      <Typography variant="body1">
-                        {message.content}
-                      </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
-                        <Typography variant="caption" sx={{ opacity: 0.7}}>
-                          {formatTimestamp(message.timestamp)}
+                  messages.map((message) => (
+                    <Box key={message.id} sx={{ mb: 2 }}>
+                      <Paper
+                        sx={{
+                          p: 2,
+                          maxWidth: '70%',
+                          ml: message.senderId === effectiveUserId ? 'auto' : 0,
+                          bgcolor:
+                            message.senderId === effectiveUserId ? 'primary.main' : 'background.paper',
+                          color:
+                            message.senderId === effectiveUserId
+                              ? 'primary.contrastText'
+                              : 'text.primary',
+                          ...theming.getThemedCardSx(),
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                          {message.senderName}
                         </Typography>
-                        {message.senderId === userId && (
-                          <CheckCircle sx={{ fontSize:  16, opacity: 0.7}} />
-                        )}
-                      </Box>
-                    </Paper>
-                  </Box>
+                        <Typography variant="body1">{message.content}</Typography>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            mt: 1,
+                          }}
+                        >
+                          <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                            {formatTimestamp(message.timestamp)}
+                          </Typography>
+                          {message.senderId === effectiveUserId && (
+                            <CheckCircle sx={{ fontSize: 16, opacity: 0.7 }} />
+                          )}
+                        </Box>
+                      </Paper>
+                    </Box>
                   ))
                 )}
                 <div ref={messagesEndRef} />
               </Box>
 
-              {/* Message Input */}
               <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <IconButton>
@@ -442,43 +631,42 @@ export default function UniversalCommunication({
                   </IconButton>
                   <TextField
                     fullWidth
-                    placeholder="Skriv en melding..."
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                    }
-                  }}
                     multiline
                     maxRows={3}
+                    placeholder="Skriv en melding..."
+                    value={newMessage}
+                    onChange={(event) => setNewMessage(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
                   />
-                  <IconButton 
-                    color="primary" 
+                  <IconButton
+                    color="primary"
                     onClick={handleSendMessage}
                     disabled={!newMessage.trim() || sendMessageMutation.isPending}
                   >
-                    <Send />
+                    <Message />
                   </IconButton>
                 </Box>
               </Box>
             </Box>
           ) : (
-            <Box sx={{ 
-              height: '100%', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              textAlign: 'center'
-        }}>
+            <Box
+              sx={{
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+              }}
+            >
               <Box>
-                <Message sx={{ fontSize:  64, color:'text.secondary', mb: 2 }} />
+                <Message sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
                 <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
                   Velg en samtale for å begynne
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Start kommunikasjon med kunder og samarbeidspartnere
                 </Typography>
               </Box>
             </Box>
@@ -486,24 +674,35 @@ export default function UniversalCommunication({
         </Grid>
       </Grid>
 
-      {/* Video Consultation Dialog */}
       <Dialog open={showVideoDialog} onClose={() => setShowVideoDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Planlegg Video-konsultasjon</DialogTitle>
+        <DialogTitle>Planlegg video-konsultasjon</DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
             label="Tittel"
-            sx={{ mb: 2,mt: 1 }}
+            value={consultationDraft.title}
+            onChange={(event) =>
+              setConsultationDraft((previous) => ({ ...previous, title: event.target.value }))
+            }
+            sx={{ mb: 2, mt: 1 }}
           />
           <TextField
             fullWidth
             label="Deltakere (komma-separert)"
+            value={consultationDraft.participants}
+            onChange={(event) =>
+              setConsultationDraft((previous) => ({ ...previous, participants: event.target.value }))
+            }
             sx={{ mb: 2 }}
           />
           <TextField
             fullWidth
             type="datetime-local"
             label="Tidspunkt"
+            value={consultationDraft.scheduledAt}
+            onChange={(event) =>
+              setConsultationDraft((previous) => ({ ...previous, scheduledAt: event.target.value }))
+            }
             sx={{ mb: 2 }}
             InputLabelProps={{ shrink: true }}
           />
@@ -511,6 +710,13 @@ export default function UniversalCommunication({
             fullWidth
             type="number"
             label="Varighet (minutter)"
+            value={consultationDraft.duration}
+            onChange={(event) =>
+              setConsultationDraft((previous) => ({
+                ...previous,
+                duration: Math.max(15, Number(event.target.value) || 30),
+              }))
+            }
             sx={{ mb: 2 }}
           />
           <TextField
@@ -518,15 +724,22 @@ export default function UniversalCommunication({
             multiline
             rows={3}
             label="Notater"
-            sx={{ mb: 2 }}
+            value={consultationDraft.notes}
+            onChange={(event) =>
+              setConsultationDraft((previous) => ({ ...previous, notes: event.target.value }))
+            }
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowVideoDialog(false)}>
-            Avbryt
-          </Button>
-          <Button variant="contained" startIcon={theming.getThemedIcon('videoCall')} sx={theming.getThemedButtonSx()}>
-            Planlegg Konsultasjon
+          <Button onClick={() => setShowVideoDialog(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            startIcon={<VideoCall />}
+            onClick={handleScheduleConsultation}
+            disabled={scheduleConsultationMutation.isPending}
+            sx={theming.getThemedButtonSx()}
+          >
+            Planlegg konsultasjon
           </Button>
         </DialogActions>
       </Dialog>

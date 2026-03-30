@@ -55,6 +55,19 @@ const ContractCard = React.memo<ContractCardProps>(
     isSelected,
     onToggleSelect,
   }) => {
+    const statusColor =
+      contract.status === 'draft'
+        ? 'warning'
+        : contract.status === 'active' || contract.status === 'signed'
+        ? 'success'
+        : contract.status === 'pending_signatures'
+        ? 'info'
+        : contract.status === 'rejected' || contract.status === 'cancelled'
+        ? 'error'
+        : 'default';
+
+    const signatureReady = Boolean(contract.google_doc_id || contract.googleDocId);
+
     return (
       <Card variant="outlined" sx={theming.getThemedCardSx()}>
         <CardContent sx={theming.getThemedCardSx()}>
@@ -73,13 +86,7 @@ const ContractCard = React.memo<ContractCardProps>(
                   </Typography>
                   <Chip
                     label={contract.status || 'draft'}
-                    color={
-                      contract.status === 'draft'
-                        ? 'warning'
-                        : contract.status === 'active'
-                        ? 'success'
-                        : 'default'
-                    }
+                    color={statusColor as any}
                     size="small"
                   />
                 </Box>
@@ -93,13 +100,7 @@ const ContractCard = React.memo<ContractCardProps>(
               </Typography>
               <Chip
                 label={contract.status || 'draft'}
-                color={
-                  contract.status === 'draft'
-                    ? 'warning'
-                    : contract.status === 'active'
-                    ? 'success'
-                    : 'default'
-                }
+                color={statusColor as any}
                 size="small"
               />
             </Box>
@@ -161,24 +162,24 @@ const ContractCard = React.memo<ContractCardProps>(
           </Button>
 
           {/* E-Signature Status */}
-          {contract.google_doc_id && (
+          {signatureReady && (
             <Box sx={{ mt: 2, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="caption" fontWeight="bold">
                   E-Signatur Status:
                 </Typography>
                 <Chip
-                  label={contract.signature_status === 'signed' ? 'Signert' : 'Venter'}
-                  color={contract.signature_status === 'signed' ? 'success' : 'warning'}
+                  label={contract.signature_status === 'signed' ? 'Signert' : contract.signature_status === 'sent' || contract.signatureStatus === 'sent' ? 'Sendt' : 'Klargjort'}
+                  color={contract.signature_status === 'signed' ? 'success' : contract.signature_status === 'sent' || contract.signatureStatus === 'sent' ? 'info' : 'warning'}
                   size="small"
                 />
               </Box>
-              {contract.google_doc_url && (
+              {(contract.google_doc_url || contract.googleDocUrl) && (
                 <Button
                   size="small"
                   variant="outlined"
                   startIcon={<LaunchIcon />}
-                  href={contract.google_doc_url}
+                  href={contract.google_doc_url || contract.googleDocUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   fullWidth
@@ -192,7 +193,7 @@ const ContractCard = React.memo<ContractCardProps>(
 
           {/* Action Buttons */}
           <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
-            {!contract.google_doc_id && (
+            {!signatureReady && (
               <Button
                 size="small"
                 variant="outlined"
@@ -200,7 +201,7 @@ const ContractCard = React.memo<ContractCardProps>(
                 disabled={isCreatingESignature}
                 onClick={() => onCreateESignature(contract.id)}
               >
-                Opprett Signatur
+                Send til Signering
               </Button>
             )}
             <Tooltip title="Last ned PDF">
@@ -236,7 +237,6 @@ const ContractCard = React.memo<ContractCardProps>(
 ContractCard.displayName ='ContractCard';
 
 export default ContractCard;
-
 
 
 

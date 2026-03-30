@@ -12,7 +12,7 @@
  * penumbra_size = (light_size / distance_to_light) * distance_to_occluder
  */
 
-import type { SceneNode } from '@/types';
+import type { SceneNode } from '../types';
 import { sam2Service } from '@/services/SAM2Service';
 
 export interface ShadowInfo {
@@ -113,7 +113,7 @@ class ShadowAnalysisService {
 
       // Shadow intensity: depends on light power and distance
       // Multiple lights reduce shadow intensity (fill light reduces shadows)
-      const shadowIntensity = Math.max(0, 1 - power);
+      const shadowIntensity = Math.max(0, 1 - power) * (0.7 + focus * 0.3);
 
       // Calculate shadow softness using penumbra formula
       // Reference: Hasenfratz et al. (2003)
@@ -244,6 +244,11 @@ class ShadowAnalysisService {
       } else if (modifierLower.includes('grid')) {
         lightSize = 0.15; // 15cm with grid (harder than bare)
       }
+    }
+
+    if (beamAngle !== undefined) {
+      const beamFactor = Math.max(0.35, Math.min(1.4, beamAngle / 60));
+      lightSize *= beamFactor;
     }
 
     // Calculate distance from light to occluder

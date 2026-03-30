@@ -85,8 +85,11 @@ const EMPTY_PAGE = (): CMSPage => ({
   updatedAt: new Date().toISOString(),
 });
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
 const normalizePage = (value: unknown): CMSPage | null => {
-  if (!value || typeof value !== 'object') {
+  if (!isRecord(value)) {
     return null;
   }
 
@@ -226,11 +229,15 @@ export default function UniversalVisualCMS() {
   const [newPageName, setNewPageName] = useState('');
   const [newPageRoute, setNewPageRoute] = useState('');
 
-  const { data: pages = [] } = useQuery({
+  const { data: pages = [] } = useQuery<CMSPage[]>({
     queryKey: ['/api/cms/pages'],
     queryFn: async () => {
-      const response = await apiRequest('/api/cms/pages', { method: 'GET' });
-      const raw = Array.isArray(response) ? response : Array.isArray(response?.pages) ? response.pages : [];
+      const response: unknown = await apiRequest('/api/cms/pages', { method: 'GET' });
+      const raw: unknown[] = Array.isArray(response)
+        ? response
+        : isRecord(response) && Array.isArray(response.pages)
+          ? response.pages
+          : [];
       const normalized = raw.map(normalizePage).filter((item): item is CMSPage => item !== null);
       return normalized;
     },
@@ -372,7 +379,7 @@ export default function UniversalVisualCMS() {
               Pages
             </Typography>
             <List dense>
-              {pages.map((page) => (
+              {pages.map((page: CMSPage) => (
                 <ListItemButton
                   key={page.id}
                   selected={page.id === currentPage.id}

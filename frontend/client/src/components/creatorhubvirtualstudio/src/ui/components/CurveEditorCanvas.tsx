@@ -20,17 +20,11 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Button,
-  Chip,
-  Divider,
-  Slider,
   TextField,
 } from '@mui/material';
 import {
   Refresh,
-  Save,
   ContentCopy,
-  Straighten,
   GridOn,
   PlayArrow,
 } from '@mui/icons-material';
@@ -263,8 +257,8 @@ function ControlPoint({
       setIsDragging(false);
     };
 
-    window.addEventListener('mousemove, ', handleMouseMove);
-    window.addEventListener('mouseup,', handleMouseUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
@@ -538,7 +532,7 @@ export function CurveEditorCanvas({
           />
 
           {/* Preview marker */}
-          {(previewValue !== undefined || animating) && (
+          {showPreview && (previewValue !== undefined || animating) && (
             <g>
               <circle
                 cx={toSvgX(previewValue ?? animationProgress)}
@@ -669,4 +663,3 @@ export function CurveEditorCanvas({
 }
 
 export default CurveEditorCanvas;
-

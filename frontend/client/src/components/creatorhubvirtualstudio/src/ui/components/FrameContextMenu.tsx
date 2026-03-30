@@ -10,7 +10,7 @@
  * - Export options
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('FrameContextMenu, ');
@@ -42,6 +42,7 @@ import {
   Avatar,
   List,
   ListItem,
+  ListItemButton,
   ListItemAvatar,
   Autocomplete,
 } from '@mui/material';
@@ -84,8 +85,8 @@ import {
   Flag,
   Star,
 } from '@mui/icons-material';
-import type { StoryboardFrame} from '../../state/storyboardStore';
-import { useStoryboardStore } from '../../state/storyboardStore';
+import type { SceneNode } from '../../core/models/scene';
+import { useStoryboardStore, type StoryboardFrame } from '../../state/storyboardStore';
 import { useAppStore } from '../../state/store';
 
 // =============================================================================
@@ -125,6 +126,27 @@ interface MetadataEditorProps {
   onSave: (data: Partial<StoryboardFrame>) => void;
 }
 
+function createSceneSnapshotBase(frame: StoryboardFrame | null): NonNullable<StoryboardFrame['sceneSnapshot']> {
+  return (
+    frame?.sceneSnapshot ?? {
+      camera: {
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        fov: 50,
+        focalLength: 50,
+        aperture: 2.8,
+        focusDistance: 2,
+        iso: 100,
+        shutter: 1 / 125,
+      },
+      lights: [],
+      equipment: [],
+      props: [],
+      capturedAt: new Date().toISOString(),
+    }
+  );
+}
+
 // =============================================================================
 // Metadata Editor Dialog
 // =============================================================================
@@ -148,13 +170,15 @@ const MetadataEditorDialog: React.FC<MetadataEditorProps> = ({
   const [tags, setTags] = useState<string[]>([]);
 
   const handleSave = () => {
+    const sceneSnapshot = createSceneSnapshotBase(frame);
+
     onSave({
       duration,
       dialogue,
       technicalNotes,
       // Store camera settings in scene snapshot
       sceneSnapshot: {
-        ...frame?.sceneSnapshot,
+        ...sceneSnapshot,
         cameraSettings,
         tags,
       },
@@ -335,7 +359,7 @@ interface ImportFromSceneDialogProps {
   open: boolean;
   type: 'camera' | 'lighting' | 'equipment' | null;
   onClose: () => void;
-  onImport: (data: any) => void;
+  onImport: (data: SceneNode) => void;
 }
 
 const ImportFromSceneDialog: React.FC<ImportFromSceneDialogProps> = ({
@@ -344,12 +368,13 @@ const ImportFromSceneDialog: React.FC<ImportFromSceneDialogProps> = ({
   onClose,
   onImport,
 }) => {
-  const { nodes } = useAppStore();
+  const nodes = useAppStore((state) => state.scene.nodes);
   
   // Filter nodes by type
-  const getCameraNodes = () => nodes.filter(n => n.type === 'camera');
-  const getLightNodes = () => nodes.filter(n => n.type === 'light');
-  const getEquipmentNodes = () => nodes.filter(n => !['camera','light'].includes(n.type || ','));
+  const getCameraNodes = () => nodes.filter((node: SceneNode) => node.type === 'camera');
+  const getLightNodes = () => nodes.filter((node: SceneNode) => node.type === 'light');
+  const getEquipmentNodes = () =>
+    nodes.filter((node: SceneNode) => !['camera', 'light'].includes(node.type));
 
   const getTitle = () => {
     switch (type) {
@@ -392,23 +417,25 @@ const ImportFromSceneDialog: React.FC<ImportFromSceneDialogProps> = ({
         ) : (
           <List>
             {items.map((node) => (
-              <ListItem
-                key={node.id}
-                button
-                onClick={() => {
-                  onImport(node);
-                  onClose();
-                }}
-              >
-                <ListItemAvatar>
-                  <Avatar sx={{ bgcolor: 'primary.main' }}>
-                    {getIcon(node.type)}
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={node.name}
-                  secondary={`Position: ${node.position?.map(p => p.toFixed(1)).join(', ')}`}
-                />
+              <ListItem key={node.id} disablePadding>
+                <ListItemButton
+                  onClick={() => {
+                    onImport(node);
+                    onClose();
+                  }}
+                >
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: 'primary.main' }}>
+                      {getIcon(node.type)}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={node.name}
+                    secondary={`Position: ${node.transform.position
+                      .map((positionValue) => positionValue.toFixed(1))
+                      .join(', ')}`}
+                  />
+                </ListItemButton>
               </ListItem>
             ))}
           </List>
@@ -432,26 +459,44 @@ export const FrameContextMenu: React.FC<FrameContextMenuProps> = ({
   onAnnotate,
   onQuickAnnotation,
 }) => {
-  const { updateFrame, deleteFrame, duplicateFrame, reorderFrames } = useStoryboardStore();
+  const { updateFrame, deleteFrame, duplicateFrame, reorderFrames, selectFrame } = useStoryboardStore();
   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
   const [importDialogType, setImportDialogType] = useState<'camera' | 'lighting' | 'equipment' | null>(null);
   const [commentDialogOpen, setCommentDialogOpen] = useState(false);
   const [newComment, setNewComment] = useState(', ');
 
+  const technicalSnapshot = useMemo(() => {
+    if (!frame?.sceneSnapshot) {
+      return null;
+    }
+
+    if (frame.sceneSnapshot.cameraSettings) {
+      return frame.sceneSnapshot.cameraSettings;
+    }
+
+    return {
+      focalLength: frame.sceneSnapshot.camera.focalLength,
+      aperture: `f/${frame.sceneSnapshot.camera.aperture}`,
+      iso: frame.sceneSnapshot.camera.iso,
+      shutterSpeed: String(frame.sceneSnapshot.camera.shutter),
+      sensorSize: 'Captured Sensor',
+    };
+  }, [frame]);
+
   // Quick Actions
-  const handleDuplicate = () => {
+  const handleDuplicate = useCallback(() => {
     if (frame) {
       duplicateFrame(frame.id);
     }
     onClose();
-  };
+  }, [duplicateFrame, frame, onClose]);
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     if (frame) {
       deleteFrame(frame.id);
     }
     onClose();
-  };
+  }, [deleteFrame, frame, onClose]);
 
   const handleMoveUp = () => {
     if (frame && frame.index > 0) {
@@ -468,33 +513,34 @@ export const FrameContextMenu: React.FC<FrameContextMenuProps> = ({
   };
 
   // Annotation actions
-  const handleOpenAnnotator = () => {
+  const handleOpenAnnotator = useCallback(() => {
     if (frame) {
       onAnnotate(frame);
     }
     onClose();
-  };
+  }, [frame, onAnnotate, onClose]);
 
-  const handleQuickAnnotation = (type: QuickAnnotationType) => {
+  const handleQuickAnnotation = useCallback((type: QuickAnnotationType) => {
     if (frame) {
       onQuickAnnotation(frame, type);
     }
     onClose();
-  };
+  }, [frame, onClose, onQuickAnnotation]);
 
   // Import actions
-  const handleImportFromScene = (type: 'camera' | 'lighting' | 'equipment') => {
+  const handleImportFromScene = useCallback((type: 'camera' | 'lighting' | 'equipment') => {
     setImportDialogType(type);
     onClose();
-  };
+  }, [onClose]);
 
-  const handleImportData = (data: any) => {
+  const handleImportData = (data: SceneNode) => {
     if (frame) {
+      const sceneSnapshot = createSceneSnapshotBase(frame);
       updateFrame(frame.id, {
         sceneSnapshot: {
-          ...frame.sceneSnapshot,
+          ...sceneSnapshot,
           importedData: {
-            ...frame.sceneSnapshot?.importedData,
+            ...sceneSnapshot.importedData,
             [importDialogType || 'data']: data,
           },
         },
@@ -504,31 +550,75 @@ export const FrameContextMenu: React.FC<FrameContextMenuProps> = ({
   };
 
   // Metadata actions
-  const handleOpenMetadata = () => {
+  const handleOpenMetadata = useCallback(() => {
     setMetadataDialogOpen(true);
     onClose();
-  };
+  }, [onClose]);
 
-  const handleSaveMetadata = (data: Partial<StoryboardFrame>) => {
+  const handleSaveMetadata = useCallback((data: Partial<StoryboardFrame>) => {
     if (frame) {
       updateFrame(frame.id, data);
     }
-  };
+  }, [frame, updateFrame]);
 
   // Collaboration actions
-  const handleMarkApproved = () => {
+  const handleMarkApproved = useCallback(() => {
     if (frame) {
       updateFrame(frame.id, { status: 'approved' });
     }
     onClose();
-  };
+  }, [frame, onClose, updateFrame]);
 
-  const handleRequestRevision = () => {
+  const handleRequestRevision = useCallback(() => {
     if (frame) {
       updateFrame(frame.id, { status: 'revision_needed' });
     }
     onClose();
-  };
+  }, [frame, onClose, updateFrame]);
+
+  const handleSelectFrame = useCallback(() => {
+    if (frame) {
+      selectFrame(frame.id);
+    }
+    onClose();
+  }, [frame, onClose, selectFrame]);
+
+  const handleClearAnnotations = useCallback(() => {
+    if (frame) {
+      updateFrame(frame.id, { annotations: [] });
+    }
+    onClose();
+  }, [frame, onClose, updateFrame]);
+
+  const handleOpenImagePreview = useCallback(() => {
+    if (frame?.imageUrl) {
+      window.open(frame.imageUrl, '_blank', 'noopener,noreferrer');
+    }
+    onClose();
+  }, [frame, onClose]);
+
+  const handleShareFrame = useCallback(async () => {
+    if (!frame?.imageUrl) {
+      onClose();
+      return;
+    }
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: frame.title,
+          text: `Storyboard frame ${frame.index + 1}`,
+          url: frame.imageUrl,
+        });
+      } else {
+        await navigator.clipboard.writeText(frame.imageUrl);
+      }
+    } catch (error) {
+      log.error('Failed to share frame: ', error);
+    }
+
+    onClose();
+  }, [frame, onClose]);
 
   // Export actions
   const handleExportPNG = async () => {
@@ -575,12 +665,47 @@ export const FrameContextMenu: React.FC<FrameContextMenuProps> = ({
       >
         {/* Header */}
         <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
-          <Typography variant="subtitle2" fontWeight={600}>
-            Frame {frame.index + 1}: {frame.title}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {frame.shotType} • {frame.cameraAngle}
-          </Typography>
+          <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
+            <Box>
+              <Typography variant="subtitle2" fontWeight={600}>
+                Frame {frame.index + 1}: {frame.title}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {frame.shotType} • {frame.cameraAngle}
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title="Preview Frame">
+                <IconButton size="small" onClick={handleOpenImagePreview}>
+                  <Visibility fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Share Frame">
+                <IconButton size="small" onClick={() => { void handleShareFrame(); }}>
+                  <Share fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Focus This Frame">
+                <IconButton size="small" onClick={handleSelectFrame}>
+                  <PushPin fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="More Frame Actions">
+                <IconButton size="small" disabled>
+                  <MoreHoriz fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          </Stack>
+          {technicalSnapshot && (
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
+              <Chip size="small" icon={<CameraAlt fontSize="small" />} label={`${technicalSnapshot.focalLength}mm`} />
+              <Chip size="small" icon={<Aperture fontSize="small" />} label={technicalSnapshot.aperture} />
+              <Chip size="small" icon={<Iso fontSize="small" />} label={`ISO ${technicalSnapshot.iso}`} />
+              <Chip size="small" icon={<ShutterSpeed fontSize="small" />} label={technicalSnapshot.shutterSpeed} />
+              <Chip size="small" icon={<Straighten fontSize="small" />} label={technicalSnapshot.sensorSize} />
+            </Stack>
+          )}
         </Box>
 
         {/* Quick Actions */}
@@ -619,6 +744,10 @@ export const FrameContextMenu: React.FC<FrameContextMenuProps> = ({
           <ListItemIcon><Person fontSize="small" /></ListItemIcon>
           <ListItemText>Add Actor Marker</ListItemText>
         </MenuItem>
+        <MenuItem onClick={() => handleQuickAnnotation('actor_marker')}>
+          <ListItemIcon><DirectionsWalk fontSize="small" /></ListItemIcon>
+          <ListItemText>Mark Blocking Path</ListItemText>
+        </MenuItem>
         <MenuItem onClick={() => handleQuickAnnotation('camera_path')}>
           <ListItemIcon><Videocam fontSize="small" /></ListItemIcon>
           <ListItemText>Add Camera Path</ListItemText>
@@ -630,6 +759,10 @@ export const FrameContextMenu: React.FC<FrameContextMenuProps> = ({
         <MenuItem onClick={() => handleQuickAnnotation('focus_area')}>
           <ListItemIcon><CropFree fontSize="small" /></ListItemIcon>
           <ListItemText>Add Focus Area</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleClearAnnotations} disabled={!frame.annotations?.length}>
+          <ListItemIcon><CleaningServices fontSize="small" /></ListItemIcon>
+          <ListItemText>Clear Annotations</ListItemText>
         </MenuItem>
 
         <Divider sx={{ my: 1 }} />
@@ -649,6 +782,14 @@ export const FrameContextMenu: React.FC<FrameContextMenuProps> = ({
         <MenuItem onClick={() => handleImportFromScene('equipment')}>
           <ListItemIcon><Inventory fontSize="small" /></ListItemIcon>
           <ListItemText>Import Equipment</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleSelectFrame}>
+          <ListItemIcon><Link fontSize="small" /></ListItemIcon>
+          <ListItemText>Link as Active Frame</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleOpenImagePreview}>
+          <ListItemIcon><Image fontSize="small" /></ListItemIcon>
+          <ListItemText>Open Frame Image</ListItemText>
         </MenuItem>
 
         <Divider sx={{ my: 1 }} />
@@ -673,12 +814,20 @@ export const FrameContextMenu: React.FC<FrameContextMenuProps> = ({
           <ListItemText>Add Comment</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleMarkApproved}>
-          <ListItemIcon><CheckCircle fontSize="small" color="success" /></ListItemIcon>
+          <ListItemIcon><Star fontSize="small" color="success" /></ListItemIcon>
           <ListItemText>Mark as Approved</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleRequestRevision}>
-          <ListItemIcon><Sync fontSize="small" color="warning" /></ListItemIcon>
+          <ListItemIcon><Flag fontSize="small" color="warning" /></ListItemIcon>
           <ListItemText>Request Revision</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleSelectFrame}>
+          <ListItemIcon><CheckCircle fontSize="small" /></ListItemIcon>
+          <ListItemText>Set as Focused Frame</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => { void handleShareFrame(); }}>
+          <ListItemIcon><Sync fontSize="small" /></ListItemIcon>
+          <ListItemText>Sync and Share Frame</ListItemText>
         </MenuItem>
 
         <Divider sx={{ my: 1 }} />
@@ -755,4 +904,3 @@ export const FrameContextMenu: React.FC<FrameContextMenuProps> = ({
 };
 
 export default FrameContextMenu;
-

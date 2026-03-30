@@ -120,6 +120,28 @@ class ProducerDeliveryPackageService {
     addTextFile('00-oversikt/leveringsmanifest.txt', payload.manifestText);
     addTextFile('00-oversikt/klientoppgaver.txt', payload.contributionTasksText);
     addTextFile('00-oversikt/client-portal-url.txt', payload.clientPortalUrl);
+    addTextFile('00-oversikt/kontotilgang.json', toJson(payload.manifest.accountAccessSummary));
+    addTextFile('00-oversikt/kontotilgang.txt', [
+      `Nødvendige plattformer koblet: ${payload.manifest.accountAccessSummary.connectedCount}/${payload.manifest.accountAccessSummary.requiredPlatformCount}`,
+      `Trenger klienthandling: ${payload.manifest.accountAccessSummary.clientActionCount}`,
+      `Invitasjoner sendt: ${payload.manifest.accountAccessSummary.inviteSentCount}`,
+      `Sikkerhetsnotat: ${payload.manifest.accountAccessSummary.securityNotes || 'Ikke satt'}`,
+      `Revoke-plan: ${payload.manifest.accountAccessSummary.revokePlan || 'Ikke satt'}`,
+      '',
+      ...(payload.manifest.accountAccessSummary.entries.length > 0
+        ? payload.manifest.accountAccessSummary.entries.flatMap((entry) => ([
+          `${entry.platformLabel}${entry.requiredForProject ? ' · kreves' : ''}`,
+          `  Status: ${entry.statusLabel} · Metode: ${entry.methodLabel}`,
+          `  Scope: ${entry.accessScope || 'Ikke satt'}`,
+          `  Konto / side: ${entry.accountLabel || 'Ikke satt'}`,
+          `  Invite: ${entry.inviteTarget || 'Ikke satt'}`,
+          `  Eier: ${entry.clientOwnerLabel || 'Ikke satt'}`,
+          `  2-faktor hos kontoeier: ${entry.twoFactorRequired ? 'Ja' : 'Nei'}`,
+          `  Notat: ${entry.notes || 'Ingen notater.'}`,
+          '',
+        ]))
+        : ['Ingen kontotilganger registrert.', '']),
+    ].join('\n'));
 
     addTextFile('01-strategi/strategi.json', toJson({
       direction: payload.manifest.direction,
@@ -133,6 +155,7 @@ class ProducerDeliveryPackageService {
     }));
 
     addTextFile('02-merkevareguide/merkevareguide.json', toJson(payload.planning.brandGuide));
+    addTextFile('02-merkevareguide/logo-usage-matrix.json', toJson(payload.manifest.logoUsageMatrix));
     addTextFile('03-leveringsrutine/leveringsrutine.json', toJson(payload.planning.deliveryWorkflow));
     addTextFile('04-klientgrunnlag/brief.json', toJson(payload.clientIntake));
     addTextFile('04-klientgrunnlag/materialer.json', toJson(buildMaterialReferencePayload(payload.clientMaterials)));
@@ -170,6 +193,8 @@ class ProducerDeliveryPackageService {
       generatedAt: generatedAtIso,
       clientPortalUrl: payload.clientPortalUrl,
       deliveryItems: payload.manifest.deliveryItems,
+      logoUsageMatrix: payload.manifest.logoUsageMatrix,
+      accountAccessSummary: payload.manifest.accountAccessSummary,
     }));
 
     const blob = await zip.generateAsync({

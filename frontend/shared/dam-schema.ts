@@ -5,6 +5,7 @@
  */
 
 import {
+  type AnyPgColumn,
   pgTable,
   varchar,
   text,
@@ -16,7 +17,6 @@ import {
   integer,
   decimal,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 
 // ============================================================================
 // CORE DAM TABLES
@@ -27,7 +27,7 @@ export const assetCollections = pgTable('asset_collections', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
-  parentId: uuid('parent_id').references(() => assetCollections.id),
+  parentId: uuid('parent_id').references((): AnyPgColumn => assetCollections.id),
   path: varchar('path', { length: 1000 }).notNull(), // Full path like /Brand/2024/Campaigns/Summer
   level: integer('level').default(0), // Hierarchy level
   isSystem: boolean('is_system').default(false), // System collections (Brand, Templates, etc.)
@@ -44,7 +44,7 @@ export const assetCategories = pgTable('asset_categories', {
   name: varchar('name', { length: 255 }).notNull(),
   slug: varchar('slug', { length: 255 }).notNull().unique(),
   description: text('description'),
-  parentId: uuid('parent_id').references(() => assetCategories.id),
+  parentId: uuid('parent_id').references((): AnyPgColumn => assetCategories.id),
   color: varchar('color', { length: 7 }), // Hex color for UI
   icon: varchar('icon', { length: 100 }), // Icon identifier
   isActive: boolean('is_active').default(true),
@@ -121,7 +121,7 @@ export const damAssets = pgTable('dam_assets', {
 
   // Versioning
   version: integer('version').default(1),
-  parentAssetId: uuid('parent_asset_id').references(() => damAssets.id), // For versions
+  parentAssetId: uuid('parent_asset_id').references((): AnyPgColumn => damAssets.id), // For versions
   isLatestVersion: boolean('is_latest_version').default(true),
 
   // Metadata
@@ -232,7 +232,7 @@ export const assetComments = pgTable('asset_comments', {
   width: decimal('width', { precision: 10, scale: 2 }),
   height: decimal('height', { precision: 10, scale: 2 }),
   isResolved: boolean('is_resolved').default(false),
-  parentCommentId: uuid('parent_comment_id').references(() => assetComments.id),
+  parentCommentId: uuid('parent_comment_id').references((): AnyPgColumn => assetComments.id),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });

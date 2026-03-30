@@ -5,7 +5,7 @@
  * Provides unified face analysis: parsing, landmarks, headpose, attributes
  */
 
-export type FaceAnalysisTask = 'parsing, ' | 'landmarks' | 'headpose' | 'attributes' | 'all';
+export type FaceAnalysisTask = 'parsing' | 'landmarks' | 'headpose' | 'attributes' | 'all';
 
 export interface FaceAnalysisResult {
   success: boolean;
@@ -23,6 +23,8 @@ export interface FaceAnalysisResult {
     };
     headpose_visualization?: string; // base64
     attributes?: number[]; // 40 binary attributes
+    sam2_mask?: string;
+    sam2_bbox?: [number, number, number, number];
   };
 }
 
@@ -75,7 +77,7 @@ export class FaceXFormerService {
 
     if (typeof imageFile === 'string') {
       // URL provided
-      formData.append('imageUrl, ', imageFile);
+      formData.append('imageUrl', imageFile);
     } else {
       // File provided
       formData.append('image', imageFile);
@@ -187,5 +189,3 @@ export class FaceXFormerService {
 
 // Export singleton instance
 export const faceXFormerService = new FaceXFormerService();
-
-

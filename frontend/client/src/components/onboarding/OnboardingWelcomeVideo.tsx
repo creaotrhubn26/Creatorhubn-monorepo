@@ -398,7 +398,7 @@ export default function OnboardingWelcomeVideo({
             sx={{
               maxWidth: 60,
               mx:  2,
-              bgcolor: 'rgba(25, 255, 255, 0.95)',
+              bgcolor: 'rgba(255, 255, 255, 0.96)',
               backdropFilter: 'blur(10px)',
               boxShadow: '0 20px 40px rgba(0,0,0,0.3)'}}
            sx={theming.getThemedCardSx()}>
@@ -532,10 +532,10 @@ export default function OnboardingWelcomeVideo({
               label={`${index + 1}`}
               onClick={() => handleSegmentClick(index)}
               sx={{
-                bgcolor: index === currentSegment ? currentVideoSegment.color : 'rgba(25,255,255,0.3)',
-                color: index === currentSegment ? 'white' : 'rgba(25,255,255,0.7)',
+                bgcolor: index === currentSegment ? currentVideoSegment.color : 'rgba(255,255,255,0.2)',
+                color: index === currentSegment ? 'white' : 'rgba(255,255,255,0.78)',
                 cursor: 'pointer', '&:hover': {
-                  bgcolor: index === currentSegment ? currentVideoSegment.color : 'rgba(25,255,255,0.5)',
+                  bgcolor: index === currentSegment ? currentVideoSegment.color : 'rgba(255,255,255,0.34)',
               }}}
             />
           ))}

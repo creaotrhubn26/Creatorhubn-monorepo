@@ -399,7 +399,7 @@ export default function FileDetectionDashboardWidget({
 
                   <Collapse in={expandedFile === file.id}>
                     <Box sx={{ ml:  6, mr: 2, mb: 2 }}>
-                      <Paper sx={{ p: 2, bgcolor: 'rgba(25,255,255,0.05)' ,  ...theming.getThemedCardSx() }}>
+                      <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.92)' ,  ...theming.getThemedCardSx() }}>
                         <Typography variant="body2" sx={{ mb: 1, opacity: 0.8}}>
                           <strong>Nåværende mappe: </strong> {file.originalPath}
                         </Typography>
@@ -440,7 +440,7 @@ export default function FileDetectionDashboardWidget({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottom: '1px solid rgba(25,255,255,0.1)'}}
+            borderBottom: '1px solid rgba(255,255,255,0.08)'}}
         >
           <Stack direction="row" alignItems="center" spacing={2}>
             <Avatar sx={{ bgcolor: '#FFC107'}}>
@@ -469,7 +469,7 @@ export default function FileDetectionDashboardWidget({
               <ListItem
                 key={file.d}
                 sx={{
-                  bgcolor: 'rgba(25,255,255,0.05)',
+                  bgcolor: 'rgba(255,255,255,0.06)',
                   borderRadius:  2,
                   mb:  2,
                   p:  2}}

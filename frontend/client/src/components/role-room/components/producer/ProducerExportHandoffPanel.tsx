@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -26,6 +26,7 @@ import type {
   ProducerClientIntake,
   ProducerClientMaterial,
   ProducerClientMaterialType,
+  ProducerProjectPlanning,
   RoleRoomGoogleArtifactRef,
 } from '../../models/casting';
 import { useProducerReviews } from '../../hooks/useProducerReviews';
@@ -53,12 +54,17 @@ import {
 import {
   buildProducerDeliveryManifest,
   formatProducerClientContributionTasksAsText,
+  getProducerAccountAccessPlatformFromMomentId,
   getProducerClientContributionTasks,
+  getProducerClientMomentTextEyebrow,
+  getProducerContentLogicMomentKind,
   getProducerWorkspaceLocationForSurface,
   getProducerWorkspaceSurfaceForContributionSource,
   formatProducerDeliveryManifestAsText,
   getProducerStrategySnapshot,
   normalizeProducerProjectPlanning,
+  PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS,
+  PRODUCER_CONTENT_LOGIC_MOMENT_LABELS,
   PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS,
   PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS,
   PRODUCER_PLANNING_FRAMEWORK_LABELS,
@@ -164,9 +170,25 @@ const buildReadinessChecklist = (project: CastingProject) => {
   const planning = normalizeProducerProjectPlanning(project);
   const brandGuide = planning.brandGuide;
   const deliveryWorkflow = planning.deliveryWorkflow;
+  const logoTimingDetail = (() => {
+    switch (brandGuide.logoTiming ?? 'outro') {
+      case 'intro':
+        return 'Logo vises i introen.';
+      case 'throughout':
+        return 'Logo vises gjennom hele videoen.';
+      case 'custom':
+        return `Logo vises fra ${brandGuide.logoStartSecond ?? 0}s til ${brandGuide.logoEndSecond ?? 3}s.`;
+      case 'none':
+        return 'Logo vises ikke i videoen.';
+      case 'outro':
+      default:
+        return 'Logo vises i outroen.';
+    }
+  })();
 
   const brandItems = [
     { label: 'Logo', ready: hasText(brandGuide.logoUrl), detail: hasText(brandGuide.logoUrl) ? 'Logo er koblet til prosjektet.' : 'Logo mangler i merkevareguiden.' },
+    { label: 'Logo i video', ready: hasText(brandGuide.logoUrl) && brandGuide.logoTiming !== 'none', detail: hasText(brandGuide.logoUrl) ? logoTimingDetail : 'Sett logo først for å bestemme visning i videoen.' },
     { label: 'Farger', ready: Boolean(brandGuide.colors?.length), detail: brandGuide.colors?.length ? `${brandGuide.colors.length} merkevarefarger er definert.` : 'Merkevarefarger mangler.' },
     { label: 'Fonter', ready: Boolean(brandGuide.fonts?.filter(hasText).length), detail: brandGuide.fonts?.filter(hasText).length ? `${brandGuide.fonts?.filter(hasText).length ?? 0} fonter er definert.` : 'Fonter mangler.' },
     { label: 'Tone of voice', ready: hasText(brandGuide.toneOfVoice), detail: brandGuide.toneOfVoice || 'Tone of voice mangler.' },
@@ -229,10 +251,21 @@ interface LegalAgreementSummary {
 }
 
 const buildClientInputSummaryText = (
+  planning: ProducerProjectPlanning,
   intake: ProducerClientIntake,
   materials: ProducerClientMaterial[],
   contributionTasks: ReturnType<typeof getProducerClientContributionTasks>,
+  pendingClientMoments: ReturnType<typeof buildProducerDeliveryManifest>['pendingClientMoments'],
 ): string => {
+  const contentLogic = planning.contentLogic ?? {
+    objective: '',
+    audience: '',
+    hook: '',
+    coreMessage: '',
+    proofPoints: [],
+    callToAction: '',
+    distributionPlan: '',
+  };
   const summaryLines = [
     '',
     '',
@@ -248,6 +281,26 @@ const buildClientInputSummaryText = (
     `Referanselenker: ${intake.referenceLinks || 'Ikke satt'}`,
     `Kontaktperson: ${[intake.contactName, intake.contactEmail, intake.contactPhone].filter(hasText).join(' · ') || 'Ikke satt'}`,
     `Tilleggsnotater: ${intake.additionalNotes || 'Ikke satt'}`,
+    '',
+    'CONTENT LOGIC',
+    '-------------',
+    `Mål: ${contentLogic.objective || 'Ikke satt'}`,
+    `Målgruppe: ${contentLogic.audience || 'Ikke satt'}`,
+    `Hook: ${contentLogic.hook || 'Ikke satt'}`,
+    `Kjernebudskap: ${contentLogic.coreMessage || 'Ikke satt'}`,
+    `CTA: ${contentLogic.callToAction || 'Ikke satt'}`,
+    `Distribusjon: ${contentLogic.distributionPlan || 'Ikke satt'}`,
+    `Bevis: ${contentLogic.proofPoints?.length ? contentLogic.proofPoints.join(' · ') : 'Ikke satt'}`,
+    '',
+    'ÅPNE BESLUTNINGSPUNKTER',
+    '-----------------------',
+    ...(
+      pendingClientMoments.length > 0
+        ? pendingClientMoments.map((moment) => (
+          `- ${getProducerClientMomentTextEyebrow(moment)} ${moment.title} · ${moment.reviewStatusLabel ?? moment.statusLabel}`
+        ))
+        : ['- Ingen åpne beslutningspunkter akkurat nå.']
+    ),
     '',
     'Registrert materiale:',
   ];
@@ -309,6 +362,10 @@ export default function ProducerExportHandoffPanel({
     agreements: [],
     googleArtifacts: [],
   });
+  const clientInputsRequestRef = useRef(0);
+  const legalAgreementsRequestRef = useRef(0);
+  const latestPackageRequestRef = useRef(0);
+  const deliveryWorkspaceFilesRequestRef = useRef(0);
   const {
     items: reviewItems,
     loading: loadingReviews,
@@ -341,6 +398,7 @@ export default function ProducerExportHandoffPanel({
   const briefWorkspaceFocus = useMemo(() => resolveWorkspaceFocus('brief'), [resolveWorkspaceFocus]);
   const materialsWorkspaceFocus = useMemo(() => resolveWorkspaceFocus('materials'), [resolveWorkspaceFocus]);
   const brandWorkspaceFocus = useMemo(() => resolveWorkspaceFocus('brand'), [resolveWorkspaceFocus]);
+  const accountsWorkspaceFocus = useMemo(() => resolveWorkspaceFocus('accounts'), [resolveWorkspaceFocus]);
   const deliveryWorkspaceFocus = useMemo(() => resolveWorkspaceFocus('delivery'), [resolveWorkspaceFocus]);
   const clientPortalUrl = useMemo(
     () => buildClientPortalUrl(project.id, {
@@ -353,6 +411,7 @@ export default function ProducerExportHandoffPanel({
   );
 
   const loadClientPackageInputs = useCallback(async () => {
+    const requestId = ++clientInputsRequestRef.current;
     setLoadingClientInput(true);
     setClientInputError(null);
     try {
@@ -360,16 +419,24 @@ export default function ProducerExportHandoffPanel({
         producerWorkflowService.getClientIntake(project.id),
         producerWorkflowService.getClientMaterials(project.id),
       ]);
+      if (requestId !== clientInputsRequestRef.current) {
+        return;
+      }
       setClientIntake({
         ...EMPTY_INTAKE,
         ...nextIntake,
       });
       setClientMaterials(nextMaterials);
     } catch (loadError) {
+      if (requestId !== clientInputsRequestRef.current) {
+        return;
+      }
       console.error('[ProducerExportHandoffPanel] Failed to load client handoff inputs', loadError);
       setClientInputError('Kunne ikke hente klientbrief og materiale til klientpakken.');
     } finally {
-      setLoadingClientInput(false);
+      if (requestId === clientInputsRequestRef.current) {
+        setLoadingClientInput(false);
+      }
     }
   }, [project.id]);
 
@@ -378,16 +445,23 @@ export default function ProducerExportHandoffPanel({
   }, [loadClientPackageInputs]);
 
   const loadLegalAgreements = useCallback(async () => {
+    const requestId = ++legalAgreementsRequestRef.current;
     try {
       const [agreements, googleStatus] = await Promise.all([
         projectAgreementsApi.getAll(project.id),
         googleWorkspaceApi.getStatus(project.id).catch(() => null),
       ]);
+      if (requestId !== legalAgreementsRequestRef.current) {
+        return;
+      }
       setLegalAgreements({
         agreements,
         googleArtifacts: googleStatus?.artifacts ?? [],
       });
     } catch (loadError) {
+      if (requestId !== legalAgreementsRequestRef.current) {
+        return;
+      }
       console.warn('[ProducerExportHandoffPanel] Failed to load legal agreements', loadError);
     }
   }, [project.id]);
@@ -397,6 +471,7 @@ export default function ProducerExportHandoffPanel({
   }, [loadLegalAgreements]);
 
   const loadLatestUploadedPackage = useCallback(async () => {
+    const requestId = ++latestPackageRequestRef.current;
     try {
       const projectFiles = normalizeProjectFileRecords(await getProjectFiles(project.id));
       const latestUploadedPackage = [...projectFiles]
@@ -410,10 +485,16 @@ export default function ProducerExportHandoffPanel({
         })[0];
 
       if (!latestUploadedPackage) {
+        if (requestId !== latestPackageRequestRef.current) {
+          return;
+        }
         setLatestPackage(null);
         return;
       }
 
+      if (requestId !== latestPackageRequestRef.current) {
+        return;
+      }
       setLatestPackage({
         id: latestUploadedPackage.id,
         name: latestUploadedPackage.name || latestUploadedPackage.originalName || 'Klientpakke',
@@ -424,11 +505,15 @@ export default function ProducerExportHandoffPanel({
         versionLabel: getProjectFileMetadataString(latestUploadedPackage, 'versionLabel'),
       });
     } catch (loadError) {
+      if (requestId !== latestPackageRequestRef.current) {
+        return;
+      }
       console.warn('[ProducerExportHandoffPanel] Failed to load latest uploaded client package', loadError);
     }
   }, [getProjectFiles, project.id]);
 
   const loadDeliveryWorkspaceFiles = useCallback(async () => {
+    const requestId = ++deliveryWorkspaceFilesRequestRef.current;
     try {
       const projectFiles = normalizeProjectFileRecords(await getProjectFiles(project.id));
       const nextFiles = projectFiles
@@ -448,8 +533,14 @@ export default function ProducerExportHandoffPanel({
           workspaceType: getProjectFileMetadataString(file, 'workspaceType'),
           downloadUrl: file.downloadUrl || '',
         }));
+      if (requestId !== deliveryWorkspaceFilesRequestRef.current) {
+        return;
+      }
       setDeliveryWorkspaceFiles(nextFiles);
     } catch (loadError) {
+      if (requestId !== deliveryWorkspaceFilesRequestRef.current) {
+        return;
+      }
       console.warn('[ProducerExportHandoffPanel] Failed to load delivery workspace files', loadError);
     }
   }, [getProjectFiles, project.id]);
@@ -484,6 +575,13 @@ export default function ProducerExportHandoffPanel({
   useEffect(() => {
     setLatestPackageShareUrl('');
   }, [latestPackage?.id]);
+
+  useEffect(() => () => {
+    clientInputsRequestRef.current += 1;
+    legalAgreementsRequestRef.current += 1;
+    latestPackageRequestRef.current += 1;
+    deliveryWorkspaceFilesRequestRef.current += 1;
+  }, []);
 
   const manifest = useMemo(
     () => buildProducerDeliveryManifest(project.name, planning, productionEstimate, reviewItems),
@@ -562,7 +660,13 @@ export default function ProducerExportHandoffPanel({
   const handleCopyBrief = useCallback(async () => {
     const content = [
       formatProducerDeliveryManifestAsText(manifest),
-      buildClientInputSummaryText(clientIntake, prioritizedClientMaterials, clientContributionTasks),
+      buildClientInputSummaryText(
+        planning,
+        clientIntake,
+        prioritizedClientMaterials,
+        clientContributionTasks,
+        manifest.pendingClientMoments,
+      ),
     ].join('');
     if (navigator.clipboard?.writeText) {
       try {
@@ -575,7 +679,7 @@ export default function ProducerExportHandoffPanel({
     }
     downloadTextFile(`${normalizeFileToken(project.name)}-overleveringsbrief.txt`, content);
     enqueueSnackbar('Clipboard er ikke tilgjengelig. Briefen ble lastet ned som fil.', { variant: 'info' });
-  }, [clientContributionTasks, clientIntake, enqueueSnackbar, manifest, prioritizedClientMaterials, project.name]);
+  }, [clientContributionTasks, clientIntake, enqueueSnackbar, manifest, planning, prioritizedClientMaterials, project.name]);
 
   const handleDownloadManifest = useCallback(() => {
     downloadTextFile(
@@ -635,9 +739,11 @@ export default function ProducerExportHandoffPanel({
         formatProducerClientContributionTasksAsText(clientContributionTasks),
       ].join('\n');
       const clientInputSummaryText = buildClientInputSummaryText(
+        planning,
         clientIntake,
         prioritizedClientMaterials,
         clientContributionTasks,
+        manifest.pendingClientMoments,
       );
       const contributionTasksText = formatProducerClientContributionTasksAsText(clientContributionTasks);
       const packageBuild = await producerDeliveryPackageService.buildClientPackage({
@@ -1016,6 +1122,24 @@ export default function ProducerExportHandoffPanel({
               : 'Klienten bør legge inn brief og materiale før endelig handoff.',
           },
           {
+            label: 'Content Logic',
+            value: [manifest.contentLogicSummary.objective, manifest.contentLogicSummary.hook, manifest.contentLogicSummary.callToAction].filter(hasText).length > 0
+              ? `${[manifest.contentLogicSummary.objective, manifest.contentLogicSummary.hook, manifest.contentLogicSummary.callToAction].filter(hasText).length}/3`
+              : '0/3',
+            detail: hasText(manifest.contentLogicSummary.hook)
+              ? `Hook: ${manifest.contentLogicSummary.hook}`
+              : 'Mål, hook og CTA bør fylles før klientpakken sendes.',
+          },
+          {
+            label: 'Kontotilgang',
+            value: `${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount}`,
+            detail: manifest.accountAccessSummary.clientActionCount > 0
+              ? `${manifest.accountAccessSummary.clientActionCount} plattform${manifest.accountAccessSummary.clientActionCount === 1 ? '' : 'er'} krever klienthandling.`
+              : manifest.accountAccessSummary.inviteSentCount > 0
+                ? `${manifest.accountAccessSummary.inviteSentCount} invitasjon${manifest.accountAccessSummary.inviteSentCount === 1 ? '' : 'er'} venter på bekreftelse.`
+                : 'Nødvendige kontoer er avklart eller koblet.',
+          },
+          {
             label: 'Åpne klientinnspill',
             value: `${openClientContributionTasks.length}`,
             detail: openClientContributionTasks.length > 0
@@ -1082,77 +1206,227 @@ export default function ProducerExportHandoffPanel({
               </Stack>
             </Stack>
             <Stack spacing={0.9}>
-              {manifest.pendingClientMoments.slice(0, 6).map((moment) => (
-                <Box
-                  key={moment.id}
-                  sx={{
-                    p: 1,
-                    borderRadius: 1.25,
-                    border: '1px solid rgba(148,163,184,0.14)',
-                    background: 'rgba(2,6,23,0.56)',
-                  }}
-                >
-                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
-                    <Box sx={{ minWidth: 0 }}>
-                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
-                        <Chip
-                          size="small"
-                          label={moment.reviewStatusLabel ?? moment.statusLabel}
-                          sx={{
-                            bgcolor: moment.reviewStatus === 'approved'
-                              ? 'rgba(16,185,129,0.16)'
-                              : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
-                                ? 'rgba(248,113,113,0.16)'
-                                : 'rgba(251,191,36,0.14)',
-                            color: moment.reviewStatus === 'approved'
-                              ? '#a7f3d0'
-                              : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
-                                ? '#fecaca'
-                                : '#fde68a',
-                          }}
-                        />
-                        {moment.commentCount ? (
+              {manifest.pendingClientMoments.slice(0, 6).map((moment) => {
+                const contentLogicMomentKind = getProducerContentLogicMomentKind(moment.id);
+                const isContentLogicMoment = Boolean(contentLogicMomentKind);
+                const accountAccessPlatform = getProducerAccountAccessPlatformFromMomentId(moment.id);
+                const isAccountAccessMoment = Boolean(accountAccessPlatform);
+                const contentLogicMomentLabel = contentLogicMomentKind
+                  ? PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]
+                  : '';
+                return (
+                  <Box
+                    key={moment.id}
+                    sx={{
+                      p: 1,
+                      borderRadius: 1.25,
+                      border: isContentLogicMoment
+                        ? '1px solid rgba(167,139,250,0.26)'
+                        : isAccountAccessMoment
+                          ? '1px solid rgba(45,212,191,0.24)'
+                        : '1px solid rgba(148,163,184,0.14)',
+                      background: isContentLogicMoment
+                        ? 'rgba(76,29,149,0.16)'
+                        : isAccountAccessMoment
+                          ? 'rgba(15,118,110,0.14)'
+                        : 'rgba(2,6,23,0.56)',
+                    }}
+                  >
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
+                      <Box sx={{ minWidth: 0 }}>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
+                          {isContentLogicMoment ? (
+                            <>
+                              <Chip
+                                size="small"
+                                label="Content Logic"
+                                sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
+                              />
+                              <Chip
+                                size="small"
+                                label={contentLogicMomentLabel}
+                                sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#cffafe' }}
+                              />
+                            </>
+                          ) : null}
+                          {isAccountAccessMoment && accountAccessPlatform ? (
+                            <>
+                              <Chip
+                                size="small"
+                                label="Kontotilgang"
+                                sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#ccfbf1' }}
+                              />
+                              <Chip
+                                size="small"
+                                label={PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[accountAccessPlatform]}
+                                sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                              />
+                            </>
+                          ) : null}
                           <Chip
                             size="small"
-                            label={`${moment.commentCount} kommentar${moment.commentCount === 1 ? '' : 'er'}`}
-                            sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1' }}
+                            label={moment.reviewStatusLabel ?? moment.statusLabel}
+                            sx={{
+                              bgcolor: moment.reviewStatus === 'approved'
+                                ? 'rgba(16,185,129,0.16)'
+                                : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
+                                  ? 'rgba(248,113,113,0.16)'
+                                  : 'rgba(251,191,36,0.14)',
+                              color: moment.reviewStatus === 'approved'
+                                ? '#a7f3d0'
+                                : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
+                                  ? '#fecaca'
+                                  : '#fde68a',
+                            }}
                           />
-                        ) : null}
-                      </Stack>
-                      <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                        {moment.title}
-                      </Typography>
-                      <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
-                        {moment.detail || 'Ingen detaljer lagt inn ennå.'}
-                      </Typography>
-                      {moment.drivenByReview ? (
-                        <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.78rem', mt: 0.35 }}>
-                          {moment.reviewDecisionAt
-                            ? `Sist oppdatert ${formatDate(moment.reviewDecisionAt)}`
-                            : moment.reviewRequestedAt
-                              ? `Sendt til klient ${formatDate(moment.reviewRequestedAt)}`
-                              : 'Klientpunktet styres av reviewflyten'}
+                          {moment.commentCount ? (
+                            <Chip
+                              size="small"
+                              label={`${moment.commentCount} kommentar${moment.commentCount === 1 ? '' : 'er'}`}
+                              sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1' }}
+                            />
+                          ) : null}
+                        </Stack>
+                        <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                          {moment.title}
                         </Typography>
-                      ) : null}
-                    </Box>
-                    <Stack spacing={0.45} alignItems={{ md: 'flex-end' }}>
-                      <Chip
-                        size="small"
-                        label={PRODUCER_PLANNING_PHASE_LABELS[moment.phase]}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                      />
-                      <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
-                        {moment.date ? formatDate(moment.date) : 'Dato ikke satt'}
-                      </Typography>
+                        <Typography sx={{ color: isContentLogicMoment ? 'rgba(233,213,255,0.92)' : isAccountAccessMoment ? 'rgba(204,251,241,0.92)' : 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
+                          {moment.detail || 'Ingen detaljer lagt inn ennå.'}
+                        </Typography>
+                        {isContentLogicMoment ? (
+                          <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.78rem', mt: 0.35 }}>
+                            Dette er en innholdsbeslutning som låser hook, CTA eller proof points før videre produksjon.
+                          </Typography>
+                        ) : null}
+                        {isAccountAccessMoment ? (
+                          <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.78rem', mt: 0.35 }}>
+                            Dette klientpunktet låser invite, OAuth eller publiseringstilgang før eksport og levering er helt trygg.
+                          </Typography>
+                        ) : null}
+                        {moment.drivenByReview ? (
+                          <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.78rem', mt: 0.35 }}>
+                            {moment.reviewDecisionAt
+                              ? `Sist oppdatert ${formatDate(moment.reviewDecisionAt)}`
+                              : moment.reviewRequestedAt
+                                ? `Sendt til klient ${formatDate(moment.reviewRequestedAt)}`
+                                : 'Klientpunktet styres av reviewflyten'}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <Stack spacing={0.45} alignItems={{ md: 'flex-end' }}>
+                        <Chip
+                          size="small"
+                          label={isContentLogicMoment ? 'Innholdsvalg' : isAccountAccessMoment ? 'Plattformtilgang' : PRODUCER_PLANNING_PHASE_LABELS[moment.phase]}
+                          sx={{
+                            bgcolor: isContentLogicMoment ? 'rgba(125,211,252,0.14)' : isAccountAccessMoment ? 'rgba(45,212,191,0.16)' : 'rgba(59,130,246,0.14)',
+                            color: isContentLogicMoment ? '#cffafe' : isAccountAccessMoment ? '#ccfbf1' : '#bfdbfe',
+                          }}
+                        />
+                        <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
+                          {moment.date ? formatDate(moment.date) : 'Dato ikke satt'}
+                        </Typography>
+                      </Stack>
                     </Stack>
-                  </Stack>
-                </Box>
-              ))}
+                  </Box>
+                );
+              })}
               {manifest.pendingClientMoments.length === 0 ? (
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.88rem' }}>
                   Ingen åpne klientpunkter. Faseplan og content-kalender er enten fullført eller ikke satt opp ennå.
                 </Typography>
               ) : null}
+            </Stack>
+          </Box>
+
+          <Box
+            sx={{
+              p: 1.4,
+              borderRadius: 1.5,
+              border: '1px solid rgba(148,163,184,0.18)',
+              background: 'rgba(15,23,42,0.58)',
+            }}
+          >
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
+              <Typography sx={{ color: '#fff', fontWeight: 800 }}>
+                Kontotilgang
+              </Typography>
+              {onOpenMedia ? (
+                <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(accountsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700 }}>
+                  Åpne kontotilgang
+                </Button>
+              ) : null}
+            </Stack>
+            <Stack spacing={0.7}>
+              <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem' }}>
+                {`${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount} nødvendige plattformer er koblet. ${manifest.accountAccessSummary.clientActionCount} krever klienthandling. ${manifest.accountAccessSummary.inviteSentCount} venter på invite-bekreftelse.`}
+              </Typography>
+              {manifest.accountAccessSummary.entries.map((entry) => (
+                <Box
+                  key={entry.platform}
+                  sx={{
+                    p: 0.85,
+                    borderRadius: 1.15,
+                    border: '1px solid rgba(45,212,191,0.16)',
+                    bgcolor: entry.requiredForProject ? 'rgba(15,118,110,0.12)' : 'rgba(2,6,23,0.36)',
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
+                    <Box sx={{ minWidth: 0 }}>
+                      <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap sx={{ mb: 0.35 }}>
+                        <Chip
+                          size="small"
+                          label={entry.platformLabel}
+                          sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#ccfbf1' }}
+                        />
+                        <Chip
+                          size="small"
+                          label={entry.statusLabel}
+                          sx={{
+                            bgcolor: entry.status === 'connected'
+                              ? 'rgba(16,185,129,0.16)'
+                              : entry.status === 'client_action'
+                                ? 'rgba(248,113,113,0.16)'
+                                : 'rgba(251,191,36,0.14)',
+                            color: entry.status === 'connected'
+                              ? '#a7f3d0'
+                              : entry.status === 'client_action'
+                                ? '#fecaca'
+                                : '#fde68a',
+                          }}
+                        />
+                        {entry.requiredForProject ? (
+                          <Chip size="small" label="Kreves" sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
+                        ) : null}
+                      </Stack>
+                      <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>
+                        {`${entry.methodLabel} · ${entry.accessScope || 'Scope ikke satt'}`}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.78rem', mt: 0.2 }}>
+                        {`Konto / side: ${entry.accountLabel || 'Ikke satt'} · Invite: ${entry.inviteTarget || 'Ikke satt'}`}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.76rem', mt: 0.2 }}>
+                        {`Kontoeier: ${entry.clientOwnerLabel || 'Ikke satt'} · 2-faktor hos kontoeier: ${entry.twoFactorRequired ? 'Ja' : 'Nei'}`}
+                      </Typography>
+                      {hasText(entry.notes) ? (
+                        <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.76rem', mt: 0.2 }}>
+                          {entry.notes}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  </Stack>
+                </Box>
+              ))}
+              <Box sx={{ pt: 0.2 }}>
+                <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>
+                  Sikkerhetsmodell
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem', mt: 0.2 }}>
+                  {manifest.accountAccessSummary.securityNotes || 'Ikke satt'}
+                </Typography>
+                <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.78rem', mt: 0.25 }}>
+                  {`Revoke-plan: ${manifest.accountAccessSummary.revokePlan || 'Ikke satt'}`}
+                </Typography>
+              </Box>
             </Stack>
           </Box>
 
@@ -1457,6 +1731,9 @@ export default function ProducerExportHandoffPanel({
                         {`Versjon ${item.versionLabel} · ${item.deliveryStageLabel}`}
                         {item.backupRuleLabel ? ` · Backup: ${item.backupRuleLabel}` : ''}
                       </Typography>
+                      <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.8rem', mt: 0.25 }}>
+                        {`Logovariant: ${item.logoVariantResolvedLabel} · ${item.logoVariantSelectionLabel}`}
+                      </Typography>
                       {item.notes ? (
                         <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.8rem', mt: 0.25 }}>
                           {item.notes}
@@ -1633,6 +1910,52 @@ export default function ProducerExportHandoffPanel({
               background: 'rgba(15,23,42,0.58)',
             }}
           >
+            <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
+              Content Logic
+            </Typography>
+            <Stack spacing={0.8}>
+              {[
+                { label: 'Mål', value: manifest.contentLogicSummary.objective },
+                { label: 'Målgruppe', value: manifest.contentLogicSummary.audience },
+                { label: 'Hook', value: manifest.contentLogicSummary.hook },
+                { label: 'Budskap', value: manifest.contentLogicSummary.coreMessage },
+                { label: 'CTA', value: manifest.contentLogicSummary.callToAction },
+                { label: 'Distribusjon', value: manifest.contentLogicSummary.distributionPlan },
+              ].map((item) => (
+                <Box key={item.label}>
+                  <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem', fontWeight: 700 }}>
+                    {item.label}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mt: 0.25 }}>
+                    {item.value || 'Ikke satt'}
+                  </Typography>
+                </Box>
+              ))}
+              {manifest.contentLogicSummary.proofPoints.length > 0 ? (
+                <Box>
+                  <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem', fontWeight: 700 }}>
+                    Bevis
+                  </Typography>
+                  <Stack spacing={0.2} sx={{ mt: 0.25 }}>
+                    {manifest.contentLogicSummary.proofPoints.map((item) => (
+                      <Typography key={item} sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem' }}>
+                        • {item}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : null}
+            </Stack>
+          </Box>
+
+          <Box
+            sx={{
+              p: 1.4,
+              borderRadius: 1.5,
+              border: '1px solid rgba(148,163,184,0.18)',
+              background: 'rgba(15,23,42,0.58)',
+            }}
+          >
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography sx={{ color: '#fff', fontWeight: 800 }}>
                 Merkevareguide
@@ -1657,6 +1980,123 @@ export default function ProducerExportHandoffPanel({
                   </Box>
                 </Stack>
               ))}
+              <Box sx={{ pt: 0.35 }}>
+                <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>
+                  Logo i videoen
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
+                  {`${manifest.logoPlacementLabel} · ${manifest.logoTreatmentLabel} · ${manifest.logoTimingDetail}`}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>
+                  Overlay-spec
+                </Typography>
+                <Stack spacing={0.2} sx={{ mt: 0.25 }}>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
+                    {`Safe zone: ${manifest.overlayEditorGuidance.safeZone.label}`}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
+                    {`Opacity: ${manifest.overlayEditorGuidance.opacity.label}`}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
+                    {`Anbefalt margin: ${manifest.overlayEditorGuidance.recommendedMargin.label}`}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.78rem' }}>
+                    {manifest.overlayEditorGuidance.note}
+                  </Typography>
+                </Stack>
+              </Box>
+              {manifest.overlayFormatProfiles.length > 0 ? (
+                <Box>
+                  <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>
+                    Formatprofiler
+                  </Typography>
+                  <Stack spacing={0.35} sx={{ mt: 0.25 }}>
+                    {manifest.overlayFormatProfiles.map((profile) => (
+                      <Box key={profile.format} sx={{ p: 0.7, borderRadius: 1, bgcolor: 'rgba(2,6,23,0.36)' }}>
+                        <Typography sx={{ color: '#f8fafc', fontSize: '0.8rem', fontWeight: 700 }}>
+                          {profile.formatLabel}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem', mt: 0.2 }}>
+                          {`${profile.recommendedVariantLabel} · ${profile.safeZone.label} · ${profile.opacity.label} · ${profile.recommendedMargin.label}`}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(191,219,254,0.8)', fontSize: '0.76rem', mt: 0.2 }}>
+                          {profile.note}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : null}
+              {manifest.logoUsageMatrix.length > 0 ? (
+                <Box>
+                  <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>
+                    Logo-usage-matrix
+                  </Typography>
+                  <Box
+                    sx={{
+                      mt: 0.35,
+                      borderRadius: 1,
+                      border: '1px solid rgba(148,163,184,0.16)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', md: 'minmax(0,1.5fr) minmax(0,0.7fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)' },
+                        gap: { xs: 0.35, md: 0 },
+                        px: 0.85,
+                        py: 0.7,
+                        bgcolor: 'rgba(59,130,246,0.12)',
+                        borderBottom: '1px solid rgba(148,163,184,0.14)',
+                      }}
+                    >
+                      {['Leveranse', 'Format', 'Valg', 'Brukes', 'Anbefalt'].map((label) => (
+                        <Typography key={label} sx={{ color: '#e2e8f0', fontSize: '0.73rem', fontWeight: 800 }}>
+                          {label}
+                        </Typography>
+                      ))}
+                    </Box>
+                    {manifest.logoUsageMatrix.map((item, index) => (
+                      <Box
+                        key={item.id}
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: { xs: '1fr', md: 'minmax(0,1.5fr) minmax(0,0.7fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)' },
+                          gap: { xs: 0.4, md: 0.75 },
+                          px: 0.85,
+                          py: 0.8,
+                          bgcolor: index % 2 === 0 ? 'rgba(2,6,23,0.36)' : 'rgba(15,23,42,0.24)',
+                          borderTop: index === 0 ? 'none' : '1px solid rgba(148,163,184,0.12)',
+                        }}
+                      >
+                        <Box>
+                          <Typography sx={{ color: '#f8fafc', fontSize: '0.78rem', fontWeight: 700 }}>
+                            {item.title}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem', mt: 0.15 }}>
+                            {item.channel} · {item.deliveryStageLabel}
+                          </Typography>
+                        </Box>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.76rem' }}>
+                          {item.format}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.76rem' }}>
+                          {item.selectionLabel}
+                        </Typography>
+                        <Typography sx={{ color: '#bfdbfe', fontSize: '0.76rem', fontWeight: 700 }}>
+                          {item.resolvedLabel}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.76rem' }}>
+                          {`${item.recommendedLabel}${item.autoApplied ? ' · auto aktiv' : ''}`}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              ) : null}
             </Stack>
           </Box>
 

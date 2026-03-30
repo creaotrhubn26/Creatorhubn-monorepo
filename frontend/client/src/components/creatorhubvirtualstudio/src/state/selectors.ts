@@ -1,5 +1,5 @@
 import { useAppStore } from './store';
-import { useRef, useMemo } from 'react';
+import { useMemo } from 'react';
 
 export const useScene = () => useAppStore((s) => s.scene);
 export const useSelection = () => useAppStore((s) => s.scene.selection);
@@ -8,11 +8,16 @@ export const useMeasurements = () => useAppStore((s) => s.measurements);
 export const useMeasureMode = () => useAppStore((s) => s.measureMode);
 export const useShowLightCones = () => useAppStore((s) => s.showLightCones);
 export const useShowStudioGuides = () => useAppStore((s) => s.showStudioGuides);
+export const useFalseColorEnabled = () => useAppStore((s) => s.falseColorEnabled);
+export const useHeatmapEnabled = () => useAppStore((s) => s.heatmapEnabled);
+export const useFalseColorOpacity = () => useAppStore((s) => s.falseColorOpacity);
+export const useHeatmapOpacity = () => useAppStore((s) => s.heatmapOpacity);
+export const useHDRIEnvironmentId = () => useAppStore((s) => s.hdriEnvironmentId);
+export const useHDRIIntensity = () => useAppStore((s) => s.hdriIntensity);
+export const useHDRIRotation = () => useAppStore((s) => s.hdriRotation);
+export const useHDRIVisible = () => useAppStore((s) => s.hdriVisible);
 export const useStudioGuideSettings = () => useAppStore((s) => s.studioGuideSettings);
 export const useAdvancedGuideSettings = () => useAppStore((s) => s.advancedGuideSettings);
-
-// Use a stable reference to prevent infinite loops
-const actionsRef = { current: null as any };
 
 export const useActions = () => {
   // Get store methods directly - they should be stable references
@@ -27,6 +32,15 @@ export const useActions = () => {
   const toggleMeasureMode = useAppStore((s) => s.toggleMeasureMode);
   const toggleLightCones = useAppStore((s) => s.toggleLightCones);
   const toggleStudioGuides = useAppStore((s) => s.toggleStudioGuides);
+  const toggleFalseColor = useAppStore((s) => s.toggleFalseColor);
+  const toggleHeatmap = useAppStore((s) => s.toggleHeatmap);
+  const setFalseColorOpacity = useAppStore((s) => s.setFalseColorOpacity);
+  const setHeatmapOpacity = useAppStore((s) => s.setHeatmapOpacity);
+  const setHDRIEnvironment = useAppStore((s) => s.setHDRIEnvironment);
+  const setHDRIIntensity = useAppStore((s) => s.setHDRIIntensity);
+  const setHDRIRotation = useAppStore((s) => s.setHDRIRotation);
+  const toggleHDRIVisible = useAppStore((s) => s.toggleHDRIVisible);
+  const toggleLightContribution = useAppStore((s) => s.toggleLightContribution);
   const updateStudioGuideSettings = useAppStore((s) => s.updateStudioGuideSettings);
   const updateAdvancedGuideSettings = useAppStore((s) => s.updateAdvancedGuideSettings);
   const addMeasurementPoints = useAppStore((s) => s.addMeasurementPoints);
@@ -47,6 +61,15 @@ export const useActions = () => {
       toggleMeasureMode,
       toggleLightCones,
       toggleStudioGuides,
+      toggleFalseColor,
+      toggleHeatmap,
+      setFalseColorOpacity,
+      setHeatmapOpacity,
+      setHDRIEnvironment,
+      setHDRIIntensity,
+      setHDRIRotation,
+      toggleHDRIVisible,
+      toggleLightContribution,
       updateStudioGuideSettings,
       updateAdvancedGuideSettings,
       addMeasurementPoints,
@@ -65,6 +88,15 @@ export const useActions = () => {
       toggleMeasureMode,
       toggleLightCones,
       toggleStudioGuides,
+      toggleFalseColor,
+      toggleHeatmap,
+      setFalseColorOpacity,
+      setHeatmapOpacity,
+      setHDRIEnvironment,
+      setHDRIIntensity,
+      setHDRIRotation,
+      toggleHDRIVisible,
+      toggleLightContribution,
       updateStudioGuideSettings,
       updateAdvancedGuideSettings,
       addMeasurementPoints,

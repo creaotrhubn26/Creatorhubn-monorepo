@@ -5,7 +5,8 @@ import { ShotListFilterBar } from "./ShotListFilterBar";
 import { ShotListGrid } from "./ShotListGrid";
 import { ShotListSidebar } from "./ShotListSidebar";
 import { ShotListGuide } from "./ShotListGuide";
-import { CreateEditShotListDialog, ExportDialog, DeleteConfirmDialog, BatchAssignDialog } from "./ShotListDialogs";
+import SceneStoryboardDialog from "./SceneStoryboardDialog";
+import { CreateEditShotListDialog, ExportDialog, DeleteConfirmDialog, BatchAssignDialog, type ShotListSceneCatalogEntry } from "./ShotListDialogs";
 import { useShotListData } from "./useShotListData";
 import { applyFilters, getSceneOptions, DEFAULT_FILTERS, type ShotListFilters } from "./shotListFilters";
 import { computeProjectStats } from "../../models/derivedState";
@@ -13,6 +14,12 @@ import { inheritAssignmentsFromShotList, type ShotList, type CastingShot } from 
 import { castingService } from "../../services/castingService";
 import { useShotListRealTime } from "../../hooks/useShotListRealTime";
 import { useAuth } from "@/hooks/useAuth";
+import { buildSceneStoryboardCandidates, loadStoryboardLibraryItemsForProject, syncShotListWithSceneStoryboard } from "../../services/storyboardLibraryService";
+import {
+  exportShotListsBoardPdf,
+  exportShotListsContactSheetPdf,
+  exportShotListsShotDeckPdf,
+} from "../../services/shotListExportService";
 
 // ─── Dialog state (reducer to avoid prop-drilling many booleans) ──────────────
 
@@ -51,6 +58,7 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
     openShotList,
     crew,
     crewLoading,
+    sceneBreakdowns,
     peopleMap,
     openShotListById,
     updateShot,
@@ -117,6 +125,10 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
   const [dialog, dispatchDialog] = useReducer(dialogReducer, { kind: 'none' });
   const [dialogLoading, setDialogLoading] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [sceneStoryboardDialog, setSceneStoryboardDialog] = useState<{
+    sceneId: string;
+    activeFrameIndex?: number;
+  } | null>(null);
 
   // ── Derived filter results ────────────────────────────────────────────────
   const filteredSummaries = useMemo(
@@ -125,21 +137,87 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
   );
 
   const sceneOptions = useMemo(() => getSceneOptions(summaries), [summaries]);
+  const [storyboardLibraryItems, setStoryboardLibraryItems] = useState<Awaited<ReturnType<typeof loadStoryboardLibraryItemsForProject>>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const loadLibraryItems = () => {
+      void loadStoryboardLibraryItemsForProject(projectId, String(projectId || 'global')).then((items) => {
+        if (!cancelled) {
+          setStoryboardLibraryItems(items);
+        }
+      });
+    };
+    loadLibraryItems();
+    window.addEventListener('role-room:storyboard-library-updated', loadLibraryItems);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('role-room:storyboard-library-updated', loadLibraryItems);
+    };
+  }, [projectId]);
+  const sceneCatalog = useMemo<ShotListSceneCatalogEntry[]>(
+    () =>
+      sceneBreakdowns
+        .map((scene) => {
+          const storyboardCandidates = buildSceneStoryboardCandidates(scene, storyboardLibraryItems);
+          const thumbnailFromScene = Array.isArray(scene.storyboardFrames)
+            ? scene.storyboardFrames
+                .map((frame) => (typeof frame === 'object' && frame !== null
+                  ? ((frame as Record<string, unknown>).thumbnailUrl || (frame as Record<string, unknown>).imageUrl)
+                  : undefined))
+                .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+            : undefined;
+          return {
+            sceneId: scene.id,
+            sceneName: scene.sceneName || scene.heading || `Scene ${scene.sceneNumber || scene.id}`,
+            sceneHeading: scene.sceneHeading || scene.heading,
+            thumbnail: thumbnailFromScene,
+            storyboardFrameCount: Array.isArray(scene.storyboardFrames) ? scene.storyboardFrames.length : 0,
+            storyboardLibraryCount: storyboardLibraryItems.filter((item) => item.sourceSceneId === scene.id).length,
+            storyboardCandidates,
+          };
+        })
+        .sort((a, b) => a.sceneName.localeCompare(b.sceneName, 'nb')),
+    [sceneBreakdowns, storyboardLibraryItems],
+  );
+  const sceneBreakdownById = useMemo(
+    () => new Map(sceneBreakdowns.map((scene) => [scene.id, scene])),
+    [sceneBreakdowns],
+  );
+  const activeSceneStoryboardScene = useMemo(
+    () => (sceneStoryboardDialog ? sceneBreakdownById.get(sceneStoryboardDialog.sceneId) || null : null),
+    [sceneBreakdownById, sceneStoryboardDialog],
+  );
 
   // Top assignees across all lists (for sidebar shot counts)
   const projectStats = useMemo(() => computeProjectStats(summaries), [summaries]);
+  const summaryMap = useMemo(
+    () => new Map(summaries.map((summary) => [summary.shotListId, summary])),
+    [summaries],
+  );
+
+  const resolveExportTargets = useCallback(async (id: string | null): Promise<ShotList[]> => {
+    const allShotLists = await castingService.getShotLists(projectId);
+    if (id) {
+      return allShotLists.filter((shotList) => shotList.id === id);
+    }
+    if (selectedIds.size > 0) {
+      return allShotLists.filter((shotList) => selectedIds.has(shotList.id));
+    }
+    return allShotLists;
+  }, [projectId, selectedIds]);
 
   // ── Handlers: CRUD ────────────────────────────────────────────────────────
 
   const handleCreate = useCallback(async (data: Partial<ShotList>) => {
     setDialogLoading(true);
     try {
+      const matchedScene = sceneCatalog.find((scene) => scene.sceneId === data.sceneId);
       const newList: ShotList = {
         id: `sl-${Date.now()}`,
         projectId,
         sceneId: data.sceneId ?? `scene-${Date.now()}`,
-        sceneName: data.sceneName,
-        shots: [],
+        sceneName: data.sceneName ?? matchedScene?.sceneName,
+        shots: Array.isArray(data.shots) ? data.shots : [],
         equipment: [],
         notes: data.notes,
         productionContext: data.productionContext ?? 'custom',
@@ -156,7 +234,7 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
     } finally {
       setDialogLoading(false);
     }
-  }, [projectId, refresh, onUpdate]);
+  }, [projectId, refresh, onUpdate, sceneCatalog]);
 
   const handleEdit = useCallback(async (data: Partial<ShotList>) => {
     if (dialog.kind !== 'edit') return;
@@ -199,6 +277,36 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
       sceneName: original.sceneName ? `${original.sceneName} (copy)` : undefined,
     });
   }, [summaries, handleCreate]);
+
+  const handleSaveStoryboardScene = useCallback(
+    async (updatedScene: NonNullable<typeof activeSceneStoryboardScene>) => {
+      const project = await castingService.getProject(projectId);
+      if (!project) {
+        throw new Error(`Project ${projectId} not found`);
+      }
+
+      const nextProject = {
+        ...project,
+        sceneBreakdowns: (project.sceneBreakdowns || []).map((scene) =>
+          scene.id === updatedScene.id ? updatedScene : scene,
+        ),
+        shotLists: (project.shotLists || []).map((shotList) => {
+          if (shotList.sceneId !== updatedScene.id) return shotList;
+          const syncResult = syncShotListWithSceneStoryboard(
+            shotList,
+            updatedScene,
+            storyboardLibraryItems,
+          );
+          return syncResult.shotList;
+        }),
+      };
+
+      await castingService.saveProject(nextProject);
+      refresh();
+      onUpdate?.();
+    },
+    [activeSceneStoryboardScene, onUpdate, projectId, refresh, storyboardLibraryItems],
+  );
 
   // ── Handler: Person drop → assign to shot list ────────────────────────────
 
@@ -270,10 +378,30 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
     URL.revokeObjectURL(url);
   }, [summaries, selectedIds, projectId]);
 
-  const handleExportPDF = useCallback((_id: string | null) => {
-    // TODO: wire to jsPDF when available
-    console.info('PDF export coming soon');
-  }, []);
+  const buildExportPayload = useCallback(async (id: string | null) => {
+    const shotLists = await resolveExportTargets(id);
+    return {
+      projectName,
+      shotLists,
+      sceneMap: sceneBreakdownById,
+      summaryMap,
+    };
+  }, [projectName, resolveExportTargets, sceneBreakdownById, summaryMap]);
+
+  const handleExportBoardPDF = useCallback(async (id: string | null) => {
+    const payload = await buildExportPayload(id);
+    await exportShotListsBoardPdf(payload);
+  }, [buildExportPayload]);
+
+  const handleExportContactSheet = useCallback(async (id: string | null) => {
+    const payload = await buildExportPayload(id);
+    await exportShotListsContactSheetPdf(payload);
+  }, [buildExportPayload]);
+
+  const handleExportShotDeck = useCallback(async (id: string | null) => {
+    const payload = await buildExportPayload(id);
+    await exportShotListsShotDeckPdf(payload);
+  }, [buildExportPayload]);
 
   // ── Handler: Batch assign ─────────────────────────────────────────────────
 
@@ -379,6 +507,11 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
             onDuplicate={handleDuplicate}
             onDelete={(id) => dispatchDialog({ kind: 'delete', shotListIds: [id] })}
             onExport={(id) => dispatchDialog({ kind: 'export', shotListId: id })}
+            onOpenStoryboard={(id) => {
+              const summary = filteredSummaries.find((entry) => entry.shotListId === id);
+              if (!summary) return;
+              setSceneStoryboardDialog({ sceneId: summary.sceneId, activeFrameIndex: 0 });
+            }}
             onPersonDropped={handlePersonDropped}
             onReorder={handleReorder}
             people={peopleMap}
@@ -401,6 +534,7 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
       <CreateEditShotListDialog
         open={dialog.kind === 'create'}
         mode="create"
+        sceneCatalog={sceneCatalog}
         loading={dialogLoading}
         onClose={() => dispatchDialog({ kind: 'none' })}
         onSubmit={handleCreate}
@@ -411,6 +545,7 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
         open={dialog.kind === 'edit'}
         mode="edit"
         initial={editInitial}
+        sceneCatalog={sceneCatalog}
         loading={dialogLoading}
         onClose={() => dispatchDialog({ kind: 'none' })}
         onSubmit={handleEdit}
@@ -423,7 +558,9 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
         selectedCount={selectedIds.size}
         onClose={() => dispatchDialog({ kind: 'none' })}
         onExportCSV={handleExportCSV}
-        onExportPDF={handleExportPDF}
+        onExportBoardPDF={handleExportBoardPDF}
+        onExportContactSheet={handleExportContactSheet}
+        onExportShotDeck={handleExportShotDeck}
       />
 
       {/* Delete */}
@@ -450,6 +587,17 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
       <ShotListGuide
         open={guideOpen}
         onClose={() => setGuideOpen(false)}
+      />
+
+      <SceneStoryboardDialog
+        open={Boolean(sceneStoryboardDialog)}
+        scene={activeSceneStoryboardScene}
+        projectId={projectId}
+        activeFrameIndex={sceneStoryboardDialog?.activeFrameIndex}
+        onClose={() => setSceneStoryboardDialog(null)}
+        onSceneUpdate={(scene) => {
+          void handleSaveStoryboardScene(scene);
+        }}
       />
     </Box>
   );

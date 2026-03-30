@@ -1,8 +1,13 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { getEvendiBookings, getEvendiAnalyticsSummary, evendiQueryKeys } from '@/lib/evendi-api';
-import type { EvendiBooking, EvendiAnalyticsSummary } from '@/lib/evendi-api';
+import {
+  getEvendiBookings,
+  getEvendiAnalyticsSummary,
+  evendiQueryKeys,
+  type EvendiBooking,
+  type EvendiAnalyticsSummary,
+} from '@/lib/evendi-api';
 import { useLocation } from 'wouter';
 import { trackButtonClick } from '@/hooks/useActionTracker';
 import { useDemoMode } from '@/contexts/DemoModeContext';
@@ -22,7 +27,6 @@ import { VisualEditorProvider } from '../admin/visual-editor/VisualEditorContext
 import CreatorHubMarketplace from '../resume/ResumeBuilderMarketplace';
 import ContractSummaryWidget from '../contract-designer/ContractSummaryWidget';
 import RelatedItemsWidget from './shared/RelatedItemsWidget';
-import { Card as MuiCard, CardContent as MuiCardContent, CardActions as MuiCardActions } from '@mui/material';
 import {
   Box,
   Container,
@@ -57,6 +61,9 @@ import {
   Switch,
   FormControlLabel,
   Alert,
+  Card as MuiCard,
+  CardContent as MuiCardContent,
+  CardActions as MuiCardActions,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -135,8 +142,6 @@ import FloatingActionButtons from './misc/FloatingActionButtons';
 
 // Import Settings Components
 import PriceAdministration from '../PriceAdministration';
-import BusinessBrandingSettings from '../BusinessBrandingSettings';
-import MemoryCardPricingAdmin from '../admin/MemoryCardPricingAdmin';
 
 // Import Tutorial & FAQ System
 import { TutorialFAQIntegration } from '../tutorial/TutorialFAQIntegration';
@@ -160,11 +165,12 @@ import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
 
 // Import Gear News component
 import { EnhancedGearTab } from '../dashboard/EnhancedGearTab';
-import { QuickMeetingNotesModal } from '../meetings/QuickMeetingNotesModal';
-import SmartEmailCenter from '../email/SmartEmailCenter';
-import CustomerInquiryCenter from '../email/CustomerInquiryCenter';
+import {
+  QuickMeetingNotesModal,
+  QuickMeetingNotesModal as GoogleWorkspaceMeetingManager,
+} from '../meetings/QuickMeetingNotesModal';
+import CustomerInquiryCenter, { type EmailMessage as CustomerInquiryEmailMessage } from '../email/CustomerInquiryCenter';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
-import { QuickMeetingNotesModal as GoogleWorkspaceMeetingManager } from '../meetings/QuickMeetingNotesModal';
 import UniversalKeyboardShortcuts from '../keyboard-shortcuts/UniversalKeyboardShortcuts';
 import SmartTimingPreferences from '../smart-timing/SmartTimingPreferences';
 import HelpdeskSystem from './HelpdeskSystem';
@@ -173,15 +179,13 @@ import HelpdeskSystem from './HelpdeskSystem';
 import ProjectTimeline from '../project/ProjectTimeline';
 
 // Import Universal Components for enhanced integration
-import { UniversalDownload } from './UniversalDownload';
-import UniversalFileUpload from './UniversalFileUpload';
+import ContextualDriveUploadWorkspace from './ContextualDriveUploadWorkspace';
 import UniversalChatWidget from '../chat/UniversalChatWidget';
 import { useCommunicationStatus, CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 import { useFileManagementStatus, FileManagementStatusProvider } from '../../contexts/FileManagementStatusContext';
 // ChatDemoData removed - 100% real data only
-import UniversalCommunication from '../communication/UniversalCommunication';
 import UniversalWorklog from '../worklog/UniversalWorklog';
-import ContextualPhotographyTipsOverlay from '../photography/ContextualPhotographyTipsOverlay';
+import UniversalPrototypeFeedback from '../prototype-testing/UniversalPrototypeFeedback';
 import ShowcaseAdmin from '../showcase/ShowcaseAdmin';
 import ShowcasePublisherPanel from '../showcase/ShowcasePublisherPanel';
 import WeddingTimelineOverview from '../wedding/WeddingTimelineOverview';
@@ -217,13 +221,10 @@ import VendorProductManager from '../vendor/VendorProductManager';
 import FilesTab from '../file-management/FilesTab';
 import SubmissionsOverview from '../unused/submissions/SubmissionsOverview';
 import ProjectShowcase from '../project/ProjectShowcase';
-import ChatWidget from '../chat/ChatWidget';
-import UniversalPrototypeFeedback from '../prototype-testing/UniversalPrototypeFeedback';
 import CentralizedSalesHub from '../sales/CentralizedSalesHub';
 import TutorialLauncher from '../tutorials/TutorialLauncher';
 import VideoEditor from '../video-editor/VideoEditor';
 import StoryArcGenerator from '../StoryArcGenerator';
-import EmailProjectHistory from '../email/EmailProjectHistory';
 import WeddingTimelineClientAccess from '../wedding/WeddingTimelineClientAccess';
 import EmailDesigner from '../EmailDesigner/EmailDesigner';
 import UniversalContractHub from './contracts/UniversalContractHub';
@@ -264,18 +265,14 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
       { id: 'showcase-publisher', label: 'Showcase Publisher', icon: <VideoLibrary /> },
-      { id: 'showcase-viewer', label: 'Showcase Viewer', icon: <Visibility /> },
-      { id: 'downloads', label: 'Downloads', icon: <GetApp /> },
       { id: 'file-upload', label: 'File Upload', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'AI Forbedring', icon: <AutoFixHigh /> },
-      { id: 'email-center', label: 'E-post', icon: <Email /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
       { id: 'photo-enhancement', label: 'Fotoforbedring', icon: <Collections /> },
       { id: 'client-management', label: 'Klientadministrasjon', icon: <Group /> },
       { id: 'equipment', label: 'Utstyr', icon: <CameraAlt /> },
       { id: 'files', label: 'Filer', icon: <FolderOpen /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
-      { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
@@ -299,11 +296,8 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
-      { id: 'showcase-viewer', label: 'Showcase Viewer', icon: <Visibility /> },
-      { id: 'downloads', label: 'Downloads', icon: <GetApp /> },
       { id: 'file-upload', label: 'File Upload', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'AI Forbedring', icon: <AutoFixHigh /> },
-      { id: 'email-center', label: 'E-post', icon: <Email /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
       { id: 'clients', label: 'Kunder', icon: <Group /> },
       { id: 'equipment', label: 'Utstyr', icon: <CameraAlt /> },
@@ -311,7 +305,6 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'support', label: 'Support', icon: <HelpCenter /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
-      { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
@@ -335,11 +328,8 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
-      { id: 'showcase-viewer', label: 'Showcase Viewer', icon: <Visibility /> },
-      { id: 'downloads', label: 'Downloads', icon: <GetApp /> },
       { id: 'file-upload', label: 'File Upload', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'Video AI', icon: <MovieCreation /> },
-      { id: 'email-center', label: 'E-post', icon: <Email /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
       { id: 'clients', label: 'Kunder', icon: <Group /> },
       { id: 'equipment', label: 'Utstyr', icon: <CameraAlt /> },
@@ -347,7 +337,6 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'support', label: 'Support', icon: <HelpCenter /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
-      { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
@@ -371,10 +360,8 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'split-sheets', label: 'Split Sheets', icon: <AccountBalance /> },
       { id: 'showcase-viewer', label: 'Musikk Showcase', icon: <LibraryMusic /> },
-      { id: 'downloads', label: 'Musikk Downloads', icon: <GetApp /> },
       { id: 'file-upload', label: 'Musikk Upload', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'Audio AI', icon: <SmartToy /> },
-      { id: 'email-center', label: 'E-post', icon: <Email /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
       { id: 'clients', label: 'Artister', icon: <Person /> },
       { id: 'equipment', label: 'Studio', icon: <Build /> },
@@ -382,7 +369,6 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'support', label: 'Support', icon: <HelpCenter /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
-      { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
@@ -432,12 +418,9 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
-      { id: 'showcase-viewer', label: 'Showcase Viewer', icon: <Visibility /> },
-      { id: 'downloads', label: 'Downloads', icon: <GetApp /> },
       { id: 'file-upload', label: 'File Upload', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'AI Forbedring', icon: <AutoFixHigh /> },
       { id: 'video-enhancement', label: 'Video AI', icon: <MovieCreation /> },
-      { id: 'email-center', label: 'E-post', icon: <Email /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
       { id: 'clients', label: 'Kunder', icon: <Group /> },
       { id: 'team-management', label: 'Team', icon: <Group /> },
@@ -446,7 +429,6 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'support', label: 'Support', icon: <HelpCenter /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
-      { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
       { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
@@ -548,8 +530,9 @@ interface UniversalDashboardProps {
 
 // Internal component that uses the context
 const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ profession = 'photographer' }) => {
+  const ROLE_ROOM_GOOGLE_TRANSFER_PROCESSING_KEY = 'creatorhub:rr-google-processing';
   const [, setLocation] = useLocation();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isPrototypeTester } = useAuth();
   const { status: communicationStatus } = useCommunicationStatus();
   const { status: _fileManagementStatus } = useFileManagementStatus();
   
@@ -693,6 +676,104 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
   // Mentor status check
   const [isMentor, setIsMentor] = useState(false);
+  const handledGoogleWorkspaceTransferRef = useRef<string | null>(null);
+
+  const clearGoogleWorkspaceIntentFromUrl = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('rrGoogleStatus');
+    url.searchParams.delete('rrGoogleTransfer');
+    url.searchParams.delete('rrGoogleMode');
+    url.searchParams.delete('rrGoogleMessage');
+    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const googleStatus = params.get('rrGoogleStatus');
+    const googleTransferId = params.get('rrGoogleTransfer');
+    const googleMode = params.get('rrGoogleMode');
+    const googleMessage = params.get('rrGoogleMessage');
+
+    if (!googleStatus) {
+      return;
+    }
+
+    if (googleStatus === 'error') {
+      console.error('Google Workspace callback error:', googleMessage || 'Unknown Google Workspace callback error');
+      clearGoogleWorkspaceIntentFromUrl();
+      return;
+    }
+
+    if (googleStatus !== 'success' || googleMode !== 'link' || !googleTransferId) {
+      return;
+    }
+
+    const transferKey = `${googleMode}:${googleTransferId}`;
+    if (handledGoogleWorkspaceTransferRef.current === transferKey) {
+      return;
+    }
+
+    if (window.sessionStorage.getItem(ROLE_ROOM_GOOGLE_TRANSFER_PROCESSING_KEY) === transferKey) {
+      return;
+    }
+
+    handledGoogleWorkspaceTransferRef.current = transferKey;
+    window.sessionStorage.setItem(ROLE_ROOM_GOOGLE_TRANSFER_PROCESSING_KEY, transferKey);
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await apiRequest(`/api/role-room/google/oauth/session-result/${encodeURIComponent(googleTransferId)}`);
+        if (cancelled) {
+          return;
+        }
+
+        await apiRequest('/api/role-room/google/link', {
+          method: 'POST',
+          body: { transferId: googleTransferId },
+        });
+        if (cancelled) {
+          return;
+        }
+
+        await Promise.allSettled([
+          queryClient.invalidateQueries({ queryKey: ['/api/role-room/google/status'] }),
+          queryClient.invalidateQueries({ queryKey: ['/api/communication/google-chat/status'] }),
+          queryClient.invalidateQueries({ queryKey: ['/api/google/chat/spaces'] }),
+          queryClient.invalidateQueries({ queryKey: ['/api/google/chat/messages'] }),
+          queryClient.invalidateQueries({ queryKey: ['/api/communication/email/status'] }),
+          queryClient.invalidateQueries({ queryKey: ['/api/communication/email/threads'] }),
+          queryClient.invalidateQueries({ queryKey: ['/api/communication/email/messages'] }),
+        ]);
+
+        window.dispatchEvent(new CustomEvent('creatorhub-google-workspace-linked', {
+          detail: { transferId: googleTransferId },
+        }));
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to finalize Google Workspace link from dashboard callback:', error);
+        }
+      } finally {
+        if (!cancelled) {
+          clearGoogleWorkspaceIntentFromUrl();
+        }
+        window.sessionStorage.removeItem(ROLE_ROOM_GOOGLE_TRANSFER_PROCESSING_KEY);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearGoogleWorkspaceIntentFromUrl]);
 
   useEffect(() => {
     const checkMentorStatus = async () => {
@@ -725,6 +806,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
    */
   const availableTabs = useMemo(() => {
     const tabs = config.tabs.filter(tab => {
+      if (tab.id === 'email-center') {
+        return false;
+      }
+      if (tab.id === 'downloads') {
+        return false;
+      }
+      if (tab.id === 'communication') {
+        return false;
+      }
+      if (tab.id === 'showcase-viewer' && config.tabs.some(configTab => configTab.id === 'showcase-admin')) {
+        return false;
+      }
+
       // Map tab IDs to feature checks - All enabled by default for better UX
       const featureMap: Record<string, boolean> = {
         'overview': true, // Always available
@@ -733,14 +827,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         'split-sheets': false, // Split sheets moved to Prisadministrasjon sub-tab for all professions
         'wedding-timeline': true, // Always available
         'showcase-admin': true, // Always available
-        'showcase-viewer': true, // Always available
-        'downloads': true,
+        'showcase-viewer': true, // Available for professions without Showcase Admin tab
         'file-upload': true,
         'ai-enhancement': true, // Always available
         'photo-enhancement': true, // Always available
         'video-enhancement': true, // Always available
         'audio-enhancement': true, // Always available
-        'email-center': true,
         'worklog': true,
         'clients': true, // Always available
         'client-management': true, // Always available
@@ -750,7 +842,6 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         'support': true,
         'settings': true, // Always available
         'administration': true, // Pricing administration for all professions
-        'communication': true,
         'role-room': true, // The Role Room - casting & crew management
         'integration-test': isAdmin // Only for admins
       };
@@ -935,11 +1026,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     showQuickNotesModal: false,
     showProjectCreation: false,
     showVendorProductDialog: false,
-    showEmailCenter: false,
     showEmailDesigner: false,
     showChat: false,
     showNotifications: false,
-    showPrototypeFeedback: false,
     showCrmDialog: false,
     showFAQDialog: false,
     showProjectDetailsModal: false,
@@ -1147,7 +1236,6 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const setSelectedTimelineTab = (value: number) => updateTabStateLocal('timeline', value);
   
   // Additional tab states for sub-navigation
-  const [emailTabValue, setEmailTabValue] = useState(0);
   const [equipmentTabValue, setEquipmentTabValue] = useState(0);
   const [projectsTabValue, setProjectsTabValue] = useState(0);
 
@@ -1220,12 +1308,50 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const setShowQuickNotesModal = (value: boolean) => updateModalStateLocal('showQuickNotesModal', value);
   const showVendorProductDialog = modalState.showVendorProductDialog;
   const setShowVendorProductDialog = (value: boolean) => updateModalStateLocal('showVendorProductDialog', value);
-  const showEmailCenter = modalState.showEmailCenter;
-  const setShowEmailCenter = (value: boolean) => updateModalStateLocal('showEmailCenter', value);
   const showChat = modalState.showChat;
   const setShowChat = (value: boolean) => updateModalStateLocal('showChat', value);
-  const _showPrototypeFeedback = modalState.showPrototypeFeedback;
-  const setShowPrototypeFeedback = (value: boolean) => updateModalStateLocal('showPrototypeFeedback', value);
+  const [chatRequestedTab, setChatRequestedTab] = useState<{
+    tab: 'creatorhub' | 'google-chat' | 'email' | 'feedback' | 'evendi' | 'academy';
+    token: string;
+  } | null>(null);
+  const [chatEmailIntent, setChatEmailIntent] = useState<{
+    token: string;
+    id: string;
+    subject: string;
+    body?: string;
+    timestamp: string;
+    counterpartName: string;
+    counterpartEmail?: string | null;
+    priority?: 'low' | 'normal' | 'high';
+    isRead?: boolean;
+    isStarred?: boolean;
+  } | null>(null);
+  const [chatWorkspaceVisible, setChatWorkspaceVisible] = useState(showChat);
+  const [chatWorkspaceTransitionState, setChatWorkspaceTransitionState] = useState<'opening' | 'open' | 'closing'>(
+    showChat ? 'open' : 'closing'
+  );
+  const [meetingNotesProjectId, setMeetingNotesProjectId] = useState<string | undefined>(undefined);
+  const chatWorkspaceOpenDuration = 700;
+  const chatWorkspaceCloseDuration = 300;
+  const chatWorkspaceLayout = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const horizontalGutter = 24;
+    const verticalGutter = 28;
+    const maxAvailableWidth = Math.max(920, window.innerWidth - horizontalGutter * 2);
+    const maxAvailableHeight = Math.max(720, window.innerHeight - verticalGutter * 2);
+    const width = Math.min(1560, maxAvailableWidth, Math.max(1040, Math.round(window.innerWidth * 0.86)));
+    const height = Math.min(1020, maxAvailableHeight, Math.max(800, window.innerHeight - 64));
+
+    return {
+      width,
+      height,
+      x: Math.max(horizontalGutter, window.innerWidth - width - horizontalGutter),
+      y: Math.max(verticalGutter, Math.round((window.innerHeight - height) / 2)),
+    };
+  }, [showChat]);
   const showCrmDialog = modalState.showCrmDialog;
   const setShowCrmDialog = (value: boolean) => updateModalStateLocal('showCrmDialog', value);
   const showProjectDetailsModal = modalState.showProjectDetailsModal;
@@ -1234,6 +1360,172 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const setShowEditProjectModal = (value: boolean) => updateModalStateLocal('showEditProjectModal', value);
   const showDeleteProjectDialog = modalState.showDeleteProjectDialog;
   const setShowDeleteProjectDialog = (value: boolean) => updateModalStateLocal('showDeleteProjectDialog', value);
+  const dashboardOverlayZIndex = 1400;
+  const dashboardPanelZIndex = 1450;
+  const dashboardWorkspaceZIndex = 1500;
+  const dashboardFullscreenZIndex = 1600;
+  const dashboardFullscreenControlZIndex = 1610;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    let timeoutId: number | undefined;
+    let rafId: number | undefined;
+
+    if (showChat) {
+      setChatWorkspaceVisible(true);
+      setChatWorkspaceTransitionState('opening');
+      rafId = window.requestAnimationFrame(() => {
+        timeoutId = window.setTimeout(() => {
+          setChatWorkspaceTransitionState('open');
+        }, chatWorkspaceOpenDuration);
+      });
+    } else {
+      setChatWorkspaceTransitionState('closing');
+      timeoutId = window.setTimeout(() => {
+        setChatWorkspaceVisible(false);
+      }, chatWorkspaceCloseDuration);
+    }
+
+    return () => {
+      if (typeof rafId === 'number') {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (typeof timeoutId === 'number') {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [showChat]);
+
+  const handleChatMeetingCreated = useCallback((meeting: any) => {
+    if (meeting?.dashboardBroadcasted || meeting?.source === 'universal-dashboard') {
+      return;
+    }
+
+    const projectFromMeeting =
+      meeting?.projectContext && typeof meeting.projectContext === 'object'
+        ? meeting.projectContext as Project
+        : null;
+    const clientFromMeeting =
+      meeting?.clientContext && typeof meeting.clientContext === 'object'
+        ? meeting.clientContext as Client
+        : null;
+    const projectId =
+      typeof meeting?.projectId === 'string' && meeting.projectId.trim().length > 0
+        ? meeting.projectId.trim()
+        : projectFromMeeting?.id || undefined;
+
+    if (projectFromMeeting) {
+      setSelectedProject(projectFromMeeting);
+    }
+    if (clientFromMeeting) {
+      setSelectedClient(clientFromMeeting);
+    }
+    if (projectId) {
+      setMeetingNotesProjectId(projectId);
+    }
+
+    integration.emit('meeting:created', { meeting, source: 'universal-dashboard' });
+    const dashboardMeetingPayload = {
+      ...meeting,
+      source: 'universal-dashboard',
+      originalSource: meeting?.source ?? null,
+      dashboardBroadcasted: true,
+    };
+    communication.sendMessage({
+      from: 'universal-dashboard',
+      to: 'all',
+      type: 'meeting:created',
+      data: dashboardMeetingPayload,
+      priority: 'medium',
+    });
+
+    if (meeting?.suggestOpenNotes) {
+      setShowQuickNotesModal(true);
+    }
+  }, [communication, integration, setSelectedClient, setSelectedProject, setShowQuickNotesModal]);
+
+  const handleOpenInquiryInChat = useCallback((email: CustomerInquiryEmailMessage) => {
+    setChatRequestedTab({
+      tab: 'email',
+      token: `inquiry-email:${email.id}:${Date.now()}`,
+    });
+    setChatEmailIntent({
+      token: `${email.id}:${Date.now()}`,
+      id: email.id,
+      subject: email.subject,
+      body: email.body,
+      timestamp: email.timestamp,
+      counterpartName: email.from?.name || 'Kunde',
+      counterpartEmail: email.from?.email || null,
+      priority: email.priority,
+      isRead: email.isRead,
+      isStarred: email.isStarred,
+    });
+    setShowNotifications(false);
+    setShowChat(true);
+  }, [setShowNotifications, setShowChat]);
+
+  const handleOpenEmailWorkspace = useCallback((client?: Client | null) => {
+    if (client?.email) {
+      setChatEmailIntent({
+        token: `client-email:${client.id || client.email}:${Date.now()}`,
+        id: `client-email:${client.id || client.email}`,
+        subject: `Dialog med ${client.name || client.email}`,
+        body: '',
+        timestamp: new Date().toISOString(),
+        counterpartName: client.name || client.email,
+        counterpartEmail: client.email,
+        priority: 'normal',
+        isRead: true,
+        isStarred: false,
+      });
+    } else {
+      setChatEmailIntent(null);
+    }
+
+    setChatRequestedTab({
+      tab: 'email',
+      token: `email-tab:${client?.id || client?.email || 'dashboard'}:${Date.now()}`,
+    });
+    setShowNotifications(false);
+    setShowChat(true);
+  }, [setShowNotifications, setShowChat]);
+
+  const sharedGoogleDriveManagerProps = useMemo(() => ({
+    userId,
+    profession,
+    selectedProject,
+    onProjectSelect: setSelectedProject,
+    onProjectUpdate: (project: Project) => {
+      if (project?.id) {
+        updateProject(project.id, project);
+      }
+    },
+  }), [profession, selectedProject, setSelectedProject, updateProject, userId]);
+
+  const sharedGoogleDriveProjectSyncProps = useMemo(() => ({
+    userId,
+    projectId: selectedProject?.id,
+    selectedProject,
+    onProjectSelect: setSelectedProject,
+    onProjectUpdate: (project: Project) => {
+      if (project?.id) {
+        updateProject(project.id, project);
+      }
+    },
+  }), [selectedProject, setSelectedProject, updateProject, userId]);
+
+  const sharedGoogleWorkspaceMeetingProps = useMemo(() => ({
+    profession,
+    isOpen: false,
+    onClose: () => {},
+    preselectedProjectId: selectedProject?.id,
+    selectedProject,
+    onProjectSelect: setSelectedProject,
+  }), [profession, selectedProject, setSelectedProject]);
 
   // ==============================================================
   // EVENDI COUPLE AUTO-RESOLUTION
@@ -1285,14 +1577,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         const { tab, subTab } = event.data;
         
         if (tab === 'settings') {
-          // Find the settings tab index
-          const settingsTabIndex = 5; // Settings is typically the last tab
-          setTabValue(settingsTabIndex);
-            
-          // If subTab is specified, set the appropriate sub-tab
           if (subTab === 'pricing') {
-            // Set pricing as active subtab in settings
-            setSettingsTabValue(2); // Assuming pricing is at index 2 in settings
+            const administrationTabIndex = availableTabs.findIndex((dashboardTab) => dashboardTab.id === 'administration');
+            if (administrationTabIndex >= 0) {
+              setTabValue(administrationTabIndex);
+            }
+            return;
+          }
+
+          const settingsTabIndex = availableTabs.findIndex((dashboardTab) => dashboardTab.id === 'settings');
+          if (settingsTabIndex >= 0) {
+            setTabValue(settingsTabIndex);
       }
     }
   }
@@ -1301,7 +1596,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     // Use modern event handling pattern
     document.addEventListener('custom-navigation', handleMessage as EventListener);
     return () => document.removeEventListener('custom-navigation', handleMessage as EventListener);
-}, [profession]);
+}, [availableTabs, profession]);
 
   // Location Intelligence Data Fetching
   const locationFetchKeyRef = useRef<string>('');
@@ -1478,12 +1773,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       await queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
     } catch (error) {
       console.error('Feil ved sletting av prosjekt:', error);
-      // TODO: Vis brukervennlig feilmelding
+      addNotification({
+        message: error instanceof Error ? `Kunne ikke slette prosjektet: ${error.message}` : 'Kunne ikke slette prosjektet akkurat nå.',
+        type: 'error',
+      });
     } finally {
       setShowDeleteProjectDialog(false);
       setSelectedProject(null);
     }
-}, [selectedProject]);
+}, [addNotification, queryClient, selectedProject]);
 
   // baseConfig moved earlier (before config useMemo) to avoid TDZ error
   
@@ -1623,6 +1921,16 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     };
 }, [onboardingProfile, brandingData, config]);
 
+  const dashboardSectionCardSx = useMemo(
+    () => ({
+      borderRadius: 4,
+      border: `1px solid ${alpha(customBranding.color, 0.08)}`,
+      backgroundColor: alpha('#ffffff', 0.96),
+      boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
+    }),
+    [customBranding.color],
+  );
+
   // Fetch vendor profile to get vendorType (for vendors only)
   const { data: vendorProfile } = useQuery({
     queryKey: ['/api/vendor-onboarding/profile', userId],
@@ -1632,19 +1940,20 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
   // Get the user's vendor type from their profile, default to 'print'
   const _userVendorType = vendorProfile?.vendorType || 'print';
+  const shouldLoadEvendi = !!userId && userId !== 'guest' && profession === 'vendor';
 
   // Fetch Evendi bookings & analytics (wired via evendi-api.ts)
   const { data: evendiBookings = [] } = useQuery<EvendiBooking[]>({
     queryKey: evendiQueryKeys.bookings(),
     queryFn: () => getEvendiBookings(),
-    enabled: !!userId && userId !== 'guest',
+    enabled: shouldLoadEvendi,
     staleTime: 60_000,
   });
 
   const { data: evendiAnalytics } = useQuery<EvendiAnalyticsSummary>({
     queryKey: evendiQueryKeys.analytics(),
     queryFn: () => getEvendiAnalyticsSummary(),
-    enabled: !!userId && userId !== 'guest',
+    enabled: shouldLoadEvendi,
     staleTime: 60_000,
   });
 
@@ -1686,7 +1995,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // Fetch recent notifications for notification center
   const { data: recentNotifications = [] } = useQuery({
     queryKey: ['/api/notifications/recent', userId],
-    queryFn: () => apiRequest(`/api/notifications/recent/${userId}?limit=10`),
+    queryFn: async () => {
+      const response = await apiRequest(`/api/notifications/recent/${userId}?limit=10`);
+      return Array.isArray(response) ? response : response?.notifications || [];
+    },
     enabled: !!userId && userId !== 'guest'
   });
 
@@ -1918,13 +2230,35 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     setSelectedTimelineTab(newValue);
 }, []);
 
-  const handleSettingsTabChange = useCallback((e: React.SyntheticEvent, newValue: number) => {
+  const handleSettingsTabChange = useCallback((_: React.SyntheticEvent, newValue: number) => {
     setSettingsTabValue(newValue);
 }, []);
 
   const handleShowFAQDialog = useCallback(() => {
     setShowFAQDialog(true);
 }, []);
+
+  const renderUnifiedSettingsPanel = useCallback(() => (
+    <Box sx={{ p: { xs: 1.5, md: 0 } }}>
+      <UniversalSettingsPanel
+        userId={userId}
+        profession={profession}
+        customBranding={customBranding}
+        selectedProject={selectedProject}
+        onProjectSelect={setSelectedProject}
+        activeTabValue={settingsTabValue}
+        onTabChange={setSettingsTabValue}
+      />
+    </Box>
+  ), [
+    customBranding,
+    profession,
+    selectedProject,
+    setSelectedProject,
+    settingsTabValue,
+    userId,
+  ]);
+  const showLegacyVendorSettings = false;
 
   // Optimized shared styles - memoized for performance  
   const sharedStyles = useMemo(() => ({
@@ -2209,20 +2543,25 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       communication.sendBroadcast('customer:updated', created);
                       // Ensure Google Contacts has this contact
                       if (payload.email) {
-                        const searchRes = await fetch(`/api/google/people/search-contacts?q=${encodeURIComponent(payload.email)}`);
-                        let foundId: string | null = null;
-                        if (searchRes.ok) {
-                          const contacts = await searchRes.json();
-                          const found = contacts.find((c: any) => c.email?.toLowerCase() === payload.email.toLowerCase());
-                          if (found?.id) foundId = found.id;
-                        }
+                        const contacts = await apiRequest(
+                          `/api/google/people/search-contacts?q=${encodeURIComponent(payload.email)}&userId=${encodeURIComponent(effectiveUserId)}`,
+                        ) as Array<{ id: string; email: string }>;
+                        const foundId = contacts.find((contact) => contact.email?.toLowerCase() === payload.email.toLowerCase())?.id ?? null;
                         if (!foundId) {
                           const [firstName, ...rest] = (payload.name || payload.email).split(' ');
-                          const lastName = rest.join('');
-                          await fetch('/api/google/people/create-contact', {
+                          const lastName = rest.join(' ');
+                          await apiRequest('/api/google/people/create-contact', {
                             method: 'POST',
-                            headers: { 'Content-Type' : 'application/json' },
-                            body: JSON.stringify({ firstName, lastName: lastName || '-', email: payload.email, phone: payload.phone, companyName: payload.company, profession: profession, notes: 'Created from Universal Dashboard submission' })
+                            body: {
+                              firstName,
+                              lastName: lastName || '-',
+                              email: payload.email,
+                              phone: payload.phone,
+                              companyName: payload.company,
+                              profession,
+                              notes: 'Created from Universal Dashboard submission',
+                              userId: effectiveUserId,
+                            },
                           });
                         }
                       }
@@ -2327,7 +2666,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   if (projectsTabIndex !== -1) setTabValue(projectsTabIndex);
                 } else if (activity.type === 'comment') {
                   // Go to Showcase tab
-                  const showcaseTabIndex = availableTabs.findIndex(tab => tab.id === 'showcase-viewer');
+                  const showcaseTabIndex = availableTabs.findIndex(tab => tab.id === 'showcase-admin');
                   if (showcaseTabIndex !== -1) setTabValue(showcaseTabIndex);
                 } else if (activity.type === 'timeline_change') {
                   // Go to Wedding Timeline tab
@@ -2900,8 +3239,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      // Email center opened with real count: {unreadEmailCount}
-                      setShowEmailCenter(true);
+                      handleOpenEmailWorkspace(selectedClient || null);
                     }}
                     sx={{ 
                       bgcolor: `${customBranding.color}10`,
@@ -3681,6 +4019,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     profession={profession} 
                     userId={userId} 
                     customBranding={customBranding}
+                    onOpenInquiryInChat={handleOpenInquiryInChat}
                     onCreateProjectFromSubmission={(submissionData) => {
                       setUiSettings(prev => ({
                         ...prev,
@@ -4833,10 +5172,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       )}
                       
                       {selectedTimelineTab === 1 && (
-                        <GoogleWorkspaceMeetingManager 
-                          profession={profession as any}
-                          isOpen={false}
-                          onClose={() => {}}
+                        <GoogleWorkspaceMeetingManager
+                          {...sharedGoogleWorkspaceMeetingProps}
                         />
                         )}
                       </MuiCardContent>
@@ -5032,7 +5369,42 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               {/* Tab 4: Showcase Admin */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'showcase-admin')}>
                 <Box sx={{ p: 0 }}>
-                  <ShowcaseAdmin userId={userId} profession={profession} />
+                  <ShowcaseAdmin
+                    userId={userId}
+                    profession={profession}
+                    viewerContent={
+                      <Box sx={{ p: 0, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
+                        <SettingsProvider>
+                        <ThemeProvider>
+                        <RealTimeProvider>
+                        <VisualEditorProvider>
+                        <UniversalShowcase
+                          profession={profession}
+                          userId={userId}
+                          maxItems={50}
+                          enableGoogleDriveSync={true}
+                          enableAIAnalysis={true}
+                          enableAutoTagging={true}
+                          enableSmartCollections={true}
+                          enableRealTimeSync={true}
+                          collaborationSessionId={`${profession}-${userId}-showcase`}
+                          onItemSelect={(item) => {
+                            console.log('Showcase item selected:', item);
+                          }}
+                          onItemUpdate={(item) => {
+                            console.log('Showcase item updated:', item);
+                          }}
+                          onItemDelete={(item) => {
+                            console.log('Showcase item deleted:', item);
+                          }}
+                        />
+                        </VisualEditorProvider>
+                        </RealTimeProvider>
+                        </ThemeProvider>
+                        </SettingsProvider>
+                      </Box>
+                    }
+                  />
                 </Box>
 
               </TabPanel>
@@ -5042,93 +5414,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 <ShowcasePublisherPanel userId={userId} />
               </TabPanel>
 
-              {/* Tab 5: Universal Showcase Viewer */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'showcase-viewer')}>
-                <Box sx={{ p: 0, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                  <SettingsProvider>
-                  <ThemeProvider>
-                  <RealTimeProvider>
-                  <VisualEditorProvider>
-                  <UniversalShowcase
-                    profession={profession}
-                    userId={userId}
-                    maxItems={50}
-                    enableGoogleDriveSync={true}
-                    enableAIAnalysis={true}
-                    enableAutoTagging={true}
-                    enableSmartCollections={true}
-                    enableRealTimeSync={true}
-                    collaborationSessionId={`${profession}-${userId}-showcase`}
-                    onItemSelect={(item) => {
-                      // Broadcast item selection to other components
-                      console.log('Item selected: ', item);
-                    }}
-                    onItemUpdate={(item) => {
-                      // Handle item updates
-                      console.log('Item updated:', item);
-                    }}
-                    onItemDelete={(item) => {
-                      // Handle item deletion
-                      console.log('Item deleted:', item);
-                    }}
-                  />
-                  </VisualEditorProvider>
-                  </RealTimeProvider>
-                  </ThemeProvider>
-                  </SettingsProvider>
-                </Box>
-              </TabPanel>
-
-              {/* Tab 6: Universal Download Manager */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'downloads')}>
-                <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                  <UniversalDownload
-                    items={[]}
-                    profession={profession}
-                    enableGoogleDriveSync={true}
-                    enableAIAnalysis={true}
-                    enableAutoTagging={true}
-                    enableSmartCollections={true}
-                    enableRealTimeSync={true}
-                    enableBatchDownload={true}
-                    enableZipDownload={true}
-                    enableProgressTracking={true}
-                    collaborationSessionId={`${profession}-${userId}-downloads`}
-                    onItemSelect={(item) => {
-                      console.log('Download item selected:', item);
-                    }}
-                    onItemUpdate={(item) => {
-                      console.log('Download item updated:', item);
-                    }}
-                    onItemDelete={(item) => {
-                      console.log('Download item deleted:', item);
-                    }}
-                  />
-                </Box>
-              </TabPanel>
-
               {/* Tab 7: Universal File Upload */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'file-upload')}>
                 <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                  <UniversalFileUpload
+                  <ContextualDriveUploadWorkspace
+                    userId={userId}
                     profession={profession}
-                    enableGoogleDriveSync={true}
-                    enableAIAnalysis={true}
-                    enableAutoTagging={true}
-                    enableSmartCollections={true}
-                    enableRealTimeSync={true}
-                    enableMultipleFiles={true}
-                    enableDragDrop={true}
-                    collaborationSessionId={`${profession}-${userId}-upload`}
-                    onItemSelect={(item) => {
-                      console.log('Upload item selected:', item);
-                    }}
-                    onItemUpdate={(item) => {
-                      console.log('Upload item updated:', item);
-                    }}
-                    onItemDelete={(item) => {
-                      console.log('Upload item deleted:', item);
-                    }}
+                    selectedProject={selectedProject}
+                    selectedClient={selectedClient}
+                    projects={projects}
+                    onSelectProject={setSelectedProject}
+                    onSelectClient={setSelectedClient}
                   />
                 </Box>
               </TabPanel>
@@ -5142,56 +5438,46 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 />
               </TabPanel>
 
-              {/* Tab 9: E-post - Integrated Email Center */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'email-center')}>
-                <Box sx={{ p: 3 }}>
-                  <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, color: theming.colors.primary }}>
-                    <Email sx={{ mr: 1, verticalAlign: 'middle' }} />
-                    E-postsenter
-                  </Typography>
-                  
-                  {/* Sub-tabs for Email Center */}
-                  <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-                    <MuiTabs 
-                      value={emailTabValue}
-                      onChange={(e, val) => setEmailTabValue(val)}
-                      variant="scrollable"
-                      scrollButtons="auto"
-                      sx={{
-                        '& .MuiTab-root': {
-                          textTransform: 'none',
-                          fontWeight: 600,
-                          '&.Mui-selected': { color: customBranding.color }
-                        },
-                        '& .MuiTabs-indicator': { backgroundColor: customBranding.color }
-                      }}
-                    >
-                      <Tab label="Innboks" icon={<Email />} iconPosition="start" />
-                      <Tab label="Design E-post" icon={<Edit />} iconPosition="start" />
-                      <Tab label="Prosjekthistorikk" icon={<AccessTime />} iconPosition="start" />
-                    </MuiTabs>
-                  </Box>
-                  
-                  {emailTabValue === 0 && <SmartEmailCenter profession={profession} userId={userId} />}
-                  {emailTabValue === 1 && <EmailDesigner userId={userId} profession={profession} />}
-                  {emailTabValue === 2 && <EmailProjectHistory {...({ userId, selectedProject } as any)} />}
-                </Box>
-              </TabPanel>
-
               {/* Tab 10: Worklog */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'worklog')}>
-                <UniversalWorklog
-                  projectId={selectedProject?.id || userId}
-                  userId={userId}
-                  profession={getComponentProfession(profession) as any}
-                />
+                <SettingsProvider>
+                  <RealTimeProvider>
+                    <VisualEditorProvider>
+                      <UniversalWorklog
+                        projectId={selectedProject?.id || userId}
+                        userId={userId}
+                        profession={getComponentProfession(profession) as any}
+                      />
+                    </VisualEditorProvider>
+                  </RealTimeProvider>
+                </SettingsProvider>
               </TabPanel>
 
               {/* Tab 11: Kunder - Universal CRM System with Pricing */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'clients')}>
-                <Box sx={{ p: 3 }}>
-                  
-                  <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+                <Box sx={{ p: { xs: 2, md: 3 } }}>
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: { xs: 2, md: 2.5 },
+                      mb: 3,
+                      borderRadius: 4,
+                      border: `1px solid ${alpha(customBranding.color, 0.12)}`,
+                      background: `linear-gradient(135deg, ${alpha(customBranding.color, 0.08)} 0%, rgba(255,255,255,0.98) 58%, ${alpha('#0f172a', 0.02)} 100%)`,
+                      boxShadow: `0 20px 46px ${alpha('#0f172a', 0.06)}`,
+                    }}
+                  >
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography variant="h4" sx={{ fontWeight: 800, color: theming.colors.primary, mb: 0.75 }}>
+                          Kundehåndtering
+                        </Typography>
+                        <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 860 }}>
+                          Hold kundeoversikt, prisadministrasjon og møter samlet i samme arbeidsområde, med tydelig kontekst mot prosjekter og CRM-data.
+                        </Typography>
+                      </Box>
+
+                      <Box sx={{ borderBottom: 1, borderColor: alpha(customBranding.color, 0.12) }}>
                     <MuiTabs 
                       value={selectedTimelineTab}
                       onChange={handleTimelineTabChange}
@@ -5209,50 +5495,45 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                                 }
                       }}
                     >
-                      <Tab 
-                        label="Kundehåndtering" 
-                        icon={<Person />}
-                        iconPosition="start"
-                      />
-                      <Tab 
-                        label="Prisadministrasjon" 
-                        icon={<AttachMoney />}
-                        iconPosition="start"
-                      />
-                      <Tab 
-                        label="Google Møter" 
-                        icon={<Event />}
-                        iconPosition="start"
-                      />
+                      <Tab label="Kundehåndtering" icon={<Person />} iconPosition="start" />
+                      <Tab label="Prisadministrasjon" icon={<AttachMoney />} iconPosition="start" />
+                      <Tab label="Google Møter" icon={<Event />} iconPosition="start" />
                     </MuiTabs>
-                  </Box>
+                      </Box>
+                    </Stack>
+                  </Paper>
 
                   {selectedTimelineTab === 0 && (
-                    <Grid2 container spacing={3}>
-                      {/* CRM Dashboard Section */}
-                      <Grid2 size={{ xs: 12 }}>
-                        <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)', height: 'fit-content' }}>
-                          <MuiCardContent>
-                            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
-                              <Person sx={{ mr: 1, fontSize: 28, color: customBranding.color }} />
-                              Kundehåndtering
-                            </Typography>
-                            <UniversalCRMDashboard 
-                              profession={profession}
-                              onCustomerSelect={(customer) => {
-                                // Real customer selected from CRM
-                                setUniversalSelectedClient(customer as any);
-                                console.log('Customer selected:', customer?.name || customer?.id);
-                              }}
-                            />
-                          </MuiCardContent>
-                        </MuiCard>
-                      </Grid2>
-                    </Grid2>
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        p: { xs: 1.25, md: 2 },
+                        borderRadius: 4,
+                        border: `1px solid ${alpha(customBranding.color, 0.08)}`,
+                        backgroundColor: alpha('#ffffff', 0.96),
+                        boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
+                      }}
+                    >
+                      <UniversalCRMDashboard 
+                        profession={profession}
+                        onCustomerSelect={(customer) => {
+                          setUniversalSelectedClient(customer as any);
+                          console.log('Customer selected:', customer?.name || customer?.id);
+                        }}
+                      />
+                    </Paper>
                   )}
                   
                   {selectedTimelineTab === 1 && (
-                    <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
+                    <MuiCard
+                      elevation={0}
+                      sx={{
+                        borderRadius: 4,
+                        border: `1px solid ${alpha(customBranding.color, 0.08)}`,
+                        backgroundColor: alpha('#ffffff', 0.96),
+                        boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
+                      }}
+                    >
                       <MuiCardContent>
                         <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
                           <AttachMoney sx={{ mr: 1, fontSize: 28, color: customBranding.color }} />
@@ -5275,7 +5556,16 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   )}
                   
                   {selectedTimelineTab === 2 && (
-                    <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)', height: 'fit-content' }}>
+                    <MuiCard
+                      elevation={0}
+                      sx={{
+                        borderRadius: 4,
+                        border: `1px solid ${alpha(customBranding.color, 0.08)}`,
+                        backgroundColor: alpha('#ffffff', 0.96),
+                        boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
+                        height: 'fit-content',
+                      }}
+                    >
                       <MuiCardContent>
                         <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
                           <Event sx={{ mr: 1, fontSize: 28, color: customBranding.color }} />
@@ -5288,6 +5578,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           profession={profession}
                           isOpen={false}
                           onClose={() => {}}
+                          preselectedProjectId={selectedProject?.id}
+                          selectedProject={selectedProject}
+                          onProjectSelect={setSelectedProject}
                         />
                       </MuiCardContent>
                     </MuiCard>
@@ -5298,26 +5591,18 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               {/* Tab 12: Utstyr (Equipment Management) */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'equipment')}>
                 <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                  <EnhancedGearTab
-                    profession={getComponentProfession(profession, 'musicproducer') as any}
-                    className="enhanced-equipment-tab"
-                  />
+                  <VisualEditorProvider>
+                    <EnhancedGearTab
+                      profession={getComponentProfession(profession, 'musicproducer') as any}
+                      className="enhanced-equipment-tab"
+                    />
+                  </VisualEditorProvider>
                 </Box>
               </TabPanel>
 
               {/* Tab 13: Filer */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'files')}>
-                <GoogleDriveManager 
-                  userId={userId} 
-                  profession={profession}
-                  onProjectUpdate={(project: any) => {
-                    if (project && project.id) {
-                      updateProject(project.id, project);
-                    }
-                  }}
-                  selectedProject={selectedProject}
-                  onProjectSelect={setSelectedProject}
-                />
+                <GoogleDriveManager {...sharedGoogleDriveManagerProps} />
               </TabPanel>
 
               {/* Tab 14: Support */}
@@ -5327,351 +5612,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Tab 15: Innstillinger */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'settings')}>
-                <Box>
-                  
-                  {/* Settings Sub-Tabs */}
-                  <Box sx={{ width: '100%' }}>
-                    <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-                      <MuiTabs 
-                        value={settingsTabValue}
-                        onChange={handleSettingsTabChange}
-                        aria-label="innstillinger tabs"
-                        variant="scrollable"
-                        scrollButtons="auto"
-                        sx={{
-                          '& .MuiTab-root': {
-                            textTransform: 'none',
-                            fontSize: '0.95rem',
-                            fontWeight: 500,
-                            minWidth: 10, '&.Mui-selected': {
-                              color: customBranding.color,
-                              fontWeight: 60
-                            }
-                          }, '& .MuiTabs-indicator': {
-                            backgroundColor: customBranding.color,
-                            height: 3,
-                            borderRadius: '3px 3px 0 0'
-                          }
-                        }}
-                      >
-                        <Tab 
-                          icon={<Business />}
-                          label="Bedriftsprofil" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                        <Tab 
-                          icon={<AttachMoney />}
-                          label="Prisadministrasjon" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                        <Tab 
-                          icon={<CloudDone />}
-                          label="Backup & Sync" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                        <Tab 
-                          icon={<Quiz />}
-                          label="FAQ Veiledninger" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                        <Tab 
-                          icon={<Store />}
-                          label="Marketplace" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                        {/* Wedding Timeline tab kun for fotografer */}
-                        {profession === 'photographer' && (
-                          <Tab 
-                            icon={<WeddingIcon />}
-                            label="Evendi" 
-                            iconPosition="start"
-                            sx={{ gap: 1 }}
-                          />
-                        )}
-                      </MuiTabs>
-                    </Box>
-
-                    {/* Settings Tab Content */}
-                    <TabPanel value={settingsTabValue} index={0}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent sx={{ p: { xs: 2, md: 3 } }}>
-                          <Box sx={{ textAlign: 'center', mb: 4 }}>
-                            <Typography variant="h6" sx={{ mb: 1, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, color: theming.colors.primary }}>
-                              <Business sx={{ color: customBranding.color, fontSize: '1.5rem' }} />
-                              Bedriftsprofil & Logo
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Din merkevareidentitet og bedriftsinformasjon
-                            </Typography>
-                          </Box>
-                          
-                          <Box sx={{ 
-                            p: 3,
-                            borderRadius: 2,
-                            bgcolor: 'rgba(28, 250, 252, 0.8)',
-                            border: '1px solid rgba(0,0,0,0.05)'
-                          }}>
-                            <BusinessBrandingSettings userId={userId} />
-                          </Box>
-                          
-                          <Divider sx={{ my: 3 }} />
-                          
-                          {/* Universal Settings Panel */}
-                          <Box sx={{ mt: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
-                              Innstillinger
-                            </Typography>
-                            <UniversalSettingsPanel 
-                              userId={userId}
-                              profession={profession}
-                            />
-                          </Box>
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-
-                    <TabPanel value={settingsTabValue} index={1}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent>
-                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                            <AttachMoney sx={{ color: customBranding.color }} />
-                            Prisadministrasjon
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                            Administrer prispakker, kategorier og generer tilbud for kunder.
-                          </Typography>
-                          
-                          {/* Price Administration */}
-                          <Box sx={{ mb: 3 }}>
-                            <PriceAdministration 
-                              profession={profession}
-                              userId={userId}
-                              selectedProject={selectedProject}
-                              onProjectSelect={(project) => {
-                                setSelectedProject(project);
-                                setUniversalSelectedProject(project);
-                              }}
-                            />
-                          </Box>
-                          
-                          <Divider sx={{ my: 3 }} />
-                          
-                          {/* Pricing Management */}
-                          <Box sx={{ mt: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
-                              Avansert Prisadministrasjon
-                            </Typography>
-                            <PricingManagement 
-                              profession={profession}
-                              userId={userId}
-                            />
-                          </Box>
-                          
-                          <Divider sx={{ my: 3 }} />
-                          
-                          {/* Split Sheets - Fordeling */}
-                          <Box sx={{ mt: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <AccountBalance sx={{ fontSize: 20, color: '#9f7aea' }} />
-                              Split Sheets
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                              Administrer inntektsfordeling og avtaler med samarbeidspartnere.
-                            </Typography>
-                            <SplitSheetManager
-                              profession={profession as any}
-                              userId={userId}
-                            />
-                          </Box>
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-
-                    <TabPanel value={settingsTabValue} index={2}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent>
-                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                            <CloudDone sx={{ color: theme.palette.primary.main }} />
-                            Google Drive & Backup
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                            Automatisk backup og synkronisering med din Google Drive - Standardisert 8-mappestruktur.
-                          </Typography>
-                          
-                          {/* Google Drive Manager with 8-folder structure */}
-                          <GoogleDriveManager 
-                            userId={userId}
-                            profession={profession}
-                          />
-                          
-                          <Divider sx={{ my: 3 }} />
-                          
-                          {/* Google Drive Project Sync */}
-                          <Box sx={{ mt: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Storage sx={{ color: theme.palette.primary.main }} />
-                              Prosjektsynkronisering
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                              Automatisk synkronisering av prosjektmapper med standardisert struktur: </Typography>
-                            <Box sx={{ ml: 2, mb: 2 }}>
-                              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.85rem', color: '#666'}}>
-                                • RAW - Originale bilder<br/>
-                                • Bearbeidede bilder<br/>
-                                • Leveranse til klient<br/>
-                                • Kontrakter og dokumenter<br/>
-                                • Kommunikasjon<br/>
-                                • Timeline og notater<br/>
-                                • Backup og sikkerhetskopier<br/>
-                                • Referansebilder og inspirasjon
-                              </Typography>
-                            </Box>
-                            <GoogleDriveProjectSync userId={userId} />
-                          </Box>
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-
-                    <TabPanel value={settingsTabValue} index={3}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent>
-                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                            <Quiz sx={{ color: customBranding.color }} />
-                            FAQ Veiledninger & Tutorials
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                            Tilgang til godkjente tutorials og veiledninger fra CreatorHub Norge community.
-                          </Typography>
-                          
-                          {/* Tutorial Launcher */}
-                          <Box sx={{ mb: 3 }}>
-                            <TutorialLauncher 
-                              userId={userId}
-                              profession={profession}
-                            />
-                          </Box>
-                          
-                          <Divider sx={{ my: 3 }} />
-                          
-                          {/* Interactive Tutorial Creator for Advanced Users */}
-                          <Box sx={{ mb: 3 }}>
-                            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                              Lag Din Egen Tutorial
-                            </Typography>
-                            <InteractiveTutorialCreator 
-                              userId={userId}
-                              profession={profession}
-                            />
-                          </Box>
-                          
-                          <Divider sx={{ my: 3 }} />
-                          
-                          <Button variant="contained"
-                            onClick={handleShowFAQDialog}
-                            sx={{
-                              background: `linear-gradient(135deg, ${customBranding.color} 0%, ${theme.palette.primary.dark} 100%)`,
-                              '&:hover': { transform: 'translateY(-2px)' }
-                            }}
-                            startIcon={<Quiz />}
-                          >
-                            Åpne FAQ Bibliotek
-                          </Button>
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-
-                    {/* Marketplace Tab */}
-                    <TabPanel value={settingsTabValue} index={4}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent>
-                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                            <Store sx={{ color: customBranding.color }} />
-                            Marketplace - Oppdag Nye Verktøy
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                            Utvid funksjonaliteten din med kraftige verktøy og integrasjoner. Alle verktøyene er testet og klar for produksjon.
-                          </Typography>
-
-                          {marketplaceInstallNotice && (
-                            <Alert severity="success" sx={{ mb: 2 }}>
-                              {marketplaceInstallNotice}
-                            </Alert>
-                          )}
-                          
-                          {/* Featured App: ResumeBuilder */}
-                          <Box sx={{ mb: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
-                              ⭐ Featured App
-                            </Typography>
-                            <CreatorHubMarketplace 
-                              onSelect={handleMarketplaceInstall}
-                            />
-                          </Box>
-
-                          <Divider sx={{ my: 3 }} />
-
-                          {/* Coming Soon Section */}
-                          <Box sx={{ textAlign: 'center', py: 4 }}>
-                            <Store sx={{ fontSize: 48, color: alpha(customBranding.color, 0.3), mb: 2 }} />
-                            <Typography variant="h6" color="text.secondary" gutterBottom>
-                              Flere verktøy kommer snart
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Vi jobber kontinuerlig med å legge til nye verktøy og integrasjoner.
-                            </Typography>
-                          </Box>
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-
-                    {/* Wedding Timeline Tab - kun for fotografer */}
-                    {profession === 'photographer' && (
-                      <TabPanel value={settingsTabValue} index={5}>
-                        <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                          <MuiCardContent>
-                            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                              <WeddingIcon sx={{ color: customBranding.color }} />
-                              Evendi Administrasjon
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                              Administrer arrangementer for dine prosjekter med kulturtilpasning og klienttilgang via Evendi.
-                            </Typography>
-                            <WeddingTimelineOverview 
-                              photographerId={userId} // Pass the current user's ID
-                            />
-                          </MuiCardContent>
-                        </MuiCard>
-                      </TabPanel>
-                    )}
-                  </Box>
-                </Box>
-              </TabPanel>
-
-              {/* Tab 12: Kommunikasjon */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'communication')}>
-                <Box sx={{ p: 3 }}>
-                  <Grid2 container spacing={3}>
-                    <Grid2 size={{ xs: 12, lg: 8 }}>
-                      <UniversalCommunication 
-                        profession={profession as any}
-                        userId={userId}
-                      />
-                    </Grid2>
-                    <Grid2 size={{ xs: 12, lg: 4 }}>
-                      <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
-                        Direktemelding
-                      </Typography>
-                      <ChatWidget 
-                        {...({ userId, profession } as any)}
-                      />
-                    </Grid2>
-                  </Grid2>
-                </Box>
+                {renderUnifiedSettingsPanel()}
               </TabPanel>
 
               {/* Tab 10: Filer */}
@@ -5697,87 +5638,6 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </Grid2>
                   </Grid2>
                 </Box>
-              </TabPanel>
-
-              {/* Tab 11: Innstillinger */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'settings')}>
-                <Box>
-                  {/* Settings Sub-Tabs - Same structure as before */}
-                  <Box sx={{ width: '100%' }}>
-                    <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-                      <MuiTabs 
-                        value={settingsTabValue}
-                        onChange={handleSettingsTabChange}
-                        aria-label="innstillinger tabs"
-                        variant="scrollable"
-                        scrollButtons="auto"
-                        sx={{
-                          '& .MuiTab-root': {
-                            textTransform: 'none',
-                            fontSize: '0.95rem',
-                            fontWeight: 500,
-                            minWidth: 10, '&.Mui-selected': {
-                              color: customBranding.color,
-                              fontWeight: 60
-                            }
-                          }, '& .MuiTabs-indicator': {
-                            backgroundColor: customBranding.color,
-                            height: 3,
-                            borderRadius: '3px 3px 0 0'
-                          }
-                        }}
-                      >
-                        <Tab label="Prisadministrasjon" />
-                        <Tab label="Forretningsprofil" />
-                        <Tab label="Minneskortpriser" />
-                        <Tab label="Google Drive" />
-                        <Tab label="BRREG Integration" />
-                      </MuiTabs>
-                    </Box>
-
-                    {settingsTabValue === 0 && (
-                      <PriceAdministration 
-                        profession={profession} 
-                        userId={userId}
-                        selectedProject={selectedProject}
-                        onProjectSelect={(project) => {
-                          setSelectedProject(project);
-                          setUniversalSelectedProject(project);
-                        }}
-                        onProjectUpdate={(projectUpdate) => {
-                          // Update project in context
-                          if (projectUpdate?.id && selectedProject?.id === projectUpdate.id) {
-                            setSelectedProject({ ...selectedProject, ...projectUpdate });
-                          }
-                        }}
-                        onContractCreate={(contractData) => {
-                          // Navigate to contracts or show contract creation dialog
-                          console.log('Contract creation requested:', contractData);
-                        }}
-                      />
-                    )}
-                    {settingsTabValue === 1 && (
-                      <BusinessBrandingSettings userId={userId} />
-                    )}
-                    {settingsTabValue === 2 && (
-                      <MemoryCardPricingAdmin />
-                    )}
-                    {settingsTabValue === 3 && (
-                      <GoogleDriveManager userId={userId} profession={profession} />
-                    )}
-                    {settingsTabValue === 4 && (
-                      <BRREGIntegration />
-                    )}
-                  </Box>
-                </Box>
-              </TabPanel>
-
-              {/* Tab 16: Kommunikasjon */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'communication')}>
-                <UniversalCommunication 
-                  profession={profession as any}
-                  userId={userId}
-                />
               </TabPanel>
 
               {/* Tab: Administrasjon */}
@@ -5855,96 +5715,55 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Tab 4: Showcase Admin - For videographers */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'showcase-admin')}>
-                <ShowcaseAdmin userId={userId} profession={profession} />
-              </TabPanel>
-
-              {/* Tab 5: Universal Showcase Viewer - For videographers */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'showcase-viewer')}>
-                <Box sx={{ p: 0, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                  <SettingsProvider>
-                  <ThemeProvider>
-                  <RealTimeProvider>
-                  <VisualEditorProvider>
-                  <UniversalShowcase
-                    profession={profession}
-                    userId={userId}
-                    maxItems={50}
-                    enableGoogleDriveSync={true}
-                    enableAIAnalysis={true}
-                    enableAutoTagging={true}
-                    enableSmartCollections={true}
-                    enableRealTimeSync={true}
-                    collaborationSessionId={`${profession}-${userId}-showcase`}
-                    onItemSelect={(item) => {
-                      // Broadcast item selection to other components
-                      console.log('Item selected:', item);
-                    }}
-                    onItemUpdate={(item) => {
-                      // Handle item updates
-                      console.log('Item updated:', item);
-                    }}
-                    onItemDelete={(item) => {
-                      // Handle item deletion
-                      console.log('Item deleted:', item);
-                    }}
-                  />
-                  </VisualEditorProvider>
-                  </RealTimeProvider>
-                  </ThemeProvider>
-                  </SettingsProvider>
-                </Box>
-              </TabPanel>
-
-              {/* Tab 6: Universal Download Manager - For videographers */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'downloads')}>
-                <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                  <UniversalDownload
-                    items={[]}
-                    profession={profession}
-                    enableGoogleDriveSync={true}
-                    enableAIAnalysis={true}
-                    enableAutoTagging={true}
-                    enableSmartCollections={true}
-                    enableRealTimeSync={true}
-                    enableBatchDownload={true}
-                    enableZipDownload={true}
-                    enableProgressTracking={true}
-                    collaborationSessionId={`${profession}-${userId}-downloads`}
-                    onItemSelect={(item) => {
-                      console.log('Download item selected:', item);
-                    }}
-                    onItemUpdate={(item) => {
-                      console.log('Download item updated:', item);
-                    }}
-                    onItemDelete={(item) => {
-                      console.log('Download item deleted:', item);
-                    }}
-                  />
-                </Box>
+                <ShowcaseAdmin
+                  userId={userId}
+                  profession={profession}
+                  viewerContent={
+                    <Box sx={{ p: 0, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
+                      <SettingsProvider>
+                      <ThemeProvider>
+                      <RealTimeProvider>
+                      <VisualEditorProvider>
+                      <UniversalShowcase
+                        profession={profession}
+                        userId={userId}
+                        maxItems={50}
+                        enableGoogleDriveSync={true}
+                        enableAIAnalysis={true}
+                        enableAutoTagging={true}
+                        enableSmartCollections={true}
+                        enableRealTimeSync={true}
+                        collaborationSessionId={`${profession}-${userId}-showcase`}
+                        onItemSelect={(item) => {
+                          console.log('Showcase item selected:', item);
+                        }}
+                        onItemUpdate={(item) => {
+                          console.log('Showcase item updated:', item);
+                        }}
+                        onItemDelete={(item) => {
+                          console.log('Showcase item deleted:', item);
+                        }}
+                      />
+                      </VisualEditorProvider>
+                      </RealTimeProvider>
+                      </ThemeProvider>
+                      </SettingsProvider>
+                    </Box>
+                  }
+                />
               </TabPanel>
 
               {/* Tab 7: Universal File Upload - For videographers */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'file-upload')}>
                 <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                  <UniversalFileUpload
+                  <ContextualDriveUploadWorkspace
+                    userId={userId}
                     profession={profession}
-                    enableGoogleDriveSync={true}
-                    enableAIAnalysis={true}
-                    enableAutoTagging={true}
-                    enableSmartCollections={true}
-                    enableRealTimeSync={true}
-                    enableMultipleFiles={true}
-                    enableDragDrop={true}
-                    collaborationSessionId={`${profession}-${userId}-upload`}
-                    onItemSelect={(item) => {
-                      console.log('Upload item selected:', item);
-                    }}
-                    onItemUpdate={(item) => {
-                      console.log('Upload item updated:', item);
-                    }}
-                    onItemDelete={(item) => {
-                      console.log('Upload item deleted:', item);
-                    }}
+                    selectedProject={selectedProject}
+                    selectedClient={selectedClient}
+                    projects={projects}
+                    onSelectProject={setSelectedProject}
+                    onSelectClient={setSelectedClient}
                   />
                 </Box>
               </TabPanel>
@@ -6008,18 +5827,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 </Box>
               </TabPanel>
 
-              {/* Tab 9: E-post - Integrated Email Center */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'email-center')}>
-                <SmartEmailCenter profession={profession} userId={userId} />
-              </TabPanel>
-
               {/* Tab 10: Worklog */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'worklog')}>
-                <UniversalWorklog 
-                  projectId={userId}
-                  userId={userId}
-                  profession={getComponentProfession(profession, 'musicproducer') as any}
-                />
+                <SettingsProvider>
+                  <RealTimeProvider>
+                    <VisualEditorProvider>
+                      <UniversalWorklog 
+                        projectId={userId}
+                        userId={userId}
+                        profession={getComponentProfession(profession, 'musicproducer') as any}
+                      />
+                    </VisualEditorProvider>
+                  </RealTimeProvider>
+                </SettingsProvider>
               </TabPanel>
 
               {/* Tab 11: Kunder */}
@@ -6055,10 +5875,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   {equipmentTabValue === 0 && <EquipmentManagementDB />}
                   {equipmentTabValue === 1 && <CameraEquipmentManager {...({ userId } as any)} />}
                   {equipmentTabValue === 2 && (
-                    <EnhancedGearTab
-                      profession={getComponentProfession(profession, 'musicproducer') as any}
-                      className="enhanced-equipment-tab"
-                    />
+                    <VisualEditorProvider>
+                      <EnhancedGearTab
+                        profession={getComponentProfession(profession, 'musicproducer') as any}
+                        className="enhanced-equipment-tab"
+                      />
+                    </VisualEditorProvider>
                   )}
                 </Box>
               </TabPanel>
@@ -6094,10 +5916,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
                           Google Drive Synkronisering
                         </Typography>
-                        <GoogleDriveManager 
-                          userId={userId}
-                          profession={profession}
-                        />
+                        <GoogleDriveManager {...sharedGoogleDriveManagerProps} />
                       </Box>
                     </Grid2>
                   </Grid2>
@@ -6106,223 +5925,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Tab 11: Innstillinger */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'settings')}>
-                <Box>
-                  {/* Settings Sub-Tabs - Same structure as photographer */}
-                  <Box sx={{ width: '100%' }}>
-                    <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-                      <MuiTabs 
-                        value={settingsTabValue}
-                        onChange={handleSettingsTabChange}
-                        aria-label="innstillinger tabs"
-                        variant="scrollable"
-                        scrollButtons="auto"
-                        sx={{
-                          '& .MuiTab-root': {
-                            textTransform: 'none',
-                            fontSize: '0.95rem',
-                            fontWeight: 500,
-                            minWidth: 10, '&.Mui-selected': {
-                              color: customBranding.color,
-                              fontWeight: 60
-                            }
-                          }, '& .MuiTabs-indicator': {
-                            backgroundColor: customBranding.color,
-                            height: 3,
-                            borderRadius: '3px 3px 0 0'
-                          }
-                        }}
-                      >
-                        <Tab 
-                          icon={<Business />}
-                          label="Bedriftsprofil" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                        <Tab 
-                          icon={<AttachMoney />}
-                          label="Prisadministrasjon" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                        <Tab 
-                          icon={<CloudDone />}
-                          label="Backup & Sync" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                        <Tab 
-                          icon={<Quiz />}
-                          label="FAQ Veiledninger" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                        <Tab 
-                          icon={<Store />}
-                          label="Marketplace" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                      </MuiTabs>
-                    </Box>
-
-                    {/* Settings Tab Content */}
-                    <TabPanel value={settingsTabValue} index={0}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent>
-                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                            <Business sx={{ color: customBranding.color }} />
-                            Bedriftsprofil & Logo
-                          </Typography>
-                          <BusinessBrandingSettings userId={userId} />
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-
-                    <TabPanel value={settingsTabValue} index={1}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent>
-                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                            <AttachMoney sx={{ color: customBranding.color }} />
-                            Prisadministrasjon
-                          </Typography>
-                          <PriceAdministration 
-                            profession={profession}
-                            userId={userId}
-                            selectedProject={selectedProject}
-                            onProjectSelect={(project) => {
-                              setSelectedProject(project);
-                              setUniversalSelectedProject(project);
-                            }}
-                          />
-                          
-                          <Divider sx={{ my: 3 }} />
-                          
-                          {/* Split Sheets - Fordeling */}
-                          <Box sx={{ mt: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <AccountBalance sx={{ fontSize: 20, color: '#9f7aea' }} />
-                              Split Sheets
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                              Administrer inntektsfordeling og avtaler med samarbeidspartnere.
-                            </Typography>
-                            <SplitSheetManager
-                              profession={profession as any}
-                              userId={userId}
-                            />
-                          </Box>
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-
-                    <TabPanel value={settingsTabValue} index={2}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent>
-                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                            <CloudDone sx={{ color: theme.palette.primary.main }} />
-                            Google Drive & Backup
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                            Automatisk backup og synkronisering med standardisert 8-mappestruktur.
-                          </Typography>
-                          <GoogleDriveManager 
-                            userId={userId}
-                            profession={profession}
-                          />
-                          
-                          <Divider sx={{ my: 3 }} />
-                          
-                          <Box sx={{ mb: 3 }}>
-                            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                              <Build color="primary" />
-                              Profesjonelle Verktøy
-                            </Typography>
-                            
-                            <Box sx={{ mb: 2 }}>
-                              <UniversalOAuthIntegration compact={false} userProfession={profession as any} />
-                            </Box>
-
-                            <IntegratedToolsOverview profession={profession as any} compact />
-                          </Box>
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-
-                    <TabPanel value={settingsTabValue} index={3}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent>
-                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                            <Quiz sx={{ color: customBranding.color }} />
-                            FAQ Veiledninger
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                            Tilgang til godkjente tutorials og veiledninger fra CreatorHub Norge community.
-                          </Typography>
-                          <Button variant="contained"
-                            onClick={handleShowFAQDialog}
-                            sx={{
-                              background: `linear-gradient(135deg, ${customBranding.color} 0%, ${theme.palette.primary.dark} 100%)`,
-                              '&:hover': { transform: 'translateY(-2px)' }
-                            }}
-                            startIcon={<Quiz />}
-                          >
-                            Åpne FAQ Bibliotek
-                          </Button>
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-
-                    {/* Marketplace Tab */}
-                    <TabPanel value={settingsTabValue} index={4}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent>
-                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                            <Store sx={{ color: customBranding.color }} />
-                            Marketplace - Oppdag Nye Verktøy
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                            Utvid funksjonaliteten din med kraftige verktøy og integrasjoner. Alle verktøyene er testet og klar for produksjon.
-                          </Typography>
-                          
-                          {/* Featured App: ResumeBuilder */}
-                          <Box sx={{ mb: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
-                              ⭐ Featured App
-                            </Typography>
-                            <CreatorHubMarketplace 
-                              onSelect={() => {
-                                // Navigate to ResumeBuilder
-                                window.location.href = '/resume-builder';
-                              }}
-                              showPricing={true}
-                            />
-                          </Box>
-
-                          <Divider sx={{ my: 3 }} />
-
-                          {/* Coming Soon Section */}
-                          <Box sx={{ textAlign: 'center', py: 4 }}>
-                            <Store sx={{ fontSize: 48, color: alpha(customBranding.color, 0.3), mb: 2 }} />
-                            <Typography variant="h6" color="text.secondary" gutterBottom>
-                              Flere verktøy kommer snart
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Vi jobber kontinuerlig med å legge til nye verktøy og integrasjoner.
-                            </Typography>
-                          </Box>
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-                  </Box>
-                </Box>
-              </TabPanel>
-
-              {/* Tab 12: Kommunikasjon */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'communication')}>
-                <UniversalCommunication 
-                  profession={profession as any}
-                  userId={userId}
-                />
+                {renderUnifiedSettingsPanel()}
               </TabPanel>
 
               {/* Tab: Administrasjon */}
@@ -6351,11 +5954,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             <>
               {/* For other professions without wedding-timeline and showcase */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'worklog') >= 0 ? availableTabs.findIndex(tab => tab.id === 'worklog') : 2}>
-                <UniversalWorklog 
-                  projectId={userId}
-                  userId={userId}
-                  profession={getComponentProfession(profession, 'musicproducer') as any}
-                />
+                <SettingsProvider>
+                  <RealTimeProvider>
+                    <VisualEditorProvider>
+                      <UniversalWorklog 
+                        projectId={userId}
+                        userId={userId}
+                        profession={getComponentProfession(profession, 'musicproducer') as any}
+                      />
+                    </VisualEditorProvider>
+                  </RealTimeProvider>
+                </SettingsProvider>
               </TabPanel>
 
               {/* Tab 3: Universal Showcase for Music Producers, CRM for others */}
@@ -6392,40 +6001,31 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Split Sheets moved to Prisadministrasjon sub-tab for all professions */}
 
-              {/* Tab 4: Universal Downloads for Music Producers, Equipment for others */}
-              {(profession as string) === 'music_producer' ? (
-                <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'downloads') >= 0 ? availableTabs.findIndex(tab => tab.id === 'downloads') : 4}>
-                  <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                    <UniversalDownload
-                      items={[]}
-                      profession={profession as any}
-                    />
-                  </Box>
-                </TabPanel>
-              ) : (
+              {/* Tab 4: Equipment for non-music professions */}
+              {(profession as string) !== 'music_producer' ? (
                 <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'equipment') >= 0 ? availableTabs.findIndex(tab => tab.id === 'equipment') : 4}>
                   <ProfessionAdapter profession={profession as any} tabIndex={4} projectId={userId} />
                 </TabPanel>
-              )}
+              ) : null}
 
               {/* Tab 5: Universal File Upload for Music Producers, Files for others */}
               {(profession as string) === 'music_producer' ? (
                 <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'file-upload') >= 0 ? availableTabs.findIndex(tab => tab.id === 'file-upload') : 5}>
                   <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                    <UniversalFileUpload
+                    <ContextualDriveUploadWorkspace
+                      userId={userId}
                       profession={profession}
+                      selectedProject={selectedProject}
+                      selectedClient={selectedClient}
+                      projects={projects}
+                      onSelectProject={setSelectedProject}
+                      onSelectClient={setSelectedClient}
                     />
                   </Box>
                 </TabPanel>
               ) : (
                 <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'files') >= 0 ? availableTabs.findIndex(tab => tab.id === 'files') : 5}>
-                  <GoogleDriveManager 
-                    userId={userId} 
-                    profession={profession as any}
-                    onProjectUpdate={(project: any) => updateProject(project.id, project)}
-                    selectedProject={selectedProject}
-                    onProjectSelect={setSelectedProject}
-                  />
+                  <GoogleDriveManager {...sharedGoogleDriveManagerProps} />
                 </TabPanel>
               )}
 
@@ -6445,13 +6045,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               )}
 
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'settings') >= 0 ? availableTabs.findIndex(tab => tab.id === 'settings') : 7}>
-                <GoogleDriveManager 
-                  userId={userId} 
-                  profession={getComponentProfession(profession) as 'photographer' | 'music_producer' | 'videographer' | 'vendor' | 'enterprise'}
-                  onProjectUpdate={(project: any) => updateProject(project.id, project)}
-                  selectedProject={selectedProject ?? undefined}
-                  onProjectSelect={setSelectedProject}
-                />
+                {renderUnifiedSettingsPanel()}
               </TabPanel>
 
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'integration-test') >= 0 ? availableTabs.findIndex(tab => tab.id === 'integration-test') : 8}>
@@ -6459,15 +6053,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
                     Google Drive Integrasjon
                   </Typography>
-                  <GoogleDriveManager 
-                    userId={userId}
-                    profession={profession as any}
-                  />
+                  <GoogleDriveManager {...sharedGoogleDriveManagerProps} />
                   
                   <Box sx={{ mt: 3 }}>
-                    <GoogleDriveProjectSync 
-                      userId={userId}
-                    />
+                    <GoogleDriveProjectSync {...sharedGoogleDriveProjectSyncProps} />
                   </Box>
                 </Box>
                 
@@ -6489,14 +6078,6 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 </Box>
                 
                 <Divider sx={{ my: 3 }} />
-              </TabPanel>
-
-              {/* Communication Tab - NO MOCK DATA */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'communication') >= 0 ? availableTabs.findIndex(tab => tab.id === 'communication') : 8}>
-                <UniversalCommunication 
-                  profession={profession as any}
-                  userId={userId}
-                />
               </TabPanel>
 
               {/* Administrasjon Tab */}
@@ -6521,6 +6102,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 />
               </TabPanel>
 
+              {showLegacyVendorSettings && (
+                <>
               {/* Tab 11: Innstillinger - Vendor Implementation */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'settings') >= 0 ? availableTabs.findIndex(tab => tab.id === 'settings') : 11}>
                 <Box>
@@ -6556,12 +6139,6 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           sx={{ gap: 1 }}
                         />
                         <Tab 
-                          icon={<AttachMoney />}
-                          label="Prisadministrasjon" 
-                          iconPosition="start"
-                          sx={{ gap: 1 }}
-                        />
-                        <Tab 
                           icon={<CloudDone />}
                           label="Backup & Sync" 
                           iconPosition="start"
@@ -6590,7 +6167,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
                     {/* Settings Tab Content */}
                     <TabPanel value={settingsTabValue} index={0}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
+                      <MuiCard elevation={0} sx={dashboardSectionCardSx}>
                         <MuiCardContent>
                           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
                             <Business sx={{ color: customBranding.color }} />
@@ -6602,44 +6179,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </TabPanel>
 
                     <TabPanel value={settingsTabValue} index={1}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
-                        <MuiCardContent>
-                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                            <AttachMoney sx={{ color: customBranding.color }} />
-                            Prisadministrasjon
-                          </Typography>
-                          <PriceAdministration 
-                            profession={profession}
-                            userId={userId}
-                            selectedProject={selectedProject}
-                            onProjectSelect={(project) => {
-                              setSelectedProject(project);
-                              setUniversalSelectedProject(project);
-                            }}
-                          />
-                          
-                          <Divider sx={{ my: 3 }} />
-                          
-                          {/* Split Sheets - Fordeling */}
-                          <Box sx={{ mt: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <AccountBalance sx={{ fontSize: 20, color: '#9f7aea' }} />
-                              Split Sheets
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                              Administrer inntektsfordeling og avtaler med samarbeidspartnere.
-                            </Typography>
-                            <SplitSheetManager
-                              profession={profession as any}
-                              userId={userId}
-                            />
-                          </Box>
-                        </MuiCardContent>
-                      </MuiCard>
-                    </TabPanel>
-
-                    <TabPanel value={settingsTabValue} index={2}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
+                      <MuiCard elevation={0} sx={dashboardSectionCardSx}>
                         <MuiCardContent>
                           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
                             <CloudDone sx={{ color: customBranding.color }} />
@@ -6651,15 +6191,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
                               Google Drive Integrasjon
                             </Typography>
-                            <GoogleDriveManager 
-                              userId={userId}
-                              profession={profession as any}
-                            />
+                            <GoogleDriveManager {...sharedGoogleDriveManagerProps} />
                             
                             <Box sx={{ mt: 3 }}>
-                              <GoogleDriveProjectSync 
-                                userId={userId}
-                              />
+                              <GoogleDriveProjectSync {...sharedGoogleDriveProjectSyncProps} />
                             </Box>
                           </Box>
                           
@@ -6685,8 +6220,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       </MuiCard>
                     </TabPanel>
 
-                    <TabPanel value={settingsTabValue} index={3}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
+                    <TabPanel value={settingsTabValue} index={2}>
+                      <MuiCard elevation={0} sx={dashboardSectionCardSx}>
                         <MuiCardContent>
                           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
                             <Quiz sx={{ color: customBranding.color }} />
@@ -6710,8 +6245,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </TabPanel>
 
                     {/* Marketplace Tab */}
-                    <TabPanel value={settingsTabValue} index={4}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
+                    <TabPanel value={settingsTabValue} index={3}>
+                      <MuiCard elevation={0} sx={dashboardSectionCardSx}>
                         <MuiCardContent>
                           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
                             <Store sx={{ color: customBranding.color }} />
@@ -6751,8 +6286,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       </MuiCard>
                     </TabPanel>
 
-                    <TabPanel value={settingsTabValue} index={5}>
-                      <MuiCard sx={{ bgcolor: 'rgba(25,255,255,0.9)' }}>
+                    <TabPanel value={settingsTabValue} index={4}>
+                      <MuiCard elevation={0} sx={dashboardSectionCardSx}>
                         <MuiCardContent>
                           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
                             <Settings sx={{ color: customBranding.color }} />
@@ -6927,6 +6462,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   </Box>
                 </Box>
               </TabPanel>
+                </>
+              )}
             </>
           )}
 
@@ -6950,23 +6487,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           if (overviewTabIndex >= 0) setTabValue(overviewTabIndex);
         }}
         onDriveOpen={() => {
-          // Switch to Google Drive integration (Settings > Google Drive)
+          // Switch to Universal Settings and open backup/drive management
           const settingsTabIndex = availableTabs.findIndex(tab => tab.id === 'settings');
           if (settingsTabIndex >= 0) {
             setTabValue(settingsTabIndex);
-            setSettingsTabValue(2);
+            setSettingsTabValue(3);
           } else {
             const filesTabIndex = availableTabs.findIndex(tab => tab.id === 'files' || tab.id === 'file-upload');
             if (filesTabIndex >= 0) setTabValue(filesTabIndex);
           }
         }}
         onNotificationCenterOpen={() => {
-          // Open notification center
+          setShowChat(false);
           setShowNotifications(!showNotifications);
-        }}
-        onFeedbackOpen={() => {
-          // Open prototype testing feedback system
-          setShowPrototypeFeedback(true);
         }}
         onEmailDesignerOpen={() => {
           setShowEmailDesigner(true);
@@ -6982,15 +6515,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           link.rel = 'noopener noreferrer';
           link.click();
         }}
-        onPhotographyTipsOpen={() => {
-          // This will be handled by the ContextualPhotographyTipsOverlay component
-          const event = new CustomEvent('openPhotographyTips');
-          window.dispatchEvent(event);
-        }}
       />
 
       {/* Chat Button with Status Indicator */}
-      {!showChat && (
+      {!chatWorkspaceVisible && (
         <Box sx={{ position: 'fixed', bottom: 20, right: 100, zIndex: 1300}}>
           {/* Chat System Status Indicator - HIDDEN */}
           {/* <Box
@@ -7100,7 +6628,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             <Fab
               color="primary"
               aria-label="chat"
-              onClick={() => setShowChat(true)}
+              onClick={() => {
+                setShowNotifications(false);
+                setShowChat(true);
+              }}
               sx={{
                 width: 64,
                 height: 64,
@@ -7126,8 +6657,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       {/* Quick Meeting Notes Modal */}
       <QuickMeetingNotesModal
         isOpen={showQuickNotesModal}
-        onClose={() => setShowQuickNotesModal(false)}
+        onClose={() => {
+          setShowQuickNotesModal(false);
+          setMeetingNotesProjectId(undefined);
+        }}
         profession={profession as any}
+        preselectedProjectId={meetingNotesProjectId || selectedProject?.id}
+        selectedProject={selectedProject}
+        onProjectSelect={setSelectedProject}
       />
 
       {/* Universal Project Creation Modal - Enhanced */}
@@ -7195,216 +6732,152 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       <Dialog
         open={showEmailDesigner}
         onClose={() => setShowEmailDesigner(false)}
-        maxWidth="md"
-        fullWidth
+        maxWidth={false}
+        fullScreen
         PaperProps={{
           sx: {
-            borderRadius: 3,
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
-            backdropFilter: 'blur(15px)',
-            border: '1px solid rgba(25, 255, 255, 0.3)',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.1)'
+            borderRadius: 0,
+            background: '#f5f5f0'
           }
         }}
       >
-        <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
-          <Typography variant="h5" component="div" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-            📧 E-post Designer
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Opprett profesjonelle e-poster til kunder
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 2, pb: 2 }}>
-          <Grid2 container spacing={3}>
-                    <Grid2 size={{ xs: 12, md: 6 }}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 600}}>
-                📝 E-post mal
-              </Typography>
-              <Box sx={{ 
-                p: 2,
-                border: '2px dashed #ddd', 
-                borderRadius: 2,
-                minHeight: 300,
-                bgcolor: 'rgba(25, 255, 255, 0.7)'
-              }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Velg en mal for din e-post:
-                </Typography>
-                <List>
-                  <ListItem sx={{ bgcolor: 'rgba(25, 193, 255, 0.1)', borderRadius: 1, mb: 1 }}>
-                    <ListItemIcon>
-                      {customBranding.customLogo ? (
-                        <img 
-                          src={customBranding.customLogo}
-                          alt="Logo" 
-                          style={{ width: 24, height: 24, objectFit: 'contain' }}
-                        />
-                      ) : (
-                        <PhotoCamera sx={{ color: customBranding.color }} />
-                      )}
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary="Fotografering fullført" 
-                      secondary="Send bilder og tidsplan til kunde"
-                    />
-                  </ListItem>
-                  <ListItem sx={{ bgcolor: 'rgba(25, 193, 255, 0.1)', borderRadius: 1, mb: 1 }}>
-                    <ListItemIcon>
-                      <CalendarToday sx={sharedStyles.brandedText} />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary="Tidsplan oppdatering" 
-                      secondary="Informer om endringer i tidsplan"
-                    />
-                  </ListItem>
-                  <ListItem sx={{ bgcolor: 'rgba(25, 193, 255, 0.1)', borderRadius: 1 }}>
-                    <ListItemIcon>
-                      <AttachMoney sx={{ color: customBranding.color }} />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary="Faktura og betaling" 
-                      secondary="Send faktura og betalingsinformasjon"
-                    />
-                  </ListItem>
-                </List>
-              </Box>
-            </Grid2>
-                    <Grid2 size={{ xs: 12, md: 6 }}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 600}}>
-                👁️ Forhåndsvisning
-              </Typography>
-              <Paper sx={{ 
-                p: 2,
-                minHeight: 300, 
-                bgcolor: 'white',
-                border: '1px solid #eee'}}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  E-post forhåndsvisning vises her...
-                </Typography>
-                <Box sx={{ 
-                  p: 2,
-                  bgcolor: 'rgba(25, 193, 255, 0.05)', 
-                  borderRadius: 1,
-                  border: '1px dashed rgba(25, 193, 255, 0.3)'
-                }}>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 1 }}>
-                    Hei {emailProjectContext?.projectId ? '[Kundenavn]' : '[Kundenavn]'}!
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb: 2 }}>
-                    Takk for at du valgte oss for prosjektet "{emailProjectContext?.projectId ? '[Prosjektnavn]' : '[Prosjektnavn]'}, ".
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb: 2 }}>
-                    {emailProjectContext ? 
-                      `Vi har gjort fremskritt på prosjektet og ønsker å holde deg oppdatert.` : 
-                      '[E-post innhold kommer her basert på valgt mal]'
+        <DialogContent sx={{ p: 0, overflow: 'hidden' }}>
+          <EmailDesigner
+            context="general"
+            projectId={emailProjectContext?.projectId || selectedProject?.id}
+            profession={profession}
+            userId={currentUser?.id || userId}
+            selectedProject={selectedProject || null}
+            onProjectSelect={(projectSelection) => {
+              if (projectSelection) {
+                setSelectedProject(projectSelection);
+              }
+            }}
+            onSave={() => {
+              queryClient.invalidateQueries({ queryKey: ['/api/email/templates'] });
+            }}
+            onMeetingCreate={handleChatMeetingCreated}
+            onProjectUpdate={(projectUpdate) => {
+              const nextProjectId =
+                projectUpdate && typeof projectUpdate.id === 'string'
+                  ? projectUpdate.id
+                  : selectedProject?.id;
+
+              if (!nextProjectId) {
+                return;
+              }
+
+              updateProject(nextProjectId, projectUpdate);
+              queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
+            }}
+            onWorklogCreate={async (worklogEntry) => {
+              const targetProjectId =
+                worklogEntry && typeof worklogEntry.projectId === 'string' && worklogEntry.projectId.trim().length > 0
+                  ? worklogEntry.projectId.trim()
+                  : selectedProject?.id || '';
+              const payload = {
+                title:
+                  worklogEntry && typeof worklogEntry.title === 'string' && worklogEntry.title.trim().length > 0
+                    ? worklogEntry.title
+                    : 'E-postarbeid',
+                description:
+                  worklogEntry && typeof worklogEntry.description === 'string' && worklogEntry.description.trim().length > 0
+                    ? worklogEntry.description
+                    : 'Arbeid utført i e-postdesigneren.',
+                category:
+                  worklogEntry && typeof worklogEntry.category === 'string' && worklogEntry.category.trim().length > 0
+                    ? worklogEntry.category
+                    : 'email',
+                timeSpent:
+                  worklogEntry && typeof worklogEntry.timeSpent === 'number'
+                    ? worklogEntry.timeSpent
+                    : 15,
+                day:
+                  worklogEntry && typeof worklogEntry.day === 'number'
+                    ? worklogEntry.day
+                    : 1,
+                userId: currentUser?.id || userId,
+              };
+
+              try {
+                if (targetProjectId) {
+                  await apiRequest(`/api/projects/${encodeURIComponent(targetProjectId)}/worklog`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                  });
+                  await queryClient.invalidateQueries({ queryKey: ['/api/projects', targetProjectId, 'worklog'] });
+                  return;
                 }
-                  </Typography>
-                  <Typography variant="body2">
-                    Med vennlig hilsen,<br />
-                    [Ditt navn]<br />
-                    CreatorHub Norge
-                  </Typography>
-                </Box>
-              </Paper>
-            </Grid2>
-          </Grid2>
-          <Box sx={{ mt: 3, textAlign: 'center' }}>
-            <Button variant="contained" 
-              sx={{ 
-                background: `linear-gradient(135deg, ${customBranding.color} 0%, ${(customBranding as any).secondary || customBranding.color} 100%)`,
-                color: 'white',
-                px: 4,
-                py: 1,
-                borderRadius: 2,
-                boxShadow: '0 6px 20px rgba(25, 193, 255, 0.3)','&:hover': {
-                  transform: 'translateY(-2px)',
-                  boxShadow: '0 8px 25px rgba(25, 193, 255, 0.4)'
-                }
-              }}
-                          onClick={() => {
-                // Send e-post logic here
-                setShowEmailDesigner(false);
-              }}
-            >
-              📤 Send E-post
-            </Button>
-          </Box>
+
+                await apiRequest('/api/worklog', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload),
+                });
+                await queryClient.invalidateQueries({ queryKey: ['/api/worklog'] });
+              } catch (error) {
+                console.warn('Could not create worklog entry from email designer:', error);
+              }
+            }}
+          />
         </DialogContent>
       </Dialog>
 
-      {/* Email Center Modal - Full Screen Photographer Email Features */}
-      {showEmailCenter && (
-        <Dialog
-          open={showEmailCenter}
-          onClose={() => setShowEmailCenter(false)}
-          maxWidth={false}
-          fullWidth
-          fullScreen
-          PaperProps={{
-            sx: {
-              m: 0,
-              borderRadius: 0,
-              maxHeight: '100vh',
-              height: '100vh'
-            }
-          }}
-        >
-          <SmartEmailCenter 
-            profession={profession}
-            userId={userId}
+      {chatWorkspaceVisible && (
+        <>
+          <Box
+            onClick={() => setShowChat(false)}
+            sx={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: dashboardOverlayZIndex,
+              background: showChat
+                ? 'radial-gradient(circle at 82% 78%, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0) 28%), linear-gradient(180deg, rgba(15,23,42,0.02) 0%, rgba(15,23,42,0.06) 100%)'
+                : 'linear-gradient(180deg, rgba(15,23,42,0.015) 0%, rgba(15,23,42,0.02) 100%)',
+              willChange: 'opacity, transform',
+              animation: showChat
+                ? 'workspaceChatBackdropIn 320ms cubic-bezier(0.16, 1, 0.3, 1) both'
+                : 'workspaceChatBackdropOut 220ms cubic-bezier(0.4, 0, 0.2, 1) both',
+              '@keyframes workspaceChatBackdropIn': {
+                '0%': {
+                  opacity: 0,
+                },
+                '100%': {
+                  opacity: 1,
+                },
+              },
+              '@keyframes workspaceChatBackdropOut': {
+                '0%': {
+                  opacity: 1,
+                },
+                '100%': {
+                  opacity: 0,
+                },
+              },
+            }}
           />
-        </Dialog>
-      )}
-
-      {/* Contextual Photography Tips Overlay - Only for photographers */}
-      {profession === 'photographer' && <ContextualPhotographyTipsOverlay />}
-
-
-
-      {/* Chat Sidebar */}
-      {showChat && (
-        <Box
-          sx={{
-            position: 'fixed',
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: 300,
-            zIndex: 120,
-            bgcolor: 'background.paper',
-            boxShadow: 3,
-            transform: showChat ? 'translateX(0)' : 'translateX(100%)',
-            transition: 'transform 0.3s ease-in-out'
-          }}
-        >
-          <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>💬 Chat</Typography>
-              {/* Chat System Status Indicator - HIDDEN */}
-              {/* <Box
-                sx={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  backgroundColor: communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#f44336', // Green = Google Chat working (200 OK), Red = not working
-                  border: '1px solid white',
-                  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)'
-                }}
-                title={
-                  communicationStatus.isConnected && communicationStatus.systemHealthy 
-                    ? "Chat system is online and working" : "Chat system is offline or not working"
-                }
-              /> */}
-            </Box>
-            <Button onClick={() => setShowChat(false)}>Lukk</Button>
-          </Box>
-          <UniversalChatWidget 
+          <UniversalChatWidget
             profession={profession as any}
             userId={userId}
+            userEmail={userEmail}
+            selectedProject={selectedProject}
+            onProjectSelect={setSelectedProject}
+            selectedClient={selectedClient}
+            onClientSelect={setSelectedClient}
+            onMeetingCreate={handleChatMeetingCreated}
             isOpen={true}
+            workspaceTransitionState={chatWorkspaceTransitionState}
+            onClose={() => setShowChat(false)}
+            layerZIndex={dashboardWorkspaceZIndex}
+            openLayout={chatWorkspaceLayout}
+            externalEmailInquiry={chatEmailIntent}
+            requestedTab={chatRequestedTab}
           />
-        </Box>
+        </>
       )}
 
       {/* Notification Center Drawer */}
@@ -7416,7 +6889,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             top: 0,
             bottom: 0,
             width: 400,
-            zIndex: 120,
+            zIndex: dashboardPanelZIndex,
             bgcolor: 'background.paper',
             boxShadow: 3,
             transform: showNotifications ? 'translateX(0)' : 'translateX(100%)',
@@ -7472,11 +6945,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         </Box>
       )}
 
-      {/* Chat/Notification overlay when open */}
-      {(showChat || showNotifications) && (
+      {/* Notification overlay when open */}
+      {showNotifications && (
         <Box
           onClick={() => {
-            setShowChat(false);
             setShowNotifications(false);
           }}
           sx={{
@@ -7486,67 +6958,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             right: 0,
             bottom: 0,
             bgcolor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 100}}
+            zIndex: dashboardOverlayZIndex}}
         />
       )}
-
-      {/* Prototype Testing Feedback Component - DISABLED: Now using FloatingActionButtons */}
-      {/* {showPrototypeFeedback && (
-        <UniversalPrototypeFeedback
-          profession={profession}
-          dashboardType="universal"
-          component="dashboard"
-          isFloating={false}
-          currentTab={config.tabs[tabValue]?.id}
-          userEmail={currentUser?.email}
-          projectContext={selectedProject}
-          equipmentContext={selectedEquipment}
-        />
-      )} */}
-
-      {/* Prototype Feedback Modal - DISABLED: Now using FloatingActionButtons */}
-      {/* <Dialog
-        open={showPrototypeFeedback}
-        onClose={() => setShowPrototypeFeedback(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
-            backdropFilter: 'blur(15px)',
-            border: '1px solid rgba(25, 255, 255, 0.3)',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.1)'
-          }
-        }}
-      >
-        <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
-          <Typography component="div" variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-            🔬 Prototype Testing
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Gi tilbakemelding om plattformen
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <UniversalPrototypeFeedback
-            profession={profession}
-            dashboardType="universal"
-            component="dashboard"
-            isFloating={false}
-            currentTab={config.tabs[tabValue]?.id}
-            userEmail={userEmail}
-            projectContext={selectedProject}
-            equipmentContext={selectedEquipment}
-            onClose={() => setShowPrototypeFeedback(false)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowPrototypeFeedback(false)}>
-            Lukk
-          </Button>
-        </DialogActions>
-      </Dialog> */}
 
       {/* Project Creation With Memory Cards Modal */}
       <Dialog
@@ -7653,8 +7067,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   size="small"
                   variant="outlined"
                   onClick={() => {
-                    // Open email center to add/edit email
-                    setShowEmailCenter(true);
+                    if (!selectedClient?.email) {
+                      const clientsTabIndex = availableTabs.findIndex(tab => tab.id === 'clients');
+                      if (clientsTabIndex >= 0) setTabValue(clientsTabIndex);
+                      setShowCrmDialog(false);
+                      return;
+                    }
+                    handleOpenEmailWorkspace(selectedClient);
                     setShowCrmDialog(false);
                   }}
                   sx={{ fontSize: '0.75rem' }}
@@ -8118,8 +7537,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
       {/* Academy Overlay */}
       {showAcademy && (
-        <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, bgcolor: 'background.default' }}>
-          <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 10000}}>
+        <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: dashboardFullscreenZIndex, bgcolor: 'background.default' }}>
+          <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: dashboardFullscreenControlZIndex }}>
             <Button variant="contained"
               startIcon={<ArrowBack />}
               onClick={() => setShowAcademy(false)}
@@ -8140,8 +7559,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
       {/* Showcase Overlay */}
       {showShowcase && (
-        <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, bgcolor: 'background.default' }}>
-          <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 10000}}>
+        <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: dashboardFullscreenZIndex, bgcolor: 'background.default' }}>
+          <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: dashboardFullscreenControlZIndex }}>
             <Button variant="contained"
               startIcon={<ArrowBack />}
               onClick={() => setShowShowcase(false)}
@@ -8225,12 +7644,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         </DialogContent>
       </Dialog>
 
-      {/* Universal Prototype Feedback Widget */}
-      <Box sx={{ position: 'fixed', bottom: 20, right: 20, zIndex: 500 }}>
-        <UniversalPrototypeFeedback 
-          {...({ userId, profession } as any)}
+      {isPrototypeTester && (
+        <UniversalPrototypeFeedback
+          profession={profession}
+          dashboardType="universal"
+          component="dashboard"
+          currentTab={config.tabs[tabValue]?.id}
+          userEmail={userEmail}
+          floatingPosition={{ bottom: 96, right: 24, zIndex: 1200 }}
         />
-      </Box>
+      )}
+
     </Box>
 );
 };

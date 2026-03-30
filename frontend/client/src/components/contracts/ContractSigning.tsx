@@ -2,7 +2,7 @@ import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { useParams, useNavigate } from 'wouter';
+import { useParams } from 'wouter';
 import {
   Box,
   Paper,
@@ -16,7 +16,7 @@ import {
   CardContent,
   Grid,
 } from '@mui/material';
-import { CheckCircle, Draw as SignatureOutlined, EmailOutlined } from '@mui/icons-material';
+import { CheckCircle, Draw as SignatureOutlined } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
 interface Contract {
@@ -43,20 +43,18 @@ const ContractSigning: React.FC<ContractSigningProps> = ({
   profession = 'photographer' 
 }) => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
 
   // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(profession);
   const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [signerName, setSignerName] = useState(' , ');
+  const [signerName, setSignerName] = useState('');
   const [signerEmail, setSignerEmail] = useState('');
   const [isDrawing, setIsDrawing] = useState(false);
   const [signatureComplete, setSignatureComplete] = useState(false);
 
   const { user } = useAuth();
-  const queryClient = useQueryClient();
 
   // Fetch contract details
   const { data: contractData, isLoading: contractLoading } = useQuery({
@@ -98,6 +96,15 @@ const ContractSigning: React.FC<ContractSigningProps> = ({
   });
 
   const contract: Contract | undefined = contractData?.contract;
+
+  useEffect(() => {
+    if (!signerName) {
+      setSignerName(user?.displayName || contract?.clientName || '');
+    }
+    if (!signerEmail) {
+      setSignerEmail(user?.email || contract?.clientEmail || '');
+    }
+  }, [contract?.clientEmail, contract?.clientName, signerEmail, signerName, user?.displayName, user?.email]);
 
   // Canvas drawing functions
   useEffect(() => {
@@ -222,13 +229,13 @@ const ContractSigning: React.FC<ContractSigningProps> = ({
           <Divider sx={{ my: 3 }} />
 
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12 }} sm={6}>
+            <Grid item xs={12} sm={6}>
               <Typography variant="subtitle2" color="textSecondary">
                 Signert av:{' '}
               </Typography>
               <Typography variant="body1">{signatureStatus.signatureStatus.signerName}</Typography>
             </Grid>
-            <Grid size={{ xs: 12 }} sm={6}>
+            <Grid item xs={12} sm={6}>
               <Typography variant="subtitle2" color="textSecondary">
                 Kontraktnummer:{' '}
               </Typography>
@@ -262,7 +269,7 @@ const ContractSigning: React.FC<ContractSigningProps> = ({
               Kontraktdetaljer
             </Typography>
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12 }} sm={6}>
+              <Grid item xs={12} sm={6}>
                 <Typography variant="subtitle2" color="textSecondary">
                   Kontraktnummer:{' '}
                 </Typography>
@@ -270,7 +277,7 @@ const ContractSigning: React.FC<ContractSigningProps> = ({
                   {contract.contractNumber}
                 </Typography>
               </Grid>
-              <Grid size={{ xs: 12 }} sm={6}>
+              <Grid item xs={12} sm={6}>
                 <Typography variant="subtitle2" color="textSecondary">
                   Kunde:{' '}
                 </Typography>
@@ -278,7 +285,7 @@ const ContractSigning: React.FC<ContractSigningProps> = ({
                   {contract.clientName}
                 </Typography>
               </Grid>
-              <Grid size={{ xs: 12 }}>
+              <Grid item xs={12}>
                 <Typography variant="subtitle2" color="textSecondary">
                   Prosjekt:{' '}
                 </Typography>
@@ -286,7 +293,7 @@ const ContractSigning: React.FC<ContractSigningProps> = ({
                   {contract.projectDescription}
                 </Typography>
               </Grid>
-              <Grid size={{ xs: 12 }} sm={6}>
+              <Grid item xs={12} sm={6}>
                 <Typography variant="subtitle2" color="textSecondary">
                   Total beløp:{', '}
                 </Typography>
@@ -294,7 +301,7 @@ const ContractSigning: React.FC<ContractSigningProps> = ({
                   NOK {contract.totalAmount} (inkl. 25% MVA)
                 </Typography>
               </Grid>
-              <Grid size={{ xs: 12 }} sm={6}>
+              <Grid item xs={12} sm={6}>
                 <Typography variant="subtitle2" color="textSecondary">
                   Dato:{', '}
                 </Typography>
@@ -315,7 +322,7 @@ const ContractSigning: React.FC<ContractSigningProps> = ({
               Signaturinformasjon
             </Typography>
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12 }} sm={6}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Fullt navn"
@@ -325,7 +332,7 @@ const ContractSigning: React.FC<ContractSigningProps> = ({
                   placeholder={contract.clientName}
                 />
               </Grid>
-              <Grid size={{ xs: 12 }} sm={6}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="E-postadresse"

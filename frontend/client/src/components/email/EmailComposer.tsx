@@ -115,6 +115,7 @@ export default function EmailComposer({
 }: EmailComposerProps) {
   const { user } = useAuth();
   const { integration, communication, dataFlow, lifecycle } = useEnhancedMasterIntegration();
+  const hasResolvedUser = typeof userId === 'string' && userId.trim().length > 0 && userId !== 'guest';
   
   // Theming system
   const theming = useTheming('photographer');
@@ -179,7 +180,7 @@ export default function EmailComposer({
   const { data: projectsData } = useQuery({
     queryKey: [`/api/submissions`, profession],
     queryFn: () => apiRequest(`/api/submissions/${profession}`),
-    enabled: !!userd,
+    enabled: hasResolvedUser,
     staleTime: 2 * 60 * 100,
 });
 
@@ -187,7 +188,7 @@ export default function EmailComposer({
   const { data: contactsData } = useQuery({
     queryKey: ['/api/crm/contacts', userId],
     queryFn: () => apiRequest(`/api/crm/contacts?userId=${userId}`),
-    enabled: !!userd,
+    enabled: hasResolvedUser,
     staleTime: 5 * 60 * 100,
 });
 
@@ -195,7 +196,7 @@ export default function EmailComposer({
   const { data: emailContactsData } = useQuery({
     queryKey: ['/api/emails/contacts', userId],
     queryFn: () => apiRequest(`/api/emails/contacts?userId=${userId}`),
-    enabled: !!userId && !contactsData,
+    enabled: hasResolvedUser && !contactsData,
     staleTime: 5 * 60 * 100,
 });
 
@@ -660,7 +661,7 @@ export default function EmailComposer({
       ...emailForm,
       html: emailForm.content, // Convert to HTML if needed
       attachments: attachments.length,
-      photographerId: userd,
+      photographerId: userId,
       profession
   };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -219,7 +219,7 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
     queryFn: async () => {
       const response = await fetch(`/api/google-drive/backup-status/${userId}`);
       if (!response.ok) return null;
-      return response.json() as BackupStatus;
+      return await response.json() as BackupStatus;
     },
     refetchInterval: 30000 // Update every 30 seconds
   });
@@ -304,36 +304,48 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
   }
 });
 
+  function handleBackupProject(projectId: string) {
+    manualBackupMutation.mutate(projectId);
+  }
+
   // Register component with MasterIntegrationProvider
   useEffect(() => {
-    componentRegistry.registerComponent('GoogleDriveManager', {
-      type: 'google-service',
-      capabilities: ['google-drive','file-management','project-sync'],
-      dataFlow: {
-        sources: ['drive-status','project-folders','backup-status'],
-        destinations: ['admin-dashboard','user-interface'],
-        processors: ['drive-processing','file-processing']
-      }
+    componentRegistry.registerComponent({
+      id: 'GoogleDriveManager',
+      name: 'Google Drive Manager',
+      type: 'widget',
+      category: 'integrations',
+      profession,
+      version: '1.0.0',
+      capabilities: ['google-drive', 'file-management', 'project-sync'],
+      dependencies: [],
+      events: ['google-drive:init-oauth', 'google-drive:create-folder', 'google-drive:backup', 'google-drive:save-file'],
+      dataKeys: ['drive-status', 'project-folders', 'backup-status'],
+      props: ['userId', 'profession'],
     });
 
     // Set up data flow nodes
-    dataFlow.registerNode('drive-status', {
+    const driveStatusNodeId = dataFlow.registerNode({
       type: 'source',
-      data: driveStatus,
-      metadata: { component: 'GoogleDriveManager', type: 'drive-status' }
-  });
+      componentId: 'GoogleDriveManager',
+      dataKey: 'drive-status',
+    });
 
-    dataFlow.registerNode('project-folders', {
+    const projectFoldersNodeId = dataFlow.registerNode({
       type: 'source',
-      data: projectFolders,
-      metadata: { component: 'GoogleDriveManager', type: 'project-folders' }
-  });
+      componentId: 'GoogleDriveManager',
+      dataKey: 'project-folders',
+    });
 
-    dataFlow.registerNode('backup-status', {
+    const backupStatusNodeId = dataFlow.registerNode({
       type: 'source',
-      data: backupStatus,
-      metadata: { component: 'GoogleDriveManager', type: 'backup-status' }
-  });
+      componentId: 'GoogleDriveManager',
+      dataKey: 'backup-status',
+    });
+
+    void dataFlow.syncData('drive-status', driveStatus);
+    void dataFlow.syncData('project-folders', projectFolders);
+    void dataFlow.syncData('backup-status', backupStatus);
 
     // Listen for Google Drive events
     const unsubscribe = communication.onMessage((message: any) => {
@@ -377,9 +389,9 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
 
     return () => {
       componentRegistry.unregisterComponent('GoogleDriveManager');
-      dataFlow.unregisterNode('drive-status');
-      dataFlow.unregisterNode('project-folders');
-      dataFlow.unregisterNode('backup-status');
+      dataFlow.unregisterNode(driveStatusNodeId);
+      dataFlow.unregisterNode(projectFoldersNodeId);
+      dataFlow.unregisterNode(backupStatusNodeId);
       if (unsubscribe) unsubscribe();
   };
 }, [driveStatus, projectFolders, backupStatus, componentRegistry, dataFlow, communication, initOAuthMutation, createFolderMutation, queryClient]);
@@ -434,6 +446,7 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
   }
 });
 
+
   const handleCreateFolder = () => {
     if (!currentProject) {
       return;
@@ -473,18 +486,18 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
 
   const getStatusIcon = () => {
     if (statusLoading) return <CircularProgress size={20} />;
-    if (!driveStatus) return theming.getThemedIcon('warning');
-    if (driveStatus.success && driveStatus.oauthAvailable) return theming.getThemedIcon('checkCircle');
-    if (driveStatus.success) return theming.getThemedIcon('cloudDone');
+    if (!driveStatus) return <Warning />;
+    if (driveStatus.success && driveStatus.oauthAvailable) return <CheckCircle />;
+    if (driveStatus.success) return <CloudDone />;
     return <ErrorIcon />;
 };
 
   const tabData = [
-    { label: 'Oversikt', icon: theming.getThemedIcon(',') },
-    { label: 'Mappestruktur', icon: theming.getThemedIcon(',') },
+    { label: 'Oversikt', icon: <CloudDone /> },
+    { label: 'Mappestruktur', icon: <Folder /> },
     { label: 'Endringshistorikk', icon: <History />,},
     { label: 'Backup', icon: <Backup />,},
-    { label: 'Innstillinger', icon: theming.getThemedIcon(', ') }
+    { label: 'Innstillinger', icon: <Settings /> }
   ];
 
   const standardFolders = [
@@ -743,7 +756,7 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
                             secondary={
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                                 <Chip 
-                                  icon={theming.getThemedIcon('calendar')}
+                                  icon={<Schedule fontSize="small" />}
                                   label={new Date(folder.createdAt).toLocaleDateString('nb-NO')} 
                                   size="small"
                                   sx={{ fontWeight: 500 }}
@@ -1869,7 +1882,7 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
             </Alert>
 
             <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }} md={6}>
+              <Grid item xs={12} md={6}>
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   Prosjektinformasjon
                 </Typography>
@@ -1896,7 +1909,7 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
                               {project.title}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                              {project.clientName} • ID: {project.d}
+                              {project.clientName} • ID: {project.id}
                             </Typography>
                           </Box>
                         </MenuItem>
@@ -1920,7 +1933,7 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
                       Klient: {currentProject.clientName}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      ID: {currentProject.d}
+                      ID: {currentProject.id}
                     </Typography>
                   </Box>
                 )}
@@ -1947,7 +1960,7 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
                 </Stack>
               </Grid>
               
-              <Grid size={{ xs: 12 }} md={6}>
+              <Grid item xs={12} md={6}>
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   8-mappestruktur som opprettes
                 </Typography>

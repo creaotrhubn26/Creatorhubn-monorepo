@@ -9,12 +9,12 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
-import { useNodes } from '../../state/store';
-import type { MonitorRenderer, MonitorLayout } from '../../core/services/monitorFeedService';
-import { monitorFeedService } from '../../core/services/monitorFeedService';
+import { useNodes } from '../../state/selectors';
+import { monitorFeedService, type MonitorRenderer, type MonitorLayout } from '../../core/services/monitorFeedService';
 import { logger } from '../../core/services/logger';
+import type { SceneNode } from '../../core/models/scene';
 
-const log = logger.module('DirectorMonitor3D, ');
+const log = logger.module('DirectorMonitor3D');
 
 let THREE: any = null;
 try {
@@ -247,9 +247,9 @@ export const DirectorMonitor3D: React.FC<DirectorMonitor3DProps> = ({
   useEffect(() => {
     if (!renderer) return;
     
-    const cameraNodes = nodes.filter(n => n.type ==='camera' || n.camera);
+    const cameraNodes = nodes.filter((node: SceneNode) => node.type === 'camera' || Boolean(node.camera));
     
-    cameraNodes.forEach(node => {
+    cameraNodes.forEach((node: SceneNode) => {
       renderer.registerCamera({
         id: node.id,
         name: node.name || `Camera ${node.id}`,
@@ -257,9 +257,13 @@ export const DirectorMonitor3D: React.FC<DirectorMonitor3DProps> = ({
         camera: node.camera,
       });
     });
+
+    if (onCameraSelect && cameraNodes.length > 0) {
+      onCameraSelect(cameraNodes[0].id);
+    }
     
     log.debug('Registered cameras:', cameraNodes.length);
-  }, [nodes, renderer]);
+  }, [nodes, onCameraSelect, renderer]);
   
   // Update layout
   useEffect(() => {
@@ -313,4 +317,3 @@ export const DirectorMonitor3D: React.FC<DirectorMonitor3DProps> = ({
 };
 
 export default DirectorMonitor3D;
-

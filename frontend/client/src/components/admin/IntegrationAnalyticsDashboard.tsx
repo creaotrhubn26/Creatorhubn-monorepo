@@ -1057,7 +1057,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                     </Pie>
                     <Legend />
                     <RechartsTooltip
-                      formatter={(value: number | string | undefined) => formatNok(Number(value ?? 0))}
+                      formatter={(value) => formatNok(Number(Array.isArray(value) ? value[0] : value ?? 0))}
                     />
                   </PieChart>
                 </ResponsiveContainer>

@@ -431,7 +431,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
             <Box sx={{ 
               p: 1,
               borderRadius: 2,
-              bgcolor: 'rgba(25,255,255,0.2)',
+              bgcolor: 'rgba(255,255,255,0.16)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
@@ -680,7 +680,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                 <Box sx={{ 
                   p: 1,
                   borderRadius: 2
-                 , bgcolor: 'rgba(25,255,255,0.2)',
+                 , bgcolor: 'rgba(255,255,255,0.18)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
@@ -837,7 +837,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
           sx: {
             background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(2, 4, 8,250,252,0.95) 100%)',
             backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(25,255,255,0.2)' }
+            border: '1px solid rgba(255,255,255,0.18)' }
     }}
       >
         <DialogTitle sx={{ 
@@ -982,11 +982,11 @@ const FilesTab: React.FC<FilesTabProps> = ({
                       <Grid size={{ xs: 12 }} sm={6} key={index}>
                         <Paper sx={{ 
                           p: 1.5,
-                          backgroundColor: 'rgba(25, 255, 255, 0.7)',
+                          backgroundColor: 'rgba(255, 255, 255, 0.72)',
                           border: `1px solid ${config.color}40`,
                           borderRadius:  1,
                           transition: 'all 0.2','&:hover': {
-                            backgroundColor: 'rgba(25, 255, 255, 0.9)',
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
                             transform: 'translateY(-1px)'
                         }
                     ,  ...theming.getThemedCardSx() }}>
@@ -1054,7 +1054,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                     width: '100%',
                     height:  12,
                     borderRadius:  6,
-                    backgroundColor: 'rgba(25, 255, 255, 0.3)','& .MuiLinearProgress-bar': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.22)','& .MuiLinearProgress-bar': {
                       background: `linear-gradient(90deg, ${config.color} 0%, #ff9800 50%, #4caf50 100%)`,
                       borderRadius: 6
                   }
@@ -1064,9 +1064,9 @@ const FilesTab: React.FC<FilesTabProps> = ({
                 <Box sx={{ 
                   textAlign: 'center',
                   p:  2,
-                  backgroundColor: 'rgba(25, 255, 255, 0.6)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.56)',
                   borderRadius:  2,
-                  border: '1px solid rgba(25, 255, 255, 0.3)'
+                  border: '1px solid rgba(255, 255, 255, 0.22)'
             }}>
                   <Typography variant="h6" sx={{  
                     fontStyle: 'italic', 

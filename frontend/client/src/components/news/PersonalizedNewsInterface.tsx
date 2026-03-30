@@ -205,7 +205,7 @@ const PersonalizedNewsInterface: React.FC<PersonalizedNewsInterfaceProps> = ({
         mb: 2,
         background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%)',
         backdropFilter: 'blur(10px)',
-        border: '1px solid rgba(25, 255, 255, 0.3)',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
         transition: 'all 0.3s ease', '&:hover': {
           transform: 'translateY(-2px)',
           boxShadow: '0 8px 25px rgba(0, 0, 0, 0.15)'
@@ -380,7 +380,7 @@ const PersonalizedNewsInterface: React.FC<PersonalizedNewsInterfaceProps> = ({
                 {professionIcon}
               </Box>
             )}
-            <Avatar sx={{ bgcolor: 'rgba(25,255,255,0.2)' }}>
+            <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)' }}>
               <StarIcon />
             </Avatar>
             <Box>
@@ -389,11 +389,11 @@ const PersonalizedNewsInterface: React.FC<PersonalizedNewsInterfaceProps> = ({
                   ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Personaliserte nyheter`
                   : 'Dine personaliserte nyheter'}
               </Typography>
-              <Typography variant="body1" sx={{ color: 'rgba(25,255,255,0.9)' }}>
+              <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.92)' }}>
                 {newsData?.personalizedMessage || 'Laster personalisert innhold...'}
               </Typography>
               {newsData?.equipmentContext && (
-                <Typography variant="caption" sx={{ color: 'rgba(25,255,255,0.8)' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.82)' }}>
                   {newsData.equipmentContext}
                 </Typography>
               )}

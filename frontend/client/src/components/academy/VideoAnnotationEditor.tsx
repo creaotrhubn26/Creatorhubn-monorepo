@@ -107,6 +107,8 @@ export interface VideoAnnotation {
   updatedAt: string;
 }
 
+const isPresent = <T,>(value: T | null): value is T => value !== null;
+
 interface VideoAnnotationEditorProps {
   courseId?: string;
   lessonId?: string;
@@ -1087,7 +1089,7 @@ const normalizeInterviewAnnotationSuggestions = (
 ): PedagogicalAnnotationSuggestion[] => {
   if (!Array.isArray(value)) return [];
   return value
-    .map((entry, index) => {
+    .map<PedagogicalAnnotationSuggestion | null>((entry, index) => {
       if (!entry || typeof entry !== 'object') return null;
       const source = entry as Record<string, unknown>;
       const title = String(source.title || '').trim();
@@ -1120,7 +1122,7 @@ const normalizeInterviewAnnotationSuggestions = (
         actionTypeRaw === 'showQuiz'
           ? actionTypeRaw
           : undefined;
-      return {
+      const suggestion: PedagogicalAnnotationSuggestion = {
         id:
           String(source.id || '').trim() ||
           `interview-annotation-${`${competency}-${title}-${type}`.toLowerCase().replace(/[^a-z0-9]+/g, "-") || index + 1}`,
@@ -1134,9 +1136,10 @@ const normalizeInterviewAnnotationSuggestions = (
         endRatio: clamp(Number(source.endRatio || 0.1) || 0.1, 0.02, 1),
         actionType,
         actionTarget: String(source.actionTarget || '').trim() || undefined,
-      } satisfies PedagogicalAnnotationSuggestion;
+      };
+      return suggestion;
     })
-    .filter((entry): entry is PedagogicalAnnotationSuggestion => Boolean(entry))
+    .filter(isPresent)
     .slice(0, 12);
 };
 

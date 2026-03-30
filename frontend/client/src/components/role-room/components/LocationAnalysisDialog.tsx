@@ -186,6 +186,7 @@ interface PermitWorkflowMeta {
   notes?: Partial<Record<string, string>>;
   operations?: Partial<PermitOperationFlags>;
   lastUpdated?: string;
+  [key: string]: unknown;
 }
 
 interface ManualAnalysisDraft {
@@ -2410,13 +2411,13 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, lineHeight: 1.6, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
                             {spot.description}
                           </Typography>
-                          {spot.restrictions.length > 0 && (
+                          {(spot.restrictions?.length ?? 0) > 0 && (
                             <Box sx={{ mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
                               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontWeight: 600, textTransform: 'uppercase', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, letterSpacing: '0.5px' }}>
                                 Restriksjoner
                               </Typography>
                               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 } }}>
-                                {spot.restrictions.map((restriction, rIdx) => (
+                                {(spot.restrictions ?? []).map((restriction, rIdx) => (
                                   <Chip
                                     key={rIdx}
                                     label={restriction}
@@ -2442,9 +2443,11 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 },
                           }}>
                             <LocationIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 17, xl: 20 }, color: 'rgba(255,255,255,0.87)' }} />
-                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                              {spot.coordinates.lat.toFixed(6)}, {spot.coordinates.lng.toFixed(6)}
-                            </Typography>
+                            {spot.coordinates && (
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
+                                {spot.coordinates.lat.toFixed(6)}, {spot.coordinates.lng.toFixed(6)}
+                              </Typography>
+                            )}
                           </Box>
                         </CardContent>
                       </Card>
@@ -2517,13 +2520,13 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       </Typography>
                     </Box>
                   )}
-                  {(analysis?.droneRestrictions.restrictions.length ?? 0) > 0 && (
+                  {(analysis?.droneRestrictions.restrictions?.length ?? 0) > 0 && (
                     <Box>
                       <Typography variant="subtitle2" sx={{ color: '#fff', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, fontWeight: 600, fontSize: { xs: '0.875rem', sm: '0.95rem', md: '0.9125rem', lg: '0.975rem', xl: '1.125rem' } }}>
                         Restriksjoner
                       </Typography>
                       <Stack spacing={{ xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }}>
-                        {analysis?.droneRestrictions.restrictions.map((restriction, idx) => (
+                        {(analysis?.droneRestrictions.restrictions ?? []).map((restriction, idx) => (
                           <Box 
                             key={idx}
                             sx={{ 
@@ -2545,7 +2548,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       </Stack>
                     </Box>
                   )}
-                  {(analysis?.droneRestrictions.noFlyZones.length ?? 0) > 0 && (
+                  {(analysis?.droneRestrictions.noFlyZones?.length ?? 0) > 0 && (
                     <Box sx={{ 
                       p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                       borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
@@ -2556,7 +2559,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         No-fly soner
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                        {analysis?.droneRestrictions.noFlyZones.length} son{analysis?.droneRestrictions.noFlyZones.length !== 1 ? 'er' : ''} identifisert i området
+                        {(analysis?.droneRestrictions.noFlyZones?.length ?? 0)} son{(analysis?.droneRestrictions.noFlyZones?.length ?? 0) !== 1 ? 'er' : ''} identifisert i området
                       </Typography>
                     </Box>
                   )}
@@ -2627,15 +2630,15 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
                         }}
                       />
-                      {analysis?.weatherExposure.windSpeedKmh !== undefined && (
+                      {analysis?.weatherExposure.windSpeedKmh != null && (
                         <Box sx={{ mt: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
                           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
                             Vindhastighet: <strong>{analysis.weatherExposure.windSpeedKmh.toFixed(1)} km/h</strong>
-                            {analysis.weatherExposure.windSpeed !== undefined && (
+                            {analysis.weatherExposure.windSpeed != null && (
                               <span style={{ color: 'rgba(255,255,255,0.87)' }}> ({analysis.weatherExposure.windSpeed.toFixed(1)} m/s)</span>
                             )}
                           </Typography>
-                          {analysis.weatherExposure.windDirection !== undefined && (
+                          {analysis.weatherExposure.windDirection != null && (
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontStyle: 'italic' }}>
                               Vindretning: {Math.round(analysis.weatherExposure.windDirection)}°
                             </Typography>
@@ -2714,7 +2717,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                               Solnedgang: <strong>{analysis.weatherExposure.sunset}</strong>
                             </Typography>
                           )}
-                          {analysis.weatherExposure.daylightHours !== undefined && (
+                          {analysis.weatherExposure.daylightHours != null && (
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontStyle: 'italic' }}>
                               {analysis.weatherExposure.daylightHours.toFixed(1)} timer dagslys
                             </Typography>
@@ -2735,7 +2738,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       Beskyttelsesmuligheter
                     </Typography>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                      {analysis?.weatherExposure.shelterOptions.map((option, idx) => (
+                      {(analysis?.weatherExposure.shelterOptions ?? []).map((option, idx) => (
                         <Chip
                           key={idx}
                           label={option}
@@ -2903,12 +2906,12 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                               Kollektivtransport
                             </Typography>
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
-                              {analysis?.accessAnalysis.publicTransport.length} linj{analysis?.accessAnalysis.publicTransport.length !== 1 ? 'er' : 'e'} tilgjengelig
+                              {(analysis?.accessAnalysis.publicTransport?.length ?? 0)} linj{(analysis?.accessAnalysis.publicTransport?.length ?? 0) !== 1 ? 'er' : 'e'} tilgjengelig
                             </Typography>
                           </Box>
                         </Box>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, ml: { xs: 0, sm: 7, md: 6.5, lg: 7, xl: 8 } }}>
-                          {analysis?.accessAnalysis.publicTransport.map((transport, idx) => (
+                          {(analysis?.accessAnalysis.publicTransport ?? []).map((transport, idx) => (
                             <Chip
                               key={idx}
                               label={transport}

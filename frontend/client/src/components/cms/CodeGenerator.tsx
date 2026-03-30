@@ -89,6 +89,44 @@ interface ApiDiscovery {
 
 const GENERATOR_TABS = ['Build', 'Output', 'Integrations'] as const;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isPresent = <T,>(value: T | null): value is T => value !== null;
+
+const normalizeFeatureFlag = (item: unknown): FeatureFlag | null => {
+  if (!isRecord(item) || typeof item.id !== 'string' || typeof item.enabled !== 'boolean') {
+    return null;
+  }
+
+  return {
+    id: item.id,
+    enabled: item.enabled,
+    ...(typeof item.description === 'string' ? { description: item.description } : {}),
+  };
+};
+
+const normalizeApiDiscovery = (item: unknown): ApiDiscovery | null => {
+  if (
+    !isRecord(item) ||
+    typeof item.name !== 'string' ||
+    typeof item.category !== 'string' ||
+    typeof item.description !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    name: item.name,
+    category: item.category,
+    description: item.description,
+    ...(typeof item.documentation === 'string' ? { documentation: item.documentation } : {}),
+    ...(typeof item.authentication === 'string' ? { authentication: item.authentication } : {}),
+    ...(typeof item.pricing === 'string' ? { pricing: item.pricing } : {}),
+    norwegianSupport: Boolean(item.norwegianSupport),
+  };
+};
+
 const getSafeNumber = (value: number | undefined, fallback = 0): number => {
   if (typeof value !== 'number' || Number.isNaN(value)) {
     return fallback;
@@ -170,29 +208,14 @@ export class FeatureManager {
 
   async loadFeatures(): Promise<FeatureFlag[]> {
     try {
-      const response = await apiRequest('/api/features', { method: 'GET' });
-      const list = Array.isArray(response)
+      const response: unknown = await apiRequest('/api/features', { method: 'GET' });
+      const list: unknown[] = Array.isArray(response)
         ? response
-        : Array.isArray(response?.features)
+        : isRecord(response) && Array.isArray(response.features)
           ? response.features
           : [];
 
-      const normalized = list
-        .map((item) => {
-          if (!item || typeof item !== 'object') {
-            return null;
-          }
-          const value = item as Partial<FeatureFlag>;
-          if (!value.id || typeof value.enabled !== 'boolean') {
-            return null;
-          }
-          return {
-            id: String(value.id),
-            enabled: value.enabled,
-            description: value.description,
-          };
-        })
-        .filter((item): item is FeatureFlag => item !== null);
+      const normalized = list.map(normalizeFeatureFlag).filter(isPresent);
 
       this.flags = new Map(normalized.map((flag) => [flag.id, flag]));
       return normalized;
@@ -344,38 +367,19 @@ export default function EnhancedCodeGenerator() {
 
   const discoverMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('/api/code-generator/discover-apis', {
+      const response: unknown = await apiRequest('/api/code-generator/discover-apis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQuery, requirements, profession: settings.profession }),
       });
 
-      const list = Array.isArray(response)
+      const list: unknown[] = Array.isArray(response)
         ? response
-        : Array.isArray(response?.results)
+        : isRecord(response) && Array.isArray(response.results)
           ? response.results
           : [];
 
-      const normalized = list
-        .map((item) => {
-          if (!item || typeof item !== 'object') {
-            return null;
-          }
-          const value = item as Partial<ApiDiscovery>;
-          if (!value.name || !value.category || !value.description) {
-            return null;
-          }
-          return {
-            name: String(value.name),
-            category: String(value.category),
-            description: String(value.description),
-            documentation: value.documentation,
-            authentication: value.authentication,
-            pricing: value.pricing,
-            norwegianSupport: Boolean(value.norwegianSupport),
-          };
-        })
-        .filter((item): item is ApiDiscovery => item !== null);
+      const normalized = list.map(normalizeApiDiscovery).filter(isPresent);
 
       if (normalized.length > 0) {
         return normalized;

@@ -10,12 +10,11 @@
 
 import { useEffect, useCallback, useState, useRef } from 'react';
 import * as THREE from 'three';
-import type {
-  AnimationState,
-  PropertyUpdate,
-  SceneBinding} from '../core/animation/AnimationStateManager';
 import {
-  animationStateManager
+  animationStateManager,
+  type AnimationState,
+  type PropertyUpdate,
+  type SceneBinding,
 } from '../core/animation/AnimationStateManager';
 import type { AnimationTrack } from '../core/animation/SceneGraphAnimationEngine';
 
@@ -122,7 +121,7 @@ export function useAnimationBinding(
       if (obj === scene || obj.type === 'AmbientLight') return;
 
       const type = detectObjectType(obj);
-      if (!filterTypes.includes(type) && type !=='other') return;
+      if (type === 'other' || !filterTypes.includes(type)) return;
 
       // Generate unique ID
       const id = obj.userData?.nodeId || obj.uuid;
@@ -251,7 +250,7 @@ export function useAnimationBinding(
           const id = obj.userData?.nodeId || obj.uuid;
           if (!currentObjects.has(id)) {
             const type = detectObjectType(obj);
-            if (filterTypes.includes(type)) {
+            if (type !== 'other' && filterTypes.includes(type)) {
               animationStateManager.bindObject(id, obj);
             }
           }
@@ -299,4 +298,3 @@ export function useAnimationBinding(
 }
 
 export default useAnimationBinding;
-

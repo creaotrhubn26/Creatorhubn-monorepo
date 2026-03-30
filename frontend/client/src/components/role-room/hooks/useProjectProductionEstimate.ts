@@ -43,12 +43,73 @@ const EMPTY_ESTIMATE = estimateContentProduction({
   productionDays: [],
 });
 
+const buildRecordSignature = <T extends { id?: string; updatedAt?: string; createdAt?: string }>(
+  items?: T[] | null,
+): string => {
+  if (!Array.isArray(items) || items.length === 0) {
+    return '[]';
+  }
+
+  return items
+    .map((item, index) => `${item.id ?? index}:${item.updatedAt ?? item.createdAt ?? ''}`)
+    .join('|');
+};
+
+const areRecordArraysEquivalent = <T extends { id?: string; updatedAt?: string; createdAt?: string }>(
+  left: T[],
+  right: T[],
+): boolean => {
+  if (left === right) {
+    return true;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    const leftItem = left[index];
+    const rightItem = right[index];
+    if (
+      (leftItem?.id ?? index) !== (rightItem?.id ?? index)
+      || (leftItem?.updatedAt ?? leftItem?.createdAt ?? '') !== (rightItem?.updatedAt ?? rightItem?.createdAt ?? '')
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 export function useProjectProductionEstimate({
   projectId,
   initialProject = null,
   initialShotLists,
   initialProductionDays,
 }: UseProjectProductionEstimateOptions): UseProjectProductionEstimateResult {
+  const initialProjectSignature = useMemo(
+    () => `${initialProject?.id ?? 'null'}:${initialProject?.updatedAt ?? initialProject?.createdAt ?? ''}`,
+    [initialProject?.createdAt, initialProject?.id, initialProject?.updatedAt],
+  );
+  const initialShotListsSignature = useMemo(
+    () => buildRecordSignature(initialShotLists),
+    [initialShotLists],
+  );
+  const initialProductionDaysSignature = useMemo(
+    () => buildRecordSignature(initialProductionDays),
+    [initialProductionDays],
+  );
+  const resolvedInitialProject = useMemo(
+    () => initialProject,
+    [initialProjectSignature],
+  );
+  const resolvedInitialShotLists = useMemo(
+    () => (Array.isArray(initialShotLists) ? initialShotLists : undefined),
+    [initialShotListsSignature],
+  );
+  const resolvedInitialProductionDays = useMemo(
+    () => (Array.isArray(initialProductionDays) ? initialProductionDays : undefined),
+    [initialProductionDaysSignature],
+  );
   const [project, setProject] = useState<CastingProject | null>(initialProject);
   const [shotLists, setShotLists] = useState<ShotList[]>(initialShotLists ?? []);
   const [productionDays, setProductionDays] = useState<ProductionDay[]>(initialProductionDays ?? []);
@@ -59,20 +120,26 @@ export function useProjectProductionEstimate({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setProject(initialProject);
-  }, [initialProject]);
+    setProject((previous) => (
+      previous === resolvedInitialProject ? previous : resolvedInitialProject
+    ));
+  }, [resolvedInitialProject]);
 
   useEffect(() => {
-    if (Array.isArray(initialShotLists)) {
-      setShotLists(initialShotLists);
+    if (Array.isArray(resolvedInitialShotLists)) {
+      setShotLists((previous) => (
+        areRecordArraysEquivalent(previous, resolvedInitialShotLists) ? previous : resolvedInitialShotLists
+      ));
     }
-  }, [initialShotLists]);
+  }, [resolvedInitialShotLists]);
 
   useEffect(() => {
-    if (Array.isArray(initialProductionDays)) {
-      setProductionDays(initialProductionDays);
+    if (Array.isArray(resolvedInitialProductionDays)) {
+      setProductionDays((previous) => (
+        areRecordArraysEquivalent(previous, resolvedInitialProductionDays) ? previous : resolvedInitialProductionDays
+      ));
     }
-  }, [initialProductionDays]);
+  }, [resolvedInitialProductionDays]);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,10 +161,10 @@ export function useProjectProductionEstimate({
 
       try {
         const [resolvedProject, resolvedShotLists, resolvedProductionDays, manuscripts] = await Promise.all([
-          initialProject ? Promise.resolve(initialProject) : castingService.getProject(projectId),
-          Array.isArray(initialShotLists) ? Promise.resolve(initialShotLists) : castingService.getShotLists(projectId),
-          Array.isArray(initialProductionDays)
-            ? Promise.resolve(initialProductionDays)
+          resolvedInitialProject ? Promise.resolve(resolvedInitialProject) : castingService.getProject(projectId),
+          Array.isArray(resolvedInitialShotLists) ? Promise.resolve(resolvedInitialShotLists) : castingService.getShotLists(projectId),
+          Array.isArray(resolvedInitialProductionDays)
+            ? Promise.resolve(resolvedInitialProductionDays)
             : productionPlanningService.getProductionDays(projectId),
           manuscriptService.getManuscripts(projectId),
         ]);
@@ -131,9 +198,9 @@ export function useProjectProductionEstimate({
         }
         console.error('[useProjectProductionEstimate] Failed to load project estimate context', loadError);
         setError('Kunne ikke laste produksjonsgrunnlaget for plan og estimat.');
-        setProject(initialProject);
-        setShotLists(Array.isArray(initialShotLists) ? initialShotLists : []);
-        setProductionDays(Array.isArray(initialProductionDays) ? initialProductionDays : []);
+        setProject(resolvedInitialProject);
+        setShotLists(Array.isArray(resolvedInitialShotLists) ? resolvedInitialShotLists : []);
+        setProductionDays(Array.isArray(resolvedInitialProductionDays) ? resolvedInitialProductionDays : []);
         setManuscript(null);
         setScenes([]);
         setDialogue([]);
@@ -148,7 +215,7 @@ export function useProjectProductionEstimate({
     return () => {
       cancelled = true;
     };
-  }, [initialProductionDays, initialProject, initialShotLists, projectId]);
+  }, [projectId, resolvedInitialProductionDays, resolvedInitialProject, resolvedInitialShotLists]);
 
   const productionEstimate = useMemo(() => {
     if (!projectId) {

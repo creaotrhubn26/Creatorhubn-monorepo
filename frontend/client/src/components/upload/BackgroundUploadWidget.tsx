@@ -262,7 +262,7 @@ export const BackgroundUploadWidget: React.FC<BackgroundUploadWidgetProps> = ({
               overflow: 'hidden',
               background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
               backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(25, 255, 255, 0.3)',
+              border: '1px solid rgba(255, 255, 255, 0.22)',
               boxShadow: '0 8px 32px rgba(0,0,0,0.12)'
           }}
            sx={theming.getThemedCardSx()}>

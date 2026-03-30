@@ -5,9 +5,11 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { SceneBreakdown, DialogueLine, Act, Manuscript, CastingShot, ShotList, Candidate, Role, ShotType } from "../models/casting";
+import { computeStoryboardCoverageSummary } from "../models/derivedState";
 import type { StoryLogicState } from "../services/storyLogicService";
 import { ProductionEstimateDialog } from "./ProductionEstimateDialog";
 import { castingService } from "../services/castingService";
+import { manuscriptService } from "../services/manuscriptService";
 import { sceneNeedsService } from "../services/sceneNeedsService";
 import { getCandidatePhotoObjectPosition } from "../utils/candidatePhotoFocalPoint";
 import { speak as ttsSpeak, stopTTS, pauseTTS, resumeTTS, isTTSPlaying, assignCharacterVoices, preloadTTS, clearTTSCache, TTS_VOICES, TTS_LANGUAGES, type TTSVoice, type TTSLanguage } from "../services/ttsService";
@@ -16,12 +18,23 @@ import StripboardPanel from "./production/StripboardPanel";
 import ShootingDayPlanner from "./production/ShootingDayPlanner";
 import CallSheetGenerator from "./CallSheetGenerator";
 import { productionWorkflowService, generateCallSheetHTML, downloadCallSheetPDF, DEFAULT_CALL_SHEET_OPTIONS, type ShootingDay, type LiveSetStatus } from "./production";
-import AddShotDialog from "./production/AddShotDialog";
+import AddShotDialog, { type AddShotDialogCreatePayload } from "./production/AddShotDialog";
+import SceneStoryboardDialog from "./production/SceneStoryboardDialog";
 import ProductionNotesPanel from "./production/ProductionNotesPanel";
 import { addShotReducer, deriveSceneStatus, loadZoomPreference, saveZoomPreference, loadFullscreenPreference, saveFullscreenPreference, selectedMapToggle, selectedMapFromIds, selectedMapSize, selectedMapHas, selectedMapIds, EMPTY_SELECTION, DEFAULT_FILTERS, workflowReducer, INITIAL_WORKFLOW_STATE, loadWorkflowPreference, saveWorkflowPreference, EMPTY_CHECKLIST, deriveReadinessScore, searchReducer, INITIAL_SEARCH_STATE, inspectorReducer, INITIAL_INSPECTOR_STATE, loadExpandedSections, saveExpandedSections, buildDefaultShotMeta, metaToShotProperties, shotPropertiesToMeta, DEFAULT_SHOT_PROPERTIES, type NoteType, type ProductionNotes, type ShotSearchResult, type DerivedSceneStatus, type SelectedMap, type SceneFilters, type WorkflowUIState, type CallSheetRef, type BulkShotTemplate, type ChecklistKey, type SceneChecklist, type SearchSource, type ShotCafeFilm, type ReferenceImageResult, type ShotMeta as _ShotMeta, type ShotMetadataMap, type ShotPreset } from "./production/types";
 import { useSceneHistory } from "./production/useSceneHistory";
 import { useEquipmentInventory } from "./production/useEquipmentInventory";
 import GlobalMentionHelper from "./shared/GlobalMentionHelper";
+import {
+  applyStoryboardCandidateToShot,
+  buildSceneStoryboardCandidates,
+  clearStoryboardLinkFromShot,
+  createSceneStoryboardFrameFromShot,
+  loadStoryboardLibraryItemsForProject,
+  resolveStoryboardShotLink,
+  syncShotListWithSceneStoryboard,
+  type StoryboardSeedCandidate,
+} from "../services/storyboardLibraryService";
 
 // ============================================
 // 7-TIER RESPONSIVE SYSTEM
@@ -439,6 +452,14 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [selectedScene, setSelectedScene] = useState<SceneBreakdown | null>(scenes[0] || null);
   const [selectedShot, setSelectedShot] = useState<CastingShot | null>(null);
   const [shotLists, setShotLists] = useState<ShotList[]>([]);
+  const [sceneStoryboardDialog, setSceneStoryboardDialog] = useState<{
+    sceneId: string;
+    activeFrameIndex?: number;
+  } | null>(null);
+  const [shotStoryboardDialog, setShotStoryboardDialog] = useState<{
+    shotId: string;
+    selectedCandidateId: string | null;
+  } | null>(null);
   const [expandedActs, setExpandedActs] = useState<Set<string>>(new Set(acts.map(a => a.id)));
   const [showEstimateDialog, setShowEstimateDialog] = useState(false);
   const [showNewSceneDialog, setShowNewSceneDialog] = useState(false);
@@ -669,6 +690,39 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     if (!selectedScene) return [];
     return getShotsForScene(selectedScene.id);
   }, [selectedScene, getShotsForScene]);
+  const [projectStoryboardLibraryItems, setProjectStoryboardLibraryItems] = useState<
+    Awaited<ReturnType<typeof loadStoryboardLibraryItemsForProject>>
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    const loadLibraryItems = () => {
+      void loadStoryboardLibraryItemsForProject(projectId, String(projectId || 'global')).then((items) => {
+        if (!cancelled) {
+          setProjectStoryboardLibraryItems(items);
+        }
+      });
+    };
+    loadLibraryItems();
+    window.addEventListener('role-room:storyboard-library-updated', loadLibraryItems);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('role-room:storyboard-library-updated', loadLibraryItems);
+    };
+  }, [projectId]);
+  const selectedSceneStoryboardCandidates = useMemo(
+    () => (selectedScene ? buildSceneStoryboardCandidates(selectedScene, projectStoryboardLibraryItems) : []),
+    [projectStoryboardLibraryItems, selectedScene],
+  );
+  const selectedShotStoryboardLink = useMemo(
+    () => (selectedShot && selectedScene
+      ? resolveStoryboardShotLink(selectedShot, selectedScene, projectStoryboardLibraryItems)
+      : null),
+    [projectStoryboardLibraryItems, selectedScene, selectedShot],
+  );
+  const selectedSceneStoryboardCoverage = useMemo(
+    () => (selectedScene ? computeStoryboardCoverageSummary(selectedSceneShots, selectedScene) : null),
+    [selectedScene, selectedSceneShots],
+  );
 
   // ============================================
   // REFERENCE SEARCH — race-safe, backend-proxied
@@ -1945,22 +1999,212 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     800
   );
 
-  // Actually create the shot with image — called from <AddShotDialog>
-  const handleCreateShot = useCallback((imageUrl?: string) => {
+  const persistShotListImmediate = useCallback(async (updatedShotList: ShotList) => {
+    setShotLists((prev) => {
+      const exists = prev.some((entry) => entry.id === updatedShotList.id);
+      if (exists) {
+        return prev.map((entry) => (entry.id === updatedShotList.id ? updatedShotList : entry));
+      }
+      return [...prev, updatedShotList];
+    });
+    await castingService.saveShotList(projectId, updatedShotList);
+  }, [projectId]);
+
+  const updateSelectedShotStoryboardState = useCallback(async (
+    transform: (shot: CastingShot) => CastingShot,
+  ): Promise<CastingShot | null> => {
+    if (!selectedScene || !selectedShot) return null;
+    const shotList = shotLists.find((entry) => entry.sceneId === selectedScene.id);
+    if (!shotList) return null;
+
+    const nextShot = transform(selectedShot);
+    const nextShotList: ShotList = {
+      ...shotList,
+      shots: shotList.shots.map((entry) => (entry.id === selectedShot.id ? nextShot : entry)),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setSelectedShot(nextShot);
+    await persistShotListImmediate(nextShotList);
+    return nextShot;
+  }, [persistShotListImmediate, selectedScene, selectedShot, shotLists]);
+
+  const handleOpenSelectedShotStoryboardFrame = useCallback(() => {
+    if (!selectedScene || !selectedShotStoryboardLink || selectedShotStoryboardLink.status !== 'linked') return;
+    setSceneStoryboardDialog({
+      sceneId: selectedScene.id,
+      activeFrameIndex: selectedShotStoryboardLink.frameIndex ?? 0,
+    });
+  }, [selectedScene, selectedShotStoryboardLink]);
+
+  const handleOpenSelectedSceneStoryboard = useCallback(() => {
     if (!selectedScene) return;
+    setSceneStoryboardDialog({
+      sceneId: selectedScene.id,
+      activeFrameIndex: selectedShotStoryboardLink?.frameIndex ?? 0,
+    });
+  }, [selectedScene, selectedShotStoryboardLink]);
+
+  const handleOpenSelectedShotStoryboardLinkDialog = useCallback(() => {
+    if (!selectedShot || !selectedScene) return;
+    const defaultCandidateId =
+      selectedShotStoryboardLink?.candidate?.id
+      || selectedSceneStoryboardCandidates[0]?.id
+      || null;
+    setShotStoryboardDialog({
+      shotId: selectedShot.id,
+      selectedCandidateId: defaultCandidateId,
+    });
+  }, [selectedScene, selectedSceneStoryboardCandidates, selectedShot, selectedShotStoryboardLink]);
+
+  const handleConfirmSelectedShotStoryboardLink = useCallback(async () => {
+    if (!selectedScene || !selectedShot || !shotStoryboardDialog?.selectedCandidateId) return;
+    const candidate = selectedSceneStoryboardCandidates.find(
+      (entry) => entry.id === shotStoryboardDialog.selectedCandidateId,
+    );
+    if (!candidate) return;
+
+    await updateSelectedShotStoryboardState((shot) =>
+      applyStoryboardCandidateToShot(shot, candidate, selectedScene.id),
+    );
+    setShotStoryboardDialog(null);
+  }, [
+    selectedScene,
+    selectedSceneStoryboardCandidates,
+    selectedShot,
+    shotStoryboardDialog,
+    updateSelectedShotStoryboardState,
+  ]);
+
+  const handleUnlinkSelectedShotStoryboard = useCallback(async () => {
+    await updateSelectedShotStoryboardState((shot) => clearStoryboardLinkFromShot(shot));
+  }, [updateSelectedShotStoryboardState]);
+
+  const handleResyncSelectedShotStoryboard = useCallback(async () => {
+    if (!selectedScene || !selectedShotStoryboardLink?.candidate) return;
+    await updateSelectedShotStoryboardState((shot) =>
+      applyStoryboardCandidateToShot(shot, selectedShotStoryboardLink.candidate!, selectedScene.id),
+    );
+  }, [selectedScene, selectedShotStoryboardLink, updateSelectedShotStoryboardState]);
+
+  const handleCreateStoryboardFrameFromSelectedShot = useCallback(async () => {
+    if (!selectedScene || !selectedShot) return;
+
+    const newFrame = createSceneStoryboardFrameFromShot(selectedShot, selectedScene);
+    const updatedScene: SceneBreakdown = {
+      ...selectedScene,
+      storyboardFrames: [...(Array.isArray(selectedScene.storyboardFrames) ? selectedScene.storyboardFrames : []), newFrame],
+      updatedAt: new Date().toISOString(),
+    };
+
+    const persistedScene = await manuscriptService.saveScene(updatedScene);
+    onSceneUpdate?.(persistedScene);
+    setSelectedScene((current) => (current?.id === persistedScene.id ? persistedScene : current));
+
+    const candidate = buildSceneStoryboardCandidates(persistedScene, projectStoryboardLibraryItems).find(
+      (entry) => entry.sourceType === 'scene-frame' && entry.frameId === newFrame.id,
+    );
+    if (!candidate) return;
+
+    await updateSelectedShotStoryboardState((shot) =>
+      applyStoryboardCandidateToShot(shot, candidate, persistedScene.id),
+    );
+    setSceneStoryboardDialog({
+      sceneId: persistedScene.id,
+      activeFrameIndex: Math.max(
+        0,
+        (Array.isArray(persistedScene.storyboardFrames) ? persistedScene.storyboardFrames.length : 1) - 1,
+      ),
+    });
+  }, [
+    onSceneUpdate,
+    projectStoryboardLibraryItems,
+    selectedScene,
+    selectedShot,
+    updateSelectedShotStoryboardState,
+  ]);
+
+  const handleSceneStoryboardUpdate = useCallback(async (updatedScene: SceneBreakdown) => {
+    const persistedScene = await manuscriptService.saveScene(updatedScene);
+    onSceneUpdate?.(persistedScene);
+    setSelectedScene((current) => (current?.id === persistedScene.id ? persistedScene : current));
+
+    const nextShotLists: ShotList[] = [];
+    const shotListsToPersist: ShotList[] = [];
+    for (const shotList of shotLists) {
+      if (shotList.sceneId !== persistedScene.id) {
+        nextShotLists.push(shotList);
+        continue;
+      }
+      const syncResult = syncShotListWithSceneStoryboard(
+        shotList,
+        persistedScene,
+        projectStoryboardLibraryItems,
+      );
+      nextShotLists.push(syncResult.shotList);
+      if (syncResult.changed) {
+        shotListsToPersist.push(syncResult.shotList);
+      }
+    }
+
+    if (shotListsToPersist.length > 0) {
+      setShotLists(nextShotLists);
+      await Promise.all(
+        shotListsToPersist.map((shotList) => castingService.saveShotList(projectId, shotList)),
+      );
+      if (selectedShot) {
+        const selectedSceneShotList = nextShotLists.find((entry) => entry.sceneId === persistedScene.id);
+        const nextSelectedShot = selectedSceneShotList?.shots.find((entry) => entry.id === selectedShot.id) || null;
+        if (nextSelectedShot) {
+          setSelectedShot(nextSelectedShot);
+        }
+      }
+    }
+  }, [onSceneUpdate, projectId, projectStoryboardLibraryItems, selectedShot, shotLists]);
+
+  // Actually create the shot with image — called from <AddShotDialog>
+  const handleCreateShot = useCallback((payload?: AddShotDialogCreatePayload) => {
+    if (!selectedScene) return;
+    const imageUrl = payload?.imageUrl;
+    const storyboardCandidate = payload?.storyboardCandidate;
+    const storyboardLabel = storyboardCandidate?.cameraAngle?.trim().toLowerCase() || '';
+    const storyboardShotType: ShotType =
+      storyboardCandidate?.shotType
+        ? storyboardCandidate.shotType
+        : storyboardLabel.includes('close')
+          ? 'Close-up'
+          : storyboardLabel.includes('wide')
+            ? 'Wide'
+            : 'Medium';
+    const technicalCameraAngle = [
+      'eye level',
+      'high angle',
+      'low angle',
+      'birds eye',
+      'worms eye',
+      'dutch angle',
+      'overhead',
+    ].includes(storyboardLabel)
+      ? storyboardCandidate?.cameraAngle
+      : 'Eye Level';
     const now = new Date().toISOString();
     const shotId = `shot-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
     const newShot: CastingShot = {
       id: shotId,
       sceneId: selectedScene.id,
       roleId: '',
-      shotType: 'Medium',
-      description: 'Ny shot',
-      cameraAngle: 'Eye Level',
-      cameraMovement: 'Static',
+      shotType: storyboardShotType,
+      description: storyboardCandidate?.description || 'Ny shot',
+      cameraAngle: technicalCameraAngle as CastingShot['cameraAngle'],
+      cameraMovement: (storyboardCandidate?.movement || 'Static') as CastingShot['cameraMovement'],
       focalLength: 50,
-      duration: 5,
-      notes: '',
+      duration: Math.max(1, Math.round(storyboardCandidate?.duration ?? 5)),
+      notes: storyboardCandidate ? `${storyboardCandidate.sourceLabel} · ${storyboardCandidate.shotNumber}` : '',
+      imageUrl,
+      storyboardFrameId: storyboardCandidate?.frameId,
+      storyboardLibraryItemId: storyboardCandidate?.libraryItemId,
+      storyboardLinkedSceneId: selectedScene.id,
+      storyboardSourceType: storyboardCandidate?.sourceType,
       createdAt: now,
       updatedAt: now,
     };
@@ -5283,6 +5527,162 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#fff', mb: 1.5 }}>
                 {selectedShot.description || 'Shot Details'}
               </Typography>
+
+              <Box sx={{ mb: 1.5, pb: 1.5, borderBottom: '1px solid #1f3a33' }}>
+                <Typography sx={{ fontSize: 11, color: '#6b7280', mb: 1, fontWeight: 600 }}>
+                  STORYBOARD LINK
+                </Typography>
+                <Stack spacing={1}>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Chip
+                      size="small"
+                      label={
+                        selectedShotStoryboardLink?.status === 'linked'
+                          ? `Koblet · ${selectedShotStoryboardLink.candidate?.shotNumber || 'frame'}`
+                          : selectedShotStoryboardLink?.status === 'missing'
+                            ? 'Mangler frame'
+                            : 'Ikke koblet'
+                      }
+                      sx={{
+                        bgcolor:
+                          selectedShotStoryboardLink?.status === 'linked'
+                            ? 'rgba(16,185,129,0.18)'
+                            : selectedShotStoryboardLink?.status === 'missing'
+                              ? 'rgba(245,158,11,0.18)'
+                              : 'rgba(148,163,184,0.14)',
+                        color:
+                          selectedShotStoryboardLink?.status === 'linked'
+                            ? '#6ee7b7'
+                            : selectedShotStoryboardLink?.status === 'missing'
+                              ? '#fbbf24'
+                              : '#cbd5e1',
+                        border:
+                          selectedShotStoryboardLink?.status === 'linked'
+                            ? '1px solid rgba(16,185,129,0.35)'
+                            : selectedShotStoryboardLink?.status === 'missing'
+                              ? '1px solid rgba(245,158,11,0.35)'
+                              : '1px solid rgba(148,163,184,0.22)',
+                      }}
+                    />
+                    {selectedShotStoryboardLink?.label && (
+                      <Typography sx={{ fontSize: 11, color: '#9ca3af' }}>
+                        {selectedShotStoryboardLink.label}
+                      </Typography>
+                    )}
+                  </Stack>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleOpenSelectedShotStoryboardLinkDialog}
+                      data-testid="pmv-shot-storyboard-link"
+                      sx={{ color: '#93c5fd', borderColor: 'rgba(59,130,246,0.32)' }}
+                    >
+                      {selectedShotStoryboardLink?.status === 'linked' ? 'Relink' : 'Koble'}
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleOpenSelectedShotStoryboardFrame}
+                      data-testid="pmv-shot-open-linked-frame"
+                      disabled={selectedShotStoryboardLink?.status !== 'linked'}
+                      sx={{ color: '#d1d5db', borderColor: 'rgba(148,163,184,0.3)' }}
+                    >
+                      Åpne frame
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleResyncSelectedShotStoryboard}
+                      data-testid="pmv-shot-storyboard-resync"
+                      disabled={selectedShotStoryboardLink?.status !== 'linked'}
+                      sx={{ color: '#fbbf24', borderColor: 'rgba(245,158,11,0.3)' }}
+                    >
+                      Synk
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleUnlinkSelectedShotStoryboard}
+                      data-testid="pmv-shot-storyboard-unlink"
+                      disabled={selectedShotStoryboardLink?.status === 'unlinked'}
+                      sx={{ color: '#fca5a5', borderColor: 'rgba(248,113,113,0.28)' }}
+                    >
+                      Unlink
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleCreateStoryboardFrameFromSelectedShot}
+                      sx={{ color: '#c4b5fd', borderColor: 'rgba(139,92,246,0.28)' }}
+                    >
+                      Ny frame fra shot
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Box>
+
+              {selectedSceneStoryboardCoverage && selectedSceneStoryboardCoverage.totalFrames > 0 && (
+                <Box
+                  sx={{ mb: 1.5, pb: 1.5, borderBottom: '1px solid #1f3a33' }}
+                  data-testid="pmv-storyboard-coverage"
+                >
+                  <Typography sx={{ fontSize: 11, color: '#6b7280', mb: 1, fontWeight: 600 }}>
+                    STORYBOARD COVERAGE
+                  </Typography>
+                  <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                    <Chip
+                      size="small"
+                      label={`${selectedSceneStoryboardCoverage.coveredFrames}/${selectedSceneStoryboardCoverage.totalFrames} frames brukt`}
+                      sx={{
+                        bgcolor: 'rgba(59,130,246,0.14)',
+                        color: '#93c5fd',
+                        border: '1px solid rgba(59,130,246,0.24)',
+                      }}
+                    />
+                    <Chip
+                      size="small"
+                      label={`${selectedSceneStoryboardCoverage.missingFrames} mangler shot`}
+                      sx={{
+                        bgcolor: 'rgba(245,158,11,0.12)',
+                        color: '#fbbf24',
+                        border: '1px solid rgba(245,158,11,0.24)',
+                      }}
+                    />
+                    {selectedSceneStoryboardCoverage.unlinkedShots > 0 && (
+                      <Chip
+                        size="small"
+                        label={`${selectedSceneStoryboardCoverage.unlinkedShots} shots uten storyboard`}
+                        sx={{
+                          bgcolor: 'rgba(148,163,184,0.12)',
+                          color: '#cbd5e1',
+                          border: '1px solid rgba(148,163,184,0.2)',
+                        }}
+                      />
+                    )}
+                  </Stack>
+                  {selectedSceneStoryboardCoverage.missingFrameList.length > 0 && (
+                    <Typography
+                      sx={{ fontSize: 11, color: '#9ca3af', mb: 1 }}
+                      data-testid="pmv-storyboard-coverage-missing"
+                    >
+                      Mangler: {selectedSceneStoryboardCoverage.missingFrameList
+                        .slice(0, 4)
+                        .map((frame) => frame.shotNumber || frame.title || frame.frameId)
+                        .join(', ')}
+                    </Typography>
+                  )}
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={handleOpenSelectedSceneStoryboard}
+                    data-testid="pmv-scene-open-storyboard"
+                    sx={{ color: '#93c5fd', borderColor: 'rgba(59,130,246,0.32)' }}
+                  >
+                    Åpne scene-storyboard
+                  </Button>
+                </Box>
+              )}
               
               {/* Shot Duration - Editable */}
               <Box sx={{ mb: 1.5, pb: 1.5, borderBottom: '1px solid #1f3a33' }}>
@@ -7638,7 +8038,121 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         sceneNumber={selectedScene?.sceneNumber}
         onCreateShot={handleCreateShot}
         onSearch={handleSearchReferenceShots}
+        storyboardCandidates={selectedSceneStoryboardCandidates}
       />
+
+      <SceneStoryboardDialog
+        open={Boolean(sceneStoryboardDialog)}
+        scene={
+          sceneStoryboardDialog
+            ? (selectedScene?.id === sceneStoryboardDialog.sceneId
+                ? selectedScene
+                : scenes.find((entry) => entry.id === sceneStoryboardDialog.sceneId) || null)
+            : null
+        }
+        projectId={projectId}
+        activeFrameIndex={sceneStoryboardDialog?.activeFrameIndex}
+        onClose={() => setSceneStoryboardDialog(null)}
+        onSceneUpdate={(scene) => {
+          void handleSceneStoryboardUpdate(scene);
+        }}
+      />
+
+      <Dialog
+        open={Boolean(shotStoryboardDialog && selectedScene && selectedShot)}
+        onClose={() => setShotStoryboardDialog(null)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: '#111827',
+            border: '1px solid #1f2937',
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #1f2937' }}>
+          Koble shot til storyboard
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {selectedSceneStoryboardCandidates.length === 0 ? (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#bfdbfe' }}>
+              Scenen har ingen storyboard frames eller scene-matchede bibliotekselementer ennå.
+            </Alert>
+          ) : (
+            <Stack spacing={1.25}>
+              {selectedSceneStoryboardCandidates.map((candidate: StoryboardSeedCandidate) => {
+                const selected = shotStoryboardDialog?.selectedCandidateId === candidate.id;
+                return (
+                  <Box
+                    key={candidate.id}
+                    onClick={() => setShotStoryboardDialog((current) => (
+                      current ? { ...current, selectedCandidateId: candidate.id } : current
+                    ))}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 1.5,
+                      cursor: 'pointer',
+                      border: selected ? '1px solid #3b82f6' : '1px solid #253046',
+                      bgcolor: selected ? 'rgba(59,130,246,0.12)' : 'rgba(15,23,42,0.82)',
+                    }}
+                  >
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+                      <Box
+                        sx={{
+                          width: { xs: '100%', sm: 120 },
+                          minWidth: { sm: 120 },
+                          height: 74,
+                          borderRadius: 1,
+                          overflow: 'hidden',
+                          bgcolor: '#020617',
+                          border: '1px solid rgba(255,255,255,0.06)',
+                        }}
+                      >
+                        {candidate.thumbnailUrl || candidate.imageUrl ? (
+                          <Box
+                            component="img"
+                            src={candidate.thumbnailUrl || candidate.imageUrl}
+                            alt={candidate.title}
+                            sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : null}
+                      </Box>
+                      <Stack spacing={0.75} sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                          {candidate.title}
+                        </Typography>
+                        <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>
+                          {candidate.description}
+                        </Typography>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                          <Chip size="small" label={candidate.sourceLabel} sx={{ bgcolor: 'rgba(16,185,129,0.14)', color: '#6ee7b7' }} />
+                          <Chip size="small" label={candidate.shotType || 'Medium'} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#93c5fd' }} />
+                          {candidate.cameraAngle && (
+                            <Chip size="small" label={candidate.cameraAngle} sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1' }} />
+                          )}
+                        </Stack>
+                      </Stack>
+                    </Stack>
+                  </Box>
+                );
+              })}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setShotStoryboardDialog(null)} sx={{ color: '#9ca3af' }}>
+            Lukk
+          </Button>
+          <Button
+            onClick={() => { void handleConfirmSelectedShotStoryboardLink(); }}
+            variant="contained"
+            disabled={!shotStoryboardDialog?.selectedCandidateId}
+            sx={{ bgcolor: '#2563eb', '&:hover': { bgcolor: '#1d4ed8' } }}
+          >
+            Koble til frame
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ============================================ */}
       {/* WORKFLOW GAP FIX #2: Scene Needs Dialog */}

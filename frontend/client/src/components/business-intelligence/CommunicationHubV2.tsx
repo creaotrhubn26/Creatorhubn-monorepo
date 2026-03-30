@@ -121,6 +121,7 @@ interface CommunicationHubV2Props {
 }
 
 type Theming = ReturnType<typeof useTheming>;
+type SupportedProfession = 'music_producer' | 'photographer' | 'videographer' | 'vendor' | 'enterprise';
 
 // Panel types for multi-panel layout
 type PanelType = 'email-detail' | 'email-compose' | 'note-editor' | 'meeting-detail' | 'meeting-schedule' | 'chat' | null;
@@ -137,16 +138,30 @@ interface Panel {
 interface EmailComposeData {
   to?: string;
   subject?: string;
+  body?: string;
   replyTo?: Email;
   forward?: Email;
 }
 
-type PanelData = Email | Meeting | Note | EmailComposeData | Record<string, unknown>;
+interface MeetingDraftData {
+  title?: string;
+  date?: string;
+  time?: string;
+  duration?: number;
+  attendees?: string[];
+  location?: string;
+  type?: Meeting['type'];
+  notes?: string;
+}
 
-type ChatContext = {
-  type: 'email' | 'meeting' | 'note';
-  id: string;
-  title: string;
+type PanelData = Email | Meeting | Note | EmailComposeData | MeetingDraftData | Record<string, unknown>;
+
+type ChatWidgetContext = {
+  emailSubject?: string;
+  emailBody?: string;
+  noteTitle?: string;
+  noteContent?: string;
+  meetingTopic?: string;
 };
 
 // Email interfaces
@@ -221,9 +236,23 @@ interface AIToolState {
   contentType: 'paragraph' | 'email' | 'article' | 'social-post';
 }
 
+function normalizeCommunicationProfession(profession: string): SupportedProfession {
+  switch (profession) {
+    case 'music_producer':
+    case 'photographer':
+    case 'videographer':
+    case 'vendor':
+    case 'enterprise':
+      return profession;
+    default:
+      return 'vendor';
+  }
+}
+
 export default function CommunicationHubV2({ userId, profession }: CommunicationHubV2Props) {
   const theming = useTheming(profession);
   const queryClient = useQueryClient();
+  const supportedProfession = normalizeCommunicationProfession(profession);
 
   // Enhanced Master Integration for AI tools and features
   const masterIntegration = useEnhancedMasterIntegration();
@@ -265,12 +294,14 @@ export default function CommunicationHubV2({ userId, profession }: Communication
 
   // Chat state
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatContext, setChatContext] = useState<ChatContext | null>(null);
+  const [chatContext, setChatContext] = useState<ChatWidgetContext | null>(null);
 
   // Google Drive & Dictionary state
   const [showGoogleDrive, setShowGoogleDrive] = useState(false);
   const [showDictionary, setShowDictionary] = useState(false);
   const [selectedTextForDict, setSelectedTextForDict] = useState('');
+  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
+  const [quickActionsDialogOpen, setQuickActionsDialogOpen] = useState(false);
 
   // Auto-save state
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -296,12 +327,23 @@ export default function CommunicationHubV2({ userId, profession }: Communication
   const isNote = (data: PanelData | undefined): data is Note =>
     !!data && typeof (data as Note).title === 'string' && typeof (data as Note).content === 'string';
 
+  const isMeetingDraftData = (data: PanelData | undefined): data is MeetingDraftData =>
+    !!data &&
+    !isMeeting(data) &&
+    (
+      typeof (data as MeetingDraftData).title === 'string' ||
+      typeof (data as MeetingDraftData).date === 'string' ||
+      typeof (data as MeetingDraftData).time === 'string' ||
+      Array.isArray((data as MeetingDraftData).attendees)
+    );
+
   const isEmailComposeData = (data: PanelData | undefined): data is EmailComposeData =>
     !!data &&
     !isEmail(data) &&
     !isMeeting(data) &&
     !isNote(data) &&
-    ('to' in data || 'subject' in data || 'replyTo' in data || 'forward' in data);
+    !isMeetingDraftData(data) &&
+    ('to' in data || 'subject' in data || 'body' in data || 'replyTo' in data || 'forward' in data);
 
   const buildNotePayload = (data: PanelData | undefined): Note => {
     if (isNote(data)) {
@@ -384,17 +426,22 @@ export default function CommunicationHubV2({ userId, profession }: Communication
 
   // From Email → Schedule Meeting
   const scheduleMeetingFromEmail = useCallback((email: Email) => {
-    const meetingData: Partial<Meeting> = {
+    const meetingData: MeetingDraftData = {
       title: `Meeting: ${email.subject}`,
       attendees: [email.from],
-      notes: `Regarding, email: ${email.subject}`,
+      notes: `Regarding email: ${email.subject}`,
+      type: 'video',
+      duration: 60,
     };
     openPanel('meeting-schedule', meetingData, 'right');
   }, [openPanel]);
 
   // From Email → Open Chat
   const chatAboutEmail = useCallback((email: Email) => {
-    setChatContext({ type: 'email', id: email.id, title: email.subject });
+    setChatContext({
+      emailSubject: email.subject,
+      emailBody: email.body,
+    });
     setChatOpen(true);
   }, []);
 
@@ -417,16 +464,19 @@ export default function CommunicationHubV2({ userId, profession }: Communication
   // From Meeting → Send Email
   const emailMeetingAttendees = useCallback((meeting: Meeting) => {
     const emailData = {
-      to: meeting.attendees.join(''),
+      to: meeting.attendees.join(', '),
       subject: `Re: ${meeting.title}`,
-      initialBody: `Regarding our meeting on ${meeting.date} at ${meeting.time}`,
+      body: `Regarding our meeting on ${meeting.date} at ${meeting.time}`,
     };
     openPanel('email-compose', emailData, 'right');
   }, [openPanel]);
 
   // From Meeting → Open Chat
   const chatAboutMeeting = useCallback((meeting: Meeting) => {
-    setChatContext({ type: 'meeting', id: meeting.id, title: meeting.title });
+    setChatContext({
+      meetingTopic: meeting.title,
+      noteContent: meeting.notes,
+    });
     setChatOpen(true);
   }, []);
 
@@ -434,23 +484,28 @@ export default function CommunicationHubV2({ userId, profession }: Communication
   const emailFromNote = useCallback((note: Note) => {
     const emailData = {
       subject: note.title,
-      initialBody: note.content,
+      body: note.content,
     };
     openPanel('email-compose', emailData, 'right');
   }, [openPanel]);
 
   // From Note → Schedule Meeting
   const scheduleMeetingFromNote = useCallback((note: Note) => {
-    const meetingData: Partial<Meeting> = {
+    const meetingData: MeetingDraftData = {
       title: note.title,
       notes: note.content,
+      type: 'video',
+      duration: 60,
     };
     openPanel('meeting-schedule', meetingData, 'right');
   }, [openPanel]);
 
   // From Note → Open Chat
   const chatAboutNote = useCallback((note: Note) => {
-    setChatContext({ type: 'note', id: note.id, title: note.title });
+    setChatContext({
+      noteTitle: note.title,
+      noteContent: note.content,
+    });
     setChatOpen(true);
   }, []);
 
@@ -611,6 +666,18 @@ export default function CommunicationHubV2({ userId, profession }: Communication
     return () => clearTimeout(autoSaveTimer);
   }, [noteContent, noteTitle, noteCategory, noteTags]);
 
+  const refreshWorkspace = async () => {
+    await Promise.all([
+      refetchEmails(),
+      refetchMeetings(),
+      refetchNotes(),
+      queryClient.invalidateQueries({ queryKey: [`/api/communication/inboxes/${userId}`] }),
+      queryClient.invalidateQueries({ queryKey: [`/api/communication/emails/${userId}`] }),
+      queryClient.invalidateQueries({ queryKey: [`/api/communication/meetings/${userId}`] }),
+      queryClient.invalidateQueries({ queryKey: [`/api/communication/notes/${userId}`] }),
+    ]);
+  };
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // RENDER - Multi-Panel Layout
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -620,9 +687,35 @@ export default function CommunicationHubV2({ userId, profession }: Communication
       {/* Top Navigation Bar */}
       <AppBar position="static" elevation={0} sx={{ bgcolor: theming.colors.primary }} component="header">
         <Toolbar>
-          <Typography variant="h6" component="h1" sx={{ flexGrow: 1, color: 'white' }}>
-            Kommunikasjonshub
-          </Typography>
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexGrow: 1, minWidth: 0 }}>
+            <Typography variant="h6" component="h1" sx={{ color: 'white' }}>
+              Kommunikasjonshub
+            </Typography>
+            {selectedEmail && (
+              <Chip
+                size="small"
+                icon={<EmailIcon aria-hidden="true" />}
+                label={selectedEmail.subject}
+                sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'white', maxWidth: 220 }}
+              />
+            )}
+            {selectedMeeting && (
+              <Chip
+                size="small"
+                icon={<MeetingIcon aria-hidden="true" />}
+                label={selectedMeeting.title}
+                sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'white', maxWidth: 220 }}
+              />
+            )}
+            {selectedNote && (
+              <Chip
+                size="small"
+                icon={<NotesIcon aria-hidden="true" />}
+                label={selectedNote.title}
+                sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'white', maxWidth: 220 }}
+              />
+            )}
+          </Stack>
 
           {/* Quick Actions - Always Accessible */}
           <Stack direction="row" spacing={1} role="group" aria-label="Hurtighandlinger">
@@ -696,9 +789,7 @@ export default function CommunicationHubV2({ userId, profession }: Communication
               <IconButton
                 color="inherit"
                 onClick={() => {
-                  refetchEmails();
-                  refetchMeetings();
-                  refetchNotes();
+                  void refreshWorkspace();
                 }}
                 aria-label="Oppdater alle data"
                 sx={{
@@ -715,6 +806,7 @@ export default function CommunicationHubV2({ userId, profession }: Communication
             <Tooltip title="Innstillinger">
               <IconButton
                 color="inherit"
+                onClick={() => setWorkspaceDrawerOpen(true)}
                 aria-label="Åpne innstillinger"
                 sx={{
                   '&:focus-visible': {
@@ -910,18 +1002,21 @@ export default function CommunicationHubV2({ userId, profession }: Communication
 
               {/* Panel Content */}
               <Box sx={{ p: 2 }}>
-                {panel.type === 'email-detail' && isEmail(panel.data) && (
-                  <EmailDetailPanel
-                    email={panel.data}
-                    onReply={() => openPanel('email-compose', { replyTo: panel.data }, 'right')}
-                    onForward={() => openPanel('email-compose', { forward: panel.data }, 'right')}
-                    onDelete={() => deleteEmailMutation.mutate(panel.data.id)}
-                    onCreateNote={() => createNoteFromEmail(panel.data)}
-                    onScheduleMeeting={() => scheduleMeetingFromEmail(panel.data)}
-                    onOpenChat={() => chatAboutEmail(panel.data)}
-                    theming={theming}
-                  />
-                )}
+                {panel.type === 'email-detail' && isEmail(panel.data) && (() => {
+                  const email = panel.data;
+                  return (
+                    <EmailDetailPanel
+                      email={email}
+                      onReply={() => openPanel('email-compose', { replyTo: email }, 'right')}
+                      onForward={() => openPanel('email-compose', { forward: email }, 'right')}
+                      onDelete={() => deleteEmailMutation.mutate(email.id)}
+                      onCreateNote={() => createNoteFromEmail(email)}
+                      onScheduleMeeting={() => scheduleMeetingFromEmail(email)}
+                      onOpenChat={() => chatAboutEmail(email)}
+                      theming={theming}
+                    />
+                  );
+                })()}
 
                 {panel.type === 'email-compose' && (
                   <SmartEmailComposer
@@ -931,13 +1026,14 @@ export default function CommunicationHubV2({ userId, profession }: Communication
                     userId={userId}
                     initialTo={isEmailComposeData(panel.data) ? panel.data.to : undefined}
                     initialSubject={isEmailComposeData(panel.data) ? panel.data.subject : undefined}
+                    initialBody={isEmailComposeData(panel.data) ? panel.data.body : undefined}
                     replyToEmail={isEmailComposeData(panel.data) ? panel.data.replyTo : undefined}
                   />
                 )}
 
                 {panel.type === 'note-editor' && (
                   <NoteEditorPanel
-                    note={panel.data}
+                    note={isNote(panel.data) ? panel.data : null}
                     noteTitle={noteTitle}
                     setNoteTitle={setNoteTitle}
                     noteContent={noteContent}
@@ -993,27 +1089,39 @@ export default function CommunicationHubV2({ userId, profession }: Communication
                   />
                 )}
 
-                {panel.type === 'meeting-detail' && panel.data && (
-                  <MeetingDetailPanel
-                    meeting={panel.data}
-                    onCreateNote={() => createNoteFromMeeting(panel.data)}
-                    onSendEmail={() => emailMeetingAttendees(panel.data)}
-                    onOpenChat={() => chatAboutMeeting(panel.data)}
-                    onPrepare={() => {
-                      // Open SmartMeetingPreparation
-                    }}
-                    theming={theming}
-                  />
-                )}
+                {panel.type === 'meeting-detail' && isMeeting(panel.data) && (() => {
+                  const meeting = panel.data;
+                  return (
+                    <MeetingDetailPanel
+                      meeting={meeting}
+                      onCreateNote={() => createNoteFromMeeting(meeting)}
+                      onSendEmail={() => emailMeetingAttendees(meeting)}
+                      onOpenChat={() => chatAboutMeeting(meeting)}
+                      onPrepare={() => openPanel('meeting-schedule', meeting, 'right')}
+                      theming={theming}
+                    />
+                  );
+                })()}
 
                 {panel.type === 'meeting-schedule' && (
-                  <SmartMeetingPreparation
-                    open={true}
-                    onClose={() => closePanel(panel.id)}
-                    profession={profession}
-                    userId={userId}
-                    meetingData={panel.data}
-                  />
+                  isMeeting(panel.data) ? (
+                    <SmartMeetingPreparation
+                      meetingId={panel.data.id}
+                      profession={supportedProfession}
+                      userId={userId}
+                    />
+                  ) : (
+                    <MeetingSchedulePanel
+                      initialMeeting={isMeetingDraftData(panel.data) ? panel.data : undefined}
+                      onCreateMeeting={(meeting) => {
+                        createMeetingMutation.mutate(meeting);
+                        closePanel(panel.id);
+                      }}
+                      onCancel={() => closePanel(panel.id)}
+                      theming={theming}
+                      profession={supportedProfession}
+                    />
+                  )
                 )}
               </Box>
             </Paper>
@@ -1038,12 +1146,121 @@ export default function CommunicationHubV2({ userId, profession }: Communication
           <UniversalChatWidget
             userId={userId}
             profession={profession}
-            context={chatContext}
+            context={chatContext ?? undefined}
             onClose={() => setChatOpen(false)}
             onCreateNote={createNoteFromChat}
           />
         </Box>
       )}
+
+      <Fab
+        color="secondary"
+        aria-label="Åpne hurtighandlinger"
+        onClick={() => setQuickActionsDialogOpen(true)}
+        sx={{ position: 'fixed', bottom: 24, right: chatOpen ? 440 : 24, zIndex: 180 }}
+      >
+        <AddIcon aria-hidden="true" />
+      </Fab>
+
+      <Dialog
+        open={quickActionsDialogOpen}
+        onClose={() => setQuickActionsDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Hurtighandlinger</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <Button startIcon={<EmailIcon aria-hidden="true" />} onClick={() => {
+              openPanel('email-compose', {}, 'right');
+              setQuickActionsDialogOpen(false);
+            }}>
+              Ny e-post
+            </Button>
+            <Button startIcon={<MeetingIcon aria-hidden="true" />} onClick={() => {
+              openPanel('meeting-schedule', {}, 'right');
+              setQuickActionsDialogOpen(false);
+            }}>
+              Planlegg møte
+            </Button>
+            <Button startIcon={<NotesIcon aria-hidden="true" />} onClick={() => {
+              openPanel('note-editor', {}, 'right');
+              setQuickActionsDialogOpen(false);
+            }}>
+              Nytt notat
+            </Button>
+            <Button startIcon={<ChatIcon aria-hidden="true" />} onClick={() => {
+              setChatOpen(true);
+              setQuickActionsDialogOpen(false);
+            }}>
+              Åpne chat
+            </Button>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setQuickActionsDialogOpen(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Drawer
+        anchor="right"
+        open={workspaceDrawerOpen}
+        onClose={() => setWorkspaceDrawerOpen(false)}
+      >
+        <Box sx={{ width: 360, p: 2 }}>
+          <Stack spacing={2}>
+            <Box>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                Workspace-status
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Levende oversikt over filtre, aktiv kontekst og AI-arbeidsflate.
+              </Typography>
+            </Box>
+
+            <List>
+              <ListItem>
+                <ListItemIcon><FilterIcon aria-hidden="true" /></ListItemIcon>
+                <ListItemText primary="Aktive e-postfiltre" secondary={`Inbox: ${selectedInbox} • Filter: ${emailFilter}`} />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CategoryIcon aria-hidden="true" /></ListItemIcon>
+                <ListItemText primary="Notatkategori" secondary={noteCategory} />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><PreviewIcon aria-hidden="true" /></ListItemIcon>
+                <ListItemText primary="Åpne paneler" secondary={`${panels.length} paneler i arbeidsflaten`} />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><FolderIcon aria-hidden="true" /></ListItemIcon>
+                <ListItemText primary="Notater i visning" secondary={`${notes.length} tilgjengelige notater`} />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><ArchiveIcon aria-hidden="true" /></ListItemIcon>
+                <ListItemText primary="Utkast og lagring" secondary={`${emailFilter === 'drafts' ? 'Utkast åpne' : 'Vanlig arbeidsmodus'} • ${isSaving ? 'lagrer notat' : 'stabilt'}`} />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><TrendingIcon aria-hidden="true" /></ListItemIcon>
+                <ListItemText
+                  primary="AI-arbeidsflate"
+                  secondary={masterIntegration ? 'Koblet til Enhanced Master Integration' : 'AI-arbeidsflate utilgjengelig'}
+                />
+              </ListItem>
+            </List>
+
+            <Button
+              variant="contained"
+              startIcon={<RefreshIcon aria-hidden="true" />}
+              onClick={() => {
+                void refreshWorkspace();
+              }}
+              sx={{ bgcolor: theming.colors.primary }}
+            >
+              Synkroniser på nytt
+            </Button>
+          </Stack>
+        </Box>
+      </Drawer>
 
       {/* Snackbar */}
       {snackbar.open && (
@@ -1205,8 +1422,8 @@ function EmailListView({
                   aria-pressed={emailFilter === filter}
                   sx={{
                     justifyContent: 'flex-start',
-                    color: emailFilter === filter.value ? 'white' : theming.colors.primary,
-                    bgcolor: emailFilter === filter.value ? theming.colors.primary : 'transparent','&:focus-visible': {
+                    color: emailFilter === filter ? 'white' : theming.colors.primary,
+                    bgcolor: emailFilter === filter ? theming.colors.primary : 'transparent','&:focus-visible': {
                       outline: '3px solid',
                       outlineColor: 'primary.main',
                       outlineOffset: '2px',
@@ -2431,6 +2648,201 @@ function MeetingDetailPanel({
   );
 }
 
+interface MeetingSchedulePanelProps {
+  initialMeeting?: MeetingDraftData;
+  onCreateMeeting: (meeting: Partial<Meeting>) => void;
+  onCancel: () => void;
+  theming: Theming;
+  profession: SupportedProfession;
+}
+
+function MeetingSchedulePanel({
+  initialMeeting,
+  onCreateMeeting,
+  onCancel,
+  theming,
+  profession,
+}: MeetingSchedulePanelProps) {
+  const [title, setTitle] = useState(initialMeeting?.title ?? '');
+  const [date, setDate] = useState(initialMeeting?.date ?? new Date().toISOString().slice(0, 10));
+  const [time, setTime] = useState(initialMeeting?.time ?? '10:00');
+  const [duration, setDuration] = useState(initialMeeting?.duration ? String(initialMeeting.duration) : '60');
+  const [attendees, setAttendees] = useState(initialMeeting?.attendees?.join(', ') ?? '');
+  const [location, setLocation] = useState(initialMeeting?.location ?? '');
+  const [meetingType, setMeetingType] = useState<Meeting['type']>(initialMeeting?.type ?? 'video');
+  const [notes, setNotes] = useState(initialMeeting?.notes ?? '');
+  const [validationError, setValidationError] = useState('');
+
+  const handleCreate = () => {
+    const attendeeList = attendees
+      .split(',')
+      .map((attendee) => attendee.trim())
+      .filter((attendee) => attendee.length > 0);
+    const parsedDuration = Number.parseInt(duration, 10);
+
+    if (title.trim().length === 0) {
+      setValidationError('Møtet må ha en tittel.');
+      return;
+    }
+
+    if (attendeeList.length === 0) {
+      setValidationError('Legg til minst én deltaker.');
+      return;
+    }
+
+    if (Number.isNaN(parsedDuration) || parsedDuration <= 0) {
+      setValidationError('Varighet må være et gyldig antall minutter.');
+      return;
+    }
+
+    setValidationError('');
+    onCreateMeeting({
+      title: title.trim(),
+      date,
+      time,
+      duration: parsedDuration,
+      attendees: attendeeList,
+      location: location.trim(),
+      type: meetingType,
+      notes: notes.trim(),
+      status: 'upcoming',
+      preparationStatus: 'not-started',
+    });
+  };
+
+  return (
+    <Box role="form" aria-label="Planlegg møte">
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary, fontWeight: 'bold', mb: 1 }}>
+            Planlegg møte
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Opprett et nytt møte for {profession.replace(/_/g, ' ')} og send det videre til møteforberedelse når detaljene er klare.
+          </Typography>
+        </Box>
+
+        {validationError && <Alert severity="error">{validationError}</Alert>}
+
+        <TextField
+          fullWidth
+          label="Møtetittel"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              fullWidth
+              label="Dato"
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              fullWidth
+              label="Tid"
+              type="time"
+              value={time}
+              onChange={(event) => setTime(event.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              fullWidth
+              label="Varighet (minutter)"
+              type="number"
+              value={duration}
+              onChange={(event) => setDuration(event.target.value)}
+              inputProps={{ min: 15, step: 15 }}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              fullWidth
+              label="Sted / lenke"
+              value={location}
+              onChange={(event) => setLocation(event.target.value)}
+            />
+          </Grid>
+        </Grid>
+
+        <TextField
+          fullWidth
+          label="Deltakere"
+          placeholder="kunde@example.com, produsent@example.com"
+          value={attendees}
+          onChange={(event) => setAttendees(event.target.value)}
+          helperText="Skill flere deltakere med komma."
+        />
+
+        <Box>
+          <Typography variant="subtitle2" component="h3" sx={{ mb: 1, color: theming.colors.primary }}>
+            Møtetype
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Chip
+              icon={<VideoIcon aria-hidden="true" />}
+              label="Video"
+              color={meetingType === 'video' ? 'primary' : 'default'}
+              variant={meetingType === 'video' ? 'filled' : 'outlined'}
+              onClick={() => setMeetingType('video')}
+            />
+            <Chip
+              icon={<PhoneIcon aria-hidden="true" />}
+              label="Telefon"
+              color={meetingType === 'phone' ? 'primary' : 'default'}
+              variant={meetingType === 'phone' ? 'filled' : 'outlined'}
+              onClick={() => setMeetingType('phone')}
+            />
+            <Chip
+              icon={<PersonIcon aria-hidden="true" />}
+              label="Fysisk"
+              color={meetingType === 'in-person' ? 'primary' : 'default'}
+              variant={meetingType === 'in-person' ? 'filled' : 'outlined'}
+              onClick={() => setMeetingType('in-person')}
+            />
+          </Stack>
+        </Box>
+
+        <TextField
+          fullWidth
+          multiline
+          minRows={5}
+          label="Møtenotater"
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          placeholder="Agenda, forberedelser, referanser og mål for møtet."
+        />
+
+        <Stack direction="row" spacing={2}>
+          <Button
+            fullWidth
+            variant="outlined"
+            onClick={onCancel}
+          >
+            Avbryt
+          </Button>
+          <Button
+            fullWidth
+            variant="contained"
+            startIcon={<CalendarIcon aria-hidden="true" />}
+            onClick={handleCreate}
+            sx={{ bgcolor: theming.colors.primary }}
+          >
+            Opprett møte
+          </Button>
+        </Stack>
+      </Stack>
+    </Box>
+  );
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // DETAIL PANELS - Note Editor with AI Tools
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2507,6 +2919,8 @@ function NoteEditorPanel({
 }: NoteEditorPanelProps) {
   const [newTag, setNewTag] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const paraphraseModes: AIToolState['paraphraseMode'][] = ['standard', 'fluency', 'creative', 'formal', 'shorten', 'expand'];
+  const summaryFormats: AIToolState['summaryFormat'][] = ['bullets', 'paragraph', 'key-points'];
 
   // Ref for text selection context menu
   const editorContainerRef = React.useRef<HTMLDivElement>(null);
@@ -2627,6 +3041,36 @@ function NoteEditorPanel({
     } finally {
       setAiLoading(false);
     }
+  };
+
+  const cycleParaphraseMode = () => {
+    const currentIndex = paraphraseModes.indexOf(aiToolState.paraphraseMode);
+    const nextMode = paraphraseModes[(currentIndex + 1) % paraphraseModes.length];
+    setAiToolState({
+      ...aiToolState,
+      paraphraseMode: nextMode,
+    });
+  };
+
+  const cycleSummaryFormat = () => {
+    const currentIndex = summaryFormats.indexOf(aiToolState.summaryFormat);
+    const nextFormat = summaryFormats[(currentIndex + 1) % summaryFormats.length];
+    setAiToolState({
+      ...aiToolState,
+      summaryFormat: nextFormat,
+    });
+  };
+
+  const captureSelectionForDictionary = () => {
+    const selectedText = window.getSelection()?.toString().trim() ?? '';
+    if (selectedText.length === 0) {
+      setSnackbar({ open: true, message: 'Marker tekst i editoren først.', severity: 'warning' });
+      return;
+    }
+
+    setSelectedTextForDict(selectedText);
+    setShowDictionary(true);
+    setSnackbar({ open: true, message: `Ordbok åpnet for "${selectedText}".`, severity: 'info' });
   };
 
   return (
@@ -2772,12 +3216,39 @@ function NoteEditorPanel({
 
       {/* AI Tools Panel */}
       <Collapse in={showAITools}>
-        <Card id="ai-tools-panel" sx={{ mb: 2, bgcolor: `${theming.colors.primary}05`, border: `1px solid ${theming.colors.primary}20` }}>
+          <Card id="ai-tools-panel" sx={{ mb: 2, bgcolor: `${theming.colors.primary}05`, border: `1px solid ${theming.colors.primary}20` }}>
           <CardContent>
             <Typography variant="subtitle2" component="h4" sx={{ mb: 2, color: theming.colors.primary, fontWeight: 'bold' }}>
               <AIIcon aria-hidden="true" sx={{ mr: 1, verticalAlign: 'middle' }} />
               AI-skriveassistent
             </Typography>
+
+            <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
+              <Chip
+                icon={<CopyIcon aria-hidden="true" />}
+                label={`Omskrivning: ${aiToolState.paraphraseMode}`}
+                onClick={cycleParaphraseMode}
+                variant="outlined"
+              />
+              <Chip
+                icon={<QuoteIcon aria-hidden="true" />}
+                label={`Oppsummering: ${aiToolState.summaryFormat}`}
+                onClick={cycleSummaryFormat}
+                variant="outlined"
+              />
+              <Chip
+                icon={<TranslateIcon aria-hidden="true" />}
+                label={`Språk: ${aiToolState.selectedLanguage} → ${aiToolState.targetLanguage}`}
+                onClick={() =>
+                  setAiToolState({
+                    ...aiToolState,
+                    selectedLanguage: aiToolState.targetLanguage,
+                    targetLanguage: aiToolState.selectedLanguage,
+                  })
+                }
+                variant="outlined"
+              />
+            </Stack>
 
             <Grid container spacing={2} role="group" aria-label="AI-verktøy">
               {/* Paraphrase */}
@@ -3045,6 +3516,23 @@ function NoteEditorPanel({
               Norsk ordbok
             </Button>
           </Grid>
+          <Grid size={{ xs: 12 }}>
+            <Button
+              fullWidth
+              variant="outlined"
+              size="small"
+              startIcon={<PreviewIcon aria-hidden="true" />}
+              onClick={captureSelectionForDictionary}
+              sx={{
+                '&:focus-visible': {
+                  outline: '3px solid',
+                  outlineColor: 'primary.main',
+                  outlineOffset: '2px',
+                }}}
+            >
+              Bruk markert tekst i ordbok
+            </Button>
+          </Grid>
         </Grid>
       </Stack>
 
@@ -3089,4 +3577,3 @@ function NoteEditorPanel({
     </Box>
   );
 }
-

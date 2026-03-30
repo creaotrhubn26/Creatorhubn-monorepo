@@ -51,6 +51,8 @@ export interface UserRole {
 
 export type RoleRoomGoogleConnectionState = 'disconnected' | 'connected' | 'expired' | 'error';
 
+export type RoleRoomLinkedInConnectionState = 'disconnected' | 'connected' | 'expired' | 'error';
+
 export interface RoleRoomGoogleConnection {
   id: string;
   userId: string;
@@ -59,6 +61,23 @@ export interface RoleRoomGoogleConnection {
   googleSubject?: string | null;
   scopes: string[];
   state: RoleRoomGoogleConnectionState;
+  lastError?: string | null;
+  profile: Record<string, unknown>;
+  expiryDate?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  lastUsedAt?: string | null;
+}
+
+export interface RoleRoomLinkedInConnection {
+  id: string;
+  userId: string;
+  roleRoomEmail?: string | null;
+  linkedInMemberId?: string | null;
+  linkedInEmail?: string | null;
+  linkedInName?: string | null;
+  scopes: string[];
+  state: RoleRoomLinkedInConnectionState;
   lastError?: string | null;
   profile: Record<string, unknown>;
   expiryDate?: string | null;
@@ -157,6 +176,8 @@ export interface RoleRoomGoogleLoginResult {
   success: boolean;
   mode: 'login' | 'link';
   transferId: string;
+  projectId?: string | null;
+  autoConfiguredProjectBinding?: boolean | null;
   sessionToken?: string | null;
   user?: {
     id: number | string;
@@ -174,6 +195,18 @@ export interface RoleRoomGoogleLoginResult {
   };
 }
 
+export interface RoleRoomLinkedInLinkResult {
+  success: boolean;
+  mode: 'link';
+  transferId: string;
+  linkedIn: {
+    memberId: string;
+    email?: string | null;
+    name?: string | null;
+    profile: Record<string, unknown>;
+  };
+}
+
 export type RoleRoomGoogleFolderKey =
   | 'brief'
   | 'materials'
@@ -185,8 +218,17 @@ export type RoleRoomGoogleFolderKey =
 export interface RoleRoomGoogleOauthStartInput {
   mode?: 'login' | 'link';
   returnPath?: string;
+  browserOrigin?: string;
   loginAs?: string;
   requestedRole?: string | null;
+  projectId?: string;
+  email?: string;
+}
+
+export interface RoleRoomLinkedInOauthStartInput {
+  mode?: 'link';
+  returnPath?: string;
+  browserOrigin?: string;
   projectId?: string;
   email?: string;
 }
@@ -298,8 +340,10 @@ export type CrewRole =
 export type CrewStatus = 'confirmed' | 'pending' | 'invited' | 'unavailable' | (string & {});
 
 export interface ContactInfo {
+  name?: string;
   email?: string;
   phone?: string;
+  address?: string;
   [key: string]: unknown;
 }
 
@@ -381,11 +425,36 @@ export interface CrewMember {
   contact_info?: ContactInfo;
   rate?: number;
   notes?: string;
+  notesAuthorName?: string;
+  notesAuthorId?: string;
+  notesUpdatedAt?: string;
+  notesAuthor?: string;
+  notesBy?: string;
+  notesLastEditedAt?: string;
+  notesTimestamp?: string;
   assignedScenes?: string[];
   assigned_scenes?: string[];
   travelCosts?: Record<string, TravelCostEntry>;
   travel_costs?: Record<string, TravelCostEntry>;
-  availability?: Record<string, unknown>;
+  availability?: {
+    startDate?: string;
+    endDate?: string;
+    [key: string]: unknown;
+  };
+  availabilityCells?: AvailabilityCell[];
+  splitSheet?: {
+    percentage?: number;
+    invitationStatus?: ConsentInvitationStatus;
+    notes?: string;
+    notesAuthorName?: string;
+    notesAuthorId?: string;
+    notesUpdatedAt?: string;
+    notesAuthor?: string;
+    notesBy?: string;
+    notesLastEditedAt?: string;
+    notesTimestamp?: string;
+    [key: string]: unknown;
+  };
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
@@ -399,19 +468,26 @@ export interface CrewAssignment {
   crew_member_id?: string;
   shootDayId: string;
   shoot_day_id?: string;
+  shootDayDate?: string;
+  shoot_day_date?: string;
   projectId?: string;
   role?: string;
+  unit?: 'A' | 'B' | (string & {});
   callTime?: string;
   wrapTime?: string;
   notes?: string;
+  assignmentStatus?: 'assigned' | 'hold' | 'travel' | 'release' | (string & {});
   status?: string;
 }
 
 export interface CrewConflict {
   id?: string;
   type: 'double_booking' | 'day_off' | 'max_hours' | 'availability' | 'time_overlap' | string;
-  crewMemberId?: string;
+  crewMemberId: string;
   shootDayId?: string;
+  date?: string;
+  conflictType?: string;
+  details?: string;
   message?: string;
   severity?: 'low' | 'medium' | 'high' | string;
   [key: string]: unknown;
@@ -419,7 +495,8 @@ export interface CrewConflict {
 
 export interface AvailabilityCell {
   date: string;
-  status: 'available' | 'unavailable' | 'tentative' | string;
+  availability?: 'available' | 'hold' | 'unavailable' | 'tentative' | string;
+  status?: 'available' | 'unavailable' | 'tentative' | string;
   reason?: string;
   [key: string]: unknown;
 }
@@ -431,24 +508,106 @@ export interface Schedule {
   title?: string;
   candidateId?: string;
   candidate_id?: string;
+  candidateName?: string;
+  candidate_name?: string;
   roleId?: string;
   role_id?: string;
+  roleName?: string;
+  role_name?: string;
   sceneId?: string;
   scene_id?: string;
   locationId?: string;
   location_id?: string;
+  location?: string;
   date?: string;
+  time?: string;
   startTime?: string;
   start_time?: string;
   endTime?: string;
   end_time?: string;
   type?: string;
-  status?: string;
+  status?: 'scheduled' | 'confirmed' | 'awaiting_callback' | 'completed' | 'cancelled' | 'pool';
   notes?: string;
+  favorite?: boolean;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
   updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface LocationPhotographySpot {
+  name?: string;
+  description?: string;
+  lighting?: string;
+  bestTimes?: string[];
+  accessibility?: 'easy' | 'moderate' | 'difficult' | (string & {});
+  notes?: string;
+  restrictions?: string[];
+  coordinates?: { lat: number; lng: number };
+  [key: string]: unknown;
+}
+
+export interface LocationDroneRestrictions {
+  allowed?: boolean;
+  maxAltitude?: number;
+  restrictions?: string[];
+  noFlyZones?: Array<{ lat: number; lng: number }>;
+  [key: string]: unknown;
+}
+
+export interface LocationWeatherExposure {
+  windExposure?: 'low' | 'moderate' | 'high' | (string & {});
+  sunExposure?: 'morning' | 'afternoon' | 'all-day' | (string & {});
+  shelterOptions?: string[];
+  droneSafety?: string;
+  droneSafetyDescription?: string;
+  windSpeedKmh?: number | null;
+  windSpeed?: number | null;
+  windDirection?: number | null;
+  sunrise?: string;
+  sunset?: string;
+  daylightHours?: number | null;
+  sunDescription?: string;
+  [key: string]: unknown;
+}
+
+export interface LocationAccessSpot {
+  name: string;
+  address: string;
+  coordinates: { lat: number; lng: number };
+  distance: number;
+  spaces?: number;
+  description?: string;
+}
+
+export interface LocationAccessAnalysis {
+  accessibility?: 'wheelchair-accessible' | 'limited' | 'not-accessible' | (string & {});
+  walkingDistance?: number;
+  publicTransport?: string[];
+  parkingSpots?: LocationAccessSpot[];
+  evParking?: { distance?: number; description?: string };
+  evCharging?: { distance?: number; description?: string };
+  evParkingSpots?: LocationAccessSpot[];
+  evChargingSpots?: LocationAccessSpot[];
+  [key: string]: unknown;
+}
+
+export interface LocationPropertyAnalysis {
+  photographySpots: LocationPhotographySpot[];
+  droneRestrictions: LocationDroneRestrictions;
+  weatherExposure: LocationWeatherExposure;
+  accessAnalysis: LocationAccessAnalysis;
+  manualNotes?: string;
+  lastManualEditAt?: string;
+  permitWorkflow?: {
+    shootDate?: string;
+    statuses?: Partial<Record<string, string>>;
+    notes?: Partial<Record<string, string>>;
+    operations?: Partial<Record<string, boolean>>;
+    lastUpdated?: string;
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
@@ -457,12 +616,38 @@ export interface Location {
   projectId?: string;
   project_id?: string;
   name: string;
+  type?: 'studio' | 'outdoor' | 'indoor' | 'virtual' | 'other' | (string & {});
+  propertyId?: string;
   address?: string;
   coordinates?: { lat: number; lng: number };
+  capacity?: number;
+  facilities?: string[];
+  availability?: Record<string, unknown>;
   contactInfo?: ContactInfo;
   contact_info?: ContactInfo;
   accessNotes?: string;
+  notes?: string;
+  favorite?: boolean;
+  isBasecamp?: boolean;
+  media?: Record<string, unknown>;
+  loadFlow?: {
+    loadInAt?: string;
+    shootStartAt?: string;
+    wrapAt?: string;
+    loadOutAt?: string;
+    status?: 'planned' | 'ready' | 'in_progress' | 'completed' | (string & {});
+    notes?: string;
+    [key: string]: unknown;
+  };
+  notesAuthorName?: string;
+  notesAuthorId?: string;
+  notesUpdatedAt?: string;
+  notesAuthor?: string;
+  notesBy?: string;
+  notesLastEditedAt?: string;
+  notesTimestamp?: string;
   assignedScenes?: string[];
+  propertyAnalysis?: LocationPropertyAnalysis;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
@@ -618,6 +803,10 @@ export interface CastingShot {
   reservedAt?: string;
   colorTag?: 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'gray' | string;
   imageUrl?: string;
+  storyboardFrameId?: string;
+  storyboardLibraryItemId?: string;
+  storyboardLinkedSceneId?: string;
+  storyboardSourceType?: 'scene-frame' | 'library-item';
   comments?: ShotComment[];
   completedAt?: string;
   createdAt?: string;
@@ -696,9 +885,34 @@ export interface ProductionDay {
   projectId?: string;
   date?: string;
   scenes: string[];
+  locationId?: string;
+  crew: string[];
+  props: string[];
   callTime?: string;
   wrapTime?: string;
   notes?: string;
+  status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+  weatherForecast?: {
+    location: string;
+    forecast: Array<{
+      date: string;
+      temperature: number;
+      humidity: number;
+      windSpeed: number;
+      precipitation: number;
+      symbol: string;
+    }>;
+    days: number;
+    source: 'fallback' | 'yr_api';
+  };
+  lastModifiedBy?: string;
+  createdBy?: string;
+  changeLog?: Array<{
+    timestamp: string;
+    user: string;
+    action: string;
+    changes: string;
+  }>;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
@@ -719,6 +933,10 @@ export type ProducerContentCalendarStatus =
   | 'scheduled'
   | 'published';
 
+export type ProducerBrandLogoVariantSelection =
+  | 'auto'
+  | ProducerBrandLogoVariantType;
+
 export interface ProducerPhasePlanItem {
   phase: ProducerPlanningPhase;
   title?: string;
@@ -737,6 +955,7 @@ export interface ProducerContentCalendarItem {
   title: string;
   channel?: string;
   format?: string;
+  logoVariantSelection?: ProducerBrandLogoVariantSelection;
   publishAt?: string;
   owner?: string;
   phase: ProducerPlanningPhase;
@@ -752,8 +971,79 @@ export interface ProducerBrandGuideColor {
   usage?: string;
 }
 
+export type ProducerBrandLogoMarkType =
+  | 'wordmark'
+  | 'symbol'
+  | 'combination';
+
+export type ProducerBrandLogoVariantType =
+  | 'primary'
+  | 'light'
+  | 'dark'
+  | 'icon';
+
+export interface ProducerBrandLogoDetection {
+  sourceFileName?: string;
+  sourceProjectFileId?: string;
+  sourceProjectFileUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  aspectRatioLabel?: string;
+  markType?: ProducerBrandLogoMarkType;
+  hasTransparency?: boolean;
+  dominantColors?: ProducerBrandGuideColor[];
+  suggestedPlacement?: ProducerBrandLogoPlacement;
+  suggestedTiming?: ProducerBrandLogoTiming;
+  suggestedTreatment?: ProducerBrandLogoTreatment;
+  suggestedOpacityPercent?: number;
+  suggestedSafeZoneHorizontalPercent?: number;
+  suggestedSafeZoneVerticalPercent?: number;
+  suggestedMarginPixelsAt1080?: number;
+  note?: string;
+  detectedAt?: string;
+}
+
+export interface ProducerBrandLogoVariant {
+  id: string;
+  type: ProducerBrandLogoVariantType;
+  label?: string;
+  fileName?: string;
+  logoUrl?: string;
+  projectFileId?: string;
+  projectFileUrl?: string;
+  detection?: ProducerBrandLogoDetection;
+  uploadedAt?: string;
+}
+
+export type ProducerBrandLogoPlacement =
+  | 'top_left'
+  | 'top_right'
+  | 'bottom_left'
+  | 'bottom_right'
+  | 'center';
+
+export type ProducerBrandLogoTiming =
+  | 'intro'
+  | 'outro'
+  | 'throughout'
+  | 'custom'
+  | 'none';
+
+export type ProducerBrandLogoTreatment =
+  | 'clean'
+  | 'badge'
+  | 'watermark';
+
 export interface ProducerBrandGuide {
   logoUrl?: string;
+  activeLogoVariantType?: ProducerBrandLogoVariantType;
+  logoPlacement?: ProducerBrandLogoPlacement;
+  logoTiming?: ProducerBrandLogoTiming;
+  logoStartSecond?: number;
+  logoEndSecond?: number;
+  logoTreatment?: ProducerBrandLogoTreatment;
+  logoDetection?: ProducerBrandLogoDetection;
+  logoVariants?: ProducerBrandLogoVariant[];
   fonts?: string[];
   toneOfVoice?: string;
   visualStyle?: string;
@@ -762,7 +1052,14 @@ export interface ProducerBrandGuide {
   colors?: ProducerBrandGuideColor[];
 }
 
+export type ProducerDeliveryPresetId =
+  | 'social_pack'
+  | 'web_pack'
+  | 'campaign_pack'
+  | 'training_pack';
+
 export interface ProducerDeliveryWorkflow {
+  presetId?: ProducerDeliveryPresetId;
   fileNamingConvention?: string;
   versioningRule?: string;
   folderStructure?: string;
@@ -839,13 +1136,117 @@ export interface ProducerActivationPlan {
   framework?: ProducerPlanningFrameworkStep[];
 }
 
-export type ProducerWorkspaceSurfaceKey = 'brief' | 'materials' | 'brand' | 'delivery';
+export type ProducerClientLogicMode = 'content_logic' | 'activation_plan';
+
+export interface ProducerContentLogic {
+  mode?: ProducerClientLogicMode;
+  objective?: string;
+  audience?: string;
+  hook?: string;
+  coreMessage?: string;
+  proofPoints?: string[];
+  callToAction?: string;
+  distributionPlan?: string;
+  successSignals?: string[];
+}
+
+export type ProducerAccountAccessPlatform =
+  | 'google'
+  | 'meta'
+  | 'linkedin'
+  | 'youtube'
+  | 'tiktok';
+
+export type ProducerAccountAccessMethod =
+  | 'oauth'
+  | 'business_invite'
+  | 'manual_handoff';
+
+export type ProducerAccountAccessStatus =
+  | 'not_started'
+  | 'client_action'
+  | 'invite_sent'
+  | 'connected'
+  | 'revoked';
+
+export interface ProducerAccountAccessEntry {
+  platform: ProducerAccountAccessPlatform;
+  method: ProducerAccountAccessMethod;
+  status: ProducerAccountAccessStatus;
+  accountLabel?: string;
+  inviteTarget?: string;
+  accessScope?: string;
+  ownerName?: string;
+  notes?: string;
+  twoFactorRequired?: boolean;
+  lastUpdatedAt?: string;
+}
+
+export interface ProducerAccountAccessWorkspace {
+  entries: ProducerAccountAccessEntry[];
+  securityNotes?: string;
+  revokePlan?: string;
+  updatedAt?: string;
+}
+
+export type ProducerWorkspaceSurfaceKey = 'brief' | 'materials' | 'brand' | 'accounts' | 'delivery' | 'meetings';
 
 export type ProducerWorkspaceLayout = 'focus' | 'split' | 'grid';
 
 export type ProducerWorkspaceTabPlacement = 'top' | 'left';
 
 export type ProducerWorkspacePagePlacement = 'left' | 'right';
+
+export type ProducerMeetingWorkspaceStatus = 'planned' | 'lobby' | 'live' | 'follow_up';
+
+export interface ProducerMeetingAgendaItem {
+  id: string;
+  title: string;
+  detail?: string;
+  phase?: ProducerPlanningPhase;
+  sourceType?: 'manual' | 'client_review' | 'timeline' | 'framework';
+  linkedEntityType?: string;
+  linkedEntityId?: string;
+  completed?: boolean;
+}
+
+export interface ProducerMeetingDecisionItem {
+  id: string;
+  title: string;
+  phase?: ProducerPlanningPhase;
+  owner?: string;
+  dueAt?: string;
+  status?: 'open' | 'done';
+  clientVisible?: boolean;
+  linkedEntityType?: string;
+  linkedEntityId?: string;
+  notes?: string;
+}
+
+export interface ProducerMeetingFollowUpItem {
+  id: string;
+  title: string;
+  phase?: ProducerPlanningPhase;
+  owner?: string;
+  dueAt?: string;
+  status?: 'planned' | 'in_progress' | 'done';
+  linkedEntityType?: string;
+  linkedEntityId?: string;
+  notes?: string;
+}
+
+export interface ProducerMeetingWorkspace {
+  status: ProducerMeetingWorkspaceStatus;
+  sessionLabel?: string;
+  activeMeetUrl?: string;
+  activeMeetArtifactId?: string;
+  activeMeetCalendarEventId?: string;
+  liveNotes?: string;
+  agenda: ProducerMeetingAgendaItem[];
+  decisions: ProducerMeetingDecisionItem[];
+  followUps: ProducerMeetingFollowUpItem[];
+  updatedAt?: string;
+}
 
 export interface ProducerWorkspacePage {
   id: string;
@@ -878,10 +1279,13 @@ export interface ProducerWorkspaceNavigation {
 
 export interface ProducerProjectPlanning {
   activationPlan: ProducerActivationPlan;
+  contentLogic?: ProducerContentLogic;
   phasePlan: ProducerPhasePlanItem[];
   contentCalendar: ProducerContentCalendarItem[];
   brandGuide: ProducerBrandGuide;
+  accountAccess: ProducerAccountAccessWorkspace;
   deliveryWorkflow: ProducerDeliveryWorkflow;
+  meetingWorkspace: ProducerMeetingWorkspace;
   workspaceNavigation?: ProducerWorkspaceNavigation;
   updatedAt?: string;
 }
@@ -964,13 +1368,22 @@ export interface SceneBreakdown {
   projectId?: string;
   sceneNumber?: number | string;
   heading?: string;
+  sceneHeading?: string;
   sceneName?: string;
   locationName?: string;
-  intExt?: 'INT' | 'EXT' | 'INT/EXT' | string;
-  timeOfDay?: 'DAY' | 'NIGHT' | 'DUSK' | 'DAWN' | string;
+  intExt?: 'INT' | 'EXT' | 'INT/EXT' | 'I/E';
+  timeOfDay?: 'DAY' | 'NIGHT' | 'DUSK' | 'DAWN' | 'EVENING' | 'LATER' | 'CONTINUOUS' | 'MORNING';
   pageLength?: number;
+  estimatedDuration?: number;
   colorTag?: string;
   description?: string;
+  status?: string;
+  characters?: string[];
+  propsNeeded?: string[];
+  vehicles?: string[];
+  specialEffects?: string | boolean;
+  stuntsNotes?: string;
+  storyboardFrames?: StoryboardFrame[];
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
@@ -980,8 +1393,12 @@ export interface DialogueLine {
   id: string;
   manuscriptId: string;
   sceneId?: string;
-  characterName?: string;
-  text: string;
+  characterName: string;
+  text?: string;
+  dialogueText: string;
+  dialogueType?: 'dialogue' | 'voiceover' | 'offscreen' | 'parenthetical' | 'action' | string;
+  parenthetical?: string;
+  emotionTag?: string;
   lineNumber?: number;
   createdAt?: string;
   updatedAt?: string;
@@ -991,9 +1408,19 @@ export interface DialogueLine {
 export interface Act {
   id: string;
   manuscriptId: string;
+  projectId?: string;
   title: string;
-  index: number;
+  index?: number;
+  actNumber?: number;
   summary?: string;
+  description?: string;
+  pageStart?: number;
+  pageEnd?: number;
+  estimatedRuntime?: number;
+  colorCode?: string;
+  sortOrder?: number;
+  createdAt?: string;
+  updatedAt?: string;
   [key: string]: unknown;
 }
 
@@ -1002,6 +1429,8 @@ export interface ScriptRevision {
   manuscriptId: string;
   version: string;
   changeSummary?: string;
+  changesSummary?: string;
+  revisionNotes?: string;
   content?: string;
   createdAt?: string;
   createdBy?: string;
@@ -1016,6 +1445,10 @@ export interface Manuscript {
   subtitle?: string;
   author?: string;
   status?: string;
+  version?: string;
+  format?: 'markdown' | 'fountain' | 'final-draft';
+  pageCount?: number;
+  wordCount?: number;
   coverImage?: string;
   coverFocalPoint?: { x: number; y: number };
   language?: string;

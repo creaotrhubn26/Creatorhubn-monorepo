@@ -887,11 +887,11 @@ export default function ToastDesigner() {
         ...toastConfig,
         style: {
           ...toastConfig.style,
-          backgroundColor: 'rgba(25,255,255,0.1)',
+          backgroundColor: 'rgba(255,255,255,0.08)',
           textColor: '#ffffff',
           borderRadius: 12,
           backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(25,255,255,0.2)'
+          border: '1px solid rgba(255,255,255,0.18)'
       }
     }
   },

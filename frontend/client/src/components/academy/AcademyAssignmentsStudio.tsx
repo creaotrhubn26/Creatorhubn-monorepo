@@ -31,6 +31,7 @@ import {
   MailOutline,
   MoreHoriz,
   NotificationsNone,
+  PlayArrow,
   Publish,
   Save,
   Search,
@@ -44,6 +45,7 @@ import { academyPdfExportService } from "@/services/academyPdfExportService";
 import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
 import AcademyLeftSidebar from "./AcademyLeftSidebar";
+import AcademyStudentSidebar from "./AcademyStudentSidebar";
 
 interface AcademyAssignmentsStudioProps {
   courseId?: string;
@@ -240,15 +242,19 @@ const defaultTransformationStage: TransformationStage = "practice";
 const defaultAssignmentLevel: AssignmentLevel = 1;
 const defaultOverlayFontFamily = 'Barlow Condensed, "Manrope", sans-serif';
 
-const getRouteQueryParam = (key: string): string => {
-  if (typeof window === "undefined") return "";
-  try {
-    return String(
-      new URLSearchParams(window.location.search).get(key) || "",
-    ).trim();
-  } catch {
-    return "";
-  }
+const toDisplayName = (value: string, fallback = "Student"): string => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return fallback;
+  const base = normalized.includes("@") ? normalized.split("@")[0] : normalized;
+  const parts = base
+    .replace(/[._]+/g, "-")
+    .split("-")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 0) return fallback;
+  return parts.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 };
 
 function AcademyAssignmentsStudio({
@@ -256,15 +262,36 @@ function AcademyAssignmentsStudio({
   onSave,
   onCancel,
 }: AcademyAssignmentsStudioProps) {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { state, getCourse, updateCourse, setCurrentCourse } = useAcademy();
-  const { analytics, debugging } = useEnhancedMasterIntegration();
+  const { analytics, debugging, auth } = useEnhancedMasterIntegration();
 
   const { navLabel, tt, language } = useAcademyLocale();
   const dateLocale = language === "no" ? "nb-NO" : "en-US";
-  const routeView = getRouteQueryParam("view");
-  const routeCourseId =
-    getRouteQueryParam("courseId") || getRouteQueryParam("course_id");
+  const routeParams = useMemo(() => {
+    if (typeof window === "undefined") {
+      return {
+        view: "",
+        courseId: "",
+        courseIdLegacy: "",
+        assignmentId: "",
+        audience: "",
+        returnTo: "",
+      };
+    }
+    const params = new URLSearchParams(window.location.search);
+    const returnToRaw = String(params.get("returnTo") || "").trim();
+    return {
+      view: String(params.get("view") || "").trim(),
+      courseId: String(params.get("courseId") || "").trim(),
+      courseIdLegacy: String(params.get("course_id") || "").trim(),
+      assignmentId: String(params.get("assignmentId") || "").trim(),
+      audience: String(params.get("audience") || "").trim().toLowerCase(),
+      returnTo: /^\/academy(\/|$)/.test(returnToRaw) ? returnToRaw : "",
+    };
+  }, [location]);
+  const routeView = routeParams.view;
+  const routeCourseId = routeParams.courseId || routeParams.courseIdLegacy;
 
   const [leftNav, setLeftNav] = useState(() =>
     routeView === "follow-up"
@@ -307,16 +334,7 @@ function AcademyAssignmentsStudio({
   const routeSelectionAppliedRef = useRef(false);
   const isFollowUpView = routeView === "follow-up";
   const isTransformationPulseView = routeView === "transformation-pulse";
-  const routeAssignmentId = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    try {
-      return String(
-        new URLSearchParams(window.location.search).get("assignmentId") || "",
-      ).trim();
-    } catch {
-      return "";
-    }
-  }, []);
+  const routeAssignmentId = routeParams.assignmentId;
 
   const courseItems = useMemo(() => {
     if (Array.isArray(state.courses) && state.courses.length > 0) {
@@ -338,6 +356,45 @@ function AcademyAssignmentsStudio({
 
     return state.currentCourse || courseItems[0] || null;
   }, [courseId, courseItems, getCourse, selectedCourseId, state.currentCourse]);
+
+  const isStudentMode = useMemo(() => {
+    if (routeParams.audience === "student") return true;
+    return (
+      /\/academy\/student-dashboard(?:\?|$)/.test(routeParams.returnTo) ||
+      /\/academy\/player-studio(?:\?|$)/.test(routeParams.returnTo) ||
+      /audience=student/.test(routeParams.returnTo)
+    );
+  }, [routeParams.audience, routeParams.returnTo]);
+
+  const studentBaseReturnTo = routeParams.returnTo || "/academy/student-dashboard";
+  const buildStudentRoute = useCallback(
+    (
+      path: string,
+      extra?: Record<string, string | number | null | undefined>,
+      overrideReturnTo = studentBaseReturnTo,
+    ) => {
+      const params = new URLSearchParams();
+      const safeCourseId = String(activeCourse?.id || courseId || routeCourseId || "").trim();
+      if (safeCourseId) {
+        params.set("courseId", safeCourseId);
+      }
+      params.set("audience", "student");
+
+      const safeReturnTo = String(overrideReturnTo || "").trim();
+      if (safeReturnTo) {
+        params.set("returnTo", safeReturnTo);
+      }
+
+      Object.entries(extra || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === "") return;
+        params.set(key, String(value));
+      });
+
+      const query = params.toString();
+      return query ? `${path}?${query}` : path;
+    },
+    [activeCourse?.id, courseId, routeCourseId, studentBaseReturnTo],
+  );
 
   useEffect(() => {
     const nextCourseId = String(courseId || routeCourseId || "").trim();
@@ -1223,6 +1280,54 @@ function AcademyAssignmentsStudio({
       .slice(0, 4);
   }, [scopeAssignments]);
 
+  const studentName = useMemo(() => {
+    const user = auth.state.user as
+      | {
+          email?: string;
+          name?: string;
+          firstName?: string;
+          id?: string;
+        }
+      | undefined;
+    return toDisplayName(
+      String(user?.name || user?.firstName || user?.email || user?.id || ""),
+      tt("Student", "Student"),
+    );
+  }, [auth.state.user, tt]);
+
+  const studentProgressRows = useMemo(() => {
+    if (!activeCourse?.id || !Array.isArray(state.progress)) return [];
+    return state.progress.filter(
+      (row) => String(row.courseId || "") === String(activeCourse.id),
+    );
+  }, [activeCourse?.id, state.progress]);
+
+  const studentProgressStats = useMemo(() => {
+    const lessons = Array.isArray(activeCourse?.lessons) ? activeCourse.lessons : [];
+    const progressByLesson = new Map(
+      studentProgressRows.map((row) => [String(row.lessonId || ""), Number(row.progress || 0)]),
+    );
+    const completedLessons = lessons.filter(
+      (lesson) => (progressByLesson.get(String(lesson.id)) || 0) >= 100,
+    ).length;
+    const progressPercent =
+      lessons.length > 0
+        ? Math.round(
+            lessons.reduce((sum, lesson) => sum + (progressByLesson.get(String(lesson.id)) || 0), 0) /
+              lessons.length,
+          )
+        : Math.round(
+            studentProgressRows.reduce((sum, row) => sum + Number(row.progress || 0), 0) /
+              Math.max(1, studentProgressRows.length),
+          );
+
+    return {
+      completedLessons,
+      totalLessons: lessons.length,
+      progressPercent: Math.max(0, Math.min(100, progressPercent)),
+    };
+  }, [activeCourse?.lessons, studentProgressRows]);
+
   const donutStyle = useMemo(() => {
     const submittedDeg = distribution.submittedPct * 3.6;
     const inReviewDeg = distribution.inReviewPct * 3.6;
@@ -1674,6 +1779,459 @@ function AcademyAssignmentsStudio({
       updateCourse,
     ],
   );
+
+  const studentVisibleAssignments = useMemo(
+    () => visibleAssignments.filter((assignment) => assignment.status !== "draft"),
+    [visibleAssignments],
+  );
+  const studentSelectedAssignment =
+    selectedAssignment && selectedAssignment.status !== "draft"
+      ? selectedAssignment
+      : studentVisibleAssignments[0] || null;
+
+  const selectedAssignmentLessonId =
+    studentSelectedAssignment?.scope === "skill"
+      ? String(studentSelectedAssignment.skillId || "").trim()
+      : "";
+  const studentPlayerRoute = useMemo(
+    () =>
+      buildStudentRoute(
+        "/academy/player-studio",
+        selectedAssignmentLessonId ? { lessonId: selectedAssignmentLessonId } : undefined,
+      ),
+    [buildStudentRoute, selectedAssignmentLessonId],
+  );
+  const studentResourcesRoute = useMemo(
+    () =>
+      buildStudentRoute(
+        "/academy/media",
+        selectedAssignmentLessonId ? { lessonId: selectedAssignmentLessonId } : undefined,
+      ),
+    [buildStudentRoute, selectedAssignmentLessonId],
+  );
+
+  if (isStudentMode) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          color: "#edf0f7",
+          bgcolor: "#06080d",
+          fontFamily: '"Manrope", "Barlow", "Segoe UI", sans-serif',
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <Box
+          sx={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            background:
+              "radial-gradient(circle at 74% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%)",
+          }}
+        />
+
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: { xs: "column", lg: "row" },
+            minHeight: "100vh",
+            position: "relative",
+            zIndex: 1,
+            width: "min(100%, var(--academy-shell-max-width, 1920px))",
+            mx: "auto",
+          }}
+        >
+          <AcademyStudentSidebar
+            activeNav="assignments"
+            onNavigate={(_, route) => setLocation(route)}
+            tt={tt}
+            studentName={studentName}
+            activeCourseId={activeCourse?.id ? String(activeCourse.id) : null}
+            activeCourseTitle={activeCourse?.title || undefined}
+            progressPercent={studentProgressStats.progressPercent}
+            completedLessons={studentProgressStats.completedLessons}
+            totalLessons={studentProgressStats.totalLessons}
+            returnTo={studentBaseReturnTo}
+            continueRoute={studentPlayerRoute}
+          />
+
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <Box
+              sx={{
+                minHeight: { xs: 64, md: 74 },
+                px: { xs: 1.4, md: 2.4 },
+                py: 1.1,
+                borderBottom:
+                  "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 1,
+                background:
+                  "linear-gradient(180deg, rgba(13,16,25,0.95), rgba(10,13,20,0.9))",
+              }}
+            >
+              <Stack spacing={0.35}>
+                <Typography
+                  sx={{
+                    fontSize: { xs: 24, md: 30 },
+                    fontWeight: 700,
+                    lineHeight: 1.05,
+                  }}
+                >
+                  {tt("Mine oppgaver", "My assignments")}
+                </Typography>
+                <Typography sx={{ color: "rgba(237,240,247,0.64)", fontSize: 13 }}>
+                  {activeCourse?.title || tt("Aktivt kurs", "Active course")}
+                </Typography>
+              </Stack>
+
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button
+                  variant="outlined"
+                  startIcon={<Search />}
+                  onClick={() => setLocation(studentResourcesRoute)}
+                  sx={{
+                    textTransform: "none",
+                    borderColor: "rgba(255,255,255,0.2)",
+                    color: "#edf0f7",
+                  }}
+                >
+                  {tt("Ressurser", "Resources")}
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<PlayArrow />}
+                  onClick={() => setLocation(studentPlayerRoute)}
+                  sx={{
+                    textTransform: "none",
+                    color: "#0f0f0f",
+                    background: "linear-gradient(180deg, #ffd44e, #f2a616)",
+                    fontWeight: 700,
+                  }}
+                >
+                  {tt("Fortsett i spiller", "Continue in player")}
+                </Button>
+              </Stack>
+            </Box>
+
+            <Box
+              sx={{
+                flex: 1,
+                minHeight: 0,
+                display: "grid",
+                gridTemplateColumns: {
+                  xs: "1fr",
+                  xl: "minmax(0, 1fr) 380px",
+                },
+                gap: 1.4,
+                px: { xs: 1.2, md: 2 },
+                py: { xs: 1.2, md: 1.8 },
+              }}
+            >
+              <Box sx={{ minHeight: 0, display: "flex", flexDirection: "column", gap: 1.2 }}>
+                <Box sx={{ ...panelSx, p: 1.2 }}>
+                  <Stack
+                    direction={{ xs: "column", md: "row" }}
+                    spacing={1}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "stretch", md: "center" }}
+                  >
+                    <TextField
+                      value={searchValue}
+                      onChange={(event) => setSearchValue(event.target.value)}
+                      placeholder={tt("Søk oppgaver...", "Search assignments...")}
+                      size="small"
+                      InputProps={{
+                        startAdornment: (
+                          <Search
+                            fontSize="small"
+                            sx={{ mr: 0.7, color: "rgba(237,240,247,0.6)" }}
+                          />
+                        ),
+                      }}
+                      sx={{
+                        flex: 1,
+                        "& .MuiInputBase-root": {
+                          bgcolor: "rgba(11,14,22,0.8)",
+                          color: "#edf0f7",
+                        },
+                      }}
+                    />
+                    <Stack direction="row" spacing={0.8}>
+                      <Chip
+                        label={tt(`${studentVisibleAssignments.length} aktive`, `${studentVisibleAssignments.length} active`)}
+                        sx={{ bgcolor: "rgba(248,179,33,0.16)", color: "#f8d56f" }}
+                      />
+                      <Chip
+                        label={tt(`${totals.completed} fullført`, `${totals.completed} completed`)}
+                        sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#edf0f7" }}
+                      />
+                    </Stack>
+                  </Stack>
+
+                  <Box
+                    sx={{
+                      mt: 1.1,
+                      display: "grid",
+                      gridTemplateColumns: {
+                        xs: "repeat(2, minmax(0, 1fr))",
+                        lg: "repeat(4, minmax(0, 1fr))",
+                      },
+                      gap: 1,
+                    }}
+                  >
+                    {[
+                      {
+                        label: tt("Totalt", "Total"),
+                        value: totals.totalAssignments,
+                      },
+                      {
+                        label: tt("Snart forfall", "Due soon"),
+                        value: upcomingAssignments.length,
+                      },
+                      {
+                        label: tt("Tilbakemeldinger", "Feedback"),
+                        value: feedbackItems.length,
+                      },
+                      {
+                        label: tt("Snittscore", "Avg score"),
+                        value: `${totals.avgScore}%`,
+                      },
+                    ].map((metric) => (
+                      <Box
+                        key={metric.label}
+                        sx={{
+                          ...panelSx,
+                          p: 1,
+                          borderColor: "rgba(255,255,255,0.1)",
+                        }}
+                      >
+                        <Typography sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>
+                          {metric.value}
+                        </Typography>
+                        <Typography sx={{ color: "rgba(237,240,247,0.74)", fontSize: 13 }}>
+                          {metric.label}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+
+                <Box sx={{ ...panelSx, p: 1.2, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                  <Typography sx={{ fontSize: 18, fontWeight: 700, mb: 1 }}>
+                    {tt("Oppgaveliste", "Assignment list")}
+                  </Typography>
+                  <Stack spacing={0.8} sx={{ minHeight: 0, overflowY: "auto", pr: 0.3 }}>
+                    {studentVisibleAssignments.map((assignment) => {
+                      const active = studentSelectedAssignment?.id === assignment.id;
+                      return (
+                        <Box
+                          key={assignment.id}
+                          onClick={() => setSelectedAssignmentId(assignment.id)}
+                          sx={{
+                            ...panelSx,
+                            p: 1,
+                            cursor: "pointer",
+                            borderColor: active
+                              ? "rgba(248,179,33,0.42)"
+                              : "rgba(255,255,255,0.08)",
+                            background: active
+                              ? "linear-gradient(145deg, rgba(34,28,16,0.94), rgba(15,14,11,0.98))"
+                              : panelSx.background,
+                          }}
+                        >
+                          <Stack spacing={0.55}>
+                            <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                              <Chip
+                                label={statusLabel(assignment.status)}
+                                size="small"
+                                sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#edf0f7" }}
+                              />
+                              <Chip
+                                label={assignmentTypeLabel(assignment.assignmentType)}
+                                size="small"
+                                sx={{ bgcolor: "rgba(248,179,33,0.16)", color: "#f8d56f" }}
+                              />
+                              <Chip
+                                label={assignment.scope === "skill" ? assignment.skillTitle : tt("Hele kurset", "Entire course")}
+                                size="small"
+                                sx={{ bgcolor: "rgba(120,187,255,0.14)", color: "#d8ecff" }}
+                              />
+                            </Stack>
+                            <Typography sx={{ fontSize: 18, fontWeight: 700, lineHeight: 1.12 }}>
+                              {assignment.title}
+                            </Typography>
+                            <Typography sx={{ color: "rgba(237,240,247,0.72)", fontSize: 13 }}>
+                              {assignment.subtitle}
+                            </Typography>
+                            <Stack direction="row" justifyContent="space-between" spacing={1}>
+                              <Typography sx={{ color: "rgba(237,240,247,0.58)", fontSize: 12 }}>
+                                {formatDateRange(assignment.startDate, assignment.dueDate, dateLocale)}
+                              </Typography>
+                              <Typography sx={{ color: "#f8d56f", fontSize: 12, fontWeight: 700 }}>
+                                {assignment.avgScore}%
+                              </Typography>
+                            </Stack>
+                          </Stack>
+                        </Box>
+                      );
+                    })}
+
+                    {studentVisibleAssignments.length === 0 ? (
+                      <Typography sx={{ color: "rgba(237,240,247,0.66)", fontSize: 13 }}>
+                        {tt("Ingen oppgaver matcher søket ditt.", "No assignments match your search.")}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                </Box>
+              </Box>
+
+              <Box sx={{ ...panelSx, p: 1.2, display: "flex", flexDirection: "column", gap: 1 }}>
+                {studentSelectedAssignment ? (
+                  <>
+                    <Stack spacing={0.45}>
+                      <Typography sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1 }}>
+                        {studentSelectedAssignment.title}
+                      </Typography>
+                      <Typography sx={{ color: "rgba(237,240,247,0.68)", fontSize: 13 }}>
+                        {studentSelectedAssignment.subtitle}
+                      </Typography>
+                    </Stack>
+
+                    <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                      <Chip
+                        label={assignmentLevelLabel(studentSelectedAssignment.level)}
+                        sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#edf0f7" }}
+                      />
+                      <Chip
+                        label={transformationStageLabel(studentSelectedAssignment.transformationStage)}
+                        sx={{ bgcolor: "rgba(248,179,33,0.16)", color: "#f8d56f" }}
+                      />
+                      <Chip
+                        label={`${formatMinuteSecond(studentSelectedAssignment.triggerAt)}-${formatMinuteSecond(studentSelectedAssignment.endAt)}`}
+                        sx={{ bgcolor: "rgba(120,187,255,0.14)", color: "#d8ecff" }}
+                      />
+                    </Stack>
+
+                    <Box sx={{ ...panelSx, p: 1, borderColor: "rgba(255,255,255,0.1)" }}>
+                      <Typography sx={{ fontSize: 13, color: "rgba(237,240,247,0.62)" }}>
+                        {tt("Mål", "Objective")}
+                      </Typography>
+                      <Typography sx={{ mt: 0.35, lineHeight: 1.5 }}>
+                        {studentSelectedAssignment.transformationObjective}
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ ...panelSx, p: 1, borderColor: "rgba(255,255,255,0.1)" }}>
+                      <Typography sx={{ fontSize: 13, color: "rgba(237,240,247,0.62)" }}>
+                        {tt("Refleksjon", "Reflection")}
+                      </Typography>
+                      <Typography sx={{ mt: 0.35, lineHeight: 1.5 }}>
+                        {studentSelectedAssignment.reflectionPrompt}
+                      </Typography>
+                    </Box>
+
+                    <Stack spacing={0.7}>
+                      <Button
+                        startIcon={<PlayArrow />}
+                        onClick={() => setLocation(studentPlayerRoute)}
+                        sx={{
+                          justifyContent: "flex-start",
+                          textTransform: "none",
+                          color: "#0f0f0f",
+                          background: "linear-gradient(180deg, #ffd44e, #f2a616)",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {tt("Åpne i spiller", "Open in player")}
+                      </Button>
+                      <Button
+                        startIcon={<Search />}
+                        onClick={() => setLocation(studentResourcesRoute)}
+                        sx={{
+                          justifyContent: "flex-start",
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Se ressurser", "View resources")}
+                      </Button>
+                      <Button
+                        startIcon={<MailOutline />}
+                        onClick={() =>
+                          setLocation(
+                            `/academy/settings?tab=messages&assignmentId=${encodeURIComponent(studentSelectedAssignment.id)}`,
+                          )
+                        }
+                        sx={{
+                          justifyContent: "flex-start",
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Åpne dialog", "Open messages")}
+                      </Button>
+                    </Stack>
+
+                    <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
+                    <Typography sx={{ fontSize: 17, fontWeight: 700 }}>
+                      {tt("Tilbakemeldinger", "Feedback")}
+                    </Typography>
+                    <Stack spacing={0.7}>
+                      {feedbackItems.slice(0, 5).map((item) => (
+                        <Box
+                          key={item.id}
+                          sx={{
+                            ...panelSx,
+                            p: 0.9,
+                            borderColor: "rgba(255,255,255,0.1)",
+                          }}
+                        >
+                          <Stack direction="row" justifyContent="space-between" spacing={1}>
+                            <Typography sx={{ fontWeight: 700 }}>{item.author}</Typography>
+                            <Typography sx={{ color: "rgba(237,240,247,0.58)", fontSize: 12 }}>
+                              {item.timestamp}
+                            </Typography>
+                          </Stack>
+                          <Typography sx={{ mt: 0.45, color: "rgba(237,240,247,0.78)", fontSize: 13 }}>
+                            {item.message}
+                          </Typography>
+                        </Box>
+                      ))}
+                      {feedbackItems.length === 0 ? (
+                        <Typography sx={{ color: "rgba(237,240,247,0.66)", fontSize: 13 }}>
+                          {tt("Ingen tilbakemeldinger ennå.", "No feedback yet.")}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  </>
+                ) : (
+                  <Typography sx={{ color: "rgba(237,240,247,0.66)", fontSize: 13 }}>
+                    {tt("Velg en oppgave for å se detaljer.", "Select an assignment to view details.")}
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box

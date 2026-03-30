@@ -19,10 +19,16 @@ export interface IKChain {
   tolerance: number;
 }
 
+export interface SerializedBonePose {
+  rotation: { x: number; y: number; z: number };
+  position?: [number, number, number];
+}
+
 export interface PoseData {
   name: string;
-  boneRotations: Map<string, THREE.Quaternion>;
-  bonePositions: Map<string, THREE.Vector3>;
+  boneRotations?: Map<string, THREE.Quaternion>;
+  bonePositions?: Map<string, THREE.Vector3>;
+  bones?: Record<string, SerializedBonePose>;
 }
 
 export class IKSystem {
@@ -182,9 +188,10 @@ export class IKSystem {
    * Apply saved pose
    */
   public applyPose(pose: PoseData): void {
+    const normalizedPose = this.normalizePose(pose);
     this.skeleton.bones.forEach((bone) => {
-      const rotation = pose.boneRotations.get(bone.name);
-      const position = pose.bonePositions.get(bone.name);
+      const rotation = normalizedPose.boneRotations.get(bone.name);
+      const position = normalizedPose.bonePositions.get(bone.name);
 
       if (rotation) {
         bone.quaternion.copy(rotation);
@@ -201,14 +208,16 @@ export class IKSystem {
    * Blend between two poses
    */
   public blendPoses(poseA: PoseData, poseB: PoseData, alpha: number): PoseData {
+    const normalizedPoseA = this.normalizePose(poseA);
+    const normalizedPoseB = this.normalizePose(poseB);
     const blendedRotations = new Map<string, THREE.Quaternion>();
     const blendedPositions = new Map<string, THREE.Vector3>();
 
     this.skeleton.bones.forEach((bone) => {
-      const rotA = poseA.boneRotations.get(bone.name);
-      const rotB = poseB.boneRotations.get(bone.name);
-      const posA = poseA.bonePositions.get(bone.name);
-      const posB = poseB.bonePositions.get(bone.name);
+      const rotA = normalizedPoseA.boneRotations.get(bone.name);
+      const rotB = normalizedPoseB.boneRotations.get(bone.name);
+      const posA = normalizedPoseA.bonePositions.get(bone.name);
+      const posB = normalizedPoseB.bonePositions.get(bone.name);
 
       if (rotA && rotB) {
         const blended = new THREE.Quaternion().slerpQuaternions(rotA, rotB, alpha);
@@ -222,9 +231,40 @@ export class IKSystem {
     });
 
     return {
-      name: `${poseA.name}_${poseB.name}_blend`,
+      name: `${normalizedPoseA.name}_${normalizedPoseB.name}_blend`,
       boneRotations: blendedRotations,
       bonePositions: blendedPositions,
+    };
+  }
+
+  private normalizePose(
+    pose: PoseData,
+  ): Required<Pick<PoseData, 'name' | 'boneRotations' | 'bonePositions'>> {
+    const boneRotations = pose.boneRotations ? new Map(pose.boneRotations) : new Map<string, THREE.Quaternion>();
+    const bonePositions = pose.bonePositions ? new Map(pose.bonePositions) : new Map<string, THREE.Vector3>();
+
+    if (pose.bones) {
+      for (const [boneName, bonePose] of Object.entries(pose.bones)) {
+        boneRotations.set(
+          boneName,
+          new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(bonePose.rotation.x, bonePose.rotation.y, bonePose.rotation.z),
+          ),
+        );
+
+        if (bonePose.position) {
+          bonePositions.set(
+            boneName,
+            new THREE.Vector3(bonePose.position[0], bonePose.position[1], bonePose.position[2]),
+          );
+        }
+      }
+    }
+
+    return {
+      name: pose.name,
+      boneRotations,
+      bonePositions,
     };
   }
 
@@ -238,4 +278,3 @@ export class IKSystem {
     });
   }
 }
-

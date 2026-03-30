@@ -95,9 +95,10 @@ export function hitTest3D(
  */
 function getNodeBounds(node: SceneNode): { width: number; height: number; depth: number } {
   switch (node.type) {
-    case 'softbox':
+    case 'softbox': {
       const modSize = node.light?.modifierSize || [0.6, 0.6];
       return { width: modSize[0], height: modSize[1], depth: 0.3 };
+    }
     
     case 'umbrella':
       return { width: 1.0, height: 1.0, depth: 0.5 };

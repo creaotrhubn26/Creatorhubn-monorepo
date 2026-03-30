@@ -1,14 +1,13 @@
 import {
+  type AnyPgColumn,
   pgTable,
   text,
   varchar,
   timestamp,
   boolean,
   integer,
-  decimal,
   jsonb,
   uuid,
-  serial,
   date,
   time,
   index,
@@ -505,7 +504,7 @@ export const noteComments = pgTable('note_comments', {
   }>(),
 
   // Threading
-  parentCommentId: uuid('parent_comment_id').references(() => noteComments.id, {
+  parentCommentId: uuid('parent_comment_id').references((): AnyPgColumn => noteComments.id, {
     onDelete: 'cascade',
   }),
 

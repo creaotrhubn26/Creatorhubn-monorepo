@@ -40,10 +40,19 @@ import {
   SwapHoriz as SwapIcon,
 } from '@mui/icons-material';
 import { useNodes, useActions } from '@/state/selectors';
-import type { UserEquipmentItem } from '@/hooks/useUserEquipmentInventory';
-import { useUserEquipmentInventory, getEquipmentImageUrl } from '@/hooks/useUserEquipmentInventory';
-import type { LensSpec} from '@/core/data/LensSpecifications';
-import { findLensSpec, findLensSpecByBrand, getDefaultLensSpec, getFocalLengthFromLensSpec, getMaxApertureFromLensSpec } from '@/core/data/LensSpecifications';
+import {
+  useUserEquipmentInventory,
+  getEquipmentImageUrl,
+  type UserEquipmentItem,
+} from '@/hooks/useUserEquipmentInventory';
+import {
+  findLensSpec,
+  findLensSpecByBrand,
+  getDefaultLensSpec,
+  getFocalLengthFromLensSpec,
+  getMaxApertureFromLensSpec,
+  type LensSpec,
+} from '@/core/data/LensSpecifications';
 import { exposureCalculator } from '@/core/services/exposureCalculatorService';
 
 // =============================================================================
@@ -188,11 +197,52 @@ function detectLensMount(brand?: string, model?: string, spec?: Partial<LensSpec
 export function LensAttachmentManager({ cameraNodeId, onClose }: LensAttachmentManagerProps) {
   const nodes = useNodes();
   const { updateNode } = useActions();
-  const { userInventory, isLoading } = useUserEquipmentInventory();
+  const { inventory: userInventory, isLoading } = useUserEquipmentInventory();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLens, setSelectedLens] = useState<UserEquipmentItem | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+
+  const resolveLensSpec = useCallback((lens: Pick<UserEquipmentItem, 'brand' | 'model'>): LensSpec => {
+    const detectedSpec =
+      (lens.brand && lens.model ? findLensSpec(lens.brand, lens.model) : null) ??
+      (lens.brand ? findLensSpecByBrand(lens.brand) : null);
+    if (detectedSpec) {
+      return detectedSpec;
+    }
+
+    const defaultSpec = getDefaultLensSpec();
+    return {
+      id: defaultSpec.id ?? 'default-lens',
+      brand: defaultSpec.brand ?? lens.brand ?? 'Generic',
+      model: defaultSpec.model ?? lens.model ?? 'Default Lens',
+      mount: defaultSpec.mount ?? 'universal',
+      focalLength: defaultSpec.focalLength ?? 50,
+      isZoom: defaultSpec.isZoom ?? false,
+      maxAperture: defaultSpec.maxAperture ?? 2.8,
+      minAperture: defaultSpec.minAperture ?? 22,
+      apertureBlades: defaultSpec.apertureBlades ?? 9,
+      elements: defaultSpec.elements ?? 10,
+      groups: defaultSpec.groups ?? 8,
+      minFocusDistance: defaultSpec.minFocusDistance ?? 0.45,
+      maxMagnification: defaultSpec.maxMagnification ?? 0.15,
+      autofocus: defaultSpec.autofocus ?? true,
+      stabilization: defaultSpec.stabilization ?? false,
+      filterSize: defaultSpec.filterSize,
+      length: defaultSpec.length ?? 100,
+      diameter: defaultSpec.diameter ?? 75,
+      weight: defaultSpec.weight ?? 700,
+      fieldOfView: defaultSpec.fieldOfView,
+      distortion: defaultSpec.distortion,
+      vignetting: defaultSpec.vignetting,
+      chromaticAberration: defaultSpec.chromaticAberration,
+      bokehQuality: defaultSpec.bokehQuality,
+      sharpnessCenter: defaultSpec.sharpnessCenter,
+      sharpnessCorner: defaultSpec.sharpnessCorner,
+      price: defaultSpec.price,
+      specialElements: defaultSpec.specialElements,
+    };
+  }, []);
   
   // Get camera node
   const cameraNode = useMemo(() => {
@@ -214,7 +264,7 @@ export function LensAttachmentManager({ cameraNodeId, onClose }: LensAttachmentM
   const availableLenses = useMemo(() => {
     if (!userInventory) return [];
     
-    return userInventory.filter(item => {
+    return userInventory.filter((item: UserEquipmentItem) => {
       const category = (item.category || ', ').toLowerCase();
       const name = (item.name || ', ').toLowerCase();
       const model = (item.model || ', ').toLowerCase();
@@ -243,8 +293,10 @@ export function LensAttachmentManager({ cameraNodeId, onClose }: LensAttachmentM
   const checkLensCompatibility = useCallback((lens: UserEquipmentItem): { compatible: boolean; warning?: string; adapterRequired?: boolean } => {
     if (!cameraNode) return { compatible: false, warning: 'No camera selected' };
     
-    const lensSpec = findLensSpec(lens.brand, lens.model) || findLensSpecByBrand(lens.brand);
-    const lensMount = detectLensMount(lens.brand, lens.model, lensSpec);
+    const detectedSpec =
+      (lens.brand && lens.model ? findLensSpec(lens.brand, lens.model) : null) ??
+      (lens.brand ? findLensSpecByBrand(lens.brand) : null);
+    const lensMount = detectLensMount(lens.brand, lens.model, detectedSpec ?? undefined);
     
     return exposureCalculator.checkMountCompatibility(cameraNode.mount || 'universal', lensMount);
   }, [cameraNode]);
@@ -259,12 +311,10 @@ export function LensAttachmentManager({ cameraNodeId, onClose }: LensAttachmentM
   const handleConfirmAttachment = () => {
     if (!selectedLens || !cameraNode) return;
     
-    const lensSpec = findLensSpec(selectedLens.brand, selectedLens.model) || 
-                     findLensSpecByBrand(selectedLens.brand) || 
-                     getDefaultLensSpec();
+    const lensSpec = resolveLensSpec(selectedLens);
     
-    const focalLength = getFocalLengthFromLensSpec(lensSpec as LensSpec);
-    const maxAperture = getMaxApertureFromLensSpec(lensSpec as LensSpec);
+    const focalLength = getFocalLengthFromLensSpec(lensSpec);
+    const maxAperture = getMaxApertureFromLensSpec(lensSpec);
     
     // Update the camera node with attached lens info
     updateNode(cameraNodeId, {
@@ -390,11 +440,11 @@ export function LensAttachmentManager({ cameraNodeId, onClose }: LensAttachmentM
         </Alert>
       ) : (
         <List sx={{ maxHeight: 350, overflow: 'auto' }}>
-          {availableLenses.map((lens) => {
+          {availableLenses.map((lens: UserEquipmentItem) => {
             const compatibility = checkLensCompatibility(lens);
-            const lensSpec = findLensSpec(lens.brand, lens.model) || findLensSpecByBrand(lens.brand);
-            const focalLength = lensSpec ? getFocalLengthFromLensSpec(lensSpec as LensSpec) : '??';
-            const maxAperture = lensSpec ? getMaxApertureFromLensSpec(lensSpec as LensSpec) : '??';
+            const lensSpec = resolveLensSpec(lens);
+            const focalLength = getFocalLengthFromLensSpec(lensSpec);
+            const maxAperture = getMaxApertureFromLensSpec(lensSpec);
             const isCurrentLens = cameraNode.attachedLens?.id === lens.id;
             
             return (
@@ -484,9 +534,9 @@ export function LensAttachmentManager({ cameraNodeId, onClose }: LensAttachmentM
         <DialogContent>
           {selectedLens && (() => {
             const compatibility = checkLensCompatibility(selectedLens);
-            const lensSpec = findLensSpec(selectedLens.brand, selectedLens.model) || findLensSpecByBrand(selectedLens.brand);
-            const focalLength = lensSpec ? getFocalLengthFromLensSpec(lensSpec as LensSpec) : 50;
-            const maxAperture = lensSpec ? getMaxApertureFromLensSpec(lensSpec as LensSpec) : 2.8;
+            const lensSpec = resolveLensSpec(selectedLens);
+            const focalLength = getFocalLengthFromLensSpec(lensSpec);
+            const maxAperture = getMaxApertureFromLensSpec(lensSpec);
             
             return (
               <Box>
@@ -576,4 +626,3 @@ export function QuickLensSwapButton({ cameraNodeId }: QuickLensSwapProps) {
 }
 
 export default LensAttachmentManager;
-

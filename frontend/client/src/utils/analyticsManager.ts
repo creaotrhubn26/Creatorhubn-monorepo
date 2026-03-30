@@ -451,6 +451,8 @@ class AnalyticsManager {
       this.state.retryCount = 0;
       this.emit('events_flushed', { count: events.length });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown flush error';
+
       // Re-queue events on failure
       this.state.eventQueue.unshift(...events);
       this.state.retryCount++;
@@ -459,7 +461,7 @@ class AnalyticsManager {
         setTimeout(() => this.flush(), this.config.retryDelay);
       } else {
         this.state.hasError = true;
-        this.state.error = 'Failed to flush events after maximum retries';
+        this.state.error = `Failed to flush events after maximum retries: ${errorMessage}`;
         this.emit('error', { error: this.state.error });
       }
     }
@@ -557,7 +559,31 @@ class AnalyticsManager {
    * Update configuration
    */
   updateConfig(newConfig: Partial<AnalyticsConfig>): void {
+    const previousConfig = this.config;
     this.config = { ...this.config, ...newConfig };
+
+    if (previousConfig.flushInterval !== this.config.flushInterval && this.state.isTracking) {
+      this.setupFlushInterval();
+    }
+
+    if (previousConfig.enableTracking && !this.config.enableTracking) {
+      if (this.flushInterval) {
+        clearInterval(this.flushInterval);
+        this.flushInterval = null;
+      }
+      this.endSession();
+      this.state.isTracking = false;
+      return;
+    }
+
+    if (!previousConfig.enableTracking && this.config.enableTracking) {
+      this.sessionStartTime = Date.now();
+      this.startSession();
+      this.setupFlushInterval();
+      this.state.isInitialized = true;
+      this.state.isTracking = true;
+      this.emit('initialized');
+    }
   }
 
   /**
@@ -580,8 +606,6 @@ class AnalyticsManager {
 export const analyticsManager = new AnalyticsManager();
 
 export default analyticsManager;
-
-
 
 
 

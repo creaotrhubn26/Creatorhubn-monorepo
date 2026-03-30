@@ -4,14 +4,12 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import type { 
-  AnalyticsConfig, 
-  AnalyticsState, 
-  AnalyticsEvent 
+import {
+  analyticsManager,
+  type AnalyticsConfig,
+  type AnalyticsEvent,
+  type AnalyticsState,
 } from '../utils/analyticsManager';
-import { 
-  analyticsManager 
-} from'../utils/analyticsManager';
 
 export interface UseAnalyticsOptions {
   config?: Partial<AnalyticsConfig>;
@@ -45,6 +43,20 @@ export interface UseAnalyticsReturn {
   totalEvents: number;
   totalSessions: number;
 }
+
+const cloneAnalyticsState = (analyticsState: AnalyticsState): AnalyticsState => ({
+  ...analyticsState,
+  currentSession: analyticsState.currentSession
+    ? {
+        ...analyticsState.currentSession,
+        properties: { ...analyticsState.currentSession.properties },
+      }
+    : null,
+  eventQueue: analyticsState.eventQueue.map((event) => ({
+    ...event,
+    properties: { ...event.properties },
+  })),
+});
 
 /**
  * Hook for analytics functionality
@@ -138,7 +150,7 @@ export const useAnalytics = (options: UseAnalyticsOptions = {}): UseAnalyticsRet
     analyticsManager.on('initialized', handleInitialized);
 
     // Update initial state
-    setState(analyticsManager.getState());
+    setState(cloneAnalyticsState(analyticsManager.getState()));
 
     return () => {
       // Remove event listeners
@@ -153,7 +165,7 @@ export const useAnalytics = (options: UseAnalyticsOptions = {}): UseAnalyticsRet
   useEffect(() => {
     stateIntervalRef.current = setInterval(() => {
       const currentState = analyticsManager.getState();
-      setState(currentState);
+      setState(cloneAnalyticsState(currentState));
   }, 100);
 
     return () => {
@@ -259,5 +271,3 @@ export const useAnalytics = (options: UseAnalyticsOptions = {}): UseAnalyticsRet
 };
 
 export default useAnalytics;
-
-

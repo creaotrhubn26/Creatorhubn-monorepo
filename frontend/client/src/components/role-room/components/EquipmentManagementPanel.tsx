@@ -488,6 +488,7 @@ const getRoleRoomDialogTitleSx = (
   justifyContent: align,
   borderBottom: '1px solid rgba(148,163,184,0.22)',
   background: ROLE_ROOM_DIALOG_ACCENTS[accent].headerGradient,
+  color: '#fff',
   py: 2,
   px: 3,
 });
@@ -4810,6 +4811,7 @@ export function EquipmentManagementPanel({
                   <IconButton
                     size="small"
                     onClick={(e) => { e.stopPropagation(); toggleSelectEquipment(eq.id); }}
+                    aria-label={selectedEquipmentIds.has(eq.id) ? `Fjern markering for ${eq.name}` : `Velg ${eq.name}`}
                     sx={{ 
                       bgcolor: selectedEquipmentIds.has(eq.id) ? '#9333ea' : 'rgba(0,0,0,0.5)',
                       backdropFilter: 'blur(4px)',
@@ -5068,6 +5070,7 @@ export function EquipmentManagementPanel({
                       <IconButton
                         size="small"
                         onClick={() => handleOpenBookings(eq)}
+                        aria-label={`Åpne bookinger for ${eq.name}`}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5082,6 +5085,7 @@ export function EquipmentManagementPanel({
                         <IconButton
                           size="small"
                           onClick={() => handleOpenCheckin(eq)}
+                          aria-label={`Lever inn ${eq.name}`}
                           sx={{
                             ...focusVisibleStyles,
                             color: '#4caf50',
@@ -5097,6 +5101,7 @@ export function EquipmentManagementPanel({
                         <IconButton
                           size="small"
                           onClick={() => handleOpenCheckout(eq)}
+                          aria-label={`Sjekk ut ${eq.name}`}
                           sx={{
                             ...focusVisibleStyles,
                             color: '#2196f3',
@@ -5111,6 +5116,7 @@ export function EquipmentManagementPanel({
                       <IconButton
                         size="small"
                         onClick={() => handleOpenAssign(eq)}
+                        aria-label={`Tilordne ansvarlig for ${eq.name}`}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5124,6 +5130,7 @@ export function EquipmentManagementPanel({
                       <IconButton
                         size="small"
                         onClick={() => handleOpenQrLabel(eq)}
+                        aria-label={`Vis QR-kode for ${eq.name}`}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5137,6 +5144,7 @@ export function EquipmentManagementPanel({
                       <IconButton
                         size="small"
                         onClick={() => handleOpenHistory(eq)}
+                        aria-label={`Åpne historikk for ${eq.name}`}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5152,6 +5160,7 @@ export function EquipmentManagementPanel({
                       <IconButton
                         size="small"
                         onClick={() => handleDuplicate(eq)}
+                        aria-label={`Dupliser ${eq.name}`}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5165,6 +5174,7 @@ export function EquipmentManagementPanel({
                       <IconButton
                         size="small"
                         onClick={() => handleOpenMaintenance(eq)}
+                        aria-label={`Åpne vedlikehold for ${eq.name}`}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5178,6 +5188,7 @@ export function EquipmentManagementPanel({
                       <IconButton
                         size="small"
                         onClick={() => handleOpenDialog(eq)}
+                        aria-label={`Rediger ${eq.name}`}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5191,6 +5202,7 @@ export function EquipmentManagementPanel({
                       <IconButton
                         size="small"
                         onClick={() => handleDeleteClick(eq)}
+                        aria-label={`Slett ${eq.name}`}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5406,6 +5418,7 @@ export function EquipmentManagementPanel({
                         <IconButton 
                           size="small" 
                           onClick={() => handleOpenBookings(eq)} 
+                          aria-label={`Åpne bookinger for ${eq.name}`}
                           sx={{ 
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
@@ -5420,6 +5433,7 @@ export function EquipmentManagementPanel({
                           <IconButton
                             size="small"
                             onClick={() => handleOpenCheckin(eq)}
+                            aria-label={`Lever inn ${eq.name}`}
                             sx={{ ...focusVisibleStyles, color: '#4caf50', '&:hover': { bgcolor: 'rgba(76,175,80,0.1)' } }}
                           >
                             <CheckInIcon sx={{ fontSize: 18 }} />
@@ -5430,6 +5444,7 @@ export function EquipmentManagementPanel({
                           <IconButton
                             size="small"
                             onClick={() => handleOpenCheckout(eq)}
+                            aria-label={`Sjekk ut ${eq.name}`}
                             sx={{ ...focusVisibleStyles, color: '#2196f3', '&:hover': { bgcolor: 'rgba(33,150,243,0.1)' } }}
                           >
                             <CheckOutIcon sx={{ fontSize: 18 }} />
@@ -5440,6 +5455,7 @@ export function EquipmentManagementPanel({
                         <IconButton 
                           size="small" 
                           onClick={() => handleOpenAssign(eq)} 
+                          aria-label={`Tilordne ansvarlig for ${eq.name}`}
                           sx={{ 
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
@@ -5453,6 +5469,7 @@ export function EquipmentManagementPanel({
                         <IconButton
                           size="small"
                           onClick={() => handleOpenQrLabel(eq)}
+                          aria-label={`Vis QR-kode for ${eq.name}`}
                           sx={{
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
@@ -5466,6 +5483,7 @@ export function EquipmentManagementPanel({
                         <IconButton 
                           size="small" 
                           onClick={() => handleOpenDialog(eq)} 
+                          aria-label={`Rediger ${eq.name}`}
                           sx={{ 
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
@@ -5479,8 +5497,9 @@ export function EquipmentManagementPanel({
                         <IconButton 
                           size="small" 
                           onClick={() => handleDeleteClick(eq)} 
+                          aria-label={`Slett ${eq.name}`}
                           sx={{ 
-                            ...focusVisibleStyles, 
+                            ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
                             '&:hover': { color: '#f44336', bgcolor: 'rgba(244,67,54,0.1)' },
                           }}
@@ -6618,7 +6637,7 @@ export function EquipmentManagementPanel({
             startIcon={<SaveIcon />}
             sx={{
               background: 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)',
-              color: '#000',
+              color: '#fff',
               fontWeight: 700,
               minHeight: TOUCH_TARGET_SIZE,
               borderRadius: 2,
@@ -7457,10 +7476,11 @@ export function EquipmentManagementPanel({
                 onClick={() => handleOpenShopCategory('Kamera', 'https://www.foto.no/foto/kamera')}
                 sx={{ 
                   background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
-                  color: '#fff', 
+                  color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
+                  '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
                   '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
               >
@@ -7473,10 +7493,11 @@ export function EquipmentManagementPanel({
                 onClick={() => handleOpenShopCategory('Lys', 'https://www.foto.no/foto/foto-tilbehor/belysning')}
                 sx={{ 
                   background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
-                  color: '#fff', 
+                  color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
+                  '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
                   '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
               >
@@ -7489,10 +7510,11 @@ export function EquipmentManagementPanel({
                 onClick={() => handleOpenShopCategory('Video', 'https://www.foto.no/video')}
                 sx={{ 
                   background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
-                  color: '#fff', 
+                  color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
+                  '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
                   '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
               >
@@ -7505,10 +7527,11 @@ export function EquipmentManagementPanel({
                 onClick={() => handleOpenShopCategory('Lyd', 'https://www.foto.no/lyd')}
                 sx={{ 
                   background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
-                  color: '#fff', 
+                  color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
+                  '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
                   '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
               >
@@ -7911,7 +7934,7 @@ export function EquipmentManagementPanel({
                 disabled={imageSearchLoading || !imageSearchQuery.trim()}
                 sx={{ 
                   bgcolor: '#9333ea', 
-                  color: '#000',
+                  color: '#fff',
                   minWidth: 100,
                   '&:hover': { bgcolor: '#6d28d9' },
                 }}
@@ -9780,7 +9803,7 @@ export function EquipmentManagementPanel({
             onClick={() => qrTargetEquipment && handlePrintQR(qrTargetEquipment)}
             sx={{
               bgcolor: '#9333ea',
-              color: '#000',
+              color: '#fff',
               fontWeight: 700,
               '&:hover': { bgcolor: '#a855f7' },
             }}
@@ -9886,7 +9909,7 @@ export function EquipmentManagementPanel({
             onClick={() => handleResolveScannedQr(qrScanInput)}
             sx={{
               background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
-              color: '#000',
+              color: '#fff',
               fontWeight: 700,
               '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' },
             }}
@@ -9998,7 +10021,7 @@ export function EquipmentManagementPanel({
             onClick={() => handleApplyScannedSerialNumber(serialScanInput)}
             sx={{
               background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
-              color: '#000',
+              color: '#fff',
               fontWeight: 700,
               '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' },
             }}

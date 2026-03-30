@@ -49,6 +49,7 @@ import {
   type Lesson,
   type LessonResource,
   type PedagogicalQuizSuggestion,
+  type PedagogicalQuizSuggestionOption,
 } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
@@ -77,6 +78,8 @@ interface QuizOption {
 }
 
 type QuizQuestionType = 'single-choice' | 'multi-select' | 'true-false' | 'short-answer';
+
+const isPresent = <T,>(value: T | null): value is T => value !== null;
 
 interface QuizQuestion {
   id: string;
@@ -490,7 +493,7 @@ const normalizeInterviewQuizSuggestions = (
 ): PedagogicalQuizSuggestion[] => {
   if (!Array.isArray(value)) return [];
   return value
-    .map((entry, index) => {
+    .map<PedagogicalQuizSuggestion | null>((entry, index) => {
       if (!entry || typeof entry !== 'object') return null;
       const source = entry as Record<string, unknown>;
       const prompt = String(source.prompt || '').trim();
@@ -512,7 +515,7 @@ const normalizeInterviewQuizSuggestions = (
           : levelRaw === 'advanced'
             ? 'advanced'
             : 'operational';
-      return {
+      const suggestion: PedagogicalQuizSuggestion = {
         id:
           String(source.id || '').trim() ||
           `interview-quiz-${`${competency}-${prompt}`.toLowerCase().replace(/[^a-z0-9]+/g, "-") || index + 1}`,
@@ -524,12 +527,12 @@ const normalizeInterviewQuizSuggestions = (
         type,
         options: Array.isArray(source.options)
           ? source.options
-              .map((option, optionIndex) => {
+              .map<PedagogicalQuizSuggestionOption | null>((option, optionIndex) => {
                 if (!option || typeof option !== 'object') return null;
                 const optionSource = option as Record<string, unknown>;
                 const text = String(optionSource.text || '').trim();
                 if (!text) return null;
-                return {
+                const normalizedOption: PedagogicalQuizSuggestionOption = {
                   label:
                     String(optionSource.label || String.fromCharCode(65 + optionIndex))
                       .trim()
@@ -539,17 +542,9 @@ const normalizeInterviewQuizSuggestions = (
                   isCorrect: Boolean(optionSource.isCorrect),
                   explanation: String(optionSource.explanation || '').trim() || undefined,
                 };
+                return normalizedOption;
               })
-              .filter(
-                (
-                  option,
-                ): option is {
-                  label: string;
-                  text: string;
-                  isCorrect: boolean;
-                  explanation?: string;
-                } => Boolean(option),
-              )
+              .filter(isPresent)
               .slice(0, 6)
           : [],
         acceptedAnswers: Array.isArray(source.acceptedAnswers)
@@ -567,9 +562,10 @@ const normalizeInterviewQuizSuggestions = (
               .filter((tag) => tag.length > 0)
               .slice(0, 8)
           : [],
-      } satisfies PedagogicalQuizSuggestion;
+      };
+      return suggestion;
     })
-    .filter((entry): entry is PedagogicalQuizSuggestion => Boolean(entry))
+    .filter(isPresent)
     .slice(0, 12);
 };
 
@@ -605,7 +601,7 @@ const buildQuizQuestionsFromInterviewSuggestions = (
       weight: suggestion.level === 'advanced' ? 1.3 : suggestion.level === 'basic' ? 0.9 : 1,
       shortAnswerAccepted:
         suggestion.type === 'short-answer'
-          ? suggestion.acceptedAnswers.map((answer) => answer.toLowerCase())
+          ? (suggestion.acceptedAnswers ?? []).map((answer) => answer.toLowerCase())
           : [],
       options: suggestion.options.map((option, optionIndex) => ({
         id: `${suggestion.id}-opt-${optionIndex}`,

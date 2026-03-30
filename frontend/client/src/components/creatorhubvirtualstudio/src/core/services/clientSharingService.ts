@@ -11,8 +11,6 @@
  * - Expiration dates
  */
 
-import { Scene } from '../models/scene';
-
 // ============================================================================
 // Types
 // ============================================================================
@@ -130,7 +128,7 @@ class ClientSharingService {
     };
 
     try {
-      const response = await fetch(`${this.apiBase}/links, `, {
+      const response = await fetch(`${this.apiBase}/links`, {
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
         credentials: 'include',
@@ -138,15 +136,16 @@ class ClientSharingService {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create share link , ');
+        throw new Error('Failed to create share link');
       }
 
       return await response.json();
     } catch (error) {
+      console.warn('Falling back to local share link storage', error);
       // Fallback to localStorage for offline support
       const links = this.getLocalShareLinks();
       links.push(shareLink);
-      localStorage.setItem('vs_share_links,', JSON.stringify(links));
+      localStorage.setItem('vs_share_links', JSON.stringify(links));
       return shareLink;
     }
   }
@@ -166,6 +165,7 @@ class ClientSharingService {
 
       return await response.json();
     } catch (error) {
+      console.warn('Falling back to local share links', error);
       return this.getLocalShareLinks().filter((l) => l.projectId === projectId);
     }
   }
@@ -188,6 +188,7 @@ class ClientSharingService {
       const data = await response.json();
       return data;
     } catch (error) {
+      console.warn('Falling back to local share link validation', error);
       // Check local storage
       const links = this.getLocalShareLinks();
       const link = links.find((l) => l.token === token && l.isActive);
@@ -225,6 +226,7 @@ class ClientSharingService {
 
       return response.ok;
     } catch (error) {
+      console.warn('Falling back to local share link revoke', error);
       const links = this.getLocalShareLinks();
       const index = links.findIndex((l) => l.id === linkId);
       if (index !== -1) {
@@ -257,6 +259,7 @@ class ClientSharingService {
 
       return await response.json();
     } catch (error) {
+      console.warn('Falling back to local share link update', error);
       const links = this.getLocalShareLinks();
       const index = links.findIndex((l) => l.id === linkId);
       if (index !== -1) {
@@ -307,6 +310,7 @@ class ClientSharingService {
 
       return await response.json();
     } catch (error) {
+      console.warn('Falling back to local comment storage', error);
       const comments = this.getLocalComments();
       comments.push(comment);
       localStorage.setItem('vs_client_comments', JSON.stringify(comments));
@@ -327,6 +331,7 @@ class ClientSharingService {
 
       return await response.json();
     } catch (error) {
+      console.warn('Falling back to local comments', error);
       return this.getLocalComments().filter((c) => c.shareLinkId === shareLinkId);
     }
   }
@@ -345,6 +350,7 @@ class ClientSharingService {
 
       return response.ok;
     } catch (error) {
+      console.warn('Falling back to local comment resolution', error);
       const comments = this.getLocalComments();
       const index = comments.findIndex((c) => c.id === commentId);
       if (index !== -1) {
@@ -394,6 +400,7 @@ class ClientSharingService {
 
       return await response.json();
     } catch (error) {
+      console.warn('Falling back to local approval storage', error);
       const approvals = this.getLocalApprovals();
       approvals.push(approval);
       localStorage.setItem('vs_approvals', JSON.stringify(approvals));
@@ -415,6 +422,7 @@ class ClientSharingService {
       const approvals = await response.json();
       return approvals.length > 0 ? approvals[approvals.length - 1] : null;
     } catch (error) {
+      console.warn('Falling back to local approval state', error);
       const approvals = this.getLocalApprovals().filter((a) => a.shareLinkId === shareLinkId);
       return approvals.length > 0 ? approvals[approvals.length - 1] : null;
     }
@@ -428,7 +436,7 @@ class ClientSharingService {
    * Generate the full share URL
    */
   getShareUrl(token: string): string {
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ', ';
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     return `${baseUrl}/studio/share/${token}`;
   }
 
@@ -441,6 +449,7 @@ class ClientSharingService {
       await navigator.clipboard.writeText(url);
       return true;
     } catch (error) {
+      console.warn('Clipboard API unavailable, falling back to legacy copy', error);
       // Fallback for older browsers
       const input = document.createElement('input');
       input.value = url;
@@ -458,7 +467,7 @@ class ClientSharingService {
 
   private generateToken(): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let token = ', ';
+    let token = '';
     for (let i = 0; i < 32; i++) {
       token += chars.charAt(Math.floor(Math.random() * chars.length));
     }
@@ -493,4 +502,3 @@ class ClientSharingService {
 // Export singleton
 export const clientSharingService = new ClientSharingService();
 export default clientSharingService;
-

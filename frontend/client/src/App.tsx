@@ -50,7 +50,6 @@ import ShowcaseAdmin from '@/pages/showcase-admin';
 import ClientGallery from '@/pages/client-gallery';
 import ContractView from '@/pages/contract-view';
 import AdminNotificationDisplay from '@/components/notifications/AdminNotificationDisplay';
-import PrototypeFeedbackTool from '@/components/feedback/PrototypeFeedbackTool';
 import VerificationSystemDashboard from '@/components/admin/VerificationSystemDashboard';
 // import UniversalDashboardEnhanced from '@/components/universal/UniversalDashboardEnhanced';
 // import MinimalDashboard from '@/components/universal/MinimalDashboard';
@@ -643,8 +642,6 @@ function App() {
                   <Route component={NotFound} />
                 </Switch>
                 <AdminNotificationDisplay />
-                {/* Prototype Feedback Tool - only shows for prototype testers */}
-                <PrototypeFeedbackTool component="Global" />
                 {/* <BackgroundUploadWidget />
           <BackgroundDownloadWidget profession="photographer" /> */}
                 <SmartFileManagerWidget />

@@ -29,8 +29,14 @@ export interface LightGroup {
   updatedAt: Date;
 }
 
+type LightGroupRole = NonNullable<LightGroup['role']>;
+
 class LightGroupsService {
   private groups: Map<string, LightGroup> = new Map();
+
+  private isLightGroupRole(role: string): role is LightGroupRole {
+    return ['key', 'fill', 'rim', 'background', 'effects', 'custom'].includes(role);
+  }
 
   /**
    * Create a new light group
@@ -148,11 +154,13 @@ class LightGroupsService {
    * Auto-create groups from pattern context
    */
   autoCreateGroupsFromPattern(nodes: SceneNode[]): LightGroup[] {
-    const roleGroups: Record<string, string[]> = {
+    const roleGroups: Record<LightGroupRole, string[]> = {
       key: [],
       fill: [],
       rim: [],
       background: [],
+      effects: [],
+      custom: [],
     };
 
     // Group lights by role from pattern context
@@ -160,7 +168,7 @@ class LightGroupsService {
       if (node.type !== 'camera' && node.type !== 'model' && node.type !== 'backdrop' && node.type !== 'prop') {
         if (node.patternContext?.role) {
           const role = node.patternContext.role;
-          if (roleGroups[role]) {
+          if (this.isLightGroupRole(role)) {
             roleGroups[role].push(node.id);
           }
         }
@@ -212,7 +220,7 @@ class LightGroupsService {
    * Get default color for role
    */
   private getDefaultColorForRole(role: LightGroup['role']): string {
-    const colors: Record<LightGroup['role'], string> = {
+    const colors: Record<LightGroupRole, string> = {
       key: '#FF6B6B', // Red
       fill: '#4ECDC4', // Cyan
       rim: '#FFE66D', // Yellow
@@ -221,7 +229,7 @@ class LightGroupsService {
       custom: '#64748B', // Gray
     };
 
-    return colors[role];
+    return colors[role ?? 'custom'];
   }
 
   /**
@@ -233,4 +241,3 @@ class LightGroupsService {
 }
 
 export const lightGroupsService = new LightGroupsService();
-

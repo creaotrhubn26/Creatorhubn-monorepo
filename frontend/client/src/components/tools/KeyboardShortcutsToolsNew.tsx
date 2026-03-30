@@ -3,7 +3,7 @@ import { useProfessionConfig } from '../../hooks/useProfessionConfig';
 import { useSnackbar } from 'notistack';
 import { KeyboardShortcutsTutorial } from './KeyboardShortcutsTutorial';
 import { useTutorialPreferences } from '../../hooks/useTutorialPreferences';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Typography,
@@ -1639,6 +1639,28 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
   const [selectedCompositionTechnique, setSelectedCompositionTechnique] = useState('rule-of-thirds');
   const [selectedToolExplanation, setSelectedToolExplanation] = useState<string | null>(null);
 
+  const normalizedSoftwareData = useMemo<Software[]>(() => {
+    return softwareData.map((software) => {
+      const shortcutIdCounts = new Map<string, number>();
+
+      return {
+        ...software,
+        shortcuts: software.shortcuts.map((shortcut) => {
+          const baseId = shortcut.id.trim().length > 0
+            ? shortcut.id
+            : `${software.id}_shortcut`;
+          const duplicateCount = shortcutIdCounts.get(baseId) ?? 0;
+          shortcutIdCounts.set(baseId, duplicateCount + 1);
+
+          return {
+            ...shortcut,
+            id: duplicateCount === 0 ? baseId : `${baseId}_${duplicateCount}`,
+          };
+        }),
+      };
+    });
+  }, []);
+
   // Copy shortcut to clipboard with toast notification
   const copyShortcutToClipboard = (shortcut: string) => {
     navigator.clipboard.writeText(shortcut)
@@ -1650,7 +1672,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
       });
   };
 
-  const currentSoftware = softwareData.find(sw => sw.id === selectedSoftware);
+  const currentSoftware = normalizedSoftwareData.find(sw => sw.id === selectedSoftware);
   const shortcuts = currentSoftware?.shortcuts || [];
 
   // Filter shortcuts
@@ -1889,7 +1911,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
       >
   <Box sx={{ position: 'relative', zIndex: 1}}>
     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-      <Box sx={{ background: 'rgba(25,255,255,0.2)', borderRadius: 2, p: 1.5, mr: 2, backdropFilter: 'blur(10px)' }}>
+      <Box sx={{ background: 'rgba(255,255,255,0.16)', borderRadius: 2, p: 1.5, mr: 2, backdropFilter: 'blur(10px)' }}>
         <Keyboard sx={{ fontSize: 32, color: 'white' }} />
       </Box>
 
@@ -1939,7 +1961,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
       <Grid item xs={4}>
         <Box
           sx={{
-            background: 'rgba(25,255,255,0.15)',
+            background: 'rgba(255,255,255,0.12)',
             borderRadius: 1,
             p: 1.5,
             backdropFilter: 'blur(10px)',
@@ -1957,7 +1979,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
       <Grid item xs={4}>
         <Box
           sx={{
-            background: 'rgba(25,255,255,0.15)',
+            background: 'rgba(255,255,255,0.12)',
             borderRadius: 1,
             p: 1.5,
             backdropFilter: 'blur(10px)',
@@ -1974,7 +1996,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
       <Grid item xs={4}>
         <Box
           sx={{
-            background: 'rgba(25,255,255,0.15)',
+            background: 'rgba(255,255,255,0.12)',
             borderRadius: 1,
             p: 1.5,
             backdropFilter: 'blur(10px)',
@@ -1991,10 +2013,10 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
             icon={<Announcement />}
             sx={{ 
               mt: 3, 
-              background: 'rgba(25,255,255,0.15)',
+              background: 'rgba(255,255,255,0.12)',
               color: 'white',
               backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(25,255,255,0.2)',
+              border: '1px solid rgba(255,255,255,0.18)',
               '& .MuiAlert-icon': { color: 'white' }
             }}
           >
@@ -2014,7 +2036,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
           mb: 4, 
           p: 4, 
           borderRadius: 3,
-          background: 'rgba(25,255,255,0.9)',
+          background: 'rgba(255,255,255,0.96)',
           backdropFilter: 'blur(10px)',
           border: '1px solid rgba(25,107,53,0.1)',
           ...theming.getThemedCardSx()
@@ -2160,7 +2182,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                         ? `linear-gradient(135deg, ${software.color}, ${software.color}cc)` 
                         : `linear-gradient(135deg, ${software.color}10, ${software.color}05)`
               }, '&::before': {
-                      content: ', "',
+                      content: '""',
                       position: 'absolute',
                       top:  0,
                       left:  0,
@@ -2193,12 +2215,12 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                       label={`${software.shortcuts.length} snarveier`}
                       size="small" 
                       sx={{ 
-                        bgcolor: isSelected ? 'rgba(25,255,255,0.25)' : `${software.color}20`,
+                        bgcolor: isSelected ? 'rgba(255,255,255,0.18)' : `${software.color}20`,
                         color: isSelected ? 'white' : software.color,
                         fontWeight: 600,
                         fontSize: '0.75rem',
                         backdropFilter: 'blur(10px)',
-                        border: `1px solid ${isSelected ? 'rgba(25,255,255,0.3)' : software.color + '30'}`
+                        border: `1px solid ${isSelected ? 'rgba(255,255,255,0.22)' : software.color + '30'}`
                 }}
                     />
                   </CardContent>
@@ -2245,15 +2267,15 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     borderRadius:  3,
-                    background: 'rgba(25,255,255,0.8)',
+                    background: 'rgba(255,255,255,0.86)',
                     backdropFilter: 'blur(10px)',
                     border: '2px solid transparent',
                     transition: 'all 0.3s ease','&:hover': {
                       border: '2px solid rgba(25,107,53,0.3)',
-                      background: 'rgba(25,255,255,0.95)'
+                      background: 'rgba(255,255,255,0.94)'
               }, '&.Mui-focused': {
                       border: '2px solid #ff6b30',
-                      background: 'rgba(25,255,255,1)',
+                      background: 'rgba(255,255,255,0.98)',
                       boxShadow: '0 0 20px rgba(25,107,53,0.2)'
               }
             }, '& .MuiInputBase-input': {
@@ -2819,7 +2841,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                       position: 'absolute',
                       bottom:  8,
                       right:  8,
-                      backgroundColor: 'rgba(25,255,255,0.9)',
+                      backgroundColor: 'rgba(255,255,255,0.96)',
                       px:  1,
                       py: 0.5,
                       borderRadius:  1,
@@ -2945,7 +2967,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                       position: 'absolute',
                       bottom:  8,
                       right:  8,
-                      backgroundColor: 'rgba(25,255,255,0.9)',
+                      backgroundColor: 'rgba(255,255,255,0.96)',
                       px: 1, py: 0, borderRadius: 1, fontSize: '11px'
             }}>
                       Lines Guide Eye to Subject (Green)
@@ -3062,7 +3084,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     <Typography variant="caption" sx={{
                       position: 'absolute',
                       bottom:  8, right:  8,
-                      backgroundColor: 'rgba(25,255,255,0.9)',
+                      backgroundColor: 'rgba(255,255,255,0.96)',
                       px: 1, py: 0, borderRadius: 1, fontSize: '11px'
             }}>
                       Natural Frame (Brown) - Subject (Green)
@@ -3174,7 +3196,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     <Typography variant="caption" sx={{
                       position: 'absolute',
                       bottom:  8, right:  8,
-                      backgroundColor: 'rgba(25,255,255,0.9)',
+                      backgroundColor: 'rgba(255,255,255,0.96)',
                       px: 1, py: 0, borderRadius: 1, fontSize: '11px'
             }}>
                       Perfect Symmetry with Center Guide
@@ -3445,7 +3467,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     <Typography variant="caption" sx={{
                       position: 'absolute',
                       bottom:  8, right:  8,
-                      backgroundColor: 'rgba(25,255,255,0.9)',
+                      backgroundColor: 'rgba(255,255,255,0.96)',
                       px: 1, py: 0, borderRadius: 1, fontSize: '11px'
             }}>
                       Sharp Focus (Yellow) - Bokeh (Brown)

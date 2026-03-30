@@ -460,7 +460,7 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
               elevation={8}
               sx={{
                 p:  3,
-                background: 'rgba(25, 255, 255, 0.95)',
+                background: 'rgba(255, 255, 255, 0.96)',
                 backdropFilter: 'blur(10px)',
                 border: '1px solid',
                 borderColor: 'primary.main',

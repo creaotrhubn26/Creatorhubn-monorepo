@@ -6,7 +6,7 @@
  */
 
 import React, { useRef, useEffect, useMemo, useState } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Html, Line, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import type {
@@ -94,7 +94,7 @@ const StudentMesh: React.FC<StudentMeshProps> = ({
     <group
       ref={meshRef}
       position={[student.position3D.x, student.position3D.y, student.position3D.z]}
-      onClick={(e) => {
+      onClick={(e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
         onClick();
       }}
@@ -315,6 +315,26 @@ const SceneContent: React.FC<ClassPhotoViewProps> = ({
       camera.lookAt(session.cameraTarget);
     }
   }, [session, camera]);
+
+  useFrame(() => {
+    if (!session) {
+      return;
+    }
+
+    const targetPosition = new THREE.Vector3(
+      session.cameraPosition.x,
+      session.cameraPosition.y,
+      session.cameraPosition.z,
+    );
+    const lookTarget = new THREE.Vector3(
+      session.cameraTarget.x,
+      session.cameraTarget.y,
+      session.cameraTarget.z,
+    );
+
+    camera.position.lerp(targetPosition, 0.12);
+    camera.lookAt(lookTarget);
+  });
   
   if (!session) return null;
   
@@ -417,12 +437,8 @@ export const ClassPhotoView: React.FC<ClassPhotoViewProps> = (props) => {
     <Canvas
       shadows
       style={{ background: '#1a1a1a' }}
-      camera={{
-        fov: 50,
-        near: 0.1,
-        far: 100,
-        position: [0, 2, 8]}}
     >
+      <PerspectiveCamera makeDefault fov={50} near={0.1} far={100} position={[0, 2, 8]} />
       <SceneContent {...props} />
       <OrbitControls
         enablePan

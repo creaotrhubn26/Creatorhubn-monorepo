@@ -12,6 +12,7 @@ import {
   Chip,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   Divider,
   Alert,
@@ -21,10 +22,7 @@ import {
 import { useDemoMode, useDemoModeData } from '@/contexts/DemoModeContext';
 import {
   PhotoCamera,
-  Search,
-  Star,
   Memory,
-  Tune,
   Update,
 } from '@mui/icons-material';
 
@@ -142,7 +140,7 @@ const CameraSelectionTest: React.FC = () => {
 
       <Grid container spacing={3}>
         {/* Search and Filter Controls */}
-        <Grid size={{ xs: 12 }}>
+        <Grid item xs={12}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -150,7 +148,7 @@ const CameraSelectionTest: React.FC = () => {
               </Typography>
               
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12 }} md={6}>
+                <Grid item xs={12} md={6}>
                   <TextField
                     fullWidth
                     label="Søk etter kamera"
@@ -158,12 +156,12 @@ const CameraSelectionTest: React.FC = () => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     InputProps={{
-                      startAdornment: theming.getThemedIcon(<Search />)
+                      startAdornment: theming.getThemedIcon('search')
                   }}
                   />
                 </Grid>
                 
-                <Grid size={{ xs: 12 }} md={6}>
+                <Grid item xs={12} md={6}>
                   <Autocomplete
                     options={['', ...brands]}
                     value={brandFilter}
@@ -187,7 +185,7 @@ const CameraSelectionTest: React.FC = () => {
         </Grid>
 
         {/* Camera List */}
-        <Grid size={{ xs: 12 }} md={6}>
+        <Grid item xs={12} md={6}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -197,11 +195,11 @@ const CameraSelectionTest: React.FC = () => {
               <List>
                 {filteredCameras.map((camera, index) => (
                   <React.Fragment key={camera.id}>
-                    <ListItem
-                      button
-                      onClick={() => handleCameraSelect(camera)}
-                      selected={selectedCamera?.id === camera.id}
-                    >
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        onClick={() => handleCameraSelect(camera)}
+                        selected={selectedCamera?.id === camera.id}
+                      >
                       <ListItemText
                         primary={`${camera.brand} ${camera.model}`}
                         secondary={
@@ -226,6 +224,7 @@ const CameraSelectionTest: React.FC = () => {
                           </Box>
                       }
                       />
+                      </ListItemButton>
                     </ListItem>
                     {index < filteredCameras.length - 1 && <Divider />}
                   </React.Fragment>
@@ -236,7 +235,7 @@ const CameraSelectionTest: React.FC = () => {
         </Grid>
 
         {/* Camera Details */}
-        <Grid size={{ xs: 12 }} md={6}>
+        <Grid item xs={12} md={6}>
           {selectedCamera ? (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>

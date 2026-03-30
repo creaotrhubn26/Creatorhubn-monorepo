@@ -1,8 +1,12 @@
+import type { jsPDF as JsPDFClass } from 'jspdf';
 import type { Scene } from '@/core/models/scene';
 import { getBrand } from '@/core/services/config';
 import { logger } from './logger';
 
 const log = logger.module('Exporter');
+
+type JsPDFInstance = JsPDFClass;
+type JsPDFConstructor = typeof JsPDFClass;
 
 export function exportJSON(scene: Scene) {
   const blob = new Blob([JSON.stringify(scene, null, 2)], { type: 'application/json' });
@@ -16,11 +20,28 @@ export function exportJSON(scene: Scene) {
 
 async function getJSPDF() {
   try {
-    const mod = await import('jspdf');
-    // @ts-ignore
-    return mod.jsPDF || mod.default || mod;
-  } catch (e) {
-    log.warn('jsPDF not available. npm i jspdf');
+    type JsPDFModule = {
+      jsPDF?: JsPDFConstructor;
+      default?: JsPDFConstructor | { jsPDF?: JsPDFConstructor };
+    };
+
+    const mod = (await import('jspdf')) as JsPDFModule;
+
+    if (mod.jsPDF) {
+      return mod.jsPDF;
+    }
+
+    if (typeof mod.default === 'function') {
+      return mod.default;
+    }
+
+    if (mod.default && typeof mod.default === 'object' && mod.default.jsPDF) {
+      return mod.default.jsPDF;
+    }
+
+    return null;
+  } catch (error) {
+    log.warn('jsPDF not available. npm i jspdf', error);
     return null;
   }
 }
@@ -38,7 +59,7 @@ function mmScaleForRoom(
   return Math.min(sx, sy) * 1000;
 }
 
-function drawArrow(doc: any, x1: number, y1: number, x2: number, y2: number, label?: string) {
+function drawArrow(doc: JsPDFInstance, x1: number, y1: number, x2: number, y2: number, label?: string) {
   doc.setDrawColor(37, 99, 235);
   doc.setFillColor(255, 255, 255);
   doc.setLineWidth(0.4);
@@ -61,7 +82,7 @@ function drawArrow(doc: any, x1: number, y1: number, x2: number, y2: number, lab
 }
 
 function drawRoomScaled(
-  doc: any,
+  doc: JsPDFInstance,
   scene: Scene,
   frame: { x: number; y: number; w: number; h: number },
   measurements?: Array<{
@@ -108,7 +129,7 @@ function drawRoomScaled(
       const r = n.type === 'model' ? 2.5 : 2;
       const color = n.type === 'camera' ? [14, 165, 233] : n.light ? [245, 158, 11] : [51, 65, 85];
       doc.setFillColor(color[0], color[1], color[2]);
-        doc.circle(x, z, r, 'F');
+      doc.circle(x, z, r, 'F');
     });
 
   const cam = scene.nodes.find((n) => n.camera);
@@ -150,33 +171,36 @@ function drawRoomScaled(
   }
 }
 
-function drawHeader(doc: any, scene: Scene, logoDataUrl?: string) {
+function drawHeader(doc: JsPDFInstance, scene: Scene, logoDataUrl?: string) {
   const brand = getBrand();
+  const headerLogo = logoDataUrl ?? brand.logoDataUrl;
   doc.setFillColor(248, 250, 252);
   doc.rect(0, 0, 210, 22, 'F');
-  if (logoDataUrl ?? brand.logoDataUrl) {
+  if (headerLogo) {
     try {
-      doc.addImage(logoDataUrl ?? brand.logoDataUrl, 'PNG', 8, 4, 24, 14);
-    } catch {}
+      doc.addImage(headerLogo, 'PNG', 8, 4, 24, 14);
+    } catch (error) {
+      log.warn('Unable to embed export logo in PDF header', error);
+    }
   }
   doc.setTextColor(15, 23, 42);
   doc.setFontSize(15);
-  doc.text('Set Plan • ' + (brand.name || ','), 40, 12);
+  doc.text('Set Plan • ' + (brand.name || ''), 40, 12);
   doc.setFontSize(9);
   doc.setTextColor(71, 85, 105);
   doc.text(`Scene: ${scene.id}   Version: ${scene.version}`, 40, 18);
 }
 
-function drawFooter(doc: any) {
+function drawFooter(doc: JsPDFInstance) {
   const brand = getBrand();
   doc.setFillColor(248, 250, 252);
   doc.rect(0, 287, 210, 10, 'F');
   doc.setTextColor(100, 116, 139);
   doc.setFontSize(9);
-  doc.text(`${brand.name}  •  ${brand.website ?? ', '}`, 105, 293, { align: 'center' });
+  doc.text(`${brand.name}  •  ${brand.website ?? ''}`, 105, 293, { align: 'center' });
 }
 
-function drawTables(doc: any, scene: Scene, originY: number) {
+function drawTables(doc: JsPDFInstance, scene: Scene, originY: number) {
   let y = originY;
   doc.setFontSize(12);
   doc.setTextColor(15, 23, 42);
@@ -218,7 +242,19 @@ function drawTables(doc: any, scene: Scene, originY: number) {
   return y + 2;
 }
 
-export async function exportPDF(scene: Scene, options?: { logoDataUrl?: string }) {
+export async function exportPDF(
+  scene: Scene,
+  options?: {
+    logoDataUrl?: string;
+    measurements?: Array<{
+      a: [number, number];
+      b: [number, number];
+      label?: string;
+      color?: string;
+      name?: string;
+    }>;
+  },
+) {
   const jsPDF = await getJSPDF();
   if (!jsPDF) {
     alert('Install jsPDF to enable PDF export: npm i jspdf');
@@ -228,8 +264,7 @@ export async function exportPDF(scene: Scene, options?: { logoDataUrl?: string }
   drawHeader(doc, scene, options?.logoDataUrl);
 
   const nextY = drawTables(doc, scene, 28);
-
-  const frame = { x: 110, y: 35, w: 90, h: 140 };
+  const frame = { x: 110, y: Math.max(35, nextY + 8), w: 90, h: 140 };
   doc.setDrawColor(226, 232, 240);
   doc.rect(frame.x - 2, frame.y - 2, frame.w + 4, frame.h + 4);
   drawRoomScaled(doc, scene, frame, options?.measurements);

@@ -1,8 +1,6 @@
 // AdminProffAnalysis.tsx - Admin-only component for detailed business analysis with red flags
 import { useTheming } from '../utils/theming-helper';
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import {
   Dialog,
   DialogTitle,
@@ -27,8 +25,6 @@ import {
   Error as ErrorIcon,
   CheckCircle as CheckIcon,
   Business as BusinessIcon,
-  Person as PersonIcon,
-  AttachMoney as MoneyIcon,
   Flag as FlagIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
@@ -174,7 +170,7 @@ export const AdminProffAnalysis: React.FC<AdminProffAnalysisProps> = ({
                 {analysisData.companyName}
               </Typography>
               <Grid container spacing={2}>
-                <Grid size={{ xs:  6 }}>
+                <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">Status</Typography>
                   <Chip 
                     label={analysisData.status.toUpperCase()}
@@ -182,7 +178,7 @@ export const AdminProffAnalysis: React.FC<AdminProffAnalysisProps> = ({
                     size="small" 
                   />
                 </Grid>
-                <Grid size={{ xs:  6 }}>
+                <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">Ansatte</Typography>
                   <Typography>{analysisData.employees || 'Ukjent'}</Typography>
                 </Grid>
@@ -197,7 +193,7 @@ export const AdminProffAnalysis: React.FC<AdminProffAnalysisProps> = ({
               </Typography>
               <Grid container spacing={1}>
                 {Object.entries(analysisData.adminFlags).map(([key, value]) => (
-                  <Grid size={{ xs:  6 }} key={key}>
+                  <Grid item xs={6} key={key}>
                     <Box display="flex" alignItems="center">
                       {value ? <ErrorIcon color="error" /> : <CheckIcon color="success" />}
                       <Typography sx={{ ml:  1 }} variant="body2">

@@ -11,6 +11,38 @@ import { useProfessionConfigs } from '../hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../hooks/useProfessionAdapter';
 import getProfessionIcon from '../utils/profession-icons';
 
+const getRealTimeWebSocketUrl = (userIdentifier?: string | null): string | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const configuredWsUrl = typeof import.meta.env.VITE_WS_URL === 'string'
+    ? import.meta.env.VITE_WS_URL.trim()
+    : '';
+  const configuredApiTarget = typeof import.meta.env.VITE_API_PROXY_TARGET === 'string'
+    ? import.meta.env.VITE_API_PROXY_TARGET.trim()
+    : '';
+
+  const baseUrl = configuredWsUrl || (
+    import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(window.location.hostname)
+      ? (configuredApiTarget || 'http://127.0.0.1:3003').replace(/^http/i, 'ws')
+      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+  );
+
+  try {
+    const url = new URL(baseUrl);
+    if (!url.pathname || url.pathname === '/') {
+      url.pathname = '/ws';
+    }
+    if (userIdentifier && userIdentifier.trim()) {
+      url.searchParams.set('userId', userIdentifier.trim());
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
 // Real-time event types
 export type RealTimeEventType = 
   | 'project_updated'
@@ -210,6 +242,19 @@ export const RealTimeProvider: React.FC<{ children: ReactNode }> = ({ children }
   });
 }, []);
 
+  // Start heartbeat
+  const startHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+  }
+    
+    heartbeatIntervalRef.current = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'ping',}));
+    }
+  }, 30000);
+}, []);
+
   // Connect to WebSocket
   const connect = useCallback(async (): Promise<void> => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -218,7 +263,12 @@ export const RealTimeProvider: React.FC<{ children: ReactNode }> = ({ children }
     setConnectionError(null);
 
     try {
-      const ws = new WebSocket(`${process.env.REACT_APP_WS_URL || 'ws://localhost:3000'}/realtime`);
+      const wsUrl = getRealTimeWebSocketUrl(user?.id || null);
+      if (!wsUrl) {
+        throw new Error('Real-time WebSocket URL is not available');
+      }
+
+      const ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
         setIsConnected(true);
@@ -229,6 +279,9 @@ export const RealTimeProvider: React.FC<{ children: ReactNode }> = ({ children }
         ws.send(JSON.stringify({
           type: 'auth',
           userId: user?.id,
+          payload: {
+            userId: user?.id,
+          },
           token: user?.id // In a real app, use proper JWT token
       }));
         
@@ -261,7 +314,7 @@ export const RealTimeProvider: React.FC<{ children: ReactNode }> = ({ children }
       }, 5000);
     };
 
-      ws.onerror = (error) => {
+      ws.onerror = () => {
         setConnectionError('WebSocket connection error');
         setIsConnecting(false);
     };
@@ -271,7 +324,7 @@ export const RealTimeProvider: React.FC<{ children: ReactNode }> = ({ children }
       setConnectionError('Failed to connect to real-time service');
       setIsConnecting(false);
   }
-}, [user, isConnected]);
+}, [user, isConnected, startHeartbeat]);
 
   // Disconnect from WebSocket
   const disconnect = useCallback(() => {
@@ -300,19 +353,6 @@ export const RealTimeProvider: React.FC<{ children: ReactNode }> = ({ children }
     await new Promise(resolve => setTimeout(resolve, 1000));
     await connect();
 }, [disconnect, connect]);
-
-  // Start heartbeat
-  const startHeartbeat = useCallback(() => {
-    if (heartbeatIntervalRef.current) {
-      clearInterval(heartbeatIntervalRef.current);
-  }
-    
-    heartbeatIntervalRef.current = setInterval(() => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'ping',}));
-    }
-  }, 30000);
-}, []);
 
   // Handle WebSocket messages
   const handleWebSocketMessage = useCallback((data: any) => {
@@ -616,5 +656,3 @@ export const useRealTime = (): RealTimeContextType => {
 };
 
 export default RealTimeContext;
-
-

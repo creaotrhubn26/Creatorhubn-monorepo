@@ -29,7 +29,6 @@ export function DropIndicator({
 }: DropIndicatorProps) {
   const groupRef = useRef<THREE.Group>(null);
   const ringRef = useRef<THREE.Mesh>(null);
-  const lineRef = useRef<THREE.Line>(null);
   const gridRef = useRef<THREE.GridHelper>(null);
   const pulseRef = useRef(0);
 
@@ -69,6 +68,12 @@ export function DropIndicator({
     return geo;
   }, []);
 
+  const lineObject = useMemo(() => {
+    const line = new THREE.Line(lineGeometry, lineMaterial);
+    line.computeLineDistances();
+    return line;
+  }, [lineGeometry, lineMaterial]);
+
   // Animation
   useFrame((_, delta) => {
     if (!groupRef.current || !position) return;
@@ -85,9 +90,7 @@ export function DropIndicator({
     }
 
     // Update line opacity
-    if (lineRef.current) {
-      (lineRef.current.material as THREE.LineDashedMaterial).opacity = 0.2 + pulse * 0.2;
-    }
+    lineMaterial.opacity = 0.2 + pulse * 0.2;
 
     // Smooth position transition
     groupRef.current.position.lerp(position, 0.3);
@@ -113,9 +116,7 @@ export function DropIndicator({
       </mesh>
 
       {/* Vertical guide line */}
-      <line ref={lineRef} geometry={lineGeometry}>
-        <lineDashedMaterial attach="material" color={color} transparent opacity={0.3} dashSize={0.1} gapSize={0.05} />
-      </line>
+      <primitive object={lineObject} />
 
       {/* Local grid (optional) */}
       {showGrid && (
@@ -193,4 +194,3 @@ export function DragOverlay({ visible, message = 'Drop to place equipment' }: Dr
 }
 
 export default DropIndicator;
-

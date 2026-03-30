@@ -401,7 +401,7 @@ export default function TestingDashboard() {
                 <Typography variant="h6" sx={{  color: 'white', fontWeight: 600}}>
                   Deployment Readiness
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'rgba(25,255,255,0.9)', mb:  2 }}>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', mb:  2 }}>
                   Alle kritiske tester må bestå før production deployment
                 </Typography>
                 <LinearProgress
@@ -421,7 +421,7 @@ export default function TestingDashboard() {
                 <Typography variant="h3" sx={{  color: 'white', fontWeight: 700 }}>
                   {calculateOverallReadiness()}%
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'rgba(25,255,255,0.9)' }}>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
                   Klar
                 </Typography>
               </Box>

@@ -20,6 +20,7 @@ import {
   Divider,
   IconButton,
   Tooltip,
+  type ChipProps,
 } from '@mui/material';
 import {
   Email,
@@ -304,6 +305,18 @@ export default function EmailChatIntegration() {
   }
 };
 
+  const handleRefreshData = () => {
+    debugging.logIntegration('info', 'Refreshing email chat integration data', {
+      selectedEmailId: selectedEmail?.id,
+      selectedThreadId: selectedThread?.id,
+      timestamp: Date.now(),
+    });
+    void queryClient.invalidateQueries({ queryKey: ['gmail-messages'] });
+    void queryClient.invalidateQueries({ queryKey: ['chat-threads'] });
+  };
+
+  const activeThreadId = selectedThread?.id || selectedEmail?.chatThreadId || null;
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'sent':
@@ -319,7 +332,7 @@ export default function EmailChatIntegration() {
   }
 };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): ChipProps['color'] => {
     switch (status) {
       case 'sent':
         return 'info';
@@ -341,6 +354,13 @@ export default function EmailChatIntegration() {
         Email-Chat Integration
         {isDemoMode && <Chip label="Demo Mode" size="small" color="secondary" />}
       </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Tooltip title="Oppdater e-post og chat-tråder">
+          <IconButton onClick={handleRefreshData} color="primary">
+            <Refresh />
+          </IconButton>
+        </Tooltip>
+      </Box>
 
       <Box sx={{ display: 'flex', gap: 2, height: '70vh'}}>
         {/* Email Messages List */}
@@ -353,7 +373,7 @@ export default function EmailChatIntegration() {
             <List>
               {displayEmailMessages.map((email: EmailMessage) => (
                 <ListItem
-                  key={email.d}
+                  key={email.id}
                   sx={{
                     border: '1px solid',
                     borderColor: 'divider',
@@ -384,7 +404,7 @@ export default function EmailChatIntegration() {
                     <Chip
                       label={email.status}
                       size="small"
-                      color={getStatusColor(email.status) as any}
+                      color={getStatusColor(email.status)}
                     />
                     {!email.chatThreadId && (
                       <Tooltip title="Create Chat Thread">
@@ -408,17 +428,20 @@ export default function EmailChatIntegration() {
           </CardContent>
         </Card>
 
+        <Divider orientation="vertical" flexItem />
+
         {/* Chat Threads List */}
         <Card sx={{ flex: 1, minWidth: 300,  ...theming.getThemedCardSx() }}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Chat color="primary" />
               Chat Threads
               {threadsLoading && <CircularProgress size={20} sx={{ ml:  1 }} />}
             </Typography>
             <List>
               {displayChatThreads.map((thread: ChatThread) => (
                 <ListItem
-                  key={thread.d}
+                  key={thread.id}
                   sx={{
                     border: '1px solid',
                     borderColor: 'divider',
@@ -467,11 +490,11 @@ export default function EmailChatIntegration() {
       </Box>
 
       {/* Message Input */}
-      {selectedEmail && (
+      {(selectedEmail || selectedThread) && (
         <Card sx={{ mt:  2 ,  ...theming.getThemedCardSx() }}>
           <CardContent sx={theming.getThemedCardSx()}>
             <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              Reply to: {selectedEmail.subject}
+              Reply to: {selectedThread?.subject || selectedEmail?.subject || 'Selected conversation'}
             </Typography>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end'}}>
               <TextField
@@ -485,8 +508,12 @@ export default function EmailChatIntegration() {
               />
               <Button variant="contained"
                 startIcon={<Send />}
-                onClick={() => handleSendMessage(selectedEmail.chatThreadId || 'new-thread')}
-                disabled={!newMessage.trim() || sendMessageMutation.isPending}
+                onClick={() => {
+                  if (activeThreadId) {
+                    handleSendMessage(activeThreadId);
+                  }
+                }}
+                disabled={!newMessage.trim() || sendMessageMutation.isPending || !activeThreadId}
               >
                 {sendMessageMutation.isPending ? <CircularProgress size={20} /> :'Send'}
               </Button>

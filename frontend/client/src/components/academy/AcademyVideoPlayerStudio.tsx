@@ -51,6 +51,7 @@ import { useAcademyLocale } from './academyLocale';
 import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
 import AcademyLeftSidebar from './AcademyLeftSidebar';
 import AcademyPlayerStudio from './AcademyPlayerStudio';
+import AcademyStudentSidebar from './AcademyStudentSidebar';
 import { resolveAcademyVideoUrl } from './academyVideoSourceUtils';
 
 interface ChapterItem {
@@ -88,6 +89,7 @@ interface AcademyVideoPlayerStudioProps {
   lessonId?: string;
   onSave?: (payload: Record<string, unknown>) => void;
   onCancel?: () => void;
+  returnTo?: string;
 }
 
 type RightTab = 'chapters' | 'shownotes' | 'transcript';
@@ -218,6 +220,21 @@ const cinematicPanelSx = {
 };
 
 const academyShellMaxWidth = 'min(100%, var(--academy-shell-max-width, 1920px))';
+
+const toDisplayName = (value: string, fallback = 'Student'): string => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return fallback;
+  const base = normalized.includes('@') ? normalized.split('@')[0] : normalized;
+  const parts = base
+    .replace(/[._]+/g, '-')
+    .split('-')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 0) return fallback;
+  return parts.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+};
 
 const formatTime = (seconds: number): string => {
   const safe = Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
@@ -534,10 +551,25 @@ const buildDefaultQuiz = (): PlayerQuiz => ({
   ],
 });
 
-function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: AcademyVideoPlayerStudioProps) {
-  const [, setLocation] = useLocation();
-  const { state, updateProgress, updateSettings, addBookmark, addNote, getCourse, setCurrentCourse } = useAcademy();
-  const { analytics, debugging } = useEnhancedMasterIntegration();
+function AcademyVideoPlayerStudio({
+  courseId,
+  lessonId,
+  onSave,
+  onCancel,
+  returnTo,
+}: AcademyVideoPlayerStudioProps) {
+  const [location, setLocation] = useLocation();
+  const {
+    state,
+    updateProgress,
+    updateSettings,
+    addBookmark,
+    addNote,
+    getCourse,
+    setCurrentCourse,
+    setCurrentLesson,
+  } = useAcademy();
+  const { analytics, debugging, auth } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
@@ -566,6 +598,122 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
     }
     return state.currentLesson || lessons[0] || null;
   }, [activeCourse, lessonId, state.currentLesson]);
+
+  useEffect(() => {
+    if (!activeLesson?.id) return;
+    if (String(state.currentLesson?.id || '') === String(activeLesson.id)) return;
+    setCurrentLesson(activeLesson);
+  }, [activeLesson, setCurrentLesson, state.currentLesson?.id]);
+
+  const routeContext = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return { audience: '', returnTo: String(returnTo || '').trim() };
+    }
+    const params = new URLSearchParams(window.location.search);
+    const audience = String(params.get('audience') || '').trim().toLowerCase();
+    const returnToRaw = String(params.get('returnTo') || returnTo || '').trim();
+    const safeReturnTo = /^\/academy(\/|$)/.test(returnToRaw) ? returnToRaw : '';
+    return {
+      audience,
+      returnTo: safeReturnTo,
+    };
+  }, [location, returnTo]);
+
+  const isStudentMode = useMemo(() => {
+    if (routeContext.audience === 'student') return true;
+    return (
+      /\/academy\/student-dashboard(?:\?|$)/.test(routeContext.returnTo) ||
+      /\/academy\/dashboard\/student(?:\?|$)/.test(routeContext.returnTo) ||
+      /audience=student/.test(routeContext.returnTo)
+    );
+  }, [routeContext.audience, routeContext.returnTo]);
+
+  const studentBaseReturnTo = routeContext.returnTo || '/academy/student-dashboard';
+  const buildStudentRoute = useCallback(
+    (
+      path: string,
+      extra?: Record<string, string | number | null | undefined>,
+      overrideReturnTo = studentBaseReturnTo,
+    ) => {
+      const params = new URLSearchParams();
+      const safeCourseId = String(activeCourse?.id || '').trim();
+      const safeLessonId = String(activeLesson?.id || '').trim();
+
+      if (safeCourseId) params.set('courseId', safeCourseId);
+      if (safeLessonId) params.set('lessonId', safeLessonId);
+      params.set('audience', 'student');
+
+      const safeReturnTo = String(overrideReturnTo || '').trim();
+      if (safeReturnTo) {
+        params.set('returnTo', safeReturnTo);
+      }
+
+      Object.entries(extra || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        params.set(key, String(value));
+      });
+
+      const query = params.toString();
+      return query ? `${path}?${query}` : path;
+    },
+    [activeCourse?.id, activeLesson?.id, studentBaseReturnTo],
+  );
+
+  const currentStudentPlayerRoute = useMemo(
+    () => buildStudentRoute('/academy/player-studio'),
+    [buildStudentRoute],
+  );
+
+  const studentName = useMemo(() => {
+    const user = auth.state.user as
+      | {
+          email?: string;
+          name?: string;
+          firstName?: string;
+          id?: string;
+        }
+      | undefined;
+    return toDisplayName(
+      String(user?.name || user?.firstName || user?.email || user?.id || ''),
+      tt('Student', 'Student'),
+    );
+  }, [auth.state.user, tt]);
+
+  const studentProgressRows = useMemo(() => {
+    if (!activeCourse?.id || !Array.isArray(state.progress)) return [];
+    return state.progress.filter(
+      (row) => String(row.courseId || '') === String(activeCourse.id),
+    );
+  }, [activeCourse?.id, state.progress]);
+
+  const studentProgressStats = useMemo(() => {
+    const lessons = Array.isArray(activeCourse?.lessons) ? activeCourse.lessons : [];
+    const progressByLesson = new Map(
+      studentProgressRows.map((row) => [String(row.lessonId || ''), Number(row.progress || 0)]),
+    );
+
+    const completedLessons = lessons.filter((lesson) => {
+      const progressValue = progressByLesson.get(String(lesson.id)) || 0;
+      return progressValue >= 100;
+    }).length;
+
+    const progressPercent =
+      lessons.length > 0
+        ? Math.round(
+            lessons.reduce((sum, lesson) => sum + (progressByLesson.get(String(lesson.id)) || 0), 0) /
+              lessons.length,
+          )
+        : Math.round(
+            studentProgressRows.reduce((sum, row) => sum + Number(row.progress || 0), 0) /
+              Math.max(1, studentProgressRows.length),
+          );
+
+    return {
+      completedLessons,
+      totalLessons: lessons.length,
+      progressPercent: clamp(progressPercent, 0, 100),
+    };
+  }, [activeCourse?.lessons, studentProgressRows]);
   const activeCourseWithAssignments = activeCourse as CourseWithAssignmentStudio | null;
   const effectiveVideoUrl = useMemo(
     () =>
@@ -1365,6 +1513,19 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
   }, [activeCourse?.id, activeLesson?.id, chapters, onSave, speed, state.settings.subtitles, transcriptLines, tt]);
 
   const speedOptions = [0.5, 1, 1.25, 1.5, 2, 6];
+  const studentResourcesRoute = useMemo(
+    () => buildStudentRoute('/academy/media'),
+    [buildStudentRoute],
+  );
+  const studentAssignmentsRoute = useMemo(
+    () => buildStudentRoute('/academy/assignments'),
+    [buildStudentRoute],
+  );
+  const studentSelectedAssignmentRoute = useCallback(
+    (assignmentId: string) => buildStudentRoute('/academy/assignments', { assignmentId }),
+    [buildStudentRoute],
+  );
+  const studentDashboardRoute = studentBaseReturnTo || '/academy/student-dashboard';
 
   return (
     <Box
@@ -1398,18 +1559,34 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
           mx: 'auto',
         }}
       >
-        <AcademyLeftSidebar
-          activeNav="tools"
-          onNavigate={(_, route) => setLocation(route)}
-          onCreateCourse={() => setLocation('/academy/curriculum?createCompetency=1')}
-          tt={tt}
-          navLabel={navLabel}
-          bottomAction={{
-            label: tt('Legg til bokmerke', 'Add Bookmark'),
-            onClick: handleBookmark,
-            icon: <Bookmark />,
-          }}
-        />
+        {isStudentMode ? (
+          <AcademyStudentSidebar
+            activeNav="courses"
+            onNavigate={(_, route) => setLocation(route)}
+            tt={tt}
+            studentName={studentName}
+            activeCourseId={activeCourse?.id ? String(activeCourse.id) : null}
+            activeCourseTitle={activeCourse?.title || undefined}
+            progressPercent={studentProgressStats.progressPercent}
+            completedLessons={studentProgressStats.completedLessons}
+            totalLessons={studentProgressStats.totalLessons}
+            returnTo={studentBaseReturnTo}
+            continueRoute={currentStudentPlayerRoute}
+          />
+        ) : (
+          <AcademyLeftSidebar
+            activeNav="tools"
+            onNavigate={(_, route) => setLocation(route)}
+            onCreateCourse={() => setLocation('/academy/curriculum?createCompetency=1')}
+            tt={tt}
+            navLabel={navLabel}
+            bottomAction={{
+              label: tt('Legg til bokmerke', 'Add Bookmark'),
+              onClick: handleBookmark,
+              icon: <Bookmark />,
+            }}
+          />
+        )}
 
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Box
@@ -1425,9 +1602,20 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
           >
             <Stack direction="row" spacing={2} alignItems="center">
               <Typography sx={{ letterSpacing: '0.22em', fontSize: 15, color: 'rgba(237,240,247,0.82)' }}>
-                CREATOR STUDIO
+                {isStudentMode ? tt('STUDENT PLAYER', 'STUDENT PLAYER') : 'CREATOR STUDIO'}
               </Typography>
-              <Chip label={tt('Utkast', 'Draft')} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7', fontWeight: 600 }} />
+              <Chip
+                label={
+                  isStudentMode
+                    ? tt(
+                        `${studentProgressStats.completedLessons}/${Math.max(1, studentProgressStats.totalLessons)} fullført`,
+                        `${studentProgressStats.completedLessons}/${Math.max(1, studentProgressStats.totalLessons)} completed`,
+                      )
+                    : tt('Utkast', 'Draft')
+                }
+                size="small"
+                sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7', fontWeight: 600 }}
+              />
             </Stack>
 
             <Stack direction="row" spacing={1.2} alignItems="center">
@@ -1481,6 +1669,17 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                   <Typography sx={{ fontSize: 'clamp(1.35rem, 1rem + 0.9vw, 1.9rem)', fontWeight: 600, letterSpacing: '0.02em' }}>
                     {activeCourse?.title || 'Directing Masterclass'}
                   </Typography>
+                  {isStudentMode && activeLesson?.title ? (
+                    <Chip
+                      label={activeLesson.title}
+                      size="small"
+                      sx={{
+                        bgcolor: 'rgba(248,179,33,0.14)',
+                        color: '#f8d56f',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.24)',
+                      }}
+                    />
+                  ) : null}
                 </Stack>
 
                 <Stack
@@ -1501,117 +1700,178 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                     },
                   }}
                 >
-                  <Button
-                    variant="outlined"
-                    startIcon={isPlaying ? <Visibility /> : <VisibilityOff />}
-                    onClick={toggleStudentPreview}
-                    sx={{
-                      textTransform: 'none',
-                      borderColor: isPlaying ? 'rgba(248,179,33,0.45)' : 'rgba(255,255,255,0.2)',
-                      color: isPlaying ? '#f8d675' : '#edf0f7',
-                      bgcolor: isPlaying ? 'rgba(248,179,33,0.12)' : 'transparent',
-                      borderRadius: 1,
-                    }}
-                  >
-                    {isPlaying
-                      ? tt('Forhåndsvisning på', 'Preview on')
-                      : tt('Forhåndsvis (student)', 'Preview (learner)')}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Save />}
-                    onClick={() => handleSave(false)}
-                    sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
-                      borderRadius: 1,
-                    }}
-                  >
-                    {tt('Lagre', 'Save')}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<MonetizationOn />}
-                    onClick={() => setLocation('/academy/monetization')}
-                    sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
-                      borderRadius: 1,
-                    }}
-                  >
-                    {tt('Monetisering', 'Monetization')}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Campaign />}
-                    onClick={() => {
-                      const query = new URLSearchParams();
-                      if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
-                      if (activeLesson?.id) query.set('lessonId', String(activeLesson.id));
-                      const suffix = query.toString();
-                      setLocation(suffix ? `/academy/cta-overlay?${suffix}` : '/academy/cta-overlay');
-                    }}
-                    sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
-                      borderRadius: 1,
-                    }}
-                  >{tt('CTA-Studio', 'CTA Studio')}</Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Subtitles />}
-                    onClick={() => {
-                      const query = new URLSearchParams();
-                      if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
-                      if (activeLesson?.id) query.set('lessonId', String(activeLesson.id));
-                      const suffix = query.toString();
-                      setLocation(suffix ? `/academy/lower-thirds?${suffix}` : '/academy/lower-thirds');
-                    }}
-                    sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
-                      borderRadius: 1,
-                    }}
-                  >
-                    {tt('Supring Studio', 'Lower Thirds Studio')}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Slideshow />}
-                    onClick={() => {
-                      const query = new URLSearchParams();
-                      if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
-                      if (activeLesson?.id) query.set('lessonId', String(activeLesson.id));
-                      const suffix = query.toString();
-                      setLocation(suffix ? `/academy/presentation-overlay?${suffix}` : '/academy/presentation-overlay');
-                    }}
-                    sx={{
-                      textTransform: 'none',
-                      borderColor: 'rgba(255,255,255,0.2)',
-                      color: '#edf0f7',
-                      borderRadius: 1,
-                    }}
-                  >
-                    {tt('Presentasjon', 'Presentation')}
-                  </Button>
-                  <Button
-                    variant="contained"
-                    startIcon={<Publish />}
-                    onClick={() => handleSave(true)}
-                    sx={{
-                      textTransform: 'none',
-                      borderRadius: 1,
-                      color: '#0f0f0f',
-                      background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                      boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
-                    }}
-                  >
-                    {tt('Publiser', 'Publish')}
-                  </Button>
+                  {isStudentMode ? (
+                    <>
+                      <Button
+                        variant="outlined"
+                        startIcon={isPlaying ? <Visibility /> : <VisibilityOff />}
+                        onClick={toggleStudentPreview}
+                        sx={{
+                          textTransform: 'none',
+                          borderColor: isPlaying ? 'rgba(248,179,33,0.45)' : 'rgba(255,255,255,0.2)',
+                          color: isPlaying ? '#f8d675' : '#edf0f7',
+                          bgcolor: isPlaying ? 'rgba(248,179,33,0.12)' : 'transparent',
+                          borderRadius: 1,
+                        }}
+                      >
+                        {isPlaying ? tt('Spiller av', 'Playing') : tt('Start avspilling', 'Start playback')}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Bookmark />}
+                        onClick={handleBookmark}
+                        sx={{
+                          textTransform: 'none',
+                          borderColor: 'rgba(255,255,255,0.2)',
+                          color: '#edf0f7',
+                          borderRadius: 1,
+                        }}
+                      >
+                        {tt('Bokmerke', 'Bookmark')}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Search />}
+                        onClick={() => setLocation(studentResourcesRoute)}
+                        sx={{
+                          textTransform: 'none',
+                          borderColor: 'rgba(255,255,255,0.2)',
+                          color: '#edf0f7',
+                          borderRadius: 1,
+                        }}
+                      >
+                        {tt('Ressurser', 'Resources')}
+                      </Button>
+                      <Button
+                        variant="contained"
+                        startIcon={<Quiz />}
+                        onClick={() => setLocation(studentAssignmentsRoute)}
+                        sx={{
+                          textTransform: 'none',
+                          borderRadius: 1,
+                          color: '#0f0f0f',
+                          background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                          boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
+                        }}
+                      >
+                        {tt('Oppgaver', 'Assignments')}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outlined"
+                        startIcon={isPlaying ? <Visibility /> : <VisibilityOff />}
+                        onClick={toggleStudentPreview}
+                        sx={{
+                          textTransform: 'none',
+                          borderColor: isPlaying ? 'rgba(248,179,33,0.45)' : 'rgba(255,255,255,0.2)',
+                          color: isPlaying ? '#f8d675' : '#edf0f7',
+                          bgcolor: isPlaying ? 'rgba(248,179,33,0.12)' : 'transparent',
+                          borderRadius: 1,
+                        }}
+                      >
+                        {isPlaying
+                          ? tt('Forhåndsvisning på', 'Preview on')
+                          : tt('Forhåndsvis (student)', 'Preview (learner)')}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Save />}
+                        onClick={() => handleSave(false)}
+                        sx={{
+                          textTransform: 'none',
+                          borderColor: 'rgba(255,255,255,0.2)',
+                          color: '#edf0f7',
+                          borderRadius: 1,
+                        }}
+                      >
+                        {tt('Lagre', 'Save')}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<MonetizationOn />}
+                        onClick={() => setLocation('/academy/monetization')}
+                        sx={{
+                          textTransform: 'none',
+                          borderColor: 'rgba(255,255,255,0.2)',
+                          color: '#edf0f7',
+                          borderRadius: 1,
+                        }}
+                      >
+                        {tt('Monetisering', 'Monetization')}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Campaign />}
+                        onClick={() => {
+                          const query = new URLSearchParams();
+                          if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
+                          if (activeLesson?.id) query.set('lessonId', String(activeLesson.id));
+                          const suffix = query.toString();
+                          setLocation(suffix ? `/academy/cta-overlay?${suffix}` : '/academy/cta-overlay');
+                        }}
+                        sx={{
+                          textTransform: 'none',
+                          borderColor: 'rgba(255,255,255,0.2)',
+                          color: '#edf0f7',
+                          borderRadius: 1,
+                        }}
+                      >{tt('CTA-Studio', 'CTA Studio')}</Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Subtitles />}
+                        onClick={() => {
+                          const query = new URLSearchParams();
+                          if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
+                          if (activeLesson?.id) query.set('lessonId', String(activeLesson.id));
+                          const suffix = query.toString();
+                          setLocation(suffix ? `/academy/lower-thirds?${suffix}` : '/academy/lower-thirds');
+                        }}
+                        sx={{
+                          textTransform: 'none',
+                          borderColor: 'rgba(255,255,255,0.2)',
+                          color: '#edf0f7',
+                          borderRadius: 1,
+                        }}
+                      >
+                        {tt('Supring Studio', 'Lower Thirds Studio')}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Slideshow />}
+                        onClick={() => {
+                          const query = new URLSearchParams();
+                          if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
+                          if (activeLesson?.id) query.set('lessonId', String(activeLesson.id));
+                          const suffix = query.toString();
+                          setLocation(suffix ? `/academy/presentation-overlay?${suffix}` : '/academy/presentation-overlay');
+                        }}
+                        sx={{
+                          textTransform: 'none',
+                          borderColor: 'rgba(255,255,255,0.2)',
+                          color: '#edf0f7',
+                          borderRadius: 1,
+                        }}
+                      >
+                        {tt('Presentasjon', 'Presentation')}
+                      </Button>
+                      <Button
+                        variant="contained"
+                        startIcon={<Publish />}
+                        onClick={() => handleSave(true)}
+                        sx={{
+                          textTransform: 'none',
+                          borderRadius: 1,
+                          color: '#0f0f0f',
+                          background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                          boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
+                        }}
+                      >
+                        {tt('Publiser', 'Publish')}
+                      </Button>
+                    </>
+                  )}
                 </Stack>
               </Stack>
 
@@ -1786,6 +2046,12 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                           <Button
                             size="small"
                             onClick={() => {
+                              if (isStudentMode) {
+                                setLocation(
+                                  studentSelectedAssignmentRoute(String(activeAssignmentOverlay.id)),
+                                );
+                                return;
+                              }
                               const query = new URLSearchParams();
                               if (activeCourse?.id) query.set('courseId', String(activeCourse.id));
                               query.set('assignmentId', String(activeAssignmentOverlay.id));
@@ -2308,17 +2574,31 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                     >
                       {tt('Legg til notat', 'Add Note')}
                     </Button>
-                    <Button
-                      onClick={() => setLocation('/academy/quiz-manager')}
-                      startIcon={<Quiz />}
-                      sx={{
-                        textTransform: 'none',
-                        color: '#edf0f7',
-                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
-                      }}
-                    >
-                      Quiz Studio
-                    </Button>
+                    {isStudentMode ? (
+                      <Button
+                        onClick={() => setLocation(studentResourcesRoute)}
+                        startIcon={<Search />}
+                        sx={{
+                          textTransform: 'none',
+                          color: '#edf0f7',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
+                        }}
+                      >
+                        {tt('Ressurser', 'Resources')}
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => setLocation('/academy/quiz-manager')}
+                        startIcon={<Quiz />}
+                        sx={{
+                          textTransform: 'none',
+                          color: '#edf0f7',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
+                        }}
+                      >
+                        Quiz Studio
+                      </Button>
+                    )}
                   </Stack>
                 </Box>
               </Box>
@@ -2545,24 +2825,41 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                     border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  {tt('Spiller', 'Player')}
+                  {isStudentMode ? tt('Kapitler', 'Chapters') : tt('Spiller', 'Player')}
                 </Button>
-                <Button
-                  startIcon={<Quiz />}
-                  onClick={() => setLocation('/academy/quiz-manager')}
-                  sx={{
-                    flex: 1,
-                    textTransform: 'none',
-                    color: '#edf0f7',
-                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
-                  }}
-                >
-                  Quiz Studio
-                </Button>
+                {isStudentMode ? (
+                  <Button
+                    startIcon={<Search />}
+                    onClick={() => setLocation(studentResourcesRoute)}
+                    sx={{
+                      flex: 1,
+                      textTransform: 'none',
+                      color: '#edf0f7',
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
+                    }}
+                  >
+                    {tt('Ressurser', 'Resources')}
+                  </Button>
+                ) : (
+                  <Button
+                    startIcon={<Quiz />}
+                    onClick={() => setLocation('/academy/quiz-manager')}
+                    sx={{
+                      flex: 1,
+                      textTransform: 'none',
+                      color: '#edf0f7',
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
+                    }}
+                  >
+                    Quiz Studio
+                  </Button>
+                )}
                 <Button
                   onClick={() => {
                     if (onCancel) {
                       onCancel();
+                    } else if (isStudentMode) {
+                      setLocation(studentDashboardRoute);
                     } else {
                       setLocation('/academy/course-creator');
                     }
@@ -2573,7 +2870,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                     border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Close
+                  {isStudentMode ? tt('Til oversikt', 'Back to overview') : 'Close'}
                 </Button>
               </Stack>
             </Box>

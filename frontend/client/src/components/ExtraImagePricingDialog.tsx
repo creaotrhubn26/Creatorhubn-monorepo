@@ -236,7 +236,7 @@ export default function ExtraImagePricingDialog({
         sx: {
           bgcolor: '#0f1410',
           color: '#fff',
-          border: '1px solid rgba(25,255,255,0.1)'
+          border: '1px solid rgba(255,255,255,0.12)'
       }
     }}
     >
@@ -280,7 +280,7 @@ export default function ExtraImagePricingDialog({
                 onChange={(e) => setSelectedOption(e.target.value)}
               >
                 {/* Per image option */}
-                <Card sx={{ mb: 2, bgcolor: '#1a2330', border: '1px solid rgba(25,255,255,0.1)', ...theming.getThemedCardSx() }}>
+                <Card sx={{ mb: 2, bgcolor: '#1a2330', border: '1px solid rgba(255,255,255,0.12)', ...theming.getThemedCardSx() }}>
                   <CardContent sx={theming.getThemedCardSx()}>
                     <FormControlLabel
                       value="per_image"
@@ -290,7 +290,7 @@ export default function ExtraImagePricingDialog({
                           <Typography variant="h6" sx={{ color: theming.colors.primary }}>
                             Per bilde
                           </Typography>
-                          <Typography sx={{ color: 'rgba(25,255,255,0.7)' }}>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.72)' }}>
                             {pricingOptions.perImage.price} NOK per bilde
                           </Typography>
                           <Typography variant="body2" sx={{ color: '#ffa726'}}>
@@ -304,7 +304,7 @@ export default function ExtraImagePricingDialog({
 
                 {/* Package options */}
                 {pricingOptions.packages.map((pkg: PricingOption) => (
-                  <Card key={pkg.d} sx={{ mb: 2, bgcolor: '#1a2330', border: '1px solid rgba(25,255,255,0.1)', ...theming.getThemedCardSx() }}>
+                  <Card key={pkg.d} sx={{ mb: 2, bgcolor: '#1a2330', border: '1px solid rgba(255,255,255,0.12)', ...theming.getThemedCardSx() }}>
                     <CardContent sx={theming.getThemedCardSx()}>
                       <FormControlLabel
                         value={pkg.id}
@@ -323,7 +323,7 @@ export default function ExtraImagePricingDialog({
                                 />
                               )}
                             </Box>
-                            <Typography sx={{ color: 'rgba(25,255,255,0.7)' }}>
+                            <Typography sx={{ color: 'rgba(255,255,255,0.72)' }}>
                               {pkg.price} NOK ({pkg.pricePerImage} NOK per bilde)
                             </Typography>
                             {extraImages > (pkg.quantity || 0) && (
@@ -340,7 +340,7 @@ export default function ExtraImagePricingDialog({
 
                 {/* Custom option */}
                 {pricingOptions.customAllowed && (
-                  <Card sx={{ mb: 2, bgcolor: '#1a2330', border: '1px solid rgba(25,255,255,0.1)', ...theming.getThemedCardSx() }}>
+                  <Card sx={{ mb: 2, bgcolor: '#1a2330', border: '1px solid rgba(255,255,255,0.12)', ...theming.getThemedCardSx() }}>
                     <CardContent sx={theming.getThemedCardSx()}>
                       <FormControlLabel
                         value="custom"
@@ -350,7 +350,7 @@ export default function ExtraImagePricingDialog({
                             <Typography variant="h6" sx={{ color: theming.colors.primary }}>
                               Tilpasset antall
                             </Typography>
-                            <Typography sx={{ color: 'rgba(25,255,255,0.7)', mb:  1 }}>
+                            <Typography sx={{ color: 'rgba(255,255,255,0.72)', mb:  1 }}>
                               Velg ønsket antall bilder
                             </Typography>
                             {selectedOption === 'custom' && (
@@ -362,8 +362,8 @@ export default function ExtraImagePricingDialog({
                                 size="small"
                                 sx={{
                                   '& .MuiOutlinedInput-root': {
-                                    color: '#fff','& fieldset': { borderColor: 'rgba(25,255,255,0.3)' }
-                                  }, '& .MuiInputLabel-root': { color: 'rgba(25,255,255,0.7)' }
+                                    color: '#fff','& fieldset': { borderColor: 'rgba(255,255,255,0.22)' }
+                                  }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' }
                               }}
                               />
                             )}
@@ -382,22 +382,22 @@ export default function ExtraImagePricingDialog({
                     <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                       Sammendrag
                     </Typography>
-                    <Divider sx={{ mb: 2, borderColor: 'rgba(25,255,255,0.1)' }} />
+                    <Divider sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.12)' }} />
                     
                     <Box sx={{ mb:  2 }}>
-                      <Typography sx={{ color: 'rgba(25,255,255,0.8)' }}>
+                      <Typography sx={{ color: 'rgba(255,255,255,0.82)' }}>
                         Inkluderte bilder: {contractedImages}
                       </Typography>
-                      <Typography sx={{ color: 'rgba(25,255,255,0.8)' }}>
+                      <Typography sx={{ color: 'rgba(255,255,255,0.82)' }}>
                         Ekstra bilder: {calculatePricingMutation.data.extraImages}
                       </Typography>
-                      <Typography sx={{ color: 'rgba(25,255,255,0.8)', fontSize: '0.9rem'}}>
+                      <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.9rem'}}>
                         {calculatePricingMutation.data.pricingBreakdown.pricing}
                       </Typography>
                       <Typography variant="h6" sx={{ mt: 1, color: theming.colors.primary }}>
                         Total: {calculatePricingMutation.data.totalCost} NOK
                       </Typography>
-                      <Typography variant="body2" sx={{ color: 'rgba(25,255,255,0.6)', mt:  1 }}>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.64)', mt:  1 }}>
                         {calculatePricingMutation.data.pricingBreakdown.paymentTerms}
                       </Typography>
                     </Box>
@@ -418,8 +418,8 @@ export default function ExtraImagePricingDialog({
                   mt: 2,
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
-                    '& fieldset': { borderColor: 'rgba(25,255,255,0.3)' }
-                  }, '& .MuiInputLabel-root': { color: 'rgba(25,255,255,0.7)' }
+                    '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' }
+                  }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' }
               }}
               />
             </Box>
@@ -428,7 +428,7 @@ export default function ExtraImagePricingDialog({
       </DialogContent>
 
       <DialogActions sx={{ bgcolor: '#0f1419'}}>
-        <Button onClick={onClose} sx={{ color: 'rgba(25,255,255,0.7)' }}>
+        <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.72)' }}>
           Avbryt
         </Button>
         <Button onClick={handleSubmit}

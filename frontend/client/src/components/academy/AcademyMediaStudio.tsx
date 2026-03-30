@@ -56,6 +56,7 @@ import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC'
 import { useAcademyLocale } from './academyLocale';
 import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
 import AcademyLeftSidebar from './AcademyLeftSidebar';
+import AcademyStudentSidebar from './AcademyStudentSidebar';
 import { probeVideoDurationSeconds } from './academyVideoSourceUtils';
 import { apiRequest } from '@/lib/queryClient';
 import {
@@ -159,6 +160,21 @@ const MEDIA_CUSTOM_FOLDERS_STORAGE_KEY = 'academyMediaCustomFolders';
 const MEDIA_CUSTOM_FOLDERS_KV_KEY = 'academy_media_custom_folders_v1';
 const RESOURCE_FOLDER_TAG_REGEX = /\[folder:([a-z0-9-]+)\]/i;
 const RESOURCE_SOURCE_TAG_REGEX = /\[source:(upload|resource)\]/i;
+
+const toDisplayName = (value: string, fallback = 'Student'): string => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return fallback;
+  const base = normalized.includes('@') ? normalized.split('@')[0] : normalized;
+  const parts = base
+    .replace(/[._]+/g, '-')
+    .split('-')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 0) return fallback;
+  return parts.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+};
 
 const sanitizeCustomFolders = (value: unknown): FolderDefinition[] => {
   if (!Array.isArray(value)) return [];
@@ -574,7 +590,7 @@ const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
 function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioProps) {
   const [location, setLocation] = useLocation();
   const { state, getCourse, updateCourse, setCurrentCourse, setCurrentLesson } = useAcademy();
-  const { analytics, debugging } = useEnhancedMasterIntegration();
+  const { analytics, debugging, auth } = useEnhancedMasterIntegration();
   
   const { tt, navLabel } = useAcademyLocale();
 
@@ -584,16 +600,18 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
     lessonId: string;
     target: 'course' | 'skill';
     returnTo: string;
+    audience: string;
   }>(() => {
     if (typeof window === 'undefined') {
-      return { lessonId: '', target: 'skill' as const, returnTo: '' };
+      return { lessonId: '', target: 'skill' as const, returnTo: '', audience: '' };
     }
     const params = new URLSearchParams(window.location.search);
     const lessonId = String(params.get('lessonId') || '').trim();
     const target: 'course' | 'skill' = params.get('bind') === 'course' ? 'course' : 'skill';
     const returnToRaw = String(params.get('returnTo') || '').trim();
     const returnTo = /^\/academy(\/|$)/.test(returnToRaw) ? returnToRaw : '';
-    return { lessonId, target, returnTo };
+    const audience = String(params.get('audience') || '').trim().toLowerCase();
+    return { lessonId, target, returnTo, audience };
   }, [location]);
 
   const [scopeTab, setScopeTab] = useState<AssetScope>('all');
@@ -645,6 +663,82 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
     if (String(state.currentCourse?.id || '') === String(activeCourse.id)) return;
     setCurrentCourse(activeCourse);
   }, [activeCourse, setCurrentCourse, state.courses, state.currentCourse?.id]);
+
+  const activeLesson = useMemo(() => {
+    const lessons = Array.isArray(activeCourse?.lessons) ? activeCourse.lessons : [];
+    const requestedLessonId = String(routeVideoBindingParams.lessonId || state.currentLesson?.id || '').trim();
+    if (!requestedLessonId) return lessons[0] || state.currentLesson || null;
+    return lessons.find((lesson) => String(lesson.id) === requestedLessonId) || state.currentLesson || lessons[0] || null;
+  }, [activeCourse?.lessons, routeVideoBindingParams.lessonId, state.currentLesson]);
+
+  useEffect(() => {
+    if (!activeLesson?.id) return;
+    if (String(state.currentLesson?.id || '') === String(activeLesson.id)) return;
+    setCurrentLesson(activeLesson);
+  }, [activeLesson, setCurrentLesson, state.currentLesson?.id]);
+
+  const isStudentMode = useMemo(() => {
+    if (routeVideoBindingParams.audience === 'student') return true;
+    return (
+      /\/academy\/student-dashboard(?:\?|$)/.test(routeVideoBindingParams.returnTo) ||
+      /\/academy\/player-studio(?:\?|$)/.test(routeVideoBindingParams.returnTo) ||
+      /audience=student/.test(routeVideoBindingParams.returnTo)
+    );
+  }, [routeVideoBindingParams.audience, routeVideoBindingParams.returnTo]);
+
+  const studentBaseReturnTo = routeVideoBindingParams.returnTo || '/academy/student-dashboard';
+  const buildStudentRoute = useCallback(
+    (
+      path: string,
+      extra?: Record<string, string | number | null | undefined>,
+      overrideReturnTo = studentBaseReturnTo,
+    ) => {
+      const params = new URLSearchParams();
+      const safeCourseId = String(activeCourse?.id || '').trim();
+      const safeLessonId = String(activeLesson?.id || '').trim();
+
+      if (safeCourseId) params.set('courseId', safeCourseId);
+      if (safeLessonId) params.set('lessonId', safeLessonId);
+      params.set('audience', 'student');
+
+      const safeReturnTo = String(overrideReturnTo || '').trim();
+      if (safeReturnTo) {
+        params.set('returnTo', safeReturnTo);
+      }
+
+      Object.entries(extra || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        params.set(key, String(value));
+      });
+
+      const query = params.toString();
+      return query ? `${path}?${query}` : path;
+    },
+    [activeCourse?.id, activeLesson?.id, studentBaseReturnTo],
+  );
+
+  const studentPlayerRoute = useMemo(
+    () => buildStudentRoute('/academy/player-studio'),
+    [buildStudentRoute],
+  );
+  const studentAssignmentsRoute = useMemo(
+    () => buildStudentRoute('/academy/assignments'),
+    [buildStudentRoute],
+  );
+  const studentName = useMemo(() => {
+    const user = auth.state.user as
+      | {
+          email?: string;
+          name?: string;
+          firstName?: string;
+          id?: string;
+        }
+      | undefined;
+    return toDisplayName(
+      String(user?.name || user?.firstName || user?.email || user?.id || ''),
+      tt('Student', 'Student'),
+    );
+  }, [auth.state.user, tt]);
 
   const sourceAssets = useMemo(() => {
     const fromCourses = courseItems.flatMap((course) => buildAssetsFromCourse(course));
@@ -845,6 +939,39 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
     if (!key) return null;
     return lessonBindingStatusById[key] || null;
   }, [lessonBindingStatusById, videoBindingLessonId]);
+
+  const studentProgressRows = useMemo(() => {
+    if (!activeCourse?.id || !Array.isArray(state.progress)) return [];
+    return state.progress.filter(
+      (row) => String(row.courseId || '') === String(activeCourse.id),
+    );
+  }, [activeCourse?.id, state.progress]);
+
+  const studentProgressStats = useMemo(() => {
+    const lessons = Array.isArray(activeCourse?.lessons) ? activeCourse.lessons : [];
+    const progressByLesson = new Map(
+      studentProgressRows.map((row) => [String(row.lessonId || ''), Number(row.progress || 0)]),
+    );
+    const completedLessons = lessons.filter(
+      (lesson) => (progressByLesson.get(String(lesson.id)) || 0) >= 100,
+    ).length;
+    const progressPercent =
+      lessons.length > 0
+        ? Math.round(
+            lessons.reduce((sum, lesson) => sum + (progressByLesson.get(String(lesson.id)) || 0), 0) /
+              lessons.length,
+          )
+        : Math.round(
+            studentProgressRows.reduce((sum, row) => sum + Number(row.progress || 0), 0) /
+              Math.max(1, studentProgressRows.length),
+          );
+
+    return {
+      completedLessons,
+      totalLessons: lessons.length,
+      progressPercent: Math.max(0, Math.min(100, progressPercent)),
+    };
+  }, [activeCourse?.lessons, studentProgressRows]);
 
   useEffect(() => {
     setVideoBindingTarget(routeVideoBindingParams.target);
@@ -2150,8 +2277,12 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
 
   const playSelected = useCallback(() => {
     if (!selectedAsset) return;
+    if (isStudentMode) {
+      setLocation(studentPlayerRoute);
+      return;
+    }
     setLocation('/academy/player-studio');
-  }, [selectedAsset, setLocation]);
+  }, [isStudentMode, selectedAsset, setLocation, studentPlayerRoute]);
 
   const syncNow = useCallback(() => {
     setSyncing(true);
@@ -2187,6 +2318,493 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
   );
 
   const topContextLabel = activeCourse?.title || tt('Academy ressursbibliotek', 'Academy Asset Browser');
+
+  if (isStudentMode) {
+    const selectedAssetPreview = selectedAsset ? resolveAssetPreviewImageUrl(selectedAsset) : '';
+
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          color: '#edf0f7',
+          bgcolor: '#06080d',
+          fontFamily: '"Manrope", "Barlow", "Segoe UI", sans-serif',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            background:
+              'radial-gradient(circle at 74% 12%, rgba(248,179,33,0.24), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.14), rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%)',
+          }}
+        />
+
+        <Box
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: { xs: 'column', lg: 'row' },
+            width: 'min(100%, var(--academy-shell-max-width, 1920px))',
+            mx: 'auto',
+          }}
+        >
+          <AcademyStudentSidebar
+            activeNav="resources"
+            onNavigate={(_, route) => setLocation(route)}
+            tt={tt}
+            studentName={studentName}
+            activeCourseId={activeCourse?.id ? String(activeCourse.id) : null}
+            activeCourseTitle={activeCourse?.title || undefined}
+            progressPercent={studentProgressStats.progressPercent}
+            completedLessons={studentProgressStats.completedLessons}
+            totalLessons={studentProgressStats.totalLessons}
+            returnTo={studentBaseReturnTo}
+            continueRoute={studentPlayerRoute}
+          />
+
+          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            <Box
+              sx={{
+                px: { xs: 2, md: 3 },
+                py: 1.4,
+                borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
+                background: 'linear-gradient(180deg, rgba(13,16,25,0.95), rgba(10,13,20,0.9))',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                flexWrap: 'wrap',
+              }}
+            >
+              <Stack direction="row" spacing={1.2} alignItems="center">
+                <Box
+                  sx={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: '50%',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.45)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    background: 'linear-gradient(180deg, rgba(248,179,33,0.35), rgba(248,179,33,0.1))',
+                  }}
+                >
+                  <FolderOpen sx={{ color: '#f8c551', fontSize: 18 }} />
+                </Box>
+                <Stack spacing={0.2}>
+                  <Typography sx={{ fontSize: { xs: 24, md: 31 }, lineHeight: 1.04, fontWeight: 600 }}>
+                    {tt('Læringsressurser', 'Learning Resources')}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 13 }}>
+                    {activeLesson?.title
+                      ? `${topContextLabel} · ${activeLesson.title}`
+                      : topContextLabel}
+                  </Typography>
+                </Stack>
+              </Stack>
+
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                <AcademyLocaleSwitcher />
+                <Button
+                  variant="outlined"
+                  startIcon={<PlayArrow />}
+                  onClick={() => setLocation(studentPlayerRoute)}
+                  sx={{
+                    textTransform: 'none',
+                    color: '#edf0f7',
+                    borderColor: 'rgba(255,255,255,0.2)',
+                  }}
+                >
+                  {tt('Til leksjonen', 'Back to lesson')}
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<CheckCircle />}
+                  onClick={() => setLocation(studentAssignmentsRoute)}
+                  sx={{
+                    textTransform: 'none',
+                    color: '#edf0f7',
+                    borderColor: 'rgba(255,255,255,0.2)',
+                  }}
+                >
+                  {tt('Oppgaver', 'Assignments')}
+                </Button>
+              </Stack>
+            </Box>
+
+            <Box
+              sx={{
+                flex: 1,
+                minHeight: 0,
+                px: { xs: 1.4, md: 2.2 },
+                py: 1.8,
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', lg: '260px minmax(0, 1fr) 340px' },
+                gap: 1.4,
+              }}
+            >
+              <Box sx={{ ...panelSx, p: 1.2, display: 'flex', flexDirection: 'column', gap: 1.1 }}>
+                <Typography sx={{ fontSize: 22, fontWeight: 700 }}>
+                  {tt('Filtrer innhold', 'Filter content')}
+                </Typography>
+                <TextField
+                  size="small"
+                  value={searchValue}
+                  onChange={(event) => setSearchValue(event.target.value)}
+                  placeholder={tt('Søk ressurser...', 'Search resources...')}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: '#edf0f7',
+                      bgcolor: 'rgba(255,255,255,0.03)',
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.16)' },
+                    },
+                  }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search sx={{ color: 'rgba(237,240,247,0.65)' }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+
+                <Stack direction="row" spacing={0.7}>
+                  <Button
+                    fullWidth
+                    onClick={() => setScopeTab('all')}
+                    sx={{
+                      textTransform: 'none',
+                      color: scopeTab === 'all' ? '#fce3a1' : 'rgba(237,240,247,0.82)',
+                      border: scopeTab === 'all'
+                        ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.4)'
+                        : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
+                      background: scopeTab === 'all'
+                        ? 'linear-gradient(180deg, rgba(248,179,33,0.24), rgba(248,179,33,0.05))'
+                        : 'rgba(255,255,255,0.02)',
+                    }}
+                  >
+                    {tt('Alle', 'All')}
+                  </Button>
+                  <Button
+                    fullWidth
+                    onClick={() => setScopeTab('favorites')}
+                    sx={{
+                      textTransform: 'none',
+                      color: scopeTab === 'favorites' ? '#fce3a1' : 'rgba(237,240,247,0.82)',
+                      border: scopeTab === 'favorites'
+                        ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.4)'
+                        : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
+                      background: scopeTab === 'favorites'
+                        ? 'linear-gradient(180deg, rgba(248,179,33,0.24), rgba(248,179,33,0.05))'
+                        : 'rgba(255,255,255,0.02)',
+                    }}
+                  >
+                    {tt('Favoritter', 'Favorites')}
+                  </Button>
+                </Stack>
+
+                <Stack spacing={0.55}>
+                  {[
+                    { id: 'all', label: tt('Alle typer', 'All types') },
+                    { id: 'image', label: tt('Bilder', 'Images') },
+                    { id: 'video', label: tt('Video', 'Video') },
+                    { id: 'audio', label: tt('Audio', 'Audio') },
+                    { id: 'document', label: tt('Dokumenter', 'Documents') },
+                  ].map((item) => {
+                    const active = typeTab === item.id;
+                    return (
+                      <Button
+                        key={item.id}
+                        onClick={() => setTypeTab(item.id as 'all' | MediaAssetType)}
+                        sx={{
+                          justifyContent: 'flex-start',
+                          textTransform: 'none',
+                          color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
+                          border: active
+                            ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)'
+                            : 'var(--academy-hairline-width, 1px) solid transparent',
+                          background: active
+                            ? 'linear-gradient(90deg, rgba(248,179,33,0.2), rgba(248,179,33,0.02))'
+                            : 'transparent',
+                        }}
+                      >
+                        {item.label}
+                      </Button>
+                    );
+                  })}
+                </Stack>
+
+                <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+                <Typography sx={{ fontSize: 18, fontWeight: 700 }}>
+                  {tt('Mapper', 'Folders')}
+                </Typography>
+                <Stack spacing={0.55}>
+                  {folderDefinitions.filter((folder) => folder.id !== 'all').map((folder) => {
+                    const active = folderId === folder.id;
+                    return (
+                      <Button
+                        key={folder.id}
+                        onClick={() => setFolderId(folder.id)}
+                        startIcon={active ? <FolderOpen /> : <Folder />}
+                        sx={{
+                          justifyContent: 'space-between',
+                          textTransform: 'none',
+                          color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
+                          border: active
+                            ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)'
+                            : 'var(--academy-hairline-width, 1px) solid transparent',
+                          background: active
+                            ? 'linear-gradient(90deg, rgba(248,179,33,0.2), rgba(248,179,33,0.02))'
+                            : 'transparent',
+                        }}
+                      >
+                        <span>{folder.label}</span>
+                        <Chip
+                          label={folderCounts[folder.id] || 0}
+                          size="small"
+                          sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'inherit' }}
+                        />
+                      </Button>
+                    );
+                  })}
+                </Stack>
+              </Box>
+
+              <Box sx={{ ...panelSx, p: 1.2, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'stretch', md: 'center' }}
+                  sx={{ mb: 1 }}
+                >
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Chip
+                      label={tt(`${visibleAssets.length} tilgjengelige`, `${visibleAssets.length} available`)}
+                      sx={{ bgcolor: 'rgba(248,179,33,0.16)', color: '#f8d56f' }}
+                    />
+                    <Chip
+                      label={tt(`${favoritesCount} favoritter`, `${favoritesCount} favorites`)}
+                      sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }}
+                    />
+                  </Stack>
+                  <Typography sx={{ color: 'rgba(237,240,247,0.66)', fontSize: 13 }}>
+                    {statusMessage || tt('Velg en ressurs for detaljer.', 'Select a resource for details.')}
+                  </Typography>
+                </Stack>
+
+                <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', pr: 0.3 }}>
+                  {visibleAssets.length === 0 ? (
+                    <Box
+                      sx={{
+                        ...panelSx,
+                        py: 6,
+                        textAlign: 'center',
+                        borderStyle: 'dashed',
+                        borderColor: 'rgba(255,255,255,0.2)',
+                      }}
+                    >
+                      <Typography sx={{ fontSize: 24, fontWeight: 600 }}>
+                        {tt('Ingen ressurser matcher filtrene.', 'No resources match the filters.')}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(237,240,247,0.62)', mt: 0.8 }}>
+                        {tt('Prøv en annen mappe eller søk etter et annet nøkkelord.', 'Try another folder or search keyword.')}
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: {
+                          xs: 'repeat(1, minmax(0, 1fr))',
+                          sm: 'repeat(2, minmax(0, 1fr))',
+                          xl: 'repeat(3, minmax(0, 1fr))',
+                        },
+                        gap: 1,
+                      }}
+                    >
+                      {visibleAssets.map((asset, index) => {
+                        const selected = selectedAssetId === asset.id;
+                        const previewImageUrl = resolveAssetPreviewImageUrl(asset);
+                        return (
+                          <Box
+                            key={asset.id}
+                            onClick={() => handleAssetSelect(asset.id)}
+                            sx={{
+                              borderRadius: 1,
+                              border: selected
+                                ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.6)'
+                                : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
+                              background: 'linear-gradient(150deg, rgba(19,23,33,0.95), rgba(10,12,19,0.98))',
+                              overflow: 'hidden',
+                              cursor: 'pointer',
+                              boxShadow: selected ? '0 8px 20px rgba(248,179,33,0.18)' : 'none',
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                aspectRatio: '16 / 9',
+                                p: 1,
+                                display: 'flex',
+                                alignItems: 'flex-end',
+                                justifyContent: 'space-between',
+                                background: previewImageUrl
+                                  ? `linear-gradient(180deg, rgba(11,14,22,0.08), rgba(11,14,22,0.72)), url("${previewImageUrl}") center / cover no-repeat`
+                                  : placeholderBackgrounds[index % placeholderBackgrounds.length],
+                              }}
+                            >
+                              <Chip
+                                size="small"
+                                icon={getAssetIcon(asset.type)}
+                                label={asset.type.toUpperCase()}
+                                sx={{
+                                  bgcolor: 'rgba(11,14,22,0.72)',
+                                  color: '#edf0f7',
+                                  '.MuiChip-icon': { color: '#f8c551' },
+                                }}
+                              />
+                              <IconButton
+                                size="small"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleFavorite(asset.id);
+                                }}
+                                sx={{
+                                  color: asset.isFavorite ? '#f85050' : 'rgba(255,255,255,0.84)',
+                                  bgcolor: 'rgba(11,14,22,0.64)',
+                                }}
+                              >
+                                {asset.isFavorite ? <Favorite fontSize="small" /> : <FavoriteBorder fontSize="small" />}
+                              </IconButton>
+                            </Box>
+                            <Stack spacing={0.45} sx={{ p: 1 }}>
+                              <Typography sx={{ fontSize: 18, fontWeight: 700, lineHeight: 1.12 }}>
+                                {asset.name}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 12 }}>
+                                {formatBytes(asset.size)} · {formatDuration(asset.duration)}
+                              </Typography>
+                            </Stack>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+
+              <Box sx={{ ...panelSx, p: 1.2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography sx={{ fontSize: 22, fontWeight: 700 }}>
+                  {tt('Valgt ressurs', 'Selected resource')}
+                </Typography>
+
+                {selectedAsset ? (
+                  <>
+                    <Box
+                      sx={{
+                        borderRadius: 1,
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
+                        overflow: 'hidden',
+                        minHeight: 180,
+                        background: selectedAssetPreview
+                          ? `linear-gradient(180deg, rgba(11,14,22,0.12), rgba(11,14,22,0.7)), url("${selectedAssetPreview}") center / cover no-repeat`
+                          : placeholderBackgrounds[0],
+                      }}
+                    />
+
+                    <Stack spacing={0.45}>
+                      <Typography sx={{ fontSize: 20, fontWeight: 700 }}>
+                        {selectedAsset.name}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(237,240,247,0.68)', fontSize: 13 }}>
+                        {tt('Type', 'Type')}: {selectedAsset.type} · {formatBytes(selectedAsset.size)}
+                        {selectedAsset.duration ? ` · ${formatDuration(selectedAsset.duration)}` : ''}
+                      </Typography>
+                    </Stack>
+
+                    <Stack spacing={0.55}>
+                      <Button
+                        startIcon={<PlayArrow />}
+                        onClick={playSelected}
+                        sx={{
+                          justifyContent: 'flex-start',
+                          textTransform: 'none',
+                          color: '#edf0f7',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.15)',
+                        }}
+                      >
+                        {tt('Åpne i spiller', 'Open in player')}
+                      </Button>
+                      <Button
+                        startIcon={selectedAsset.isFavorite ? <Favorite /> : <FavoriteBorder />}
+                        onClick={() => toggleFavorite(selectedAsset.id)}
+                        sx={{
+                          justifyContent: 'flex-start',
+                          textTransform: 'none',
+                          color: '#edf0f7',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.15)',
+                        }}
+                      >
+                        {selectedAsset.isFavorite
+                          ? tt('Fjern favoritt', 'Remove favorite')
+                          : tt('Lagre som favoritt', 'Save as favorite')}
+                      </Button>
+                      <Button
+                        startIcon={<Download />}
+                        onClick={downloadSelected}
+                        sx={{
+                          justifyContent: 'flex-start',
+                          textTransform: 'none',
+                          color: '#edf0f7',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.15)',
+                        }}
+                      >
+                        {tt('Last ned', 'Download')}
+                      </Button>
+                      <Button
+                        startIcon={<LinkIcon />}
+                        onClick={copySelectedLink}
+                        sx={{
+                          justifyContent: 'flex-start',
+                          textTransform: 'none',
+                          color: '#edf0f7',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.15)',
+                        }}
+                      >
+                        {tt('Kopier lenke', 'Copy link')}
+                      </Button>
+                    </Stack>
+
+                    {selectedAsset.tags.length > 0 ? (
+                      <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                        {selectedAsset.tags.slice(0, 6).map((tag) => (
+                          <Chip
+                            key={`${selectedAsset.id}-${tag}`}
+                            label={tag}
+                            size="small"
+                            sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }}
+                          />
+                        ))}
+                      </Stack>
+                    ) : null}
+                  </>
+                ) : (
+                  <Typography sx={{ color: 'rgba(237,240,247,0.66)', fontSize: 13 }}>
+                    {tt('Velg en ressurs fra listen for å se detaljer.', 'Select a resource from the list to view details.')}
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box
@@ -2683,9 +3301,8 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                     const linkedToActiveTarget =
                       bindingFlowActive &&
                       asset.type === 'video' &&
-                      Boolean(bindingTargetExistingVideo) &&
                       normalizeAssetUrl(asset.url) ===
-                        bindingTargetExistingVideo.normalizedUrl;
+                        bindingTargetExistingVideo?.normalizedUrl;
                     return (
                       <Box
                         key={asset.id}
@@ -2790,9 +3407,8 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                     const linkedToActiveTarget =
                       bindingFlowActive &&
                       asset.type === 'video' &&
-                      Boolean(bindingTargetExistingVideo) &&
                       normalizeAssetUrl(asset.url) ===
-                        bindingTargetExistingVideo.normalizedUrl;
+                        bindingTargetExistingVideo?.normalizedUrl;
                     return (
                       <Box
                         key={asset.id}

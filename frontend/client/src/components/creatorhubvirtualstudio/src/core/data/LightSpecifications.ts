@@ -11,7 +11,7 @@ export interface LightSpec {
   id: string;
   brand: string;
   model: string;
-  type: 'strobe, ' | 'speedlite' | 'continuous' | 'led_panel' | 'fresnel' | 'ring';
+  type: 'strobe' | 'speedlite' | 'continuous' | 'led_panel' | 'fresnel' | 'ring';
   
   // Power
   power: number;              // Watt-seconds (Ws) for strobes, Watts (W) for continuous
@@ -46,6 +46,11 @@ export interface LightSpec {
   bicolor?: boolean;          // Variable color temp
   rgbw?: boolean;             // Full color control
 }
+
+export type StudioLight = LightSpec;
+export type LightType = LightSpec['type'];
+
+export { findLensSpec } from './LensSpecifications';
 
 // =============================================================================
 // PROFOTO - Premium Studio Strobes

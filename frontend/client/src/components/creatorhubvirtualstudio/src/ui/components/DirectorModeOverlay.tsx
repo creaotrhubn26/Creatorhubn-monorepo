@@ -6,7 +6,7 @@
  * Designed to feel like actually directing a scene.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -31,23 +31,20 @@ import {
   GridView,
   ViewModule,
   PictureInPicture,
-  ArrowBack,
   RadioButtonChecked,
   FiberManualRecord,
   Stop,
   Videocam,
   TouchApp,
-  Mouse,
   Keyboard,
   Info,
 } from '@mui/icons-material';
-import type { MonitorLayout} from '../../core/services/monitorFeedService';
-import { monitorFeedService } from '../../core/services/monitorFeedService';
+import { monitorFeedService, type MonitorLayout } from '../../core/services/monitorFeedService';
 import { multiCameraRecordingService } from '../../core/services/multiCameraRecordingService';
 import { CameraControlPanel } from './CameraControlPanel';
 import { logger } from '../../core/services/logger';
 
-const log = logger.module('DirectorModeOverlay, ');
+const log = logger.module('DirectorModeOverlay');
 
 // ============================================================================
 // Types
@@ -336,7 +333,9 @@ export const DirectorModeOverlay: React.FC<DirectorModeOverlayProps> = ({
       setIsRecording(state.isRecording);
       setRecordingTime(state.elapsedTime);
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+    };
   }, []);
   
   // Update monitor layout
@@ -347,29 +346,97 @@ export const DirectorModeOverlay: React.FC<DirectorModeOverlayProps> = ({
     }
   }, [layout]);
   
+  const handleLayoutChange = (_: React.MouseEvent<HTMLElement>, newLayout: MonitorLayout | null) => {
+    if (newLayout) {
+      setLayout(newLayout);
+    }
+  };
+  
+  function handleSelectCamera(cameraId: string) {
+    setSelectedCameraId(cameraId);
+    
+    // Update live camera
+    setCameras(prev => prev.map(c => ({
+      ...c,
+      isLive: c.id === cameraId,
+    })));
+    
+    // Update monitor feed
+    const renderer = monitorFeedService.getRenderer();
+    if (renderer) {
+      renderer.setActiveCamera(cameraId);
+    }
+    
+    log.info('Selected camera: ', cameraId);
+  }
+  
+  function handleCameraMove(
+    direction: 'forward' | 'backward' | 'left' | 'right' | 'up' | 'down',
+    speed: number,
+  ) {
+    if (!selectedCameraId) return;
+    
+    // Dispatch camera move event
+    window.dispatchEvent(new CustomEvent('vs-camera-move', {
+      detail: { cameraId: selectedCameraId, direction, speed },
+    }));
+  }
+  
+  function handleCameraRotate(axis: 'pan' | 'tilt' | 'roll', amount: number) {
+    if (!selectedCameraId) return;
+    
+    // Dispatch camera rotate event
+    window.dispatchEvent(new CustomEvent('vs-camera-rotate', {
+      detail: { cameraId: selectedCameraId, axis, amount },
+    }));
+  }
+  
+  function handleCameraZoom(amount: number) {
+    if (!selectedCameraId) return;
+    
+    // Dispatch camera zoom event
+    window.dispatchEvent(new CustomEvent('vs-camera-zoom', {
+      detail: { cameraId: selectedCameraId, amount },
+    }));
+  }
+  
+  function handleCameraReset() {
+    if (!selectedCameraId) return;
+    
+    // Dispatch camera reset event
+    window.dispatchEvent(new CustomEvent('vs-camera-reset', {
+      detail: { cameraId: selectedCameraId },
+    }));
+  }
+  
+  const handleToggleRecording = async () => {
+    if (isRecording) {
+      await multiCameraRecordingService.stopAllCameras();
+    } else {
+      await multiCameraRecordingService.startAllCameras();
+    }
+  };
+
   // Keyboard controls
   useEffect(() => {
     if (!isActive || showGuidelines) return;
-    
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent default for arrow keys to avoid scrolling
       if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
         e.preventDefault();
       }
-      
-      // Track active key
+
       const key = e.key.toLowerCase();
-      setActiveKeys(prev => new Set(prev).add(key));
-      
+      setActiveKeys((prev) => new Set(prev).add(key));
+
       if (!selectedCameraId) return;
-      
+
       switch (key) {
-        // Movement (WASD)
         case 'w':
-          handleCameraMove('forward,', 0.5);
+          handleCameraMove('forward', 0.5);
           break;
         case 's':
-          handleCameraMove('backward,', 0.5);
+          handleCameraMove('backward', 0.5);
           break;
         case 'a':
           handleCameraMove('left', 0.5);
@@ -377,15 +444,13 @@ export const DirectorModeOverlay: React.FC<DirectorModeOverlayProps> = ({
         case 'd':
           handleCameraMove('right', 0.5);
           break;
-        case ', ': // Space for up
+        case ' ':
           handleCameraMove('up', 0.5);
           e.preventDefault();
           break;
-        case 'shift': // Shift for down
+        case 'shift':
           handleCameraMove('down', 0.5);
           break;
-          
-        // Rotation (Arrow keys)
         case 'arrowup':
           handleCameraRotate('tilt', 2);
           break;
@@ -404,8 +469,6 @@ export const DirectorModeOverlay: React.FC<DirectorModeOverlayProps> = ({
         case 'e':
           handleCameraRotate('roll', 2);
           break;
-          
-        // Zoom
         case '+':
         case '=':
           handleCameraZoom(0.1);
@@ -414,8 +477,6 @@ export const DirectorModeOverlay: React.FC<DirectorModeOverlayProps> = ({
         case '_':
           handleCameraZoom(-0.1);
           break;
-          
-        // Camera selection (number keys)
         case '1':
         case '2':
         case '3':
@@ -424,110 +485,39 @@ export const DirectorModeOverlay: React.FC<DirectorModeOverlayProps> = ({
         case '6':
         case '7':
         case '8':
-        case '9':
-          const camIndex = parseInt(key) - 1;
+        case '9': {
+          const camIndex = parseInt(key, 10) - 1;
           if (camIndex < cameras.length) {
             handleSelectCamera(cameras[camIndex].id);
           }
           break;
-          
-        // Recording
+        }
         case 'r':
-          handleToggleRecording();
+          void handleToggleRecording();
           break;
-          
-        // Reset camera
         case 'home':
           handleCameraReset();
           break;
       }
     };
-    
+
     const handleKeyUp = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
-      setActiveKeys(prev => {
+      setActiveKeys((prev) => {
         const next = new Set(prev);
         next.delete(key);
         return next;
       });
     };
-    
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isActive, selectedCameraId, showGuidelines, cameras, handleSelectCamera, handleCameraMove, handleCameraRotate, handleCameraZoom, handleCameraReset]);
-  
-  const handleLayoutChange = (_: React.MouseEvent<HTMLElement>, newLayout: MonitorLayout | null) => {
-    if (newLayout) {
-      setLayout(newLayout);
-    }
-  };
-  
-  const handleSelectCamera = useCallback((cameraId: string) => {
-    setSelectedCameraId(cameraId);
-    
-    // Update live camera
-    setCameras(prev => prev.map(c => ({
-      ...c,
-      isLive: c.id === cameraId,
-    })));
-    
-    // Update monitor feed
-    const renderer = monitorFeedService.getRenderer();
-    if (renderer) {
-      renderer.setActiveCamera(cameraId);
-    }
-    
-    log.info('Selected camera: ', cameraId);
-  }, []);
-  
-  const handleCameraMove = useCallback((direction: 'forward' | 'backward' | 'left' | 'right' | 'up' | 'down', speed: number) => {
-    if (!selectedCameraId) return;
-    
-    // Dispatch camera move event
-    window.dispatchEvent(new CustomEvent('vs-camera-move', {
-      detail: { cameraId: selectedCameraId, direction, speed },
-    }));
-  }, [selectedCameraId]);
-  
-  const handleCameraRotate = useCallback((axis: 'pan' | 'tilt' | 'roll', amount: number) => {
-    if (!selectedCameraId) return;
-    
-    // Dispatch camera rotate event
-    window.dispatchEvent(new CustomEvent('vs-camera-rotate', {
-      detail: { cameraId: selectedCameraId, axis, amount },
-    }));
-  }, [selectedCameraId]);
-  
-  const handleCameraZoom = useCallback((amount: number) => {
-    if (!selectedCameraId) return;
-    
-    // Dispatch camera zoom event
-    window.dispatchEvent(new CustomEvent('vs-camera-zoom', {
-      detail: { cameraId: selectedCameraId, amount },
-    }));
-  }, [selectedCameraId]);
-  
-  const handleCameraReset = useCallback(() => {
-    if (!selectedCameraId) return;
-    
-    // Dispatch camera reset event
-    window.dispatchEvent(new CustomEvent('vs-camera-reset', {
-      detail: { cameraId: selectedCameraId },
-    }));
-  }, [selectedCameraId]);
-  
-  const handleToggleRecording = async () => {
-    if (isRecording) {
-      await multiCameraRecordingService.stopAllCameras();
-    } else {
-      await multiCameraRecordingService.startAllCameras();
-    }
-  };
+  }, [isActive, selectedCameraId, showGuidelines, cameras]);
   
   const formatTime = (seconds: number): string => {
     const h = Math.floor(seconds / 3600);
@@ -588,6 +578,9 @@ export const DirectorModeOverlay: React.FC<DirectorModeOverlayProps> = ({
               <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(255,255,255,0.2)' }} />
               <Typography variant="body2">
                 {selectedCamera ? `Controlling: ${selectedCamera.name}` : 'Select a camera to control'}
+              </Typography>
+              <Typography variant="caption" color="rgba(255,255,255,0.65)">
+                {monitorName} · {monitorId}
               </Typography>
             </Stack>
             

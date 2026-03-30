@@ -131,6 +131,13 @@ interface UniversalPrototypeFeedbackProps {
   component?: string;
   isFloating?: boolean;
   open?: boolean;
+  floatingPosition?: {
+    bottom?: number;
+    right?: number;
+    top?: number;
+    left?: number;
+    zIndex?: number;
+  };
   currentTab?: string;
   userEmail?: string;
   projectContext?: any;
@@ -196,6 +203,7 @@ export default function UniversalPrototypeFeedback({
   component,
   isFloating = true,
   open,
+  floatingPosition,
   currentTab,
   userEmail,
   projectContext,
@@ -232,6 +240,13 @@ export default function UniversalPrototypeFeedback({
   const [contextualQuestion, setContextualQuestion] = useState<any>(null);
   const [showIntelligentPrompt, setShowIntelligentPrompt] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const floatingFabBottom = floatingPosition?.bottom ?? 20;
+  const floatingFabRight = floatingPosition?.right;
+  const floatingFabLeft = floatingPosition?.left;
+  const floatingFabTop = floatingPosition?.top;
+  const floatingFabZIndex = floatingPosition?.zIndex ?? 14;
+  const floatingPromptBottom = floatingFabTop === undefined ? floatingFabBottom + 86 : undefined;
+  const floatingPromptTop = floatingFabTop !== undefined ? floatingFabTop + 86 : undefined;
 
   // Get current user for context
   const { data: currentUser } = useQuery({
@@ -481,10 +496,12 @@ export default function UniversalPrototypeFeedback({
         <Paper
           sx={{
             position: 'fixed',
-            bottom: 10,
-            right: 20,
+            bottom: floatingPromptBottom,
+            top: floatingPromptTop,
+            right: floatingFabRight ?? 20,
+            left: floatingFabLeft,
             width: 300,
-            zIndex: 15,
+            zIndex: floatingFabZIndex + 1,
             p: 2,
             background: `linear-gradient(135deg, ${alpha(brandColors.primaryDark, 0.96)} 0%, ${alpha(brandColors.primary, 0.95)} 55%, ${alpha(brandColors.primaryLight, 0.95)} 100%)`,
             backdropFilter: 'blur(15px)',
@@ -569,11 +586,13 @@ export default function UniversalPrototypeFeedback({
         <Fab
           sx={{
             position: 'fixed',
-            bottom: 20,
-            right: 10,
+            bottom: floatingFabBottom,
+            top: floatingFabTop,
+            right: floatingFabRight,
+            left: floatingFabLeft,
             width: 70,
             height: 70,
-            zIndex: 14,
+            zIndex: floatingFabZIndex,
             backgroundColor: showIntelligentPrompt
               ? alpha(theme.palette.success.main, 0.9)
               : alpha(brandColors.primary, 0.92),

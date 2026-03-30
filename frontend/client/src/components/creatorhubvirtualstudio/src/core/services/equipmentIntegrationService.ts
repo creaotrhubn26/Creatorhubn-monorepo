@@ -517,8 +517,7 @@ class EquipmentIntegrationService {
 export const equipmentIntegrationService = new EquipmentIntegrationService();
 
 // Export types
-export type { SceneNode, EquipmentTypeInfo, ModelFunction };
+export type { EquipmentTypeInfo, ModelFunction };
 
 // Export model registry for direct access
 export { MODEL_FUNCTION_REGISTRY, EQUIPMENT_TYPE_MAP };
-

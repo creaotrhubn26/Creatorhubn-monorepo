@@ -111,8 +111,7 @@ import PublishToCommunityDialog from '../academy/PublishToCommunityDialog';
 import EditPostDialog from '../academy/EditPostDialog';
 import ScheduledPostsWidget from '../academy/ScheduledPostsWidget';
 import CoursePostAnalyticsDialog from './CoursePostAnalyticsDialog';
-import type { VirtuosoHandle } from 'react-virtuoso';
-import { Virtuoso } from 'react-virtuoso';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import PrototypeFeedbackTool from '../feedback/PrototypeFeedbackTool';
 import { useAuth } from '@/hooks/useAuth';
 import { CommunityTutorial, useCommunityTutorial } from './CommunityTutorial';
@@ -180,7 +179,7 @@ interface CommunityPageProps {
 
 export default function CommunityPage({ userId, profession }: CommunityPageProps) {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down( 'md,'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { communication } = useEnhancedMasterIntegration();
   
   // Push notifications
@@ -338,14 +337,14 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
       setCurrentCommunityComponent('ThreadViewDialog');
     } else if (advancedSearchOpen) {
       setCurrentCommunityComponent('AdvancedSearchDialog');
-    } else if (showUserProfile) {
+    } else if (profileModalOpen) {
       setCurrentCommunityComponent('UserProfileModal');
     } else if (notificationDrawerOpen) {
       setCurrentCommunityComponent('CommunityNotificationFeed');
     } else {
       setCurrentCommunityComponent('CommunityPage');
     }
-  }, [votingBoardOpen, mentorDashboardOpen, threadDialogOpen, advancedSearchOpen, showUserProfile, notificationDrawerOpen]);
+  }, [votingBoardOpen, mentorDashboardOpen, threadDialogOpen, advancedSearchOpen, profileModalOpen, notificationDrawerOpen]);
 
   // Keyboard shortcut for opening tutorial (⌘+? or Ctrl+?)
   useEffect(() => {
@@ -1222,7 +1221,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 borderRadius: '50%',
                 animation: 'ripple 1.2s infinite ease-in-out',
                 border: '1px solid currentColor',
-                content: ', ""',
+                content: '""',
               } : {},
             }, '@keyframes ripple': {
               '0%': {
@@ -2063,7 +2062,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         <BadgeNotification
           open={badgeNotificationOpen}
           onClose={() => setBadgeNotificationOpen(false)}
-          badge={earnedBadge}
+          badgeName={earnedBadge.name}
+          badgeIcon={earnedBadge.icon}
+          badgeColor={earnedBadge.color}
+          badgeDescription={earnedBadge.description}
         />
       )}
 
@@ -2071,7 +2073,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
       <BecomeMentorDialog
         open={becomeMentorDialogOpen}
         onClose={() => setBecomeMentorDialogOpen(false)}
-        groupId={selectedGroup?.id || ', '}
+        groupId={selectedGroup?.id || ''}
         onSuccess={() => {
           // Refresh mentor status
           checkModeratorStatus();
@@ -2440,4 +2442,3 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
     </>
   );
 }
-

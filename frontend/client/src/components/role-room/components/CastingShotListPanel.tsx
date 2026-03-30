@@ -1,7 +1,6 @@
-import { useState, useMemo, useEffect, useId, useCallback, useRef, lazy, Suspense, Fragment, type ChangeEvent, type ReactNode, type ReactElement } from 'react';
+import { useState, useMemo, useEffect, useId, useCallback, useRef, lazy, Suspense, Fragment, type ReactNode, type ReactElement } from 'react';
 import { useShotListRealTime } from '../hooks/useShotListRealTime';
 import { useToast } from './ToastStack';
-import jsPDF from 'jspdf';
 import {
   DndContext,
   closestCenter,
@@ -105,6 +104,7 @@ import {
 import { TeamIcon, DashboardCustomIcon as DashboardIcon, StatsIcon } from './icons/CastingIcons';
 import { TeamDashboard, type TeamDashboardCrewSegment } from './TeamDashboard';
 import { PRODUCTION_PRESETS, type ShotList, type CastingShot, type ShotType, type CameraAngle, type CameraMovement, type Role, type ProductionDay, type MediaType, type ShotPriority, type CrewMember, type ShotComment, type ShotStatus, type UserRoleType, type ProductionContext, type CastingProject, type Manuscript, type SceneBreakdown, type DialogueLine } from '../models/casting';
+import { computeShotListSummary, computeStoryboardCoverageSummary } from '../models/derivedState';
 import { castingService } from '../services/castingService';
 import { manuscriptService } from '../services/manuscriptService';
 import { estimateContentProduction } from '../services/contentProductionEstimateService';
@@ -123,6 +123,24 @@ import { ProductionDayCardInfo } from './ProductionDayCardInfo';
 import { castingAuthService } from '../services/castingAuthService';
 import settingsService, { getCurrentUserId } from '../services/settingsService';
 import { useAuth } from '@/hooks/useAuth';
+import AddShotDialog, { type AddShotDialogCreatePayload } from './production/AddShotDialog';
+import SceneStoryboardDialog from './production/SceneStoryboardDialog';
+import {
+  applyStoryboardCandidateToShot,
+  buildSceneStoryboardCandidates,
+  clearStoryboardLinkFromShot,
+  createSceneStoryboardFrameFromShot,
+  loadStoryboardLibraryItemsForProject,
+  resolveStoryboardShotLink,
+  syncShotListWithSceneStoryboard,
+  type StoryboardSeedCandidate,
+} from '../services/storyboardLibraryService';
+import {
+  exportShotListsBoardPdf,
+  exportShotListsContactSheetPdf,
+  exportShotListsShotDeckPdf,
+} from '../services/shotListExportService';
+import type { ShotSearchResult } from './production/types';
 const ShotPlannerPanel = lazy(() =>
   import('../services/shotPlanner').then((m) => ({ default: m.ShotPlannerPanel as React.ComponentType }))
 );
@@ -242,6 +260,13 @@ export function CastingShotListPanel({
   teamDashboardOpenSignal = 0,
   teamDashboardDefaultSegment = 'all',
 }: CastingShotListPanelProps) {
+  type ShotStoryboardDialogState = {
+    shotListId: string;
+    shotId: string;
+    sceneId: string;
+    selectedCandidateId: string | null;
+  } | null;
+
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
@@ -462,14 +487,14 @@ export function CastingShotListPanel({
   const [selectedShotsForConversion, setSelectedShotsForConversion] = useState<Set<string>>(new Set());
   const [storyboardPanelOpen, setStoryboardPanelOpen] = useState(false);
 
-  // Add Shot Dialog state (upload/reference from Shot.cafe)
+  // Add Shot Dialog state
   const [showAddShotDialog, setShowAddShotDialog] = useState(false);
-  const [addShotMode, setAddShotMode] = useState<'upload' | 'reference' | null>(null);
-  const [selectedShotImage, setSelectedShotImage] = useState<string | null>(null);
-  const [addShotReferenceQuery, setAddShotReferenceQuery] = useState('');
-  const [addShotReferenceResults, setAddShotReferenceResults] = useState<Array<{ id: string; url: string; thumbnailUrl: string; film?: string }>>([]);
-  const [addShotLoading, setAddShotLoading] = useState(false);
   const [addShotTargetShotList, setAddShotTargetShotList] = useState<ShotList | null>(null);
+  const [sceneStoryboardDialog, setSceneStoryboardDialog] = useState<{
+    sceneId: string;
+    activeFrameIndex?: number;
+  } | null>(null);
+  const [shotStoryboardDialog, setShotStoryboardDialog] = useState<ShotStoryboardDialogState>(null);
 
   // Shoot Mode state (removed)
   const [crewMembers, setCrewMembers] = useState<CrewMember[]>([]);
@@ -524,6 +549,78 @@ export function CastingShotListPanel({
   }, [projectId, user?.id]);
 
   const availableScenes = useMemo(() => castingService.getAvailableScenes(projectId), [projectId]);
+  const [projectStoryboardLibraryItems, setProjectStoryboardLibraryItems] = useState<
+    Awaited<ReturnType<typeof loadStoryboardLibraryItemsForProject>>
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    const loadLibraryItems = () => {
+      void loadStoryboardLibraryItemsForProject(projectId, String(projectId || 'global')).then((items) => {
+        if (!cancelled) {
+          setProjectStoryboardLibraryItems(items);
+        }
+      });
+    };
+    loadLibraryItems();
+    window.addEventListener('role-room:storyboard-library-updated', loadLibraryItems);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('role-room:storyboard-library-updated', loadLibraryItems);
+    };
+  }, [projectId]);
+  const manuscriptSceneById = useMemo(
+    () => new Map(manuscriptScenes.map((scene) => [scene.id, scene])),
+    [manuscriptScenes],
+  );
+  const storyboardCandidatesBySceneId = useMemo(
+    () =>
+      new Map(
+        manuscriptScenes.map((scene) => [
+          scene.id,
+          buildSceneStoryboardCandidates(scene, projectStoryboardLibraryItems),
+        ]),
+      ),
+    [manuscriptScenes, projectStoryboardLibraryItems],
+  );
+  const addShotScene = useMemo(
+    () => manuscriptScenes.find((scene) => scene.id === addShotTargetShotList?.sceneId) || null,
+    [addShotTargetShotList?.sceneId, manuscriptScenes],
+  );
+  const addShotSceneNumber = useMemo(() => {
+    const value = addShotScene?.sceneNumber;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = Number.parseInt(value, 10);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
+  }, [addShotScene]);
+  const addShotStoryboardCandidates = useMemo(
+    () => (addShotScene ? buildSceneStoryboardCandidates(addShotScene, projectStoryboardLibraryItems) : []),
+    [addShotScene, projectStoryboardLibraryItems],
+  );
+  const activeSceneStoryboardScene = useMemo(
+    () => (sceneStoryboardDialog ? manuscriptSceneById.get(sceneStoryboardDialog.sceneId) || null : null),
+    [manuscriptSceneById, sceneStoryboardDialog],
+  );
+  const shotStoryboardDialogScene = useMemo(
+    () => (shotStoryboardDialog ? manuscriptSceneById.get(shotStoryboardDialog.sceneId) || null : null),
+    [manuscriptSceneById, shotStoryboardDialog],
+  );
+  const shotStoryboardDialogCandidates = useMemo(
+    () => (shotStoryboardDialog ? storyboardCandidatesBySceneId.get(shotStoryboardDialog.sceneId) || [] : []),
+    [shotStoryboardDialog, storyboardCandidatesBySceneId],
+  );
+  const shotListSummaryMap = useMemo(
+    () =>
+      new Map(
+        shotLists.map((shotList) => [
+          shotList.id,
+          computeShotListSummary(shotList, manuscriptSceneById.get(shotList.sceneId)),
+        ]),
+      ),
+    [manuscriptSceneById, shotLists],
+  );
 
   // O(1) lookup maps for scenes and roles
   const sceneById = useMemo(() => new Map(availableScenes.map(s => [s.id, s])), [availableScenes]);
@@ -1448,79 +1545,88 @@ export function CastingShotListPanel({
     }
   };
 
-  // Search reference shots from Shot.cafe
-  const handleSearchReferenceShots = async () => {
-    if (!addShotReferenceQuery.trim()) return;
-    setAddShotLoading(true);
+  // Search reference shots from Shot.cafe for the shared Add Shot dialog
+  const handleSearchReferenceShots = useCallback(async (query: string): Promise<ShotSearchResult[]> => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) return [];
     try {
-      const response = await fetch(`http://localhost:8000/api/shotcafe/search?q=${encodeURIComponent(addShotReferenceQuery)}`);
+      const response = await fetch(`http://localhost:8000/api/shotcafe/search?q=${encodeURIComponent(trimmedQuery)}`);
       if (response.ok) {
         const data = await response.json();
         if (data.films && data.films.length > 0) {
-          // Get frames from first matching film
           const firstFilm = data.films[0];
           const framesResponse = await fetch(`http://localhost:8000/api/shotcafe/film/${firstFilm.slug}/frames`);
           if (framesResponse.ok) {
             const framesData = await framesResponse.json();
             const frames = framesData.frames || [];
-            setAddShotReferenceResults(frames.map((f: { id?: string; url?: string; src?: string; thumbnailUrl?: string }) => ({
+            return frames.map((f: { id?: string; url?: string; src?: string; thumbnailUrl?: string }) => ({
               id: f.id || String(Math.random()),
               url: f.url || f.src,
               thumbnailUrl: f.thumbnailUrl || f.url || f.src,
+              source: 'shotcafe',
               film: firstFilm.title,
-            })));
+            }));
           }
         }
       }
     } catch (error) {
       console.error('Error searching reference shots:', error);
       toast.showError('Kunne ikke søke referansebilder');
-    } finally {
-      setAddShotLoading(false);
     }
-  };
+    return [];
+  }, [toast]);
 
   // Open Add Shot Dialog
   const handleOpenAddShotDialog = (shotList: ShotList) => {
     setAddShotTargetShotList(shotList);
     setShowAddShotDialog(true);
-    setAddShotMode(null);
-    setSelectedShotImage(null);
-    setAddShotReferenceQuery('');
-    setAddShotReferenceResults([]);
-  };
-
-  // Handle file upload for new shot
-  const handleAddShotImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSelectedShotImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   // Create shot with image
-  const handleCreateShotWithImage = async (imageUrl?: string) => {
+  const handleCreateShotWithImage = async (payload?: AddShotDialogCreatePayload) => {
     if (!addShotTargetShotList) return;
     const now = new Date().toISOString();
     const preset = getShotPreset(addShotTargetShotList);
+    const imageUrl = payload?.imageUrl;
+    const storyboardCandidate = payload?.storyboardCandidate;
+    const storyboardLabel = storyboardCandidate?.cameraAngle?.trim().toLowerCase() || '';
+    const storyboardShotType: ShotType =
+      storyboardCandidate?.shotType
+        ? storyboardCandidate.shotType
+        : storyboardLabel.includes('close')
+          ? 'Close-up'
+          : storyboardLabel.includes('wide')
+            ? 'Wide'
+            : 'Medium';
+    const technicalCameraAngle: CameraAngle = [
+      'eye level',
+      'high angle',
+      'low angle',
+      'birds eye',
+      'worms eye',
+      'dutch angle',
+      'overhead',
+    ].includes(storyboardLabel)
+      ? (storyboardCandidate?.cameraAngle as CameraAngle)
+      : 'Eye Level';
     const newShot: CastingShot = {
-      id: `shot-${Date.now()}`,
+      id: `shot-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`,
       sceneId: addShotTargetShotList.sceneId || '',
       roleId: roles.length > 0 ? roles[0].id : '',
-      shotType: 'Medium',
-      description: 'Ny shot',
-      cameraAngle: 'Eye Level',
-      cameraMovement: 'Static',
+      shotType: storyboardShotType,
+      description: storyboardCandidate?.description || 'Ny shot',
+      cameraAngle: technicalCameraAngle,
+      cameraMovement: (storyboardCandidate?.movement || 'Static') as CameraMovement,
       focalLength: 50,
-      duration: 5,
-      notes: '',
+      duration: Math.max(1, Math.round(storyboardCandidate?.duration ?? 5)),
+      notes: storyboardCandidate ? `${storyboardCandidate.sourceLabel} · ${storyboardCandidate.shotNumber}` : '',
       createdAt: now,
       updatedAt: now,
       imageUrl: imageUrl,
+      storyboardFrameId: storyboardCandidate?.frameId,
+      storyboardLibraryItemId: storyboardCandidate?.libraryItemId,
+      storyboardLinkedSceneId: addShotTargetShotList.sceneId || '',
+      storyboardSourceType: storyboardCandidate?.sourceType,
       estimatedTime: preset.estimatedTime,
       status: 'not_started',
       priority: preset.priority,
@@ -1546,115 +1652,256 @@ export function CastingShotListPanel({
     }
     setShowAddShotDialog(false);
     setAddShotTargetShotList(null);
-    setAddShotMode(null);
-    setSelectedShotImage(null);
   };
 
-  const handleExportStoryboardPDF = async (shotList: ShotList) => {
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4',
-    });
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 15;
-    const contentWidth = pageWidth - margin * 2;
-
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(20);
-    pdf.setTextColor(50, 50, 50);
-    const shotListTitle = getSceneName(shotList.sceneId, shotList.sceneName);
-    pdf.text(shotListTitle, margin, 20);
-
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-    pdf.setTextColor(100, 100, 100);
-    pdf.text(`Eksportert: ${new Date().toLocaleDateString('nb-NO')} • ${shotList.shots.length} shots`, margin, 27);
-
-    let yPos = 40;
-    const imageWidth = 80;
-    const imageHeight = 45;
-    const infoWidth = contentWidth - imageWidth - 10;
-
-    for (let i = 0; i < shotList.shots.length; i++) {
-      const shot = shotList.shots[i];
-
-      if (yPos + imageHeight + 20 > pageHeight - margin) {
-        pdf.addPage();
-        yPos = margin;
-      }
-
-      pdf.setFillColor(245, 245, 245);
-      pdf.roundedRect(margin, yPos, contentWidth, imageHeight + 15, 3, 3, 'F');
-
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(12);
-      pdf.setTextColor(50, 50, 50);
-      pdf.text(`Shot ${i + 1}: ${getShotTypeLabel(shot.shotType)}`, margin + 5, yPos + 8);
-
-      const shotImageUrl = typeof shot.imageUrl === 'string' ? shot.imageUrl : undefined;
-      if (shotImageUrl && !shotImageUrl.startsWith('data:')) {
-        try {
-          const response = await fetch(shotImageUrl);
-          const blob = await response.blob();
-          const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(blob);
-          });
-          pdf.addImage(base64, 'PNG', margin + 5, yPos + 12, imageWidth, imageHeight);
-        } catch (error) {
-          console.error('Error adding image to PDF:', error);
-          pdf.setFillColor(200, 200, 200);
-          pdf.rect(margin + 5, yPos + 12, imageWidth, imageHeight, 'F');
-          pdf.setFontSize(8);
-          pdf.text('Bilde ikke tilgjengelig', margin + 15, yPos + 35);
+  const persistShotListUpdate = useCallback(
+    async (updatedShotList: ShotList, successMessage?: string): Promise<ShotList | null> => {
+      try {
+        await castingService.saveShotList(projectId, updatedShotList);
+        const lists = await castingService.getShotLists(projectId);
+        setShotLists(Array.isArray(lists) ? lists : []);
+        if (successMessage) {
+          toast.showSuccess(successMessage);
         }
-      } else if (shotImageUrl?.startsWith('data:')) {
-        try {
-          pdf.addImage(shotImageUrl, 'PNG', margin + 5, yPos + 12, imageWidth, imageHeight);
-        } catch (error) {
-          console.error('Error adding base64 image to PDF:', error);
+        if (onUpdate) onUpdate();
+        return updatedShotList;
+      } catch (error) {
+        console.error('Error saving shot list update:', error);
+        toast.showError('Kunne ikke lagre storyboard-koblingen');
+        return null;
+      }
+    },
+    [onUpdate, projectId, toast],
+  );
+
+  const saveSceneWithShotSync = useCallback(
+    async (updatedScene: SceneBreakdown, successMessage?: string): Promise<SceneBreakdown | null> => {
+      try {
+        const persistedScene = await manuscriptService.saveScene(updatedScene);
+        setManuscriptScenes((current) =>
+          current.map((scene) => (scene.id === persistedScene.id ? persistedScene : scene)),
+        );
+
+        let syncedCount = 0;
+        for (const shotList of shotLists) {
+          if (shotList.sceneId !== persistedScene.id) continue;
+          const syncResult = syncShotListWithSceneStoryboard(
+            shotList,
+            persistedScene,
+            projectStoryboardLibraryItems,
+          );
+          if (syncResult.changed) {
+            syncedCount += syncResult.syncedCount;
+            await castingService.saveShotList(projectId, syncResult.shotList);
+          }
         }
-      } else {
-        pdf.setFillColor(220, 220, 220);
-        pdf.rect(margin + 5, yPos + 12, imageWidth, imageHeight, 'F');
-        pdf.setFontSize(8);
-        pdf.setTextColor(100, 100, 100);
-        pdf.text('Intet bilde', margin + 35, yPos + 35);
+
+        if (syncedCount > 0) {
+          const lists = await castingService.getShotLists(projectId);
+          setShotLists(Array.isArray(lists) ? lists : []);
+        }
+
+        if (successMessage) {
+          toast.showSuccess(successMessage);
+        } else if (syncedCount > 0) {
+          toast.showSuccess(`Storyboard lagret og ${syncedCount} shot oppdatert`);
+        }
+
+        if (onUpdate) onUpdate();
+        return persistedScene;
+      } catch (error) {
+        console.error('Error saving storyboard scene:', error);
+        toast.showError('Kunne ikke lagre scene-storyboard');
+        return null;
       }
+    },
+    [onUpdate, projectId, projectStoryboardLibraryItems, shotLists, toast],
+  );
 
-      const infoX = margin + imageWidth + 15;
-      let infoY = yPos + 18;
-
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(9);
-      pdf.setTextColor(60, 60, 60);
-
-      if (shot.description) {
-        const descLines = pdf.splitTextToSize(shot.description, infoWidth - 10);
-        pdf.text(descLines.slice(0, 3), infoX, infoY);
-        infoY += Math.min(descLines.length, 3) * 4 + 3;
+  const handleOpenShotStoryboardFrame = useCallback(
+    (shotList: ShotList, shot: CastingShot) => {
+      const scene = manuscriptSceneById.get(shotList.sceneId);
+      if (!scene) {
+        toast.showWarning('Shot-et er ikke koblet til en scene med storyboard');
+        return;
       }
-
-      pdf.setFontSize(8);
-      pdf.setTextColor(100, 100, 100);
-      const details: string[] = [];
-      if (shot.cameraAngle) details.push(`Vinkel: ${shot.cameraAngle}`);
-      if (shot.cameraMovement) details.push(`Bevegelse: ${shot.cameraMovement}`);
-      if (shot.estimatedTime) details.push(`Tid: ${shot.estimatedTime} min`);
-      if (shot.colorTag) details.push(`Tag: ${shot.colorTag}`);
-      if (details.length > 0) {
-        pdf.text(details.join(' • '), infoX, infoY);
+      const resolved = resolveStoryboardShotLink(shot, scene, projectStoryboardLibraryItems);
+      if (resolved.status !== 'linked') {
+        toast.showWarning('Dette shot-et er ikke koblet til et aktivt storyboard-frame');
+        return;
       }
+      setSceneStoryboardDialog({
+        sceneId: scene.id,
+        activeFrameIndex: resolved.frameIndex ?? 0,
+      });
+    },
+    [manuscriptSceneById, projectStoryboardLibraryItems, toast],
+  );
 
-      yPos += imageHeight + 25;
+  const handleOpenShotStoryboardLinkDialog = useCallback(
+    (shotList: ShotList, shot: CastingShot) => {
+      const scene = manuscriptSceneById.get(shotList.sceneId);
+      if (!scene) {
+        toast.showWarning('Velg en shotliste som er koblet til en scene først');
+        return;
+      }
+      const resolved = resolveStoryboardShotLink(shot, scene, projectStoryboardLibraryItems);
+      const candidates = storyboardCandidatesBySceneId.get(scene.id) || [];
+      setShotStoryboardDialog({
+        shotListId: shotList.id,
+        shotId: shot.id,
+        sceneId: scene.id,
+        selectedCandidateId: resolved.candidate?.id || candidates[0]?.id || null,
+      });
+    },
+    [manuscriptSceneById, projectStoryboardLibraryItems, storyboardCandidatesBySceneId, toast],
+  );
+
+  const handleConfirmShotStoryboardLink = useCallback(async () => {
+    if (!shotStoryboardDialog?.selectedCandidateId) {
+      toast.showWarning('Velg et storyboard-frame å koble til');
+      return;
     }
 
-    pdf.save(`${shotListTitle.replace(/\s+/g, '-').toLowerCase()}-storyboard.pdf`);
-    toast.showSuccess('Storyboard eksportert som PDF!');
+    const shotList = shotLists.find((entry) => entry.id === shotStoryboardDialog.shotListId);
+    const shot = shotList?.shots.find((entry) => entry.id === shotStoryboardDialog.shotId);
+    const candidate = (storyboardCandidatesBySceneId.get(shotStoryboardDialog.sceneId) || []).find(
+      (entry) => entry.id === shotStoryboardDialog.selectedCandidateId,
+    );
+
+    if (!shotList || !shot || !candidate) {
+      toast.showWarning('Kunne ikke finne shot eller storyboard-frame for koblingen');
+      return;
+    }
+
+    const patchedShot = applyStoryboardCandidateToShot(shot, candidate, shotStoryboardDialog.sceneId);
+    const updatedShotList: ShotList = {
+      ...shotList,
+      shots: shotList.shots.map((entry) => (entry.id === shot.id ? patchedShot : entry)),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const saved = await persistShotListUpdate(updatedShotList, 'Storyboard-frame koblet til shot');
+    if (saved) {
+      setShotStoryboardDialog(null);
+    }
+  }, [persistShotListUpdate, shotLists, shotStoryboardDialog, storyboardCandidatesBySceneId, toast]);
+
+  const handleUnlinkShotStoryboard = useCallback(
+    async (shotList: ShotList, shot: CastingShot) => {
+      const patchedShot = clearStoryboardLinkFromShot(shot);
+      const updatedShotList: ShotList = {
+        ...shotList,
+        shots: shotList.shots.map((entry) => (entry.id === shot.id ? patchedShot : entry)),
+        updatedAt: new Date().toISOString(),
+      };
+      await persistShotListUpdate(updatedShotList, 'Storyboard-kobling fjernet');
+    },
+    [persistShotListUpdate],
+  );
+
+  const handleResyncShotStoryboard = useCallback(
+    async (shotList: ShotList, shot: CastingShot) => {
+      const scene = manuscriptSceneById.get(shotList.sceneId);
+      if (!scene) {
+        toast.showWarning('Fant ikke scene for dette shot-et');
+        return;
+      }
+      const resolved = resolveStoryboardShotLink(shot, scene, projectStoryboardLibraryItems);
+      if (resolved.status !== 'linked' || !resolved.candidate) {
+        toast.showWarning('Storyboard-koblingen må relinkes før den kan synkes');
+        return;
+      }
+      const patchedShot = applyStoryboardCandidateToShot(shot, resolved.candidate, scene.id);
+      const updatedShotList: ShotList = {
+        ...shotList,
+        shots: shotList.shots.map((entry) => (entry.id === shot.id ? patchedShot : entry)),
+        updatedAt: new Date().toISOString(),
+      };
+      await persistShotListUpdate(updatedShotList, 'Shot oppdatert fra storyboard');
+    },
+    [manuscriptSceneById, persistShotListUpdate, projectStoryboardLibraryItems, toast],
+  );
+
+  const handleCreateStoryboardFrameFromShot = useCallback(
+    async (shotList: ShotList, shot: CastingShot) => {
+      const scene = manuscriptSceneById.get(shotList.sceneId);
+      if (!scene) {
+        toast.showWarning('Fant ikke scene for dette shot-et');
+        return;
+      }
+
+      const existingFrames = Array.isArray(scene.storyboardFrames) ? scene.storyboardFrames : [];
+      const newFrame = createSceneStoryboardFrameFromShot(shot, scene);
+      const updatedScene: SceneBreakdown = {
+        ...scene,
+        storyboardFrames: [...existingFrames, newFrame],
+        updatedAt: new Date().toISOString(),
+      };
+
+      const persistedScene = await saveSceneWithShotSync(updatedScene);
+      if (!persistedScene) return;
+
+      const candidate = buildSceneStoryboardCandidates(persistedScene, projectStoryboardLibraryItems).find(
+        (entry) => entry.frameId === newFrame.id,
+      );
+
+      if (!candidate) {
+        toast.showWarning('Storyboard-frame ble opprettet, men kunne ikke kobles til shot-et');
+        return;
+      }
+
+      const patchedShot = applyStoryboardCandidateToShot(shot, candidate, persistedScene.id);
+      const updatedShotList: ShotList = {
+        ...shotList,
+        shots: shotList.shots.map((entry) => (entry.id === shot.id ? patchedShot : entry)),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const saved = await persistShotListUpdate(updatedShotList, 'Ny storyboard-frame opprettet fra shot');
+      if (saved) {
+        setSceneStoryboardDialog({
+          sceneId: persistedScene.id,
+          activeFrameIndex: existingFrames.length,
+        });
+      }
+    },
+    [manuscriptSceneById, persistShotListUpdate, projectStoryboardLibraryItems, saveSceneWithShotSync, toast],
+  );
+
+  const handleExportStoryboardPDF = async (shotList: ShotList) => {
+    const selectedShots =
+      selectedShotListForStoryboard?.id === shotList.id && selectedShotsForConversion.size > 0
+        ? shotList.shots.filter((shot) => selectedShotsForConversion.has(shot.id))
+        : shotList.shots;
+    const exportShotList =
+      selectedShots.length === shotList.shots.length
+        ? shotList
+        : {
+            ...shotList,
+            shots: selectedShots,
+          };
+    try {
+      await exportShotListsBoardPdf({
+        projectName: project?.name,
+        shotLists: [exportShotList],
+        sceneMap: new Map(
+          manuscriptSceneById.has(exportShotList.sceneId)
+            ? [[exportShotList.sceneId, manuscriptSceneById.get(exportShotList.sceneId)!]]
+            : [],
+        ),
+        summaryMap: new Map([
+          [
+            exportShotList.id,
+            computeShotListSummary(exportShotList, manuscriptSceneById.get(exportShotList.sceneId)),
+          ],
+        ]),
+      });
+      toast.showSuccess('Storyboard eksportert som board PDF');
+    } catch (error) {
+      console.error('Error exporting storyboard PDF:', error);
+      toast.showError('Kunne ikke eksportere storyboard PDF');
+    }
   };
 
   const handleReserveShot = async (shotList: ShotList, shot: CastingShot) => {
@@ -2204,51 +2451,67 @@ export function CastingShotListPanel({
     }
   };
 
-  const handleExportAllPDF = async () => {
-    try {
-      const project = await castingService.getProject(projectId);
-      if (!project) {
-        toast.showError('Prosjekt ikke funnet');
-        return;
-      }
-      const htmlContent = generateShotListsHTML(project, shotLists);
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        toast.showError('Kunne ikke åpne eksport-vindu');
-        return;
-      }
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-      setTimeout(() => printWindow.print(), 250);
-      toast.showSuccess(`Eksporterer ${shotLists.length} scener til PDF`);
-    } catch (error) {
-      console.error('Error exporting all PDF:', error);
-      toast.showError('Kunne ikke eksportere PDF');
-    }
-  };
+  const buildExportPayload = useCallback(
+    (targetShotLists: ShotList[]) => ({
+      projectName: project?.name,
+      shotLists: targetShotLists,
+      sceneMap: new Map(
+        targetShotLists
+          .map((shotList) => {
+            const scene = manuscriptSceneById.get(shotList.sceneId);
+            return scene ? ([shotList.sceneId, scene] as const) : null;
+          })
+          .filter((entry): entry is readonly [string, SceneBreakdown] => Boolean(entry)),
+      ),
+      summaryMap: new Map(
+        targetShotLists.map((shotList) => [
+          shotList.id,
+          shotListSummaryMap.get(shotList.id)
+            ?? computeShotListSummary(shotList, manuscriptSceneById.get(shotList.sceneId)),
+        ]),
+      ),
+    }),
+    [manuscriptSceneById, project?.name, shotListSummaryMap],
+  );
 
-  const handleExportScenePDF = async (shotList: ShotList) => {
-    try {
-      const project = await castingService.getProject(projectId);
-      if (!project) {
-        toast.showError('Prosjekt ikke funnet');
-        return;
+  const handleExportBoardPDF = useCallback(
+    async (targetShotLists: ShotList[], successMessage: string) => {
+      try {
+        await exportShotListsBoardPdf(buildExportPayload(targetShotLists));
+        toast.showSuccess(successMessage);
+      } catch (error) {
+        console.error('Error exporting board PDF:', error);
+        toast.showError('Kunne ikke eksportere board PDF');
       }
-      const htmlContent = generateShotListsHTML(project, [shotList]);
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        toast.showError('Kunne ikke åpne eksport-vindu');
-        return;
+    },
+    [buildExportPayload, toast],
+  );
+
+  const handleExportContactSheetPDF = useCallback(
+    async (targetShotLists: ShotList[], successMessage: string) => {
+      try {
+        await exportShotListsContactSheetPdf(buildExportPayload(targetShotLists));
+        toast.showSuccess(successMessage);
+      } catch (error) {
+        console.error('Error exporting contact sheet PDF:', error);
+        toast.showError('Kunne ikke eksportere contact sheet');
       }
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-      setTimeout(() => printWindow.print(), 250);
-      toast.showSuccess(`Eksporterer scene til PDF`);
-    } catch (error) {
-      console.error('Error exporting scene PDF:', error);
-      toast.showError('Kunne ikke eksportere PDF');
-    }
-  };
+    },
+    [buildExportPayload, toast],
+  );
+
+  const handleExportShotDeckPDF = useCallback(
+    async (targetShotLists: ShotList[], successMessage: string) => {
+      try {
+        await exportShotListsShotDeckPdf(buildExportPayload(targetShotLists));
+        toast.showSuccess(successMessage);
+      } catch (error) {
+        console.error('Error exporting shot deck PDF:', error);
+        toast.showError('Kunne ikke eksportere shot deck');
+      }
+    },
+    [buildExportPayload, toast],
+  );
 
   const generateShotListsHTML = (project: any, shotLists: ShotList[]): string => {
     const now = new Date();
@@ -3667,28 +3930,38 @@ export function CastingShotListPanel({
       ) : (
         /* Card View - Responsive (flex + gap) */
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1.5, sm: 2, md: 3 } }}>
-          {filteredAndSortedShotLists.map((shotList) => (
-            <Box
-              key={shotList.id}
-              sx={{
-                width: {
-                  xs: '100%',
-                  sm: 'calc(50% - 8px)',
-                  lg: 'calc(33.333% - 16px)',
-                },
-                minWidth: 0,
-              }}
-            >
-              <Card
-                component="article"
+          {filteredAndSortedShotLists.map((shotList) => {
+            const shotListSummary = shotListSummaryMap.get(shotList.id);
+            const storyboardCoverage =
+              shotListSummary?.storyboardCoverage
+              ?? computeStoryboardCoverageSummary(shotList.shots, manuscriptSceneById.get(shotList.sceneId));
+            const missingCoveragePreview = storyboardCoverage.missingFrameList
+              .slice(0, 4)
+              .map((frame) => frame.shotNumber || frame.title || frame.frameId)
+              .join(', ');
+
+            return (
+              <Box
+                key={shotList.id}
                 sx={{
-                  bgcolor: selectedIds.has(shotList.id) ? 'rgba(233,30,99,0.15)' : 'rgba(255,255,255,0.05)',
-                  border: selectedIds.has(shotList.id) ? '2px solid #e91e63' : '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 2,
-                  transition: 'all 0.2s ease',
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.08)', transform: 'translateY(-2px)' },
+                  width: {
+                    xs: '100%',
+                    sm: 'calc(50% - 8px)',
+                    lg: 'calc(33.333% - 16px)',
+                  },
+                  minWidth: 0,
                 }}
               >
+                <Card
+                  component="article"
+                  sx={{
+                    bgcolor: selectedIds.has(shotList.id) ? 'rgba(233,30,99,0.15)' : 'rgba(255,255,255,0.05)',
+                    border: selectedIds.has(shotList.id) ? '2px solid #e91e63' : '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 2,
+                    transition: 'all 0.2s ease',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.08)', transform: 'translateY(-2px)' },
+                  }}
+                >
                 <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                   {/* Scene Header - Simple with title and edit/delete buttons */}
                   <Box 
@@ -3792,6 +4065,23 @@ export function CastingShotListPanel({
                       })()}
                     </Box>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <Tooltip title="Eksporter denne scenen">
+                        <IconButton
+                          onClick={() => {
+                            setExportSceneId(shotList.id);
+                            setShowExportDialog(true);
+                          }}
+                          size="small"
+                          data-testid={`legacy-shotlist-export-trigger-${shotList.id}`}
+                          sx={{
+                            color: '#c084fc',
+                            ...focusVisibleStyles,
+                            '&:hover': { bgcolor: 'rgba(147,51,234,0.16)' },
+                          }}
+                        >
+                          <PdfIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Rediger scene">
                         <IconButton
                           onClick={() => handleOpenDialog(shotList)}
@@ -3820,6 +4110,56 @@ export function CastingShotListPanel({
                       </Tooltip>
                     </Box>
                   </Box>
+
+                  {storyboardCoverage.totalFrames > 0 && (
+                    <Box
+                      sx={{
+                        mb: 1.5,
+                        p: 1.25,
+                        borderRadius: 1.5,
+                        border: '1px solid rgba(59,130,246,0.18)',
+                        bgcolor: 'rgba(15,23,42,0.45)',
+                      }}
+                      data-testid={`legacy-shotlist-coverage-${shotList.id}`}
+                    >
+                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: missingCoveragePreview ? 0.75 : 0 }}>
+                        <Chip
+                          size="small"
+                          label={`${storyboardCoverage.coveredFrames}/${storyboardCoverage.totalFrames} frames brukt`}
+                          sx={{
+                            bgcolor: 'rgba(59,130,246,0.14)',
+                            color: '#93c5fd',
+                            border: '1px solid rgba(59,130,246,0.24)',
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label={`${storyboardCoverage.missingFrames} mangler shot`}
+                          sx={{
+                            bgcolor: 'rgba(245,158,11,0.12)',
+                            color: '#fbbf24',
+                            border: '1px solid rgba(245,158,11,0.24)',
+                          }}
+                        />
+                        {storyboardCoverage.unlinkedShots > 0 && (
+                          <Chip
+                            size="small"
+                            label={`${storyboardCoverage.unlinkedShots} shots uten storyboard`}
+                            sx={{
+                              bgcolor: 'rgba(148,163,184,0.12)',
+                              color: '#cbd5e1',
+                              border: '1px solid rgba(148,163,184,0.22)',
+                            }}
+                          />
+                        )}
+                      </Stack>
+                      {missingCoveragePreview && (
+                        <Typography sx={{ color: 'rgba(255,255,255,0.66)', fontSize: '0.72rem' }}>
+                          Mangler: {missingCoveragePreview}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
 
                   {/* Storyboard Generation Progress */}
                   {generatingStoryboardImages[shotList.id] && (
@@ -4005,6 +4345,19 @@ export function CastingShotListPanel({
                             shot.backgroundRecommendation,
                           ].filter(Boolean);
                           const inlineDraft = inlineEditDrafts[shot.id] || {};
+                          const storyboardScene = manuscriptSceneById.get(shotList.sceneId);
+                          const storyboardCandidates = storyboardCandidatesBySceneId.get(shotList.sceneId) || [];
+                          const storyboardLink = resolveStoryboardShotLink(
+                            shot,
+                            storyboardScene,
+                            projectStoryboardLibraryItems,
+                          );
+                          const storyboardLinkColor =
+                            storyboardLink.status === 'linked'
+                              ? '#34d399'
+                              : storyboardLink.status === 'missing'
+                                ? '#f59e0b'
+                                : 'rgba(255,255,255,0.45)';
                           return (
                             <Fragment key={shot.id}>
                               {shotIndex === 0 && (
@@ -4115,6 +4468,7 @@ export function CastingShotListPanel({
                                     value={inlineDraft.description ?? shot.description ?? ''}
                                     onChange={(e) => handleInlineEditChange(shot.id, { description: e.target.value })}
                                     onBlur={() => handleInlineEditCommit(shotList, shot)}
+                                    inputProps={{ 'data-testid': `legacy-shot-description-${shot.id}` }}
                                     fullWidth
                                     sx={{
                                       flex: 1,
@@ -4387,6 +4741,92 @@ export function CastingShotListPanel({
                                     {recommendations.join(' • ')}
                                   </Typography>
                                 )}
+
+                                <Box
+                                  sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 0.75,
+                                    pl: 5,
+                                    flexWrap: 'wrap',
+                                  }}
+                                >
+                                  <Chip
+                                    icon={<StoryboardIcon sx={{ fontSize: '13px !important' }} />}
+                                    label={
+                                      storyboardLink.status === 'linked'
+                                        ? storyboardLink.label || 'Storyboard koblet'
+                                        : storyboardLink.status === 'missing'
+                                          ? 'Storyboard mangler'
+                                          : storyboardScene
+                                            ? 'Ikke koblet til storyboard'
+                                            : 'Ingen scene-storyboard'
+                                    }
+                                    size="small"
+                                    sx={{
+                                      bgcolor: `${storyboardLinkColor}22`,
+                                      color: storyboardLinkColor,
+                                      border: `1px solid ${storyboardLinkColor}44`,
+                                      height: 24,
+                                      fontSize: '0.66rem',
+                                      '& .MuiChip-icon': { color: 'inherit' },
+                                    }}
+                                  />
+
+                                  {storyboardScene && (
+                                    <Button
+                                      size="small"
+                                      variant="text"
+                                      onClick={() => handleOpenShotStoryboardLinkDialog(shotList, shot)}
+                                      sx={{ color: '#93c5fd', fontSize: '0.66rem', minWidth: 0, px: 0.75 }}
+                                    >
+                                      {storyboardCandidates.length > 0 ? 'Relink' : 'Koble'}
+                                    </Button>
+                                  )}
+
+                                  {storyboardLink.status === 'linked' && (
+                                    <>
+                                      <Button
+                                        size="small"
+                                        variant="text"
+                                        onClick={() => handleOpenShotStoryboardFrame(shotList, shot)}
+                                        data-testid={`legacy-shot-open-frame-${shot.id}`}
+                                        sx={{ color: '#34d399', fontSize: '0.66rem', minWidth: 0, px: 0.75 }}
+                                      >
+                                        Åpne frame
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        variant="text"
+                                        onClick={() => handleResyncShotStoryboard(shotList, shot)}
+                                        data-testid={`legacy-shot-resync-${shot.id}`}
+                                        sx={{ color: '#facc15', fontSize: '0.66rem', minWidth: 0, px: 0.75 }}
+                                      >
+                                        Synk
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        variant="text"
+                                        onClick={() => handleUnlinkShotStoryboard(shotList, shot)}
+                                        data-testid={`legacy-shot-unlink-${shot.id}`}
+                                        sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.66rem', minWidth: 0, px: 0.75 }}
+                                      >
+                                        Unlink
+                                      </Button>
+                                    </>
+                                  )}
+
+                                  {storyboardScene && (
+                                    <Button
+                                      size="small"
+                                      variant="text"
+                                      onClick={() => handleCreateStoryboardFrameFromShot(shotList, shot)}
+                                      sx={{ color: '#f9a8d4', fontSize: '0.66rem', minWidth: 0, px: 0.75 }}
+                                    >
+                                      Ny frame fra shot
+                                    </Button>
+                                  )}
+                                </Box>
                                 
                                 {/* Storyboard image preview */}
                                 {shot.imageUrl && (
@@ -4713,9 +5153,10 @@ export function CastingShotListPanel({
                     </Button>
                   )}
                 </CardContent>
-              </Card>
-            </Box>
-          ))}
+                </Card>
+              </Box>
+            );
+          })}
         </Box>
       )}
 
@@ -6371,10 +6812,14 @@ export function CastingShotListPanel({
       {/* Export PDF Dialog */}
       <Dialog
         open={showExportDialog}
-        onClose={() => setShowExportDialog(false)}
+        onClose={() => {
+          setShowExportDialog(false);
+          setExportSceneId(null);
+        }}
         maxWidth="sm"
         fullWidth
         PaperProps={{
+          'data-testid': 'legacy-shotlist-export-dialog',
           sx: {
             bgcolor: '#1a1a2e',
             backgroundImage: 'none',
@@ -6387,58 +6832,137 @@ export function CastingShotListPanel({
           Eksporter til PDF
         </DialogTitle>
         <DialogContent>
+          {exportSceneId && (
+            <Box
+              sx={{
+                mb: 2,
+                p: 1.5,
+                borderRadius: 2,
+                border: '1px solid rgba(59,130,246,0.28)',
+                bgcolor: 'rgba(15,23,42,0.5)',
+              }}
+            >
+              <Typography sx={{ color: '#93c5fd', fontSize: 12, fontWeight: 700, mb: 0.5 }}>
+                Valgt scene
+              </Typography>
+              <Typography sx={{ color: '#fff', fontWeight: 600 }}>
+                {getSceneName(
+                  shotLists.find((sl) => sl.id === exportSceneId)?.sceneId || '',
+                  shotLists.find((sl) => sl.id === exportSceneId)?.sceneName,
+                )}
+              </Typography>
+            </Box>
+          )}
+
           <Typography sx={{ color: 'rgba(255,255,255,0.87)', mb: 3 }}>
             {exportSceneId 
               ? 'Velg eksportformat for denne scenen:'
               : 'Velg hva du vil eksportere:'}
           </Typography>
           <Stack spacing={2}>
-            {/* If specific scene selected, show it first with highlight */}
             {exportSceneId && (() => {
-              const selectedScene = shotLists.find(sl => sl.id === exportSceneId);
+              const selectedScene = shotLists.find((sl) => sl.id === exportSceneId);
               if (!selectedScene) return null;
               return (
-                <Button
-                  variant="contained"
-                  fullWidth
-                  onClick={() => {
-                    handleExportScenePDF(selectedScene);
-                    setShowExportDialog(false);
-                    setExportSceneId(null);
-                  }}
-                  sx={{
-                    py: 2,
-                    bgcolor: '#e91e63',
-                    color: '#fff',
-                    justifyContent: 'flex-start',
-                    textAlign: 'left',
-                    '&:hover': { bgcolor: '#c2185b' },
-                  }}
-                >
-                  <Box>
-                    <Typography sx={{ fontWeight: 600 }}>
-                      {getSceneName(selectedScene.sceneId, selectedScene.sceneName)}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                      Eksporter denne scenen ({selectedScene.shots.length} shots)
-                    </Typography>
-                  </Box>
-                </Button>
+                <>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    data-testid="legacy-shotlist-export-board-scene"
+                    startIcon={<PdfIcon />}
+                    onClick={() => {
+                      void handleExportBoardPDF([selectedScene], 'Board PDF eksportert');
+                      setShowExportDialog(false);
+                      setExportSceneId(null);
+                    }}
+                    sx={{
+                      py: 2,
+                      bgcolor: '#e91e63',
+                      color: '#fff',
+                      justifyContent: 'flex-start',
+                      textAlign: 'left',
+                      '&:hover': { bgcolor: '#c2185b' },
+                    }}
+                  >
+                    <Box>
+                      <Typography sx={{ fontWeight: 600 }}>Board PDF</Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                        Ren board-layout for {selectedScene.shots.length} shots
+                      </Typography>
+                    </Box>
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    data-testid="legacy-shotlist-export-contact-scene"
+                    startIcon={<PdfIcon />}
+                    onClick={() => {
+                      void handleExportContactSheetPDF([selectedScene], 'Contact sheet eksportert');
+                      setShowExportDialog(false);
+                      setExportSceneId(null);
+                    }}
+                    sx={{
+                      py: 2,
+                      color: '#93c5fd',
+                      borderColor: 'rgba(59,130,246,0.3)',
+                      justifyContent: 'flex-start',
+                      textAlign: 'left',
+                      '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(59,130,246,0.08)' },
+                    }}
+                  >
+                    <Box>
+                      <Typography sx={{ fontWeight: 600 }}>Contact Sheet</Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
+                        Rutenett med thumbnails og shot-metadata
+                      </Typography>
+                    </Box>
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    data-testid="legacy-shotlist-export-deck-scene"
+                    startIcon={<PdfIcon />}
+                    onClick={() => {
+                      void handleExportShotDeckPDF([selectedScene], 'Shot deck eksportert');
+                      setShowExportDialog(false);
+                      setExportSceneId(null);
+                    }}
+                    sx={{
+                      py: 2,
+                      color: '#c4b5fd',
+                      borderColor: 'rgba(139,92,246,0.3)',
+                      justifyContent: 'flex-start',
+                      textAlign: 'left',
+                      '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(139,92,246,0.08)' },
+                    }}
+                  >
+                    <Box>
+                      <Typography sx={{ fontWeight: 600 }}>Shot Deck</Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
+                        Ett shot per side med bilde og metadata
+                      </Typography>
+                    </Box>
+                  </Button>
+                  <Button
+                    variant="text"
+                    fullWidth
+                    onClick={() => setExportSceneId(null)}
+                    sx={{ color: 'rgba(255,255,255,0.62)' }}
+                  >
+                    Velg annen scene
+                  </Button>
+                  <MuiDivider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+                </>
               );
             })()}
-            
-            {exportSceneId && (
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', textAlign: 'center' }}>
-                — eller velg annet alternativ —
-              </Typography>
-            )}
-            
+
             <Button
               variant="outlined"
               fullWidth
+              data-testid="legacy-shotlist-export-board-all"
               startIcon={<ExportIcon />}
               onClick={() => {
-                handleExportAllPDF();
+                void handleExportBoardPDF(shotLists, `Board PDF eksportert for ${shotLists.length} scener`);
                 setShowExportDialog(false);
                 setExportSceneId(null);
               }}
@@ -6452,45 +6976,65 @@ export function CastingShotListPanel({
               }}
             >
               <Box>
-                <Typography sx={{ fontWeight: 600 }}>Alle scener</Typography>
+                <Typography sx={{ fontWeight: 600 }}>Alle scener · Board PDF</Typography>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Eksporter alle {shotLists.length} scener med alle shots
+                  Eksporter alle {shotLists.length} scener med board-layout
+                </Typography>
+              </Box>
+            </Button>
+            <Button
+              variant="outlined"
+              fullWidth
+              data-testid="legacy-shotlist-export-contact-all"
+              startIcon={<ExportIcon />}
+              onClick={() => {
+                void handleExportContactSheetPDF(shotLists, `Contact sheet eksportert for ${shotLists.length} scener`);
+                setShowExportDialog(false);
+                setExportSceneId(null);
+              }}
+              sx={{
+                py: 2,
+                color: '#93c5fd',
+                borderColor: 'rgba(59,130,246,0.3)',
+                justifyContent: 'flex-start',
+                textAlign: 'left',
+                '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(59,130,246,0.08)' },
+              }}
+            >
+              <Box>
+                <Typography sx={{ fontWeight: 600 }}>Alle scener · Contact Sheet</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
+                  Thumbnail-ark for rask scene- og coverage-review
+                </Typography>
+              </Box>
+            </Button>
+            <Button
+              variant="outlined"
+              fullWidth
+              data-testid="legacy-shotlist-export-deck-all"
+              startIcon={<ExportIcon />}
+              onClick={() => {
+                void handleExportShotDeckPDF(shotLists, `Shot deck eksportert for ${shotLists.length} scener`);
+                setShowExportDialog(false);
+                setExportSceneId(null);
+              }}
+              sx={{
+                py: 2,
+                color: '#c4b5fd',
+                borderColor: 'rgba(139,92,246,0.3)',
+                justifyContent: 'flex-start',
+                textAlign: 'left',
+                '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(139,92,246,0.08)' },
+              }}
+            >
+              <Box>
+                <Typography sx={{ fontWeight: 600 }}>Alle scener · Shot Deck</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
+                  Ett shot per side for review, kunde eller opptaksbrief
                 </Typography>
               </Box>
             </Button>
 
-            {exportSceneId && (() => {
-              const selectedForStoryboard = shotLists.find((sl) => sl.id === exportSceneId);
-              if (!selectedForStoryboard) return null;
-              return (
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  startIcon={<ExportIcon />}
-                  onClick={() => {
-                    handleExportStoryboardPDF(selectedForStoryboard);
-                    setShowExportDialog(false);
-                    setExportSceneId(null);
-                  }}
-                  sx={{
-                    py: 2,
-                    color: '#00d4ff',
-                    borderColor: 'rgba(0,212,255,0.3)',
-                    justifyContent: 'flex-start',
-                    textAlign: 'left',
-                    '&:hover': { borderColor: '#00d4ff', bgcolor: 'rgba(0,212,255,0.1)' },
-                  }}
-                >
-                  <Box>
-                    <Typography sx={{ fontWeight: 600 }}>Storyboard PDF</Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                      Eksporter {getSceneName(selectedForStoryboard.sceneId, selectedForStoryboard.sceneName)} som storyboard
-                    </Typography>
-                  </Box>
-                </Button>
-              );
-            })()}
-            
             {!exportSceneId && (
               <>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', textAlign: 'center' }}>
@@ -6501,9 +7045,9 @@ export function CastingShotListPanel({
                     key={sl.id}
                     variant="outlined"
                     fullWidth
+                    data-testid={`legacy-shotlist-export-select-${sl.id}`}
                     onClick={() => {
-                      handleExportScenePDF(sl);
-                      setShowExportDialog(false);
+                      setExportSceneId(sl.id);
                     }}
                     sx={{
                       py: 1.5,
@@ -6529,7 +7073,13 @@ export function CastingShotListPanel({
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setShowExportDialog(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <Button
+            onClick={() => {
+              setShowExportDialog(false);
+              setExportSceneId(null);
+            }}
+            sx={{ color: 'rgba(255,255,255,0.87)' }}
+          >
             Avbryt
           </Button>
         </DialogActions>
@@ -6814,365 +7364,162 @@ export function CastingShotListPanel({
         </Box>
       </Dialog>
 
-      {/* Add Shot Dialog (Upload/Reference from Shot.cafe) */}
+      <SceneStoryboardDialog
+        open={Boolean(sceneStoryboardDialog)}
+        scene={activeSceneStoryboardScene}
+        projectId={projectId}
+        activeFrameIndex={sceneStoryboardDialog?.activeFrameIndex}
+        onClose={() => setSceneStoryboardDialog(null)}
+        onSceneUpdate={async (updatedScene) => {
+          const persistedScene = await saveSceneWithShotSync(updatedScene);
+          if (persistedScene) {
+            setSceneStoryboardDialog((current) =>
+              current ? { ...current, sceneId: persistedScene.id } : current,
+            );
+          }
+        }}
+      />
+
       <Dialog
-        open={showAddShotDialog}
-        onClose={() => setShowAddShotDialog(false)}
+        open={Boolean(shotStoryboardDialog)}
+        onClose={() => setShotStoryboardDialog(null)}
         maxWidth="md"
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: '#1a1f2e',
-            border: '1px solid #3b82f6',
-            minHeight: addShotMode ? 500 : 'auto',
+            bgcolor: '#111827',
+            border: '1px solid rgba(52,211,153,0.28)',
           },
         }}
       >
-        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #2a3142' }}>
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-            <Stack direction="row" spacing={1} alignItems="center">
-              <AddIcon sx={{ color: '#3b82f6' }} />
-              <span>Legg til shot</span>
-              {addShotTargetShotList && (
-                <Chip 
-                  label={getSceneName(addShotTargetShotList.sceneId, addShotTargetShotList.sceneName)}
-                  size="small"
-                  sx={{ bgcolor: 'rgba(59,130,246,0.2)', color: '#60a5fa' }}
-                />
-              )}
-            </Stack>
-            {addShotMode && (
-              <Button
-                size="small"
-                onClick={() => { setAddShotMode(null); setSelectedShotImage(null); setAddShotReferenceResults([]); }}
-                sx={{ color: '#6b7280', fontSize: 11 }}
-              >
-                ← Tilbake
-              </Button>
-            )}
-          </Stack>
+        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          Koble shot til scene-storyboard
         </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          {!addShotMode ? (
-            /* Mode Selection */
-            <Stack spacing={3}>
-              <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>
-                Velg hvordan du vil legge til et nytt shot
-              </Typography>
-              <Stack direction="row" spacing={2}>
-                {/* Upload Option */}
-                <Box
-                  onClick={() => setAddShotMode('upload')}
-                  sx={{
-                    flex: 1,
-                    p: 4,
-                    borderRadius: '12px',
-                    bgcolor: 'rgba(59,130,246,0.1)',
-                    border: '2px dashed #3b82f6',
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      bgcolor: 'rgba(59,130,246,0.2)',
-                      borderStyle: 'solid',
-                    },
-                  }}
-                >
-                  <Box sx={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: '16px',
-                    bgcolor: 'rgba(59,130,246,0.2)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mx: 'auto',
-                    mb: 2,
-                  }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="17 8 12 3 7 8"/>
-                      <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                  </Box>
-                  <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>
-                    Last opp eget bilde
-                  </Typography>
-                  <Typography sx={{ fontSize: 12, color: '#6b7280' }}>
-                    Last opp storyboard, skisse eller referanse
-                  </Typography>
-                </Box>
-
-                {/* Reference Search Option */}
-                <Box
-                  onClick={() => setAddShotMode('reference')}
-                  sx={{
-                    flex: 1,
-                    p: 4,
-                    borderRadius: '12px',
-                    bgcolor: 'rgba(139,92,246,0.1)',
-                    border: '2px dashed #8b5cf6',
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      bgcolor: 'rgba(139,92,246,0.2)',
-                      borderStyle: 'solid',
-                    },
-                  }}
-                >
-                  <Box sx={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: '16px',
-                    bgcolor: 'rgba(139,92,246,0.2)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mx: 'auto',
-                    mb: 2,
-                  }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2">
-                      <circle cx="11" cy="11" r="8"/>
-                      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                  </Box>
-                  <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>
-                    Søk fra Shot.cafe
-                  </Typography>
-                  <Typography sx={{ fontSize: 12, color: '#6b7280' }}>
-                    Finn referansebilder fra filmer og serier
-                  </Typography>
-                </Box>
-              </Stack>
-            </Stack>
-          ) : addShotMode === 'upload' ? (
-            /* Upload Mode */
-            <Stack spacing={3}>
-              <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>
-                Last opp et bilde for ditt nye shot
-              </Typography>
-              
-              {selectedShotImage ? (
-                <Box sx={{ textAlign: 'center' }}>
-                  <Box
-                    component="img"
-                    src={selectedShotImage}
-                    sx={{
-                      maxWidth: '100%',
-                      maxHeight: 300,
-                      borderRadius: '12px',
-                      border: '2px solid #3b82f6',
-                    }}
-                  />
-                  <Button
-                    onClick={() => setSelectedShotImage(null)}
-                    sx={{ mt: 2, color: '#6b7280' }}
-                  >
-                    Velg annet bilde
-                  </Button>
-                </Box>
-              ) : (
-                <Box
-                  component="label"
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    p: 6,
-                    borderRadius: '12px',
-                    bgcolor: 'rgba(0,0,0,0.2)',
-                    border: '2px dashed #374151',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      borderColor: '#3b82f6',
-                      bgcolor: 'rgba(59,130,246,0.1)',
-                    },
-                  }}
-                >
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleAddShotImageUpload}
-                    style={{ display: 'none' }}
-                  />
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <path d="M21 15l-5-5L5 21"/>
-                  </svg>
-                  <Typography sx={{ fontSize: 14, color: '#9ca3af', mt: 2 }}>
-                    Klikk for å velge bilde
-                  </Typography>
-                  <Typography sx={{ fontSize: 11, color: '#6b7280', mt: 0.5 }}>
-                    Støtter JPG, PNG, WebP
-                  </Typography>
-                </Box>
-              )}
-            </Stack>
-          ) : (
-            /* Reference Search Mode */
-            <Stack spacing={3}>
-              <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>
-                Søk etter referansebilder fra Shot.cafe
-              </Typography>
-              
-              <Stack direction="row" spacing={1}>
-                <TextField
-                  fullWidth
-                  placeholder="Søk: film, mood, shot type..."
-                  value={addShotReferenceQuery}
-                  onChange={(e) => setAddShotReferenceQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearchReferenceShots()}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      bgcolor: '#0d1117',
-                      color: '#fff',
-                      '& fieldset': { borderColor: '#374151' },
-                      '&:hover fieldset': { borderColor: '#8b5cf6' },
-                      '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
-                    },
-                  }}
-                />
-                <Button
-                  variant="contained"
-                  onClick={handleSearchReferenceShots}
-                  disabled={addShotLoading || !addShotReferenceQuery.trim()}
-                  sx={{
-                    bgcolor: '#8b5cf6',
-                    px: 3,
-                    '&:hover': { bgcolor: '#7c3aed' },
-                  }}
-                >
-                  {addShotLoading ? <MUICircularProgress size={20} sx={{ color: '#fff' }} /> : 'Søk'}
-                </Button>
-              </Stack>
-              
-              {/* Quick Search Tags */}
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                {['Blade Runner', 'Kubrick', 'Tarantino', 'Nolan', 'Close-up', 'Wide shot'].map(tag => (
-                  <Chip
-                    key={tag}
-                    label={tag}
-                    size="small"
-                    onClick={() => { setAddShotReferenceQuery(tag); }}
-                    sx={{
-                      bgcolor: 'rgba(139,92,246,0.15)',
-                      color: '#a78bfa',
-                      '&:hover': { bgcolor: 'rgba(139,92,246,0.3)' },
-                    }}
-                  />
-                ))}
-              </Stack>
-              
-              {/* Results */}
-              {addShotReferenceResults.length > 0 && (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 1.5,
-                    maxHeight: 280,
-                    overflow: 'auto',
-                    p: 1,
-                  }}
-                >
-                  {addShotReferenceResults.map((result) => (
+        <DialogContent sx={{ pt: 2.5 }}>
+          <Stack spacing={2}>
+            <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
+              Velg et storyboard-frame fra scenen for å holde shot-et på linje med storyboardet.
+            </Typography>
+            {shotStoryboardDialogScene && (
+              <Chip
+                size="small"
+                label={shotStoryboardDialogScene.sceneHeading || shotStoryboardDialogScene.sceneName || `Scene ${shotStoryboardDialogScene.sceneNumber || shotStoryboardDialogScene.id}`}
+                sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(16,185,129,0.16)', color: '#6ee7b7' }}
+              />
+            )}
+            {shotStoryboardDialogCandidates.length === 0 ? (
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  border: '1px dashed rgba(255,255,255,0.16)',
+                  bgcolor: 'rgba(255,255,255,0.03)',
+                }}
+              >
+                <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13 }}>
+                  Scenen har ingen storyboard-frames eller scene-matchede library-elementer ennå.
+                </Typography>
+              </Box>
+            ) : (
+              <Box
+                sx={{
+                  display: 'grid',
+                  gap: 1.5,
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    sm: 'repeat(2, minmax(0, 1fr))',
+                    md: 'repeat(3, minmax(0, 1fr))',
+                  },
+                }}
+              >
+                {shotStoryboardDialogCandidates.map((candidate: StoryboardSeedCandidate) => {
+                  const active = candidate.id === shotStoryboardDialog?.selectedCandidateId;
+                  const previewUrl = candidate.thumbnailUrl || candidate.imageUrl;
+                  return (
                     <Box
-                      key={result.id}
-                      onClick={() => setSelectedShotImage(result.url)}
+                      key={candidate.id}
+                      onClick={() =>
+                        setShotStoryboardDialog((current) =>
+                          current ? { ...current, selectedCandidateId: candidate.id } : current,
+                        )
+                      }
                       sx={{
-                        position: 'relative',
-                        aspectRatio: '16/9',
-                        width: { xs: 'calc(50% - 6px)', sm: 'calc(33.333% - 8px)', md: 'calc(25% - 9px)' },
-                        borderRadius: '8px',
-                        overflow: 'hidden',
                         cursor: 'pointer',
-                        border: selectedShotImage === result.url ? '3px solid #3b82f6' : '2px solid transparent',
-                        transition: 'all 0.2s',
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                        border: active ? '2px solid #34d399' : '1px solid rgba(255,255,255,0.1)',
+                        bgcolor: active ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.03)',
+                        transition: 'all 0.2s ease',
                         '&:hover': {
-                          transform: 'scale(1.05)',
-                          boxShadow: '0 4px 20px rgba(59,130,246,0.3)',
+                          transform: 'translateY(-1px)',
+                          borderColor: 'rgba(52,211,153,0.45)',
                         },
                       }}
                     >
-                      <Box
-                        component="img"
-                        src={result.thumbnailUrl || result.url}
-                        sx={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                        }}
-                      />
-                      {result.film && (
-                        <Box sx={{
-                          position: 'absolute',
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          p: 0.5,
-                          background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
-                        }}>
-                          <Typography sx={{ fontSize: 9, color: '#fff', fontWeight: 500 }}>
-                            {result.film}
+                      {previewUrl ? (
+                        <Box component="img" src={previewUrl} sx={{ width: '100%', height: 112, objectFit: 'cover' }} />
+                      ) : (
+                        <Box
+                          sx={{
+                            height: 112,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            bgcolor: 'rgba(0,0,0,0.22)',
+                          }}
+                        >
+                          <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>
+                            Ingen preview
                           </Typography>
                         </Box>
                       )}
-                      {selectedShotImage === result.url && (
-                        <Box sx={{
-                          position: 'absolute',
-                          top: 4,
-                          right: 4,
-                          width: 20,
-                          height: 20,
-                          borderRadius: '50%',
-                          bgcolor: '#3b82f6',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}>
-                          <CheckIcon sx={{ fontSize: 14, color: '#fff' }} />
-                        </Box>
-                      )}
+                      <Stack spacing={0.75} sx={{ p: 1.25 }}>
+                        <Typography sx={{ color: '#fff', fontSize: '0.8rem', fontWeight: 600 }}>
+                          {candidate.shotNumber}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(255,255,255,0.68)', fontSize: '0.72rem', minHeight: 34 }}>
+                          {candidate.description}
+                        </Typography>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                          <Chip size="small" label={candidate.sourceLabel} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#93c5fd' }} />
+                          {candidate.cameraAngle && (
+                            <Chip size="small" label={candidate.cameraAngle} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.72)' }} />
+                          )}
+                        </Stack>
+                      </Stack>
                     </Box>
-                  ))}
-                </Box>
-              )}
-              
-              {addShotLoading && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <MUICircularProgress sx={{ color: '#8b5cf6' }} />
-                </Box>
-              )}
-            </Stack>
-          )}
+                  );
+                })}
+              </Box>
+            )}
+          </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button 
-            onClick={() => setShowAddShotDialog(false)} 
-            sx={{ color: '#9ca3af' }}
-          >
+          <Button onClick={() => setShotStoryboardDialog(null)} sx={{ color: 'rgba(255,255,255,0.65)' }}>
             Avbryt
           </Button>
-          {addShotMode && (
-            <Button
-              onClick={() => handleCreateShotWithImage(selectedShotImage || undefined)}
-              variant="contained"
-              disabled={addShotMode === 'upload' && !selectedShotImage}
-              sx={{
-                bgcolor: addShotMode === 'upload' ? '#3b82f6' : '#8b5cf6',
-                '&:hover': { bgcolor: addShotMode === 'upload' ? '#2563eb' : '#7c3aed' },
-                '&.Mui-disabled': { bgcolor: '#374151', color: '#6b7280' },
-              }}
-            >
-              {selectedShotImage ? 'Legg til med bilde' : 'Legg til uten bilde'}
-            </Button>
-          )}
+          <Button
+            onClick={handleConfirmShotStoryboardLink}
+            variant="contained"
+            disabled={!shotStoryboardDialog?.selectedCandidateId}
+            sx={{ bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' } }}
+          >
+            Koble til frame
+          </Button>
         </DialogActions>
       </Dialog>
+
+      <AddShotDialog
+        open={showAddShotDialog}
+        onClose={() => {
+          setShowAddShotDialog(false);
+          setAddShotTargetShotList(null);
+        }}
+        sceneNumber={addShotSceneNumber}
+        storyboardCandidates={addShotStoryboardCandidates}
+        onSearch={handleSearchReferenceShots}
+        onCreateShot={handleCreateShotWithImage}
+      />
 
       <MemoryCardBackupControlDialog
         open={memoryCardControlOpen}

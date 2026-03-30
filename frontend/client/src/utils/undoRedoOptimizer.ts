@@ -60,8 +60,18 @@ export interface CompressionResult {
   compressedSize: number;
   ratio: number;
   algorithm: string;
-  time: number
+  time: number;
+  compressed: boolean;
+  data: unknown;
 }
+
+interface PerformanceMemoryInfo {
+  usedJSHeapSize: number;
+}
+
+type PerformanceWithMemory = Performance & {
+  memory?: PerformanceMemoryInfo;
+};
 
 class UndoRedoOptimizer {
   private config: UndoRedoConfig;
@@ -323,6 +333,7 @@ class UndoRedoOptimizer {
         ratio:  1,
         algorithm: 'none',
         time:  0,
+        compressed: false,
         data
     };
   }
@@ -344,9 +355,10 @@ class UndoRedoOptimizer {
         ratio,
         algorithm: 'simple',
         time: endTime - startTime,
+        compressed: true,
         data: compressed
   };
-  } catch (error) {
+  } catch (_error) {
       // Fallback to uncompressed
       return {
         originalSize,
@@ -354,6 +366,7 @@ class UndoRedoOptimizer {
         ratio:  1,
         algorithm: 'none',
         time:  0,
+        compressed: false,
         data
     };
   }
@@ -363,9 +376,9 @@ class UndoRedoOptimizer {
    * Decompress data
    */
   private async decompressData(compressedData: any): Promise<any> {
-    if (typeof compressedData === 'string' && compressedData.startsWith('compressed: ')) {
+    if (typeof compressedData === 'string' && compressedData.startsWith('compressed:')) {
       try {
-        const decompressed = this.simpleDecompress(compressedData.substring(11));
+        const decompressed = this.simpleDecompress(compressedData.substring('compressed:'.length));
         return JSON.parse(decompressed);
   } catch (error) {
         console.warn('Failed to decompress data:', error);
@@ -397,7 +410,7 @@ class UndoRedoOptimizer {
    */
   private addToHistory(entry: HistoryEntry): void {
     // Remove any entries after current index (when branching)
-    this.state.history = this.state.history.slice, (this.state.currentIndex + 1);
+    this.state.history = this.state.history.slice(0, this.state.currentIndex + 1);
     
     // Add new entry
     this.state.history.push(entry);
@@ -432,7 +445,7 @@ class UndoRedoOptimizer {
    * Get current memory usage
    */
   private getMemoryUsage(): number {
-    const memory = (performance as any).memory;
+    const memory = (performance as PerformanceWithMemory).memory;
     return memory ? memory.usedJSHeapSize / 1024 / 1024 : 0;
 }
 
@@ -619,6 +632,4 @@ export const getPerformanceMetrics = () => {
 };
 
 export default undoRedoOptimizer;
-
-
 

@@ -5,23 +5,21 @@
  * to export high-quality stage diagrams and lighting layouts.
  */
 
-import { SVGRendererService, SVGRenderOptions } from '@/services/svg-renderer';
-import type { Scene} from '../models/scene';
-import { SceneNode } from '../models/scene';
+import svgRenderer, { type SVGRenderOptions } from '@/services/svg-renderer';
+import type { Scene } from '../models/scene';
 import { logger } from './logger';
 
-const log = logger.module('SVGExport, ');
+const log = logger.module('SVGExport');
 
-// Singleton instance
-let svgRenderer: SVGRendererService | null = null;
+let rendererReady = false;
 
 /**
  * Initialize SVG Renderer (call once at startup)
  */
 export async function initializeSVGRenderer(): Promise<void> {
-  if (!svgRenderer) {
-    svgRenderer = new (SVGRendererService as any)();
+  if (!rendererReady) {
     await svgRenderer.initialize();
+    rendererReady = true;
     log.info('SVG Renderer ready for Virtual Studio exports, ');
   }
 }
@@ -245,7 +243,7 @@ export async function exportSceneToPNG(
 ): Promise<Blob> {
   await initializeSVGRenderer();
 
-  if (!svgRenderer) {
+  if (!rendererReady) {
     throw new Error('SVG Renderer not initialized, ');
   }
 
@@ -256,12 +254,14 @@ export async function exportSceneToPNG(
     includeGrid: true,
   });
 
-  const result = await svgRenderer.renderSVGToPNG(svg, {
+  const renderOptions: SVGRenderOptions = {
     width: options.width || 1920,
     height: options.height || 1080,
     format: options.format || 'png',
     quality: options.quality || 90,
-  });
+  };
+
+  const result = await svgRenderer.renderSVGToPNG(svg, renderOptions);
 
   // Convert data URL to blob
   const response = await fetch(result.dataUrl);
@@ -299,16 +299,18 @@ export async function exportClientDiagram(
   const svg = generateClientPresentationSVG(scene, options);
 
   await initializeSVGRenderer();
-  if (!svgRenderer) {
+  if (!rendererReady) {
     throw new Error('SVG Renderer not initialized');
   }
 
-  const result = await svgRenderer.renderSVGToPNG(svg, {
+  const renderOptions: SVGRenderOptions = {
     width: 1920,
     height: 1200,
     format: 'png',
     quality: 95,
-  });
+  };
+
+  const result = await svgRenderer.renderSVGToPNG(svg, renderOptions);
 
   const response = await fetch(result.dataUrl);
   return await response.blob();

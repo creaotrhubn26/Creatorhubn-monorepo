@@ -238,7 +238,7 @@ const SystemMessagesBanner: React.FC<SystemMessagesBannerProps> = ({ userProfess
                 
                 <Box sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <Typography variant="caption" sx={{ opacity: 0.7}}>
-                    Publisert: {new Date(message.createdAt).toLocaleDateString('no-N', {
+                    Publisert: {new Date(message.createdAt).toLocaleDateString('no-NO', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
@@ -288,7 +288,7 @@ const SystemMessagesBanner: React.FC<SystemMessagesBannerProps> = ({ userProfess
                 label={currentNotification.priority.toUpperCase()}
                 size="small"
                 sx={{
-                  backgroundColor: 'rgba(25, 255, 255, 0.2)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.14)',
                   color: 'white',
                   fontWeight: 'bold',
                   fontSize: '0.7rem'

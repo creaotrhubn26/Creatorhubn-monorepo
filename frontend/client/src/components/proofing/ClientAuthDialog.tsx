@@ -146,7 +146,7 @@ export const ClientAuthDialog: React.FC<ClientAuthDialogProps> = ({
             Sikker pålogging
           </Typography>
         </Box>
-        <Typography variant="body2" sx={{ color: 'rgba(25,255,255,0.7)' }}>
+        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.72)' }}>
           Skriv inn din tilgangskode for å se bildene
         </Typography>
       </DialogTitle>
@@ -165,12 +165,12 @@ export const ClientAuthDialog: React.FC<ClientAuthDialogProps> = ({
                   Session låst
                 </Typography>
               </Box>
-              <Typography variant="body2" sx={{ color: 'rgba(25,255,255,0.8)' }}>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.82)' }}>
                 For mange feilede forsøk. Prøv igjen om {timeUntilUnlock} minutter.
               </Typography>
               <Box display="flex" alignItems="center" gap={1} mt={1}>
-                <AccessTime sx={{ fontSize:  16, color: 'rgba(25,255,255,0.5)' }} />
-                <Typography variant="caption" sx={{ color: 'rgba(25,255,255,0.5)' }}>
+                <AccessTime sx={{ fontSize:  16, color: 'rgba(255,255,255,0.52)' }} />
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.52)' }}>
                   Låst til: {new Date(lockoutUntil!).toLocaleTimeString(', ')}
                 </Typography>
               </Box>
@@ -213,7 +213,7 @@ export const ClientAuthDialog: React.FC<ClientAuthDialogProps> = ({
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
-                          <Lock sx={{ color: 'rgba(25,255,255,0.5)' }} />
+                          <Lock sx={{ color: 'rgba(255,255,255,0.52)' }} />
                         </InputAdornment>
                       ),
                       sx: {
@@ -250,7 +250,7 @@ export const ClientAuthDialog: React.FC<ClientAuthDialogProps> = ({
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
-                          <Lock sx={{ color: 'rgba(25,255,255,0.5)' }} />
+                          <Lock sx={{ color: 'rgba(255,255,255,0.52)' }} />
                         </InputAdornment>
                       ),
                       endAdornment: (
@@ -258,7 +258,7 @@ export const ClientAuthDialog: React.FC<ClientAuthDialogProps> = ({
                           <IconButton
                             onClick={() => setShowPassword(!showPassword)}
                             edge="end"
-                            sx={{ color: 'rgba(25,255,255,0.5)' }}
+                            sx={{ color: 'rgba(255,255,255,0.52)' }}
                           >
                             {showPassword ? theming.getThemedIcon('visibilityOff') : theming.getThemedIcon('visibility')}
                           </IconButton>
@@ -315,7 +315,7 @@ export const ClientAuthDialog: React.FC<ClientAuthDialogProps> = ({
                       label="Nedlasting begrenset" 
                       size="small" 
                       sx={{ 
-                        bgcolor: 'rgba(25, 1520.2)', 
+                        bgcolor: 'rgba(255, 152, 0, 0.18)', 
                         color: '#ff9800',
                         fontSize: '0.7rem'
                   }}
@@ -331,7 +331,7 @@ export const ClientAuthDialog: React.FC<ClientAuthDialogProps> = ({
       <DialogActions sx={{ p:  3, pt:  2 }}>
         <Button 
           onClick={onClose}
-          sx={{ color: 'rgba(25,255,255,0.7)' }}
+          sx={{ color: 'rgba(255,255,255,0.72)' }}
           disabled={loading}
         >
           Avbryt

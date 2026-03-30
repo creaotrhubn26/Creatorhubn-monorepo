@@ -1,38 +1,56 @@
 /**
  * Component Validation and Runtime Type Checking
- * Comprehensive prop validation and runtime type checking for React components
+ * Comprehensive prop validation and runtime type checking for React components.
  */
 
+import React from 'react';
+
+export type ValidationRuleType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'array'
+  | 'object'
+  | 'function'
+  | 'element'
+  | 'node';
+
 export interface ValidationRule {
-  type: 'string, ' | 'number' | 'boolean' | 'array' | 'object' | 'function' | 'element' | 'node';
+  type: ValidationRuleType;
   required?: boolean;
   min?: number;
   max?: number;
   pattern?: RegExp;
-  enum?: any[];
-  custom?: (value: any) => boolean | string;
-  message?: string
+  enum?: readonly unknown[];
+  custom?: (value: unknown) => boolean | string;
+  message?: string;
 }
 
 export interface PropValidation {
-  [key: string]: ValidationRule
+  [key: string]: ValidationRule;
+}
+
+export type ValidationSeverity = 'error' | 'warning' | 'info';
+
+export interface ValidationIssue {
+  prop: string;
+  value: unknown;
+  message: string;
+}
+
+export interface ValidationError extends ValidationIssue {
+  rule: ValidationRule;
+  severity: ValidationSeverity;
+}
+
+export interface ValidationWarning extends ValidationIssue {
+  suggestion: string;
 }
 
 export interface ValidationResult {
   isValid: boolean;
-  errors: Array<{
-    prop: string;
-    value: any;
-    rule: ValidationRule;
-    message: string;
-    severity: 'error' | 'warning' | 'info';
-}>;
-  warnings: Array<{
-    prop: string;
-    value: any;
-    message: string;
-    suggestion: string;
-}>;
+  errors: ValidationError[];
+  warnings: ValidationWarning[];
 }
 
 export interface ComponentValidationConfig {
@@ -42,7 +60,7 @@ export interface ComponentValidationConfig {
   enableDeprecationWarnings: boolean;
   enablePerformanceWarnings: boolean;
   strictMode: boolean;
-  logLevel: 'error' | 'warn' | 'info' | 'debug'
+  logLevel: 'error' | 'warn' | 'info' | 'debug';
 }
 
 export interface DeprecatedProp {
@@ -50,22 +68,24 @@ export interface DeprecatedProp {
   replacement?: string;
   version: string;
   message: string;
-  severity: 'warning' | 'error'
+  severity: 'warning' | 'error';
 }
 
 export interface PerformanceWarning {
   prop: string;
   issue: string;
   impact: 'low' | 'medium' | 'high';
-  suggestion: string
+  suggestion: string;
 }
+
+const COMMON_RULE_SET = 'common';
 
 class ComponentValidator {
   private config: ComponentValidationConfig;
-  private validationRules: Map<string, PropValidation> = new Map();
-  private deprecatedProps: Map<string, DeprecatedProp[]> = new Map();
-  private performanceWarnings: Map<string, PerformanceWarning[]> = new Map();
-  private validationCache: Map<string, ValidationResult> = new Map();
+  private validationRules = new Map<string, PropValidation>();
+  private deprecatedProps = new Map<string, DeprecatedProp[]>();
+  private performanceWarnings = new Map<string, PerformanceWarning[]>();
+  private validationCache = new Map<string, ValidationResult>();
 
   constructor(config: Partial<ComponentValidationConfig> = {}) {
     this.config = {
@@ -76,200 +96,160 @@ class ComponentValidator {
       enablePerformanceWarnings: true,
       strictMode: false,
       logLevel: 'warn',
-      ...config
-  };
+      ...config,
+    };
 
     this.initializeValidator();
-}
+  }
 
-  /**
-   * Initialize validator
-   */
   private initializeValidator(): void {
     this.setupDefaultValidationRules();
     this.setupDeprecationWarnings();
     this.setupPerformanceWarnings();
-}
+  }
 
-  /**
-   * Setup default validation rules
-   */
   private setupDefaultValidationRules(): void {
-    // Common validation rules for standard props
     const commonRules: PropValidation = {
       className: {
         type: 'string',
-        required: false,
-        pattern: /^[a-zA-Z0-9\s\-_]+, $, /,
-        message: 'className must be a valid CSS class name'
-  },
+        pattern: /^[a-zA-Z0-9\s\-_]+$/,
+        message: 'className must be a valid CSS class name',
+      },
       id: {
         type: 'string',
-        required: false,
-        pattern: /^[a-zA-Z0-9\-_]+, $, /,
-        message: 'id must be a valid HTML id'
-  },
+        pattern: /^[a-zA-Z0-9\-_]+$/,
+        message: 'id must be a valid HTML id',
+      },
       children: {
         type: 'node',
-        required: false,
-        message: 'children must be a valid React node'
-  },
+        message: 'children must be a valid React node',
+      },
       onClick: {
         type: 'function',
-        required: false,
-        message: 'onClick must be a function'
-  },
+        message: 'onClick must be a function',
+      },
       disabled: {
         type: 'boolean',
-        required: false,
-        message: 'disabled must be a boolean'
-  },
+        message: 'disabled must be a boolean',
+      },
       visible: {
         type: 'boolean',
-        required: false,
-        message: 'visible must be a boolean'
+        message: 'visible must be a boolean',
+      },
+    };
+
+    this.validationRules.set(COMMON_RULE_SET, commonRules);
   }
-  };
 
-    this.validationRules.set('common, ', commonRules);
-}
-
-  /**
-   * Setup deprecation warnings
-   */
   private setupDeprecationWarnings(): void {
-    // Common deprecated props
     const commonDeprecations: DeprecatedProp[] = [
       {
         prop: 'onChange',
         replacement: 'onValueChange',
-        version: '2.0.',
+        version: '2.0.0',
         message: 'onChange is deprecated, use onValueChange instead',
-        severity: 'warning'
-  },
+        severity: 'warning',
+      },
       {
         prop: 'onPress',
         replacement: 'onClick',
-        version: '2.0.',
+        version: '2.0.0',
         message: 'onPress is deprecated, use onClick instead',
-        severity: 'warning'
-  }
+        severity: 'warning',
+      },
     ];
 
-    this.deprecatedProps.set('common, ', commonDeprecations);
-}
+    this.deprecatedProps.set(COMMON_RULE_SET, commonDeprecations);
+  }
 
-  /**
-   * Setup performance warnings
-   */
   private setupPerformanceWarnings(): void {
-    // Common performance warnings
     const commonWarnings: PerformanceWarning[] = [
       {
         prop: 'style',
         issue: 'Inline styles can cause performance issues',
         impact: 'medium',
-        suggestion: 'Use CSS classes or styled-components instead'
-  },
+        suggestion: 'Use CSS classes or styled-components instead',
+      },
       {
         prop: 'onClick',
         issue: 'Inline functions can cause unnecessary re-renders',
         impact: 'high',
-        suggestion: 'Use useCallback or move function outside component'
-  },
+        suggestion: 'Use useCallback or move the function outside the component',
+      },
       {
         prop: 'children',
         issue: 'Complex children can impact rendering performance',
         impact: 'low',
-        suggestion: 'Consider memoizing complex children'
-  }
+        suggestion: 'Consider memoizing complex children',
+      },
     ];
 
-    this.performanceWarnings.set('common', commonWarnings);
-}
-
-  /**
-   * Register validation rules for a component
-   */
-  registerValidationRules(componentName: string, rules: PropValidation): void {
-    this.validationRules.set(componentName, rules);
-}
-
-  /**
-   * Register deprecated props for a component
-   */
-  registerDeprecatedProps(componentName: string, deprecated: DeprecatedProp[]): void {
-    this.deprecatedProps.set(componentName, deprecated);
-}
-
-  /**
-   * Register performance warnings for a component
-   */
-  registerPerformanceWarnings(componentName: string, warnings: PerformanceWarning[]): void {
-    this.performanceWarnings.set(componentName, warnings);
-}
-
-  /**
-   * Validate component props
-   */
-  validateProps(componentName: string, props: Record<string, any>): ValidationResult {
-    const cacheKey = `${componentName}-${JSON.stringify(props)}`;
-    
-    // Check cache first
-    if (this.validationCache.has(cacheKey)) {
-      return this.validationCache.get(cacheKey)!;
+    this.performanceWarnings.set(COMMON_RULE_SET, commonWarnings);
   }
 
-    const errors: Array<any> = [];
-    const warnings: Array<any> = [];
+  registerValidationRules(componentName: string, rules: PropValidation): void {
+    this.validationRules.set(componentName, rules);
+    this.validationCache.clear();
+  }
 
-    // Get validation rules for component
-    const rules = this.validationRules.get(componentName) || this.validationRules.get('common') || {};
-    const deprecated = this.deprecatedProps.get(componentName) || this.deprecatedProps.get('common') || [];
-    const perfWarnings = this.performanceWarnings.get(componentName) || this.performanceWarnings.get('common') || [];
+  registerDeprecatedProps(componentName: string, deprecated: DeprecatedProp[]): void {
+    this.deprecatedProps.set(componentName, deprecated);
+  }
 
-    // Validate each prop
-    for (const [propName, value] of Object.entries(props)) {
-      const rule = rules[propName];
-      
-      if (rule) {
-        const validation = this.validateProp(propName, value, rule);
-        if (!validation.isValid) {
-          errors.push(...validation.errors);
-      }
-        if (validation.warnings.length > 0) {
-          warnings.push(...validation.warnings);
-      }
+  registerPerformanceWarnings(componentName: string, warnings: PerformanceWarning[]): void {
+    this.performanceWarnings.set(componentName, warnings);
+  }
+
+  validateProps(componentName: string, props: Record<string, unknown>): ValidationResult {
+    const cacheKey = this.createCacheKey(componentName, props);
+    const cachedResult = this.validationCache.get(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
     }
 
-      // Check for deprecated props
+    const errors: ValidationError[] = [];
+    const warnings: ValidationWarning[] = [];
+
+    const rules = this.getMergedRules(componentName);
+    const deprecatedProps = this.getMergedDeprecatedProps(componentName);
+    const performanceWarnings = this.getMergedPerformanceWarnings(componentName);
+
+    for (const [propName, value] of Object.entries(props)) {
+      const rule = rules[propName];
+
+      if (this.config.enablePropValidation && rule) {
+        const validation = this.validateProp(propName, value, rule);
+        errors.push(...validation.errors);
+        warnings.push(...validation.warnings);
+      }
+
       if (this.config.enableDeprecationWarnings) {
-        const deprecation = deprecated.find(d => d.prop === propName);
+        const deprecation = deprecatedProps.find((entry) => entry.prop === propName);
         if (deprecation) {
           warnings.push({
             prop: propName,
             value,
             message: deprecation.message,
-            suggestion: deprecation.replacement ? `Use ${deprecation.replacement} instead` : 'Remove this prop'
-        });
+            suggestion: deprecation.replacement
+              ? `Use ${deprecation.replacement} instead`
+              : 'Remove this deprecated prop',
+          });
+        }
       }
-    }
 
-      // Check for performance warnings
       if (this.config.enablePerformanceWarnings) {
-        const perfWarning = perfWarnings.find(w => w.prop === propName);
-        if (perfWarning) {
+        const warning = performanceWarnings.find((entry) => entry.prop === propName);
+        if (warning && this.shouldEmitPerformanceWarning(propName, value)) {
           warnings.push({
             prop: propName,
             value,
-            message: perfWarning.issue,
-            suggestion: perfWarning.suggestion
-      });
+            message: warning.issue,
+            suggestion: warning.suggestion,
+          });
+        }
       }
     }
-  }
 
-    // Check for missing required props
     for (const [propName, rule] of Object.entries(rules)) {
       if (rule.required && !(propName in props)) {
         errors.push({
@@ -277,31 +257,70 @@ class ComponentValidator {
           value: undefined,
           rule,
           message: `Required prop '${propName}' is missing`,
-          severity: 'error'
-    });
+          severity: 'error',
+        });
+      }
     }
-  }
 
     const result: ValidationResult = {
       isValid: errors.length === 0,
       errors,
-      warnings
+      warnings,
     };
 
-    // Cache result
     this.validationCache.set(cacheKey, result);
-
     return result;
-}
+  }
 
-  /**
-   * Validate a single prop
-   */
-  private validateProp(propName: string, value: any, rule: ValidationRule): ValidationResult {
-    const errors: Array<any> = [];
-    const warnings: Array<any> = [];
+  private createCacheKey(componentName: string, props: Record<string, unknown>): string {
+    try {
+      return `${componentName}:${JSON.stringify(props)}`;
+    } catch {
+      return `${componentName}:${Object.keys(props).sort().join('|')}`;
+    }
+  }
 
-    // Check if value is undefined and prop is required
+  private getMergedRules(componentName: string): PropValidation {
+    return {
+      ...(this.validationRules.get(COMMON_RULE_SET) ?? {}),
+      ...(this.validationRules.get(componentName) ?? {}),
+    };
+  }
+
+  private getMergedDeprecatedProps(componentName: string): DeprecatedProp[] {
+    return [
+      ...(this.deprecatedProps.get(COMMON_RULE_SET) ?? []),
+      ...(this.deprecatedProps.get(componentName) ?? []),
+    ];
+  }
+
+  private getMergedPerformanceWarnings(componentName: string): PerformanceWarning[] {
+    return [
+      ...(this.performanceWarnings.get(COMMON_RULE_SET) ?? []),
+      ...(this.performanceWarnings.get(componentName) ?? []),
+    ];
+  }
+
+  private shouldEmitPerformanceWarning(propName: string, value: unknown): boolean {
+    if (propName === 'style') {
+      return typeof value === 'object' && value !== null;
+    }
+
+    if (propName.startsWith('on')) {
+      return typeof value === 'function';
+    }
+
+    if (propName === 'children') {
+      return Array.isArray(value) && value.length > 10;
+    }
+
+    return true;
+  }
+
+  private validateProp(propName: string, value: unknown, rule: ValidationRule): ValidationResult {
+    const errors: ValidationError[] = [];
+    const warnings: ValidationWarning[] = [];
+
     if (value === undefined) {
       if (rule.required) {
         errors.push({
@@ -309,26 +328,27 @@ class ComponentValidator {
           value,
           rule,
           message: `Required prop '${propName}' is undefined`,
-          severity: 'error'
+          severity: 'error',
         });
       }
+
       return { isValid: errors.length === 0, errors, warnings };
     }
 
-    // Check type
-    const typeCheck = this.checkType(value, rule.type);
-    if (!typeCheck.isValid) {
-      errors.push({
-        prop: propName,
-        value,
-        rule,
-        message: typeCheck.message || `Prop '${propName}' must be of type ${rule.type}`,
-        severity: 'error'
-  });
-      return { isValid: false, errors, warnings };
+    if (this.config.enableTypeChecking) {
+      const typeCheck = this.checkType(value, rule.type);
+      if (!typeCheck.isValid) {
+        errors.push({
+          prop: propName,
+          value,
+          rule,
+          message: typeCheck.message ?? `Prop '${propName}' must be of type ${rule.type}`,
+          severity: 'error',
+        });
+        return { isValid: false, errors, warnings };
+      }
     }
 
-    // Check string-specific rules
     if (rule.type === 'string' && typeof value === 'string') {
       if (rule.min !== undefined && value.length < rule.min) {
         errors.push({
@@ -336,32 +356,31 @@ class ComponentValidator {
           value,
           rule,
           message: `Prop '${propName}' must be at least ${rule.min} characters long`,
-          severity: 'error'
-    });
-    }
-      
+          severity: 'error',
+        });
+      }
+
       if (rule.max !== undefined && value.length > rule.max) {
         errors.push({
           prop: propName,
           value,
           rule,
           message: `Prop '${propName}' must be no more than ${rule.max} characters long`,
-          severity: 'error'
-    });
-    }
-      
+          severity: 'error',
+        });
+      }
+
       if (rule.pattern && !rule.pattern.test(value)) {
         errors.push({
           prop: propName,
           value,
           rule,
-          message: rule.message || `Prop '${propName}' does not match required pattern`,
-          severity: 'error'
-    });
+          message: rule.message ?? `Prop '${propName}' does not match the required pattern`,
+          severity: 'error',
+        });
+      }
     }
-  }
 
-    // Check number-specific rules
     if (rule.type === 'number' && typeof value === 'number') {
       if (rule.min !== undefined && value < rule.min) {
         errors.push({
@@ -369,56 +388,53 @@ class ComponentValidator {
           value,
           rule,
           message: `Prop '${propName}' must be at least ${rule.min}`,
-          severity: 'error'
-    });
-    }
-      
+          severity: 'error',
+        });
+      }
+
       if (rule.max !== undefined && value > rule.max) {
         errors.push({
           prop: propName,
           value,
           rule,
           message: `Prop '${propName}' must be no more than ${rule.max}`,
-          severity: 'error'
-    });
+          severity: 'error',
+        });
+      }
     }
-  }
 
-    // Check array-specific rules
     if (rule.type === 'array' && Array.isArray(value)) {
       if (rule.min !== undefined && value.length < rule.min) {
         errors.push({
           prop: propName,
           value,
           rule,
-          message: `Prop '${propName}' must have at least ${rule.min} items`,
-          severity: 'error'
-    });
-    }
-      
+          message: `Prop '${propName}' must contain at least ${rule.min} items`,
+          severity: 'error',
+        });
+      }
+
       if (rule.max !== undefined && value.length > rule.max) {
         errors.push({
           prop: propName,
           value,
           rule,
-          message: `Prop '${propName}' must have no more than ${rule.max} items`,
-          severity: 'error'
-    });
+          message: `Prop '${propName}' must contain no more than ${rule.max} items`,
+          severity: 'error',
+        });
+      }
     }
-  }
 
-    // Check enum values
     if (rule.enum && !rule.enum.includes(value)) {
       errors.push({
         prop: propName,
         value,
         rule,
         message: `Prop '${propName}' must be one of: ${rule.enum.join(', ')}`,
-        severity: 'error'
-  });
-  }
+        severity: 'error',
+      });
+    }
 
-    // Check custom validation
     if (rule.custom) {
       const customResult = rule.custom(value);
       if (customResult !== true) {
@@ -426,19 +442,22 @@ class ComponentValidator {
           prop: propName,
           value,
           rule,
-          message: typeof customResult === 'string' ? customResult : `Prop '${propName}' failed custom validation`,
-          severity: 'error'
-    });
+          message:
+            typeof customResult === 'string'
+              ? customResult
+              : `Prop '${propName}' failed custom validation`,
+          severity: 'error',
+        });
+      }
     }
-  }
 
     return { isValid: errors.length === 0, errors, warnings };
   }
 
-  /**
-   * Check if value matches expected type
-   */
-  private checkType(value: any, expectedType: string): { isValid: boolean; message?: string } {
+  private checkType(
+    value: unknown,
+    expectedType: ValidationRuleType,
+  ): { isValid: boolean; message?: string } {
     switch (expectedType) {
       case 'string':
         return { isValid: typeof value === 'string' };
@@ -460,26 +479,30 @@ class ComponentValidator {
         return { isValid: true };
     }
   }
-  /**
-   * Check if value is a valid React node
-   */
-  private isReactNode(value: any): boolean {
-    return (
-      value === null ||
-      value === undefined ||
-      typeof value === 'string' ||
-      typeof value === 'number' ||
-      React.isValidElement(value) ||
-      Array.isArray(value)
-    );
+
+  private isReactNode(value: unknown): boolean {
+    if (value === null || value === undefined || typeof value === 'boolean') {
+      return true;
+    }
+
+    if (typeof value === 'string' || typeof value === 'number') {
+      return true;
+    }
+
+    if (React.isValidElement(value)) {
+      return true;
+    }
+
+    if (Array.isArray(value)) {
+      return value.every((item) => this.isReactNode(item));
+    }
+
+    return false;
   }
 
-  /**
-   * Create validation HOC
-   */
-  createValidationHOC<T extends Record<string, any>>(
+  createValidationHOC<T extends Record<string, unknown>>(
     componentName: string,
-    validationRules: PropValidation
+    validationRules: PropValidation,
   ) {
     this.registerValidationRules(componentName, validationRules);
 
@@ -488,16 +511,15 @@ class ComponentValidator {
         if (this.config.enableRuntimeValidation) {
           const validation = this.validateProps(componentName, props);
 
-          if (!validation.isValid) {
-            if (this.config.logLevel === 'error' || this.config.logLevel === 'warn') {
-              console.error(`Validation errors for ${componentName}:`, validation.errors);
-            }
+          if (!validation.isValid && (this.config.logLevel === 'error' || this.config.logLevel === 'warn')) {
+            console.error(`Validation errors for ${componentName}:`, validation.errors);
           }
 
-          if (validation.warnings.length > 0) {
-            if (this.config.logLevel === 'warn' || this.config.logLevel === 'info' || this.config.logLevel === 'debug') {
-              console.warn(`Validation warnings for ${componentName}:`, validation.warnings);
-            }
+          if (
+            validation.warnings.length > 0 &&
+            ['warn', 'info', 'debug'].includes(this.config.logLevel)
+          ) {
+            console.warn(`Validation warnings for ${componentName}:`, validation.warnings);
           }
         }
 
@@ -509,23 +531,22 @@ class ComponentValidator {
     };
   }
 
-  /**
-   * Create prop validation hook
-   */
-  createValidationHook(componentName: string, validationRules: PropValidation) {
+  createValidationHook<T extends Record<string, unknown>>(
+    componentName: string,
+    validationRules: PropValidation,
+  ) {
     this.registerValidationRules(componentName, validationRules);
 
-    return (props: Record<string, any>) => {
+    return (props: T) => {
       const [validation, setValidation] = React.useState<ValidationResult>({
         isValid: true,
         errors: [],
-        warnings: []
+        warnings: [],
       });
 
       React.useEffect(() => {
         if (this.config.enableRuntimeValidation) {
-          const result = this.validateProps(componentName, props);
-          setValidation(result);
+          setValidation(this.validateProps(componentName, props));
         }
       }, [componentName, props]);
 
@@ -533,9 +554,6 @@ class ComponentValidator {
     };
   }
 
-  /**
-   * Get validation statistics
-   */
   getValidationStatistics(): {
     totalValidations: number;
     successfulValidations: number;
@@ -546,71 +564,48 @@ class ComponentValidator {
     mostCommonWarnings: Array<{ warning: string; count: number }>;
   } {
     const allResults = Array.from(this.validationCache.values());
-
-    const totalValidations = allResults.length;
-    const successfulValidations = allResults.filter((result) => result.isValid).length;
-    const failedValidations = totalValidations - successfulValidations;
-
     const allErrors = allResults.flatMap((result) => result.errors);
     const allWarnings = allResults.flatMap((result) => result.warnings);
 
     const errorCounts = new Map<string, number>();
-    allErrors.forEach((error) => {
-      const key = error.message;
-      errorCounts.set(key, (errorCounts.get(key) || 0) + 1);
-    });
+    for (const error of allErrors) {
+      errorCounts.set(error.message, (errorCounts.get(error.message) ?? 0) + 1);
+    }
 
     const warningCounts = new Map<string, number>();
-    allWarnings.forEach((warning) => {
-      const key = warning.message;
-      warningCounts.set(key, (warningCounts.get(key) || 0) + 1);
-    });
-
-    const mostCommonErrors = Array.from(errorCounts.entries())
-      .map(([error, count]) => ({ error, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-
-    const mostCommonWarnings = Array.from(warningCounts.entries())
-      .map(([warning, count]) => ({ warning, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
+    for (const warning of allWarnings) {
+      warningCounts.set(warning.message, (warningCounts.get(warning.message) ?? 0) + 1);
+    }
 
     return {
-      totalValidations,
-      successfulValidations,
-      failedValidations,
+      totalValidations: allResults.length,
+      successfulValidations: allResults.filter((result) => result.isValid).length,
+      failedValidations: allResults.filter((result) => !result.isValid).length,
       totalErrors: allErrors.length,
       totalWarnings: allWarnings.length,
-      mostCommonErrors,
-      mostCommonWarnings
+      mostCommonErrors: Array.from(errorCounts.entries())
+        .map(([error, count]) => ({ error, count }))
+        .sort((left, right) => right.count - left.count)
+        .slice(0, 10),
+      mostCommonWarnings: Array.from(warningCounts.entries())
+        .map(([warning, count]) => ({ warning, count }))
+        .sort((left, right) => right.count - left.count)
+        .slice(0, 10),
     };
   }
 
-  /**
-   * Clear validation cache
-   */
   clearCache(): void {
     this.validationCache.clear();
   }
 
-  /**
-   * Update configuration
-   */
   updateConfig(newConfig: Partial<ComponentValidationConfig>): void {
     this.config = { ...this.config, ...newConfig };
   }
 
-  /**
-   * Get configuration
-   */
   getConfig(): ComponentValidationConfig {
     return { ...this.config };
   }
 
-  /**
-   * Cleanup
-   */
   destroy(): void {
     this.validationRules.clear();
     this.deprecatedProps.clear();
@@ -619,11 +614,9 @@ class ComponentValidator {
   }
 }
 
-// Create singleton instance
 export const componentValidator = new ComponentValidator();
 
-// Utility functions
-export const validateProps = (componentName: string, props: Record<string, any>) => {
+export const validateProps = (componentName: string, props: Record<string, unknown>) => {
   return componentValidator.validateProps(componentName, props);
 };
 
@@ -631,15 +624,18 @@ export const registerValidationRules = (componentName: string, rules: PropValida
   componentValidator.registerValidationRules(componentName, rules);
 };
 
-export const createValidationHOC = <T extends Record<string, any>>(
+export const createValidationHOC = <T extends Record<string, unknown>>(
   componentName: string,
-  validationRules: PropValidation
+  validationRules: PropValidation,
 ) => {
-  return componentValidator.createValidationHOC(componentName, validationRules);
+  return componentValidator.createValidationHOC<T>(componentName, validationRules);
 };
 
-export const createValidationHook = (componentName: string, validationRules: PropValidation) => {
-  return componentValidator.createValidationHook(componentName, validationRules);
+export const createValidationHook = <T extends Record<string, unknown>>(
+  componentName: string,
+  validationRules: PropValidation,
+) => {
+  return componentValidator.createValidationHook<T>(componentName, validationRules);
 };
 
 export const getValidationStatistics = () => {
@@ -647,8 +643,3 @@ export const getValidationStatistics = () => {
 };
 
 export default componentValidator;
-
-
-
-
-

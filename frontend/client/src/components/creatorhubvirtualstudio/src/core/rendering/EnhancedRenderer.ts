@@ -13,19 +13,17 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass';
-import type { LUTIntegrationOptions } from '../../services/integrations';
-import { integrationService } from '../../services/integrations';
+import { integrationService, type LUTIntegrationOptions } from '../../services/integrations';
 import { logger } from '../services/logger';
-
-const log = logger.module('Renderer');
 import type { AreaLight } from './AreaLight';
-import type { BounceSource } from './GlobalIllumination';
-import { GlobalIlluminationSystem } from './GlobalIllumination';
+import { GlobalIlluminationSystem, type BounceSource } from './GlobalIllumination';
 import { PBRVertexShader, PBRFragmentShader } from './shaders/PBRShaders';
 import { SkinVertexShader, SkinFragmentShader, DEFAULT_SKIN_PARAMS } from './shaders/SkinShader';
-import { VSMShadowMapGenerator, VSMShadowConfig } from './VSMShadowSystem';
+import { VSMShadowMapGenerator } from './VSMShadowSystem';
 import { FalseColorPass } from './passes/FalseColorPass';
 import { LuminanceHeatmapPass } from './passes/LuminanceHeatmapPass';
+
+const log = logger.module('Renderer');
 
 export interface RendererConfig {
   width: number;
@@ -58,6 +56,10 @@ export interface CameraSettings {
   focusDistance: number; // Focus distance in meters,
   focalLength: number; // Focal length in mm,
   sensor: [number, number]; // Sensor size in mm [width, height]
+}
+
+interface NumericUniform {
+  value: number;
 }
 
 export class EnhancedRenderer {
@@ -452,6 +454,36 @@ export class EnhancedRenderer {
     return Math.min(1, apertureDiameter / 50);
   }
 
+  private getBokehUniform(uniformName: 'focus' | 'aperture'): NumericUniform | null {
+    if (!this.bokehPass) {
+      return null;
+    }
+
+    const uniforms = this.bokehPass.uniforms as Record<string, unknown>;
+    const uniform = uniforms[uniformName];
+
+    if (
+      typeof uniform === 'object' &&
+      uniform !== null &&
+      'value' in uniform &&
+      typeof (uniform as { value?: unknown }).value === 'number'
+    ) {
+      return uniform as NumericUniform;
+    }
+
+    return null;
+  }
+
+  private getShadowedLight(
+    light: THREE.Light,
+  ): (THREE.Light & { shadow: THREE.LightShadow }) | null {
+    if ('shadow' in light && light.shadow) {
+      return light as THREE.Light & { shadow: THREE.LightShadow };
+    }
+
+    return null;
+  }
+
   /**
    * Update camera settings and recalculate exposure
    */
@@ -464,8 +496,16 @@ export class EnhancedRenderer {
 
     // Update depth of field
     if (this.bokehPass) {
-      this.bokehPass.uniforms['focus'].value = this.cameraSettings.focusDistance;
-      this.bokehPass.uniforms['aperture'].value = this.calculateBokehAperture();
+      const focusUniform = this.getBokehUniform('focus');
+      const apertureUniform = this.getBokehUniform('aperture');
+
+      if (focusUniform) {
+        focusUniform.value = this.cameraSettings.focusDistance;
+      }
+
+      if (apertureUniform) {
+        apertureUniform.value = this.calculateBokehAperture();
+      }
     }
 
     log.debug('Camera updated: ', {
@@ -530,7 +570,7 @@ export class EnhancedRenderer {
     let light: THREE.Light;
 
     switch (type) {
-      case 'spot':
+      case 'spot': {
         const spotLight = new THREE.SpotLight(
           color,
           intensity,
@@ -545,8 +585,9 @@ export class EnhancedRenderer {
         }
         light = spotLight;
         break;
+      }
 
-      case 'directional':
+      case 'directional': {
         const dirLight = new THREE.DirectionalLight(color, intensity);
         dirLight.position.set(...position);
         if (target) {
@@ -554,6 +595,7 @@ export class EnhancedRenderer {
         }
         light = dirLight;
         break;
+      }
 
       case 'point':
       default:
@@ -569,20 +611,26 @@ export class EnhancedRenderer {
     // Shadow configuration
     if (castShadow !== false && this.config.enableShadows) {
       light.castShadow = true;
-      light.shadow.mapSize.width = this.config.shadowMapSize;
-      light.shadow.mapSize.height = this.config.shadowMapSize;
-      light.shadow.bias = -0.0001;
-      light.shadow.radius = 2; // Soft shadow radius
+      const shadowedLight = this.getShadowedLight(light);
 
-      if (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight) {
-        light.shadow.camera.near = 0.1;
-        light.shadow.camera.far = 100;
+      if (shadowedLight) {
+        shadowedLight.shadow.mapSize.width = this.config.shadowMapSize;
+        shadowedLight.shadow.mapSize.height = this.config.shadowMapSize;
+        shadowedLight.shadow.bias = -0.0001;
+        shadowedLight.shadow.radius = 2; // Soft shadow radius
 
-        if (light instanceof THREE.DirectionalLight) {
-          light.shadow.camera.left = -10;
-          light.shadow.camera.right = 10;
-          light.shadow.camera.top = 10;
-          light.shadow.camera.bottom = -10;
+        const shadowCamera = shadowedLight.shadow.camera;
+
+        if (shadowCamera instanceof THREE.PerspectiveCamera || shadowCamera instanceof THREE.OrthographicCamera) {
+          shadowCamera.near = 0.1;
+          shadowCamera.far = 100;
+        }
+
+        if (shadowedLight instanceof THREE.DirectionalLight && shadowCamera instanceof THREE.OrthographicCamera) {
+          shadowCamera.left = -10;
+          shadowCamera.right = 10;
+          shadowCamera.top = 10;
+          shadowCamera.bottom = -10;
         }
       }
     }

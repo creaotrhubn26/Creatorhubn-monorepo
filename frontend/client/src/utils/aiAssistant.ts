@@ -263,6 +263,23 @@ export class AIAssistant implements AIAssistantState {
     return this.conversations.find((conversation) => conversation.id === id);
   }
 
+  renameConversation(id: string, title: string): AIConversation | null {
+    const conversation = this.conversations.find((item) => item.id === id);
+    if (!conversation) return null;
+
+    conversation.title = title;
+    conversation.updatedAt = new Date();
+    return conversation;
+  }
+
+  deleteConversation(id: string): boolean {
+    const index = this.conversations.findIndex((conversation) => conversation.id === id);
+    if (index === -1) return false;
+
+    this.conversations.splice(index, 1);
+    return true;
+  }
+
   addConversationMessage(conversationId: string, msg: Omit<AIMessage, 'createdAt' | 'id'> & { id?: string }): AIMessage | null {
     const conv = this.conversations.find((c) => c.id === conversationId);
     if (!conv) return null;
@@ -341,6 +358,25 @@ export class AIAssistant implements AIAssistantState {
     return workflow;
   }
 
+  updateWorkflow(
+    id: string,
+    updates: Partial<Pick<AIWorkflow, 'name' | 'description' | 'triggers' | 'isActive' | 'status' | 'metadata'>>
+  ): AIWorkflow | null {
+    const workflow = this.workflows.find((item) => item.id === id);
+    if (!workflow) return null;
+
+    Object.assign(workflow, updates, { updatedAt: new Date() });
+    return workflow;
+  }
+
+  deleteWorkflow(id: string): boolean {
+    const index = this.workflows.findIndex((workflow) => workflow.id === id);
+    if (index === -1) return false;
+
+    this.workflows.splice(index, 1);
+    return true;
+  }
+
   finishWorkflow(id: string, ok: boolean): boolean {
     const wf = this.workflows.find((w) => w.id === id);
     if (!wf) return false;
@@ -407,8 +443,29 @@ export class AIAssistant implements AIAssistantState {
     return [...this.codeGenerations].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
+  deleteCodeGeneration(id: string): boolean {
+    const index = this.codeGenerations.findIndex((generation) => generation.id === id);
+    if (index === -1) return false;
+
+    this.codeGenerations.splice(index, 1);
+    return true;
+  }
+
   getDesignSuggestions(): AIDesignSuggestion[] {
     return [...this.designSuggestions].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  applyDesignSuggestion(id: string): AIDesignSuggestion | null {
+    const designSuggestion = this.designSuggestions.find((item) => item.id === id);
+    if (!designSuggestion) return null;
+
+    designSuggestion.metadata = {
+      ...(designSuggestion.metadata ?? {}),
+      applied: true,
+      appliedAt: new Date().toISOString(),
+    };
+
+    return designSuggestion;
   }
 
   generateDesignSuggestions(elementId: string, currentDesign: Record<string, any>): AIDesignSuggestion {

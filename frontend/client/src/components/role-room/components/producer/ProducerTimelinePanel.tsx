@@ -450,6 +450,8 @@ export default function ProducerTimelinePanel({
   }, [allTimelineItems]);
   const getMediaFocusForItem = useCallback((item: ProducerTimelineItem): ClientPortalWorkspaceFocus => {
     const metadata = asRecord(item.metadata);
+    const meetingItemId = readFirstNonEmptyString(metadata.meetingItemId, metadata.meeting_item_id);
+    const meetingItemType = readFirstNonEmptyString(metadata.meetingItemType, metadata.meeting_item_type);
     const targetEntityType = readFirstNonEmptyString(
       metadata.groundingEntity,
       metadata.targetEntityType,
@@ -457,6 +459,8 @@ export default function ProducerTimelinePanel({
     );
     const workspace = targetEntityType === 'client_material'
       ? 'materials'
+      : targetEntityType === 'meeting_decision' || targetEntityType === 'meeting_follow_up'
+        ? 'meetings'
       : targetEntityType === 'project_agreement'
         ? 'delivery'
         : 'brief';
@@ -472,10 +476,18 @@ export default function ProducerTimelinePanel({
       workspace,
       sectionId: location?.sectionId,
       pageId: location?.pageId,
-      artifactId: targetEntityType === 'project_agreement'
+      artifactId: targetEntityType === 'meeting_decision'
+        ? (meetingItemId ? `meeting-decision:${meetingItemId}` : undefined)
+        : targetEntityType === 'meeting_follow_up'
+          ? (meetingItemId ? `meeting-follow-up:${meetingItemId}` : undefined)
+        : targetEntityType === 'project_agreement'
         ? agreementArtifactId ?? (agreementId ? `agreement:${agreementId}` : undefined)
         : targetEntityType === 'client_material'
           ? readFirstNonEmptyString(item.linked_entity_id, metadata.targetEntityId)
+          : meetingItemType === 'decision'
+            ? (meetingItemId ? `meeting-decision:${meetingItemId}` : undefined)
+            : meetingItemType === 'follow_up'
+              ? (meetingItemId ? `meeting-follow-up:${meetingItemId}` : undefined)
           : undefined,
     };
   }, [producerPlanning?.workspaceNavigation]);
@@ -1096,8 +1108,9 @@ export default function ProducerTimelinePanel({
         <Stack direction="column" spacing={1}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-end' }}>
             <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel sx={{ color: 'rgba(226,232,240,0.8)' }}>Fase</InputLabel>
+              <InputLabel id="timeline-phase-label" sx={{ color: 'rgba(226,232,240,0.8)' }}>Fase</InputLabel>
               <Select
+                labelId="timeline-phase-label"
                 label="Fase"
                 value={phase}
                 onChange={(event) => setPhase(event.target.value as ProducerPhase)}
@@ -1130,8 +1143,9 @@ export default function ProducerTimelinePanel({
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-end' }}>
             {ownerOptions.length > 0 ? (
               <FormControl size="small" sx={{ flex: 1, minWidth: 240 }}>
-                <InputLabel sx={{ color: 'rgba(226,232,240,0.82)' }}>Ansvarlig</InputLabel>
+                <InputLabel id="timeline-owner-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Ansvarlig</InputLabel>
                 <Select
+                  labelId="timeline-owner-label"
                   label="Ansvarlig"
                   value={ownerUserId}
                   onChange={(event) => setOwnerUserId(String(event.target.value))}
@@ -1163,8 +1177,9 @@ export default function ProducerTimelinePanel({
               InputLabelProps={{ shrink: true, sx: { color: 'rgba(226,232,240,0.82)' } }}
             />
             <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel sx={{ color: 'rgba(226,232,240,0.8)' }}>Status</InputLabel>
+              <InputLabel id="timeline-status-label" sx={{ color: 'rgba(226,232,240,0.8)' }}>Status</InputLabel>
               <Select
+                labelId="timeline-status-label"
                 label="Status"
                 value={itemStatus}
                 onChange={(event) => setItemStatus(event.target.value as (typeof STATUS_OPTIONS)[number]['value'])}
@@ -1177,8 +1192,9 @@ export default function ProducerTimelinePanel({
               </Select>
             </FormControl>
             <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel sx={{ color: 'rgba(226,232,240,0.8)' }}>Koblingstype</InputLabel>
+              <InputLabel id="timeline-link-type-label" sx={{ color: 'rgba(226,232,240,0.8)' }}>Koblingstype</InputLabel>
               <Select
+                labelId="timeline-link-type-label"
                 label="Koblingstype"
                 value={linkedEntityType}
                 onChange={(event) => {
@@ -1197,8 +1213,9 @@ export default function ProducerTimelinePanel({
             </FormControl>
             {filteredEntityOptions.length > 0 ? (
               <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
-                <InputLabel sx={{ color: 'rgba(226,232,240,0.82)' }}>Koblet entitet</InputLabel>
+                <InputLabel id="timeline-link-entity-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Koblet entitet</InputLabel>
                 <Select
+                  labelId="timeline-link-entity-label"
                   label="Koblet entitet"
                   value={linkedEntityId}
                   onChange={(event) => setLinkedEntityId(String(event.target.value))}
@@ -1274,6 +1291,7 @@ export default function ProducerTimelinePanel({
             </Stack>
             {phaseReadinessByPhase[phaseKey].shotListCount > 0 ? (
               <Alert
+                tabIndex={0}
                 severity={phaseReadinessByPhase[phaseKey].tone === 'danger'
                   ? 'error'
                   : phaseReadinessByPhase[phaseKey].tone === 'warning'
@@ -1281,7 +1299,16 @@ export default function ProducerTimelinePanel({
                     : phaseReadinessByPhase[phaseKey].tone === 'success'
                       ? 'success'
                       : 'info'}
-                sx={{ mb: 1, bgcolor: 'rgba(15,23,42,0.38)', color: '#e2e8f0', '& .MuiAlert-message': { width: '100%' } }}
+                sx={{
+                  mb: 1,
+                  bgcolor: 'rgba(15,23,42,0.38)',
+                  color: '#e2e8f0',
+                  '& .MuiAlert-message': {
+                    width: '100%',
+                    overflow: 'visible',
+                    maxHeight: 'none',
+                  },
+                }}
                 action={phaseReadinessByPhase[phaseKey].actionTarget === 'shotlist' && onOpenShotList ? (
                   <Button
                     size="small"
@@ -1331,16 +1358,25 @@ export default function ProducerTimelinePanel({
                     itemMetadata.targetEntityType,
                     itemMetadata.approvalTemplate,
                   ) === 'shotlist';
+                  const workspaceTargetEntityType = readFirstNonEmptyString(
+                    itemMetadata.targetEntityType,
+                    item.linked_entity_type,
+                  );
                   const clientWorkspaceLinked = item.linked_entity_type === 'client_material'
                     || item.linked_entity_type === 'client_intake'
                     || item.linked_entity_type === 'project_agreement'
-                    || readFirstNonEmptyString(itemMetadata.targetEntityType) === 'project_agreement';
-                  const workspaceActionLabel = readFirstNonEmptyString(
-                    itemMetadata.targetEntityType,
-                    item.linked_entity_type,
-                  ) === 'project_agreement'
+                    || workspaceTargetEntityType === 'project_agreement'
+                    || workspaceTargetEntityType === 'meeting_decision'
+                    || workspaceTargetEntityType === 'meeting_follow_up'
+                    || readFirstNonEmptyString(itemMetadata.meetingItemType) === 'decision'
+                    || readFirstNonEmptyString(itemMetadata.meetingItemType) === 'follow_up';
+                  const workspaceActionLabel = workspaceTargetEntityType === 'project_agreement'
                     ? 'Åpne juridisk avtale'
-                    : 'Åpne brief og materiale';
+                    : workspaceTargetEntityType === 'meeting_decision' || workspaceTargetEntityType === 'meeting_follow_up'
+                      || readFirstNonEmptyString(itemMetadata.meetingItemType) === 'decision'
+                      || readFirstNonEmptyString(itemMetadata.meetingItemType) === 'follow_up'
+                      ? 'Åpne møteworkspace'
+                      : 'Åpne brief og materiale';
 
                   return (
                     <Box
@@ -1488,10 +1524,16 @@ export default function ProducerTimelinePanel({
                           <Box sx={{ minWidth: { xs: '100%', md: 180 } }}>
                             <Select
                               size="small"
+                              aria-label={`Status for ${item.title}`}
+                              SelectDisplayProps={{ 'aria-label': `Status for ${item.title}` }}
                               value={statusDraftById[item.id] ?? normalizeTimelineStatusValue(item.status)}
                               onChange={(event) => handleStatusDraftChange(item.id, String(event.target.value))}
                               fullWidth
-                              sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' } }}
+                              sx={{
+                                color: '#fff',
+                                minHeight: 44,
+                                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.42)' },
+                              }}
                             >
                               {STATUS_OPTIONS.map((option) => (
                                 <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
@@ -1509,7 +1551,7 @@ export default function ProducerTimelinePanel({
                               || !statusDraftById[item.id]
                               || statusDraftById[item.id] === normalizeTimelineStatusValue(item.status)
                             }
-                            sx={{ textTransform: 'none', fontWeight: 700 }}
+                            sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                           >
                             Lagre status
                           </Button>

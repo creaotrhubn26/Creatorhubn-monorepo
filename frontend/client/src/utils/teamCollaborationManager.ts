@@ -37,7 +37,7 @@ export interface TeamMember {
   teamId: string;
   role: TeamRole;
   permissions: TeamPermissions;
-  status: 'active, ' | 'inactive, ' | 'pending' | 'suspended' | 'banned';
+  status: 'active' | 'inactive' | 'pending' | 'suspended' | 'banned';
   joinedAt: number;
   lastActive: number;
   avatar?: string;
@@ -59,6 +59,8 @@ export interface TeamMember {
 };
   config: Record<string, any>;
 }
+
+type TeamPermissionKey = Exclude<keyof TeamPermissions, 'custom'>;
 
 export interface TeamRole {
   id: string;
@@ -319,10 +321,12 @@ export interface TeamCollaborationManagerState {
   totalOverrides: number
 }
 
+type TeamEventCallback = (data?: unknown) => void;
+
 class TeamCollaborationManager {
   private config: TeamCollaborationConfig;
   private state: TeamCollaborationManagerState;
-  private eventListeners: Map<string, Function[]> = new Map();
+  private eventListeners: Map<string, TeamEventCallback[]> = new Map();
   private isInitialized = false;
 
   constructor(config: Partial<TeamCollaborationConfig> = {}) {
@@ -705,9 +709,9 @@ class TeamCollaborationManager {
       lastActive: Date.now(),
       avatar: memberData.avatar,
       displayName: memberData.displayName || 'Unknown User',
-      email: memberData.email ||', ',
+      email: memberData.email || '',
       phone: memberData.phone,
-      timezone: memberData.timezone || 'UT',
+      timezone: memberData.timezone || 'UTC',
       preferences: memberData.preferences || {
         notifications: {
           email: true,
@@ -730,8 +734,8 @@ class TeamCollaborationManager {
         appearance: {
           theme: 'auto',
           language: 'en',
-          timezone: 'UT',
-          dateFormat: 'MM/DD/YYY',
+          timezone: 'UTC',
+          dateFormat: 'MM/DD/YYYY',
           timeFormat: '12h'
     },
         collaboration: {
@@ -814,15 +818,15 @@ class TeamCollaborationManager {
 
     if (role.permissions.includes('*')) {
       // Owner has all permissions
-      Object.keys(permissions).forEach(key => {
-        if (key !=='custom') {
-          (permissions as any)[key] = true;
+      (Object.keys(permissions) as Array<keyof TeamPermissions>).forEach((key) => {
+        if (key !== 'custom') {
+          permissions[key] = true;
       }
     });
   } else {
-      role.permissions.forEach(permission => {
-        if (permission in permissions) {
-          (permissions as any)[permission] = true;
+      role.permissions.forEach((permission) => {
+        if (permission in permissions && permission !== 'custom') {
+          permissions[permission as TeamPermissionKey] = true;
       }
     });
   }
@@ -882,7 +886,7 @@ class TeamCollaborationManager {
   /**
    * Add event listener
    */
-  on(event: string, callback: Function): void {
+  on(event: string, callback: TeamEventCallback): void {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, []);
   }
@@ -892,7 +896,7 @@ class TeamCollaborationManager {
   /**
    * Remove event listener
    */
-  off(event: string, callback: Function): void {
+  off(event: string, callback: TeamEventCallback): void {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
       const index = listeners.indexOf(callback);
@@ -905,7 +909,7 @@ class TeamCollaborationManager {
   /**
    * Emit event
    */
-  private emit(event: string, data?: any): void {
+  private emit(event: string, data?: unknown): void {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
       listeners.forEach(callback => {
@@ -957,8 +961,6 @@ class TeamCollaborationManager {
 export const teamCollaborationManager = new TeamCollaborationManager();
 
 export default teamCollaborationManager;
-
-
 
 
 

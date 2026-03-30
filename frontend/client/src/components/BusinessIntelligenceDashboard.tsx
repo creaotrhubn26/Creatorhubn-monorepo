@@ -110,12 +110,14 @@ interface SSBEconomicData {
 
 interface SSBPopulationData {
   region: string;
-  year: number;
+  year: string;
   data: {
     population: number;
     growth: number;
     density: number;
   };
+  source: 'ssb_api' | 'fallback';
+  lastUpdated: string;
 }
 
 interface ProffCompany {
@@ -192,7 +194,7 @@ export default function BusinessIntelligenceDashboard() {
   React.useEffect(() => {
     lifecycle.registerComponent({
       id: 'BusinessIntelligenceDashboard,',
-      type: 'analytics',
+      type: 'dashboard',
       version: '1.0.0',
       capabilities: {
         data: ['ssbEconomic','ssbPopulation','marketData','regionalData','dashboardData'],
@@ -211,7 +213,7 @@ export default function BusinessIntelligenceDashboard() {
     });
 
     // Track dashboard opened
-    analytics.trackEvent('business_intelligence_dashboard_opened, ', {
+    analytics.trackEvent('business_intelligence_dashboard_opened', {
       profession,
       region: selectedRegion,
       service: selectedService
@@ -221,8 +223,10 @@ export default function BusinessIntelligenceDashboard() {
     trackProfessionActivity('dashboard_view', { component: 'BusinessIntelligenceDashboard' });
 
     // Register with component registry for cross-component discovery
-    componentRegistry.register?.('BusinessIntelligenceDashboard', {
-      type: 'analytics',
+    componentRegistry.registerComponent({
+      id: 'BusinessIntelligenceDashboard',
+      name: 'Business Intelligence Dashboard',
+      type: 'dashboard',
       capabilities: ['market-analysis', 'regional-analysis', 'ssb-integration'],
     });
 
@@ -300,11 +304,10 @@ export default function BusinessIntelligenceDashboard() {
     });
     
     // Log integration status
-    const integrationState = integration.getState?.();
     debugging.logIntegration('info', 'Dashboard data refreshed', {
       region: selectedRegion,
       service: selectedService,
-      integrationActive: !!integrationState,
+      integrationActive: Boolean(integration),
     });
     
     endTiming();
@@ -371,20 +374,27 @@ export default function BusinessIntelligenceDashboard() {
   const fetchProffData = useCallback(async () => {
     try {
       const categoryName = professionToNorwegianSearch(profession);
-      const companies = await searchProffCompanies(categoryName, selectedRegion);
-      let companyList: ProffCompany[] = [];
-      if (companies?.companies) {
-        companyList = companies.companies as ProffCompany[];
-      } else if (Array.isArray(companies)) {
-        companyList = companies as ProffCompany[];
-      }
+      const companies = await searchProffCompanies(categoryName);
+      const companyList: ProffCompany[] = (companies?.companies ?? [])
+        .map((company) => ({
+          name: company.companyName,
+          orgNumber: company.organizationNumber,
+          industry: categoryName,
+          employees: company.employees ?? 0,
+          revenue: company.revenue ?? 0,
+          location: selectedRegion,
+        }));
 
       // Enrich first company with detailed Proff.no data if available
       if (companyList.length > 0 && companyList[0].orgNumber) {
         try {
           const detail = await getProffCompanyData(companyList[0].orgNumber);
           if (detail?.revenue) {
-            companyList[0] = { ...companyList[0], revenue: detail.revenue, employees: detail.employees ?? companyList[0].employees };
+            companyList[0] = {
+              ...companyList[0],
+              revenue: detail.revenue.amount,
+              employees: detail.employees ?? companyList[0].employees,
+            };
           }
         } catch {
           // Detailed data optional
@@ -440,7 +450,7 @@ export default function BusinessIntelligenceDashboard() {
           )}
           <Box>
             <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: theming.colors.primary }}>
-              {adaptDashboardTitle ? adaptDashboardTitle('Business Intelligence') : 'Business Intelligence Dashboard'}
+              {adaptDashboardTitle ? adaptDashboardTitle() : 'Business Intelligence Dashboard'}
             </Typography>
             <Typography variant="subtitle1" color="text.secondary">
               Markedsanalyse og forretningsmessig innsikt for{' '}
@@ -907,7 +917,7 @@ export default function BusinessIntelligenceDashboard() {
                           secondary={`${selectedRegion} har god økonomisk aktivitet`}
                         />
                       </ListItem>
-                      {ssbPopulationData?.data.growth > 1 && (
+                      {typeof ssbPopulationData?.data.growth === 'number' && ssbPopulationData.data.growth > 1 && (
                         <ListItem>
                           <ListItemIcon><TrendingUp color="success" fontSize="small" /></ListItemIcon>
                           <ListItemText 

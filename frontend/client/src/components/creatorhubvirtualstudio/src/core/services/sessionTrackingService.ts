@@ -257,7 +257,7 @@ class SessionTrackingService {
     this.session.hasUnsavedChanges = true;
     this.updateLastActivity();
     
-    log.debug('Activity recorded:', type, description);
+    log.debug('Activity recorded', { type, description });
   }
 
   /**
@@ -406,7 +406,7 @@ class SessionTrackingService {
         return;
       }
     } catch (error) {
-      log.warn('Failed to load from API, trying localStorage');
+      log.warn('Failed to load from API, trying localStorage', error);
     }
     
     // Fallback to localStorage
@@ -441,7 +441,7 @@ class SessionTrackingService {
         body: method === 'PUT' ? JSON.stringify(this.session) : undefined,
       });
     } catch (error) {
-      // Silently fail - localStorage is the fallback
+      log.warn('Failed to sync session to API, keeping local snapshot only', error);
     }
   }
 
@@ -457,7 +457,7 @@ class SessionTrackingService {
         }
       }
     } catch (error) {
-      // Will fallback to localStorage
+      log.warn('Failed to load session from API response', error);
     }
     return null;
   }
@@ -469,4 +469,3 @@ class SessionTrackingService {
 
 export const sessionTrackingService = new SessionTrackingService();
 export default sessionTrackingService;
-

@@ -20,6 +20,7 @@ function SortableShotListCard({
   onDuplicate,
   onDelete,
   onExport,
+  onOpenStoryboard,
 }: {
   summary: ShotListSummary;
   selected: boolean;
@@ -30,6 +31,7 @@ function SortableShotListCard({
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onExport: (id: string) => void;
+  onOpenStoryboard?: (id: string) => void;
 }) {
   const {
     attributes,
@@ -55,6 +57,7 @@ function SortableShotListCard({
         onDuplicate={onDuplicate}
         onDelete={onDelete}
         onExport={onExport}
+        onOpenStoryboard={onOpenStoryboard}
         dragHandleProps={{ ...attributes, ...listeners }}
         isDragging={isDragging}
       />
@@ -99,6 +102,7 @@ export interface ShotListGridProps {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onExport: (id: string) => void;
+  onOpenStoryboard?: (id: string) => void;
   /** Called when a Person node is dropped onto a ShotList card */
   onPersonDropped?: (personId: string, shotListId: string) => void;
   /** Called when cards are reordered (returns new ordered IDs) */
@@ -121,6 +125,7 @@ export function ShotListGrid({
   onDuplicate,
   onDelete,
   onExport,
+  onOpenStoryboard,
   onPersonDropped,
   onReorder,
   people,
@@ -292,6 +297,7 @@ export function ShotListGrid({
                     onDuplicate={onDuplicate}
                     onDelete={onDelete}
                     onExport={onExport}
+                    onOpenStoryboard={onOpenStoryboard}
                   />
                 </Grid>
               ))}
@@ -310,6 +316,7 @@ export function ShotListGrid({
                   onDuplicate={onDuplicate}
                   onDelete={onDelete}
                   onExport={onExport}
+                  onOpenStoryboard={onOpenStoryboard}
                 />
               ))}
             </Box>

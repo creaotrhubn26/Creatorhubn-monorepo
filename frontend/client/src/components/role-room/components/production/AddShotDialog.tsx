@@ -20,16 +20,24 @@ import {
   Check as CheckIcon,
 } from '@mui/icons-material';
 import { addShotReducer, type AddShotState, type ShotSearchResult } from '../production/types';
+import type { StoryboardSeedCandidate } from '../../services/storyboardLibraryService';
 
 // ---- Props ----
+
+export interface AddShotDialogCreatePayload {
+  imageUrl?: string;
+  storyboardCandidate?: StoryboardSeedCandidate;
+}
 
 interface AddShotDialogProps {
   /** The scene number label (for display) */
   sceneNumber?: number;
   /** Called when the user confirms a shot (with optional image URL) */
-  onCreateShot: (imageUrl?: string) => void;
+  onCreateShot: (payload?: AddShotDialogCreatePayload) => void;
   /** Async search function — returns results for the reference tab */
   onSearch: (query: string) => Promise<ShotSearchResult[]>;
+  /** Scene-bound storyboard candidates available for quick shot creation */
+  storyboardCandidates?: StoryboardSeedCandidate[];
   /** External open trigger — parent toggles this to open the dialog */
   open: boolean;
   /** Called when dialog is dismissed */
@@ -42,6 +50,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
   sceneNumber,
   onCreateShot,
   onSearch,
+  storyboardCandidates = [],
   open: externalOpen,
   onClose,
 }) {
@@ -91,17 +100,24 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
   }, [state, onSearch]);
 
   const handleCreate = useCallback(() => {
-    const img = state.open && (state.step === 'upload' || state.step === 'search')
-      ? state.selectedImage ?? undefined
-      : undefined;
-    onCreateShot(img);
+    const payload: AddShotDialogCreatePayload = {};
+    if (state.open && (state.step === 'upload' || state.step === 'search')) {
+      payload.imageUrl = state.selectedImage ?? undefined;
+    }
+    if (state.open && state.step === 'storyboard') {
+      payload.storyboardCandidate = storyboardCandidates.find((candidate) => candidate.id === state.selectedStoryboardId);
+      payload.imageUrl = payload.storyboardCandidate?.thumbnailUrl || payload.storyboardCandidate?.imageUrl;
+    }
+    onCreateShot(payload);
     dispatch({ type: 'CLOSE' });
     onClose();
-  }, [state, onCreateShot, onClose]);
+  }, [state, onCreateShot, onClose, storyboardCandidates]);
 
   // Derive render vars
   const step = state.open ? state.step : 'chooseMode';
   const selectedImage = state.open && (state.step === 'upload' || state.step === 'search') ? state.selectedImage : null;
+  const selectedStoryboardId = state.open && state.step === 'storyboard' ? state.selectedStoryboardId : null;
+  const selectedStoryboardCandidate = storyboardCandidates.find((candidate) => candidate.id === selectedStoryboardId) || null;
   const query = state.open && state.step === 'search' ? state.query : '';
   const loading = state.open && state.step === 'search' ? state.loading : false;
   const results = state.open && state.step === 'search' ? state.results : [];
@@ -167,6 +183,30 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                 <Typography sx={{ fontSize: 12, color: '#6b7280' }}>Last opp storyboard eller referansebilde fra din maskin</Typography>
               </Box>
 
+              {/* Storyboard */}
+              {storyboardCandidates.length > 0 && (
+                <Box
+                  onClick={() => dispatch({ type: 'CHOOSE_STORYBOARD' })}
+                  sx={{
+                    flex: 1, p: 4, borderRadius: '12px',
+                    bgcolor: 'rgba(16,185,129,0.1)', border: '2px dashed #10b981',
+                    cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s',
+                    '&:hover': { bgcolor: 'rgba(16,185,129,0.2)', borderStyle: 'solid' },
+                  }}
+                >
+                  <Box sx={{ width: 64, height: 64, borderRadius: '16px', bgcolor: 'rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                      <rect x="3" y="5" width="18" height="14" rx="2"/>
+                      <path d="M7 15l3-3 2 2 5-5"/>
+                    </svg>
+                  </Box>
+                  <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>Velg fra storyboard</Typography>
+                  <Typography sx={{ fontSize: 12, color: '#6b7280' }}>
+                    {storyboardCandidates.length} scene-knyttede storyboardelementer tilgjengelig
+                  </Typography>
+                </Box>
+              )}
+
               {/* Reference */}
               <Box
                 onClick={() => dispatch({ type: 'CHOOSE_SEARCH' })}
@@ -216,6 +256,58 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                 <Typography sx={{ fontSize: 14, color: '#9ca3af', mt: 2 }}>Klikk for å velge bilde</Typography>
                 <Typography sx={{ fontSize: 11, color: '#6b7280', mt: 0.5 }}>Støtter JPG, PNG, WebP</Typography>
               </Box>
+            )}
+          </Stack>
+        ) : step === 'storyboard' ? (
+          <Stack spacing={3}>
+            <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>
+              Velg storyboard-element som allerede er koblet til scenen
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 1.5, maxHeight: 320, overflow: 'auto', p: 0.5 }}>
+              {storyboardCandidates.map((candidate) => {
+                const active = candidate.id === selectedStoryboardId;
+                return (
+                  <Box
+                    key={candidate.id}
+                    onClick={() => dispatch({ type: 'SET_STORYBOARD_SELECTION', id: candidate.id })}
+                    sx={{
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      border: active ? '3px solid #10b981' : '2px solid transparent',
+                      bgcolor: active ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.03)',
+                      transition: 'all 0.2s',
+                      '&:hover': { transform: 'translateY(-1px)', boxShadow: '0 4px 20px rgba(16,185,129,0.18)' },
+                    }}
+                  >
+                    {candidate.thumbnailUrl || candidate.imageUrl ? (
+                      <Box component="img" src={candidate.thumbnailUrl || candidate.imageUrl} sx={{ width: '100%', height: 94, objectFit: 'cover' }} />
+                    ) : (
+                      <Box sx={{ width: '100%', height: 94, bgcolor: 'rgba(16,185,129,0.12)', color: '#6ee7b7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+                        {candidate.shotNumber}
+                      </Box>
+                    )}
+                    <Box sx={{ p: 1 }}>
+                      <Stack direction="row" justifyContent="space-between" spacing={0.5} sx={{ mb: 0.5 }}>
+                        <Typography sx={{ fontSize: 11, color: '#fff', fontWeight: 700 }}>{candidate.shotNumber}</Typography>
+                        <Chip size="small" label={candidate.sourceLabel} sx={{ maxWidth: 110 }} />
+                      </Stack>
+                      <Typography sx={{ fontSize: 12, color: '#fff', fontWeight: 600 }} noWrap>
+                        {candidate.description}
+                      </Typography>
+                      <Typography sx={{ fontSize: 11, color: '#94a3b8', mt: 0.4 }}>
+                        {candidate.cameraAngle || 'Eye Level'} · {candidate.movement || 'Static'}
+                      </Typography>
+                    </Box>
+                  </Box>
+                );
+              })}
+            </Box>
+            {selectedStoryboardCandidate && (
+              <Chip
+                label={`Valgt: ${selectedStoryboardCandidate.shotNumber} · ${selectedStoryboardCandidate.description}`}
+                sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(16,185,129,0.14)', color: '#6ee7b7' }}
+              />
             )}
           </Stack>
         ) : (
@@ -306,14 +398,21 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
           <Button
             onClick={handleCreate}
             variant="contained"
-            disabled={step === 'upload' && !selectedImage}
+            disabled={
+              (step === 'upload' && !selectedImage)
+              || (step === 'storyboard' && !selectedStoryboardCandidate)
+            }
             sx={{
-              bgcolor: step === 'upload' ? '#3b82f6' : '#8b5cf6',
-              '&:hover': { bgcolor: step === 'upload' ? '#2563eb' : '#7c3aed' },
+              bgcolor: step === 'upload' ? '#3b82f6' : step === 'storyboard' ? '#10b981' : '#8b5cf6',
+              '&:hover': { bgcolor: step === 'upload' ? '#2563eb' : step === 'storyboard' ? '#059669' : '#7c3aed' },
               '&.Mui-disabled': { bgcolor: '#374151', color: '#6b7280' },
             }}
           >
-            {selectedImage ? 'Legg til med bilde' : 'Legg til uten bilde'}
+            {step === 'storyboard'
+              ? 'Legg til fra storyboard'
+              : selectedImage
+                ? 'Legg til med bilde'
+                : 'Legg til uten bilde'}
           </Button>
         )}
       </DialogActions>

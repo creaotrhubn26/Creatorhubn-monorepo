@@ -67,7 +67,7 @@ import {
   ExpandMore,
 } from '@mui/icons-material';
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, isApiEndpointMissing } from '@/lib/queryClient';
 import RichTextEditor from '../RichTextEditor';
 import 'quill/dist/quill.snow.css';
 
@@ -289,6 +289,26 @@ const getStatusColors = (theme: any) => ({
   closed: theme?.grey || '#757575'
 });
 
+const normalizeFeedbackItems = (value: unknown): FeedbackItem[] => {
+  if (Array.isArray(value)) {
+    return value as FeedbackItem[];
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    const record = value as { feedback?: unknown; data?: unknown };
+
+    if (Array.isArray(record.feedback)) {
+      return record.feedback as FeedbackItem[];
+    }
+
+    if (Array.isArray(record.data)) {
+      return record.data as FeedbackItem[];
+    }
+  }
+
+  return [];
+};
+
 // Enhanced type definitions
 interface UnifiedWorkflowEvent {
   id: string;
@@ -376,7 +396,7 @@ export default function PrototypeFeedbackPanel({
       filterPriority: filterPriority.length,
       filterProfession: filterProfession.length,
       groupByProfession,
-      totalFeedback: feedbackList.length
+      totalFeedback: feedbackItems.length
     });
 
     debugging.logIntegration('info', 'PrototypeFeedbackPanel initialized with enhanced features', {
@@ -414,11 +434,23 @@ export default function PrototypeFeedbackPanel({
     queryKey: ['/api/prototype-testing/feedback'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
-      return apiRequest('/api/prototype-testing/feedback', { headers });
+      try {
+        const response = await apiRequest('/api/prototype-testing/feedback', { headers });
+        return normalizeFeedbackItems(response);
+      } catch (queryError) {
+        if (isApiEndpointMissing(queryError)) {
+          console.debug('PrototypeFeedbackPanel: feedback endpoint unavailable, using empty fallback.');
+          return [];
+        }
+        throw queryError;
+      }
     },
-    refetchInterval: 300, // ✅ SANNTID: Oppdater hver 3. sekund for rask respons
-    staleTime: 0 // ✅ Alltid hent ferske data
-});
+    refetchInterval: 3000,
+    staleTime: 0,
+    retry: false,
+    placeholderData: [],
+  });
+  const feedbackItems = useMemo(() => normalizeFeedbackItems(feedbackList), [feedbackList]);
 
   // Update feedback status mutation
   const updateStatusMutation = useMutation({
@@ -563,7 +595,7 @@ export default function PrototypeFeedbackPanel({
 
   // Filtered and sorted feedback with performance optimization
   const filteredAndSortedFeedback = useMemo(() => {
-    let filtered = [...feedbackList];
+    let filtered = [...feedbackItems];
     
     // Search filter
     if (searchTerm) {
@@ -624,7 +656,7 @@ export default function PrototypeFeedbackPanel({
     });
     
     return filtered;
-  }, [feedbackList, searchTerm, filterStatus, filterPriority, filterType, filterProfession, sortBy, sortOrder]);
+  }, [feedbackItems, searchTerm, filterStatus, filterPriority, filterType, filterProfession, sortBy, sortOrder]);
 
   // Group feedback by profession if enabled
   const groupedByProfession = useMemo(() => {
@@ -644,25 +676,27 @@ export default function PrototypeFeedbackPanel({
 
   // Get unique professions for filter
   const availableProfessions = useMemo(() => {
-    const professions = new Set(feedbackList.map(f => f.profession));
+    const professions = new Set(feedbackItems.map(f => f.profession));
     return Array.from(professions).sort();
-  }, [feedbackList]);
+  }, [feedbackItems]);
 
   // Profession branding from centralized theming helper - SINGLE SOURCE OF TRUTH
   const professionConfig = theming.professionConfig;
 
   // Calculate stats with memoization
   const stats = useMemo(() => ({
-    total: feedbackList.length,
-    open: feedbackList.filter(f => f.status === 'open').length,
-    in_progress: feedbackList.filter(f => f.status === 'in_progress').length,
-    resolved: feedbackList.filter(f => f.status === 'resolved').length,
-    critical: feedbackList.filter(f => f.priority === 'critical').length,
-    high: feedbackList.filter(f => f.priority === 'high').length,
-    verified: feedbackList.filter(f => getVerificationStatus(f) === 'verified').length,
-    failed: feedbackList.filter(f => getVerificationStatus(f) === 'failed').length,
-    avgRating: feedbackList.length > 0 ? 
-      feedbackList.reduce((sum, f) => sum + f.rating, 0) / feedbackList.length : 0 }), [feedbackList, getVerificationStatus]);
+    total: feedbackItems.length,
+    open: feedbackItems.filter(f => f.status === 'open').length,
+    in_progress: feedbackItems.filter(f => f.status === 'in_progress').length,
+    resolved: feedbackItems.filter(f => f.status === 'resolved').length,
+    critical: feedbackItems.filter(f => f.priority === 'critical').length,
+    high: feedbackItems.filter(f => f.priority === 'high').length,
+    verified: feedbackItems.filter(f => getVerificationStatus(f) === 'verified').length,
+    failed: feedbackItems.filter(f => getVerificationStatus(f) === 'failed').length,
+    avgRating: feedbackItems.length > 0
+      ? feedbackItems.reduce((sum, f) => sum + f.rating, 0) / feedbackItems.length
+      : 0,
+  }), [feedbackItems, getVerificationStatus]);
 
   // Export to CSV functionality with analytics tracking
   const exportToCSV = useCallback(() => {
@@ -679,13 +713,13 @@ export default function PrototypeFeedbackPanel({
       f.status,
       f.rating.toString(),
       f.component || '',
-      f.description.replace(/"/g, '""'), // Escape quotes
+      f.description,
       f.profession || ''
     ]);
 
     const csvContent = [
-      headers.join(''),
-      ...rows.map(row => row.map(cell => `"${cell},"`).join(''))
+      headers.join(','),
+      ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
     ].join('\n');
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -765,7 +799,7 @@ export default function PrototypeFeedbackPanel({
                 ),
                 endAdornment: searchTerm && (
                   <InputAdornment position="end">
-                    <IconButton size="small" onClick={() => setSearchTerm(', ')}>
+                    <IconButton size="small" onClick={() => setSearchTerm('')}>
                       <Clear />
                     </IconButton>
                   </InputAdornment>
@@ -948,7 +982,7 @@ export default function PrototypeFeedbackPanel({
               <Chip 
                 label={`Søk: "${searchTerm}"`} 
                 size="small" 
-                onDelete={() => setSearchTerm(', ')}
+                onDelete={() => setSearchTerm('')}
                 sx={{ bgcolor: '#ff8c00', color: 'white' }}
               />
             )}
@@ -978,7 +1012,7 @@ export default function PrototypeFeedbackPanel({
               />
             ))}
             <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-              Viser {filteredAndSortedFeedback.length} av {feedbackList.length}
+              Viser {filteredAndSortedFeedback.length} av {feedbackItems.length}
             </Typography>
           </Box>
         )}
@@ -1073,7 +1107,7 @@ export default function PrototypeFeedbackPanel({
         </Typography>
         <Grid container spacing={2}>
           {availableProfessions.map(profession => {
-            const count = feedbackList.filter(f => f.profession === profession).length;
+            const count = feedbackItems.filter(f => f.profession === profession).length;
             const config = professionConfig[profession] || professionConfig.other;
             return (
               <Grid item xs={6} sm={4} md={2.4} key={profession}>
@@ -1131,7 +1165,7 @@ export default function PrototypeFeedbackPanel({
             <Badge badgeContent={stats.open} color="primary" sx={{ ml: 1 }} />
           </Typography>
 
-          {feedbackList.length === 0 ? (
+          {feedbackItems.length === 0 ? (
             <Alert severity="info" sx={{ mt: 2 }}>
               Ingen tilbakemeldinger mottatt ennå. Prototype testere kan sende tilbakemeldinger via dashboard.
             </Alert>
@@ -1165,7 +1199,7 @@ export default function PrototypeFeedbackPanel({
                           {config.label}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {items.length} tilbakemelding{items.length !== 1 ? 'er' : ', '}
+                          {items.length} tilbakemelding{items.length !== 1 ? 'er' : ''}
                         </Typography>
                       </Box>
                     </Box>

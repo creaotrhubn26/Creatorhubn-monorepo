@@ -77,6 +77,7 @@ type ProducerPhase = 'preproduction' | 'production' | 'postproduction';
 type ProducerReviewDecision = 'approved' | 'rejected' | 'changes_requested';
 type RoleRoomGoogleConnectionState = 'disconnected' | 'connected' | 'expired' | 'error';
 type RoleRoomGoogleOauthMode = 'login' | 'link';
+type RoleRoomLinkedInConnectionState = 'disconnected' | 'connected' | 'expired' | 'error';
 
 interface RoleRoomGoogleConnectionRow {
   id: string;
@@ -180,12 +181,21 @@ interface RoleRoomGoogleOauthState {
   requestedRole?: string | null;
   projectId?: string | null;
   createdByUserId?: string | null;
+  createdByEmail?: string | null;
+  targetConnectionUserId?: string | null;
+  targetConnectionEmail?: string | null;
   createdAt: number;
 }
 
 interface RoleRoomGoogleTransferPayload {
   mode: RoleRoomGoogleOauthMode;
   createdAt: number;
+  projectId?: string | null;
+  createdByUserId?: string | null;
+  createdByEmail?: string | null;
+  targetConnectionUserId?: string | null;
+  targetConnectionEmail?: string | null;
+  autoConfiguredProjectBinding?: boolean | null;
   sessionToken?: string;
   user?: {
     id: string;
@@ -200,6 +210,48 @@ interface RoleRoomGoogleTransferPayload {
   googleSubject: string;
   profile: Record<string, unknown>;
   tokenBundle?: {
+    accessToken?: string | null;
+    refreshToken?: string | null;
+    expiryDate?: number | null;
+    scopes: string[];
+  };
+}
+
+interface RoleRoomLinkedInConnectionRow {
+  id: string;
+  user_id: string;
+  role_room_email: string | null;
+  linkedin_member_id: string | null;
+  linkedin_email: string | null;
+  linkedin_name: string | null;
+  access_token_encrypted: string | null;
+  refresh_token_encrypted: string | null;
+  expiry_date: string | null;
+  scopes: unknown;
+  connection_state: RoleRoomLinkedInConnectionState | null;
+  last_error: string | null;
+  profile: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string | null;
+}
+
+interface RoleRoomLinkedInOauthState {
+  returnPath: string;
+  browserOrigin?: string | null;
+  projectId?: string | null;
+  createdByUserId?: string | null;
+  createdAt: number;
+}
+
+interface RoleRoomLinkedInTransferPayload {
+  mode: 'link';
+  createdAt: number;
+  linkedInMemberId: string;
+  linkedInEmail?: string | null;
+  linkedInName?: string | null;
+  profile: Record<string, unknown>;
+  tokenBundle: {
     accessToken?: string | null;
     refreshToken?: string | null;
     expiryDate?: number | null;
@@ -264,7 +316,23 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/contacts',
   'https://www.googleapis.com/auth/contacts.readonly',
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/tasks',
+  'https://www.googleapis.com/auth/tasks.readonly',
+  'https://www.googleapis.com/auth/chat.spaces.readonly',
+  'https://www.googleapis.com/auth/chat.messages.readonly',
+  'https://www.googleapis.com/auth/chat.messages.create',
+  'https://www.googleapis.com/auth/chat.spaces.create',
+  'https://www.googleapis.com/auth/chat.memberships.readonly',
+  'https://www.googleapis.com/auth/chat.messages.reactions.create',
+] as const;
+const ROLE_ROOM_LINKEDIN_SCOPES = [
+  'openid',
+  'profile',
+  'email',
 ] as const;
 const ROLE_ROOM_GOOGLE_DRIVE_FOLDERS = [
   { key: 'brief', label: '01 Brief' },
@@ -278,6 +346,8 @@ const ROLE_ROOM_GOOGLE_STATE_TTL_MS = 15 * 60 * 1000;
 
 const roleRoomGoogleOauthStateStore = new Map<string, RoleRoomGoogleOauthState>();
 const roleRoomGoogleTransferStore = new Map<string, RoleRoomGoogleTransferPayload>();
+const roleRoomLinkedInOauthStateStore = new Map<string, RoleRoomLinkedInOauthState>();
+const roleRoomLinkedInTransferStore = new Map<string, RoleRoomLinkedInTransferPayload>();
 
 function readStringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
@@ -343,11 +413,22 @@ function pruneExpiredRoleRoomGoogleState(): void {
       roleRoomGoogleTransferStore.delete(key);
     }
   }
+  for (const [key, value] of roleRoomLinkedInOauthStateStore.entries()) {
+    if (now - value.createdAt > ROLE_ROOM_GOOGLE_STATE_TTL_MS) {
+      roleRoomLinkedInOauthStateStore.delete(key);
+    }
+  }
+  for (const [key, value] of roleRoomLinkedInTransferStore.entries()) {
+    if (now - value.createdAt > ROLE_ROOM_GOOGLE_STATE_TTL_MS) {
+      roleRoomLinkedInTransferStore.delete(key);
+    }
+  }
 }
 
-function deriveRoleRoomGoogleEncryptionKey(): Buffer | null {
+function deriveRoleRoomServiceEncryptionKey(primaryEnvKey: string): Buffer | null {
   const secret = readStringValue(
-    process.env.ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY
+    process.env[primaryEnvKey]
+    ?? process.env.ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY
     ?? process.env.SESSION_SECRET
     ?? process.env.JWT_SECRET
     ?? process.env.AUTH_SECRET,
@@ -356,6 +437,14 @@ function deriveRoleRoomGoogleEncryptionKey(): Buffer | null {
     return null;
   }
   return crypto.createHash('sha256').update(secret).digest();
+}
+
+function deriveRoleRoomGoogleEncryptionKey(): Buffer | null {
+  return deriveRoleRoomServiceEncryptionKey('ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY');
+}
+
+function deriveRoleRoomLinkedInEncryptionKey(): Buffer | null {
+  return deriveRoleRoomServiceEncryptionKey('ROLE_ROOM_LINKEDIN_TOKEN_ENCRYPTION_KEY');
 }
 
 function encryptRoleRoomGoogleToken(value: string): string {
@@ -375,6 +464,47 @@ function decryptRoleRoomGoogleToken(value: string | null | undefined): string | 
     return null;
   }
   const key = deriveRoleRoomGoogleEncryptionKey();
+  if (!key) {
+    return null;
+  }
+  const [version, ivPart, tagPart, encryptedPart] = value.split('.');
+  if (version !== 'v1' || !ivPart || !tagPart || !encryptedPart) {
+    return null;
+  }
+  try {
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      key,
+      Buffer.from(ivPart, 'base64url'),
+    );
+    decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(encryptedPart, 'base64url')),
+      decipher.final(),
+    ]);
+    return decrypted.toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+function encryptRoleRoomLinkedInToken(value: string): string {
+  const key = deriveRoleRoomLinkedInEncryptionKey();
+  if (!key) {
+    throw new Error('ROLE_ROOM_LINKEDIN_TOKEN_ENCRYPTION_KEY mangler');
+  }
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1.${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+
+function decryptRoleRoomLinkedInToken(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const key = deriveRoleRoomLinkedInEncryptionKey();
   if (!key) {
     return null;
   }
@@ -420,6 +550,24 @@ function getRoleRoomGoogleRedirectUri(req?: Request): string | null {
   const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
   const protocol = forwardedProto ?? req.protocol ?? 'http';
   return `${protocol}://${host}/api/auth/google/callback`;
+}
+
+function getRoleRoomLinkedInRedirectUri(req?: Request): string | null {
+  const configured = readStringValue(process.env.ROLE_ROOM_LINKEDIN_REDIRECT_URI);
+  if (configured) {
+    return configured;
+  }
+
+  if (!req) {
+    return null;
+  }
+  const host = req.get('host');
+  if (!host) {
+    return null;
+  }
+  const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
+  const protocol = forwardedProto ?? req.protocol ?? 'http';
+  return `${protocol}://${host}/api/auth/linkedin/callback`;
 }
 
 function getRoleRoomRequestOrigin(req?: Request): string | null {
@@ -486,6 +634,25 @@ function getRoleRoomGoogleConfig(req?: Request) {
       !clientSecret ? 'ROLE_ROOM_GOOGLE_CLIENT_SECRET' : null,
       !redirectUri ? 'ROLE_ROOM_GOOGLE_REDIRECT_URI' : null,
       !encryptionKey ? 'ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY' : null,
+    ].filter((entry): entry is string => Boolean(entry)),
+  };
+}
+
+function getRoleRoomLinkedInConfig(req?: Request) {
+  const clientId = readStringValue(process.env.ROLE_ROOM_LINKEDIN_CLIENT_ID ?? process.env.LINKEDIN_CLIENT_ID);
+  const clientSecret = readStringValue(process.env.ROLE_ROOM_LINKEDIN_CLIENT_SECRET ?? process.env.LINKEDIN_CLIENT_SECRET);
+  const redirectUri = getRoleRoomLinkedInRedirectUri(req);
+  const encryptionKey = deriveRoleRoomLinkedInEncryptionKey();
+  return {
+    clientId,
+    clientSecret,
+    redirectUri,
+    configured: Boolean(clientId && clientSecret && redirectUri && encryptionKey),
+    missing: [
+      !clientId ? 'ROLE_ROOM_LINKEDIN_CLIENT_ID' : null,
+      !clientSecret ? 'ROLE_ROOM_LINKEDIN_CLIENT_SECRET' : null,
+      !redirectUri ? 'ROLE_ROOM_LINKEDIN_REDIRECT_URI' : null,
+      !encryptionKey ? 'ROLE_ROOM_LINKEDIN_TOKEN_ENCRYPTION_KEY' : null,
     ].filter((entry): entry is string => Boolean(entry)),
   };
 }
@@ -715,6 +882,28 @@ function readOptionalHeaderValue(req: Request, headerName: string): string | und
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readRoleRoomDevUserId(req: Request, bearer?: string): string {
+  const headerUserId =
+    readOptionalHeaderValue(req, 'x-role-room-user-id')
+    ?? readOptionalHeaderValue(req, 'x-user-id');
+  return headerUserId ?? (bearer ? deriveDevUserIdFromBearer(bearer) : 'dev-local-user');
+}
+
+function readRoleRoomDevUserEmail(req: Request): string | undefined {
+  return readOptionalHeaderValue(req, 'x-role-room-email')
+    ?? readOptionalHeaderValue(req, 'x-user-email');
+}
+
+function readRoleRoomDevUserRole(req: Request): string | undefined {
+  return readOptionalHeaderValue(req, 'x-role-room-role')
+    ?? readOptionalHeaderValue(req, 'x-user-role');
+}
+
+function isEphemeralRoleRoomDevUserId(userId: string | null | undefined): boolean {
+  if (typeof userId !== 'string') return false;
+  return userId === 'dev-local-user' || userId.startsWith('dev-');
+}
+
 // ── API Key Middleware ───────────────────────────────────────
 
 /**
@@ -744,10 +933,9 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
 
     // ── 1b. Dev-mode bypass for local UI integration ───────
     if (devBypassEnabled) {
-      const headerUserId = readOptionalHeaderValue(req, 'x-role-room-user-id');
-      const headerEmail = readOptionalHeaderValue(req, 'x-role-room-email');
-      const headerRole = readOptionalHeaderValue(req, 'x-role-room-role')?.toLowerCase();
-      const userId = headerUserId ?? (bearer ? deriveDevUserIdFromBearer(bearer) : 'dev-local-user');
+      const headerEmail = readRoleRoomDevUserEmail(req);
+      const headerRole = readRoleRoomDevUserRole(req)?.toLowerCase();
+      const userId = readRoleRoomDevUserId(req, bearer);
       (req as Request & { apiKeyUser: ApiKeyUserContext }).apiKeyUser = {
         userId,
         email: headerEmail,
@@ -897,10 +1085,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     if (isRoleRoomDevBypassEnabled()) {
-      const headerUserId = readOptionalHeaderValue(req, 'x-role-room-user-id');
-      const headerEmail = readOptionalHeaderValue(req, 'x-role-room-email');
-      const headerRole = readOptionalHeaderValue(req, 'x-role-room-role')?.toLowerCase();
-      const userId = headerUserId ?? (bearer ? deriveDevUserIdFromBearer(bearer) : 'dev-local-user');
+      const headerEmail = readRoleRoomDevUserEmail(req);
+      const headerRole = readRoleRoomDevUserRole(req)?.toLowerCase();
+      const userId = readRoleRoomDevUserId(req, bearer);
       return {
         userId,
         email: headerEmail,
@@ -1036,6 +1223,43 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return roleRoomGoogleTablesReadyPromise;
   }
 
+  let roleRoomLinkedInTablesReadyPromise: Promise<boolean> | null = null;
+  async function ensureRoleRoomLinkedInTables(): Promise<boolean> {
+    if (roleRoomLinkedInTablesReadyPromise) return roleRoomLinkedInTablesReadyPromise;
+    roleRoomLinkedInTablesReadyPromise = (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS role_room_linkedin_connections (
+            id UUID PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            role_room_email TEXT,
+            linkedin_member_id TEXT,
+            linkedin_email TEXT,
+            linkedin_name TEXT,
+            access_token_encrypted TEXT,
+            refresh_token_encrypted TEXT,
+            expiry_date TIMESTAMPTZ,
+            scopes JSONB NOT NULL DEFAULT '[]'::jsonb,
+            connection_state TEXT NOT NULL DEFAULT 'disconnected',
+            last_error TEXT,
+            profile JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_used_at TIMESTAMPTZ
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_linkedin_connections_user_id_unique ON role_room_linkedin_connections(user_id);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_linkedin_connections_member_id_unique ON role_room_linkedin_connections(linkedin_member_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_linkedin_connections_email ON role_room_linkedin_connections(linkedin_email);
+        `);
+        return true;
+      } catch (error) {
+        console.warn('Role Room LinkedIn tables unavailable:', error);
+        return false;
+      }
+    })();
+    return roleRoomLinkedInTablesReadyPromise;
+  }
+
   async function getRoleRoomGoogleConnectionByUserId(userId: string): Promise<RoleRoomGoogleConnectionRow | null> {
     if (!(await ensureRoleRoomGoogleTables())) {
       return null;
@@ -1043,6 +1267,28 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const result = await pool.query<RoleRoomGoogleConnectionRow>(
       `SELECT * FROM role_room_google_connections WHERE user_id = $1 LIMIT 1`,
       [userId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function getRoleRoomLinkedInConnectionByUserId(userId: string): Promise<RoleRoomLinkedInConnectionRow | null> {
+    if (!(await ensureRoleRoomLinkedInTables())) {
+      return null;
+    }
+    const result = await pool.query<RoleRoomLinkedInConnectionRow>(
+      `SELECT * FROM role_room_linkedin_connections WHERE user_id = $1 LIMIT 1`,
+      [userId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function getRoleRoomLinkedInConnectionByMemberId(memberId: string): Promise<RoleRoomLinkedInConnectionRow | null> {
+    if (!(await ensureRoleRoomLinkedInTables())) {
+      return null;
+    }
+    const result = await pool.query<RoleRoomLinkedInConnectionRow>(
+      `SELECT * FROM role_room_linkedin_connections WHERE linkedin_member_id = $1 LIMIT 1`,
+      [memberId],
     );
     return result.rows[0] ?? null;
   }
@@ -1114,6 +1360,69 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return result.rows[0];
   }
 
+  async function upsertRoleRoomLinkedInConnection(
+    userId: string,
+    roleRoomEmail: string | null,
+    linkedInProfile: {
+      memberId: string;
+      email?: string | null;
+      name?: string | null;
+      profile: Record<string, unknown>;
+    },
+    tokenBundle: RoleRoomLinkedInTransferPayload['tokenBundle'],
+  ): Promise<RoleRoomLinkedInConnectionRow> {
+    if (!(await ensureRoleRoomLinkedInTables())) {
+      throw new Error('Role Room LinkedIn tables unavailable');
+    }
+
+    const accessTokenEncrypted = tokenBundle.accessToken ? encryptRoleRoomLinkedInToken(tokenBundle.accessToken) : null;
+    const refreshTokenEncrypted = tokenBundle.refreshToken ? encryptRoleRoomLinkedInToken(tokenBundle.refreshToken) : null;
+    const expiryDate = typeof tokenBundle.expiryDate === 'number' && Number.isFinite(tokenBundle.expiryDate)
+      ? new Date(tokenBundle.expiryDate).toISOString()
+      : null;
+
+    const result = await pool.query<RoleRoomLinkedInConnectionRow>(
+      `INSERT INTO role_room_linkedin_connections (
+        id, user_id, role_room_email, linkedin_member_id, linkedin_email, linkedin_name,
+        access_token_encrypted, refresh_token_encrypted, expiry_date, scopes,
+        connection_state, last_error, profile, created_at, updated_at, last_used_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10::jsonb,
+        'connected', NULL, $11::jsonb, NOW(), NOW(), NOW()
+      )
+      ON CONFLICT (user_id) DO UPDATE SET
+        role_room_email = EXCLUDED.role_room_email,
+        linkedin_member_id = EXCLUDED.linkedin_member_id,
+        linkedin_email = EXCLUDED.linkedin_email,
+        linkedin_name = EXCLUDED.linkedin_name,
+        access_token_encrypted = COALESCE(EXCLUDED.access_token_encrypted, role_room_linkedin_connections.access_token_encrypted),
+        refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_linkedin_connections.refresh_token_encrypted),
+        expiry_date = COALESCE(EXCLUDED.expiry_date, role_room_linkedin_connections.expiry_date),
+        scopes = EXCLUDED.scopes,
+        connection_state = 'connected',
+        last_error = NULL,
+        profile = EXCLUDED.profile,
+        updated_at = NOW(),
+        last_used_at = NOW()
+      RETURNING *`,
+      [
+        crypto.randomUUID(),
+        userId,
+        roleRoomEmail,
+        linkedInProfile.memberId,
+        linkedInProfile.email ?? null,
+        linkedInProfile.name ?? null,
+        accessTokenEncrypted,
+        refreshTokenEncrypted,
+        expiryDate,
+        JSON.stringify(tokenBundle.scopes ?? []),
+        JSON.stringify(linkedInProfile.profile),
+      ],
+    );
+    return result.rows[0];
+  }
+
   function canBootstrapRoleRoomGoogleConnection(role: string | null | undefined): boolean {
     const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : '';
     return [
@@ -1135,6 +1444,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return false;
     }
     return isRoleRoomDevBypassEnabled();
+  }
+
+  function shouldForceRoleRoomGoogleAccessTokenRefresh(expiryDate?: number | null): boolean {
+    return !Number.isFinite(expiryDate) || Number(expiryDate) <= Date.now() + 60_000;
   }
 
   async function bootstrapRoleRoomGoogleConnectionFromEnv(req: Request, userId: string): Promise<RoleRoomGoogleConnectionRow | null> {
@@ -1240,7 +1553,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     });
 
     try {
-      await oauthClient.getAccessToken();
+      const expiryTimestamp = connection.expiry_date ? Date.parse(connection.expiry_date) : NaN;
+      if (refreshToken && shouldForceRoleRoomGoogleAccessTokenRefresh(expiryTimestamp)) {
+        oauthClient.setCredentials({ refresh_token: refreshToken });
+        await oauthClient.refreshAccessToken();
+      } else {
+        await oauthClient.getAccessToken();
+      }
       const nextAccessToken = readStringValue(oauthClient.credentials.access_token);
       const nextRefreshToken = readStringValue(oauthClient.credentials.refresh_token) ?? refreshToken;
       const nextExpiryDate = typeof oauthClient.credentials.expiry_date === 'number'
@@ -1425,6 +1744,27 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const result = await pool.query<RoleRoomGoogleConnectionRow>(
       `SELECT * FROM role_room_google_connections WHERE google_subject = $1 LIMIT 1`,
       [subject],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async function reassignRoleRoomGoogleConnectionOwner(
+    connectionId: string,
+    userId: string,
+    roleRoomEmail: string | null,
+  ): Promise<RoleRoomGoogleConnectionRow | null> {
+    if (!(await ensureRoleRoomGoogleTables())) {
+      return null;
+    }
+    const result = await pool.query<RoleRoomGoogleConnectionRow>(
+      `UPDATE role_room_google_connections
+       SET user_id = $2,
+           role_room_email = $3,
+           updated_at = NOW(),
+           last_used_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [connectionId, userId, roleRoomEmail],
     );
     return result.rows[0] ?? null;
   }
@@ -2105,6 +2445,84 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return fallbackName ?? normalizeRoleRoomProjectName(projectId);
   }
 
+  function canAutoConfigureRoleRoomGoogleWorkspaceForRole(role: string | null | undefined): boolean {
+    const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : '';
+    return ['director', 'producer', 'production_manager', 'content_producer'].includes(normalizedRole);
+  }
+
+  async function ensureRoleRoomGoogleProjectBindingReady(
+    projectId: string,
+    userId: string,
+    oauthClient: NonNullable<ReturnType<typeof createRoleRoomGoogleOAuthClient>>,
+    payload: {
+      driveRootFolderId?: string | null;
+      calendarId?: string | null;
+      contactsContext?: Record<string, unknown>;
+      meetCreationEnabled?: boolean | null;
+      auditSignatureStorageEnabled?: boolean | null;
+      folderLayout?: Record<string, unknown>;
+      createDriveLayout?: boolean | null;
+      createCalendar?: boolean | null;
+    } = {},
+  ): Promise<RoleRoomGoogleProjectBindingRow> {
+    const driveApi = google.drive({ version: 'v3', auth: oauthClient });
+    const calendarApi = google.calendar({ version: 'v3', auth: oauthClient });
+    const existingBinding = await getRoleRoomGoogleProjectBinding(projectId);
+    const projectName = await getRoleRoomProjectName(projectId);
+
+    const requestedDriveRootFolderId = readStringValue(payload.driveRootFolderId)
+      ?? existingBinding?.drive_root_folder_id
+      ?? null;
+    const requestedCalendarId = readStringValue(payload.calendarId)
+      ?? existingBinding?.calendar_id
+      ?? null;
+    const createDriveLayout = typeof payload.createDriveLayout === 'boolean'
+      ? payload.createDriveLayout
+      : !requestedDriveRootFolderId;
+    const createCalendar = typeof payload.createCalendar === 'boolean'
+      ? payload.createCalendar
+      : !requestedCalendarId;
+
+    let driveRootFolderId = requestedDriveRootFolderId;
+    let folderLayout = {
+      ...readJsonObject(existingBinding?.folder_layout),
+      ...readJsonObject(payload.folderLayout),
+    };
+
+    if (!driveRootFolderId || createDriveLayout) {
+      const driveLayout = await ensureRoleRoomGoogleDriveLayout(driveApi, projectName, driveRootFolderId);
+      driveRootFolderId = driveLayout.rootFolderId;
+      folderLayout = {
+        ...folderLayout,
+        ...driveLayout.folderLayout,
+      };
+    }
+
+    const calendarId = createCalendar
+      ? await resolveRoleRoomGoogleCalendarId(calendarApi, projectName, requestedCalendarId)
+      : await resolveRoleRoomGoogleCalendarId(
+          calendarApi,
+          projectName,
+          requestedCalendarId ?? existingBinding?.calendar_id,
+        );
+
+    return updateRoleRoomGoogleProjectBinding(projectId, {
+      connectedUserId: userId,
+      driveRootFolderId,
+      calendarId,
+      contactsContext: readJsonObject(payload.contactsContext),
+      meetCreationEnabled: payload.meetCreationEnabled,
+      auditSignatureStorageEnabled: payload.auditSignatureStorageEnabled,
+      folderLayout,
+      syncStatus: {
+        ...readJsonObject(existingBinding?.sync_status),
+        state: 'connected',
+        lastConfiguredBy: userId,
+        lastConfiguredAt: new Date().toISOString(),
+      },
+    });
+  }
+
   type RoleRoomGoogleResolvedUser = {
     userId: string;
     email: string;
@@ -2360,6 +2778,50 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         googleSubject: readStringValue(connection.google_subject),
         scopes: readStringArray(connection.scopes),
         state: connection.connection_state ?? 'disconnected',
+        lastError: readStringValue(connection.last_error),
+        profile: readJsonObject(connection.profile),
+        expiryDate: connection.expiry_date,
+        createdAt: connection.created_at,
+        updatedAt: connection.updated_at,
+        lastUsedAt: connection.last_used_at,
+      },
+    };
+  }
+
+  function buildRoleRoomLinkedInConnectionResponse(
+    connection: RoleRoomLinkedInConnectionRow | null,
+    config: ReturnType<typeof getRoleRoomLinkedInConfig>,
+  ) {
+    if (!connection) {
+      return {
+        configured: config.configured,
+        missing: config.missing,
+        state: 'disconnected' as const,
+        connection: null,
+      };
+    }
+
+    const expiryTimestamp = connection.expiry_date ? Date.parse(connection.expiry_date) : null;
+    const derivedState = connection.connection_state === 'connected'
+      && typeof expiryTimestamp === 'number'
+      && Number.isFinite(expiryTimestamp)
+      && expiryTimestamp <= Date.now()
+        ? 'expired'
+        : (connection.connection_state ?? 'disconnected');
+
+    return {
+      configured: config.configured,
+      missing: config.missing,
+      state: derivedState,
+      connection: {
+        id: connection.id,
+        userId: connection.user_id,
+        roleRoomEmail: readStringValue(connection.role_room_email),
+        linkedInMemberId: readStringValue(connection.linkedin_member_id),
+        linkedInEmail: readStringValue(connection.linkedin_email),
+        linkedInName: readStringValue(connection.linkedin_name),
+        scopes: readStringArray(connection.scopes),
+        state: derivedState,
         lastError: readStringValue(connection.last_error),
         profile: readJsonObject(connection.profile),
         expiryDate: connection.expiry_date,
@@ -2824,8 +3286,32 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     };
   }
 
+  function isGenericProjectRole(role: string | null | undefined): boolean {
+    const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : '';
+    return ['user', 'member', 'viewer', 'guest'].includes(normalizedRole);
+  }
+
   function getEffectiveProjectRoleRecord(req: Request, roleRecord: ProjectRoleRecord | null): ProjectRoleRecord | null {
-    return roleRecord ?? getSessionRoleRecord(req);
+    const sessionRoleRecord = getSessionRoleRecord(req);
+    if (!roleRecord) {
+      return sessionRoleRecord;
+    }
+
+    if (
+      sessionRoleRecord
+      && isGenericProjectRole(roleRecord.role)
+      && !isGenericProjectRole(sessionRoleRecord.role)
+    ) {
+      return {
+        role: sessionRoleRecord.role,
+        permissions: {
+          ...roleRecord.permissions,
+          ...sessionRoleRecord.permissions,
+        },
+      };
+    }
+
+    return roleRecord;
   }
 
   function canReadProducerData(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
@@ -3356,6 +3842,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const loginAs = readStringValue(req.body?.loginAs)?.toLowerCase() ?? null;
       const requestedRole = readStringValue(req.body?.requestedRole ?? req.body?.role)?.toLowerCase() ?? null;
       const projectId = readStringValue(req.body?.projectId);
+      const targetConnectionUserId = readStringValue(req.body?.targetConnectionUserId);
+      const targetConnectionEmail = readStringValue(req.body?.targetConnectionEmail);
       const returnPath = sanitizeRoleRoomReturnPath(req.body?.returnPath, req);
 
       roleRoomGoogleOauthStateStore.set(stateId, {
@@ -3366,10 +3854,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         requestedRole,
         projectId,
         createdByUserId: requestUser?.userId ?? null,
+        createdByEmail: requestUser?.email ?? null,
+        targetConnectionUserId,
+        targetConnectionEmail,
         createdAt: Date.now(),
       });
 
-      const loginHint = requestUser?.email ?? readStringValue(req.body?.email);
+      const loginHint = targetConnectionEmail ?? requestUser?.email ?? readStringValue(req.body?.email);
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
         scope: [...ROLE_ROOM_GOOGLE_SCOPES],
@@ -3455,6 +3946,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         existingSubjectConnection
         && oauthState.mode === 'link'
         && existingSubjectConnection.user_id !== oauthState.createdByUserId
+        && existingSubjectConnection.user_id !== oauthState.targetConnectionUserId
+        && !(
+          oauthState.createdByUserId
+          && isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+        )
       ) {
         redirectWithError(oauthState.returnPath, 'Denne Google-kontoen er allerede koblet til en annen bruker', oauthState.browserOrigin);
         return;
@@ -3495,6 +3991,25 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           tokenBundle,
         );
 
+        let autoConfiguredProjectBinding = false;
+        if (
+          oauthState.projectId
+          && canAutoConfigureRoleRoomGoogleWorkspaceForRole(
+            resolvedUser.autoAssignProjectRole ?? resolvedUser.role,
+          )
+        ) {
+          try {
+            await ensureRoleRoomGoogleProjectBindingReady(
+              oauthState.projectId,
+              resolvedUser.userId,
+              oauthClient,
+            );
+            autoConfiguredProjectBinding = true;
+          } catch (bindingError) {
+            console.warn('Role Room Google auto-binding after login failed:', bindingError);
+          }
+        }
+
         const sessionToken = crypto.randomUUID();
         const sessionData: SessionData = {
           userId: resolvedUser.userId,
@@ -3509,6 +4024,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         roleRoomGoogleTransferStore.set(transferId, {
           mode: 'login',
           createdAt: Date.now(),
+          projectId: oauthState.projectId ?? null,
+          createdByUserId: resolvedUser.userId,
+          createdByEmail: resolvedUser.email,
+          autoConfiguredProjectBinding,
           sessionToken,
           user: {
             id: resolvedUser.userId,
@@ -3535,9 +4054,40 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const transferId = crypto.randomUUID();
+      const linkTargetUserId = oauthState.targetConnectionUserId ?? oauthState.createdByUserId ?? null;
+      const linkTargetEmail = oauthState.targetConnectionEmail ?? oauthState.createdByEmail ?? null;
+      if (!linkTargetUserId) {
+        redirectWithError(oauthState.returnPath, 'Fant ikke brukeren som skal kobles til Google Workspace', oauthState.browserOrigin);
+        return;
+      }
+
+      if (
+        existingSubjectConnection
+        && existingSubjectConnection.user_id !== linkTargetUserId
+        && isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+      ) {
+        await reassignRoleRoomGoogleConnectionOwner(existingSubjectConnection.id, linkTargetUserId, linkTargetEmail);
+      }
+
+      await upsertRoleRoomGoogleConnection(
+        linkTargetUserId,
+        linkTargetEmail,
+        {
+          email: googleEmail,
+          subject: googleSubject,
+          profile: googleProfile,
+        },
+        tokenBundle,
+      );
+
       roleRoomGoogleTransferStore.set(transferId, {
         mode: 'link',
         createdAt: Date.now(),
+        projectId: oauthState.projectId ?? null,
+        createdByUserId: oauthState.createdByUserId ?? null,
+        createdByEmail: oauthState.createdByEmail ?? null,
+        targetConnectionUserId: oauthState.targetConnectionUserId ?? null,
+        targetConnectionEmail: oauthState.targetConnectionEmail ?? null,
         googleEmail,
         googleSubject,
         profile: googleProfile,
@@ -3584,6 +4134,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         success: true,
         transferId,
         mode: payload.mode,
+        projectId: payload.projectId ?? null,
+        autoConfiguredProjectBinding: payload.autoConfiguredProjectBinding ?? null,
         sessionToken: payload.sessionToken ?? null,
         user: payload.user ?? null,
         google: {
@@ -3600,7 +4152,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.post('/google/link', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
-      const userId = getUserId(req);
+      const requestUser = getOptionalRequestUser(req);
       const transferId = readStringValue(req.body?.transferId);
       if (!transferId) {
         res.status(400).json({ error: 'transferId er påkrevd' });
@@ -3613,13 +4165,36 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const payloadUserId = readStringValue(payload.createdByUserId);
+      const targetConnectionUserId = readStringValue(payload.targetConnectionUserId);
+      const targetConnectionEmail = readStringValue(payload.targetConnectionEmail);
+      const userId = targetConnectionUserId || (!isEphemeralRoleRoomDevUserId(requestUser?.userId)
+        ? (requestUser?.userId ?? null)
+        : payloadUserId);
+      if (!userId) {
+        res.status(401).json({ error: 'Fant ikke brukeren som skal kobles til Google Workspace' });
+        return;
+      }
+
       const existingSubjectConnection = await getRoleRoomGoogleConnectionBySubject(payload.googleSubject);
-      if (existingSubjectConnection && existingSubjectConnection.user_id !== userId) {
+      const roleRoomEmail = targetConnectionEmail ?? requestUser?.email ?? readStringValue(payload.createdByEmail) ?? null;
+      if (
+        existingSubjectConnection
+        && existingSubjectConnection.user_id !== userId
+        && !isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+      ) {
         res.status(409).json({ error: 'Denne Google-kontoen er allerede koblet til en annen bruker' });
         return;
       }
 
-      const roleRoomEmail = getOptionalRequestUser(req)?.email ?? null;
+      if (
+        existingSubjectConnection
+        && existingSubjectConnection.user_id !== userId
+        && isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+      ) {
+        await reassignRoleRoomGoogleConnectionOwner(existingSubjectConnection.id, userId, roleRoomEmail);
+      }
+
       const connection = await upsertRoleRoomGoogleConnection(
         userId,
         roleRoomEmail,
@@ -3631,8 +4206,38 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         payload.tokenBundle,
       );
 
+      let projectBindingResponse: ReturnType<typeof buildRoleRoomGoogleProjectBindingResponse> | null = null;
+      if (payload.projectId && await ensureProjectAccess(payload.projectId)) {
+        const roleRecord = await getProjectRoleRecord(payload.projectId, getUserIdentifiers(req));
+        if (canWriteProducerData(req, roleRecord)) {
+          try {
+            const oauthClient = createRoleRoomGoogleOAuthClient(req);
+            if (oauthClient) {
+              oauthClient.setCredentials({
+                access_token: payload.tokenBundle.accessToken ?? undefined,
+                refresh_token: payload.tokenBundle.refreshToken ?? undefined,
+                expiry_date: payload.tokenBundle.expiryDate ?? undefined,
+              });
+              const binding = await ensureRoleRoomGoogleProjectBindingReady(
+                payload.projectId,
+                userId,
+                oauthClient,
+              );
+              const artifacts = await getRoleRoomGoogleArtifactsByProject(payload.projectId);
+              projectBindingResponse = buildRoleRoomGoogleProjectBindingResponse(binding, artifacts);
+            }
+          } catch (bindingError) {
+            console.warn('Role Room Google auto-binding after link failed:', bindingError);
+          }
+        }
+      }
+
       roleRoomGoogleTransferStore.delete(transferId);
-      res.json(buildRoleRoomGoogleConnectionResponse(connection, getRoleRoomGoogleConfig(req)));
+      res.json({
+        ...buildRoleRoomGoogleConnectionResponse(connection, getRoleRoomGoogleConfig(req)),
+        projectBinding: projectBindingResponse?.binding ?? null,
+        artifacts: projectBindingResponse?.artifacts ?? [],
+      });
     } catch (error) {
       console.error('Role Room Google link error:', error);
       res.status(500).json({ error: 'Kunne ikke koble Google Workspace til brukeren' });
@@ -3659,6 +4264,300 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (error) {
       console.error('Role Room Google unlink error:', error);
       res.status(500).json({ error: 'Kunne ikke koble fra Google Workspace' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // Role Room LinkedIn Layer
+  // ═══════════════════════════════════════════════════════════
+
+  router.get('/linkedin/status', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const config = getRoleRoomLinkedInConfig(req);
+      const requestUser = getOptionalRequestUser(req);
+      const connection = requestUser?.userId
+        ? await getRoleRoomLinkedInConnectionByUserId(requestUser.userId)
+        : null;
+      res.json(buildRoleRoomLinkedInConnectionResponse(connection, config));
+    } catch (error) {
+      console.error('Role Room LinkedIn status error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente LinkedIn-status' });
+    }
+  });
+
+  router.post('/linkedin/oauth/start', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const config = getRoleRoomLinkedInConfig(req);
+      if (!config.configured || !config.clientId || !config.redirectUri) {
+        res.status(400).json({
+          error: 'LinkedIn er ikke konfigurert',
+          missing: config.missing,
+        });
+        return;
+      }
+
+      const requestUser = getOptionalRequestUser(req);
+      if (!requestUser?.userId) {
+        res.status(401).json({ error: 'Må være innlogget for å koble LinkedIn' });
+        return;
+      }
+
+      const stateId = crypto.randomUUID();
+      const returnPath = sanitizeRoleRoomReturnPath(req.body?.returnPath, req);
+      const projectId = readStringValue(req.body?.projectId);
+
+      roleRoomLinkedInOauthStateStore.set(stateId, {
+        returnPath,
+        browserOrigin: sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req),
+        projectId,
+        createdByUserId: requestUser.userId,
+        createdAt: Date.now(),
+      });
+
+      const authorizationUrl = `https://www.linkedin.com/oauth/v2/authorization?${
+        new URLSearchParams({
+          response_type: 'code',
+          client_id: config.clientId,
+          redirect_uri: config.redirectUri,
+          scope: [...ROLE_ROOM_LINKEDIN_SCOPES].join(' '),
+          state: stateId,
+        }).toString()
+      }`;
+
+      res.json({
+        success: true,
+        mode: 'link' as const,
+        authorizationUrl,
+        stateId,
+      });
+    } catch (error) {
+      console.error('Role Room LinkedIn oauth start error:', error);
+      res.status(500).json({ error: 'Kunne ikke starte LinkedIn OAuth' });
+    }
+  });
+
+  router.get('/linkedin/oauth/callback', async (req: Request, res: Response) => {
+    pruneExpiredRoleRoomGoogleState();
+    const config = getRoleRoomLinkedInConfig(req);
+    const fallbackReturnPath = sanitizeRoleRoomReturnPath(req.query.returnPath, req);
+    const requestOrigin = getRoleRoomRequestOrigin(req);
+
+    const redirectWithError = (returnPath: string, message: string, browserOrigin?: string | null) => {
+      res.redirect(
+        buildRoleRoomGoogleReturnUrl(returnPath, {
+          rrLinkedInStatus: 'error',
+          rrLinkedInMessage: message,
+        }, browserOrigin ?? requestOrigin),
+      );
+    };
+
+    if (!config.configured || !config.clientId || !config.clientSecret || !config.redirectUri) {
+      redirectWithError(fallbackReturnPath, 'LinkedIn er ikke konfigurert');
+      return;
+    }
+
+    const stateId = readStringValue(req.query.state);
+    const code = readStringValue(req.query.code);
+    const oauthState = stateId ? roleRoomLinkedInOauthStateStore.get(stateId) : null;
+    if (!oauthState || !code) {
+      redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Ugyldig LinkedIn-forespørsel', oauthState?.browserOrigin);
+      return;
+    }
+
+    roleRoomLinkedInOauthStateStore.delete(stateId!);
+
+    try {
+      const tokenResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          client_id: config.clientId,
+          client_secret: config.clientSecret,
+          redirect_uri: config.redirectUri,
+        }),
+      });
+
+      const tokenPayload = await tokenResponse.json().catch(() => null) as Record<string, unknown> | null;
+      if (!tokenResponse.ok || !tokenPayload) {
+        redirectWithError(
+          oauthState.returnPath,
+          readStringValue(tokenPayload?.error_description) ?? readStringValue(tokenPayload?.error) ?? 'LinkedIn OAuth-feil',
+          oauthState.browserOrigin,
+        );
+        return;
+      }
+
+      const accessToken = readStringValue(tokenPayload.access_token);
+      if (!accessToken) {
+        redirectWithError(oauthState.returnPath, 'LinkedIn svarte uten access token', oauthState.browserOrigin);
+        return;
+      }
+
+      const profileResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const profilePayload = await profileResponse.json().catch(() => null) as Record<string, unknown> | null;
+      if (!profileResponse.ok || !profilePayload) {
+        redirectWithError(
+          oauthState.returnPath,
+          readStringValue(profilePayload?.message) ?? 'Kunne ikke hente LinkedIn-profilen',
+          oauthState.browserOrigin,
+        );
+        return;
+      }
+
+      const linkedInMemberId = readStringValue(profilePayload.sub ?? profilePayload.id);
+      const linkedInEmail = readStringValue(profilePayload.email);
+      const linkedInName = readStringValue(profilePayload.name)
+        ?? [readStringValue(profilePayload.given_name), readStringValue(profilePayload.family_name)]
+          .filter((value): value is string => Boolean(value))
+          .join(' ')
+        ?? linkedInEmail;
+
+      if (!linkedInMemberId) {
+        redirectWithError(oauthState.returnPath, 'LinkedIn-kontoen mangler identitet', oauthState.browserOrigin);
+        return;
+      }
+
+      const existingConnection = await getRoleRoomLinkedInConnectionByMemberId(linkedInMemberId);
+      if (existingConnection && existingConnection.user_id !== oauthState.createdByUserId) {
+        redirectWithError(oauthState.returnPath, 'Denne LinkedIn-kontoen er allerede koblet til en annen bruker', oauthState.browserOrigin);
+        return;
+      }
+
+      const expiryDate = typeof tokenPayload.expires_in === 'number'
+        ? Date.now() + (Number(tokenPayload.expires_in) * 1000)
+        : null;
+      const rawScopes = readStringValue(tokenPayload.scope);
+      const transferId = crypto.randomUUID();
+      roleRoomLinkedInTransferStore.set(transferId, {
+        mode: 'link',
+        createdAt: Date.now(),
+        linkedInMemberId,
+        linkedInEmail,
+        linkedInName,
+        profile: readJsonObject(profilePayload),
+        tokenBundle: {
+          accessToken,
+          refreshToken: readStringValue(tokenPayload.refresh_token),
+          expiryDate,
+          scopes: rawScopes
+            ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
+            : [...ROLE_ROOM_LINKEDIN_SCOPES],
+        },
+      });
+
+      res.redirect(
+        buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
+          rrLinkedInStatus: 'success',
+          rrLinkedInMode: 'link',
+          rrLinkedInTransfer: transferId,
+        }, oauthState.browserOrigin ?? requestOrigin),
+      );
+    } catch (error) {
+      console.error('Role Room LinkedIn callback error:', error);
+      redirectWithError(
+        oauthState.returnPath,
+        error instanceof Error ? error.message : 'LinkedIn-innlogging feilet',
+        oauthState.browserOrigin,
+      );
+    }
+  });
+
+  router.get('/linkedin/oauth/session-result/:transferId', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const transferId = readStringValue(req.params.transferId);
+      if (!transferId) {
+        res.status(400).json({ error: 'transferId mangler' });
+        return;
+      }
+
+      const payload = roleRoomLinkedInTransferStore.get(transferId);
+      if (!payload) {
+        res.status(404).json({ error: 'LinkedIn-overføringen er utløpt eller brukt' });
+        return;
+      }
+
+      res.json({
+        success: true,
+        transferId,
+        mode: payload.mode,
+        linkedIn: {
+          memberId: payload.linkedInMemberId,
+          email: payload.linkedInEmail ?? null,
+          name: payload.linkedInName ?? null,
+          profile: payload.profile,
+        },
+      });
+    } catch (error) {
+      console.error('Role Room LinkedIn session result error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente LinkedIn-overføringen' });
+    }
+  });
+
+  router.post('/linkedin/link', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const transferId = readStringValue(req.body?.transferId);
+      if (!transferId) {
+        res.status(400).json({ error: 'transferId er påkrevd' });
+        return;
+      }
+
+      const payload = roleRoomLinkedInTransferStore.get(transferId);
+      if (!payload) {
+        res.status(404).json({ error: 'Fant ikke en gyldig LinkedIn-kobling å fullføre' });
+        return;
+      }
+
+      const existingConnection = await getRoleRoomLinkedInConnectionByMemberId(payload.linkedInMemberId);
+      if (existingConnection && existingConnection.user_id !== userId) {
+        res.status(409).json({ error: 'Denne LinkedIn-kontoen er allerede koblet til en annen bruker' });
+        return;
+      }
+
+      const roleRoomEmail = getOptionalRequestUser(req)?.email ?? null;
+      const connection = await upsertRoleRoomLinkedInConnection(
+        userId,
+        roleRoomEmail,
+        {
+          memberId: payload.linkedInMemberId,
+          email: payload.linkedInEmail ?? null,
+          name: payload.linkedInName ?? null,
+          profile: payload.profile,
+        },
+        payload.tokenBundle,
+      );
+
+      roleRoomLinkedInTransferStore.delete(transferId);
+      res.json(buildRoleRoomLinkedInConnectionResponse(connection, getRoleRoomLinkedInConfig(req)));
+    } catch (error) {
+      console.error('Role Room LinkedIn link error:', error);
+      res.status(500).json({ error: 'Kunne ikke koble LinkedIn til brukeren' });
+    }
+  });
+
+  router.delete('/linkedin/link', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      await ensureRoleRoomLinkedInTables();
+      await pool.query(`DELETE FROM role_room_linkedin_connections WHERE user_id = $1`, [userId]);
+      res.json({
+        success: true,
+        ...buildRoleRoomLinkedInConnectionResponse(null, getRoleRoomLinkedInConfig(req)),
+      });
+    } catch (error) {
+      console.error('Role Room LinkedIn unlink error:', error);
+      res.status(500).json({ error: 'Kunne ikke koble fra LinkedIn' });
     }
   });
 
@@ -3706,49 +4605,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const driveApi = google.drive({ version: 'v3', auth: googleClient.oauthClient });
-      const calendarApi = google.calendar({ version: 'v3', auth: googleClient.oauthClient });
-
-      const existingBinding = await getRoleRoomGoogleProjectBinding(projectId);
-      const projectName = await getRoleRoomProjectName(projectId);
-      const createDriveLayout = readBooleanValue(req.body?.createDriveLayout)
-        ?? !existingBinding?.drive_root_folder_id;
-      const createCalendar = readBooleanValue(req.body?.createCalendar)
-        ?? !existingBinding?.calendar_id;
-      const requestedDriveRootFolderId = readStringValue(req.body?.driveRootFolderId) ?? existingBinding?.drive_root_folder_id ?? null;
-      const requestedCalendarId = readStringValue(req.body?.calendarId) ?? existingBinding?.calendar_id ?? null;
-
-      let driveRootFolderId = requestedDriveRootFolderId;
-      let folderLayout = {
-        ...readJsonObject(existingBinding?.folder_layout),
-        ...readJsonObject(req.body?.folderLayout),
-      };
-      if (!driveRootFolderId || createDriveLayout) {
-        const driveLayout = await ensureRoleRoomGoogleDriveLayout(driveApi, projectName, driveRootFolderId);
-        driveRootFolderId = driveLayout.rootFolderId;
-        folderLayout = {
-          ...folderLayout,
-          ...driveLayout.folderLayout,
-        };
-      }
-
-      const calendarId = createCalendar
-        ? await resolveRoleRoomGoogleCalendarId(calendarApi, projectName, requestedCalendarId)
-        : await resolveRoleRoomGoogleCalendarId(calendarApi, projectName, requestedCalendarId ?? existingBinding?.calendar_id);
-
-      const binding = await updateRoleRoomGoogleProjectBinding(projectId, {
-        connectedUserId: userId,
-        driveRootFolderId,
-        calendarId,
+      const binding = await ensureRoleRoomGoogleProjectBindingReady(projectId, userId, googleClient.oauthClient, {
+        driveRootFolderId: readStringValue(req.body?.driveRootFolderId) ?? null,
+        calendarId: readStringValue(req.body?.calendarId) ?? null,
         contactsContext: readJsonObject(req.body?.contactsContext),
         meetCreationEnabled: readBooleanValue(req.body?.meetCreationEnabled),
         auditSignatureStorageEnabled: readBooleanValue(req.body?.auditSignatureStorageEnabled),
-        folderLayout,
-        syncStatus: {
-          ...readJsonObject(existingBinding?.sync_status),
-          state: 'connected',
-          lastConfiguredBy: userId,
-        },
+        folderLayout: readJsonObject(req.body?.folderLayout),
+        createDriveLayout: readBooleanValue(req.body?.createDriveLayout),
+        createCalendar: readBooleanValue(req.body?.createCalendar),
       });
 
       const artifacts = await getRoleRoomGoogleArtifactsByProject(projectId);
@@ -3965,10 +4830,16 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const sourceFileId = existingSignature.drive_source_file_id;
+      if (!sourceFileId) {
+        res.status(400).json({ error: 'Avtalens kildefil mangler Google Drive-ID og kan ikke deles.' });
+        return;
+      }
+
       const driveApi = google.drive({ version: 'v3', auth: googleClient.oauthClient });
       await shareRoleRoomGoogleAgreementSourceFile(
         driveApi,
-        existingSignature.drive_source_file_id,
+        sourceFileId,
         counterpartyEmail,
       );
 
@@ -4805,44 +5676,63 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // ═══════════════════════════════════════════════════════════
 
   router.post('/api-keys', async (req: Request, res: Response) => {
-    const { name, userId, scopes, expiresInDays } = req.body as {
-      name: string;
-      userId: string;
-      scopes?: string[];
-      expiresInDays?: number;
+    const configuredBootstrapToken = readStringValue(process.env.ROLE_ROOM_API_KEY_BOOTSTRAP_TOKEN);
+    const providedBootstrapToken = readOptionalHeaderValue(req, 'x-role-room-bootstrap-token');
+    const hasValidBootstrapToken = !!configuredBootstrapToken && providedBootstrapToken === configuredBootstrapToken;
+
+    const createApiKey = async (): Promise<void> => {
+      const { name, userId, scopes, expiresInDays } = req.body as {
+        name: string;
+        userId: string;
+        scopes?: string[];
+        expiresInDays?: number;
+      };
+
+      if (!name || !userId) {
+        res.status(400).json({ error: 'name og userId er påkrevd' });
+        return;
+      }
+
+      const rawKey = generateApiKey();
+      const keyHash = hashApiKey(rawKey);
+      const expiresAt = expiresInDays
+        ? new Date(Date.now() + expiresInDays * 86400000).toISOString()
+        : null;
+
+      try {
+        await pool.query(
+          `INSERT INTO role_room_api_keys (key_hash, name, user_id, scopes, expires_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [keyHash, name, userId, JSON.stringify(scopes ?? ['read', 'write']), expiresAt]
+        );
+
+        res.status(201).json({
+          apiKey: rawKey,
+          name,
+          userId,
+          scopes: scopes ?? ['read', 'write'],
+          expiresAt,
+          message: 'Oppbevar denne nøkkelen trygt — den kan ikke gjenopprettes.',
+        });
+      } catch (err) {
+        console.error('Create API key error:', err);
+        res.status(500).json({ error: 'Kunne ikke opprette API-nøkkel' });
+      }
     };
 
-    if (!name || !userId) {
-      res.status(400).json({ error: 'name og userId er påkrevd' });
+    if (hasValidBootstrapToken) {
+      await createApiKey();
       return;
     }
 
-    const rawKey = generateApiKey();
-    const keyHash = hashApiKey(rawKey);
-    const expiresAt = expiresInDays
-      ? new Date(Date.now() + expiresInDays * 86400000).toISOString()
-      : null;
+    await apiKeyAuth(pool, activeSessions)(req, res, async () => {
+      if (!requireScope(req, 'admin')) {
+        res.status(403).json({ error: 'Admin-tilgang kreves for å opprette API-nøkler' });
+        return;
+      }
 
-    try {
-      await pool.query(
-        `INSERT INTO role_room_api_keys (key_hash, name, user_id, scopes, expires_at)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [keyHash, name, userId, JSON.stringify(scopes ?? ['read', 'write']), expiresAt]
-      );
-
-      // Return the raw key ONLY on creation — it cannot be retrieved later
-      res.status(201).json({
-        apiKey: rawKey,
-        name,
-        userId,
-        scopes: scopes ?? ['read', 'write'],
-        expiresAt,
-        message: 'Oppbevar denne nøkkelen trygt — den kan ikke gjenopprettes.',
-      });
-    } catch (err) {
-      console.error('Create API key error:', err);
-      res.status(500).json({ error: 'Kunne ikke opprette API-nøkkel' });
-    }
+      await createApiKey();
+    });
   });
 
   router.delete('/api-keys/:keyId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {

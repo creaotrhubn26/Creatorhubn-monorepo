@@ -438,6 +438,38 @@ interface ManuscriptPanelProps {
 
 type ManuscriptTabValue = 'editor' | 'acts' | 'scenes' | 'characters' | 'dialogue' | 'breakdown' | 'revisions' | 'timeline' | 'production' | 'productionview';
 
+const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const buildSceneAutosaveSnapshot = (scene: SceneBreakdown) => {
+  const storyboardFrames = Array.isArray(scene.storyboardFrames)
+    ? (scene.storyboardFrames as Array<Record<string, unknown>>).map((frame) => {
+        const drawingData = isUnknownRecord(frame.drawingData) ? frame.drawingData : undefined;
+        return {
+          id: frame.id,
+          shotNumber: frame.shotNumber,
+          description: frame.description,
+          cameraAngle: frame.cameraAngle,
+          movement: frame.movement,
+          duration: frame.duration,
+          notes: frame.notes,
+          imageSource: frame.imageSource,
+          updatedAt: frame.updatedAt,
+          drawingUpdatedAt: drawingData?.updatedAt,
+          scriptLineRange: frame.scriptLineRange,
+          dialogueCharacter: frame.dialogueCharacter,
+        };
+      })
+    : [];
+
+  return {
+    id: scene.id,
+    heading: scene.sceneHeading,
+    description: scene.description,
+    storyboardFrames,
+  };
+};
+
 const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   projectId,
   onManuscriptChange,
@@ -446,6 +478,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 }) => {
   const { showToast, showSuccess, showError, showWarning, showInfo } = useToast();
   const branding = useBrandingSettings();
+  const activeProjectId = projectId ?? '';
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // 7-tier responsive system
@@ -490,7 +523,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   
   // Memoized scene-derived arrays to avoid recreating on every render
   const sceneCharactersMemo = useMemo(() => {
-    return scenes.flatMap(s => s.characters).filter((c, i, arr) => arr.indexOf(c) === i);
+    return scenes.flatMap((scene) => scene.characters ?? []).filter((character, index, arr) => arr.indexOf(character) === index);
   }, [scenes]);
 
   const sceneLocationsMemo = useMemo(() => {
@@ -668,8 +701,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const loadManuscripts = async () => {
     setIsLoading(true);
     try {
-      const response = await manuscriptService.getManuscripts(projectId);
-      const manuscriptsForProject = response.filter((manuscript) => manuscriptBelongsToProject(manuscript, projectId));
+      const response = await manuscriptService.getManuscripts(activeProjectId);
+      const manuscriptsForProject = response.filter((manuscript) => manuscriptBelongsToProject(manuscript, activeProjectId));
       setManuscripts(manuscriptsForProject);
       setSelectedManuscript((currentSelection) => {
         if (currentSelection) {
@@ -822,7 +855,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     if (scenes.length === 0) return;
     
     // Create a hash of scene content to detect actual changes
-    const currentHash = JSON.stringify(scenes.map(s => ({ id: s.id, heading: s.sceneHeading, description: s.description })));
+    const currentHash = JSON.stringify(scenes.map(buildSceneAutosaveSnapshot));
     
     // Skip if content hasn't changed (prevents saves on reference changes)
     if (currentHash === scenesHashRef.current) {
@@ -893,7 +926,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     try {
       const manuscript: Manuscript = {
         id: `manuscript-${Date.now()}`,
-        projectId,
+        projectId: activeProjectId,
         title: newManuscript.title,
         subtitle: newManuscript.subtitle,
         author: newManuscript.author,
@@ -980,6 +1013,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       let sceneNumber = 1;
       let currentScene: Partial<SceneBreakdown> | null = null;
       let currentCharacters: string[] = [];
+      const validSceneTimesOfDay = ['DAY', 'NIGHT', 'DAWN', 'DUSK', 'CONTINUOUS', 'LATER', 'MORNING', 'EVENING'] as const;
+      type SceneTimeOfDay = NonNullable<SceneBreakdown['timeOfDay']>;
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -1004,9 +1039,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           const intExt = parts[0].startsWith('INT') ? 'INT' : 'EXT';
           const location = parts[0].replace(/^(INT\.|EXT\.)\s*/i, '');
           const timeRaw = parts[1] || 'DAY';
-          const timeOfDay: 'DAY' | 'NIGHT' | 'DAWN' | 'DUSK' | 'CONTINUOUS' | 'LATER' | 'MORNING' | 'EVENING' = 
-            ['DAY', 'NIGHT', 'DAWN', 'DUSK', 'CONTINUOUS', 'LATER', 'MORNING', 'EVENING'].includes(timeRaw.toUpperCase()) 
-              ? timeRaw.toUpperCase() as SceneBreakdown['timeOfDay'] 
+          const timeOfDay: SceneTimeOfDay =
+            validSceneTimesOfDay.includes(timeRaw.toUpperCase() as SceneTimeOfDay)
+              ? timeRaw.toUpperCase() as SceneTimeOfDay
               : 'DAY';
 
           currentScene = {
@@ -1128,7 +1163,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       // Create new manuscript from template
       const newManuscript: Manuscript = {
         id: `manuscript-${Date.now()}`,
-        projectId,
+        projectId: activeProjectId,
         title: template.name,
         subtitle: '',
         author: '',
@@ -1345,6 +1380,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       showWarning('Auto Breakdown er deaktivert. Aktiver bryteren først.');
       return;
     }
+    if (!selectedManuscript) {
+      showWarning('Velg et manuskript først.');
+      return;
+    }
     // Parse Fountain content to create scenes
     const lines = content.split('\n');
     const newScenes: SceneBreakdown[] = [];
@@ -1363,7 +1402,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         const scene: SceneBreakdown = {
           id: `scene-${newScenes.length + 1}`,
           manuscriptId: selectedManuscript.id,
-          projectId: projectId,
+          projectId: activeProjectId,
           sceneNumber: String(newScenes.length + 1),
           sceneHeading: currentSceneData.heading,
           intExt: currentSceneData.intExt as 'INT' | 'EXT' | 'INT/EXT',
@@ -1418,7 +1457,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // Update scenes
     setScenes(newScenes);
     showSuccess(`Parsed ${newScenes.length} scenes from screenplay`);
-  }, [autoBreakdownEnabled, projectId, showSuccess, showWarning]);
+  }, [activeProjectId, autoBreakdownEnabled, selectedManuscript, showSuccess, showWarning]);
 
   const handleDeleteManuscript = async (manuscript: Manuscript) => {
     if (!confirm(`Er du sikker på at du vil slette "${manuscript.title}"?`)) return;
@@ -2363,7 +2402,14 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   setSelectedShot(null);
                   setShowProductionPanel(true);
                 }}
-                onReorderScenes={setScenes}
+                onReorderScenes={(nextScenes) => {
+                  setScenes(nextScenes);
+                  setSelectedScene((currentSelection) => (
+                    currentSelection
+                      ? nextScenes.find((scene) => scene.id === currentSelection.id) ?? null
+                      : currentSelection
+                  ));
+                }}
                 selectedScene={selectedScene || undefined}
               />
             )}
@@ -2419,7 +2465,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   const nowIso = new Date().toISOString();
                   const updatedManuscript: Manuscript = {
                     ...selectedManuscript,
-                    version: nextVersion,
+                    version: nextVersion ?? selectedManuscript.version ?? '1.0',
                     updatedAt: nowIso,
                   };
                   setSelectedManuscript(updatedManuscript);
@@ -2435,8 +2481,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   const nowIso = new Date().toISOString();
                   const restoredManuscript: Manuscript = {
                     ...selectedManuscript,
-                    content: revision.content,
-                    version: revision.version || selectedManuscript.version,
+                    content: revision.content ?? '',
+                    version: revision.version || selectedManuscript.version || '1.0',
                     updatedAt: nowIso,
                   };
 
@@ -2445,8 +2491,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     current.map((entry) => (entry.id === restoredManuscript.id ? restoredManuscript : entry))
                   );
                   selectedManuscriptRef.current = restoredManuscript;
-                  pendingContentRef.current = revision.content;
-                  lastSavedContentRef.current = revision.content;
+                  pendingContentRef.current = revision.content ?? '';
+                  lastSavedContentRef.current = revision.content ?? '';
                   isDirtyRef.current = false;
                   setManuscriptSaveStatus('saved');
                   setLastManuscriptSaved(new Date(nowIso));
@@ -2531,8 +2577,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     initialState={{
                       currentScene: {
                         sceneId: selectedScene.id,
-                        sceneNumber: selectedScene.sceneNumber,
-                        sceneHeading: selectedScene.sceneHeading,
+                        sceneNumber: selectedScene.sceneNumber ?? '',
+                        sceneHeading: selectedScene.sceneHeading ?? selectedScene.heading ?? '',
                         sceneType: selectedScene.intExt,
                         location: selectedScene.locationName,
                         timeOfDay: selectedScene.timeOfDay,
@@ -2559,7 +2605,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                           }}
                           scene={selectedScene}
                           onSceneUpdate={(updatedScene) => {
-                            setScenes(scenes.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene)));
+                            setScenes((current) =>
+                              current.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene))
+                            );
                             setSelectedScene(updatedScene);
                           }}
                           renderScriptEditor={({ content, onChange }) => (
@@ -2574,7 +2622,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                   runtimeMinutes: Math.max(0, Math.round(selectedManuscript.pageCount || 0)),
                                   sceneCount: scenes.length,
                                   characterCount: sceneCharactersMemo.length,
-                                  statusLabel: selectedManuscript.status.toUpperCase(),
+                                  statusLabel: (selectedManuscript.status ?? 'draft').toUpperCase(),
                                   saveLabel:
                                     manuscriptSaveStatus === 'saved'
                                       ? (lastManuscriptSaved
@@ -2604,20 +2652,20 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                               onUpdate={onUpdate}
                               storyboardOnly={true}
                               activeFrameIndex={activeFrameIndex}
-                              onFrameSelect={(index) => {
-                                onFrameSelect(index);
-                                const shot =
-                                  scene.storyboardFrames?.[index]?.shotNumber ||
-                                  `Shot ${index + 1}`;
+                                onFrameSelect={(index) => {
+                                  onFrameSelect(index);
+                                const shot = String(
+                                  scene.storyboardFrames?.[index]?.shotNumber ?? `Shot ${index + 1}`
+                                );
                                 setSelectedShot(shot);
                                 setShowProductionPanel(true);
                               }}
                             />
                           )}
                           onFrameSelect={(_, index) => {
-                            const shot =
-                              selectedScene.storyboardFrames?.[index]?.shotNumber ||
-                              `Shot ${index + 1}`;
+                            const shot = String(
+                              selectedScene.storyboardFrames?.[index]?.shotNumber ?? `Shot ${index + 1}`
+                            );
                             setSelectedShot(shot);
                             setShowProductionPanel(true);
                           }}
@@ -2626,14 +2674,16 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         <StoryboardIntegrationView
                           scene={selectedScene}
                           onUpdate={(updatedScene) => {
-                            setScenes(scenes.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene)));
+                            setScenes((current) =>
+                              current.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene))
+                            );
                             setSelectedScene(updatedScene);
                           }}
                           storyboardOnly={true}
                           onFrameSelect={(index) => {
-                            const shot =
-                              selectedScene.storyboardFrames?.[index]?.shotNumber ||
-                              `Shot ${index + 1}`;
+                            const shot = String(
+                              selectedScene.storyboardFrames?.[index]?.shotNumber ?? `Shot ${index + 1}`
+                            );
                             setSelectedShot(shot);
                             setShowProductionPanel(true);
                           }}
@@ -2661,7 +2711,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   scenes={scenes}
                   dialogueLines={dialogueLines}
                   acts={acts}
-                  projectId={projectId}
+                  projectId={activeProjectId}
                   storyLogicData={storyLogicData}
                   onSceneUpdate={async (updatedScene) => {
                     // Update local state
@@ -2965,7 +3015,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               <InputLabel>Format</InputLabel>
               <Select
                 value={newManuscript.format}
-                onChange={(e) => setNewManuscript({ ...newManuscript, format: e.target.value as Manuscript['format'] })}
+                onChange={(e) => setNewManuscript({ ...newManuscript, format: e.target.value as NonNullable<Manuscript['format']> })}
                 label="Format"
               >
                 <MenuItem value="fountain">Fountain (anbefalt)</MenuItem>
@@ -3363,6 +3413,7 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
   onLocationAdd,
 }) => {
   const { showSuccess } = useToast();
+  const branding = useBrandingSettings();
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(true);
   const [showParseDialog, setShowParseDialog] = useState(false);
   const [selectedRoleMention, setSelectedRoleMention] = useState<CharacterProfileOpenPayload | null>(null);
@@ -3602,7 +3653,7 @@ Anna går raskt gjennom regnet.
               runtimeMinutes: Math.max(0, Math.round(manuscript.pageCount || contentStats.estimatedMinutes)),
               sceneCount: scenes.length,
               characterCount: allCharacters.length,
-              statusLabel: manuscript.status.toUpperCase(),
+              statusLabel: (manuscript.status ?? 'draft').toUpperCase(),
               saveLabel:
                 manuscriptSaveStatus === 'saved'
                   ? (lastManuscriptSaved
@@ -3910,7 +3961,7 @@ const ActsTab: React.FC<{
   const handleEdit = (act: Act) => {
     setEditingAct(act);
     setFormData({
-      actNumber: act.actNumber,
+      actNumber: act.actNumber ?? act.index ?? 1,
       title: act.title || '',
       description: act.description || '',
       pageStart: act.pageStart || 1,
@@ -4271,7 +4322,7 @@ const ScenesTab: React.FC<{
                       {scene.pageLength?.toFixed(1) || '-'} sider
                     </Typography>
                     <Typography variant="caption" sx={{ fontSize: responsive.captionFontSize }}>
-                      {scene.characters.length} karakterer
+                      {scene.characters?.length || 0} karakterer
                     </Typography>
                   </Stack>
                 </Box>
@@ -4311,7 +4362,7 @@ const ScenesTab: React.FC<{
                   <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.intExt}</TableCell>
                   {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.timeOfDay}</TableCell>}
                   <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.pageLength?.toFixed(2) || '-'}</TableCell>
-                  {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.characters.length}</TableCell>}
+                  {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.characters?.length || 0}</TableCell>}
                   <TableCell>
                     <Chip
                       label={scene.status}
@@ -4457,7 +4508,7 @@ const CharactersTab: React.FC<{
         role: savedProfile?.role || (lines.length > 10 ? 'lead' : lines.length > 5 ? 'supporting' : 'minor'),
         sceneCount: appearingScenes.length,
         dialogueCount: lines.length,
-        scenesAppearing: appearingScenes.map(s => s.sceneNumber),
+        scenesAppearing: appearingScenes.map((s) => String(s.sceneNumber ?? '')),
       });
     });
     
@@ -5285,6 +5336,7 @@ const RevisionsTab: React.FC<{
   onRestoreRevision,
 }) => {
   const { showSuccess, showError } = useToast();
+  const branding = useBrandingSettings();
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -5474,7 +5526,7 @@ const RevisionsTab: React.FC<{
                     <Stack direction="row" spacing={0.5} alignItems="center">
                       {!isMobile && (
                         <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-                          {new Date(revision.createdAt).toLocaleDateString('no-NO', {
+                          {new Date(revision.createdAt ?? Date.now()).toLocaleDateString('no-NO', {
                             day: '2-digit',
                             month: 'short',
                             year: 'numeric',
@@ -5507,7 +5559,7 @@ const RevisionsTab: React.FC<{
                   </Stack>
                   {isMobile && (
                     <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize, mt: 0.5, display: 'block' }}>
-                      {new Date(revision.createdAt).toLocaleDateString('no-NO', {
+                      {new Date(revision.createdAt ?? Date.now()).toLocaleDateString('no-NO', {
                         day: '2-digit',
                         month: 'short',
                         hour: '2-digit',

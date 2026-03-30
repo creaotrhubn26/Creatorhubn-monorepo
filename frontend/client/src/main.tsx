@@ -1,10 +1,9 @@
 // Buffer polyfill for browser compatibility (must be first)
 import { Buffer } from 'buffer';
-(window as any).Buffer = Buffer;
+window.Buffer = Buffer;
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
 import { initSentry } from './utils/sentry';
 import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
 import './styles/academy-responsive.css';
@@ -15,9 +14,34 @@ declare global {
   }
 
   interface Window {
+    Buffer: typeof Buffer;
     __creatorhubFetchNormalized?: boolean;
   }
 }
+
+const VISUAL_EDITOR_ROUTE_PATTERN = /^\/(?:visual-editor-enhanced(?:\/.*)?|evendi(?:\/.*)?)$/;
+const ADMIN_ROUTE_PATTERN = /^\/(?:admin|visual-cms-admin|equipment-admin)(?:\/.*)?$/;
+
+const shouldUseVisualEditorBootstrap = (pathname: string): boolean =>
+  VISUAL_EDITOR_ROUTE_PATTERN.test(pathname);
+
+const shouldUseAdminBootstrap = (pathname: string): boolean =>
+  ADMIN_ROUTE_PATTERN.test(pathname);
+
+const resolveRootComponent = async (): Promise<React.ComponentType> => {
+  if (shouldUseVisualEditorBootstrap(window.location.pathname)) {
+    const module = await import('./visual-editor-entry');
+    return module.default;
+  }
+
+  if (shouldUseAdminBootstrap(window.location.pathname)) {
+    const module = await import('./admin-entry');
+    return module.default;
+  }
+
+  const module = await import('./App');
+  return module.default;
+};
 
 function installFetchNormalization() {
   if (window.__creatorhubFetchNormalized) return;
@@ -65,7 +89,14 @@ function installPerformanceTimingFallback() {
 console.log('[main.tsx] All imports loaded at', new Date().toISOString());
 console.log('[main.tsx] React:', typeof React);
 console.log('[main.tsx] ReactDOM:', typeof ReactDOM);
-console.log('[main.tsx] App:', typeof App);
+console.log(
+  '[main.tsx] Bootstrap mode:',
+  shouldUseVisualEditorBootstrap(window.location.pathname)
+    ? 'visual-editor'
+    : shouldUseAdminBootstrap(window.location.pathname)
+      ? 'admin'
+      : 'app',
+);
 // #endregion
 
 // Initialize Sentry for error tracking
@@ -99,18 +130,21 @@ if (!rootElement) {
   console.log('[main.tsx] Creating root, about to render');
   // #endregion
 
-  try {
-    root.render(
-      <React.StrictMode>
-        <App />
-      </React.StrictMode>
-    );
-    console.log('[main.tsx] Render called successfully');
-  } catch (error) {
-    console.error('[main.tsx] Error during render:', error);
-    rootElement.innerHTML = `<div style="padding: 40px; background: red; color: white;">
+  void resolveRootComponent()
+    .then((RootComponent) => {
+      console.log('[main.tsx] Root component loaded');
+      root.render(
+        <React.StrictMode>
+          <RootComponent />
+        </React.StrictMode>
+      );
+      console.log('[main.tsx] Render called successfully');
+    })
+    .catch((error) => {
+      console.error('[main.tsx] Error during render:', error);
+      rootElement.innerHTML = `<div style="padding: 40px; background: red; color: white;">
       <h1>Render Error</h1>
       <pre>${error instanceof Error ? error.stack : String(error)}</pre>
     </div>`;
-  }
+    });
 }

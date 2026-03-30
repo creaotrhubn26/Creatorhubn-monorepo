@@ -34,6 +34,7 @@ import {
   AttachMoney,
   Info,
 } from '@mui/icons-material';
+import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 
 // ============================================================================
 // Types
@@ -150,6 +151,7 @@ export function PricingSelector({
   currency = 'NOK',
   projectId,
 }: PricingSelectorProps) {
+  const useLocalFallback = shouldUseRoleRoomLocalFallback();
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [packages, setPackages] = useState<ServicePackage[]>(DEFAULT_PACKAGES);
@@ -160,6 +162,13 @@ export function PricingSelector({
 
   // Fetch packages and quotes from backend
   const fetchData = useCallback(async () => {
+    if (useLocalFallback) {
+      setPackages(DEFAULT_PACKAGES);
+      setQuotes([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const [pkgRes, quoteRes] = await Promise.allSettled([
@@ -185,7 +194,7 @@ export function PricingSelector({
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, useLocalFallback]);
 
   useEffect(() => {
     fetchData();

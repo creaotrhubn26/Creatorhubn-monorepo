@@ -48,16 +48,27 @@ import {
   Delete,
   Save,
   Create,
+  CropFree,
+  HighlightAlt,
+  FormatAlignLeft,
+  FormatAlignRight,
+  GridOn,
   TouchApp,
   Image,
   Layers,
   Opacity,
+  Deselect,
   BrushOutlined,
-  GridOn,
   Build,
+  PanoramaFishEye,
+  VerticalAlignBottom,
+  VerticalAlignTop,
   Straighten,
   RestartAlt,
+  FilterCenterFocus,
+  SwapHoriz,
   AutoFixHigh,
+  OpenWith,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import {
@@ -97,9 +108,12 @@ import {
 import {
   SelectionBox,
   getStrokeBounds,
+  isStrokeInEllipse,
   isStrokeInLasso,
   isStrokeInRectangle,
   transformStroke,
+  type CornerWarp,
+  type CornerWarpCorner,
   type SelectionBounds,
   type Transform,
 } from './drawing/SelectionTools';
@@ -146,6 +160,94 @@ export interface ReferenceImage {
   y: number;
   width: number;
   height: number;
+  rotation?: number;
+  fitMode?: 'free' | 'contain' | 'cover';
+}
+
+function referenceImagesEqual(
+  previous: ReferenceImage | null | undefined,
+  next: ReferenceImage | null | undefined,
+): boolean {
+  if (!previous && !next) return true;
+  if (!previous || !next) return false;
+  return previous.src === next.src
+    && Math.abs(previous.opacity - next.opacity) < 0.001
+    && previous.visible === next.visible
+    && Math.abs(previous.x - next.x) < 0.001
+    && Math.abs(previous.y - next.y) < 0.001
+    && Math.abs(previous.width - next.width) < 0.001
+    && Math.abs(previous.height - next.height) < 0.001
+    && Math.abs((previous.rotation || 0) - (next.rotation || 0)) < 0.001
+    && (previous.fitMode || 'free') === (next.fitMode || 'free');
+}
+
+function getReferenceImageSignature(referenceImage: ReferenceImage | null | undefined): string {
+  if (!referenceImage) {
+    return 'none';
+  }
+  return JSON.stringify({
+    src: referenceImage.src,
+    opacity: Number(referenceImage.opacity.toFixed(3)),
+    visible: referenceImage.visible,
+    x: Number(referenceImage.x.toFixed(3)),
+    y: Number(referenceImage.y.toFixed(3)),
+    width: Number(referenceImage.width.toFixed(3)),
+    height: Number(referenceImage.height.toFixed(3)),
+    rotation: Number((referenceImage.rotation || 0).toFixed(3)),
+    fitMode: referenceImage.fitMode || 'free',
+  });
+}
+
+function getLayerStateSignature(
+  layerState: PencilCanvasProProps['layerState'],
+): string {
+  if (!layerState) {
+    return 'none';
+  }
+  return JSON.stringify({
+    activeLayerId: layerState.activeLayerId,
+    layers: layerState.layers.map((layer) => ({
+      id: layer.id,
+      name: layer.name,
+      visible: layer.visible,
+      locked: layer.locked,
+      opacity: layer.opacity,
+      blendMode: layer.blendMode,
+    })),
+  });
+}
+
+function getOnionSkinSignature(settings: Partial<OnionSkinSettings> | undefined): string {
+  if (!settings) {
+    return 'none';
+  }
+  return JSON.stringify({
+    enabled: settings.enabled,
+    framesBefore: settings.framesBefore,
+    framesAfter: settings.framesAfter,
+    previousColor: settings.previousColor,
+    nextColor: settings.nextColor,
+    opacity: settings.opacity,
+  });
+}
+
+export interface RenderableLayerOverlay {
+  id: string;
+  opacity: number;
+  blendMode: DrawingLayer['blendMode'];
+  strokes: PencilStroke[];
+}
+
+export interface StrokeTransform {
+  translateX: number;
+  translateY: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+  perspectiveX?: number;
+  perspectiveY?: number;
+  pivotX: number;
+  pivotY: number;
 }
 
 export interface PencilCanvasProProps {
@@ -154,6 +256,12 @@ export interface PencilCanvasProProps {
   backgroundImage?: string;
   referenceImage?: ReferenceImage;
   initialStrokes?: PencilStroke[];
+  underlayLayers?: RenderableLayerOverlay[];
+  activeStrokeTransforms?: StrokeTransform[];
+  layerState?: {
+    layers: DrawingLayer[];
+    activeLayerId: string;
+  };
   brushSettings?: Partial<ProBrushSettings>;
   showToolbar?: boolean;
   showPressureIndicator?: boolean;
@@ -168,10 +276,19 @@ export interface PencilCanvasProProps {
   currentFrameIndex?: number;
   totalFrames?: number;
   getFrameImage?: (index: number) => HTMLCanvasElement | null;
+  onionSkinSettings?: Partial<OnionSkinSettings>;
   onStrokesChange?: (strokes: PencilStroke[]) => void;
   onSave?: (imageData: string) => void;
   onReferenceImageChange?: (ref: ReferenceImage | null) => void;
   onExport?: (settings: ExportSettings, frameIndices: number[]) => Promise<void>;
+  onLayerStateChange?: (state: { layers: DrawingLayer[]; activeLayerId: string }) => void;
+  onLayerAdd?: () => void;
+  onLayerDelete?: (id: string) => void;
+  onLayerVisibilityToggle?: (id: string) => void;
+  onLayerOpacityChange?: (id: string, opacity: number) => void;
+  onLayerReorder?: (fromIndex: number, toIndex: number) => void;
+  onLayerMerge?: (id: string) => void;
+  onLayerDuplicate?: (id: string) => void;
 }
 
 export interface PencilCanvasProHandle {
@@ -212,11 +329,13 @@ interface SelectionDragRect {
 
 interface SelectionDragState {
   pointerId: number;
-  mode: 'rectangle' | 'lasso';
+  mode: 'rectangle' | 'ellipse' | 'lasso';
   start: { x: number; y: number };
   current: { x: number; y: number };
   lassoPoints: PencilPoint[];
 }
+
+type SelectionPivotPreset = 'center' | 'top' | 'right' | 'bottom' | 'left';
 
 function brushConfigDiffers(a: ProBrushSettings, b: BrushConfig): boolean {
   return (
@@ -243,6 +362,10 @@ const PRO_BRUSH_TYPES: readonly ProBrushType[] = [
   'highlighter',
   'eraser',
 ];
+const SELECTION_SNAP_GRID_SIZE = 50;
+const SELECTION_EDGE_SNAP_THRESHOLD = 18;
+const SELECTION_ROTATION_SNAP_DEGREES = 15;
+const SELECTION_CORNER_WARP_LIMIT = 0.9;
 
 function isProBrushType(value: string): value is ProBrushType {
   return (PRO_BRUSH_TYPES as readonly string[]).includes(value);
@@ -286,6 +409,302 @@ function drawLivePreviewSegment(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function rotatePointAround(
+  point: { x: number; y: number },
+  pivot: { x: number; y: number },
+  rotationDegrees: number,
+): { x: number; y: number } {
+  if (rotationDegrees === 0) {
+    return { x: point.x, y: point.y };
+  }
+
+  const radians = (rotationDegrees * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const relativeX = point.x - pivot.x;
+  const relativeY = point.y - pivot.y;
+
+  return {
+    x: pivot.x + (relativeX * cos) - (relativeY * sin),
+    y: pivot.y + (relativeX * sin) + (relativeY * cos),
+  };
+}
+
+function isSelectionPerspectiveHandle(handle: string): boolean {
+  return handle.startsWith('perspective-');
+}
+
+function createIdentityCornerWarp(): CornerWarp {
+  return {
+    nw: { x: 0, y: 0 },
+    ne: { x: 0, y: 0 },
+    se: { x: 0, y: 0 },
+    sw: { x: 0, y: 0 },
+  };
+}
+
+function isCornerWarpIdentity(cornerWarp?: CornerWarp): boolean {
+  if (!cornerWarp) return true;
+  return Object.values(cornerWarp).every((offset) => offset.x === 0 && offset.y === 0);
+}
+
+function getCornerWarpCornerFromHandle(handle: string): CornerWarpCorner | null {
+  if (!isSelectionPerspectiveHandle(handle)) return null;
+  const corner = handle.replace('perspective-', '');
+  return (
+    corner === 'nw'
+    || corner === 'ne'
+    || corner === 'se'
+    || corner === 'sw'
+  )
+    ? corner
+    : null;
+}
+
+function clampCornerWarpOffset(
+  offset: { x: number; y: number },
+  bounds: SelectionBounds,
+): { x: number; y: number } {
+  return {
+    x: clamp(offset.x, -Math.max(1, bounds.width * SELECTION_CORNER_WARP_LIMIT), Math.max(1, bounds.width * SELECTION_CORNER_WARP_LIMIT)),
+    y: clamp(offset.y, -Math.max(1, bounds.height * SELECTION_CORNER_WARP_LIMIT), Math.max(1, bounds.height * SELECTION_CORNER_WARP_LIMIT)),
+  };
+}
+
+function applyStrokeTransformsToPoint(
+  point: PencilPoint,
+  transforms: StrokeTransform[],
+): PencilPoint {
+  if (!transforms.length) return point;
+  let x = point.x;
+  let y = point.y;
+
+  transforms.forEach((transform) => {
+    const perspectiveX = transform.perspectiveX ?? 0;
+    const perspectiveY = transform.perspectiveY ?? 0;
+    const rotationRadians = (transform.rotation * Math.PI) / 180;
+    const relativeX = x - transform.pivotX;
+    const relativeY = y - transform.pivotY;
+    const scaledX = relativeX * transform.scaleX;
+    const scaledY = relativeY * transform.scaleY;
+    const perspectiveXPosition = scaledX + (scaledY * perspectiveX);
+    const perspectiveYPosition = (scaledX * perspectiveY) + scaledY;
+    const rotatedX = (perspectiveXPosition * Math.cos(rotationRadians)) - (perspectiveYPosition * Math.sin(rotationRadians));
+    const rotatedY = (perspectiveXPosition * Math.sin(rotationRadians)) + (perspectiveYPosition * Math.cos(rotationRadians));
+    x = transform.pivotX + transform.translateX + rotatedX;
+    y = transform.pivotY + transform.translateY + rotatedY;
+  });
+
+  return {
+    ...point,
+    x,
+    y,
+  };
+}
+
+function invertStrokeTransformsFromPoint(
+  point: PencilPoint,
+  transforms: StrokeTransform[],
+): PencilPoint {
+  if (!transforms.length) return point;
+  let x = point.x;
+  let y = point.y;
+
+  for (let index = transforms.length - 1; index >= 0; index -= 1) {
+    const transform = transforms[index];
+    const perspectiveX = transform.perspectiveX ?? 0;
+    const perspectiveY = transform.perspectiveY ?? 0;
+    const rotationRadians = (transform.rotation * Math.PI) / 180;
+    const relativeX = x - transform.pivotX - transform.translateX;
+    const relativeY = y - transform.pivotY - transform.translateY;
+    const shearedX = (relativeX * Math.cos(rotationRadians)) + (relativeY * Math.sin(rotationRadians));
+    const shearedY = (-relativeX * Math.sin(rotationRadians)) + (relativeY * Math.cos(rotationRadians));
+    const determinant = 1 - (perspectiveX * perspectiveY);
+    const safeDeterminant = Math.abs(determinant) < 0.0001
+      ? (determinant < 0 ? -0.0001 : 0.0001)
+      : determinant;
+    const unperspectiveX = (shearedX - (perspectiveX * shearedY)) / safeDeterminant;
+    const unperspectiveY = (shearedY - (perspectiveY * shearedX)) / safeDeterminant;
+    x = transform.pivotX + (unperspectiveX / Math.max(0.0001, transform.scaleX));
+    y = transform.pivotY + (unperspectiveY / Math.max(0.0001, transform.scaleY));
+  }
+
+  return {
+    ...point,
+    x,
+    y,
+  };
+}
+
+function applyStrokeTransformsToStroke(
+  stroke: PencilStroke,
+  transforms: StrokeTransform[],
+): PencilStroke {
+  if (!transforms.length) return stroke;
+  return {
+    ...stroke,
+    points: stroke.points.map((point) => applyStrokeTransformsToPoint(point, transforms)),
+  };
+}
+
+function getSelectionPivot(bounds: SelectionBounds, handle: string): { x: number; y: number } {
+  if (
+    bounds.customPivot
+    && Number.isFinite(bounds.pivotX)
+    && Number.isFinite(bounds.pivotY)
+    && handle !== 'move'
+  ) {
+    return { x: bounds.pivotX as number, y: bounds.pivotY as number };
+  }
+
+  switch (handle) {
+    case 'nw':
+      return { x: bounds.x + bounds.width, y: bounds.y + bounds.height };
+    case 'n':
+      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height };
+    case 'ne':
+      return { x: bounds.x, y: bounds.y + bounds.height };
+    case 'e':
+      return { x: bounds.x, y: bounds.y + bounds.height / 2 };
+    case 'se':
+      return { x: bounds.x, y: bounds.y };
+    case 's':
+      return { x: bounds.x + bounds.width / 2, y: bounds.y };
+    case 'sw':
+      return { x: bounds.x + bounds.width, y: bounds.y };
+    case 'w':
+      return { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 };
+    default:
+      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  }
+}
+
+function getSelectionBoundsCenter(bounds: SelectionBounds): { x: number; y: number } {
+  return {
+    x: bounds.x + (bounds.width / 2),
+    y: bounds.y + (bounds.height / 2),
+  };
+}
+
+function getSelectionBoundsPivot(bounds: SelectionBounds): {
+  x: number;
+  y: number;
+  custom: boolean;
+} {
+  const center = getSelectionBoundsCenter(bounds);
+  return {
+    x: Number.isFinite(bounds.pivotX) ? bounds.pivotX as number : center.x,
+    y: Number.isFinite(bounds.pivotY) ? bounds.pivotY as number : center.y,
+    custom: Boolean(bounds.customPivot),
+  };
+}
+
+function withSelectionBoundsPivot(
+  bounds: SelectionBounds,
+  options?: {
+    previousBounds?: SelectionBounds | null;
+    rotation?: number;
+    translatePivot?: { dx: number; dy: number };
+    forcePivot?: { x: number; y: number; custom: boolean };
+  },
+): SelectionBounds {
+  const center = getSelectionBoundsCenter(bounds);
+  const previousPivot = options?.previousBounds ? getSelectionBoundsPivot(options.previousBounds) : null;
+
+  if (options?.forcePivot) {
+    return {
+      ...bounds,
+      rotation: options.rotation ?? options.previousBounds?.rotation ?? bounds.rotation ?? 0,
+      pivotX: options.forcePivot.x,
+      pivotY: options.forcePivot.y,
+      customPivot: options.forcePivot.custom,
+    };
+  }
+
+  if (previousPivot?.custom) {
+    return {
+      ...bounds,
+      rotation: options?.rotation ?? options.previousBounds?.rotation ?? bounds.rotation ?? 0,
+      pivotX: previousPivot.x + (options?.translatePivot?.dx ?? 0),
+      pivotY: previousPivot.y + (options?.translatePivot?.dy ?? 0),
+      customPivot: true,
+    };
+  }
+
+  return {
+    ...bounds,
+    rotation: options?.rotation ?? options?.previousBounds?.rotation ?? bounds.rotation ?? 0,
+    pivotX: center.x,
+    pivotY: center.y,
+    customPivot: false,
+  };
+}
+
+function clampSelectionScale(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  const sign = value < 0 ? -1 : 1;
+  return sign * Math.max(0.1, Math.min(8, Math.abs(value)));
+}
+
+function snapValueToGrid(value: number, gridSize: number): number {
+  return Math.round(value / gridSize) * gridSize;
+}
+
+function getSelectionPivotPresetPoint(bounds: SelectionBounds, preset: SelectionPivotPreset): {
+  x: number;
+  y: number;
+  custom: boolean;
+} {
+  const center = getSelectionBoundsCenter(bounds);
+  switch (preset) {
+    case 'top':
+      return { x: center.x, y: bounds.y, custom: true };
+    case 'right':
+      return { x: bounds.x + bounds.width, y: center.y, custom: true };
+    case 'bottom':
+      return { x: center.x, y: bounds.y + bounds.height, custom: true };
+    case 'left':
+      return { x: bounds.x, y: center.y, custom: true };
+    default:
+      return { x: center.x, y: center.y, custom: false };
+  }
+}
+
+function snapSelectionMoveDelta(
+  dx: number,
+  dy: number,
+  bounds: SelectionBounds,
+  canvasWidth: number,
+  canvasHeight: number,
+): { dx: number; dy: number } {
+  const nextLeft = bounds.x + dx;
+  const nextTop = bounds.y + dy;
+  const nextCenterX = nextLeft + (bounds.width / 2);
+  const nextCenterY = nextTop + (bounds.height / 2);
+  const nextRight = nextLeft + bounds.width;
+  const nextBottom = nextTop + bounds.height;
+
+  const xAdjustments = [
+    { delta: 0 - nextLeft, distance: Math.abs(0 - nextLeft) },
+    { delta: (canvasWidth / 2) - nextCenterX, distance: Math.abs((canvasWidth / 2) - nextCenterX) },
+    { delta: canvasWidth - nextRight, distance: Math.abs(canvasWidth - nextRight) },
+  ].filter((entry) => entry.distance <= SELECTION_EDGE_SNAP_THRESHOLD);
+
+  const yAdjustments = [
+    { delta: 0 - nextTop, distance: Math.abs(0 - nextTop) },
+    { delta: (canvasHeight / 2) - nextCenterY, distance: Math.abs((canvasHeight / 2) - nextCenterY) },
+    { delta: canvasHeight - nextBottom, distance: Math.abs(canvasHeight - nextBottom) },
+  ].filter((entry) => entry.distance <= SELECTION_EDGE_SNAP_THRESHOLD);
+
+  const bestXAdjustment = xAdjustments.sort((a, b) => a.distance - b.distance)[0];
+  const bestYAdjustment = yAdjustments.sort((a, b) => a.distance - b.distance)[0];
+
+  return {
+    dx: dx + (bestXAdjustment?.delta ?? 0),
+    dy: dy + (bestYAdjustment?.delta ?? 0),
+  };
 }
 
 function projectPointToLine(point: PencilPoint, guide: RulerGuide): PencilPoint {
@@ -654,6 +1073,9 @@ function isTransformIdentity(transform: Transform): boolean {
     && transform.scaleX === 1
     && transform.scaleY === 1
     && transform.rotation === 0
+    && (transform.perspectiveX ?? 0) === 0
+    && (transform.perspectiveY ?? 0) === 0
+    && isCornerWarpIdentity(transform.cornerWarp)
   );
 }
 
@@ -666,7 +1088,68 @@ function selectionBoundsEqual(a: SelectionBounds | null, b: SelectionBounds | nu
     && a.width === b.width
     && a.height === b.height
     && a.rotation === b.rotation
+    && a.pivotX === b.pivotX
+    && a.pivotY === b.pivotY
+    && a.customPivot === b.customPivot
   );
+}
+
+function transformEqual(left: Transform, right: Transform): boolean {
+  return (
+    left.translateX === right.translateX
+    && left.translateY === right.translateY
+    && left.scaleX === right.scaleX
+    && left.scaleY === right.scaleY
+    && left.rotation === right.rotation
+    && (left.perspectiveX ?? 0) === (right.perspectiveX ?? 0)
+    && (left.perspectiveY ?? 0) === (right.perspectiveY ?? 0)
+    && JSON.stringify(normalizeCornerWarp(left.cornerWarp)) === JSON.stringify(normalizeCornerWarp(right.cornerWarp))
+  );
+}
+
+function layerArraysEqual(left: DrawingLayer[], right: DrawingLayer[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((layer, index) => {
+    const candidate = right[index];
+    return (
+      layer.id === candidate?.id
+      && layer.name === candidate.name
+      && layer.visible === candidate.visible
+      && layer.locked === candidate.locked
+      && layer.opacity === candidate.opacity
+      && layer.blendMode === candidate.blendMode
+    );
+  });
+}
+
+function stringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function drawingStateValueEqual<Key extends keyof DrawingState>(
+  key: Key,
+  left: DrawingState[Key],
+  right: DrawingState[Key],
+): boolean {
+  if (key === 'selectionBounds') {
+    return selectionBoundsEqual(left as DrawingState['selectionBounds'], right as DrawingState['selectionBounds']);
+  }
+  if (key === 'transform') {
+    return transformEqual(left as DrawingState['transform'], right as DrawingState['transform']);
+  }
+  if (key === 'layers') {
+    return layerArraysEqual(left as DrawingState['layers'], right as DrawingState['layers']);
+  }
+  if (key === 'selectedStrokeIds') {
+    return stringArraysEqual(left as DrawingState['selectedStrokeIds'], right as DrawingState['selectedStrokeIds']);
+  }
+  if (key === 'brushConfig') {
+    return !brushConfigDiffers(left as DrawingState['brushConfig'], right as DrawingState['brushConfig']);
+  }
+  if (typeof left === 'object' || typeof right === 'object') {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+  return Object.is(left, right);
 }
 
 // =============================================================================
@@ -879,6 +1362,9 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   backgroundImage,
   referenceImage: initialRefImage,
   initialStrokes = [],
+  underlayLayers = [],
+  activeStrokeTransforms = [],
+  layerState,
   brushSettings: initialBrushSettings,
   showToolbar = true,
   showPressureIndicator = false,
@@ -893,10 +1379,19 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   currentFrameIndex = 0,
   totalFrames = 1,
   getFrameImage,
+  onionSkinSettings: controlledOnionSkinSettings,
   onStrokesChange,
   onSave,
   onReferenceImageChange,
   onExport,
+  onLayerStateChange,
+  onLayerAdd,
+  onLayerDelete,
+  onLayerVisibilityToggle,
+  onLayerOpacityChange,
+  onLayerReorder,
+  onLayerMerge,
+  onLayerDuplicate,
 }, ref) => {
   // Device detection
   const device = useDeviceDetection();
@@ -936,10 +1431,13 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   const rulerDragStartPointRef = useRef<{ x: number; y: number } | null>(null);
   const selectionTransformRef = useRef<{
     pointerId: number;
+    handle: string;
     startPoint: { x: number; y: number };
     baselineBounds: SelectionBounds;
     baselineStrokes: PencilStroke[];
+    baselineDisplayStrokes: PencilStroke[];
     selectedIndexes: number[];
+    releaseCaptureTarget?: EventTarget | null;
   } | null>(null);
   
   // Brush engine
@@ -963,6 +1461,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   const [referenceImage, setReferenceImage] = useState<ReferenceImage | null>(initialRefImage || null);
   const [showGrid, setShowGrid] = useState(initialShowGrid);
   const [refOpacity, setRefOpacity] = useState(initialRefImage?.opacity || 0.3);
+  const suppressReferenceImagePropagationRef = useRef(false);
   const defaultDesktopCollapsed = width < 2200 || device.isIPad;
   const [toolsPanelCollapsed, setToolsPanelCollapsed] = useState(
     () => initialToolsPanelCollapsed ?? defaultDesktopCollapsed
@@ -977,10 +1476,55 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     x2: Math.min(width - 40, width * 0.75),
     y2: Math.round(height * 0.5),
   }));
+  const incomingReferenceImageSignature = useMemo(
+    () => getReferenceImageSignature(initialRefImage || null),
+    [initialRefImage]
+  );
+  const incomingInitialStrokeSignature = useMemo(
+    () => JSON.stringify(initialStrokes),
+    [initialStrokes]
+  );
+  const incomingLayerStateSignature = useMemo(
+    () => getLayerStateSignature(layerState),
+    [layerState]
+  );
+  const incomingOnionSkinSignature = useMemo(
+    () => getOnionSkinSignature(controlledOnionSkinSettings),
+    [
+      controlledOnionSkinSettings?.enabled,
+      controlledOnionSkinSettings?.framesBefore,
+      controlledOnionSkinSettings?.framesAfter,
+      controlledOnionSkinSettings?.previousColor,
+      controlledOnionSkinSettings?.nextColor,
+      controlledOnionSkinSettings?.opacity,
+    ]
+  );
+  const lastSyncedReferenceImageSignatureRef = useRef(incomingReferenceImageSignature);
+  const lastSyncedInitialStrokeSignatureRef = useRef(incomingInitialStrokeSignature);
+  const lastSyncedLayerStateSignatureRef = useRef(incomingLayerStateSignature);
+  const lastSyncedOnionSkinSignatureRef = useRef(incomingOnionSkinSignature);
+
+  useEffect(() => {
+    if (lastSyncedReferenceImageSignatureRef.current === incomingReferenceImageSignature) {
+      return;
+    }
+    lastSyncedReferenceImageSignatureRef.current = incomingReferenceImageSignature;
+    const nextReferenceImage = initialRefImage || null;
+    const nextOpacity = initialRefImage?.opacity || 0.3;
+    suppressReferenceImagePropagationRef.current = true;
+    setReferenceImage((prev) => (
+      referenceImagesEqual(prev, nextReferenceImage) ? prev : nextReferenceImage
+    ));
+    setRefOpacity((prev) => (
+      Math.abs(prev - nextOpacity) < 0.001 ? prev : nextOpacity
+    ));
+  }, [incomingReferenceImageSignature, initialRefImage]);
   
   // Drawing state for professional features
   const [drawingState, setDrawingState] = useState<DrawingState>(() => ({
     ...DEFAULT_DRAWING_STATE,
+    layers: layerState?.layers || DEFAULT_DRAWING_STATE.layers,
+    activeLayerId: layerState?.activeLayerId || DEFAULT_DRAWING_STATE.activeLayerId,
     brushConfig: {
       ...DEFAULT_DRAWING_STATE.brushConfig,
       ...DEFAULT_BRUSH_SETTINGS,
@@ -997,6 +1541,25 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   const [sizeAnchor, setSizeAnchor] = useState<HTMLElement | null>(null);
   const [refAnchor, setRefAnchor] = useState<HTMLElement | null>(null);
   const [advancedAnchor, setAdvancedAnchor] = useState<HTMLElement | null>(null);
+  const [selectionTransformAnchor, setSelectionTransformAnchor] = useState<HTMLElement | null>(null);
+  const [selectionTransformDraft, setSelectionTransformDraft] = useState<Transform>({
+    translateX: 0,
+    translateY: 0,
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+    perspectiveX: 0,
+    perspectiveY: 0,
+    cornerWarp: createIdentityCornerWarp(),
+  });
+  const [selectionTransformWarpCorner, setSelectionTransformWarpCorner] = useState<CornerWarpCorner>('ne');
+  const [selectionTransformDebug, setSelectionTransformDebug] = useState<{
+    handle: string;
+    perspectiveX: number;
+    perspectiveY: number;
+    warpX: number;
+    warpY: number;
+  } | null>(null);
   const resolvedDrawingToolsPanelWidth = useMemo(() => {
     if (typeof drawingToolsPanelWidth === 'number' && Number.isFinite(drawingToolsPanelWidth)) {
       return Math.max(240, Math.min(420, drawingToolsPanelWidth));
@@ -1013,6 +1576,81 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       .map((id) => Number(id.replace('stroke-', '')))
       .filter((index) => Number.isFinite(index) && index >= 0 && index < strokes.length)
   ), [drawingState.selectedStrokeIds, strokes.length]);
+  const displayStrokes = useMemo(
+    () => (
+      activeStrokeTransforms.length
+        ? strokes.map((stroke) => applyStrokeTransformsToStroke(stroke, activeStrokeTransforms))
+        : strokes
+    ),
+    [activeStrokeTransforms, strokes]
+  );
+  const currentStrokeSignature = useMemo(() => JSON.stringify(strokes), [strokes]);
+
+  useEffect(() => {
+    if (lastSyncedInitialStrokeSignatureRef.current === incomingInitialStrokeSignature) {
+      return;
+    }
+    if (currentStrokeSignature === incomingInitialStrokeSignature) {
+      lastSyncedInitialStrokeSignatureRef.current = incomingInitialStrokeSignature;
+      return;
+    }
+    lastSyncedInitialStrokeSignatureRef.current = incomingInitialStrokeSignature;
+    setStrokes(initialStrokes);
+    setUndoStack([]);
+    setRedoStack([]);
+    setDrawingState((prev) => ({
+      ...prev,
+      selectedStrokeIds: [],
+      selectionBounds: null,
+    }));
+  }, [currentStrokeSignature, incomingInitialStrokeSignature, initialStrokes]);
+
+  useEffect(() => {
+    if (!layerState) {
+      return;
+    }
+    if (lastSyncedLayerStateSignatureRef.current === incomingLayerStateSignature) {
+      return;
+    }
+    lastSyncedLayerStateSignatureRef.current = incomingLayerStateSignature;
+    setDrawingState((prev) => {
+      const nextLayers = layerArraysEqual(prev.layers, layerState.layers) ? prev.layers : layerState.layers;
+      const nextActiveLayerId = prev.activeLayerId === layerState.activeLayerId
+        ? prev.activeLayerId
+        : layerState.activeLayerId;
+      if (nextLayers === prev.layers && nextActiveLayerId === prev.activeLayerId) {
+        return prev;
+      }
+      return {
+        ...prev,
+        layers: nextLayers,
+        activeLayerId: nextActiveLayerId,
+      };
+    });
+  }, [incomingLayerStateSignature, layerState]);
+
+  useEffect(() => {
+    if (!controlledOnionSkinSettings) {
+      return;
+    }
+    if (lastSyncedOnionSkinSignatureRef.current === incomingOnionSkinSignature) {
+      return;
+    }
+    lastSyncedOnionSkinSignatureRef.current = incomingOnionSkinSignature;
+    setDrawingState((prev) => {
+      const nextSettings = {
+        ...prev.onionSkinSettings,
+        ...controlledOnionSkinSettings,
+      };
+      if (JSON.stringify(nextSettings) === JSON.stringify(prev.onionSkinSettings)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        onionSkinSettings: nextSettings,
+      };
+    });
+  }, [controlledOnionSkinSettings, incomingOnionSkinSignature]);
 
   useEffect(() => {
     if (!drawingState.selectedStrokeIds.length) {
@@ -1027,16 +1665,25 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       return;
     }
 
-    const selectedStrokes = selectedStrokeIndexes.map((index) => strokes[index]).filter(Boolean);
+    const selectedStrokes = selectedStrokeIndexes.map((index) => displayStrokes[index]).filter(Boolean);
     const nextBounds = getStrokeBounds(selectedStrokes);
-    if (!selectionBoundsEqual(nextBounds, drawingState.selectionBounds)) {
-      setDrawingState((prev) => ({ ...prev, selectionBounds: nextBounds }));
+    const normalizedNextBounds = nextBounds
+      ? withSelectionBoundsPivot(nextBounds, {
+          previousBounds: drawingState.selectionBounds,
+          rotation: drawingState.selectionBounds?.rotation || 0,
+        })
+      : null;
+    if (!selectionBoundsEqual(normalizedNextBounds, drawingState.selectionBounds)) {
+      setDrawingState((prev) => ({
+        ...prev,
+        selectionBounds: normalizedNextBounds,
+      }));
     }
   }, [
     drawingState.selectedStrokeIds,
     drawingState.selectionBounds,
     selectedStrokeIndexes,
-    strokes,
+    displayStrokes,
   ]);
   
   const normalizeBrushSize = useCallback((value: number): number => (
@@ -1139,9 +1786,22 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     }
 
     if (Object.keys(rest).length > 0) {
-      setDrawingState((prev) => ({ ...prev, ...rest }));
+      setDrawingState((prev) => {
+        const next = { ...prev, ...rest };
+        const changedKeys = Object.keys(rest) as Array<keyof DrawingState>;
+        if (!changedKeys.some((key) => !drawingStateValueEqual(key, prev[key], next[key]))) {
+          return prev;
+        }
+        if (rest.layers || rest.activeLayerId) {
+          onLayerStateChange?.({
+            layers: next.layers,
+            activeLayerId: next.activeLayerId,
+          });
+        }
+        return next;
+      });
     }
-  }, [applyBrushSettings]);
+  }, [applyBrushSettings, onLayerStateChange]);
 
   const activeTool: ActiveTool = drawingState.activeTool;
   const gestureSettings: GestureSettings = drawingState.gestureSettings;
@@ -1191,7 +1851,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     };
   }, [pressureCurve]);
 
-  const getLocalPointFromPointerEvent = useCallback((event: PointerEvent | React.PointerEvent) => {
+  const getCanvasPointFromPointerEvent = useCallback((event: PointerEvent | React.PointerEvent) => {
     const element = containerRef.current;
     if (!element) return null;
     const rect = element.getBoundingClientRect();
@@ -1201,25 +1861,140 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     };
   }, [width, height]);
 
+  const mapCanvasPointToLayerPoint = useCallback((point: PencilPoint): PencilPoint => (
+    invertStrokeTransformsFromPoint(point, activeStrokeTransforms)
+  ), [activeStrokeTransforms]);
+
+  const mapLayerPointToCanvasPoint = useCallback((point: PencilPoint): PencilPoint => (
+    applyStrokeTransformsToPoint(point, activeStrokeTransforms)
+  ), [activeStrokeTransforms]);
+
   const applySelectionByIndexes = useCallback((indexes: number[]) => {
     const uniqueIndexes = Array.from(new Set(indexes))
       .filter((index) => Number.isInteger(index) && index >= 0 && index < strokes.length)
       .sort((a, b) => a - b);
     const selectedStrokeIds = uniqueIndexes.map((index) => `stroke-${index}`);
-    const selectedStrokes = uniqueIndexes.map((index) => strokes[index]).filter(Boolean);
+    const selectedStrokes = uniqueIndexes.map((index) => displayStrokes[index]).filter(Boolean);
+    const nextBounds = getStrokeBounds(selectedStrokes);
     updateDrawingState({
       selectedStrokeIds,
-      selectionBounds: getStrokeBounds(selectedStrokes),
+      selectionBounds: nextBounds ? withSelectionBoundsPivot(nextBounds) : null,
     });
-  }, [strokes, updateDrawingState]);
+  }, [displayStrokes, strokes.length, updateDrawingState]);
 
-  const effectiveSelectionMode: 'rectangle' | 'lasso' = drawingState.selectionMode === 'lasso'
+  const selectAllStrokes = useCallback(() => {
+    applySelectionByIndexes(strokes.map((_, index) => index));
+    updateDrawingState({ activeTool: 'select' });
+  }, [applySelectionByIndexes, strokes, updateDrawingState]);
+
+  const deselectAllStrokes = useCallback(() => {
+    updateDrawingState({ selectedStrokeIds: [], selectionBounds: null });
+  }, [updateDrawingState]);
+
+  const invertSelection = useCallback(() => {
+    const selectedIndexSet = new Set(selectedStrokeIndexes);
+    const invertedIndexes = strokes
+      .map((_, index) => index)
+      .filter((index) => !selectedIndexSet.has(index));
+    applySelectionByIndexes(invertedIndexes);
+    updateDrawingState({ activeTool: 'select' });
+  }, [applySelectionByIndexes, selectedStrokeIndexes, strokes, updateDrawingState]);
+
+  const resetSelectionPivot = useCallback(() => {
+    if (!drawingState.selectionBounds) return;
+    const center = getSelectionBoundsCenter(drawingState.selectionBounds);
+    updateDrawingState({
+      selectionBounds: withSelectionBoundsPivot(drawingState.selectionBounds, {
+        previousBounds: drawingState.selectionBounds,
+        forcePivot: {
+          x: center.x,
+          y: center.y,
+          custom: false,
+        },
+      }),
+    });
+  }, [drawingState.selectionBounds, updateDrawingState]);
+
+  const setSelectionPivotPreset = useCallback((preset: SelectionPivotPreset) => {
+    if (!drawingState.selectionBounds) return;
+    const nextPivot = getSelectionPivotPresetPoint(drawingState.selectionBounds, preset);
+    updateDrawingState({
+      selectionBounds: withSelectionBoundsPivot(drawingState.selectionBounds, {
+        previousBounds: drawingState.selectionBounds,
+        forcePivot: nextPivot,
+      }),
+    });
+  }, [drawingState.selectionBounds, updateDrawingState]);
+
+  const toggleSelectionSnap = useCallback(() => {
+    updateDrawingState({ selectionSnapEnabled: !drawingState.selectionSnapEnabled });
+  }, [drawingState.selectionSnapEnabled, updateDrawingState]);
+
+  const updateSelectionTransformWarp = useCallback((
+    corner: CornerWarpCorner,
+    axis: 'x' | 'y',
+    value: number,
+  ) => {
+    setSelectionTransformDraft((prev) => ({
+      ...prev,
+      cornerWarp: {
+        ...(prev.cornerWarp ?? createIdentityCornerWarp()),
+        [corner]: {
+          ...((prev.cornerWarp ?? createIdentityCornerWarp())[corner]),
+          [axis]: value,
+        },
+      },
+    }));
+  }, []);
+
+  const closeSelectionTransformPopover = useCallback(() => {
+    setSelectionTransformAnchor(null);
+    setSelectionTransformWarpCorner('ne');
+    setSelectionTransformDraft({
+      translateX: 0,
+      translateY: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      perspectiveX: 0,
+      perspectiveY: 0,
+      cornerWarp: createIdentityCornerWarp(),
+    });
+  }, []);
+
+  const openSelectionTransformPopover = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (!drawingState.selectionBounds || selectedStrokeIndexes.length === 0) return;
+    setSelectionTransformAnchor(event.currentTarget);
+    setSelectionTransformDraft({
+      translateX: 0,
+      translateY: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      perspectiveX: 0,
+      perspectiveY: 0,
+      cornerWarp: createIdentityCornerWarp(),
+    });
+  }, [drawingState.selectionBounds, selectedStrokeIndexes.length]);
+
+  const applySelectionTransformDraft = useCallback(() => {
+    updateDrawingState({ transform: selectionTransformDraft });
+    closeSelectionTransformPopover();
+  }, [closeSelectionTransformPopover, selectionTransformDraft, updateDrawingState]);
+
+  const activeSelectionTransformCornerWarp = (
+    selectionTransformDraft.cornerWarp ?? createIdentityCornerWarp()
+  )[selectionTransformWarpCorner];
+
+  const effectiveSelectionMode: 'rectangle' | 'ellipse' | 'lasso' = drawingState.selectionMode === 'lasso'
     ? 'lasso'
-    : 'rectangle';
+    : drawingState.selectionMode === 'ellipse'
+      ? 'ellipse'
+      : 'rectangle';
 
   const handleSelectionOverlayPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (activeTool !== 'select') return;
-    const point = getLocalPointFromPointerEvent(event);
+    const point = getCanvasPointFromPointerEvent(event);
     if (!point) return;
     event.preventDefault();
     event.stopPropagation();
@@ -1233,12 +2008,12 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         : [],
     });
     event.currentTarget.setPointerCapture(event.pointerId);
-  }, [activeTool, getLocalPointFromPointerEvent, effectiveSelectionMode]);
+  }, [activeTool, getCanvasPointFromPointerEvent, effectiveSelectionMode]);
 
   const handleSelectionOverlayPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     setSelectionDragState((prev) => {
       if (!prev || prev.pointerId !== event.pointerId) return prev;
-      const point = getLocalPointFromPointerEvent(event);
+      const point = getCanvasPointFromPointerEvent(event);
       if (!point) return prev;
       const nextLasso = prev.mode === 'lasso'
         ? [...prev.lassoPoints, { x: point.x, y: point.y, pressure: 0.5, tiltX: 0, tiltY: 0, timestamp: Date.now() }]
@@ -1249,7 +2024,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         lassoPoints: nextLasso,
       };
     });
-  }, [getLocalPointFromPointerEvent]);
+  }, [getCanvasPointFromPointerEvent]);
 
   const handleSelectionOverlayPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const dragState = selectionDragState;
@@ -1264,8 +2039,18 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     let nextSelectionIndexes: number[] = [];
 
     if (dragState.mode === 'lasso' && dragState.lassoPoints.length >= 3 && dragDistance >= 4) {
-      nextSelectionIndexes = strokes
+      nextSelectionIndexes = displayStrokes
         .map((stroke, index) => (isStrokeInLasso(stroke, dragState.lassoPoints) ? index : -1))
+        .filter((index) => index >= 0);
+    } else if (dragState.mode === 'ellipse' && dragDistance >= 4) {
+      const rect = normalizeSelectionRect({
+        x1: dragState.start.x,
+        y1: dragState.start.y,
+        x2: dragState.current.x,
+        y2: dragState.current.y,
+      });
+      nextSelectionIndexes = displayStrokes
+        .map((stroke, index) => (isStrokeInEllipse(stroke, rect) ? index : -1))
         .filter((index) => index >= 0);
     } else if (dragDistance >= 4) {
       const rect = normalizeSelectionRect({
@@ -1274,13 +2059,13 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         x2: dragState.current.x,
         y2: dragState.current.y,
       });
-      nextSelectionIndexes = strokes
+      nextSelectionIndexes = displayStrokes
         .map((stroke, index) => (isStrokeInRectangle(stroke, rect) ? index : -1))
         .filter((index) => index >= 0);
     } else {
-      for (let i = strokes.length - 1; i >= 0; i -= 1) {
-        const hitDistance = strokeHitDistance(strokes[i], dragState.current);
-        const threshold = Math.max(12, (strokes[i].width || 2) * 2);
+      for (let i = displayStrokes.length - 1; i >= 0; i -= 1) {
+        const hitDistance = strokeHitDistance(displayStrokes[i], dragState.current);
+        const threshold = Math.max(12, (displayStrokes[i].width || 2) * 2);
         if (hitDistance <= threshold) {
           nextSelectionIndexes = [i];
           break;
@@ -1290,10 +2075,12 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
 
     applySelectionByIndexes(nextSelectionIndexes);
     setSelectionDragState(null);
-  }, [selectionDragState, strokes, applySelectionByIndexes]);
+  }, [selectionDragState, displayStrokes, applySelectionByIndexes]);
 
   const selectionPreviewRect = useMemo<SelectionDragRect | null>(() => {
-    if (!selectionDragState || selectionDragState.mode !== 'rectangle') return null;
+    if (!selectionDragState || (selectionDragState.mode !== 'rectangle' && selectionDragState.mode !== 'ellipse')) {
+      return null;
+    }
     return normalizeSelectionRect({
       x1: selectionDragState.start.x,
       y1: selectionDragState.start.y,
@@ -1331,7 +2118,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     const origin = rulerDragOriginRef.current;
     const startPoint = rulerDragStartPointRef.current;
     const target = rulerDragTargetRef.current;
-    const point = getLocalPointFromPointerEvent(event);
+    const point = getCanvasPointFromPointerEvent(event);
     if (!origin || !startPoint || !target || !point) return;
 
     const dx = point.x - startPoint.x;
@@ -1361,7 +2148,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       x2: clamp(origin.x2 + dx, 0, width),
       y2: clamp(origin.y2 + dy, 0, height),
     });
-  }, [getLocalPointFromPointerEvent, width, height]);
+  }, [getCanvasPointFromPointerEvent, width, height]);
 
   const handleRulerDragEnd = useCallback((event: PointerEvent) => {
     if (rulerDragPointerIdRef.current !== null && event.pointerId !== rulerDragPointerIdRef.current) {
@@ -1376,7 +2163,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   }, [handleRulerDragMove]);
 
   const startRulerDrag = useCallback((target: RulerDragTarget) => (event: React.PointerEvent<HTMLDivElement>) => {
-    const startPoint = getLocalPointFromPointerEvent(event);
+    const startPoint = getCanvasPointFromPointerEvent(event);
     if (!startPoint) return;
     event.preventDefault();
     event.stopPropagation();
@@ -1386,7 +2173,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     rulerDragStartPointRef.current = startPoint;
     window.addEventListener('pointermove', handleRulerDragMove);
     window.addEventListener('pointerup', handleRulerDragEnd);
-  }, [getLocalPointFromPointerEvent, handleRulerDragMove, handleRulerDragEnd, rulerGuide]);
+  }, [getCanvasPointFromPointerEvent, handleRulerDragMove, handleRulerDragEnd, rulerGuide]);
 
   useEffect(() => () => {
     window.removeEventListener('pointermove', handleRulerDragMove);
@@ -1489,7 +2276,11 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         previewCtx.clearRect(0, 0, width, height);
       }
       // Apply ruler snap + pressure curve
-      const adjustedPoint = applyPressureCurve(snapPointWithRuler(point));
+      const adjustedPoint = applyPressureCurve(
+        snapPointWithRuler(
+          mapCanvasPointToLayerPoint(point)
+        )
+      );
       previewLastPointRef.current = adjustedPoint;
       brushEngineRef.current?.startStroke(adjustedPoint);
     },
@@ -1501,7 +2292,11 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       const ctx = previewCanvasRef.current.getContext('2d');
       if (!ctx) return;
 
-      const adjustedPoint = applyPressureCurve(snapPointWithRuler(point));
+      const adjustedPoint = applyPressureCurve(
+        snapPointWithRuler(
+          mapCanvasPointToLayerPoint(point)
+        )
+      );
       const previousPoint = previewLastPointRef.current;
       if (!previousPoint) {
         previewLastPointRef.current = adjustedPoint;
@@ -1519,11 +2314,21 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         );
         mirroredPointSets.forEach((points) => {
           if (points.length >= 2) {
-            drawLivePreviewSegment(ctx, points[0], points[1], liveBrush);
+            drawLivePreviewSegment(
+              ctx,
+              mapLayerPointToCanvasPoint(points[0]),
+              mapLayerPointToCanvasPoint(points[1]),
+              liveBrush,
+            );
           }
         });
       } else {
-        drawLivePreviewSegment(ctx, previousPoint, adjustedPoint, liveBrush);
+        drawLivePreviewSegment(
+          ctx,
+          mapLayerPointToCanvasPoint(previousPoint),
+          mapLayerPointToCanvasPoint(adjustedPoint),
+          liveBrush,
+        );
       }
       previewLastPointRef.current = adjustedPoint;
     },
@@ -1543,7 +2348,13 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       
       // Apply pressure curve to stroke points
       const brushSnapshot = { ...liveStrokeBrushRef.current };
-      const snappedPoints = stroke.points.map((point) => applyPressureCurve(snapPointWithRuler(point)));
+      const snappedPoints = stroke.points.map((entry) => (
+        applyPressureCurve(
+          snapPointWithRuler(
+            mapCanvasPointToLayerPoint(entry)
+          )
+        )
+      ));
       const isShapeToolActive = activeTool === 'shape' && Boolean(selectedShapeType);
       if (isShapeToolActive && selectedShapeType) {
         const shapePoints = createShapePointsFromGesture(snappedPoints, selectedShapeType, selectedShapeStyle);
@@ -1726,13 +2537,21 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       const img = new window.Image();
       img.onload = () => {
         ctx.globalAlpha = referenceImage.opacity;
+        const drawWidth = referenceImage.width;
+        const drawHeight = referenceImage.height;
+        const centerX = referenceImage.x + (drawWidth / 2);
+        const centerY = referenceImage.y + (drawHeight / 2);
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(((referenceImage.rotation || 0) * Math.PI) / 180);
         ctx.drawImage(
           img,
-          referenceImage.x,
-          referenceImage.y,
-          referenceImage.width,
-          referenceImage.height
+          -(drawWidth / 2),
+          -(drawHeight / 2),
+          drawWidth,
+          drawHeight
         );
+        ctx.restore();
         ctx.globalAlpha = 1;
       };
       img.src = referenceImage.src;
@@ -1740,10 +2559,20 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   }, [referenceImage, width, height]);
 
   useEffect(() => {
-    if (!referenceImage) return;
-    if (Math.abs(referenceImage.opacity - refOpacity) < 0.001) return;
+    if (!referenceImage) {
+      suppressReferenceImagePropagationRef.current = false;
+      return;
+    }
+    if (Math.abs(referenceImage.opacity - refOpacity) < 0.001) {
+      suppressReferenceImagePropagationRef.current = false;
+      return;
+    }
     const nextReference = { ...referenceImage, opacity: refOpacity };
     setReferenceImage(nextReference);
+    if (suppressReferenceImagePropagationRef.current) {
+      suppressReferenceImagePropagationRef.current = false;
+      return;
+    }
     onReferenceImageChange?.(nextReference);
   }, [refOpacity, referenceImage, onReferenceImageChange]);
   
@@ -1756,7 +2585,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     ctx.clearRect(0, 0, width, height);
     
     if (showGrid) {
-      const gridSize = 50;
+      const gridSize = SELECTION_SNAP_GRID_SIZE;
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
       ctx.lineWidth = 0.5;
       
@@ -1864,6 +2693,25 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       opacity: typeof stroke.opacity === 'number' ? stroke.opacity : DEFAULT_BRUSH_SETTINGS.opacity,
     };
   }, []);
+
+  const renderLayerStrokeSet = useCallback((
+    ctx: CanvasRenderingContext2D,
+    layerStrokes: PencilStroke[],
+    opacity = 1,
+    blendMode: GlobalCompositeOperation = 'source-over',
+    transforms: StrokeTransform[] = [],
+  ) => {
+    const currentEngine = brushEngineRef.current;
+    if (!currentEngine) return;
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    ctx.globalCompositeOperation = blendMode;
+    layerStrokes.forEach((stroke) => {
+      const renderStroke = transforms.length ? applyStrokeTransformsToStroke(stroke, transforms) : stroke;
+      currentEngine.renderStroke(ctx, renderStroke.points, getStrokeBrushSettings(stroke));
+    });
+    ctx.restore();
+  }, [getStrokeBrushSettings]);
   
   // Redraw main canvas
   const redrawMainCanvas = useCallback(() => {
@@ -1877,9 +2725,16 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     if (backgroundImageRef.current) {
       ctx.drawImage(backgroundImageRef.current, 0, 0, width, height);
     }
-    strokes.forEach(stroke => {
-      engine.renderStroke(ctx, stroke.points, getStrokeBrushSettings(stroke));
+    underlayLayers.forEach((layer) => {
+      if (!layer.strokes.length || layer.opacity <= 0) return;
+      renderLayerStrokeSet(
+        ctx,
+        layer.strokes,
+        layer.opacity,
+        (layer.blendMode === 'normal' ? 'source-over' : layer.blendMode) as GlobalCompositeOperation,
+      );
     });
+    renderLayerStrokeSet(ctx, strokes, 1, 'source-over', activeStrokeTransforms);
     const shouldShowTextSelection = drawingState.activeTool === 'text';
     drawingState.textAnnotations.forEach((annotation) => {
       drawTextAnnotation(
@@ -1891,8 +2746,10 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   }, [
     width,
     height,
+    underlayLayers,
+    activeStrokeTransforms,
     strokes,
-    getStrokeBrushSettings,
+    renderLayerStrokeSet,
     drawingState.activeTool,
     drawingState.textAnnotations,
     drawingState.selectedTextAnnotationId,
@@ -1995,67 +2852,269 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     updateDrawingState({ selectedStrokeIds: [], selectionBounds: null });
   }, [selectedStrokeIndexes, strokes, saveToUndo, onStrokesChange, updateDrawingState]);
 
+  const mapDisplayStrokeToLayerStroke = useCallback((stroke: PencilStroke): PencilStroke => ({
+    ...stroke,
+    points: stroke.points.map((point) => invertStrokeTransformsFromPoint(point, activeStrokeTransforms)),
+  }), [activeStrokeTransforms]);
+
+  const applySelectionDisplayTransform = useCallback((
+    transformState: NonNullable<typeof selectionTransformRef.current>,
+    transform: Transform,
+    pivotX: number,
+    pivotY: number,
+    boundsRotation = 0,
+    options?: {
+      translatePivot?: { dx: number; dy: number };
+    },
+  ) => {
+    const selectedIndexSet = new Set(transformState.selectedIndexes);
+    const transformedDisplayStrokes = transformState.baselineDisplayStrokes.map((stroke, index) => (
+      selectedIndexSet.has(index)
+        ? transformStroke(stroke, transform, pivotX, pivotY, transformState.baselineBounds)
+        : stroke
+    ));
+    const transformedLayerStrokes = transformState.baselineStrokes.map((stroke, index) => (
+      selectedIndexSet.has(index)
+        ? mapDisplayStrokeToLayerStroke(transformedDisplayStrokes[index])
+        : stroke
+    ));
+    const transformedSelected = transformState.selectedIndexes
+      .map((index) => transformedDisplayStrokes[index])
+      .filter(Boolean);
+    const nextBounds = getStrokeBounds(transformedSelected) ?? transformState.baselineBounds;
+    const nextSelectionBounds = withSelectionBoundsPivot(nextBounds, {
+      previousBounds: transformState.baselineBounds,
+      rotation: boundsRotation,
+      translatePivot: options?.translatePivot,
+    });
+
+    setStrokes(transformedLayerStrokes);
+    onStrokesChange?.(transformedLayerStrokes);
+    updateDrawingState({
+      selectionBounds: nextSelectionBounds,
+    });
+  }, [mapDisplayStrokeToLayerStroke, onStrokesChange, updateDrawingState]);
+
   const handleSelectionTransformMove = useCallback((event: PointerEvent) => {
     const transformState = selectionTransformRef.current;
     if (!transformState || transformState.pointerId !== event.pointerId) return;
-    const point = getLocalPointFromPointerEvent(event);
-    if (!point) return;
+    const rawPoint = getCanvasPointFromPointerEvent(event);
+    if (!rawPoint) return;
+    const point = (
+      drawingState.selectionSnapEnabled
+        && transformState.handle !== 'rotate'
+        && transformState.handle !== 'move'
+        ? {
+            ...rawPoint,
+            x: snapValueToGrid(rawPoint.x, SELECTION_SNAP_GRID_SIZE),
+            y: snapValueToGrid(rawPoint.y, SELECTION_SNAP_GRID_SIZE),
+          }
+        : rawPoint
+    );
 
-    const dx = point.x - transformState.startPoint.x;
-    const dy = point.y - transformState.startPoint.y;
-    const selectedIndexSet = new Set(transformState.selectedIndexes);
-    const transformedStrokes = transformState.baselineStrokes.map((stroke, index) => (
-      selectedIndexSet.has(index)
-        ? transformStroke(
-          stroke,
-          { translateX: dx, translateY: dy, scaleX: 1, scaleY: 1, rotation: 0 },
-          0,
-          0
-        )
-        : stroke
-    ));
-    setStrokes(transformedStrokes);
-    onStrokesChange?.(transformedStrokes);
-    updateDrawingState({
-      selectionBounds: {
-        ...transformState.baselineBounds,
-        x: transformState.baselineBounds.x + dx,
-        y: transformState.baselineBounds.y + dy,
-      },
+    if (transformState.handle === 'pivot') {
+      updateDrawingState({
+        selectionBounds: withSelectionBoundsPivot(transformState.baselineBounds, {
+          previousBounds: transformState.baselineBounds,
+          forcePivot: {
+            x: point.x,
+            y: point.y,
+            custom: true,
+          },
+        }),
+      });
+      return;
+    }
+
+    if (transformState.handle === 'rotate') {
+      setSelectionTransformDebug({
+        handle: transformState.handle,
+        perspectiveX: 0,
+        perspectiveY: 0,
+        warpX: 0,
+        warpY: 0,
+      });
+      const pivot = getSelectionPivot(transformState.baselineBounds, 'rotate');
+      const startAngle = Math.atan2(
+        transformState.startPoint.y - pivot.y,
+        transformState.startPoint.x - pivot.x,
+      );
+      const currentAngle = Math.atan2(
+        point.y - pivot.y,
+        point.x - pivot.x,
+      );
+      const rawRotation = ((currentAngle - startAngle) * 180) / Math.PI;
+      const rotation = drawingState.selectionSnapEnabled
+        ? Math.round(rawRotation / SELECTION_ROTATION_SNAP_DEGREES) * SELECTION_ROTATION_SNAP_DEGREES
+        : rawRotation;
+      applySelectionDisplayTransform(
+        transformState,
+        { translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation, perspectiveX: 0, perspectiveY: 0 },
+        pivot.x,
+        pivot.y,
+        rotation,
+      );
+      return;
+    }
+
+    if (isSelectionPerspectiveHandle(transformState.handle)) {
+      const pivot = getSelectionBoundsPivot(transformState.baselineBounds);
+      const baselineRotation = transformState.baselineBounds.rotation ?? 0;
+      const startLocalPoint = rotatePointAround(transformState.startPoint, pivot, -baselineRotation);
+      const currentLocalPoint = rotatePointAround(point, pivot, -baselineRotation);
+      const localDx = currentLocalPoint.x - startLocalPoint.x;
+      const localDy = currentLocalPoint.y - startLocalPoint.y;
+      const corner = getCornerWarpCornerFromHandle(transformState.handle);
+      if (!corner) {
+        return;
+      }
+      const cornerWarp = createIdentityCornerWarp();
+      const clampedCornerOffset = clampCornerWarpOffset({ x: localDx, y: localDy }, transformState.baselineBounds);
+      cornerWarp[corner] = clampedCornerOffset;
+      setSelectionTransformDebug({
+        handle: transformState.handle,
+        perspectiveX: 0,
+        perspectiveY: 0,
+        warpX: clampedCornerOffset.x,
+        warpY: clampedCornerOffset.y,
+      });
+
+      applySelectionDisplayTransform(
+        transformState,
+        {
+          translateX: 0,
+          translateY: 0,
+          scaleX: 1,
+          scaleY: 1,
+          rotation: 0,
+          perspectiveX: 0,
+          perspectiveY: 0,
+          cornerWarp,
+        },
+        pivot.x,
+        pivot.y,
+      );
+      return;
+    }
+
+    if (transformState.handle !== 'move') {
+      setSelectionTransformDebug({
+        handle: transformState.handle,
+        perspectiveX: 0,
+        perspectiveY: 0,
+        warpX: 0,
+        warpY: 0,
+      });
+      const pivot = getSelectionPivot(transformState.baselineBounds, transformState.handle);
+      const startDx = transformState.startPoint.x - pivot.x;
+      const startDy = transformState.startPoint.y - pivot.y;
+      const currentDx = point.x - pivot.x;
+      const currentDy = point.y - pivot.y;
+
+      const affectsX = ['nw', 'w', 'sw', 'e', 'ne', 'se'].includes(transformState.handle);
+      const affectsY = ['nw', 'n', 'ne', 's', 'sw', 'se'].includes(transformState.handle);
+      const scaleX = affectsX
+        ? clampSelectionScale(currentDx / (Math.abs(startDx) < 0.0001 ? 1 : startDx))
+        : 1;
+      const scaleY = affectsY
+        ? clampSelectionScale(currentDy / (Math.abs(startDy) < 0.0001 ? 1 : startDy))
+        : 1;
+      applySelectionDisplayTransform(
+        transformState,
+        { translateX: 0, translateY: 0, scaleX, scaleY, rotation: 0, perspectiveX: 0, perspectiveY: 0 },
+        pivot.x,
+        pivot.y,
+      );
+      return;
+    }
+
+    const rawScreenDx = point.x - transformState.startPoint.x;
+    const rawScreenDy = point.y - transformState.startPoint.y;
+    setSelectionTransformDebug({
+      handle: transformState.handle,
+      perspectiveX: 0,
+      perspectiveY: 0,
+      warpX: 0,
+      warpY: 0,
     });
-  }, [getLocalPointFromPointerEvent, onStrokesChange, updateDrawingState]);
+    const snappedMove = drawingState.selectionSnapEnabled
+      ? snapSelectionMoveDelta(
+          rawScreenDx,
+          rawScreenDy,
+          transformState.baselineBounds,
+          width,
+          height,
+        )
+      : { dx: rawScreenDx, dy: rawScreenDy };
+    applySelectionDisplayTransform(
+      transformState,
+      { translateX: snappedMove.dx, translateY: snappedMove.dy, scaleX: 1, scaleY: 1, rotation: 0, perspectiveX: 0, perspectiveY: 0 },
+      0,
+      0,
+      0,
+      {
+        translatePivot: { dx: snappedMove.dx, dy: snappedMove.dy },
+      },
+    );
+  }, [applySelectionDisplayTransform, drawingState.selectionSnapEnabled, getCanvasPointFromPointerEvent, height, width]);
 
   const handleSelectionTransformEnd = useCallback((event: PointerEvent) => {
     const transformState = selectionTransformRef.current;
     if (!transformState || transformState.pointerId !== event.pointerId) return;
+    try {
+      if (transformState.releaseCaptureTarget && 'releasePointerCapture' in (transformState.releaseCaptureTarget as Element)) {
+        (transformState.releaseCaptureTarget as Element).releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // Ignore pointer capture release failures on unsupported targets.
+    }
     selectionTransformRef.current = null;
     window.removeEventListener('pointermove', handleSelectionTransformMove);
     window.removeEventListener('pointerup', handleSelectionTransformEnd);
   }, [handleSelectionTransformMove]);
 
   const handleSelectionTransformStart = useCallback((handle: string, event: React.PointerEvent) => {
-    if (handle !== 'move') return;
     if (!drawingState.selectionBounds || selectedStrokeIndexes.length === 0) return;
-    const point = getLocalPointFromPointerEvent(event);
+    const point = getCanvasPointFromPointerEvent(event);
     if (!point) return;
     event.preventDefault();
     event.stopPropagation();
-    saveToUndo();
+    try {
+      if ('setPointerCapture' in event.currentTarget) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+    } catch {
+      // Ignore pointer capture failures on unsupported targets.
+    }
+    if (handle !== 'pivot') {
+      saveToUndo();
+    }
+    setSelectionTransformDebug({
+      handle,
+      perspectiveX: 0,
+      perspectiveY: 0,
+      warpX: 0,
+      warpY: 0,
+    });
     selectionTransformRef.current = {
       pointerId: event.pointerId,
+      handle,
       startPoint: point,
       baselineBounds: drawingState.selectionBounds,
       baselineStrokes: strokes,
+      baselineDisplayStrokes: displayStrokes,
       selectedIndexes: selectedStrokeIndexes,
+      releaseCaptureTarget: event.currentTarget,
     };
     window.addEventListener('pointermove', handleSelectionTransformMove);
     window.addEventListener('pointerup', handleSelectionTransformEnd);
   }, [
+    displayStrokes,
     drawingState.selectionBounds,
     selectedStrokeIndexes,
     strokes,
     saveToUndo,
-    getLocalPointFromPointerEvent,
+    getCanvasPointFromPointerEvent,
     handleSelectionTransformMove,
     handleSelectionTransformEnd,
   ]);
@@ -2074,17 +3133,16 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     if (isTransformIdentity(drawingState.transform)) return;
     if (!selectedStrokeIndexes.length || !drawingState.selectionBounds) {
       updateDrawingState({
-        transform: { translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+        transform: { translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, perspectiveX: 0, perspectiveY: 0 },
       });
       return;
     }
 
-    const pivotX = drawingState.selectionBounds.x + drawingState.selectionBounds.width / 2;
-    const pivotY = drawingState.selectionBounds.y + drawingState.selectionBounds.height / 2;
+    const pivot = getSelectionBoundsPivot(drawingState.selectionBounds);
     const selectedIndexSet = new Set(selectedStrokeIndexes);
     const transformedStrokes = strokes.map((stroke, index) => (
       selectedIndexSet.has(index)
-        ? transformStroke(stroke, drawingState.transform, pivotX, pivotY)
+        ? transformStroke(stroke, drawingState.transform, pivot.x, pivot.y, drawingState.selectionBounds)
         : stroke
     ));
     const transformedSelected = selectedStrokeIndexes
@@ -2094,8 +3152,16 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     setStrokes(transformedStrokes);
     onStrokesChange?.(transformedStrokes);
     updateDrawingState({
-      selectionBounds: nextBounds,
-      transform: { translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      selectionBounds: withSelectionBoundsPivot(nextBounds, {
+        previousBounds: drawingState.selectionBounds,
+        translatePivot: drawingState.transform.translateX || drawingState.transform.translateY
+          ? {
+              dx: drawingState.transform.translateX,
+              dy: drawingState.transform.translateY,
+            }
+          : undefined,
+      }),
+      transform: { translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, perspectiveX: 0, perspectiveY: 0 },
     });
   }, [
     drawingState.transform,
@@ -2280,7 +3346,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   const hasSelection = selectedStrokeIndexes.length > 0 && Boolean(drawingState.selectionBounds);
   
   return (
-    <CanvasContainer ref={setCanvasContainerRef} sx={{ width, height }}>
+    <CanvasContainer ref={setCanvasContainerRef} data-testid="pencil-canvas-pro" sx={{ width, height }}>
       <Box
         sx={{
           position: 'absolute',
@@ -2293,6 +3359,9 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         {/* Reference image layer */}
         <ReferenceLayer
           ref={referenceCanvasRef}
+          data-testid="pencil-canvas-pro-reference-layer"
+          data-reference-loaded={referenceImage ? 'true' : 'false'}
+          data-reference-visible={referenceImage && referenceImage.visible ? 'true' : 'false'}
           width={width}
           height={height}
           style={{ opacity: refOpacity }}
@@ -2339,6 +3408,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
 
         {activeTool === 'select' && (
           <Box
+            data-testid="pencil-canvas-selection-overlay"
             data-pencil-ignore="true"
             onPointerDown={handleSelectionOverlayPointerDown}
             onPointerMove={handleSelectionOverlayPointerMove}
@@ -2353,6 +3423,8 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
           >
             {selectionPreviewRect && (
               <Box
+                data-testid="pencil-canvas-selection-preview"
+                data-selection-preview-mode={selectionDragState?.mode || 'rectangle'}
                 sx={{
                   position: 'absolute',
                   left: selectionPreviewRect.x1,
@@ -2362,6 +3434,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
                   border: '1px dashed rgba(56, 189, 248, 0.95)',
                   bgcolor: 'rgba(14, 165, 233, 0.12)',
                   boxShadow: 'inset 0 0 0 1px rgba(103,232,249,0.25)',
+                  borderRadius: selectionDragState?.mode === 'ellipse' ? '50%' : 0,
                   pointerEvents: 'none',
                 }}
               />
@@ -2386,6 +3459,12 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
 
         {activeTool === 'select' && hasSelection && drawingState.selectionBounds && (
           <Box
+            data-testid="pencil-canvas-selection-transform-overlay"
+            data-selection-last-transform-handle={selectionTransformDebug?.handle ?? ''}
+            data-selection-last-perspective-x={selectionTransformDebug?.perspectiveX ?? 0}
+            data-selection-last-perspective-y={selectionTransformDebug?.perspectiveY ?? 0}
+            data-selection-last-warp-x={selectionTransformDebug?.warpX ?? 0}
+            data-selection-last-warp-y={selectionTransformDebug?.warpY ?? 0}
             data-pencil-ignore="true"
             sx={{
               position: 'absolute',
@@ -2397,7 +3476,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
             <SelectionBox
               bounds={drawingState.selectionBounds}
               onTransformStart={handleSelectionTransformStart}
-              showRotate={false}
+              showRotate
             />
           </Box>
         )}
@@ -2578,17 +3657,323 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
                 updateDrawingState({ activeTool: value });
               }}
             >
-              <ToggleButton value="brush">
+              <ToggleButton value="brush" aria-label="Brush tool" data-testid="pencil-canvas-tool-brush">
                 <Tooltip title="Brush Tool"><BrushOutlined sx={{ fontSize: 16 }} /></Tooltip>
               </ToggleButton>
-              <ToggleButton value="shape">
+              <ToggleButton value="shape" aria-label="Shape tool" data-testid="pencil-canvas-tool-shape">
                 <Tooltip title="Shape Tool"><Build sx={{ fontSize: 16 }} /></Tooltip>
               </ToggleButton>
-              <ToggleButton value="select">
+              <ToggleButton value="select" aria-label="Selection tool" data-testid="pencil-canvas-tool-select">
                 <Tooltip title="Selection Tool"><Layers sx={{ fontSize: 16 }} /></Tooltip>
               </ToggleButton>
             </ToggleButtonGroup>
           </Stack>
+
+          {activeTool === 'select' && (
+            <>
+              <Divider orientation="vertical" flexItem sx={{ mx: 1.2, bgcolor: 'rgba(255,255,255,0.1)' }} />
+
+              <Stack direction="row" alignItems="center" gap={0.9} sx={{ px: 0.5 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.58)', letterSpacing: 0.5 }}>
+                  SELECT
+                </Typography>
+                <ToggleButtonGroup
+                  exclusive
+                  size="small"
+                  value={effectiveSelectionMode}
+                  onChange={(_, value: 'rectangle' | 'ellipse' | 'lasso' | null) => {
+                    if (!value) return;
+                    updateDrawingState({ selectionMode: value, activeTool: 'select' });
+                  }}
+                >
+                  <ToggleButton
+                    value="rectangle"
+                    aria-label="Rectangle selection"
+                    data-testid="pencil-canvas-selection-mode-rectangle"
+                  >
+                    <Tooltip title="Rectangle Selection"><CropFree sx={{ fontSize: 16 }} /></Tooltip>
+                  </ToggleButton>
+                  <ToggleButton
+                    value="ellipse"
+                    aria-label="Ellipse selection"
+                    data-testid="pencil-canvas-selection-mode-ellipse"
+                  >
+                    <Tooltip title="Ellipse Selection"><PanoramaFishEye sx={{ fontSize: 16 }} /></Tooltip>
+                  </ToggleButton>
+                  <ToggleButton
+                    value="lasso"
+                    aria-label="Lasso selection"
+                    data-testid="pencil-canvas-selection-mode-lasso"
+                  >
+                    <Tooltip title="Lasso Selection"><HighlightAlt sx={{ fontSize: 16 }} /></Tooltip>
+                  </ToggleButton>
+                </ToggleButtonGroup>
+
+                <Tooltip title="Invert Selection" placement="top">
+                  <span>
+                    <IconButton
+                      size="small"
+                      data-testid="pencil-canvas-selection-invert"
+                      onClick={invertSelection}
+                    >
+                      <SwapHoriz sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+
+                <Tooltip title="Snap To Grid" placement="top">
+                  <span>
+                    <IconButton
+                      size="small"
+                      data-testid="pencil-canvas-selection-snap"
+                      aria-pressed={drawingState.selectionSnapEnabled}
+                      onClick={toggleSelectionSnap}
+                      sx={{ color: drawingState.selectionSnapEnabled ? 'primary.main' : 'inherit' }}
+                    >
+                      <GridOn sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+
+                <Tooltip title="Clear Selection" placement="top">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={!hasSelection}
+                      data-testid="pencil-canvas-selection-clear"
+                      onClick={deselectAllStrokes}
+                    >
+                      <Deselect sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+
+                <Tooltip title="Transform Selection" placement="top">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={!hasSelection}
+                      data-testid="pencil-canvas-selection-transform"
+                      onClick={openSelectionTransformPopover}
+                    >
+                      <OpenWith sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+
+                <Divider orientation="vertical" flexItem sx={{ mx: 0.35, bgcolor: 'rgba(255,255,255,0.1)' }} />
+
+                <Stack direction="row" alignItems="center" gap={0.35}>
+                  <Tooltip title="Pivot Center" placement="top">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!hasSelection}
+                        data-testid="pencil-canvas-selection-pivot-center"
+                        onClick={() => setSelectionPivotPreset('center')}
+                      >
+                        <FilterCenterFocus sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Pivot Left" placement="top">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!hasSelection}
+                        data-testid="pencil-canvas-selection-pivot-left"
+                        onClick={() => setSelectionPivotPreset('left')}
+                      >
+                        <FormatAlignLeft sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Pivot Right" placement="top">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!hasSelection}
+                        data-testid="pencil-canvas-selection-pivot-right"
+                        onClick={() => setSelectionPivotPreset('right')}
+                      >
+                        <FormatAlignRight sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Pivot Top" placement="top">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!hasSelection}
+                        data-testid="pencil-canvas-selection-pivot-top"
+                        onClick={() => setSelectionPivotPreset('top')}
+                      >
+                        <VerticalAlignTop sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Pivot Bottom" placement="top">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!hasSelection}
+                        data-testid="pencil-canvas-selection-pivot-bottom"
+                        onClick={() => setSelectionPivotPreset('bottom')}
+                      >
+                        <VerticalAlignBottom sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Stack>
+
+                <Tooltip title="Reset Pivot" placement="top">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={!drawingState.selectionBounds?.customPivot}
+                      data-testid="pencil-canvas-selection-reset-pivot"
+                      onClick={resetSelectionPivot}
+                    >
+                      <FilterCenterFocus sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Stack>
+            </>
+          )}
+
+          <Popover
+            open={Boolean(selectionTransformAnchor)}
+            anchorEl={selectionTransformAnchor}
+            onClose={closeSelectionTransformPopover}
+            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            slotProps={{ paper: { sx: { bgcolor: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(8px)' } } }}
+          >
+            <Box sx={{ p: 2, width: 256 }} data-testid="pencil-canvas-selection-transform-popover">
+              <Typography variant="subtitle2" sx={{ mb: 2 }}>Transform Selection</Typography>
+
+              <Box sx={{ mb: 2 }} data-testid="pencil-canvas-selection-transform-perspective-x">
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Perspective X: {(selectionTransformDraft.perspectiveX * 100).toFixed(0)}%
+                </Typography>
+                <Slider
+                  size="small"
+                  value={selectionTransformDraft.perspectiveX}
+                  min={-1}
+                  max={1}
+                  step={0.05}
+                  onChange={(_, value) => setSelectionTransformDraft((prev) => ({
+                    ...prev,
+                    perspectiveX: value as number,
+                  }))}
+                />
+              </Box>
+
+              <Box sx={{ mb: 2 }} data-testid="pencil-canvas-selection-transform-perspective-y">
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Perspective Y: {(selectionTransformDraft.perspectiveY * 100).toFixed(0)}%
+                </Typography>
+                <Slider
+                  size="small"
+                  value={selectionTransformDraft.perspectiveY}
+                  min={-1}
+                  max={1}
+                  step={0.05}
+                  onChange={(_, value) => setSelectionTransformDraft((prev) => ({
+                    ...prev,
+                    perspectiveY: value as number,
+                  }))}
+                />
+              </Box>
+
+              <Box sx={{ mb: 1.25 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.72)', display: 'block', mb: 0.8 }}>
+                  Corner Warp
+                </Typography>
+                <ToggleButtonGroup
+                  exclusive
+                  size="small"
+                  value={selectionTransformWarpCorner}
+                  data-testid="pencil-canvas-selection-transform-corner-tabs"
+                  onChange={(_, value: CornerWarpCorner | null) => {
+                    if (value) {
+                      setSelectionTransformWarpCorner(value);
+                    }
+                  }}
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                    gap: 0.6,
+                    '& .MuiToggleButton-root': {
+                      border: '1px solid rgba(148,163,184,0.18)',
+                      color: 'rgba(226,232,240,0.76)',
+                      textTransform: 'uppercase',
+                      fontSize: 10,
+                      letterSpacing: 0.8,
+                      py: 0.45,
+                    },
+                    '& .Mui-selected': {
+                      color: '#f8fafc',
+                      backgroundColor: 'rgba(96,165,250,0.18)',
+                    },
+                  }}
+                >
+                  {(['nw', 'ne', 'se', 'sw'] as CornerWarpCorner[]).map((corner) => (
+                    <ToggleButton
+                      key={corner}
+                      value={corner}
+                      data-testid={`pencil-canvas-selection-transform-corner-${corner}`}
+                    >
+                      {corner}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+              </Box>
+
+              <Box sx={{ mb: 2 }} data-testid="pencil-canvas-selection-transform-warp-x">
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Warp X: {Math.round(activeSelectionTransformCornerWarp.x)} px
+                </Typography>
+                <Slider
+                  size="small"
+                  value={activeSelectionTransformCornerWarp.x}
+                  min={-96}
+                  max={96}
+                  step={1}
+                  onChange={(_, value) => updateSelectionTransformWarp(selectionTransformWarpCorner, 'x', value as number)}
+                />
+              </Box>
+
+              <Box sx={{ mb: 2 }} data-testid="pencil-canvas-selection-transform-warp-y">
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Warp Y: {Math.round(activeSelectionTransformCornerWarp.y)} px
+                </Typography>
+                <Slider
+                  size="small"
+                  value={activeSelectionTransformCornerWarp.y}
+                  min={-96}
+                  max={96}
+                  step={1}
+                  onChange={(_, value) => updateSelectionTransformWarp(selectionTransformWarpCorner, 'y', value as number)}
+                />
+              </Box>
+
+              <Stack direction="row" spacing={1} justifyContent="flex-end">
+                <IconButton size="small" onClick={closeSelectionTransformPopover}>
+                  Cancel
+                </IconButton>
+                <IconButton
+                  size="small"
+                  color="primary"
+                  onClick={applySelectionTransformDraft}
+                  data-testid="pencil-canvas-selection-transform-apply"
+                >
+                  Apply
+                </IconButton>
+              </Stack>
+            </Box>
+          </Popover>
 
           <Divider orientation="vertical" flexItem sx={{ mx: 1.2, bgcolor: 'rgba(255,255,255,0.1)' }} />
 
@@ -3061,8 +4446,12 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
           canvas={mainCanvasRef.current}
           state={{ ...drawingState, brushConfig: brushSettings }}
           onStateChange={updateDrawingState}
-          onLayerSelect={(id) => updateDrawingState({ activeLayerId: id })}
+          onLayerSelect={() => {}}
           onLayerAdd={() => {
+            if (onLayerAdd) {
+              onLayerAdd();
+              return;
+            }
             const newLayer: DrawingLayer = {
               id: `layer-${Date.now()}`,
               name: `Layer ${drawingState.layers.length + 1}`,
@@ -3078,6 +4467,10 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
             });
           }}
           onLayerDelete={(id) => {
+            if (onLayerDelete) {
+              onLayerDelete(id);
+              return;
+            }
             if (drawingState.layers.length > 1) {
               const newLayers = drawingState.layers.filter(l => l.id !== id);
               updateDrawingState({
@@ -3087,6 +4480,10 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
             }
           }}
           onLayerVisibilityToggle={(id) => {
+            if (onLayerVisibilityToggle) {
+              onLayerVisibilityToggle(id);
+              return;
+            }
             updateDrawingState({
               layers: drawingState.layers.map(l => 
                 l.id === id ? { ...l, visible: !l.visible } : l
@@ -3094,6 +4491,10 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
             });
           }}
           onLayerOpacityChange={(id, opacity) => {
+            if (onLayerOpacityChange) {
+              onLayerOpacityChange(id, opacity);
+              return;
+            }
             updateDrawingState({
               layers: drawingState.layers.map(l => 
                 l.id === id ? { ...l, opacity } : l
@@ -3101,12 +4502,20 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
             });
           }}
           onLayerReorder={(fromIndex, toIndex) => {
+            if (onLayerReorder) {
+              onLayerReorder(fromIndex, toIndex);
+              return;
+            }
             const newLayers = [...drawingState.layers];
             const [removed] = newLayers.splice(fromIndex, 1);
             newLayers.splice(toIndex, 0, removed);
             updateDrawingState({ layers: newLayers });
           }}
           onLayerMerge={(id) => {
+            if (onLayerMerge) {
+              onLayerMerge(id);
+              return;
+            }
             const sourceIndex = drawingState.layers.findIndex((layer) => layer.id === id);
             if (sourceIndex <= 0) return;
             const targetIndex = sourceIndex - 1;
@@ -3127,6 +4536,10 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
             });
           }}
           onLayerDuplicate={(id) => {
+            if (onLayerDuplicate) {
+              onLayerDuplicate(id);
+              return;
+            }
             const layer = drawingState.layers.find(l => l.id === id);
             if (layer) {
               const duplicate: DrawingLayer = {
@@ -3160,6 +4573,10 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
           onPaste={pasteClipboard}
           onCut={cutSelection}
           onDelete={deleteSelection}
+          onSelectAllSelection={selectAllStrokes}
+          onDeselectAllSelection={deselectAllStrokes}
+          onInvertSelection={invertSelection}
+          onResetSelectionPivot={resetSelectionPivot}
           position={drawingToolsPanelPosition}
           collapsed={toolsPanelCollapsed}
           onCollapsedChange={handleToolsPanelCollapsedChange}

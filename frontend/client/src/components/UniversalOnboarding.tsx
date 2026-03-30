@@ -1992,7 +1992,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
                                 label={`${audioInterface.brand} ${audioInterface.model}`}
                                 onDelete={() => handleAudioInterfaceRemove(audioInterface.id)}
                                 variant="outlined"
-                                sx={{ bgcolor: 'rgba(25,255,255,0.2)' }}
+                                sx={{ bgcolor: 'rgba(255,255,255,0.92)' }}
                               />
                             ))}
                           </Box>
@@ -2087,7 +2087,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
                                 label={`${microphone.brand} ${microphone.model}`}
                                 onDelete={() => handleMicrophoneRemove(microphone.id)}
                                 variant="outlined"
-                                sx={{ bgcolor: 'rgba(25,255,255,0.2)' }}
+                                sx={{ bgcolor: 'rgba(255,255,255,0.92)' }}
                               />
                             ))}
                           </Box>
@@ -2184,7 +2184,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
                             label={`${camera.brand} ${camera.model}`}
                             onDelete={() => handleCameraRemove(camera.id)}
                             variant="outlined"
-                            sx={{ bgcolor: 'rgba(25,255,255,0.2)' }}
+                            sx={{ bgcolor: 'rgba(255,255,255,0.92)' }}
                           />
                         ))}
                       </Box>
@@ -2298,7 +2298,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
                             label={`${flash.brand} ${flash.model}`}
                             onDelete={() => handleFlashRemove(flash.id)}
                             variant="outlined"
-                            sx={{ bgcolor: 'rgba(25,255,255,0.2)' }}
+                            sx={{ bgcolor: 'rgba(255,255,255,0.92)' }}
                           />
                         ))}
                       </Box>

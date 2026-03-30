@@ -11,11 +11,10 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNodes, useActions } from '../state/selectors';
-import type {
-  FlashController,
-  FlashGroup} from '../core/data/FlashControllerData';
 import {
   ALL_FLASH_CONTROLLERS,
+  type FlashController,
+  type FlashGroup,
   getControllerById,
   findControllersForLight,
   createDefaultGroups,
@@ -120,48 +119,42 @@ export function useFlashController(): UseFlashControllerReturn {
       .map((light) => {
         const groupId = lightAssignments[light.id];
         const group = groups.find((g) => g.id === groupId);
+        const userData = light.userData;
         
         return {
           nodeId: light.id,
           nodeName: light.name || 'Light',
-          brand: light.userData?.brand || 'Unknown',
-          model: light.userData?.model || 'Unknown',
+          brand: userData.brand ?? 'Unknown',
+          model: userData.model ?? 'Unknown',
           groupId,
           groupName: group?.name || '?',
           currentPower: light.light?.power || 0.5,
-          wattage: light.userData?.wattage || 500,
-          lightType: light.userData?.lightType || 'strobe',
+          wattage: userData.wattage ?? 500,
+          lightType: userData.lightType ?? 'strobe',
         };
       });
   }, [sceneLights, lightAssignments, groups]);
   
   // Available controllers based on scene lights
   const availableControllers = useMemo(() => {
-    // If we have lights, filter to compatible controllers
-    if (sceneLights.length > 0) {
-      const lightBrands = new Set(
-        sceneLights.map((l) => (l.userData?.brand || '').toLowerCase())
-      );
-      
-      // Find controllers compatible with any of the lights
-      const compatible = ALL_FLASH_CONTROLLERS.filter((c) => {
-        // Profoto controller works with Profoto lights
-        // Godox controller works with Godox lights
-        // etc.
-        return Array.from(lightBrands).some((brand) => {
-          if (!brand) return false;
-          if (c.brand === brand) return true;
-          return c.compatibleLights.some(
-            (l) => l === '*' || l.toLowerCase().includes(brand)
-          );
-        });
-      });
-      
-      if (compatible.length > 0) return compatible;
+    const compatibleControllers = sceneLights.flatMap((light) => {
+      const brand = light.userData.brand?.trim();
+      return brand ? findControllersForLight(brand) : [];
+    });
+
+    if (compatibleControllers.length === 0) {
+      return ALL_FLASH_CONTROLLERS;
     }
-    
-    // Return all controllers if no lights or no compatible ones found
-    return ALL_FLASH_CONTROLLERS;
+
+    const seen = new Set<string>();
+    return compatibleControllers.filter((controller) => {
+      if (seen.has(controller.id)) {
+        return false;
+      }
+
+      seen.add(controller.id);
+      return true;
+    });
   }, [sceneLights]);
   
   // Select controller
@@ -377,12 +370,9 @@ export function useFlashController(): UseFlashControllerReturn {
   // Check if controller can control a light brand
   const canControlLight = useCallback((lightBrand: string) => {
     if (!controller) return false;
-    const brand = lightBrand.toLowerCase();
-    
-    if (controller.brand === brand) return true;
-    return controller.compatibleLights.some(
-      (l) => l ==='*' || l.toLowerCase().includes(brand)
-    );
+    const brand = lightBrand.trim();
+
+    return findControllersForLight(brand).some((supportedController) => supportedController.id === controller.id);
   }, [controller]);
   
   // Auto-sync when groups change
@@ -390,7 +380,7 @@ export function useFlashController(): UseFlashControllerReturn {
     if (controller && connectedLights.length > 0) {
       syncToScene();
     }
-  }, [groups]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [controller, connectedLights, syncToScene]);
   
   // Build state object
   const state: FlashControllerState = {
@@ -429,4 +419,3 @@ export function useFlashController(): UseFlashControllerReturn {
     canControlLight,
   };
 }
-

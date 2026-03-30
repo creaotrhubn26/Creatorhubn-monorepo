@@ -1161,6 +1161,8 @@ const toPresentationGrammarId = (value: string): SharedPresentationSlideGrammarI
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
+const isPresent = <T,>(value: T | null): value is T => value !== null;
+
 const toTemplateMemoryKind = (value: string): PresentationTemplateMemoryKind => {
   const candidate = String(value || '').trim().toLowerCase();
   if (candidate === 'brand-kit' || candidate === 'preset' || candidate === 'deck') {
@@ -1172,9 +1174,9 @@ const toTemplateMemoryKind = (value: string): PresentationTemplateMemoryKind => 
 const parseTemplateMemoryMatches = (value: unknown): PresentationTemplateMemoryMatch[] => {
   if (!Array.isArray(value)) return [];
   return value
-    .map((entry) => {
+    .map<PresentationTemplateMemoryMatch | null>((entry) => {
       if (!isObjectRecord(entry)) return null;
-      return {
+      const match: PresentationTemplateMemoryMatch = {
         id: String(entry.id || '').trim(),
         kind: toTemplateMemoryKind(String(entry.kind || 'deck')),
         name: String(entry.name || '').trim(),
@@ -1191,9 +1193,11 @@ const parseTemplateMemoryMatches = (value: unknown): PresentationTemplateMemoryM
           entry.rerankScore === null || entry.rerankScore === undefined
             ? null
             : clamp(Number(entry.rerankScore) || 0, 0, 1),
-      } satisfies PresentationTemplateMemoryMatch;
+      };
+      return match;
     })
-    .filter((entry): entry is PresentationTemplateMemoryMatch => Boolean(entry && entry.id && entry.name))
+    .filter(isPresent)
+    .filter((entry) => Boolean(entry.id && entry.name))
     .slice(0, 6);
 };
 
@@ -1203,9 +1207,9 @@ const parseAiCritique = (payload: unknown): PresentationAiCritiqueResult | null 
   if (!isObjectRecord(rawData)) return null;
   const findings = Array.isArray(rawData.findings)
     ? rawData.findings
-        .map((entry) => {
+        .map<PresentationAiCritiqueFinding | null>((entry) => {
           if (!isObjectRecord(entry)) return null;
-          return {
+          const finding: PresentationAiCritiqueFinding = {
             id: String(entry.id || `critique-${Date.now()}`),
             slideId: String(entry.slideId || '').trim() || undefined,
             severity: String(entry.severity || '').trim().toLowerCase() === 'error' ? 'error' : 'warning',
@@ -1225,9 +1229,11 @@ const parseAiCritique = (payload: unknown): PresentationAiCritiqueResult | null 
               ? toDesignGraphicKind(String(entry.recommendedVisualKind || 'illustration'))
               : undefined,
             confidence: clamp(Number(entry.confidence) || 0.68, 0, 1),
-          } satisfies PresentationAiCritiqueFinding;
+          };
+          return finding;
         })
-        .filter((entry): entry is PresentationAiCritiqueFinding => Boolean(entry && entry.messageNo))
+        .filter(isPresent)
+        .filter((entry) => Boolean(entry.messageNo))
     : [];
 
   return {
@@ -1284,14 +1290,14 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
 
   const slides = Array.isArray(rawData.slides)
     ? rawData.slides
-        .map((entry) => {
+        .map<PresentationDesignSlidePlan | null>((entry) => {
           if (!isObjectRecord(entry)) return null;
           const copySuggestions = isObjectRecord(entry.copySuggestions) ? entry.copySuggestions : {};
           const graphicSlots = Array.isArray(entry.graphicSlots)
             ? entry.graphicSlots
-                .map((slot) => {
+                .map<PresentationDesignGraphicSlot | null>((slot) => {
                   if (!isObjectRecord(slot)) return null;
-                  return {
+                  const graphicSlot: PresentationDesignGraphicSlot = {
                     id: String(slot.id || `slot-${Date.now()}`),
                     kind: toDesignGraphicKind(String(slot.kind || 'illustration')),
                     label: String(slot.label || '').trim(),
@@ -1300,14 +1306,15 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
                     y: clamp(Number(slot.y) || 0, 0, 100),
                     width: clamp(Number(slot.width) || 20, 1, 100),
                     height: clamp(Number(slot.height) || 12, 1, 100),
-                    resolvedAssetUrl: String(slot.resolvedAssetUrl || '').trim(),
-                    assetSource: String(slot.assetSource || '').trim(),
+                    resolvedAssetUrl: String(slot.resolvedAssetUrl || '').trim() || undefined,
+                    assetSource: String(slot.assetSource || '').trim() || undefined,
                   };
+                  return graphicSlot;
                 })
-                .filter((slot): slot is PresentationDesignGraphicSlot => Boolean(slot))
+                .filter(isPresent)
             : [];
 
-          return {
+          const slidePlan: PresentationDesignSlidePlan = {
             slideId: String(entry.slideId || '').trim(),
             visualType: toDesignVisualType(String(entry.visualType || 'feature')),
             grammarId: toPresentationGrammarId(String(entry.grammarId || 'content-grid')),
@@ -1364,7 +1371,7 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
                               }
                             : null,
                         )
-                        .filter((item): item is SharedPresentationStructuredContent['columns'][number] => Boolean(item))
+                        .filter(isPresent)
                     : [],
                   steps: Array.isArray(entry.structuredContent.steps)
                     ? entry.structuredContent.steps
@@ -1376,7 +1383,7 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
                               }
                             : null,
                         )
-                        .filter((item): item is SharedPresentationStructuredContent['steps'][number] => Boolean(item))
+                        .filter(isPresent)
                     : [],
                   stats: Array.isArray(entry.structuredContent.stats)
                     ? entry.structuredContent.stats
@@ -1389,7 +1396,7 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
                               }
                             : null,
                         )
-                        .filter((item): item is SharedPresentationStructuredContent['stats'][number] => Boolean(item))
+                        .filter(isPresent)
                     : [],
                   quoteText: String(entry.structuredContent.quoteText || '').trim(),
                   quoteAttribution: String(entry.structuredContent.quoteAttribution || '').trim(),
@@ -1419,31 +1426,32 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
                 },
             repairActions: Array.isArray(entry.repairActions)
               ? entry.repairActions
-                  .map((item) =>
+                  .map<SharedPresentationRepairAction | null>((item) =>
                     isObjectRecord(item)
-                      ? {
+                      ? ({
                           id: String(item.id || '').trim() as SharedPresentationRepairAction['id'],
                           reason: String(item.reason || '').trim(),
                           from: String(item.from || '').trim() || undefined,
                           to: String(item.to || '').trim() || undefined,
-                        }
+                        } satisfies SharedPresentationRepairAction)
                       : null,
                   )
-                  .filter((item): item is SharedPresentationRepairAction => Boolean(item && item.id && item.reason))
+                  .filter(isPresent)
+                  .filter((item) => Boolean(item.id && item.reason))
               : [],
             visualNeeds: Array.isArray(entry.visualNeeds)
               ? entry.visualNeeds
-                  .map((item) =>
+                  .map<SharedPresentationVisualNeed | null>((item) =>
                     isObjectRecord(item)
-                      ? {
+                      ? ({
                           kind: toDesignGraphicKind(String(item.kind || 'illustration')),
                           label: String(item.label || '').trim() || 'Visual',
                           prompt: String(item.prompt || '').trim() || 'Supporting visual',
                           priority: String(item.priority || '').trim().toLowerCase() === 'primary' ? 'primary' : 'secondary',
-                        }
+                        } satisfies SharedPresentationVisualNeed)
                       : null,
                   )
-                  .filter((item): item is SharedPresentationVisualNeed => Boolean(item))
+                  .filter(isPresent)
               : [],
             copySuggestions: {
               title: String(copySuggestions.title || '').trim(),
@@ -1463,9 +1471,11 @@ const parseDesignPlan = (payload: unknown): PresentationDesignPlan | null => {
                   grammarId: toPresentationGrammarId(String(entry.continuation.grammarId || 'content-grid')),
                 }
               : null,
-          } as PresentationDesignSlidePlan;
+          };
+          return slidePlan;
         })
-        .filter((entry): entry is PresentationDesignSlidePlan => Boolean(entry && entry.slideId))
+        .filter(isPresent)
+        .filter((entry) => Boolean(entry.slideId))
     : [];
 
   if (slides.length === 0) return null;
@@ -1655,10 +1665,11 @@ const _graphicSlotsForLocalDesignVisualType = (
   if (visualType === 'title') {
     return [createSlot('hero', 'photo', 'Hero', `${promptBase} hero visual`, 4, 8, 92, 84)];
   }
-  return [
+  const slots: PresentationDesignGraphicSlot[] = [
     createSlot('main', 'illustration', 'Main visual', `${promptBase} main visual`, 54, 14, 40, 58),
     createSlot('icon', 'icon', 'Support icon', `${promptBase} support icon`, 56, 74, 14, 10),
   ];
+  return slots;
 };
 
 const buildLocalDesignPlanFallback = ({
@@ -2026,7 +2037,7 @@ const extractTextRuns = (xml: string): string[] => {
 
 const buildDefaultSlideElements = (title: string, layout: PresentationDisplayMode): PresentationSceneElement[] => {
   const wide = layout === 'split-screen' || layout === 'full-frame';
-  return [
+  const elements: PresentationSceneElement[] = [
     {
       id: `scene-el-title-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       type: 'text',
@@ -2052,6 +2063,7 @@ const buildDefaultSlideElements = (title: string, layout: PresentationDisplayMod
       tone: 'muted',
     },
   ];
+  return elements;
 };
 
 const collectSlideBodyLines = (slide: PresentationSlide | null): string[] => {
@@ -3168,7 +3180,7 @@ const buildContextualPresentationSeeds = (
     transformationText ||
     primaryDescription;
 
-  return [
+  const seeds: PresentationContextSlideSeed[] = [
     {
       title: deckTitle,
       subtitle:
@@ -3236,7 +3248,9 @@ const buildContextualPresentationSeeds = (
       ctaSupport: nextStepSupport,
       mediaIntent: deckTitle,
     },
-  ].filter((seed) => seed.bodyLines.length > 0 || seed.visualType === 'title' || seed.visualType === 'cta');
+  ];
+
+  return seeds.filter((seed) => seed.bodyLines.length > 0 || seed.visualType === 'title' || seed.visualType === 'cta');
 };
 
 const buildContextualPresentationSlides = (
@@ -4749,33 +4763,36 @@ function AcademyPresentationOverlayStudio({
     () =>
       decks
         .filter((deck) => deck.id !== selectedDeck?.id)
-        .map((deck) => ({
-          id: deck.id,
-          kind: 'deck',
-          name: deck.name,
-          summary: deck.sourceName || deck.slides[0]?.title || '',
-          templateId: deck.template,
-          visualThemeId: deck.visualThemeId,
-          displayMode: deck.displayMode,
-          splitLayoutVariant: deck.splitLayoutVariant,
-          searchText: deck.slides
-            .slice(0, 20)
-            .map((slide) => {
-              const elementText = slide.elements
-                .filter((element) => element.type === 'text')
-                .map((element) => String(element.text || '').trim())
-                .filter(Boolean)
-                .slice(0, 4)
-                .join(' ');
-              return [slide.title, slide.speakerNotes, elementText].filter(Boolean).join(' · ');
-            })
-            .filter(Boolean)
-            .join('\n')
-            .slice(0, 3600),
-          brandName: deck.brandKitId
-            ? brandKits.find((kit) => kit.id === deck.brandKitId)?.name || ''
-            : '',
-        }))
+        .map((deck) => {
+          const memoryItem: PresentationTemplateMemoryItem = {
+            id: deck.id,
+            kind: 'deck',
+            name: deck.name,
+            summary: deck.sourceName || deck.slides[0]?.title || '',
+            templateId: deck.template,
+            visualThemeId: deck.visualThemeId,
+            displayMode: deck.displayMode,
+            splitLayoutVariant: deck.splitLayoutVariant,
+            searchText: deck.slides
+              .slice(0, 20)
+              .map((slide) => {
+                const elementText = slide.elements
+                  .filter((element) => element.type === 'text')
+                  .map((element) => String(element.text || '').trim())
+                  .filter(Boolean)
+                  .slice(0, 4)
+                  .join(' ');
+                return [slide.title, slide.speakerNotes, elementText].filter(Boolean).join(' · ');
+              })
+              .filter(Boolean)
+              .join('\n')
+              .slice(0, 3600),
+            brandName: deck.brandKitId
+              ? brandKits.find((kit) => kit.id === deck.brandKitId)?.name || ''
+              : '',
+          };
+          return memoryItem;
+        })
         .filter((entry) => entry.searchText.trim().length > 0)
         .slice(0, 48),
     [brandKits, decks, selectedDeck?.id],
@@ -4785,7 +4802,7 @@ function AcademyPresentationOverlayStudio({
     () => ({
       name:
         selectedBrandKit?.name ||
-        selectedTemplatePreset.label ||
+        tt(selectedTemplatePreset.labelNo, selectedTemplatePreset.labelEn) ||
         (isNorwegian ? 'Presentasjonsbrand' : 'Presentation brand'),
       primary: activeVisualThemeColors.primary,
       secondary: activeVisualThemeColors.secondary,
@@ -4811,7 +4828,8 @@ function AcademyPresentationOverlayStudio({
       selectedBrandKit?.logoText,
       selectedBrandKit?.minContrastRatio,
       selectedBrandKit?.name,
-      selectedTemplatePreset.label,
+      selectedTemplatePreset.labelEn,
+      selectedTemplatePreset.labelNo,
     ],
   );
 

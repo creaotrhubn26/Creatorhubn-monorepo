@@ -8,7 +8,12 @@
 export * from './designTokens';
 export * from './colors';
 export * from './typography';
-export * from './spacing';
+export {
+  spacingScale,
+  getSpacing as getSpacingScale,
+  getSpacingNumber,
+  spacingUtils,
+} from './spacing';
 export * from './theme';
 
 // Styles
@@ -16,5 +21,4 @@ export * from './globalStyles';
 export * from './interactiveStates';
 export * from './hoverEffects';
 export * from './animations';
-
 

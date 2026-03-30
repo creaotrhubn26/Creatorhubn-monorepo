@@ -76,6 +76,20 @@ export interface AnimatedObject {
   state: AnimationState;
 }
 
+function normalizeEulerOrder(order?: string): THREE.EulerOrder {
+  switch (order) {
+    case 'XYZ':
+    case 'YZX':
+    case 'ZXY':
+    case 'XZY':
+    case 'YXZ':
+    case 'ZYX':
+      return order;
+    default:
+      return 'XYZ';
+  }
+}
+
 // ============================================================================
 // Easing Functions
 // ============================================================================
@@ -256,6 +270,10 @@ class SceneAnimationService {
       return this.animatedObjects.get(id)!;
     }
 
+    if (!object.name) {
+      object.name = id;
+    }
+
     const mixer = new THREE.AnimationMixer(object);
     const animatedObject: AnimatedObject = {
       id,
@@ -302,7 +320,7 @@ class SceneAnimationService {
     const times: number[] = keyframes.map((kf) => kf.time);
     let values: number[] = [];
     let TrackClass: typeof THREE.KeyframeTrack = THREE.KeyframeTrack;
-    let trackName = `.${property}`;
+    let trackName = targetId ? `${targetId}.${property}` : `.${property}`;
 
     switch (property) {
       case 'position':
@@ -317,7 +335,7 @@ class SceneAnimationService {
         values = keyframes.flatMap((kf) => {
           const euler = kf.value as [number, number, number, string?];
           const q = new THREE.Quaternion().setFromEuler(
-            new THREE.Euler(euler[0], euler[1], euler[2], euler[3] || 'XYZ')
+            new THREE.Euler(euler[0], euler[1], euler[2], normalizeEulerOrder(euler[3]))
           );
           return [q.x, q.y, q.z, q.w];
         });

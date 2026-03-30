@@ -53,6 +53,7 @@ import {
   ContentCopy as DuplicateIcon,
   FileDownload as ExportIcon,
   DragIndicator as DragIcon,
+  MovieCreation as StoryboardIcon,
 } from '@mui/icons-material';
 import { useDroppable } from '@dnd-kit/core';
 import type { ShotListSummary, TopAssignee } from '../../models/derivedState';
@@ -150,6 +151,7 @@ export interface ShotListCardProps {
   onDuplicate: (shotListId: string) => void;
   onDelete: (shotListId: string) => void;
   onExport: (shotListId: string) => void;
+  onOpenStoryboard?: (shotListId: string) => void;
   /** @dnd-kit drag handle — pass through from SortableContext if in sort mode */
   dragHandleProps?: Record<string, unknown>;
   isDragging?: boolean;
@@ -167,6 +169,7 @@ export function ShotListCard({
   onDuplicate,
   onDelete,
   onExport,
+  onOpenStoryboard,
   dragHandleProps,
   isDragging = false,
 }: ShotListCardProps) {
@@ -188,6 +191,7 @@ export function ShotListCard({
   const sm = summary;
   const scene = sm.sceneMeta;
   const hasUnassigned = sm.unassignedShots > 0;
+  const coverage = sm.storyboardCoverage;
 
   // ── Derived visual values ─────────────────────────────────────────────────
   const progressColor = sm.completionPct === 100 ? '#22c55e' : sm.completionPct >= 50 ? '#f97316' : '#3b82f6';
@@ -379,6 +383,81 @@ export function ShotListCard({
             </Box>
           )}
 
+          {(sm.storyboardFrameCount > 0 || sm.storyboardLinkedShots > 0) && (
+            <Stack
+              direction="row"
+              spacing={0.75}
+              flexWrap="wrap"
+              useFlexGap
+              sx={{ mb: 1 }}
+              data-testid={`shotlist-coverage-${sm.shotListId}`}
+            >
+              {coverage.totalFrames > 0 && (
+                <Chip
+                  size="small"
+                  label={`${coverage.coveredFrames}/${coverage.totalFrames} frames brukt`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenStoryboard?.(sm.shotListId);
+                  }}
+                  sx={{
+                    height: 20,
+                    fontSize: '0.64rem',
+                    bgcolor: 'rgba(59,130,246,0.14)',
+                    color: '#93c5fd',
+                    border: '1px solid rgba(59,130,246,0.24)',
+                    cursor: onOpenStoryboard ? 'pointer' : 'default',
+                  }}
+                />
+              )}
+              {coverage.missingFrames > 0 && (
+                <Tooltip
+                  title={coverage.missingFrameList
+                    .map((frame) => frame.shotNumber || frame.title || frame.frameId)
+                    .join(', ')}
+                >
+                  <Chip
+                    size="small"
+                    label={`${coverage.missingFrames} mangler shot`}
+                    sx={{
+                      height: 20,
+                      fontSize: '0.64rem',
+                      bgcolor: 'rgba(245,158,11,0.12)',
+                      color: '#fbbf24',
+                      border: '1px solid rgba(245,158,11,0.24)',
+                    }}
+                  />
+                </Tooltip>
+              )}
+              {coverage.linkedShots > 0 && (
+                <Chip
+                  size="small"
+                  label={`${coverage.linkedShots} linked shots`}
+                  sx={{
+                    height: 20,
+                    fontSize: '0.64rem',
+                    bgcolor: 'rgba(233,30,99,0.12)',
+                    color: '#f9a8d4',
+                    border: '1px solid rgba(233,30,99,0.2)',
+                  }}
+                />
+              )}
+              {coverage.unlinkedShots > 0 && (
+                <Chip
+                  size="small"
+                  label={`${coverage.unlinkedShots} shots uten storyboard`}
+                  sx={{
+                    height: 20,
+                    fontSize: '0.64rem',
+                    bgcolor: 'rgba(148,163,184,0.12)',
+                    color: '#cbd5e1',
+                    border: '1px solid rgba(148,163,184,0.2)',
+                  }}
+                />
+              )}
+            </Stack>
+          )}
+
           {/* ══ PROGRESS BAR ════════════════════════════════════════════════ */}
           <LinearProgress
             variant="determinate"
@@ -463,8 +542,13 @@ export function ShotListCard({
           <DuplicateIcon sx={{ fontSize: 16, mr: 1 }} /> Duplicate
         </MenuItem>
         <MenuItem onClick={() => { onExport(sm.shotListId); closeMenu(); }} dense>
-          <ExportIcon sx={{ fontSize: 16, mr: 1 }} /> Export CSV
+          <ExportIcon sx={{ fontSize: 16, mr: 1 }} /> Export
         </MenuItem>
+        {onOpenStoryboard && (
+          <MenuItem onClick={() => { onOpenStoryboard(sm.shotListId); closeMenu(); }} dense>
+            <StoryboardIcon sx={{ fontSize: 16, mr: 1 }} /> Open storyboard
+          </MenuItem>
+        )}
         <Divider sx={{ my: 0.25, borderColor: 'rgba(255,255,255,0.08)' }} />
         <MenuItem
           onClick={() => { onDelete(sm.shotListId); closeMenu(); }}

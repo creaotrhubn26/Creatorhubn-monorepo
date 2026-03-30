@@ -12,7 +12,7 @@
 
 import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import * as THREE from 'three';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Line, Html, TransformControls } from '@react-three/drei';
 import type { AnimationTrack} from '../../core/animation/SceneGraphAnimationEngine';
 import { Keyframe } from '../../core/animation/SceneGraphAnimationEngine';
@@ -81,7 +81,7 @@ function DraggableKeyframe({
   const scale = isSelected ? 1.4 : isHovered ? 1.2 : 1;
 
   // Handle drag
-  const handlePointerDown = useCallback((e: THREE.Event) => {
+  const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     setIsDragging(true);
     onDragStart();
@@ -491,13 +491,11 @@ export function MotionPathEditor3D({
           position={keyframePositions[selectedKeyframeIndex]}
           mode="translate"
           size={0.5}
-          onObjectChange={(e) => {
-            if (e?.target) {
+          onObjectChange={(e: { target?: { object?: THREE.Object3D } }) => {
+            if (e.target?.object) {
               const newPos = new THREE.Vector3();
-              (e.target as any).object?.getWorldPosition(newPos);
-              if (newPos) {
-                handleDrag(selectedKeyframeIndex, newPos);
-              }
+              e.target.object.getWorldPosition(newPos);
+              handleDrag(selectedKeyframeIndex, newPos);
             }
           }}
         />

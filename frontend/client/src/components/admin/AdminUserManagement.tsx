@@ -226,17 +226,17 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
               <TableBody>
                 {users?.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell sx={{ color: 'rgba(25, 255, 255, 0.8)' }}>
+                    <TableCell sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
                       <Box sx={{ display: 'flex', flexDirection: 'column'}}>
                         <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                           {user.firstName} {user.lastName}
                         </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(25, 255, 255, 0.6)' }}>
+                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.62)' }}>
                           {user.companyName}
                         </Typography>
                       </Box>
                     </TableCell>
-                    <TableCell sx={{ color: 'rgba(25, 255, 255, 0.8)' }}>
+                    <TableCell sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
                       {user.email}
                     </TableCell>
                     <TableCell>
@@ -256,7 +256,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                         size="small"
                       />
                     </TableCell>
-                    <TableCell sx={{ color: 'rgba(25, 255, 255, 0.8)' }}>
+                    <TableCell sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
                       {user.lastLoginAt 
                         ? new Date(user.lastLoginAt).toLocaleDateString('no-NO') 
                         : 'Aldri'
@@ -313,7 +313,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
         fullWidth
         PaperProps={{
           sx: {
-            backgroundColor: 'rgba(25, 255, 255, 0.05)',
+            backgroundColor: 'rgba(255, 255, 255, 0.06)',
             backdropFilter: 'blur(10px)',
         }
       }}
@@ -332,19 +332,19 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
           )}
           
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            <Typography sx={{ color: 'rgba(25, 255, 255, 0.8)' }}>
+            <Typography sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
               Bruker: {selectedUser?.firstName} {selectedUser?.lastName} ({selectedUser?.email})
             </Typography>
             
             {actionType === 'role' && (
               <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(25, 255, 255, 0.7)' }}>Ny rolle</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.72)' }}>Ny rolle</InputLabel>
                 <Select
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value as any)}
                   sx={{
                     color: 'white','.MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'rgba(25, 255, 255, 0.23)',
+                      borderColor: 'rgba(255, 255, 255, 0.2)',
                   }, '&:hover .MuiOutlinedInput-notchedOutline': {
                       borderColor: '#ff8c00',
                   }}}
@@ -364,8 +364,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
               onChange={(e) => setReason(e.target.value)}
               required={actionType === 'deactivate'}
               sx={{
-                '& .MuiInputLabel-root': { color: 'rgba(25, 255, 255, 0.7)' }, '& .MuiOutlinedInput-root': {
-                  color: 'white', '& fieldset': { borderColor: 'rgba(25, 255, 255, 0.23)' }, '&:hover fieldset': { borderColor: '#ff8c00',},
+                '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.72)' }, '& .MuiOutlinedInput-root': {
+                  color: 'white', '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' }, '&:hover fieldset': { borderColor: '#ff8c00',},
               }}}
             />
           </Box>
@@ -374,7 +374,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
         <DialogActions>
           <Button 
             onClick={handleCloseDialog}
-            sx={{ color: 'rgba(25, 255, 255, 0.7)' }}
+            sx={{ color: 'rgba(255, 255, 255, 0.72)' }}
           >
             Avbryt
           </Button>

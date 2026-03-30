@@ -13,7 +13,6 @@ import {
   Select,
   MenuItem,
   Slider,
-  TextField,
   IconButton,
   Stack,
   Divider,
@@ -30,10 +29,8 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
-import type { AreaLightType } from '../../core/rendering/AreaLight';
-import { AreaLight } from '../../core/rendering/AreaLight';
+import { AreaLight, type AreaLightType } from '../../core/rendering/AreaLight';
 import { ALL_LIGHTS, ALL_MODIFIERS } from '../../core/data/EquipmentDatabase';
-import * as THREE from 'three';
 
 interface AreaLightPanelProps {
   lights: AreaLight[];
@@ -140,7 +137,10 @@ export const AreaLightPanel: React.FC<AreaLightPanelProps> = ({
                 <MenuItem value="">
                   <em>None</em>
                 </MenuItem>
-                {ALL_MODIFIERS.filter((m) => m.type === selectedType || m.type === 'universal').map(
+                {ALL_MODIFIERS.filter((modifierOption) => (
+                  modifierOption.type === selectedType ||
+                  modifierOption.mountType === 'universal'
+                )).map(
                   (modifier) => (
                     <MenuItem key={modifier.id} value={modifier.id}>
                       {modifier.name} ({modifier.size[0] * 100}x{modifier.size[1] * 100}cm)
@@ -204,14 +204,12 @@ const LightItem: React.FC<LightItemProps> = ({ light, index, onRemove, onUpdate 
   const [visible, setVisible] = useState(true);
 
   const handlePowerChange = (_: Event, value: number | number[]) => {
-    light.config.power = value as number;
-    light.updateIntensity();
+    light.setPower(value as number);
     onUpdate();
   };
 
   const handleTemperatureChange = (_: Event, value: number | number[]) => {
-    light.config.temperature = value as number;
-    light.updateColor();
+    light.setTemperature(value as number);
     onUpdate();
   };
 
@@ -324,4 +322,3 @@ const LightItem: React.FC<LightItemProps> = ({ light, index, onRemove, onUpdate 
     </Paper>
   );
 };
-

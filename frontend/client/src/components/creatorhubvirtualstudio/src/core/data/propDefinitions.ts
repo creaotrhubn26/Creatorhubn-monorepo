@@ -34,7 +34,9 @@ export type PropStyle =
   | 'minimalist' 
   | 'rustic' 
   | 'contemporary'
-  | 'traditional';
+  | 'traditional'
+  | 'urban'
+  | 'dramatic';
 
 export type PropSize = 'small' | 'medium' | 'large' | 'extra-large';
 
@@ -1655,4 +1657,3 @@ export const PROPS_BY_CATEGORY = {
 export function getPropById(id: string): PropDefinition | undefined {
   return ALL_PROPS.find(prop => prop.id === id);
 }
-

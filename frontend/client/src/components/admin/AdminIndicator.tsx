@@ -78,7 +78,7 @@ export default function AdminIndicator({
             color: 'white',
             fontWeight: 'bold',
             fontSize: '0.75rem',
-            border: '2px solid rgba(25, 255, 255, 0.3)',
+            border: '2px solid rgba(255, 255, 255, 0.2)',
             '& .MuiChip-icon': {
               color: 'white',
             },

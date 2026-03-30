@@ -1376,7 +1376,7 @@ const EventsManagementPlatform: React.FC = () => {
                   <Typography variant="body2">Instagram når unge voksne best (84%)</Typography>
                 </Box>
 
-                <Divider sx={{ my: 2, bgcolor: 'rgba(25,255,255,0.3)' }} />
+                <Divider sx={{ my: 2, bgcolor: 'rgba(255,255,255,0.18)' }} />
 
                 <Box textAlign="center">
                   <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'white' }}>

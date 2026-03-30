@@ -14,8 +14,8 @@ import React, { useEffect, useCallback } from 'react';
 import {
   VisualEditorProvider,
   useVisualEditor,
+  type EditorElement,
 } from '@/components/admin/visual-editor/VisualEditorContext';
-import type { EditorElement } from '@/components/admin/visual-editor/VisualEditorContext';
 import { EnhancedVisualEditorContent } from '@/components/admin/visual-editor/EnhancedVisualEditorPage';
 
 /* ------------------------------------------------------------------ */

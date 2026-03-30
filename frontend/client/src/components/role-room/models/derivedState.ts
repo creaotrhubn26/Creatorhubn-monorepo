@@ -7,6 +7,7 @@ import type {
   CastingShot,
   Person,
   SceneBreakdown,
+  StoryboardFrame,
   ShotList,
   ShotStatus,
 } from './casting';
@@ -23,11 +24,35 @@ export interface ShotStatusBreakdown {
   completed: number;
 }
 
+export interface StoryboardCoverageFrameSummary {
+  frameId: string;
+  shotNumber?: string;
+  title?: string;
+}
+
+export interface StoryboardCoverageSummary {
+  totalFrames: number;
+  coveredFrames: number;
+  missingFrames: number;
+  coveragePct: number;
+  linkedShots: number;
+  sceneLinkedShots: number;
+  libraryLinkedShots: number;
+  unlinkedShots: number;
+  coveredFrameIds: string[];
+  missingFrameIds: string[];
+  coveredFrameList: StoryboardCoverageFrameSummary[];
+  missingFrameList: StoryboardCoverageFrameSummary[];
+}
+
 export interface ShotListSummary {
   shotListId: string;
   sceneId: string;
   sceneName?: string;
   sceneMeta?: SceneBreakdown;
+  storyboardFrameCount: number;
+  storyboardLinkedShots: number;
+  storyboardCoverage: StoryboardCoverageSummary;
   colorTag?: string;
   totalShots: number;
   completedShots: number;
@@ -48,6 +73,12 @@ export interface ProjectShotStats {
   completionPct: number;
   estimatedMinutes: number;
   estimatedHours: number;
+  storyboardFrameCount: number;
+  storyboardCoveredFrames: number;
+  storyboardMissingFrames: number;
+  storyboardCoveragePct: number;
+  storyboardLinkedShots: number;
+  storyboardUnlinkedShots: number;
   topAssignees: TopAssignee[];
   statusBreakdown: ShotStatusBreakdown;
 }
@@ -138,6 +169,68 @@ function getCompletionPct(completedShots: number, totalShots: number): number {
   return Math.round((completedShots / totalShots) * 100);
 }
 
+function toStoryboardFrameSummary(frame: StoryboardFrame): StoryboardCoverageFrameSummary {
+  return {
+    frameId: frame.id,
+    shotNumber: typeof frame.shotNumber === 'string' ? frame.shotNumber : undefined,
+    title:
+      (typeof frame.title === 'string' && frame.title.trim().length > 0
+        ? frame.title
+        : typeof frame.description === 'string' && frame.description.trim().length > 0
+          ? frame.description
+          : undefined),
+  };
+}
+
+export function computeStoryboardCoverageSummary(
+  shots: CastingShot[],
+  sceneMeta?: SceneBreakdown,
+): StoryboardCoverageSummary {
+  const sceneFrames = Array.isArray(sceneMeta?.storyboardFrames) ? sceneMeta.storyboardFrames : [];
+  const sceneFrameIds = new Set(sceneFrames.map((frame) => frame.id));
+
+  const coveredFrameIds = new Set<string>();
+  let linkedShots = 0;
+  let sceneLinkedShots = 0;
+  let libraryLinkedShots = 0;
+
+  for (const shot of shots) {
+    const hasStoryboardLink = Boolean(shot.storyboardFrameId || shot.storyboardLibraryItemId);
+    if (!hasStoryboardLink) continue;
+
+    linkedShots += 1;
+
+    if (typeof shot.storyboardFrameId === 'string' && sceneFrameIds.has(shot.storyboardFrameId)) {
+      coveredFrameIds.add(shot.storyboardFrameId);
+      sceneLinkedShots += 1;
+    } else if (shot.storyboardSourceType === 'library-item' || shot.storyboardLibraryItemId) {
+      libraryLinkedShots += 1;
+    }
+  }
+
+  const coveredFrameList = sceneFrames
+    .filter((frame) => coveredFrameIds.has(frame.id))
+    .map(toStoryboardFrameSummary);
+  const missingFrameList = sceneFrames
+    .filter((frame) => !coveredFrameIds.has(frame.id))
+    .map(toStoryboardFrameSummary);
+
+  return {
+    totalFrames: sceneFrames.length,
+    coveredFrames: coveredFrameIds.size,
+    missingFrames: Math.max(0, sceneFrames.length - coveredFrameIds.size),
+    coveragePct: getCompletionPct(coveredFrameIds.size, sceneFrames.length),
+    linkedShots,
+    sceneLinkedShots,
+    libraryLinkedShots,
+    unlinkedShots: Math.max(0, shots.length - linkedShots),
+    coveredFrameIds: Array.from(coveredFrameIds),
+    missingFrameIds: missingFrameList.map((frame) => frame.frameId),
+    coveredFrameList,
+    missingFrameList,
+  };
+}
+
 export function isShotAssigned(shot: CastingShot): boolean {
   if (isNonEmpty(shot.assigneeId)) return true;
   return (shot.assignments ?? []).some((assignment) => {
@@ -203,12 +296,18 @@ export function computeShotListSummary(
 
   const completedShots = statusBreakdown.completed;
   const totalShots = shots.length;
+  const storyboardCoverage = computeStoryboardCoverageSummary(shots, sceneMeta);
+  const storyboardLinkedShots = storyboardCoverage.linkedShots;
+  const storyboardFrameCount = storyboardCoverage.totalFrames;
 
   return {
     shotListId: shotList.id,
     sceneId: shotList.sceneId,
     sceneName: shotList.sceneName ?? sceneMeta?.sceneName ?? sceneMeta?.heading,
     sceneMeta,
+    storyboardFrameCount,
+    storyboardLinkedShots,
+    storyboardCoverage,
     colorTag: shotList.colorTag ?? sceneMeta?.colorTag,
     totalShots,
     completedShots,
@@ -243,6 +342,12 @@ export function computeProjectStats(summaries: ShotListSummary[]): ProjectShotSt
     completionPct: 0,
     estimatedMinutes: 0,
     estimatedHours: 0,
+    storyboardFrameCount: 0,
+    storyboardCoveredFrames: 0,
+    storyboardMissingFrames: 0,
+    storyboardCoveragePct: 0,
+    storyboardLinkedShots: 0,
+    storyboardUnlinkedShots: 0,
     topAssignees: [],
     statusBreakdown: {
       not_started: 0,
@@ -258,6 +363,11 @@ export function computeProjectStats(summaries: ShotListSummary[]): ProjectShotSt
     totals.completedShots += summary.completedShots;
     totals.unassignedShots += summary.unassignedShots;
     totals.estimatedMinutes += summary.estimatedMinutes;
+    totals.storyboardFrameCount += summary.storyboardCoverage.totalFrames;
+    totals.storyboardCoveredFrames += summary.storyboardCoverage.coveredFrames;
+    totals.storyboardMissingFrames += summary.storyboardCoverage.missingFrames;
+    totals.storyboardLinkedShots += summary.storyboardCoverage.linkedShots;
+    totals.storyboardUnlinkedShots += summary.storyboardCoverage.unlinkedShots;
     totals.statusBreakdown.not_started += summary.statusBreakdown.not_started;
     totals.statusBreakdown.in_progress += summary.statusBreakdown.in_progress;
     totals.statusBreakdown.completed += summary.statusBreakdown.completed;
@@ -274,6 +384,10 @@ export function computeProjectStats(summaries: ShotListSummary[]): ProjectShotSt
 
   totals.completionPct = getCompletionPct(totals.completedShots, totals.totalShots);
   totals.estimatedHours = formatHours(totals.estimatedMinutes);
+  totals.storyboardCoveragePct = getCompletionPct(
+    totals.storyboardCoveredFrames,
+    totals.storyboardFrameCount,
+  );
   totals.topAssignees = sortTopAssignees(assigneeMap);
   return totals;
 }

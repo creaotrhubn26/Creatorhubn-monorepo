@@ -16,7 +16,7 @@ export interface SuggestedAction {
   type: 'enable_feature' | 'upgrade_plan' | 'warning_only';
   featureId: string;
   featureName: string;
-  plan: 'basic' | 'pro' | 'enterprise';
+  plan: 'basic' | 'pro' | 'enterprise' | 'marketplace';
   description: string;
 }
 

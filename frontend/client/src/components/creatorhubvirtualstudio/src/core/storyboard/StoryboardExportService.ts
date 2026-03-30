@@ -7,11 +7,10 @@
  * - Video export (animatic with transitions)
  */
 
-import type { Storyboard} from '../../state/storyboardStore';
-import { StoryboardFrame, getShotTypeLabel } from '../../state/storyboardStore';
+import { getShotTypeLabel, type Storyboard } from '../../state/storyboardStore';
 import { logger } from '../services/logger';
 
-const log = logger.module('StoryboardExport, ');
+const log = logger.module('StoryboardExport');
 
 // =============================================================================
 // Types
@@ -125,7 +124,7 @@ export class StoryboardExportService {
     options: ExportOptions,
     notify: ProgressCallback
   ): Promise<ExportResult> {
-    notify({ stage: 'preparing,', progress: 0, message: 'Preparing PDF...' });
+    notify({ stage: 'preparing', progress: 0, message: 'Preparing PDF...' });
 
     // Dynamic import of jsPDF (if available)
     let jsPDF: any;
@@ -205,7 +204,7 @@ export class StoryboardExportService {
     notify: ProgressCallback,
     dims: { width: number; height: number; margin: number; usableWidth: number; usableHeight: number }
   ) {
-    const { width, margin, usableWidth, usableHeight } = dims;
+    const { margin, usableWidth, usableHeight } = dims;
     const cols = 3;
     const rows = 3;
     const framesPerPage = cols * rows;
@@ -279,7 +278,7 @@ export class StoryboardExportService {
     notify: ProgressCallback,
     dims: { width: number; height: number; margin: number; usableWidth: number; usableHeight: number }
   ) {
-    const { width, height, margin, usableWidth, usableHeight } = dims;
+    const { width, margin, usableWidth, usableHeight } = dims;
 
     for (let i = 0; i < storyboard.frames.length; i++) {
       doc.addPage();
@@ -321,7 +320,7 @@ export class StoryboardExportService {
       doc.text(`Duration: ${frame.duration}s`, margin, textY);
       doc.text(`Movement: ${frame.cameraMovement}`, margin + 200, textY);
 
-      if (options.includeTechnicalInfo) {
+      if (options.includeTechnicalInfo && frame.sceneSnapshot) {
         textY += 20;
         doc.setFontSize(9);
         const cam = frame.sceneSnapshot.camera;
@@ -374,7 +373,7 @@ export class StoryboardExportService {
     });
   }
 
-  private generatePDFHTML(storyboard: Storyboard, options: ExportOptions): string {
+  private generatePDFHTML(storyboard: Storyboard, _options: ExportOptions): string {
     return `
       <!DOCTYPE html>
       <html>
@@ -384,7 +383,7 @@ export class StoryboardExportService {
           body { font-family: system-ui, sans-serif; margin: 40px; }
           h1 { text-align: center; }
           .frame { page-break-inside: avoid; margin: 20px 0; border: 1px solid #ddd; padding: 20px; }
-          .frame img { max-width: 100%;, height: auto; }
+          .frame img { max-width: 100%; height: auto; }
           .info { margin-top: 10px; }
           @media print { .frame { page-break-inside: avoid; } }
         </style>
@@ -394,11 +393,11 @@ export class StoryboardExportService {
         <p style="text-align:center">${storyboard.frames.length} frames • ${new Date().toLocaleDateString()}</p>
         ${storyboard.frames.map(frame => `
           <div class="frame">
-            <img src="${frame.imageUrl}," alt="${frame.title}" />
+            <img src="${frame.imageUrl}" alt="${frame.title}" />
             <div class="info">
               <strong>${frame.index + 1}. ${frame.title}</strong><br/>
               ${frame.shotType} • ${frame.cameraAngle} • ${frame.duration}s
-              ${frame.description ? `<p>${frame.description}</p>` : ', '}
+              ${frame.description ? `<p>${frame.description}</p>` : ''}
             </div>
           </div>
         `).join('')}
@@ -592,8 +591,6 @@ export class StoryboardExportService {
     const totalDuration = storyboard.frames.reduce((sum, f) => sum + f.duration, 0);
     const totalFrameCount = Math.ceil(totalDuration * fps);
     let frameCount = 0;
-    const accTime = 0;
-
     for (let i = 0; i < storyboard.frames.length; i++) {
       const frame = storyboard.frames[i];
       const prevFrame = i > 0 ? storyboard.frames[i - 1] : null;

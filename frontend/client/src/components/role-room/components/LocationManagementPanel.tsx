@@ -359,6 +359,22 @@ const normalizeSceneIds = (value: unknown): string[] => {
   );
 };
 
+const normalizeLocationFacilities = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+};
+
+const getLocationTypeValue = (type: Location['type']): NonNullable<Location['type']> => {
+  if (typeof type === 'string' && type.trim().length > 0) return type;
+  return 'other';
+};
+
+const getLocationAddressText = (address: unknown): string =>
+  typeof address === 'string' ? address : '';
+
+const getLocationCapacityValue = (capacity: unknown): number =>
+  typeof capacity === 'number' && Number.isFinite(capacity) ? capacity : 0;
+
 const readTextFromUnknown = (value: unknown): string | null => {
   if (typeof value === 'string' && value.trim()) return value.trim();
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
@@ -430,7 +446,7 @@ const createProMediaAssetId = (): string =>
 const normalizeProMediaAssets = (value: unknown): ProMediaAsset[] => {
   if (!Array.isArray(value)) return [];
   return value
-    .map((entry) => {
+    .map<ProMediaAsset | null>((entry) => {
       if (typeof entry === 'string') {
         const url = entry.trim();
         if (!url) return null;
@@ -465,7 +481,7 @@ const normalizeProMediaAssets = (value: unknown): ProMediaAsset[] => {
         source: record.source === 'upload' ? 'upload' : 'url',
       };
     })
-    .filter((entry): entry is ProMediaAsset => Boolean(entry));
+    .filter((entry): entry is ProMediaAsset => entry !== null);
 };
 
 const buildProMediaDraft = (location: Location): ProMediaDraft => {
@@ -829,25 +845,26 @@ export function LocationManagementPanel({
   }, [favorites, projectId, favoritesLoaded]);
 
   const getTypeLabel = (type: Location['type']): string => {
-    const labels: Record<Location['type'], string> = {
+    const labels: Record<NonNullable<Location['type']>, string> = {
       studio: 'Studio',
       outdoor: 'Utendørs',
       indoor: 'Innendørs',
       virtual: 'Virtuell',
       other: 'Annet',
     };
-    return labels[type] || type;
+    const normalizedType = getLocationTypeValue(type);
+    return labels[normalizedType] || normalizedType;
   };
 
   const getTypeColor = (type: Location['type']): string => {
-    const colors: Record<Location['type'], string> = {
+    const colors: Record<NonNullable<Location['type']>, string> = {
       studio: '#c084fc',
       outdoor: '#34d399',
       indoor: '#22d3ee',
       virtual: '#a855f7',
       other: '#94a3b8',
     };
-    return colors[type] || '#94a3b8';
+    return colors[getLocationTypeValue(type)] || '#94a3b8';
   };
 
   const getTypeStatIcon = (type: string) => {
@@ -891,7 +908,7 @@ export function LocationManagementPanel({
       result = result.filter(
         (loc) =>
           loc.name.toLowerCase().includes(query) ||
-          loc.address.toLowerCase().includes(query) ||
+          getLocationAddressText(loc.address).toLowerCase().includes(query) ||
           getTypeLabel(loc.type).toLowerCase().includes(query) ||
           (loc.notes && loc.notes.toLowerCase().includes(query))
       );
@@ -917,10 +934,10 @@ export function LocationManagementPanel({
           comparison = getTypeLabel(a.type).localeCompare(getTypeLabel(b.type), 'nb');
           break;
         case 'capacity':
-          comparison = (a.capacity || 0) - (b.capacity || 0);
+          comparison = getLocationCapacityValue(a.capacity) - getLocationCapacityValue(b.capacity);
           break;
         case 'scenes':
-          comparison = a.assignedScenes.length - b.assignedScenes.length;
+          comparison = normalizeSceneIds(a.assignedScenes).length - normalizeSceneIds(b.assignedScenes).length;
           break;
       }
       return sortDirection === 'asc' ? comparison : -comparison;
@@ -932,11 +949,12 @@ export function LocationManagementPanel({
   // Statistics
   const stats = useMemo(() => {
     const typeCount = locations.reduce((acc, loc) => {
-      acc[loc.type] = (acc[loc.type] || 0) + 1;
+      const typeKey = getLocationTypeValue(loc.type);
+      acc[typeKey] = (acc[typeKey] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
-    const totalCapacity = locations.reduce((sum, loc) => sum + (loc.capacity || 0), 0);
+    const totalCapacity = locations.reduce((sum, loc) => sum + getLocationCapacityValue(loc.capacity), 0);
     const withCoordinates = locations.filter((loc) => loc.coordinates).length;
 
     return {
@@ -1761,13 +1779,18 @@ export function LocationManagementPanel({
       showError('Aktiv lokasjon har ingen fasiliteter å kopiere');
       return;
     }
+    const sourceFacilities = normalizeLocationFacilities(source.facilities);
+    if (sourceFacilities.length === 0) {
+      showError('Aktiv lokasjon har ingen fasiliteter å kopiere');
+      return;
+    }
     try {
       const targets = locations.filter((location) => selectedIds.has(location.id) && location.id !== sourceId);
       await Promise.all(
         targets.map((location) =>
           castingService.saveLocation(projectId, {
             ...location,
-            facilities: [...source.facilities],
+            facilities: [...sourceFacilities],
             updatedAt: new Date().toISOString(),
           } as Location)
         )
@@ -3041,8 +3064,8 @@ export function LocationManagementPanel({
               aria-label="Ny lokasjon"
               startIcon={<AddIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               sx={{
-                bgcolor: ROLE_ROOM_COLORS.accent,
-                color: '#fff',
+                bgcolor: '#6d28d9 !important',
+                color: '#fff !important',
                 fontWeight: 600,
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
@@ -3050,7 +3073,7 @@ export function LocationManagementPanel({
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
                 flex: { xs: 1, sm: 'none' },
                 ...focusVisibleStyles,
-                '&:hover': { bgcolor: ROLE_ROOM_COLORS.accentStrong },
+                '&:hover': { bgcolor: '#5b21b6 !important' },
               }}
             >
               {isMobile ? '' : 'Ny lokasjon'}
@@ -3492,6 +3515,7 @@ export function LocationManagementPanel({
                     <Checkbox
                       checked={selectedIds.has(location.id)}
                       onChange={() => handleToggleSelect(location.id)}
+                      inputProps={{ 'aria-label': `Velg lokasjon ${location.name}` }}
                       sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#a855f7' } }}
                     />
                   </TableCell>
@@ -3522,7 +3546,8 @@ export function LocationManagementPanel({
                         <Tooltip title={copiedId === location.id ? 'Kopiert!' : 'Kopier adresse'}>
                           <IconButton
                             size="small"
-                            onClick={() => handleCopyAddress(location.address, location.id)}
+                            onClick={() => handleCopyAddress(location.address ?? '', location.id)}
+                            aria-label={`Kopier adresse for ${location.name}`}
                             sx={{ color: copiedId === location.id ? '#a855f7' : 'rgba(255,255,255,0.3)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                           >
                             {copiedId === location.id ? <CheckIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} /> : <CopyIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} />}
@@ -3538,7 +3563,7 @@ export function LocationManagementPanel({
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                      {location.assignedScenes.length}
+                      {normalizeSceneIds(location.assignedScenes).length}
                     </Typography>
                   </TableCell>
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3546,23 +3571,36 @@ export function LocationManagementPanel({
                       <Tooltip title={favorites.has(location.id) ? 'Fjern favoritt' : 'Favoritt'}>
                         <IconButton
                           onClick={() => toggleFavorite(location.id)}
+                          aria-label={favorites.has(location.id) ? `Fjern ${location.name} fra favoritter` : `Legg til ${location.name} i favoritter`}
                           sx={{ color: favorites.has(location.id) ? '#ffc107' : 'rgba(255,255,255,0.3)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                         >
                           {favorites.has(location.id) ? <StarIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Dupliser">
-                        <IconButton onClick={() => handleDuplicate(location)} sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
+                        <IconButton
+                          onClick={() => handleDuplicate(location)}
+                          aria-label={`Dupliser ${location.name}`}
+                          sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                        >
                           <DuplicateIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Rediger">
-                        <IconButton onClick={() => handleOpenDialog(location)} sx={{ color: '#a855f7', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
+                        <IconButton
+                          onClick={() => handleOpenDialog(location)}
+                          aria-label={`Rediger ${location.name}`}
+                          sx={{ color: '#a855f7', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                        >
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Slett">
-                        <IconButton onClick={() => handleDeleteWithUndo(location.id)} sx={{ color: '#ff4444', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
+                        <IconButton
+                          onClick={() => handleDeleteWithUndo(location.id)}
+                          aria-label={`Slett ${location.name}`}
+                          sx={{ color: '#ff4444', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                        >
                           <DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
@@ -4325,6 +4363,7 @@ export function LocationManagementPanel({
                                 <Checkbox
                                   checked={selectedIds.has(location.id)}
                                   onChange={() => handleToggleSelect(location.id)}
+                                  inputProps={{ 'aria-label': `Velg lokasjon ${location.name}` }}
                                   sx={{ color: 'rgba(255,255,255,0.72)', '&.Mui-checked': { color: ROLE_ROOM_COLORS.accent } }}
                                 />
                                 <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -4340,12 +4379,20 @@ export function LocationManagementPanel({
                               </Box>
                               <Stack direction="row" spacing={0.5}>
                                 <Tooltip title={favorites.has(location.id) ? 'Fjern favoritt' : 'Favoritt'}>
-                                  <IconButton onClick={() => toggleFavorite(location.id)} sx={{ color: favorites.has(location.id) ? '#facc15' : 'rgba(255,255,255,0.35)' }}>
+                                  <IconButton
+                                    onClick={() => toggleFavorite(location.id)}
+                                    aria-label={favorites.has(location.id) ? `Fjern ${location.name} fra favoritter` : `Legg til ${location.name} i favoritter`}
+                                    sx={{ color: favorites.has(location.id) ? '#facc15' : 'rgba(255,255,255,0.35)' }}
+                                  >
                                     {favorites.has(location.id) ? <StarIcon /> : <StarBorderIcon />}
                                   </IconButton>
                                 </Tooltip>
                                 <Tooltip title="Analyser lokasjon">
-                                  <IconButton onClick={() => handleOpenAnalysisDialog(location)} sx={{ color: ROLE_ROOM_COLORS.secondary }}>
+                                  <IconButton
+                                    onClick={() => handleOpenAnalysisDialog(location)}
+                                    aria-label={`Analyser ${location.name}`}
+                                    sx={{ color: ROLE_ROOM_COLORS.secondary }}
+                                  >
                                     <AnalyticsIcon />
                                   </IconButton>
                                 </Tooltip>
@@ -6063,6 +6110,7 @@ export function LocationManagementPanel({
                       <Checkbox
                         checked={selectedIds.has(location.id)}
                         onChange={() => handleToggleSelect(location.id)}
+                        inputProps={{ 'aria-label': `Velg lokasjon ${location.name}` }}
                         sx={{
                           p: 0.25,
                           color: 'rgba(255,255,255,0.87)',
@@ -6244,7 +6292,7 @@ export function LocationManagementPanel({
                       <Tooltip title={copiedId === location.id ? 'Kopiert!' : 'Kopier'}>
                         <IconButton
                           size="small"
-                          onClick={() => handleCopyAddress(location.address, location.id)}
+                          onClick={() => handleCopyAddress(location.address ?? '', location.id)}
                           sx={{ color: copiedId === location.id ? '#a855f7' : 'rgba(255,255,255,0.4)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                         >
                           {copiedId === location.id ? <CheckIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <CopyIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
@@ -6364,7 +6412,7 @@ export function LocationManagementPanel({
                   )}
 
                   {/* Assigned scenes */}
-                  {location.assignedScenes.length > 0 && (
+                  {normalizeSceneIds(location.assignedScenes).length > 0 && (
                     <Box
                       sx={{
                         display: 'flex',
@@ -6391,7 +6439,7 @@ export function LocationManagementPanel({
                         <AssessmentIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 18, xl: 20 }, color: '#c4b5fd' }} />
                       </Box>
                       <Typography sx={{ color: '#c4b5fd', fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, fontWeight: 600 }}>
-                        {location.assignedScenes.length} scene{location.assignedScenes.length !== 1 ? 'r' : ''} tildelt
+                        {normalizeSceneIds(location.assignedScenes).length} scene{normalizeSceneIds(location.assignedScenes).length !== 1 ? 'r' : ''} tildelt
                       </Typography>
                     </Box>
                   )}
@@ -6549,10 +6597,8 @@ export function LocationManagementPanel({
                       aria-expanded={expandedCards.has(location.id)}
                       aria-label={expandedCards.has(location.id) ? 'Skjul info' : 'Vis info'}
                       sx={{
-                        bgcolor: expandedCards.has(location.id) 
-                          ? 'rgba(168,85,247,0.2)' 
-                          : 'rgba(168,85,247,0.12)',
-                        color: expandedCards.has(location.id) ? '#c4b5fd' : '#fff',
+                        bgcolor: expandedCards.has(location.id) ? '#6d28d9 !important' : '#7c3aed !important',
+                        color: '#fff !important',
                         fontSize: { xs: '0.8rem', sm: '0.84rem', md: '0.88rem', lg: '0.92rem', xl: '0.98rem' },
                         fontWeight: 600,
                         letterSpacing: '0.01em',
@@ -6560,9 +6606,9 @@ export function LocationManagementPanel({
                         width: { xs: '100%', sm: 'auto' },
                         px: { xs: 2.1, sm: 2.4, md: 2.6, lg: 2.8, xl: 3.1 },
                         py: { xs: 0.7, sm: 0.75, md: 0.8, lg: 0.85, xl: 0.9 },
-                        border: expandedCards.has(location.id) 
-                          ? '1px solid rgba(168,85,247,0.5)' 
-                          : '1px solid rgba(168,85,247,0.3)',
+                        border: expandedCards.has(location.id)
+                          ? '1px solid rgba(216,180,254,0.45)'
+                          : '1px solid rgba(192,132,252,0.32)',
                         borderRadius: 2,
                         textTransform: 'none',
                         boxShadow: expandedCards.has(location.id) 
@@ -6570,10 +6616,8 @@ export function LocationManagementPanel({
                           : '0 1px 4px rgba(168,85,247,0.12)',
                         transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                         '&:hover': {
-                          bgcolor: expandedCards.has(location.id)
-                            ? 'rgba(168,85,247,0.3)'
-                            : 'rgba(168,85,247,0.2)',
-                          borderColor: 'rgba(168,85,247,0.5)',
+                          bgcolor: expandedCards.has(location.id) ? '#5b21b6 !important' : '#6d28d9 !important',
+                          borderColor: 'rgba(216,180,254,0.5)',
                           transform: 'translateY(-1px)',
                           boxShadow: '0 4px 10px rgba(168,85,247,0.3)',
                         },

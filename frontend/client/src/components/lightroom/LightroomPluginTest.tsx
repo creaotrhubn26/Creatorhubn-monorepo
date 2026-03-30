@@ -1,486 +1,551 @@
-import React, { useEffect, useState } from 'react';
-import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
+  Chip,
+  CircularProgress,
+  Divider,
   Grid,
-  Button,
-  Alert,
-  LinearProgress,
   List,
   ListItem,
-  ListItemIcon,
   ListItemText,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Step,
-  Stepper,
-  StepLabel,
+  Snackbar,
+  Stack,
+  Typography,
 } from '@mui/material';
 import {
-  PhotoLibrary,
-  CloudUpload,
-  Sync,
   CheckCircle,
-  Error as ErrorIcon,
-  Settings,
-  Photo,
-  FolderOpen,
-  Download,
+  CloudDownload,
+  CloudSync,
+  ContentCopy,
+  DriveFolderUpload,
+  ErrorOutline,
+  Link as LinkIcon,
+  PhotoLibrary,
+  Refresh,
+  Science,
+  Security,
 } from '@mui/icons-material';
+import {
+  lightroomIntegrationService,
+  type LightroomExportResult,
+  type LightroomIntegrationStatus,
+  type LightroomTokenResponse,
+} from '@/services/lightroomIntegrationService';
 
-interface PluginStatus {
-  installed: boolean;
-  version?: string;
-  lastSync?: string;
-  photosImported: number;
-  showcaseUploads: number;
+const installSteps = [
+  'Last ned installasjonspakken fra CreatorHub.',
+  'Pakk ut zip-filen og åpne Lightroom Classic.',
+  'Gå til File > Plug-in Manager > Add og velg mappen CreatorHubNorge.lrplugin.',
+  'Eksporter via File > Export > CreatorHub Norge for å lagre filer i Google Drive og publisere til showcase.',
+];
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) {
+    return 'Ikke kjørt ennå';
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString('no-NO');
 }
 
-interface SyncSession {
-  id: string;
-  status: 'pending' | 'syncing' | 'completed' | 'error';
-  photosProcessed: number;
-  totalPhotos: number;
-  startTime: string;
-  errors?: string[];
+function statusTone(status: string): 'success' | 'warning' | 'error' | 'info' {
+  if (status === 'synced' || status === 'success') {
+    return 'success';
+  }
+  if (status === 'error') {
+    return 'error';
+  }
+  if (status === 'idle') {
+    return 'info';
+  }
+  return 'warning';
+}
+
+function IntegrationSummary({
+  status,
+  latestSmokeResult,
+}: {
+  status: LightroomIntegrationStatus;
+  latestSmokeResult: LightroomExportResult | null;
+}) {
+  const latestRun = status.recentRuns[0];
+
+  return (
+    <Grid container spacing={2}>
+      <Grid item xs={12} md={4}>
+        <Card sx={{ height: '100%' }}>
+          <CardContent>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+              <Security color={status.workspaceConnected ? 'success' : 'warning'} />
+              <Typography variant="h6">Google Workspace</Typography>
+            </Stack>
+            <Alert severity={status.workspaceConnected ? 'success' : 'warning'}>
+              {status.workspaceConnected
+                ? `Koblet til ${status.googleEmail || 'Google Workspace'}`
+                : status.workspaceError || 'Koble Google Workspace før Lightroom-pluginen brukes.'}
+            </Alert>
+            {status.workspaceWarning ? (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                {status.workspaceWarning}
+              </Alert>
+            ) : null}
+            {status.driveRootFolderName ? (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Siste Drive-rot
+                </Typography>
+                <Typography variant="subtitle2">{status.driveRootFolderName}</Typography>
+              </Box>
+            ) : null}
+          </CardContent>
+        </Card>
+      </Grid>
+
+      <Grid item xs={12} md={4}>
+        <Card sx={{ height: '100%' }}>
+          <CardContent>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+              <PhotoLibrary color={status.connected ? 'success' : 'disabled'} />
+              <Typography variant="h6">Pluginstatus</Typography>
+            </Stack>
+            <Stack spacing={1}>
+              <Chip
+                label={status.connected ? `v${status.pluginVersion} aktiv` : 'Ikke konfigurert'}
+                color={status.connected ? 'success' : 'default'}
+                variant={status.connected ? 'filled' : 'outlined'}
+              />
+              <Chip
+                label={`Token: ${status.tokenPreview || 'mangler'}`}
+                color={status.tokenPreview ? 'info' : 'default'}
+                variant="outlined"
+              />
+              <Chip
+                label={`Sync: ${status.syncStatus}`}
+                color={statusTone(status.syncStatus)}
+                variant="outlined"
+              />
+            </Stack>
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Siste synk
+              </Typography>
+              <Typography variant="subtitle2">{formatDateTime(status.lastSyncAt)}</Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      </Grid>
+
+      <Grid item xs={12} md={4}>
+        <Card sx={{ height: '100%' }}>
+          <CardContent>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+              <Science color={latestSmokeResult ? 'success' : 'info'} />
+              <Typography variant="h6">E2E-test</Typography>
+            </Stack>
+            <Typography variant="body2" color="text.secondary">
+              Siste kjøring
+            </Typography>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              {formatDateTime(latestRun?.createdAt || null)}
+            </Typography>
+            {latestSmokeResult ? (
+              <Alert severity="success">
+                Drive-fil {latestSmokeResult.driveFileId.slice(0, 8)}… og showcase-element{' '}
+                {latestSmokeResult.showcaseItemId.slice(0, 8)}… ble opprettet.
+              </Alert>
+            ) : (
+              <Alert severity={latestRun?.status === 'error' ? 'error' : 'info'}>
+                {latestRun?.status === 'error'
+                  ? 'Forrige test feilet. Kjør smoke-test på nytt etter at Drive er koblet.'
+                  : 'Ingen browser-basert smoke-test kjørt ennå.'}
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      </Grid>
+    </Grid>
+  );
 }
 
 const LightroomPluginTest: React.FC = () => {
-  const [pluginStatus, setPluginStatus] = useState<PluginStatus>({
-    installed: false,
-    photosImported: 0,
-    showcaseUploads: 0,
+  const queryClient = useQueryClient();
+  const [snackbar, setSnackbar] = React.useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info';
+  }>({ open: false, message: '', severity: 'info' });
+  const [latestToken, setLatestToken] = React.useState<LightroomTokenResponse | null>(null);
+  const [latestSmokeResult, setLatestSmokeResult] = React.useState<LightroomExportResult | null>(null);
+
+  const statusQuery = useQuery({
+    queryKey: ['lightroom-integration-status'],
+    queryFn: () => lightroomIntegrationService.getStatus(),
   });
-  const [activeSync, setActiveSync] = useState<SyncSession | null>(null);
-  const [installDialog, setInstallDialog] = useState(false);
-  const [uploadDialog, setUploadDialog] = useState(false);
-  const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  // Theming system
-  const theming = useTheming('photographer');
+  const refreshStatus = React.useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['lightroom-integration-status'] });
+  }, [queryClient]);
 
-  const installSteps = [
-    'Last ned CreatorHub Norge Lightroom Plugin','Installer plugin i Lightroom Classic/CC','Autentiser med Google OAuth', 'Konfigurer sync-innstillinger', 'Test første synkronisering',
-  ];
-
-  useEffect(() => {
-    checkPluginStatus();
-  }, []);
-
-  const checkPluginStatus = async () => {
-    try {
-      // Simuler API-kall for å sjekke plugin status
-      setTimeout(() => {
-        setPluginStatus({
-          installed: Math.random() > 0.5,
-          version: '2.1.0',
-          lastSync: new Date().toLocaleString(),
-          photosImported: 127,
-          showcaseUploads: 89,
+  const tokenMutation = useMutation({
+    mutationFn: () => lightroomIntegrationService.rotateToken(),
+    onSuccess: async (result) => {
+      setLatestToken(result);
+      try {
+        await navigator.clipboard.writeText(result.token);
+        setSnackbar({
+          open: true,
+          message: 'Nytt Lightroom-token generert og kopiert til utklippstavlen.',
+          severity: 'success',
         });
-        setLoading(false);
-      }, 1000);
-    } catch (error) {
-      console.error('Error checking plugin status: ', error);
-      setLoading(false);
-    }
-  };
-
-  const handleInstallPlugin = () => {
-    setInstallDialog(true);
-  };
-
-  const downloadPlugin = () => {
-    // I virkeligheten ville dette laste ned faktisk plugin-fil
-    // TODO: Implement actual plugin download. hat generates temporary download links using the Google Drive API. use a small server endpoint (Node.js). Scales automatically using Google infra. Files remain private in your Workspace Drive. Authenticated downloads (client files, templates). Use the Google Drive API to get the file and then serve it to the client.
-
-    const link = document.createElement('a');
-    link.href = '/downloads/CreatorHub-Norge-Lightroom-Plugin.zip';
-    link.download = 'CreatorHub-Norge-Lightroom-Plugin.zip';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const startSync = async () => {
-    const newSession: SyncSession = {
-      id: 'sync_' + Date.now(),
-      status: 'syncing',
-      photosProcessed: 0,
-      totalPhotos: 10,
-      startTime: new Date().toISOString(),
-    };
-
-    setActiveSync(newSession);
-
-    // Simuler synkronisering
-    const interval = setInterval(() => {
-      setActiveSync((prev) => {
-        if (!prev) return null;
-
-        const newProcessed =
-          prev.photosProcessed + Math.floor(Math.random() * 10) + 1;
-
-        if (newProcessed >= prev.totalPhotos) {
-          clearInterval(interval);
-          return {
-            ...prev,
-            status: 'completed',
-            photosProcessed: prev.totalPhotos,
-          };
-        }
-
-        return {
-          ...prev,
-          photosProcessed: newProcessed,
-        };
+      } catch {
+        setSnackbar({
+          open: true,
+          message: 'Nytt Lightroom-token generert.',
+          severity: 'success',
+        });
+      }
+      await refreshStatus();
+    },
+    onError: (error) => {
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Kunne ikke generere nytt token.',
+        severity: 'error',
       });
-    }, 500);
-  };
+    },
+  });
 
-  const uploadToShowcase = () => {
-    setUploadDialog(true);
-  };
+  const downloadMutation = useMutation({
+    mutationFn: async () => {
+      await lightroomIntegrationService.downloadPluginPackage(false);
+    },
+    onSuccess: () => {
+      setSnackbar({
+        open: true,
+        message: 'Installasjonspakken lastes ned.',
+        severity: 'success',
+      });
+    },
+    onError: (error) => {
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Kunne ikke laste ned pluginpakken.',
+        severity: 'error',
+      });
+    },
+  });
 
-  const handleShowcaseUpload = async () => {
-    if (selectedPhotos.length === 0) return;
+  const smokeMutation = useMutation({
+    mutationFn: () => lightroomIntegrationService.runSmokeExport(),
+    onSuccess: async (result) => {
+      setLatestSmokeResult(result);
+      setSnackbar({
+        open: true,
+        message: 'Smoke-test fullført. Filen er lagret i Google Drive og publisert til showcase.',
+        severity: 'success',
+      });
+      await refreshStatus();
+    },
+    onError: (error) => {
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Smoke-test feilet.',
+        severity: 'error',
+      });
+    },
+  });
 
-    // Simuler upload til showcase
-    setUploadDialog(false);
+  const reconnectMutation = useMutation({
+    mutationFn: () => lightroomIntegrationService.startGoogleWorkspaceReconnect(),
+    onError: (error) => {
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Kunne ikke starte Google Workspace-tilkoblingen.',
+        severity: 'error',
+      });
+    },
+  });
 
-    // Oppdater statistikk
-    setPluginStatus((prev) => ({
-      ...prev,
-      showcaseUploads: prev.showcaseUploads + selectedPhotos.length,
-    }));
+  const copyToken = React.useCallback(async () => {
+    if (!latestToken?.token) {
+      setSnackbar({
+        open: true,
+        message: 'Generer et nytt token først.',
+        severity: 'info',
+      });
+      return;
+    }
 
-    setSelectedPhotos([]);
-  };
+    try {
+      await navigator.clipboard.writeText(latestToken.token);
+      setSnackbar({
+        open: true,
+        message: 'Token kopiert til utklippstavlen.',
+        severity: 'success',
+      });
+    } catch {
+      setSnackbar({
+        open: true,
+        message: 'Kunne ikke kopiere token automatisk.',
+        severity: 'error',
+      });
+    }
+  }, [latestToken]);
 
-  if (loading) {
+  if (statusQuery.isLoading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <LinearProgress />
-        <Typography sx={{ mt: 2 }}>
-          Sjekker Lightroom Plugin status...
-        </Typography>
+      <Box sx={{ p: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+        <CircularProgress size={24} />
+        <Typography>Henter Lightroom-integrasjonsstatus…</Typography>
       </Box>
     );
   }
 
+  if (statusQuery.isError || !statusQuery.data) {
+    return (
+      <Alert severity="error" sx={{ mt: 2 }}>
+        {statusQuery.error instanceof Error
+          ? statusQuery.error.message
+          : 'Kunne ikke hente Lightroom-integrasjonen.'}
+      </Alert>
+    );
+  }
+
+  const status = statusQuery.data;
+
   return (
     <Box sx={{ p: 3 }}>
-      <Typography
-        variant="h4"
-        gutterBottom
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1,
-          color: theming.colors.primary}}
-      >
-        <PhotoLibrary color="primary" />
-        Lightroom Plugin Test & Integrasjon
-      </Typography>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" sx={{ mb: 3 }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+            Lightroom Plugin
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Faktisk status for Lightroom, Google Drive og showcase-publisering. Denne flaten kjører mot live backend-ruter, ikke simulert data.
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1} flexWrap="wrap">
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={() => void refreshStatus()}
+            disabled={statusQuery.isFetching}
+          >
+            Oppdater status
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<CloudDownload />}
+            onClick={() => downloadMutation.mutate()}
+            disabled={downloadMutation.isPending}
+          >
+            {downloadMutation.isPending ? 'Forbereder…' : 'Last ned installasjonspakke'}
+          </Button>
+        </Stack>
+      </Stack>
 
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-        Test og administrer CreatorHub Norge Lightroom Plugin for metadata
-        synkronisering og showcase upload.
-      </Typography>
+      <IntegrationSummary status={status} latestSmokeResult={latestSmokeResult} />
 
-      <Grid container spacing={3}>
-        {/* Plugin Status */}
-        <Grid item xs={12} md={6}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography
-                variant="h6"
-                gutterBottom
-                sx={{ color: theming.colors.primary }}
-              >
-                Plugin Status
+      <Grid container spacing={3} sx={{ mt: 1 }}>
+        <Grid item xs={12} lg={7}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                Drift og testing
               </Typography>
-
-              {pluginStatus.installed ? (
-                <Alert severity="success" sx={{ mb: 2 }}>
-                  Plugin er installert og aktiv
-                </Alert>
-              ) : (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                  Plugin er ikke installert
-                </Alert>
-              )}
-
-              <List>
-                <ListItem>
-                  <ListItemIcon>
-                    {pluginStatus.installed ? (
-                      <CheckCircle color="success" />
-                    ) : (
-                      <ErrorIcon color="error" />
-                    )}
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Installasjon"
-                    secondary={
-                      pluginStatus.installed
-                        ? `Versjon ${pluginStatus.version}`
-                        : 'Ikke installert'
-                    }
-                  />
-                </ListItem>
-
-                {pluginStatus.installed && (
-                  <>
-                    <ListItem>
-                      <ListItemIcon>{<Sync />}</ListItemIcon>
-                      <ListItemText
-                        primary="Siste synkronisering"
-                        secondary={pluginStatus.lastSync || 'Aldri'}
-                      />
-                    </ListItem>
-
-                    <ListItem>
-                      <ListItemIcon>
-                        <Photo />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary="Bilder importert"
-                        secondary={`${pluginStatus.photosImported} totalt`}
-                      />
-                    </ListItem>
-
-                    <ListItem>
-                      <ListItemIcon>
-                        <CloudUpload />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary="Showcase uploads"
-                        secondary={`${pluginStatus.showcaseUploads} bilder`}
-                      />
-                    </ListItem>
-                  </>
-                )}
-              </List>
-
-              <Box
-                sx={{
-                  mt: 2,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 1}}
-              >
-                {!pluginStatus.installed ? (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<Security />}
+                  onClick={() => tokenMutation.mutate()}
+                  disabled={tokenMutation.isPending}
+                >
+                  {tokenMutation.isPending ? 'Genererer…' : 'Roter plugin-token'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<ContentCopy />}
+                  onClick={() => void copyToken()}
+                >
+                  Kopier siste token
+                </Button>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  startIcon={<Science />}
+                  onClick={() => smokeMutation.mutate()}
+                  disabled={smokeMutation.isPending || !status.workspaceConnected}
+                >
+                  {smokeMutation.isPending ? 'Tester…' : 'Kjør E2E smoke-test'}
+                </Button>
+                {!status.workspaceConnected ? (
                   <Button
-                    variant="contained"
-                    startIcon={<Download />}
-                    onClick={handleInstallPlugin}
-                    fullWidth
-                    sx={theming.getThemedButtonSx()}
+                    variant="outlined"
+                    startIcon={<LinkIcon />}
+                    onClick={() => reconnectMutation.mutate()}
+                    disabled={reconnectMutation.isPending}
                   >
-                    Installer Plugin
+                    {reconnectMutation.isPending ? 'Starter…' : 'Koble Google Workspace'}
                   </Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="contained"
-                      startIcon={<Sync />}
-                      onClick={startSync}
-                      disabled={!!activeSync}
-                      fullWidth
-                      sx={theming.getThemedButtonSx()}
-                    >
-                      Start Synkronisering
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      startIcon={<CloudUpload />}
-                      onClick={uploadToShowcase}
-                      fullWidth
-                    >
-                      Last opp til Showcase
-                    </Button>
-                  </>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+                ) : null}
+                {status.driveRootFolderUrl ? (
+                  <Button
+                    component="a"
+                    href={status.driveRootFolderUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    variant="outlined"
+                    startIcon={<DriveFolderUpload />}
+                  >
+                    Åpne Drive-mappe
+                  </Button>
+                ) : null}
+              </Stack>
 
-        {/* Sync Progress */}
-        <Grid item xs={12} md={6}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography
-                variant="h6"
-                gutterBottom
-                sx={{ color: theming.colors.primary }}
-              >
-                Synkronisering
-              </Typography>
-
-              {!activeSync ? (
-                <Alert severity="info">
-                  Ingen aktiv synkronisering. Start en for å se fremdrift.
+              {!status.workspaceConnected ? (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  Lightroom-pluginen er klar til nedlasting, men eksport til Google Drive vil feile til Google Workspace er koblet til for denne brukeren.
                 </Alert>
+              ) : status.workspaceWarning ? (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  {status.workspaceWarning}
+                </Alert>
+              ) : null}
+
+              {latestToken ? (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Nytt token: <strong>{latestToken.token}</strong>
+                </Alert>
+              ) : null}
+
+              {latestSmokeResult ? (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  Smoke-testen opprettet Drive-fil{' '}
+                  <strong>{latestSmokeResult.driveFileId}</strong> i{' '}
+                  <strong>{latestSmokeResult.driveFolderName}</strong> og showcase-element{' '}
+                  <strong>{latestSmokeResult.showcaseItemId}</strong>.
+                </Alert>
+              ) : null}
+
+              <Divider sx={{ my: 2 }} />
+
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Installasjonsflyt
+              </Typography>
+              <List dense disablePadding>
+                {installSteps.map((step, index) => (
+                  <ListItem key={step} disableGutters>
+                    <ListItemText
+                      primary={`${index + 1}. ${step}`}
+                      secondary={index === 0 ? 'Pakken inneholder en ekte CreatorHubNorge.lrplugin-mappe med brukerbundet token.' : undefined}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} lg={5}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                Nylige kjøringer
+              </Typography>
+              {status.recentRuns.length === 0 ? (
+                <Alert severity="info">Ingen Lightroom-kjøringer registrert ennå.</Alert>
               ) : (
-                <>
-                  <Typography variant="body2" color="text.secondary">
-                    Sesjon ID: {activeSync.id}
-                  </Typography>
-                  <LinearProgress
-                    variant="determinate"
-                    value={
-                      (activeSync.photosProcessed / activeSync.totalPhotos) *
-                      100
-                    }
-                    sx={{ mt: 1, height: 8, borderRadius: 4 }}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {activeSync.photosProcessed}/{activeSync.totalPhotos} bilder
-                    prosessert
-                  </Typography>
-
-                  {activeSync.status === 'completed' && (
-                    <Alert severity="success" sx={{ mt: 2 }}>
-                      Synkronisering fullført!
-                    </Alert>
-                  )}
-                </>
+                <Stack spacing={1.5}>
+                  {status.recentRuns.map((run) => (
+                    <Box
+                      key={run.id}
+                      sx={{
+                        p: 1.5,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                      }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
+                        {run.status === 'success' ? (
+                          <CheckCircle color="success" fontSize="small" />
+                        ) : run.status === 'error' ? (
+                          <ErrorOutline color="error" fontSize="small" />
+                        ) : (
+                          <CloudSync color="info" fontSize="small" />
+                        )}
+                        <Typography variant="subtitle2">{formatDateTime(run.createdAt)}</Typography>
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary">
+                        Status: {run.status}
+                      </Typography>
+                      {run.metadata.title ? (
+                        <Typography variant="body2">Tittel: {String(run.metadata.title)}</Typography>
+                      ) : null}
+                      {run.metadata.driveFolderName ? (
+                        <Typography variant="body2">
+                          Drive-mappe: {String(run.metadata.driveFolderName)}
+                        </Typography>
+                      ) : null}
+                      {run.driveFileId ? (
+                        <Typography variant="body2">Drive-fil: {run.driveFileId}</Typography>
+                      ) : null}
+                      {run.showcaseItemId ? (
+                        <Typography variant="body2">Showcase: {run.showcaseItemId}</Typography>
+                      ) : null}
+                    </Box>
+                  ))}
+                </Stack>
               )}
-            </CardContent>
-          </Card>
-        </Grid>
 
-        {/* Feature boxes */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ textAlign: 'center', p: 2 }}>
-                <FolderOpen
-                  sx={{ fontSize: 48, color: 'primary.main', mb: 1 }}
-                />
-                <Typography variant="subtitle1" gutterBottom>
-                  Drive Integrasjon
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Automatisk organisering i Google Drive mapper
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+              <Divider sx={{ my: 2 }} />
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ textAlign: 'center', p: 2 }}>
-                <Settings
-                  sx={{ fontSize: 48, color: 'primary.main', mb: 1 }}
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Teknisk status
+              </Typography>
+              <Stack spacing={1}>
+                <Chip
+                  icon={<LinkIcon />}
+                  label={`API: ${status.apiBaseUrl}`}
+                  variant="outlined"
                 />
-                <Typography variant="subtitle1" gutterBottom>
-                  Konfigurasjon
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Tilpassbare innstillinger for synkronisering
-                </Typography>
-              </Box>
+                <Chip
+                  label={`Scopes: ${status.storedScopes.length > 0 ? status.storedScopes.length : 0}`}
+                  variant="outlined"
+                />
+                <Chip
+                  label={`Drive-rot: ${status.driveRootFolderName || 'Ikke opprettet ennå'}`}
+                  variant="outlined"
+                />
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Install Dialog */}
-      <Dialog
-        open={installDialog}
-        onClose={() => setInstallDialog(false)}
-        maxWidth="md"
-        fullWidth
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
       >
-        <DialogTitle>Installer Lightroom Plugin</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ mb: 2 }}>
-            Følg disse trinnene for å installere CreatorHub Norge Lightroom
-            Plugin:
-          </Typography>
-
-          <Stepper orientation="vertical">
-            {installSteps.map((step, index) => (
-              <Step key={index} active>
-                <StepLabel>{step}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
-
-          <Alert severity="info" sx={{ mt: 2 }}>
-            Plugin krever Lightroom Classic 2021 eller nyere, eller Lightroom
-            CC.
-          </Alert>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setInstallDialog(false)}>Lukk</Button>
-          <Button
-            variant="contained"
-            onClick={downloadPlugin}
-            sx={theming.getThemedButtonSx()}
-          >
-            Last ned Plugin
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Upload Dialog */}
-      <Dialog
-        open={uploadDialog}
-        onClose={() => setUploadDialog(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Last opp til Showcase</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ mb: 2 }}>
-            Velg bilder fra Lightroom biblioteket ditt for å laste opp til
-            showcase:
-          </Typography>
-
-          <TextField
-            fullWidth
-            type="number"
-            label="Antall bilder å laste opp"
-            value={selectedPhotos.length}
-            onChange={(e) => {
-              const count = parseInt(e.target.value ||'0', 10) || 0;
-              setSelectedPhotos(
-                Array.from({ length: count }, (_, i) => `photo_${i}`)
-              );
-            }}
-            sx={{ mb: 2 }}
-          />
-
-          <Alert severity="info">
-            Valgte bilder vil bli lastet opp med full metadata og optimalisert
-            for web visning.
-          </Alert>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUploadDialog(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
-            onClick={handleShowcaseUpload}
-            disabled={selectedPhotos.length === 0}
-            sx={theming.getThemedButtonSx()}
-          >
-            Last opp {selectedPhotos.length} bilder
-          </Button>
-        </DialogActions>
-      </Dialog>
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

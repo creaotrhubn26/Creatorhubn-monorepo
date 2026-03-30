@@ -10,6 +10,8 @@ import {
   Tab,
   Tabs,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import {
@@ -23,6 +25,7 @@ import type {
   CastingProject,
   ProducerBrandGuideColor,
   ProducerClientIntake,
+  ProducerClientLogicMode,
   ProducerClientMaterial,
   ProducerContentCalendarStatus,
   ProducerPhasePlanItem,
@@ -42,16 +45,24 @@ import {
   applyProducerClientGroundingToPlanning,
   applyStoryLogicToProducerPlanning,
   getProducerClientContributionTasks,
+  getProducerContentLogicMomentKind,
   getProducerWorkspaceLocationForSurface,
   mergeProducerPlanningClientMomentsWithReviews,
+  PRODUCER_CONTENT_LOGIC_MOMENT_LABELS,
   PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS,
   PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS,
   PRODUCER_PLANNING_CLIENT_MOMENT_LABELS,
   PRODUCER_PLANNING_FRAMEWORK_HELPERS,
   PRODUCER_PLANNING_FRAMEWORK_LABELS,
   PRODUCER_CONTENT_CALENDAR_STATUS_LABELS,
+  PRODUCER_CONTENT_CHANNEL_OPTIONS,
+  PRODUCER_CONTENT_FORMAT_OPTIONS,
   PRODUCER_PLANNING_PHASE_LABELS,
   PRODUCER_PLANNING_STATUS_LABELS,
+  getProducerContentChannelOption,
+  getPrimaryFormatForProducerChannel,
+  getProducerContentFormatOption,
+  getRecommendedFormatsForProducerChannel,
   getProducerStrategySnapshot,
   createProducerContentCalendarItem,
   normalizeProducerProjectPlanning,
@@ -60,6 +71,7 @@ import {
 import type { ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
 
 type PlanningPanelTab = 'activation' | 'phase_plan' | 'calendar' | 'brand' | 'delivery';
+type ActivationEditorMode = ProducerClientLogicMode;
 
 interface ProducerClientPlanningPanelProps {
   project: CastingProject;
@@ -224,6 +236,18 @@ const EMPTY_CLIENT_INTAKE: ProducerClientIntake = {
   additionalNotes: '',
 };
 
+const ensureContentLogic = (planning: ProducerProjectPlanning) => ({
+  mode: (planning.contentLogic?.mode ?? 'content_logic') as ActivationEditorMode,
+  objective: planning.contentLogic?.objective ?? '',
+  audience: planning.contentLogic?.audience ?? '',
+  hook: planning.contentLogic?.hook ?? '',
+  coreMessage: planning.contentLogic?.coreMessage ?? '',
+  proofPoints: planning.contentLogic?.proofPoints ?? [],
+  callToAction: planning.contentLogic?.callToAction ?? '',
+  distributionPlan: planning.contentLogic?.distributionPlan ?? '',
+  successSignals: planning.contentLogic?.successSignals ?? [],
+});
+
 export default function ProducerClientPlanningPanel({
   project,
   productionEstimate,
@@ -240,6 +264,9 @@ export default function ProducerClientPlanningPanel({
     [project],
   );
   const [draft, setDraft] = useState<ProducerProjectPlanning>(() => normalizedProjectPlanning);
+  const [activationEditorMode, setActivationEditorMode] = useState<ActivationEditorMode>(
+    ensureContentLogic(normalizedProjectPlanning).mode,
+  );
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
@@ -256,6 +283,7 @@ export default function ProducerClientPlanningPanel({
 
   useEffect(() => {
     setDraft(normalizedProjectPlanning);
+    setActivationEditorMode(ensureContentLogic(normalizedProjectPlanning).mode);
     setLastSavedAt(normalizedProjectPlanning.updatedAt ?? null);
     setSaveError(null);
   }, [normalizedProjectPlanning]);
@@ -359,6 +387,10 @@ export default function ProducerClientPlanningPanel({
     () => getProducerStrategySnapshot(draft),
     [draft],
   );
+  const contentLogicDraft = useMemo(
+    () => ensureContentLogic(draft),
+    [draft],
+  );
 
   const clientGroundingSummary = useMemo(
     () => summarizeProducerClientGrounding(clientIntake, clientMaterials),
@@ -398,6 +430,43 @@ export default function ProducerClientPlanningPanel({
     () => mergeProducerPlanningClientMomentsWithReviews(draft, reviewItems),
     [draft, reviewItems],
   );
+
+  const updateContentCalendarItem = (
+    index: number,
+    updater: (item: ProducerContentCalendarItem) => ProducerContentCalendarItem,
+  ) => {
+    setDraft((previous) => ({
+      ...previous,
+      contentCalendar: previous.contentCalendar.map((entry, entryIndex) => (
+        entryIndex === index ? updater(entry) : entry
+      )),
+    }));
+  };
+
+  const updateContentLogic = (
+    patch: Partial<ReturnType<typeof ensureContentLogic>>,
+  ) => {
+    setDraft((previous) => {
+      const nextContentLogic = {
+        ...ensureContentLogic(previous),
+        ...patch,
+      };
+
+      return {
+        ...previous,
+        contentLogic: nextContentLogic,
+        activationPlan: {
+          ...previous.activationPlan,
+          idea: patch.hook ?? previous.activationPlan.idea,
+          activation: patch.distributionPlan ?? previous.activationPlan.activation,
+          targetAudience: patch.audience ?? previous.activationPlan.targetAudience,
+          businessGoal: patch.objective ?? previous.activationPlan.businessGoal,
+          coreMessage: patch.coreMessage ?? previous.activationPlan.coreMessage,
+          successSignals: patch.successSignals ?? previous.activationPlan.successSignals,
+        },
+      };
+    });
+  };
 
   const syncPlanningFromEstimate = () => {
     const firstProductionDay = productionDays
@@ -842,68 +911,89 @@ export default function ProducerClientPlanningPanel({
               </Typography>
             </Box>
             <Stack spacing={0.9}>
-              {clientMoments.slice(0, 6).map((moment) => (
-                <Box
-                  key={moment.id}
-                  sx={{
-                    p: 1,
-                    borderRadius: 1.25,
-                    border: '1px solid rgba(148,163,184,0.14)',
-                    background: 'rgba(15,23,42,0.55)',
-                  }}
-                >
-                  <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between">
-                    <Box sx={{ minWidth: 0 }}>
-                      <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mb: 0.4 }}>
-                        <Chip
-                          size="small"
-                          label={PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
-                          sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                        />
-                        <Chip
-                          size="small"
-                          label={PRODUCER_PLANNING_PHASE_LABELS[moment.phase]}
-                          sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }}
-                        />
-                        <Chip
-                          size="small"
-                          label={moment.reviewStatusLabel ?? moment.statusLabel}
-                          sx={{
-                            bgcolor: moment.reviewStatus === 'approved'
-                              ? 'rgba(16,185,129,0.16)'
-                              : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
-                                ? 'rgba(248,113,113,0.16)'
-                                : 'rgba(148,163,184,0.16)',
-                            color: moment.reviewStatus === 'approved'
-                              ? '#a7f3d0'
-                              : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
-                                ? '#fecaca'
-                                : '#cbd5e1',
-                          }}
-                        />
-                      </Stack>
-                      <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                        {moment.title}
-                      </Typography>
-                      <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.35 }}>
-                        {moment.detail || 'Ingen detaljer lagt inn ennå.'}
-                      </Typography>
-                    </Box>
-                    <Stack spacing={0.6} alignItems={{ lg: 'flex-end' }}>
-                      {moment.date ? (
-                        <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem' }}>
-                          {moment.date}
+              {clientMoments.slice(0, 6).map((moment) => {
+                const contentLogicMomentKind = getProducerContentLogicMomentKind(moment.id);
+                const isContentLogicMoment = Boolean(contentLogicMomentKind);
+                const contentLogicMomentLabel = contentLogicMomentKind
+                  ? PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]
+                  : '';
+                return (
+                  <Box
+                    key={moment.id}
+                    sx={{
+                      p: 1,
+                      borderRadius: 1.25,
+                      border: isContentLogicMoment
+                        ? '1px solid rgba(167,139,250,0.26)'
+                        : '1px solid rgba(148,163,184,0.14)',
+                      background: isContentLogicMoment
+                        ? 'rgba(76,29,149,0.14)'
+                        : 'rgba(15,23,42,0.55)',
+                    }}
+                  >
+                    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between">
+                      <Box sx={{ minWidth: 0 }}>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mb: 0.4 }}>
+                          <Chip
+                            size="small"
+                            label={isContentLogicMoment ? 'Content Logic' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
+                            sx={{
+                              bgcolor: isContentLogicMoment ? 'rgba(167,139,250,0.18)' : 'rgba(59,130,246,0.14)',
+                              color: isContentLogicMoment ? '#ede9fe' : '#bfdbfe',
+                            }}
+                          />
+                          <Chip
+                            size="small"
+                            label={isContentLogicMoment ? contentLogicMomentLabel : PRODUCER_PLANNING_PHASE_LABELS[moment.phase]}
+                            sx={{
+                              bgcolor: isContentLogicMoment ? 'rgba(34,211,238,0.14)' : 'rgba(192,132,252,0.14)',
+                              color: isContentLogicMoment ? '#cffafe' : '#e9d5ff',
+                            }}
+                          />
+                          <Chip
+                            size="small"
+                            label={moment.reviewStatusLabel ?? moment.statusLabel}
+                            sx={{
+                              bgcolor: moment.reviewStatus === 'approved'
+                                ? 'rgba(16,185,129,0.16)'
+                                : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
+                                  ? 'rgba(248,113,113,0.16)'
+                                  : 'rgba(148,163,184,0.16)',
+                              color: moment.reviewStatus === 'approved'
+                                ? '#a7f3d0'
+                                : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
+                                  ? '#fecaca'
+                                  : '#cbd5e1',
+                            }}
+                          />
+                        </Stack>
+                        <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                          {moment.title}
                         </Typography>
-                      ) : null}
-                      {moment.drivenByReview ? (
-                        <Typography sx={{ color: 'rgba(148,163,184,0.84)', fontSize: '0.76rem', textAlign: { lg: 'right' } }}>
-                          {[
-                            moment.commentCount ? `${moment.commentCount} kommentar${moment.commentCount === 1 ? '' : 'er'}` : '',
-                            moment.reviewDecisionAt ? `Beslutning ${moment.reviewDecisionAt}` : moment.reviewRequestedAt ? `Sendt ${moment.reviewRequestedAt}` : '',
-                          ].filter(Boolean).join(' · ') || 'Klientpunktet styres av reviewflyten'}
+                        <Typography sx={{ color: isContentLogicMoment ? 'rgba(233,213,255,0.9)' : 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.35 }}>
+                          {moment.detail || 'Ingen detaljer lagt inn ennå.'}
                         </Typography>
-                      ) : null}
-                      {moment.linkedShotListId && onOpenShotList ? (
+                        {isContentLogicMoment ? (
+                          <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.78rem', mt: 0.3 }}>
+                            Content Logic-punktet låser innholdsvalg tidlig, før resten av produksjonsløpet tar over.
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <Stack spacing={0.6} alignItems={{ lg: 'flex-end' }}>
+                        {moment.date ? (
+                          <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem' }}>
+                            {moment.date}
+                          </Typography>
+                        ) : null}
+                        {moment.drivenByReview ? (
+                          <Typography sx={{ color: 'rgba(148,163,184,0.84)', fontSize: '0.76rem', textAlign: { lg: 'right' } }}>
+                            {[
+                              moment.commentCount ? `${moment.commentCount} kommentar${moment.commentCount === 1 ? '' : 'er'}` : '',
+                              moment.reviewDecisionAt ? `Beslutning ${moment.reviewDecisionAt}` : moment.reviewRequestedAt ? `Sendt ${moment.reviewRequestedAt}` : '',
+                            ].filter(Boolean).join(' · ') || 'Klientpunktet styres av reviewflyten'}
+                          </Typography>
+                        ) : null}
+                        {moment.linkedShotListId && !isContentLogicMoment && onOpenShotList ? (
                         <Button
                           size="small"
                           variant="outlined"
@@ -913,11 +1003,12 @@ export default function ProducerClientPlanningPanel({
                         >
                           Åpne shotlist
                         </Button>
-                      ) : null}
+                        ) : null}
+                      </Stack>
                     </Stack>
-                  </Stack>
-                </Box>
-              ))}
+                  </Box>
+                );
+              })}
             </Stack>
           </Stack>
         </Box>
@@ -943,7 +1034,7 @@ export default function ProducerClientPlanningPanel({
             },
           }}
         >
-          <Tab value="activation" label="Retning og aktivering" />
+          <Tab value="activation" label="Content Logic" />
           <Tab value="phase_plan" label="Faseplan" />
           <Tab value="calendar" label="Content-kalender" />
           <Tab value="brand" label="Merkevareguide" />
@@ -953,229 +1044,420 @@ export default function ProducerClientPlanningPanel({
         {activeTab === 'activation' ? (
           <Stack spacing={1.2}>
             <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem' }}>
-              Dette er produsentens klientvennlige versjon av story logic: retning, idé og aktivering knyttes direkte til hvordan eventet eller kampanjen planlegges, produseres og følges opp.
+              `Content Logic` er innholdsprodusentens og klientens arbeidsmodus. Den gjør mål, hook, budskap, bevis og CTA konkrete uten å endre produksjonsteamets separate `Story Logic`.
             </Typography>
 
-            <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
-              <TextField
-                size="small"
-                label="Retning"
-                helperText="Hva eventet eller produksjonen skal oppnå."
-                value={draft.activationPlan.direction ?? ''}
-                disabled={readOnly}
-                onChange={(event) => {
-                  setDraft((previous) => ({
-                    ...previous,
-                    activationPlan: {
-                      ...previous.activationPlan,
-                      direction: event.target.value,
-                    },
-                  }));
-                }}
-                fullWidth
-                InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-                FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
-              />
-              <TextField
-                size="small"
-                label="Idé"
-                helperText="Hvorfor folk skal bry seg, møte opp eller følge med."
-                value={draft.activationPlan.idea ?? ''}
-                disabled={readOnly}
-                onChange={(event) => {
-                  setDraft((previous) => ({
-                    ...previous,
-                    activationPlan: {
-                      ...previous.activationPlan,
-                      idea: event.target.value,
-                    },
-                  }));
-                }}
-                fullWidth
-                InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-                FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
-              />
-              <TextField
-                size="small"
-                label="Aktivering"
-                helperText="Hvordan kampanjen gjør eventet synlig og effektivt."
-                value={draft.activationPlan.activation ?? ''}
-                disabled={readOnly}
-                onChange={(event) => {
-                  setDraft((previous) => ({
-                    ...previous,
-                    activationPlan: {
-                      ...previous.activationPlan,
-                      activation: event.target.value,
-                    },
-                  }));
-                }}
-                fullWidth
-                InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-                FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
-              />
-            </Stack>
-
-            <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
-              <TextField
-                size="small"
-                label="Målgruppe"
-                value={draft.activationPlan.targetAudience ?? ''}
-                disabled={readOnly}
-                onChange={(event) => {
-                  setDraft((previous) => ({
-                    ...previous,
-                    activationPlan: {
-                      ...previous.activationPlan,
-                      targetAudience: event.target.value,
-                    },
-                  }));
-                }}
-                fullWidth
-                InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-              />
-              <TextField
-                size="small"
-                label="Forretningsmål"
-                value={draft.activationPlan.businessGoal ?? ''}
-                disabled={readOnly}
-                onChange={(event) => {
-                  setDraft((previous) => ({
-                    ...previous,
-                    activationPlan: {
-                      ...previous.activationPlan,
-                      businessGoal: event.target.value,
-                    },
-                  }));
-                }}
-                fullWidth
-                InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-              />
-            </Stack>
-
-            <TextField
+            <ToggleButtonGroup
               size="small"
-              label="Kjernebudskap"
-              multiline
-              minRows={2}
-              value={draft.activationPlan.coreMessage ?? ''}
-              disabled={readOnly}
-              onChange={(event) => {
-                setDraft((previous) => ({
-                  ...previous,
-                  activationPlan: {
-                    ...previous.activationPlan,
-                    coreMessage: event.target.value,
-                  },
-                }));
+              exclusive
+              value={activationEditorMode}
+              onChange={(_, value: ActivationEditorMode | null) => {
+                if (!value) {
+                  return;
+                }
+                setActivationEditorMode(value);
+                updateContentLogic({ mode: value });
               }}
-              InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-            />
-
-            <TextField
-              size="small"
-              label="Tegn på suksess (én per linje)"
-              multiline
-              minRows={3}
-              value={stringifyLineSeparatedValues(draft.activationPlan.successSignals)}
-              disabled={readOnly}
-              onChange={(event) => {
-                setDraft((previous) => ({
-                  ...previous,
-                  activationPlan: {
-                    ...previous.activationPlan,
-                    successSignals: parseLineSeparatedValues(event.target.value),
-                  },
-                }));
+              sx={{
+                gap: 0.7,
+                flexWrap: 'wrap',
+                '& .MuiToggleButton-root': {
+                  borderRadius: '999px !important',
+                  px: 1.2,
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  borderColor: 'rgba(148,163,184,0.18)',
+                  color: 'rgba(226,232,240,0.82)',
+                },
+                '& .Mui-selected': {
+                  bgcolor: 'rgba(56,189,248,0.16) !important',
+                  borderColor: 'rgba(56,189,248,0.34) !important',
+                  color: '#e0f2fe !important',
+                },
               }}
-              InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-            />
+            >
+              <ToggleButton value="content_logic">Content Logic</ToggleButton>
+              <ToggleButton value="activation_plan">Planramme</ToggleButton>
+            </ToggleButtonGroup>
 
-            <Stack spacing={1.1}>
-              {(draft.activationPlan.framework ?? []).map((section) => (
+            {activationEditorMode === 'content_logic' ? (
+              <Stack spacing={1.15}>
                 <Box
-                  key={section.key}
                   sx={{
                     p: 1.2,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(56,189,248,0.2)',
+                    background: 'rgba(8,47,73,0.18)',
+                  }}
+                >
+                  <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                    Arbeid med innholdet slik klienten faktisk tar stilling til det
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.84rem', mt: 0.45 }}>
+                    Her definerer dere hva innholdet skal oppnå, hvilken krok som skal stoppe scrollen, hva som beviser budskapet, og hvilken handling publikum skal ta etterpå.
+                  </Typography>
+                </Box>
+
+                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
+                  <TextField
+                    size="small"
+                    label="Mål"
+                    helperText="Hva innholdet skal oppnå for virksomheten."
+                    value={contentLogicDraft.objective}
+                    disabled={readOnly}
+                    onChange={(event) => updateContentLogic({ objective: event.target.value })}
+                    fullWidth
+                    InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                    FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Målgruppe"
+                    helperText="Hvem innholdet må treffe og være relevant for."
+                    value={contentLogicDraft.audience}
+                    disabled={readOnly}
+                    onChange={(event) => updateContentLogic({ audience: event.target.value })}
+                    fullWidth
+                    InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                    FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
+                  />
+                </Stack>
+
+                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
+                  <TextField
+                    size="small"
+                    label="Hook"
+                    helperText="Første linje, første bilde eller første idé som skal få folk til å stoppe opp."
+                    value={contentLogicDraft.hook}
+                    disabled={readOnly}
+                    onChange={(event) => updateContentLogic({ hook: event.target.value })}
+                    fullWidth
+                    InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                    FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
+                  />
+                  <TextField
+                    size="small"
+                    label="CTA"
+                    helperText="Hva publikum konkret skal gjøre etter å ha sett innholdet."
+                    value={contentLogicDraft.callToAction}
+                    disabled={readOnly}
+                    onChange={(event) => updateContentLogic({ callToAction: event.target.value })}
+                    fullWidth
+                    InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                    FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
+                  />
+                </Stack>
+
+                <TextField
+                  size="small"
+                  label="Kjernebudskap"
+                  multiline
+                  minRows={2}
+                  value={contentLogicDraft.coreMessage}
+                  disabled={readOnly}
+                  onChange={(event) => updateContentLogic({ coreMessage: event.target.value })}
+                  InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                />
+
+                <TextField
+                  size="small"
+                  label="Bevis / proof points (én per linje)"
+                  multiline
+                  minRows={3}
+                  value={stringifyLineSeparatedValues(contentLogicDraft.proofPoints)}
+                  disabled={readOnly}
+                  onChange={(event) => updateContentLogic({ proofPoints: parseLineSeparatedValues(event.target.value) })}
+                  helperText="Konkrete momenter som underbygger budskapet: tall, referanser, egenskaper, kundeverdi eller demonstrasjoner."
+                  InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                  FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
+                />
+
+                <TextField
+                  size="small"
+                  label="Distribusjon og kanalbruk"
+                  multiline
+                  minRows={2}
+                  value={contentLogicDraft.distributionPlan}
+                  disabled={readOnly}
+                  onChange={(event) => updateContentLogic({ distributionPlan: event.target.value })}
+                  helperText="Hvordan budskapet skal fordeles mellom nettside, feed, reels, annonser eller andre flater."
+                  InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                  FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
+                />
+
+                <TextField
+                  size="small"
+                  label="Tegn på suksess (én per linje)"
+                  multiline
+                  minRows={3}
+                  value={stringifyLineSeparatedValues(contentLogicDraft.successSignals)}
+                  disabled={readOnly}
+                  onChange={(event) => updateContentLogic({ successSignals: parseLineSeparatedValues(event.target.value) })}
+                  InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                />
+
+                <Box
+                  sx={{
+                    p: 1.15,
                     borderRadius: 1.5,
                     border: '1px solid rgba(148,163,184,0.18)',
                     background: 'rgba(15,23,42,0.52)',
                   }}
                 >
-                  <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    {PRODUCER_PLANNING_FRAMEWORK_LABELS[section.key]}
+                  <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.45 }}>
+                    Grunnlag fra produksjonsteamets Story Logic
                   </Typography>
-                  <Typography sx={{ color: 'rgba(148,163,184,0.86)', fontSize: '0.82rem', mt: 0.35, mb: 1 }}>
-                    {PRODUCER_PLANNING_FRAMEWORK_HELPERS[section.key]}
+                  <Typography sx={{ color: 'rgba(148,163,184,0.84)', fontSize: '0.82rem', mb: 1 }}>
+                    Story Logic beholdes som eget system for produksjonsteamet. Her kan du bare hente inn relevante signaler og oversette dem til klientvennlige content-beslutninger.
                   </Typography>
-                  <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.1}>
-                    <TextField
-                      size="small"
-                      label="Fokus"
-                      fullWidth
-                      value={getFrameworkStep(draft, section.key)?.focus ?? ''}
-                      disabled={readOnly}
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setDraft((previous) => ({
-                          ...previous,
-                          activationPlan: {
-                            ...previous.activationPlan,
-                            framework: (previous.activationPlan.framework ?? []).map((entry) => (
-                              entry.key === section.key ? { ...entry, focus: nextValue } : entry
-                            )),
-                          },
-                        }));
-                      }}
-                      InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-                    />
-                    <TextField
-                      size="small"
-                      label="Leveranse / utfall"
-                      fullWidth
-                      value={getFrameworkStep(draft, section.key)?.output ?? ''}
-                      disabled={readOnly}
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setDraft((previous) => ({
-                          ...previous,
-                          activationPlan: {
-                            ...previous.activationPlan,
-                            framework: (previous.activationPlan.framework ?? []).map((entry) => (
-                              entry.key === section.key ? { ...entry, output: nextValue } : entry
-                            )),
-                          },
-                        }));
-                      }}
-                      InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-                    />
-                  </Stack>
+                  {storyLogicSnapshot.length > 0 ? (
+                    <Stack spacing={0.65}>
+                      {storyLogicSnapshot.map((item) => (
+                        <Box key={item.label}>
+                          <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>
+                            {item.label}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.8rem', mt: 0.2 }}>
+                            {item.value}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  ) : (
+                    <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem' }}>
+                      Story Logic er ikke fylt ut ennå. Det stopper ikke Content Logic for klient og innholdsprodusent.
+                    </Typography>
+                  )}
+                </Box>
+              </Stack>
+            ) : (
+              <Stack spacing={1.2}>
+                <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.88rem' }}>
+                  `Planramme` bevarer den eksisterende produsentlogikken med retning, idé, aktivering og faseforankring. Den brukes fortsatt videre i plan, reviews og leveranser.
+                </Typography>
+
+                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
                   <TextField
                     size="small"
-                    label="Notater"
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    sx={{ mt: 1.1 }}
-                    value={getFrameworkStep(draft, section.key)?.notes ?? ''}
+                    label="Retning"
+                    helperText="Hva eventet eller produksjonen skal oppnå."
+                    value={draft.activationPlan.direction ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
-                      const nextValue = event.target.value;
                       setDraft((previous) => ({
                         ...previous,
                         activationPlan: {
                           ...previous.activationPlan,
-                          framework: (previous.activationPlan.framework ?? []).map((entry) => (
-                            entry.key === section.key ? { ...entry, notes: nextValue } : entry
-                          )),
+                          direction: event.target.value,
                         },
                       }));
                     }}
+                    fullWidth
+                    InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                    FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Idé"
+                    helperText="Hvorfor folk skal bry seg, møte opp eller følge med."
+                    value={draft.activationPlan.idea ?? ''}
+                    disabled={readOnly}
+                    onChange={(event) => {
+                      setDraft((previous) => ({
+                        ...previous,
+                        activationPlan: {
+                          ...previous.activationPlan,
+                          idea: event.target.value,
+                        },
+                      }));
+                    }}
+                    fullWidth
+                    InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                    FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Aktivering"
+                    helperText="Hvordan kampanjen gjør eventet synlig og effektivt."
+                    value={draft.activationPlan.activation ?? ''}
+                    disabled={readOnly}
+                    onChange={(event) => {
+                      setDraft((previous) => ({
+                        ...previous,
+                        activationPlan: {
+                          ...previous.activationPlan,
+                          activation: event.target.value,
+                        },
+                      }));
+                    }}
+                    fullWidth
+                    InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                    FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
+                  />
+                </Stack>
+
+                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
+                  <TextField
+                    size="small"
+                    label="Målgruppe"
+                    value={draft.activationPlan.targetAudience ?? ''}
+                    disabled={readOnly}
+                    onChange={(event) => {
+                      setDraft((previous) => ({
+                        ...previous,
+                        activationPlan: {
+                          ...previous.activationPlan,
+                          targetAudience: event.target.value,
+                        },
+                      }));
+                    }}
+                    fullWidth
                     InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
                   />
-                </Box>
-              ))}
-            </Stack>
+                  <TextField
+                    size="small"
+                    label="Forretningsmål"
+                    value={draft.activationPlan.businessGoal ?? ''}
+                    disabled={readOnly}
+                    onChange={(event) => {
+                      setDraft((previous) => ({
+                        ...previous,
+                        activationPlan: {
+                          ...previous.activationPlan,
+                          businessGoal: event.target.value,
+                        },
+                      }));
+                    }}
+                    fullWidth
+                    InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                  />
+                </Stack>
+
+                <TextField
+                  size="small"
+                  label="Kjernebudskap"
+                  multiline
+                  minRows={2}
+                  value={draft.activationPlan.coreMessage ?? ''}
+                  disabled={readOnly}
+                  onChange={(event) => {
+                    setDraft((previous) => ({
+                      ...previous,
+                      activationPlan: {
+                        ...previous.activationPlan,
+                        coreMessage: event.target.value,
+                      },
+                    }));
+                  }}
+                  InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                />
+
+                <TextField
+                  size="small"
+                  label="Tegn på suksess (én per linje)"
+                  multiline
+                  minRows={3}
+                  value={stringifyLineSeparatedValues(draft.activationPlan.successSignals)}
+                  disabled={readOnly}
+                  onChange={(event) => {
+                    setDraft((previous) => ({
+                      ...previous,
+                      activationPlan: {
+                        ...previous.activationPlan,
+                        successSignals: parseLineSeparatedValues(event.target.value),
+                      },
+                    }));
+                  }}
+                  InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                />
+
+                <Stack spacing={1.1}>
+                  {(draft.activationPlan.framework ?? []).map((section) => (
+                    <Box
+                      key={section.key}
+                      sx={{
+                        p: 1.2,
+                        borderRadius: 1.5,
+                        border: '1px solid rgba(148,163,184,0.18)',
+                        background: 'rgba(15,23,42,0.52)',
+                      }}
+                    >
+                      <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                        {PRODUCER_PLANNING_FRAMEWORK_LABELS[section.key]}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(148,163,184,0.86)', fontSize: '0.82rem', mt: 0.35, mb: 1 }}>
+                        {PRODUCER_PLANNING_FRAMEWORK_HELPERS[section.key]}
+                      </Typography>
+                      <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.1}>
+                        <TextField
+                          size="small"
+                          label="Fokus"
+                          fullWidth
+                          value={getFrameworkStep(draft, section.key)?.focus ?? ''}
+                          disabled={readOnly}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setDraft((previous) => ({
+                              ...previous,
+                              activationPlan: {
+                                ...previous.activationPlan,
+                                framework: (previous.activationPlan.framework ?? []).map((entry) => (
+                                  entry.key === section.key ? { ...entry, focus: nextValue } : entry
+                                )),
+                              },
+                            }));
+                          }}
+                          InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                        />
+                        <TextField
+                          size="small"
+                          label="Leveranse / utfall"
+                          fullWidth
+                          value={getFrameworkStep(draft, section.key)?.output ?? ''}
+                          disabled={readOnly}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setDraft((previous) => ({
+                              ...previous,
+                              activationPlan: {
+                                ...previous.activationPlan,
+                                framework: (previous.activationPlan.framework ?? []).map((entry) => (
+                                  entry.key === section.key ? { ...entry, output: nextValue } : entry
+                                )),
+                              },
+                            }));
+                          }}
+                          InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                        />
+                      </Stack>
+                      <TextField
+                        size="small"
+                        label="Notater"
+                        fullWidth
+                        multiline
+                        minRows={2}
+                        sx={{ mt: 1.1 }}
+                        value={getFrameworkStep(draft, section.key)?.notes ?? ''}
+                        disabled={readOnly}
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setDraft((previous) => ({
+                            ...previous,
+                            activationPlan: {
+                              ...previous.activationPlan,
+                              framework: (previous.activationPlan.framework ?? []).map((entry) => (
+                                entry.key === section.key ? { ...entry, notes: nextValue } : entry
+                              )),
+                            },
+                          }));
+                        }}
+                        InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+                      />
+                    </Box>
+                  ))}
+                </Stack>
+              </Stack>
+            )}
           </Stack>
         ) : null}
 
@@ -1444,34 +1726,125 @@ export default function ProducerClientPlanningPanel({
                   />
                   <TextField
                     size="small"
+                    select
                     label="Kanal"
                     value={item.channel ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
                       const nextValue = event.target.value;
-                      setDraft((previous) => ({
-                        ...previous,
-                        contentCalendar: previous.contentCalendar.map((entry, entryIndex) => entryIndex === index ? { ...entry, channel: nextValue } : entry),
+                      const recommendedFormats = getRecommendedFormatsForProducerChannel(nextValue);
+                      const shouldResetFormat = !item.format || recommendedFormats.every((option) => option.value !== item.format);
+                      updateContentCalendarItem(index, (entry) => ({
+                        ...entry,
+                        channel: nextValue,
+                        format: shouldResetFormat ? getPrimaryFormatForProducerChannel(nextValue) : entry.format,
                       }));
                     }}
                     sx={{ minWidth: { xl: 180 } }}
                     InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-                  />
-                  <TextField
-                    size="small"
-                    label="Format"
-                    value={item.format ?? ''}
-                    disabled={readOnly}
-                    onChange={(event) => {
-                      const nextValue = event.target.value;
-                      setDraft((previous) => ({
-                        ...previous,
-                        contentCalendar: previous.contentCalendar.map((entry, entryIndex) => entryIndex === index ? { ...entry, format: nextValue } : entry),
-                      }));
+                  >
+                    {PRODUCER_CONTENT_CHANNEL_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <Box
+                    sx={{
+                      minWidth: { xl: 280 },
+                      flex: { xl: 1 },
+                      p: 0.85,
+                      borderRadius: 1.35,
+                      border: '1px solid rgba(148,163,184,0.16)',
+                      background: 'rgba(2,6,23,0.42)',
                     }}
-                    sx={{ minWidth: { xl: 150 } }}
-                    InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-                  />
+                  >
+                    <Stack
+                      direction={{ xs: 'column', md: 'row' }}
+                      justifyContent="space-between"
+                      spacing={0.9}
+                      sx={{ mb: 0.85 }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.83rem' }}>
+                          Format
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.2 }}>
+                          {getProducerContentFormatOption(item.format)?.helper
+                            ?? 'Velg format ut fra kanal og hvordan innholdet skal publiseres.'}
+                        </Typography>
+                      </Box>
+                      <Box
+                        sx={{
+                          width: 68,
+                          height: 68,
+                          alignSelf: { xs: 'flex-start', md: 'center' },
+                          borderRadius: 1.35,
+                          border: '1px solid rgba(148,163,184,0.18)',
+                          background: 'linear-gradient(180deg, rgba(30,41,59,0.88), rgba(15,23,42,0.92))',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {(() => {
+                          const formatOption = getProducerContentFormatOption(item.format) ?? PRODUCER_CONTENT_FORMAT_OPTIONS[0];
+                          const isVertical = formatOption.frame.height > formatOption.frame.width;
+                          const previewWidth = isVertical ? 26 : formatOption.frame.width === formatOption.frame.height ? 36 : 44;
+                          const previewHeight = isVertical ? 46 : formatOption.frame.width === formatOption.frame.height ? 36 : 28;
+                          return (
+                            <Box
+                              sx={{
+                                width: previewWidth,
+                                height: previewHeight,
+                                borderRadius: 0.9,
+                                border: '1px solid rgba(191,219,254,0.36)',
+                                bgcolor: 'rgba(59,130,246,0.16)',
+                                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
+                              }}
+                            />
+                          );
+                        })()}
+                      </Box>
+                    </Stack>
+                    <ToggleButtonGroup
+                      size="small"
+                      exclusive
+                      value={item.format ?? ''}
+                      onChange={(_, nextValue: string | null) => {
+                        if (!nextValue) {
+                          return;
+                        }
+                        updateContentCalendarItem(index, (entry) => ({ ...entry, format: nextValue }));
+                      }}
+                      sx={{
+                        flexWrap: 'wrap',
+                        gap: 0.6,
+                        '& .MuiToggleButton-root': {
+                          px: 1,
+                          borderRadius: '999px !important',
+                          borderColor: 'rgba(148,163,184,0.2)',
+                          color: 'rgba(226,232,240,0.82)',
+                          textTransform: 'none',
+                          fontWeight: 700,
+                        },
+                        '& .Mui-selected': {
+                          bgcolor: 'rgba(56,189,248,0.16) !important',
+                          borderColor: 'rgba(56,189,248,0.36) !important',
+                          color: '#e0f2fe !important',
+                        },
+                      }}
+                    >
+                      {(getRecommendedFormatsForProducerChannel(item.channel).length > 0
+                        ? getRecommendedFormatsForProducerChannel(item.channel)
+                        : PRODUCER_CONTENT_FORMAT_OPTIONS
+                      ).map((option) => (
+                        <ToggleButton key={option.value} value={option.value} disabled={readOnly}>
+                          {option.label}
+                        </ToggleButton>
+                      ))}
+                    </ToggleButtonGroup>
+                  </Box>
                   <TextField
                     size="small"
                     type="date"
@@ -1509,6 +1882,14 @@ export default function ProducerClientPlanningPanel({
                     ))}
                   </TextField>
                 </Stack>
+                {(item.channel || item.format) ? (
+                  <Typography sx={{ color: 'rgba(191,219,254,0.76)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.85 }}>
+                    {[
+                      getProducerContentChannelOption(item.channel)?.helper,
+                      item.format ? `Vises som ${item.format} i plan og leveranse.` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </Typography>
+                ) : null}
                 <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1} sx={{ mt: 1.1 }}>
                   <TextField
                     size="small"
@@ -1928,6 +2309,7 @@ export default function ProducerClientPlanningPanel({
                   ...previous,
                   deliveryWorkflow: {
                     ...previous.deliveryWorkflow,
+                    presetId: undefined,
                     fileNamingConvention: event.target.value,
                   },
                 }));
@@ -1946,6 +2328,7 @@ export default function ProducerClientPlanningPanel({
                   ...previous,
                   deliveryWorkflow: {
                     ...previous.deliveryWorkflow,
+                    presetId: undefined,
                     versioningRule: event.target.value,
                   },
                 }));
@@ -1964,6 +2347,7 @@ export default function ProducerClientPlanningPanel({
                   ...previous,
                   deliveryWorkflow: {
                     ...previous.deliveryWorkflow,
+                    presetId: undefined,
                     folderStructure: event.target.value,
                   },
                 }));
@@ -1984,6 +2368,7 @@ export default function ProducerClientPlanningPanel({
                     ...previous,
                     deliveryWorkflow: {
                       ...previous.deliveryWorkflow,
+                      presetId: undefined,
                       draftVsFinalRule: event.target.value,
                     },
                   }));
@@ -2003,6 +2388,7 @@ export default function ProducerClientPlanningPanel({
                     ...previous,
                     deliveryWorkflow: {
                       ...previous.deliveryWorkflow,
+                      presetId: undefined,
                       backupRoutine: event.target.value,
                     },
                   }));
@@ -2022,6 +2408,7 @@ export default function ProducerClientPlanningPanel({
                   ...previous,
                   deliveryWorkflow: {
                     ...previous.deliveryWorkflow,
+                    presetId: undefined,
                     deliveryCadence: event.target.value,
                   },
                 }));

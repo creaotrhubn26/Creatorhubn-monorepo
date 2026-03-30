@@ -76,7 +76,7 @@ import {
   Psychology,
 } from '@mui/icons-material';
 import AdminStats from './AdminStats';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, isApiEndpointMissing } from '@/lib/queryClient';
 import PriceManagementDashboard from './PriceManagementDashboard';
 import VendorTypeManager from '../vendor/VendorTypeManager';
 import FullscreenChatWidget from '../chat/FullscreenChatWidget';
@@ -345,85 +345,80 @@ export default function AdminDashboard({
   const pushUserId = currentUser?.id || currentUser?.sub;
   const { pushEnabled: _pushEnabled, isSupported: _isSupported } = usePushNotifications(pushUserId);
 
+  const fetchOptionalAdminData = async <T,>(url: string, fallback: T): Promise<T> => {
+    try {
+      const headers = await auth.getAuthHeader();
+      return await apiRequest(url, { headers });
+    } catch (queryError) {
+      if (isApiEndpointMissing(queryError)) {
+        console.debug(`[AdminDashboard] Optional endpoint unavailable: ${url}`);
+        return fallback;
+      }
+      throw queryError;
+    }
+  };
+
   const { data: dashboardData } = useQuery({
     queryKey: ['/api/admin/dashboard'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/dashboard', { headers });
-    },
+    queryFn: () => fetchOptionalAdminData('/api/admin/dashboard', null),
     staleTime: 30000,
+    retry: false,
   });
 
   const { data: crmData } = useQuery({
     queryKey: ['/api/admin/crm/overview'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/crm/overview', { headers });
-    },
+    queryFn: () => fetchOptionalAdminData('/api/admin/crm/overview', null),
     staleTime: 60000,
+    retry: false,
   });
 
   const { data: billingData } = useQuery({
     queryKey: ['/api/admin/billing/overview'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/billing/overview', { headers });
-    },
+    queryFn: () => fetchOptionalAdminData('/api/admin/billing/overview', null),
     staleTime: 60000,
+    retry: false,
   });
 
   const { data: analyticsData } = useQuery({
     queryKey: ['/api/admin/analytics/platform'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/analytics/platform', { headers });
-    },
+    queryFn: () => fetchOptionalAdminData('/api/admin/analytics/platform', null),
     staleTime: 60000,
+    retry: false,
   });
 
   const { data: auditData } = useQuery({
     queryKey: ['/api/admin/audit/recent'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/audit/recent', { headers });
-    },
+    queryFn: () => fetchOptionalAdminData('/api/admin/audit/recent', []),
     staleTime: 30000,
+    retry: false,
   });
 
   const { data: healthData } = useQuery({
     queryKey: ['/api/admin/system/health'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/system/health', { headers });
-    },
+    queryFn: () => fetchOptionalAdminData('/api/admin/system/health', null),
     staleTime: 10000,
+    retry: false,
   });
 
   const { data: integrationData } = useQuery({
     queryKey: ['/api/admin/integrations/status'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/integrations/status', { headers });
-    },
+    queryFn: () => fetchOptionalAdminData('/api/admin/integrations/status', null),
     staleTime: 30000,
+    retry: false,
   });
 
   const { data: securityData } = useQuery({
     queryKey: ['/api/admin/security/status'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/security/status', { headers });
-    },
+    queryFn: () => fetchOptionalAdminData('/api/admin/security/status', null),
     staleTime: 60000,
+    retry: false,
   });
 
   const { data: automationData } = useQuery({
     queryKey: ['/api/admin/automations/status'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/automations/status', { headers });
-    },
+    queryFn: () => fetchOptionalAdminData('/api/admin/automations/status', null),
     staleTime: 30000,
+    retry: false,
   });
 
   // Event handlers
@@ -865,6 +860,7 @@ export default function AdminDashboard({
     { id: 'feature-customization', label: 'Feature Customization', icon: Settings },
     { id: 'fine-tuning-monitor', label: 'Fine-Tuning Monitor', icon: Psychology },
   ];
+  const isVisualCmsTab = tabValue === 3;
 
   // Show loading while checking authentication
   if (userLoading) {
@@ -1111,7 +1107,15 @@ export default function AdminDashboard({
       {/* Mobile Dropdown Menu */}
       <MobileDropdownMenu />
 
-      <Container maxWidth="xl" sx={{ py: { xs: 2, sm: 3 }, px: { xs: 1, sm: 3 } }}>
+      <Container
+        maxWidth={isVisualCmsTab ? false : 'xl'}
+        disableGutters={isVisualCmsTab}
+        sx={{
+          width: '100%',
+          py: isVisualCmsTab ? 0 : { xs: 2, sm: 3 },
+          px: isVisualCmsTab ? 0 : { xs: 1, sm: 3 },
+        }}
+      >
         {/* Tab Panels */}
         <Box sx={{ mt: { xs: 1, sm: 2 } }}>
           <TabPanel value={tabValue} index={0}>
@@ -1162,7 +1166,13 @@ export default function AdminDashboard({
           </TabPanel>
 
           <TabPanel value={tabValue} index={3}>
-            <Box sx={{ mb: 3 }}>
+            <Box
+              sx={{
+                mb: 2,
+                px: { xs: 1.5, sm: 2.5 },
+                pt: { xs: 1, sm: 1.5 },
+              }}
+            >
               <Typography
                 variant="h5"
                 sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}

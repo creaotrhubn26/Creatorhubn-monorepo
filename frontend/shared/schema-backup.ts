@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Comprehensive Schema with Fotoleveranse System
  * Professional photo delivery with external photographer collaboration

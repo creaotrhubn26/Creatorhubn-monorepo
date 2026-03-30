@@ -5,7 +5,7 @@
  * Wraps console.error and dispatches UI toasts for user feedback.
  */
 
-type ErrorSeverity = 'error, ' | 'warning' | 'info';
+type ErrorSeverity = 'error' | 'warning' | 'info';
 
 interface ErrorConfig {
   showToast?: boolean;
@@ -37,17 +37,15 @@ class ErrorHandler {
    * Patch console.error and console.warn to dispatch toasts
    */
   private patchConsole(): void {
-    const self = this;
-
-    console.error = function (...args: unknown[]) {
-      self.originalConsoleError.apply(console, args);
-      if (self.enabled) {
-        self.dispatchToast(self.formatMessage(args), 'error');
+    console.error = (...args: unknown[]) => {
+      this.originalConsoleError.apply(console, args);
+      if (this.enabled) {
+        this.dispatchToast(this.formatMessage(args), 'error');
       }
     };
 
-    console.warn = function (...args: unknown[]) {
-      self.originalConsoleWarn.apply(console, args);
+    console.warn = (...args: unknown[]) => {
+      this.originalConsoleWarn.apply(console, args);
       // Don't toast for warnings by default - too noisy
     };
   }
@@ -80,7 +78,15 @@ class ErrorHandler {
   /**
    * Dispatch toast via custom event
    */
-  private dispatchToast(message: string, type: 'error' | 'warning' | 'info' | 'success'): void {
+  private dispatchToast(
+    message: string,
+    type: 'error' | 'warning' | 'info' | 'success',
+    duration?: number,
+  ): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     // Skip certain messages that are not user-relevant
     const ignorePatterns = [
       /THREE\.WebGLRenderer/i,
@@ -100,8 +106,8 @@ class ErrorHandler {
 
     // Clean up message
     const cleanMessage = message
-      .replace(/^(Error:|Failed:|❌|⚠️)\s*/i, ', ')
-      .replace(/\s+/g, ', ')
+      .replace(/^(Error:|Failed:|❌|⚠️)\s*/i, '')
+      .replace(/\s+/g, ' ')
       .trim();
 
     if (!cleanMessage || cleanMessage.length < 5) {
@@ -110,11 +116,11 @@ class ErrorHandler {
 
     // Dispatch custom event for toast system
     window.dispatchEvent(
-      new CustomEvent('vs-error-toast, ', {
+      new CustomEvent('vs-error-toast', {
         detail: {
           message: cleanMessage,
           type,
-          duration: type === 'error' ? 5000 : 3000,
+          duration: duration ?? (type === 'error' ? 5000 : 3000),
         },
       })
     );
@@ -125,14 +131,15 @@ class ErrorHandler {
    */
   handleError(error: Error | string, config: ErrorConfig = {}): void {
     const message = error instanceof Error ? error.message : error;
-    const context = config.context ? `[${config.context}] ` : ', ';
+    const context = config.context ? `[${config.context}] ` : '';
     
     this.originalConsoleError(context + message);
     
     if (config.showToast !== false) {
       this.dispatchToast(
         context + message,
-        config.severity || 'error'
+        config.severity || 'error',
+        config.duration,
       );
     }
   }
@@ -141,11 +148,11 @@ class ErrorHandler {
    * Handle a warning
    */
   handleWarning(message: string, config: ErrorConfig = {}): void {
-    const context = config.context ? `[${config.context}] ` :', ';
+    const context = config.context ? `[${config.context}] ` : '';
     this.originalConsoleWarn(context + message);
     
     if (config.showToast) {
-      this.dispatchToast(context + message, 'warning');
+      this.dispatchToast(context + message, 'warning', config.duration);
     }
   }
 

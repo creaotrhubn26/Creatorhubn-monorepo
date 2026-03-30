@@ -1,5 +1,6 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useCallback, useMemo } from 'react';
+import { useLocation } from 'wouter';
 import { useAuth } from '@/hooks/useAuth';
 import UniversalChatWidget from './UniversalChatWidget';
 import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
@@ -20,20 +21,19 @@ interface GlobalChatProviderProps {
  * - Maintains chat state across page navigation
  */
 export default function GlobalChatProvider({ children }: GlobalChatProviderProps) {
-  const { user, isAuthenticated } = useAuth();
+  const [location] = useLocation();
+  const { user, isAuthenticated, isAdmin } = useAuth();
 
   // Determine profession based on user data or default to photographer
   const userProfession = useMemo(() => {
     if (!user) return 'photographer';
-    // Check for profession field on user object
-    const userRecord = user as Record<string, unknown>;
-    if (typeof userRecord.profession === 'string' && userRecord.profession) {
-      return userRecord.profession;
+    if (typeof user.profession === 'string' && user.profession) {
+      return user.profession;
     }
     // Admin users default to photographer
-    if (user.isAdmin) return 'photographer';
+    if (isAdmin) return 'photographer';
     return 'photographer';
-  }, [user]);
+  }, [isAdmin, user]);
 
   // Theming system — driven by the resolved profession
   const theming = useTheming(userProfession);
@@ -62,24 +62,28 @@ export default function GlobalChatProvider({ children }: GlobalChatProviderProps
     ['--chat-accent-light' as string]: `${theming.colors.primary}18`,
   };
 
+  const shouldHideGlobalChat = useMemo(() => {
+    return /^\/(?:dashboard|photographer-dashboard-material|videographer-dashboard(?:-material)?|music(?:_|-)producer-dashboard(?:-material)?|vendor-dashboard(?:-material)?)(?:\/|$)/.test(location);
+  }, [location]);
+
   return (
     <>
       {children}
 
       {/* Global Chat Widget - Available on all pages, themed per profession */}
-      <div style={chatContainerStyle}>
-        <CommunicationStatusProvider>
-          <UniversalChatWidget
-            profession={userProfession}
-            userEmail={user.email}
-            userId={user.id}
-            isOpen={false}
-            onNotificationCreate={handleNotificationCreate}
-          />
-        </CommunicationStatusProvider>
-      </div>
+      {!shouldHideGlobalChat && (
+        <div style={chatContainerStyle}>
+          <CommunicationStatusProvider>
+            <UniversalChatWidget
+              profession={userProfession}
+              userEmail={user.email}
+              userId={user.id}
+              isOpen={false}
+              onNotificationCreate={handleNotificationCreate}
+            />
+          </CommunicationStatusProvider>
+        </div>
+      )}
     </>
   );
 }
-
-

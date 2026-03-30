@@ -17,6 +17,7 @@ import {
   InputLabel,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   MenuItem,
   Select,
@@ -36,11 +37,10 @@ import {
   Upload as UploadIcon,
 } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
-import type {
-  CameraTemplate,
-  CameraTemplateCategory,
-  CameraTemplateSearchFilters} from '../../data/camera-templates';
 import {
+  type CameraTemplate,
+  type CameraTemplateCategory,
+  type CameraTemplateSearchFilters,
   cameraTemplateManager
 } from '../../data/camera-templates';
 
@@ -354,12 +354,7 @@ export const CameraTemplateManagerComponent: React.FC<CameraTemplateManagerProps
               {visibleTemplates.map((template) => (
                 <ListItem
                   key={template.id}
-                  onClick={() => {
-                    setSelectedTemplate(template);
-                    cameraTemplateManager.useTemplate(template.id, 'current-user');
-                    onTemplateSelect?.(template);
-                  }}
-                  selected={activeTemplateId === template.id}
+                  disablePadding
                   secondaryAction={
                     <Stack direction="row" spacing={0.5}>
                       <IconButton size="small" onClick={() => openCreateDialog(template)}>
@@ -371,26 +366,35 @@ export const CameraTemplateManagerComponent: React.FC<CameraTemplateManagerProps
                     </Stack>
                   }
                 >
-                  <ListItemText
-                    primary={
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography sx={{ fontWeight: 600 }}>{template.name}</Typography>
-                        <Chip size="small" label={template.category} />
-                        <Chip size="small" label={template.profession} />
-                        {template.isPublic && <Chip size="small" color="success" label="public" />}
-                      </Stack>
-                    }
-                    secondary={
-                      <Stack spacing={0.5}>
-                        <Typography variant="caption" color="text.secondary">
-                          {template.description}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Usage {template.usageCount} • Rating {template.rating ?? 0}
-                        </Typography>
-                      </Stack>
-                    }
-                  />
+                  <ListItemButton
+                    onClick={() => {
+                      setSelectedTemplate(template);
+                      cameraTemplateManager.useTemplate(template.id, 'current-user');
+                      onTemplateSelect?.(template);
+                    }}
+                    selected={activeTemplateId === template.id}
+                  >
+                    <ListItemText
+                      primary={
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography sx={{ fontWeight: 600 }}>{template.name}</Typography>
+                          <Chip size="small" label={template.category} />
+                          <Chip size="small" label={template.profession} />
+                          {template.isPublic && <Chip size="small" color="success" label="public" />}
+                        </Stack>
+                      }
+                      secondary={
+                        <Stack spacing={0.5}>
+                          <Typography variant="caption" color="text.secondary">
+                            {template.description}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Usage {template.usageCount} • Rating {template.rating ?? 0}
+                          </Typography>
+                        </Stack>
+                      }
+                    />
+                  </ListItemButton>
                 </ListItem>
               ))}
             </List>

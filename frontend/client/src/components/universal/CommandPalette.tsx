@@ -758,7 +758,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
     }}
     >
       <DialogContent sx={{ p: 0, display: 'flex', flexDirection: 'column'}}>
-        <Box sx={{ p: 2, borderBottom: '1px solid rgba(25, 255, 255, 0.1)' }}>
+        <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.12)' }}>
           {/* Header with profession branding */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             {professionIcon && (
@@ -866,8 +866,8 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
                   <Typography
                     variant="caption"
                     sx={{
-                      color: 'rgba(25, 255, 255, 0.3)',
-                      bgcolor: 'rgba(25, 255, 255, 0.05)',
+                      color: 'rgba(255, 255, 255, 0.4)',
+                      bgcolor: 'rgba(255, 255, 255, 0.06)',
                       px:  1,
                       py: 0.5,
                       borderRadius: 0.5 }}

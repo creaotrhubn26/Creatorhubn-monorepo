@@ -199,6 +199,7 @@ function TabPanel(props: TabPanelProps) {
 interface ShowcaseAdminProps {
   profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   userId: string;
+  viewerContent?: React.ReactNode;
   // Integration props for universal connectivity
   _onShowcaseCreate?: (showcase: any) => void;
   _onShowcaseShare?: (showcase: any, meeting: any) => void;
@@ -213,6 +214,7 @@ interface ShowcaseAdminProps {
 export default function ShowcaseAdmin({ 
   profession, 
   userId, 
+  viewerContent,
   _onShowcaseCreate,
   _onShowcaseShare,
   _onProjectUpdate,
@@ -224,6 +226,7 @@ export default function ShowcaseAdmin({
 	const theme = useTheme();
 	const queryClient = useQueryClient();
 	const [currentTab, setCurrentTab] = useState(0);
+  const showcaseViewerTabIndex = 7;
 	const { integration, communication, dataFlow, componentRegistry, features, auth } = useEnhancedMasterIntegration();
   
   // Theming system
@@ -469,7 +472,22 @@ export default function ShowcaseAdmin({
     
     communication.onMessageType('showcase:template-selected', (data: any) => {
       if (data.profession === profession) {
-        console.log('Template selected for profession:', profession, data.template);
+        const incomingTemplate = data.template;
+        if (!incomingTemplate) {
+          showNotification('Malen kunne ikke åpnes fordi ingen maldata ble sendt med.', 'warning');
+          return;
+        }
+
+        setTemplateForm(incomingTemplate);
+        setShowcaseForm((prev) => ({
+          ...prev,
+          displayConfig: {
+            ...prev.displayConfig,
+            template: incomingTemplate.name || prev.displayConfig.template,
+          },
+        }));
+        setOpenDialog('new-showcase');
+        showNotification(`Malen "${incomingTemplate.name || 'Uten navn'}" er klar til bruk i ny showcase.`, 'success');
     }
   });
     
@@ -521,7 +539,7 @@ export default function ShowcaseAdmin({
   // Quick action handlers for batch operations
   const handleQuickAction = (action: string) => {
     if (!showcases || showcases.length === 0) {
-      console.log('No showcases available for quick action');
+      showNotification('Ingen showcases tilgjengelig for dette hurtigvalget.', 'warning');
       return;
     }
 
@@ -529,7 +547,7 @@ export default function ShowcaseAdmin({
       case 'select-all-featured': {
         const featuredIds = showcases.filter((s: any) => s.isFeatured).map((s: any) => s.id);
         setSelectedItems(featuredIds);
-        console.log(`Selected ${featuredIds.length} featured items`);
+        showNotification(`${featuredIds.length} fremhevede showcases valgt.`, featuredIds.length > 0 ? 'success' : 'info');
         break;
       }
       case 'select-all-recent': {
@@ -537,23 +555,23 @@ export default function ShowcaseAdmin({
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
         const recentIds = showcases.filter((s: any) => new Date(s.createdAt) >= oneWeekAgo).map((s: any) => s.id);
         setSelectedItems(recentIds);
-        console.log(`Selected ${recentIds.length} recent items from last week`);
+        showNotification(`${recentIds.length} nylige showcases valgt fra siste uke.`, recentIds.length > 0 ? 'success' : 'info');
         break;
       }
       case 'select-by-rating': {
         const highRatedIds = showcases.filter((s: any) => (s.rating || 0) >= 4).map((s: any) => s.id);
         setSelectedItems(highRatedIds);
-        console.log(`Selected ${highRatedIds.length} items with 4+ rating`);
+        showNotification(`${highRatedIds.length} showcases med 4+ rating valgt.`, highRatedIds.length > 0 ? 'success' : 'info');
         break;
       }
       case 'select-unpublished': {
         const unpublishedIds = showcases.filter((s: any) => s.status === 'draft' || !s.isPublished).map((s: any) => s.id);
         setSelectedItems(unpublishedIds);
-        console.log(`Selected ${unpublishedIds.length} unpublished items`);
+        showNotification(`${unpublishedIds.length} upubliserte showcases valgt.`, unpublishedIds.length > 0 ? 'success' : 'info');
         break;
       }
       default:
-        console.log(`Unknown quick action: ${action}`);
+        showNotification(`Ukjent hurtighandling: ${action}`, 'warning');
     }
   };
 
@@ -1659,7 +1677,7 @@ export default function ShowcaseAdmin({
               <Button
                 variant="outlined"
                 onClick={() => {
-                  window.open('/showcase-gallery','_blank');
+                  setCurrentTab(showcaseViewerTabIndex);
                 }}
                 sx={{
                   color: 'white',
@@ -1675,7 +1693,7 @@ export default function ShowcaseAdmin({
                   },
                 }}
               >
-                Se Publiserte Gallerier
+                Åpne Showcase Viewer
               </Button>
             </Box>
           </Box>
@@ -1711,6 +1729,7 @@ export default function ShowcaseAdmin({
             <Tab icon={<AutoFixIcon sx={{ fontSize: 20 }} />} iconPosition="start" label="Smart Albums" disabled={!contentManagementAccess?.hasAccess} />
             <Tab icon={<AnalyticsIcon sx={{ fontSize: 20 }} />} iconPosition="start" label="Statistikk" disabled={!showcaseAnalyticsAccess?.hasAccess} />
             <Tab icon={<SettingsIcon sx={{ fontSize: 20 }} />} iconPosition="start" label="Innstillinger" disabled={!showcasePublishingAccess?.hasAccess} />
+            <Tab icon={<VisibilityIcon sx={{ fontSize: 20 }} />} iconPosition="start" label="Showcase Viewer" />
           </Tabs>
         </Box>
       </Paper>
@@ -2349,7 +2368,15 @@ export default function ShowcaseAdmin({
                               variant="outlined"
                               onClick={() => {
                                 setTemplateForm(template);
-                                console.log('Template applied:', template.name);
+                                setShowcaseForm((prev) => ({
+                                  ...prev,
+                                  displayConfig: {
+                                    ...prev.displayConfig,
+                                    template: template.name || prev.displayConfig.template,
+                                  },
+                                }));
+                                setOpenDialog('new-showcase');
+                                showNotification(`Malen "${template.name}" er lagt inn i ny showcase.`, 'success');
                               }}
                               sx={{ borderRadius: 2, borderColor: theming.colors.primary, color: theming.colors.primary }}
                             >
@@ -3647,6 +3674,18 @@ export default function ShowcaseAdmin({
               </Box>
             </Grid>
           </Grid>
+        </TabPanel>
+
+        <TabPanel value={currentTab} index={showcaseViewerTabIndex}>
+          {viewerContent ? (
+            <Box sx={{ p: 0, minHeight: '70vh', overflow: 'hidden', borderRadius: 3 }}>
+              {viewerContent}
+            </Box>
+          ) : (
+            <Alert severity="info" sx={{ borderRadius: 3 }}>
+              Showcase Viewer er ikke tilgjengelig i denne konteksten ennå.
+            </Alert>
+          )}
         </TabPanel>
       </Box>
 

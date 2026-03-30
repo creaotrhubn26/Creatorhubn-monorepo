@@ -7,8 +7,30 @@
 
 import { cinematographyPatternsService } from './cinematographyPatternsService';
 import { qualityScoringService } from './qualityScoringService';
-import type { Scene } from '../../types/scene';
-import type { Light } from '../../types/light';
+
+interface TrainingLight {
+  id: string;
+  type: string;
+  name: string;
+  position: [number, number, number];
+  power: number;
+  colorTemp: number;
+  softness: number;
+  castShadow: boolean;
+  visible: boolean;
+}
+
+interface TrainingScene {
+  nodes: TrainingLight[];
+  selection: string[];
+  environment: {
+    showGrid: boolean;
+    showAxes: boolean;
+    backgroundColor: string;
+    ambientLightIntensity: number;
+  };
+  units: 'metric' | 'imperial';
+}
 
 export interface TrainingExample {
   // Input features
@@ -108,8 +130,8 @@ class TrainingDataGenerator {
   /**
    * Create a suboptimal lighting scene (for "before" state)
    */
-  private createSuboptimalScene(_pattern: any): Scene {
-    const scene: Scene = {
+  private createSuboptimalScene(_pattern: unknown): TrainingScene {
+    const scene: TrainingScene = {
       nodes: [],
       selection: [],
       environment: {
@@ -124,7 +146,7 @@ class TrainingDataGenerator {
     // Add 1-3 random lights with suboptimal settings
     const lightCount = Math.floor(Math.random() * 3) + 1;
     for (let i = 0; i < lightCount; i++) {
-      const light: Light = {
+      const light: TrainingLight = {
         id: `light-${i}`,
         type: 'point',
         name: `Light ${i + 1}`,
@@ -148,8 +170,19 @@ class TrainingDataGenerator {
   /**
    * Apply cinematography pattern to create optimal scene
    */
-  private applyPattern(pattern: any): Scene {
-    const scene: Scene = {
+  private applyPattern(pattern: {
+    lights: Array<{
+      type: string;
+      position: [number, number, number];
+      power: number;
+      colorTemp: number;
+      softness: number;
+      castShadow?: boolean;
+      visible?: boolean;
+      name?: string;
+    }>;
+  }): TrainingScene {
+    const scene: TrainingScene = {
       nodes: [],
       selection: [],
       environment: {
@@ -163,9 +196,10 @@ class TrainingDataGenerator {
 
     // Apply pattern lights with small random variations
     for (const lightConfig of pattern.lights) {
-      const light: Light = {
+      const light: TrainingLight = {
         ...lightConfig,
         id: `light-${scene.nodes.length}`,
+        name: lightConfig.name ?? `Pattern Light ${scene.nodes.length + 1}`,
         position: [
           lightConfig.position[0] + (Math.random() - 0.5) * 0.5,
           lightConfig.position[1] + (Math.random() - 0.5) * 0.5,
@@ -173,6 +207,8 @@ class TrainingDataGenerator {
         ],
         power: lightConfig.power * (0.9 + Math.random() * 0.2), // ±10% variation
         colorTemp: lightConfig.colorTemp + (Math.random() - 0.5) * 200, // ±100K variation
+        castShadow: lightConfig.castShadow ?? true,
+        visible: lightConfig.visible ?? true,
       };
       scene.nodes.push(light);
     }
@@ -183,8 +219,8 @@ class TrainingDataGenerator {
   /**
    * Calculate quality score for a scene
    */
-  private calculateQuality(scene: Scene): number {
-    const lights = scene.nodes.filter((node: any) => 'power' in node) as Light[];
+  private calculateQuality(scene: TrainingScene): number {
+    const lights = scene.nodes;
 
     if (lights.length === 0) return 0;
 
@@ -200,8 +236,8 @@ class TrainingDataGenerator {
   /**
    * Extract scene context features
    */
-  private extractSceneContext(scene: Scene): TrainingExample['sceneContext'] {
-    const lights = scene.nodes.filter((node: any) => 'power' in node) as Light[];
+  private extractSceneContext(scene: TrainingScene): TrainingExample['sceneContext'] {
+    const lights = scene.nodes;
 
     const hasKeyLight = lights.some((l) => l.power > 300);
     const hasFillLight = lights.some((l) => l.power > 100 && l.power < 300);
@@ -226,8 +262,8 @@ class TrainingDataGenerator {
   /**
    * Extract lighting configuration
    */
-  private extractLighting(scene: Scene): TrainingExample['currentLighting'] {
-    const lights = scene.nodes.filter((node: any) => 'power' in node) as Light[];
+  private extractLighting(scene: TrainingScene): TrainingExample['currentLighting'] {
+    const lights = scene.nodes;
 
     return {
       lights: lights.map((light) => ({
@@ -244,11 +280,11 @@ class TrainingDataGenerator {
    * Calculate changes between before and after scenes
    */
   private calculateChanges(
-    beforeScene: Scene,
-    afterScene: Scene
+    beforeScene: TrainingScene,
+    afterScene: TrainingScene
   ): TrainingExample['recommendedChanges'] {
-    const beforeLights = beforeScene.nodes.filter((node: any) => 'power' in node) as Light[];
-    const afterLights = afterScene.nodes.filter((node: any) => 'power' in node) as Light[];
+    const beforeLights = beforeScene.nodes;
+    const afterLights = afterScene.nodes;
 
     const changes: TrainingExample['recommendedChanges'] = {};
 
@@ -340,4 +376,3 @@ class TrainingDataGenerator {
 }
 
 export const trainingDataGenerator = new TrainingDataGenerator();
-

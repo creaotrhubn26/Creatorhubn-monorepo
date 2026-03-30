@@ -454,7 +454,7 @@ export default function PaymentIntegrationPanel({
 };
 
   const formatAmount = (amount: number) => {
-    return new Intl.NumberFormat('no-N', {
+    return new Intl.NumberFormat('no-NO', {
       style: 'currency',
       currency: 'NO',
   }).format(amount / 100);

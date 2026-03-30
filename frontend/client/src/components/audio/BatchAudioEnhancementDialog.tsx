@@ -15,7 +15,6 @@ import {
   LinearProgress,
   Stack,
   Card,
-  CardContent,
   IconButton,
   Chip,
   Alert,
@@ -28,12 +27,11 @@ import {
   ListItemText,
   ListItemIcon,
   Divider,
-  Tooltip,
 } from '@mui/material';
 import {
   AudioFile,
   CheckCircle,
-  Error,
+  Error as ErrorIcon,
   Pending,
   Close,
   AutoFixHigh,
@@ -52,7 +50,12 @@ interface BatchResult {
   file: File;
   status: 'pending' | 'processing' | 'success' | 'error';
   enhancedUrl?: string;
-  metrics?: any;
+  metrics?: {
+    loudness?: {
+      standard?: string;
+      final_lufs?: number;
+    };
+  };
   error?: string;
 }
 
@@ -75,6 +78,14 @@ const BRAND_COLORS = {
   green: '#16a34a',
   dark: '#1a1a1a',
 };
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof globalThis.Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return 'Enhancement failed';
+}
 
 export default function BatchAudioEnhancementDialog({
   open,
@@ -136,13 +147,13 @@ export default function BatchAudioEnhancementDialog({
             metrics: data.metrics
           } : r
         ));
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Update status to error
         setResults(prev => prev.map((r, idx) => 
           idx === i ? {
             ...r,
             status: 'error',
-            error: error.message || 'Enhancement failed'
+            error: getErrorMessage(error)
           } : r
         ));
       }
@@ -242,7 +253,7 @@ export default function BatchAudioEnhancementDialog({
               />
               {errorCount > 0 && (
                 <Chip
-                  icon={<Error />}
+                  icon={<ErrorIcon />}
                   label={`${errorCount} Failed`}
                   color="error"
                   variant="outlined"
@@ -258,6 +269,10 @@ export default function BatchAudioEnhancementDialog({
 
           {/* File List */}
           <Card variant="outlined">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, pt: 2 }}>
+              <AudioFile color="action" />
+              <Typography variant="subtitle2">Files in batch</Typography>
+            </Box>
             <List sx={{ maxHeight: 400, overflow: 'auto' }}>
               {results.map((result, index) => (
                 <React.Fragment key={index}>
@@ -268,6 +283,8 @@ export default function BatchAudioEnhancementDialog({
                           edge="end"
                           onClick={() => handleRemoveFile(index)}
                           size="small"
+                          aria-label={`Remove ${result.file.name} from batch`}
+                          title="Remove file"
                         >
                           <Delete />
                         </IconButton>
@@ -278,7 +295,7 @@ export default function BatchAudioEnhancementDialog({
                       {result.status === 'pending' && <Pending color="disabled" />}
                       {result.status === 'processing' && <AutoFixHigh color="primary" />}
                       {result.status === 'success' && <CheckCircle color="success" />}
-                      {result.status === 'error' && <Error color="error" />}
+                      {result.status === 'error' && <ErrorIcon color="error" />}
                     </ListItemIcon>
                     <ListItemText
                       primary={result.file.name}
@@ -345,4 +362,3 @@ export default function BatchAudioEnhancementDialog({
     </Dialog>
   );
 }
-

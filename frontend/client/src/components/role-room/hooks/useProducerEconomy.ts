@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   producerWorkflowService,
   type CreateProducerEconomyItemInput,
@@ -11,28 +11,43 @@ export function useProducerEconomy(projectId?: string) {
   const [items, setItems] = useState<ProducerEconomyItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     if (!projectId) {
       setItems([]);
       setError(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
     try {
       const nextItems = await producerWorkflowService.getEconomyItems(projectId);
+      if (requestId !== requestIdRef.current) {
+        return;
+      }
       setItems(nextItems);
     } catch (loadError) {
+      if (requestId !== requestIdRef.current) {
+        return;
+      }
       setError(loadError instanceof Error ? loadError.message : 'Kunne ikke hente økonomi');
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [projectId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => () => {
+    requestIdRef.current += 1;
+  }, []);
 
   useEffect(() => {
     if (!projectId) {

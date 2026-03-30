@@ -543,6 +543,29 @@ export const roleRoomGoogleConnections = pgTable('role_room_google_connections',
   index('idx_rr_google_connections_email').using('btree', table.googleEmail),
 ]);
 
+export const roleRoomLinkedInConnections = pgTable('role_room_linkedin_connections', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  userId: varchar('user_id', { length: 255 }).notNull(),
+  roleRoomEmail: varchar('role_room_email', { length: 255 }),
+  linkedInMemberId: varchar('linkedin_member_id', { length: 255 }),
+  linkedInEmail: varchar('linkedin_email', { length: 255 }),
+  linkedInName: varchar('linkedin_name', { length: 255 }),
+  accessTokenEncrypted: text('access_token_encrypted'),
+  refreshTokenEncrypted: text('refresh_token_encrypted'),
+  expiryDate: timestamp('expiry_date', { withTimezone: true, mode: 'string' }),
+  scopes: jsonb('scopes').default([]).notNull(),
+  connectionState: varchar('connection_state', { length: 32 }).default('disconnected').notNull(),
+  lastError: text('last_error'),
+  profile: jsonb('profile').default({}).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true, mode: 'string' }),
+}, (table) => [
+  uniqueIndex('idx_rr_linkedin_connections_user_id_unique').using('btree', table.userId),
+  uniqueIndex('idx_rr_linkedin_connections_member_id_unique').using('btree', table.linkedInMemberId),
+  index('idx_rr_linkedin_connections_email').using('btree', table.linkedInEmail),
+]);
+
 export const roleRoomGoogleProjectBindings = pgTable('role_room_google_project_bindings', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
   projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
@@ -626,4 +649,131 @@ export const roleRoomGoogleAgreementSignatures = pgTable('role_room_google_agree
   index('idx_rr_google_agreement_signatures_status').using('btree', table.status),
   index('idx_rr_google_agreement_signatures_drive_source').using('btree', table.driveSourceFileId),
   index('idx_rr_google_agreement_signatures_signed_drive').using('btree', table.signedDriveFileId),
+]);
+
+export const roleRoomIntegrationAccounts = pgTable('role_room_integration_accounts', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  slug: varchar('slug', { length: 120 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  ownerUserId: varchar('owner_user_id', { length: 255 }).notNull(),
+  status: varchar('status', { length: 32 }).default('active').notNull(),
+  allowedScopes: jsonb('allowed_scopes').default([]).notNull(),
+  rateLimitPerMinute: integer('rate_limit_per_minute').default(120).notNull(),
+  metadata: jsonb('metadata').default({}).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('idx_rr_integration_accounts_slug_unique').using('btree', table.slug),
+  index('idx_rr_integration_accounts_owner').using('btree', table.ownerUserId),
+]);
+
+export const roleRoomIntegrationApiKeys = pgTable('role_room_integration_api_keys', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  integrationAccountId: uuid('integration_account_id').notNull().references(() => roleRoomIntegrationAccounts.id, { onDelete: 'cascade' }),
+  label: varchar('label', { length: 255 }).notNull(),
+  keyHash: varchar('key_hash', { length: 128 }).notNull(),
+  createdForUserId: varchar('created_for_user_id', { length: 255 }).notNull(),
+  scopes: jsonb('scopes').default([]).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true, mode: 'string' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('idx_rr_integration_api_keys_hash_unique').using('btree', table.keyHash),
+  index('idx_rr_integration_api_keys_account').using('btree', table.integrationAccountId),
+]);
+
+export const roleRoomIntegrationObjectMappings = pgTable('role_room_integration_object_mappings', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  integrationAccountId: uuid('integration_account_id').notNull().references(() => roleRoomIntegrationAccounts.id, { onDelete: 'cascade' }),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  localObjectType: varchar('local_object_type', { length: 100 }).notNull(),
+  localObjectId: varchar('local_object_id', { length: 255 }).notNull(),
+  externalObjectType: varchar('external_object_type', { length: 100 }).notNull(),
+  externalObjectId: varchar('external_object_id', { length: 255 }).notNull(),
+  direction: varchar('direction', { length: 20 }).default('bidirectional').notNull(),
+  metadata: jsonb('metadata').default({}).notNull(),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('idx_rr_integration_mappings_local_unique').using(
+    'btree',
+    table.integrationAccountId,
+    table.projectId,
+    table.localObjectType,
+    table.localObjectId,
+    table.externalObjectType,
+  ),
+  uniqueIndex('idx_rr_integration_mappings_external_unique').using(
+    'btree',
+    table.integrationAccountId,
+    table.projectId,
+    table.externalObjectType,
+    table.externalObjectId,
+    table.localObjectType,
+  ),
+  index('idx_rr_integration_mappings_project').using('btree', table.projectId),
+]);
+
+export const roleRoomIntegrationWebhooks = pgTable('role_room_integration_webhooks', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  integrationAccountId: uuid('integration_account_id').notNull().references(() => roleRoomIntegrationAccounts.id, { onDelete: 'cascade' }),
+  label: varchar('label', { length: 255 }),
+  endpointUrl: text('endpoint_url').notNull(),
+  signingSecretEncrypted: text('signing_secret_encrypted').notNull(),
+  eventTypes: jsonb('event_types').default(['*']).notNull(),
+  status: varchar('status', { length: 32 }).default('active').notNull(),
+  lastDeliveredAt: timestamp('last_delivered_at', { withTimezone: true, mode: 'string' }),
+  lastFailureAt: timestamp('last_failure_at', { withTimezone: true, mode: 'string' }),
+  lastError: text('last_error'),
+  metadata: jsonb('metadata').default({}).notNull(),
+  createdByUserId: varchar('created_by_user_id', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_rr_integration_webhooks_account').using('btree', table.integrationAccountId),
+]);
+
+export const roleRoomIntegrationEventOutbox = pgTable('role_room_integration_event_outbox', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  integrationAccountId: uuid('integration_account_id').notNull().references(() => roleRoomIntegrationAccounts.id, { onDelete: 'cascade' }),
+  webhookId: uuid('webhook_id').notNull().references(() => roleRoomIntegrationWebhooks.id, { onDelete: 'cascade' }),
+  eventType: varchar('event_type', { length: 120 }).notNull(),
+  aggregateType: varchar('aggregate_type', { length: 120 }).notNull(),
+  aggregateId: varchar('aggregate_id', { length: 255 }).notNull(),
+  projectId: varchar('project_id', { length: 255 }).references(() => castingProjects.id, { onDelete: 'set null' }),
+  payload: jsonb('payload').default({}).notNull(),
+  status: varchar('status', { length: 30 }).default('pending').notNull(),
+  attemptCount: integer('attempt_count').default(0).notNull(),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true, mode: 'string' }),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true, mode: 'string' }),
+  lastError: text('last_error'),
+  lastResponseStatus: integer('last_response_status'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_rr_integration_outbox_pending').using('btree', table.status, table.nextAttemptAt),
+  index('idx_rr_integration_outbox_account').using('btree', table.integrationAccountId),
+]);
+
+export const roleRoomIntegrationIdempotencyKeys = pgTable('role_room_integration_idempotency_keys', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  scopeKey: varchar('scope_key', { length: 255 }).notNull(),
+  integrationAccountId: uuid('integration_account_id').references(() => roleRoomIntegrationAccounts.id, { onDelete: 'cascade' }),
+  requestMethod: varchar('request_method', { length: 10 }).notNull(),
+  requestPath: text('request_path').notNull(),
+  idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull(),
+  requestHash: varchar('request_hash', { length: 128 }).notNull(),
+  status: varchar('status', { length: 20 }).default('processing').notNull(),
+  responseStatus: integer('response_status'),
+  responseBody: jsonb('response_body'),
+  resourceType: varchar('resource_type', { length: 120 }),
+  resourceId: varchar('resource_id', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('idx_rr_integration_idempotency_unique').using('btree', table.scopeKey, table.requestMethod, table.requestPath, table.idempotencyKey),
+  index('idx_rr_integration_idempotency_account').using('btree', table.integrationAccountId),
 ]);

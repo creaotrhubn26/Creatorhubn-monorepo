@@ -71,6 +71,15 @@ export interface SceneSnapshot {
   backdrop?: string;
   props: string[];
   hdriEnvironment?: string;
+  cameraSettings?: {
+    focalLength: number;
+    aperture: string;
+    iso: number;
+    shutterSpeed: string;
+    sensorSize: string;
+  };
+  tags?: string[];
+  importedData?: Record<string, unknown>;
   capturedAt: string;
 }
 

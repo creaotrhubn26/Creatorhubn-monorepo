@@ -185,7 +185,7 @@ export const storyboardsApi = {
 export const framesApi = {
   // List frames for storyboard
   list: async (storyboardId: string): Promise<StoryboardFrameDB[]> => {
-    return apiRequest(`/storyboards/${storyboardId}/frames, `);
+    return apiRequest(`/storyboards/${storyboardId}/frames`);
   },
 
   // Add frame
@@ -433,4 +433,3 @@ export const storyboardApi = {
 };
 
 export default storyboardApi;
-

@@ -26,6 +26,14 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
     if (typeof userIdCandidate === 'string' && userIdCandidate.trim().length > 0) {
       headers['x-user-id'] = userIdCandidate.trim();
     }
+
+    const userEmailCandidate =
+      storedUser?.email ||
+      storedUser?.userEmail ||
+      '';
+    if (typeof userEmailCandidate === 'string' && userEmailCandidate.trim().length > 0) {
+      headers['x-user-email'] = userEmailCandidate.trim().toLowerCase();
+    }
   } catch {
     // Ignore storage parse issues and fall back to anonymous headers.
   }
@@ -40,6 +48,21 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://evendi.onrender.co
 type ApiRequestOptions = Omit<RequestInit, 'body'> & {
   body?: BodyInit | Record<string, unknown>;
 };
+
+export function isApiEndpointMissing(error: unknown): boolean {
+  const record = typeof error === 'object' && error !== null
+    ? (error as { status?: unknown; message?: unknown })
+    : null;
+  const status = typeof record?.status === 'number' ? record.status : undefined;
+  const message = String(record?.message ?? error ?? '');
+
+  return (
+    status === 404 ||
+    message.includes('404') ||
+    /endpoint not implemented/i.test(message) ||
+    /cannot (get|post|put|delete)/i.test(message)
+  );
+}
 
 function isSerializableBody(
   body: BodyInit | Record<string, unknown> | undefined,
@@ -68,15 +91,15 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
       ? normalizedUrl
       : `${API_BASE_URL}${normalizedUrl}`;
 
-  const { body, ...restOptions } = options ?? {};
+  const { body, headers: callerHeaders, ...restOptions } = options ?? {};
   const isFormData = body instanceof FormData;
   const requestOptions: RequestInit = {
+    ...restOptions,
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...authHeaders,
-      ...options?.headers
+      ...callerHeaders,
     },
-    ...restOptions
   };
 
   if (isSerializableBody(body)) {

@@ -118,6 +118,8 @@ export interface UseShotListDataReturn {
   /** Crew / cast persons for this project.  Used to resolve assignee names. */
   crew: Person[];
   crewLoading: boolean;
+  /** Scene breakdowns in the project. Used to bind shot lists to storyboard-aware scenes. */
+  sceneBreakdowns: SceneBreakdown[];
   /** Convenience map: personId → Person */
   peopleMap: Map<string, Person>;
 
@@ -156,6 +158,9 @@ export function useShotListData(projectId: string): UseShotListDataReturn {
     () => crewCache.get(projectId) ?? [],
   );
   const [crewLoading, setCrewLoading] = useState(!crewCache.has(projectId));
+  const [sceneBreakdowns, setSceneBreakdowns] = useState<SceneBreakdown[]>(
+    () => Array.from(scenesCache.get(projectId)?.values() ?? []),
+  );
 
   // ── Derived: peopleMap ───────────────────────────────────────────────────
   const peopleMap = useMemo(
@@ -192,6 +197,7 @@ export function useShotListData(projectId: string): UseShotListDataReturn {
       if (!mountedRef.current) return;
 
       scenesCache.set(projectId, scenes);
+      setSceneBreakdowns(Array.from(scenes.values()));
       const result = computeSummaries(lists, scenes, peopleMap);
       summariesCache.set(projectId, result);
       setSummaries(result);
@@ -331,6 +337,7 @@ export function useShotListData(projectId: string): UseShotListDataReturn {
     // Don't clear fullListCache entries here — they'll be lazily re-fetched
     setSummaries([]);
     setCrew([]);
+    setSceneBreakdowns([]);
     setOpenShotList(null);
     loadSummaries();
     loadCrew();
@@ -366,6 +373,7 @@ export function useShotListData(projectId: string): UseShotListDataReturn {
     openShotListSummary,
     crew,
     crewLoading,
+    sceneBreakdowns,
     peopleMap,
     updateShot,
     refresh,

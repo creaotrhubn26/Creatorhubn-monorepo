@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
+import { useTheming } from '../../utils/theming-helper';
 import {
   Box,
   Card,
@@ -36,15 +37,16 @@ import {
   Tooltip,
   Badge,
 } from '@mui/material';
-import { PlayArrowArrow,
+import {
+  PlayArrow,
   Stop,
   Settings,
   FolderOpen,
   ColorLens,
-  VideographyIconDescription,
-  MusicNoteNote,
+  Description as VideographyIconDescription,
+  MusicNote as MusicProductionIcon,
   Movie,
-  DirectionsBusiness,
+  Business as CorporateIcon,
   AutoFixHigh,
   ExpandMore,
   Info,
@@ -59,7 +61,9 @@ import { PlayArrowArrow,
   Delete,
   Add,
   Search,
-  FilterListList, } from '../shared/CreatorHubIcons';
+  FilterList as FilterListList,
+  VideoFile,
+} from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
 interface ScriptBankManagerProps {
@@ -92,11 +96,14 @@ interface ScriptBank {
   documentary: ScriptCategory
 }
 
+type ScriptBankCategoryKey = keyof ScriptBank;
+
 export default function ScriptBankManager({ 
   onScriptExecuted, 
   projectId, 
   onProjectCreated 
 }: ScriptBankManagerProps) {
+  const theming = useTheming('videographer');
   const [activeTab, setActiveTab] = useState(0);
   const [selectedScript, setSelectedScript] = useState<Script | null>(null);
   const [showScriptDialog, setShowScriptDialog] = useState(false);
@@ -105,7 +112,7 @@ export default function ScriptBankManager({
   const [filterCategory, setFilterCategory] = useState<string>('all');
 
   // Fetch available scripts
-  const { data: scriptBank, isLoading: isLoadingScripts, refetch: refetchScripts } = useQuery({
+  const { data: scriptBank, isLoading: isLoadingScripts, refetch: refetchScripts } = useQuery<ScriptBank>({
     queryKey: ['/api/davinci-resolve/script-bank,', ],
     queryFn: () => apiRequest('/api/davinci-resolve/script-bank', ),
     refetchInterval: 3000,
@@ -126,23 +133,28 @@ export default function ScriptBankManager({
         body: JSON.stringify({ category, scriptName, parameters }),
     });
   },
-    onSuccess: (data) => {
+    onSuccess: (data: unknown) => {
       console.log('✅ Script executed successfully, :', data);
       onScriptExecuted?.(data);
       setShowScriptDialog(false);
       setScriptParameters({});
   },
-    onError: (error) => {
+    onError: (error: unknown) => {
       console.error('❌ Script execution failed, :', error);
   },
 });
 
   // Get script categories for tabs
-  const scriptCategories = [
-    { key: 'workflow', label: 'Workflow', icon: theming.getThemedIcon(','), color: '#2196f3',},
+  const scriptCategories: Array<{
+    key: ScriptBankCategoryKey;
+    label: string;
+    icon: React.ReactElement;
+    color: string;
+  }> = [
+    { key: 'workflow', label: 'Workflow', icon: <PlayArrow />, color: '#2196f3',},
     { key: 'color', label: 'Color Grading', icon: <ColorLens />, color: '#ff9800',},
     { key: 'export', label: 'Export & Delivery', icon: <VideoFile />, color: '#4caf50',},
-    { key: 'wedding', label: 'Wedding', icon: theming.getThemedIcon(','), color: '#e91e63',},
+    { key: 'wedding', label: 'Wedding', icon: <AutoFixHigh />, color: '#e91e63',},
     { key: 'corporate', label: 'Corporate', icon: <CorporateIcon />, color: '#9c27b0',},
     { key: 'music_video', label: 'Music Video', icon: <MusicProductionIcon />, color: '#f44336',},
     { key: 'documentary', label: 'Documentary', icon: <Movie />, color: '#795548',},
@@ -210,7 +222,7 @@ export default function ScriptBankManager({
     executeScript.mutate({
       category,
       scriptName: Object.keys(scriptBank?.[category] || {}).find(
-        key => scriptBank[category],[key].name === selectedScript.name
+        (key) => scriptBank?.[category]?.[key]?.name === selectedScript.name
       ) || '',
       parameters: scriptParameters,
   });
@@ -222,7 +234,7 @@ export default function ScriptBankManager({
     const category = scriptCategories[activeTab]?.key;
     if (!category || !scriptBank[category]) return {};
     
-    let scripts = scriptBank[category];
+    let scripts: ScriptCategory = scriptBank[category];
     
     // Filter by search term
     if (searchTerm) {
@@ -376,7 +388,7 @@ export default function ScriptBankManager({
                           label={script.estimatedTime}
                           size="small"
                           variant="outlined"
-                          icon={theming.getThemedIcon('play')}
+                          icon={<PlayArrow fontSize="small" />}
                         />
                       )}
                     </Box>
@@ -505,6 +517,7 @@ interface ParametersFormProps {
 }
 
 const WeddingParametersForm: React.FC<ParametersFormProps> = ({ parameters, onChange }) => {
+  const theming = useTheming('videographer');
   const clientInfo = parameters.client_info || {};
   
   const handleClientInfoChange = (field: string, value: any) => {
@@ -548,6 +561,7 @@ const WeddingParametersForm: React.FC<ParametersFormProps> = ({ parameters, onCh
 };
 
 const CorporateParametersForm: React.FC<ParametersFormProps> = ({ parameters, onChange }) => {
+  const theming = useTheming('videographer');
   const clientInfo = parameters.client_info || {};
   
   const handleClientInfoChange = (field: string, value: any) => {
@@ -591,6 +605,7 @@ const CorporateParametersForm: React.FC<ParametersFormProps> = ({ parameters, on
 };
 
 const MusicVideoParametersForm: React.FC<ParametersFormProps> = ({ parameters, onChange }) => {
+  const theming = useTheming('videographer');
   const musicInfo = parameters.music_info || {};
   
   const handleMusicInfoChange = (field: string, value: any) => {
@@ -642,6 +657,7 @@ const MusicVideoParametersForm: React.FC<ParametersFormProps> = ({ parameters, o
 };
 
 const DocumentaryParametersForm: React.FC<ParametersFormProps> = ({ parameters, onChange }) => {
+  const theming = useTheming('videographer');
   const docInfo = parameters.doc_info || {};
   
   const handleDocInfoChange = (field: string, value: any) => {
@@ -697,6 +713,7 @@ const GenericParametersForm: React.FC<ParametersFormProps & { script: Script }> 
   parameters, 
   onChange 
 }) => {
+  const theming = useTheming('videographer');
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
       <Typography variant="h6" sx={{ color: theming.colors.primary }}>Script Parameters</Typography>

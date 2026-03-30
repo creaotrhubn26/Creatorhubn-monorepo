@@ -527,42 +527,54 @@ export function CameraPreviewPath({
 
         return (
           <group key={index} position={pos}>
-            <lineLoop geometry={new THREE.BufferGeometry().setFromPoints(points)}>
-              <primitive object={frustumMaterial} attach="material" />
-            </lineLoop>
+            <Line
+              points={points}
+              color={frustumMaterial.color.getStyle()}
+              transparent
+              opacity={frustumMaterial.opacity}
+              lineWidth={1}
+            />
             {/* Near plane */}
-            <line
-              geometry={new THREE.BufferGeometry().setFromPoints([
+            <Line
+              points={[
                 new THREE.Vector3(0, 0, 0),
                 new THREE.Vector3(halfWidth, halfHeight, -far),
-              ])}
-            >
-              <primitive object={frustumMaterial} attach="material" />
-            </line>
-            <line
-              geometry={new THREE.BufferGeometry().setFromPoints([
+              ]}
+              color={frustumMaterial.color.getStyle()}
+              transparent
+              opacity={frustumMaterial.opacity}
+              lineWidth={1}
+            />
+            <Line
+              points={[
                 new THREE.Vector3(0, 0, 0),
                 new THREE.Vector3(-halfWidth, halfHeight, -far),
-              ])}
-            >
-              <primitive object={frustumMaterial} attach="material" />
-            </line>
-            <line
-              geometry={new THREE.BufferGeometry().setFromPoints([
+              ]}
+              color={frustumMaterial.color.getStyle()}
+              transparent
+              opacity={frustumMaterial.opacity}
+              lineWidth={1}
+            />
+            <Line
+              points={[
                 new THREE.Vector3(0, 0, 0),
                 new THREE.Vector3(halfWidth, -halfHeight, -far),
-              ])}
-            >
-              <primitive object={frustumMaterial} attach="material" />
-            </line>
-            <line
-              geometry={new THREE.BufferGeometry().setFromPoints([
+              ]}
+              color={frustumMaterial.color.getStyle()}
+              transparent
+              opacity={frustumMaterial.opacity}
+              lineWidth={1}
+            />
+            <Line
+              points={[
                 new THREE.Vector3(0, 0, 0),
                 new THREE.Vector3(-halfWidth, -halfHeight, -far),
-              ])}
-            >
-              <primitive object={frustumMaterial} attach="material" />
-            </line>
+              ]}
+              color={frustumMaterial.color.getStyle()}
+              transparent
+              opacity={frustumMaterial.opacity}
+              lineWidth={1}
+            />
           </group>
         );
       })}

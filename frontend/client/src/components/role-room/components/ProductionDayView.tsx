@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useId, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, useId, useCallback, type ReactNode } from 'react';
 import {
   Box,
   Typography,
@@ -95,7 +95,7 @@ import settingsService from '../services/settingsService';
 import globalTagService from '../services/globalTagService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { LocationsIcon as LocationIcon, CalendarCustomIcon as CalendarMonthIcon, StatsIcon } from './icons/CastingIcons';
-import type { ProductionDay } from '../models/casting';
+import type { CrewMember, Location, ProductionDay, Prop } from '../models/casting';
 import { productionPlanningService } from '../services/productionPlanningService';
 import { castingService } from '../services/castingService';
 import { externalDataService } from '@/services/ExternalDataService';
@@ -177,6 +177,22 @@ interface ScenePreviewState {
   thumbnail?: string;
 }
 
+type ProductionDayStatus = NonNullable<ProductionDay['status']>;
+type ProductionDayChangeLogEntry = NonNullable<ProductionDay['changeLog']>[number];
+type NormalizedProductionDay = ProductionDay & {
+  date: string;
+  locationId: string;
+  scenes: string[];
+  crew: string[];
+  props: string[];
+  callTime: string;
+  wrapTime: string;
+  notes: string;
+  status: ProductionDayStatus;
+  updatedAt: string;
+  changeLog: ProductionDayChangeLogEntry[];
+};
+
 interface ProductionDayViewProps {
   projectId: string;
   onUpdate?: () => void;
@@ -202,10 +218,25 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   const dialogDescId = `${baseId}-dialog-desc`;
 
   // Core state
-  const [productionDays, setProductionDays] = useState<ProductionDay[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
-  const [crew, setCrew] = useState<any[]>([]);
-  const [props, setProps] = useState<any[]>([]);
+  const [productionDays, setProductionDays] = useState<NormalizedProductionDay[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [crew, setCrew] = useState<CrewMember[]>([]);
+  const [props, setProps] = useState<Prop[]>([]);
+
+  const normalizeProductionDay = useCallback((day: ProductionDay): NormalizedProductionDay => ({
+    ...day,
+    date: day.date ?? '',
+    locationId: day.locationId ?? '',
+    scenes: Array.isArray(day.scenes) ? day.scenes : [],
+    crew: Array.isArray(day.crew) ? day.crew : [],
+    props: Array.isArray(day.props) ? day.props : [],
+    callTime: day.callTime ?? '09:00',
+    wrapTime: day.wrapTime ?? '17:00',
+    notes: day.notes ?? '',
+    status: day.status ?? 'planned',
+    updatedAt: day.updatedAt ?? day.createdAt ?? new Date(0).toISOString(),
+    changeLog: Array.isArray(day.changeLog) ? day.changeLog : [],
+  }), []);
   
   // Load production days, locations, crew, and props when projectId changes
   useEffect(() => {
@@ -218,7 +249,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             castingService.getCrew(projectId),
             castingService.getProps(projectId),
           ]);
-          setProductionDays(Array.isArray(days) ? days : []);
+          setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
           setLocations(Array.isArray(locs) ? locs : []);
           setCrew(Array.isArray(crewData) ? crewData : []);
           setProps(Array.isArray(propsData) ? propsData : []);
@@ -280,7 +311,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   }, [projectId, productionDays]);
   
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingDay, setEditingDay] = useState<ProductionDay | null>(null);
+  const [editingDay, setEditingDay] = useState<NormalizedProductionDay | null>(null);
   // Profession-specific default timing templates
   const getDefaultTiming = () => {
     if (profession === 'photographer') {
@@ -302,7 +333,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     };
   };
 
-  const [formData, setFormData] = useState<Partial<ProductionDay>>({
+  const [formData, setFormData] = useState<Partial<NormalizedProductionDay>>({
     date: new Date().toISOString().split('T')[0],
     ...getDefaultTiming(),
     locationId: '',
@@ -350,7 +381,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   }, [projectId]);
 
   // Undo delete state
-  const [deletedDay, setDeletedDay] = useState<ProductionDay | null>(null);
+  const [deletedDay, setDeletedDay] = useState<NormalizedProductionDay | null>(null);
   const [undoSnackbarOpen, setUndoSnackbarOpen] = useState(false);
   const [scenePreview, setScenePreview] = useState<ScenePreviewState | null>(null);
 
@@ -388,11 +419,11 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
 
   // Inform team dialog state
   const [showInformTeamDialog, setShowInformTeamDialog] = useState(false);
-  const [pendingSaveData, setPendingSaveData] = useState<ProductionDay | null>(null);
+  const [pendingSaveData, setPendingSaveData] = useState<NormalizedProductionDay | null>(null);
   const [changedFields, setChangedFields] = useState<string[]>([]);
 
   // Render markdown-formatted notes as React elements
-  const renderFormattedNotes = (notes: string): ReactNode => {
+  const renderFormattedNotes = (notes?: string): ReactNode => {
     if (!notes) return null;
 
     const lines = notes.split('\n');
@@ -729,7 +760,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         }
       }
       const days = await productionPlanningService.getProductionDays(projectId);
-      setProductionDays(Array.isArray(days) ? days : []);
+      setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
     };
 
     void syncOfflineQueue();
@@ -775,7 +806,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
 
       // Reload production days to get updated weather
       const days = await productionPlanningService.getProductionDays(projectId);
-      setProductionDays(Array.isArray(days) ? days : []);
+      setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
     };
 
     loadMissingWeatherForecasts();
@@ -801,12 +832,13 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   }, [dialogOpen, locations.length]);
 
   // Helper functions
-  const getLocationName = (locationId: string): string => {
-    const location = locations.find(l => l.id === locationId);
-    return location?.name || locationId;
+  const getLocationName = (locationId?: string): string => {
+    if (!locationId) return 'Ingen lokasjon';
+    const location = locations.find((entry) => entry.id === locationId);
+    return location?.name ?? locationId;
   };
 
-  const getStatusColor = (status: ProductionDay['status']): string => {
+  const getStatusColor = (status?: ProductionDayStatus): string => {
     switch (status) {
       case 'completed': return '#10b981';
       case 'in_progress': return '#00d4ff';
@@ -815,7 +847,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     }
   };
 
-  const getStatusLabel = (status: ProductionDay['status']): string => {
+  const getStatusLabel = (status?: ProductionDayStatus): string => {
     switch (status) {
       case 'completed': return 'Fullført';
       case 'in_progress': return 'Pågår';
@@ -823,6 +855,12 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       default: return 'Planlagt';
     }
   };
+
+  const getDayUpdatedAt = (day: ProductionDay | NormalizedProductionDay): string =>
+    day.updatedAt ?? day.createdAt ?? new Date(0).toISOString();
+
+  const getDayChangeLog = (day: ProductionDay | NormalizedProductionDay): ProductionDayChangeLogEntry[] =>
+    Array.isArray(day.changeLog) ? day.changeLog : [];
 
   // Filtered and sorted production days
   const filteredAndSortedDays = useMemo(() => {
@@ -883,7 +921,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
 
   // Group by month for grid view
   const groupedDays = useMemo(() => {
-    const groups: Record<string, ProductionDay[]> = {};
+    const groups: Record<string, NormalizedProductionDay[]> = {};
     filteredAndSortedDays.forEach((day) => {
       const monthKey = new Date(day.date).toLocaleDateString('no-NO', {
         year: 'numeric',
@@ -899,9 +937,14 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
 
   // Statistics
   const stats = useMemo(() => {
-    const statusCount: Record<string, number> = {};
+    const statusCount: Record<ProductionDayStatus, number> = {
+      planned: 0,
+      in_progress: 0,
+      completed: 0,
+      cancelled: 0,
+    };
     productionDays.forEach((day) => {
-      statusCount[day.status] = (statusCount[day.status] || 0) + 1;
+      statusCount[day.status ?? 'planned'] += 1;
     });
 
     const totalScenes = productionDays.reduce((acc, day) => acc + day.scenes.length, 0);
@@ -936,7 +979,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     return h * 60 + m;
   };
 
-  const plannedMinutesForDay = (day: ProductionDay): number => {
+  const plannedMinutesForDay = (day: ProductionDay | NormalizedProductionDay): number => {
     const start = parseClockMinutes(day.callTime);
     const endRaw = parseClockMinutes(day.wrapTime);
     if (start === null || endRaw === null) return 0;
@@ -1006,7 +1049,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     return map;
   }, [productionDays]);
 
-  const getReadiness = (day: ProductionDay): ReadinessResult => {
+  const getReadiness = (day: NormalizedProductionDay): ReadinessResult => {
     const dayCache = dayDataCache[day.id];
     const meta = proMetaByDay[day.id] || {};
     const reasons: string[] = [];
@@ -1085,7 +1128,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     return 'Blokkert';
   };
 
-  const getRiskSignals = (day: ProductionDay): string[] => {
+  const getRiskSignals = (day: NormalizedProductionDay): string[] => {
     const risks: string[] = [];
     const meta = proMetaByDay[day.id] || {};
     const start = parseClockMinutes(day.callTime);
@@ -1122,7 +1165,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     [productionDays]
   );
 
-  const getDependencyIssues = (day: ProductionDay): string[] => {
+  const getDependencyIssues = (day: NormalizedProductionDay): string[] => {
     const issues: string[] = [];
     const dayIndex = sortedProductionDays.findIndex((item) => item.id === day.id);
     const previousDay = dayIndex > 0 ? sortedProductionDays[dayIndex - 1] : null;
@@ -1312,7 +1355,11 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     setOfflineQueue((prev) => [...prev, queueItem]);
   };
 
-  const applyFieldStatus = async (day: ProductionDay, status: ProductionDay['status'], action: OfflineFieldQueueItem['action']) => {
+  const applyFieldStatus = async (
+    day: NormalizedProductionDay,
+    status: ProductionDayStatus,
+    action: OfflineFieldQueueItem['action']
+  ) => {
     const nowIso = new Date().toISOString();
     updateDayMeta(day.id, (previous) => ({
       ...previous,
@@ -1338,7 +1385,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         updatedAt: nowIso,
       });
       const days = await productionPlanningService.getProductionDays(projectId);
-      setProductionDays(Array.isArray(days) ? days : []);
+      setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
     } catch (error) {
       console.error('Field status update failed, queued offline instead:', error);
       enqueueOfflineItem(day.id, action, status);
@@ -1354,7 +1401,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   const bulkShiftPreview = useMemo(() => {
     const items = [...selectedIds]
       .map((id) => productionDays.find((day) => day.id === id))
-      .filter((day): day is ProductionDay => !!day)
+      .filter((day): day is NormalizedProductionDay => !!day)
       .map((day) => ({
         id: day.id,
         from: day.date,
@@ -1378,7 +1425,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       });
     }
     const days = await productionPlanningService.getProductionDays(projectId);
-    setProductionDays(Array.isArray(days) ? days : []);
+    setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
     setShowBulkShiftDialog(false);
     showSuccess(`Flyttet ${bulkShiftPreview.length} produksjonsdag(er) med ${bulkShiftDays} dag(er)`);
   };
@@ -1404,14 +1451,14 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       updatedAt: new Date().toISOString(),
     });
     const days = await productionPlanningService.getProductionDays(projectId);
-    setProductionDays(Array.isArray(days) ? days : []);
+    setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
     setShowDragPreviewDialog(false);
     setDraggingDayId(null);
     setDragTargetDayId(null);
     showSuccess('Dag flyttet via drag/drop');
   };
 
-  const generateCallSheetForDay = (day: ProductionDay) => {
+  const generateCallSheetForDay = (day: NormalizedProductionDay) => {
     const relatedCrew = (Array.isArray(day.crew) ? day.crew : [])
       .map((crewId) => crew.find((member: any) => member.id === crewId))
       .filter(Boolean);
@@ -1473,7 +1520,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   const selectedReadiness = selectedProDay ? readinessByDay[selectedProDay.id] : undefined;
   const selectedRisks = selectedProDay ? getRiskSignals(selectedProDay) : [];
   const selectedDependencies = selectedProDay ? getDependencyIssues(selectedProDay) : [];
-  const selectedTeamFlow = selectedProDay ? proMetaByDay[selectedProDay.id]?.teamFlow || [] : [];
+  const selectedTeamFlow: TeamFlowEntry[] = selectedProDay
+    ? proMetaByDay[selectedProDay.id]?.teamFlow ?? []
+    : [];
   const selectedMentionQuery = (selectedDraft.match(/@([A-Za-z0-9_.\-ÆØÅæøå]*)$/) || [])[1] || '';
   const selectedMentionSuggestions =
     selectedMentionQuery.length === 0
@@ -1483,7 +1532,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           .slice(0, 6);
 
   // Handlers
-  const handleOpenDialog = (day?: ProductionDay) => {
+  const handleOpenDialog = (day?: NormalizedProductionDay) => {
     if (day) {
       setEditingDay(day);
       setFormData(day);
@@ -1572,15 +1621,15 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       return changes.length > 0 ? `Endret: ${changes.join(', ')}` : 'Ingen synlige endringer';
     };
 
-    const productionDay: ProductionDay = editingDay
-      ? {
+    const productionDay: NormalizedProductionDay = editingDay
+      ? normalizeProductionDay({
           ...editingDay,
           ...formData,
           weatherForecast: weatherForecast || editingDay.weatherForecast,
           updatedAt: now,
           lastModifiedBy: currentUser,
           changeLog: [
-            ...(editingDay.changeLog || []),
+            ...getDayChangeLog(editingDay),
             {
               timestamp: now,
               user: currentUser,
@@ -1588,8 +1637,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               changes: buildChangeDescription(),
             },
           ],
-        } as ProductionDay
-      : {
+        })
+      : normalizeProductionDay({
           id: `production-day-${Date.now()}`,
           projectId,
           date: formData.date || '',
@@ -1612,7 +1661,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             action: 'created',
             changes: 'Opprettet produksjonsdag',
           }],
-        };
+        });
 
     // Check if important fields have changed (only when editing)
     if (editingDay && !skipTeamNotification) {
@@ -1642,7 +1691,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     // Save directly
     await productionPlanningService.saveProductionDay(projectId, productionDay);
     const days = await productionPlanningService.getProductionDays(projectId);
-    setProductionDays(Array.isArray(days) ? days : []);
+    setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
 
     // Show success notification
     if (editingDay) {
@@ -1659,7 +1708,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     if (pendingSaveData) {
       await productionPlanningService.saveProductionDay(projectId, pendingSaveData);
       const days = await productionPlanningService.getProductionDays(projectId);
-      setProductionDays(Array.isArray(days) ? days : []);
+      setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
 
       if (notify) {
         // Show notification with notistack
@@ -1684,7 +1733,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         setDeletedDay(day);
         await productionPlanningService.deleteProductionDay(projectId, dayId);
         const days = await productionPlanningService.getProductionDays(projectId);
-        setProductionDays(Array.isArray(days) ? days : []);
+        setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
         setUndoSnackbarOpen(true);
         showInfo('🗑️ Produksjonsdag slettet - klikk "Angre" for å gjenopprette', 6000);
         if (onUpdate) onUpdate();
@@ -1700,7 +1749,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       try {
         await productionPlanningService.saveProductionDay(projectId, deletedDay);
         const days = await productionPlanningService.getProductionDays(projectId);
-        setProductionDays(Array.isArray(days) ? days : []);
+        setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
         setDeletedDay(null);
         setUndoSnackbarOpen(false);
         showSuccess('↩️ Produksjonsdag gjenopprettet', 3000);
@@ -1757,7 +1806,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           await productionPlanningService.deleteProductionDay(projectId, id);
         }
         const days = await productionPlanningService.getProductionDays(projectId);
-        setProductionDays(Array.isArray(days) ? days : []);
+        setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
         setSelectedIds(new Set());
         if (onUpdate) onUpdate();
       } catch (error) {
@@ -1767,10 +1816,10 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     }
   };
 
-  const handleDuplicate = async (day: ProductionDay) => {
+  const handleDuplicate = async (day: NormalizedProductionDay) => {
     const currentUser = getCurrentUser();
     const now = new Date().toISOString();
-    const newDay: ProductionDay = {
+    const newDay: NormalizedProductionDay = normalizeProductionDay({
       ...day,
       id: `production-day-${Date.now()}`,
       date: new Date(new Date(day.date).getTime() + 86400000).toISOString().split('T')[0],
@@ -1785,10 +1834,10 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         action: 'created',
         changes: `Duplisert fra ${new Date(day.date).toLocaleDateString('nb-NO')}`,
       }],
-    };
+    });
     await productionPlanningService.saveProductionDay(projectId, newDay);
     const days = await productionPlanningService.getProductionDays(projectId);
-    setProductionDays(Array.isArray(days) ? days : []);
+    setProductionDays(Array.isArray(days) ? days.map(normalizeProductionDay) : []);
     showSuccess(`📋 Produksjonsdag duplisert til ${new Date(newDay.date).toLocaleDateString('nb-NO')}`, 4000);
     if (onUpdate) onUpdate();
   };
@@ -1821,7 +1870,11 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     }
   };
 
-  const generateProductionDaysHTML = (project: any, productionDays: any[], locations: any[]): string => {
+  const generateProductionDaysHTML = (
+    project: { id: string; name: string },
+    productionDays: NormalizedProductionDay[],
+    locations: Location[]
+  ): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
       year: 'numeric',
@@ -1843,9 +1896,10 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       <line x1="3" y1="10" x2="21" y2="10"/>
     </svg>`;
 
-    const getLocationName = (locationId: string): string => {
-      const location = locations.find(l => l.id === locationId);
-      return location?.name || locationId;
+    const getLocationName = (locationId?: string): string => {
+      if (!locationId) return 'Ingen lokasjon';
+      const location = locations.find((entry) => entry.id === locationId);
+      return location?.name ?? locationId;
     };
 
     return `<!DOCTYPE html>
@@ -2737,7 +2791,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     size="small"
                     variant="outlined"
                     startIcon={<QueueIcon />}
-                    onClick={() => void applyFieldStatus(selectedProDay, selectedProDay.status || 'planned', 'status_update')}
+                    onClick={() => void applyFieldStatus(selectedProDay, selectedProDay.status, 'status_update')}
                     sx={{ color: '#e9d5ff', borderColor: 'rgba(217,70,239,0.45)' }}
                   >
                     Synk status
@@ -3416,12 +3470,12 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               >
                                 Sist endret av <strong style={{ color: 'rgba(255,255,255,0.87)' }}>{day.lastModifiedBy}</strong>
                                 {' • '}
-                                {new Date(day.updatedAt).toLocaleDateString('nb-NO', {
+                                {new Date(getDayUpdatedAt(day)).toLocaleDateString('nb-NO', {
                                   day: 'numeric',
                                   month: 'short',
                                 })}
                                 {' '}
-                                {new Date(day.updatedAt).toLocaleTimeString('nb-NO', {
+                                {new Date(getDayUpdatedAt(day)).toLocaleTimeString('nb-NO', {
                                   hour: '2-digit',
                                   minute: '2-digit',
                                 })}
@@ -3516,12 +3570,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                     mt: 0.25,
                                   }}
                                 >
-                                  {(() => {
-                                    const [startH, startM] = day.callTime.split(':').map(Number);
-                                    const [endH, endM] = day.wrapTime.split(':').map(Number);
-                                    const hours = endH - startH + (endM - startM) / 60;
-                                    return `${hours > 0 ? hours : hours + 24}t`;
-                                  })()}
+                                  {`${(plannedMinutesForDay(day) / 60).toFixed(1).replace('.0', '')}t`}
                                 </Typography>
                               </Box>
                             </Box>
@@ -4266,7 +4315,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                           fontSize: { xs: '0.9375rem', sm: '1rem', md: '1.0625rem' },
                                         }}
                                       >
-                                        {renderFormattedNotes(day.notes)}
+                                        {renderFormattedNotes(day.notes ?? '')}
                                       </Box>
                                     </Box>
                                   </Grid>
@@ -4300,7 +4349,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               </Box>
 
                               {/* Change Log / Audit Trail */}
-                              {(day.lastModifiedBy || day.changeLog) && (
+                              {(day.lastModifiedBy || getDayChangeLog(day).length > 0) && (
                                 <Box
                                   sx={{
                                     mt: 2.5,
@@ -4349,14 +4398,14 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                     </Box>
                                     <Box sx={{ ml: 'auto', textAlign: 'right' }}>
                                       <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.87)' }}>
-                                        {new Date(day.updatedAt).toLocaleDateString('nb-NO', {
+                                        {new Date(getDayUpdatedAt(day)).toLocaleDateString('nb-NO', {
                                           day: 'numeric',
                                           month: 'short',
                                           year: 'numeric',
                                         })}
                                       </Typography>
                                       <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>
-                                        {new Date(day.updatedAt).toLocaleTimeString('nb-NO', {
+                                        {new Date(getDayUpdatedAt(day)).toLocaleTimeString('nb-NO', {
                                           hour: '2-digit',
                                           minute: '2-digit',
                                         })}
@@ -4365,9 +4414,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                   </Box>
 
                                   {/* Recent Changes */}
-                                  {day.changeLog && day.changeLog.length > 0 && (
+                                  {getDayChangeLog(day).length > 0 && (
                                     <Box sx={{ maxHeight: 150, overflowY: 'auto' }}>
-                                      {day.changeLog.slice(-5).reverse().map((log, idx) => (
+                                      {getDayChangeLog(day).slice(-5).reverse().map((log, idx) => (
                                         <Box
                                           key={idx}
                                           sx={{
@@ -4375,7 +4424,10 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             alignItems: 'flex-start',
                                             gap: 1.5,
                                             py: 1,
-                                            borderBottom: idx < Math.min(day.changeLog!.length - 1, 4) ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                                            borderBottom:
+                                              idx < Math.min(getDayChangeLog(day).length - 1, 4)
+                                                ? '1px solid rgba(255,255,255,0.05)'
+                                                : 'none',
                                           }}
                                         >
                                           <Box

@@ -1,51 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
   Checkbox,
   Chip,
-  Stack,
-  Divider,
-  Alert,
   CircularProgress,
-  LinearProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   FormControl,
+  IconButton,
   InputLabel,
-  Select,
+  List,
+  ListItem,
+  ListItemSecondaryAction,
+  ListItemText,
   MenuItem,
+  Select,
+  Stack,
+  TextField,
   Tooltip,
-  Badge,
+  Typography,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
-  Task,
   Add,
-  Edit,
   Delete,
-  CheckCircle,
-  RadioButtonUnchecked,
-  Schedule,
-  Flag,
-  Star,
-  StarBorder,
-  MoreVert,
+  Edit,
   Refresh,
-  FilterList,
-  Sort,
+  Schedule,
+  Task,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -56,491 +47,643 @@ interface GoogleTask {
   title: string;
   notes?: string;
   status: 'needsAction' | 'completed';
-  due?: string;
-  completed?: string;
+  due?: string | null;
+  completed?: string | null;
   position: string;
-  parent?: string;
+  parent?: string | null;
   links?: Array<{
     type: string;
     link: string;
-}>;
-  selfLink: string;
-  updated: string
+  }>;
+  selfLink: string | null;
+  updated: string | null;
+  listId?: string;
 }
 
 interface GoogleTaskList {
   id: string;
   title: string;
-  selfLink: string;
-  updated: string
+  selfLink: string | null;
+  updated: string | null;
 }
 
 interface GoogleTasksIntegrationProps {
   profession: string;
   userId: string;
-  projectId?: string
+  projectId?: string;
 }
+
+type TaskFilterStatus = 'all' | 'needsAction' | 'completed';
+type TaskSortKey = 'position' | 'due' | 'updated';
+
+interface TaskFormState {
+  title: string;
+  notes: string;
+  due: string;
+  parent: string;
+}
+
+interface CreateTaskEventPayload {
+  taskData?: Partial<TaskFormState>;
+  listId?: string;
+}
+
+interface UpdateTaskEventPayload {
+  task?: GoogleTask;
+}
+
+interface CompleteTaskEventPayload {
+  taskId?: string;
+}
+
+interface FilterChangeEventPayload {
+  filterStatus?: TaskFilterStatus;
+}
+
+const createEmptyTaskForm = (): TaskFormState => ({
+  title: '',
+  notes: '',
+  due: '',
+  parent: '',
+});
 
 const GoogleTasksIntegration: React.FC<GoogleTasksIntegrationProps> = ({
   profession,
   userId,
-  projectId
+  projectId,
 }) => {
-  const [selectedTaskList, setSelectedTaskList] = useState<string>('');
-  const [createTaskOpen, setCreateTaskOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<GoogleTask | null>(null);
-  const [filterStatus, setFilterStatus] = useState<'all' | 'needsAction' | 'completed'>('all');
-  const [sortBy, setSortBy] = useState<'position' | 'due' | 'updated'>('position');
-  const [taskFormData, setTaskFormData] = useState({
-    title: ',',
-    notes: '',
-    due: '',
-    parent: ''
-});
-
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
+  const theming = useTheming(profession || 'photographer');
 
-  // Master Integration Provider
-  const { integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
+  const effectiveUserId = userId || user?.id || user?.email || 'default-user';
+  const [selectedTaskList, setSelectedTaskList] = useState('');
+  const [createTaskOpen, setCreateTaskOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<GoogleTask | null>(null);
+  const [filterStatus, setFilterStatus] = useState<TaskFilterStatus>('all');
+  const [sortBy, setSortBy] = useState<TaskSortKey>('position');
+  const [taskFormData, setTaskFormData] = useState<TaskFormState>(createEmptyTaskForm());
 
-  // Theming system
-  const theming = useTheming('photographer');
+  const {
+    data: taskLists = [],
+    isLoading: listsLoading,
+    isFetching: listsFetching,
+    error: taskListsError,
+    refetch: refetchTaskLists,
+  } = useQuery<GoogleTaskList[], Error>({
+    queryKey: ['/api/google-tasks/lists'],
+    queryFn: async () => {
+      const response = await apiRequest('/api/google-tasks/lists');
+      return Array.isArray(response) ? response as GoogleTaskList[] : [];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
 
-  // Register component with MasterIntegrationProvider
-  React.useEffect(() => {
-    componentRegistry.registerComponent('GoogleTasksIntegration', {
+  const {
+    data: tasks = [],
+    isLoading: tasksLoading,
+    isFetching: tasksFetching,
+    error: tasksError,
+    refetch: refetchTasks,
+  } = useQuery<GoogleTask[], Error>({
+    queryKey: ['/api/google-tasks/tasks', selectedTaskList],
+    queryFn: async () => {
+      if (!selectedTaskList) {
+        return [];
+      }
+      const response = await apiRequest(`/api/google-tasks/lists/${selectedTaskList}/tasks`);
+      return Array.isArray(response) ? response as GoogleTask[] : [];
+    },
+    enabled: Boolean(selectedTaskList),
+    staleTime: 2 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (!selectedTaskList && taskLists[0]?.id) {
+      setSelectedTaskList(taskLists[0].id);
+    }
+  }, [selectedTaskList, taskLists]);
+
+  useEffect(() => {
+    const unregisterKey = 'GoogleTasksIntegration';
+    componentRegistry.registerComponent(unregisterKey, {
       type: 'google-service',
-      capabilities: ['task-management','task-list-management','task-sync','project-integration'],
+      capabilities: ['task-management', 'task-list-management', 'task-sync', 'project-integration'],
       dataFlow: {
-        sources: ['task-lists','tasks','task-form-data','view-settings'],
-        destinations: ['admin-dashboard','user-interface','project-system'],
-        processors: ['task-processing','sync-processing'],
+        sources: ['task-lists', 'tasks', 'task-form-data', 'view-settings'],
+        destinations: ['admin-dashboard', 'user-interface', 'project-system', 'crm-system'],
+        processors: ['task-processing', 'sync-processing'],
       },
     });
 
-    // Set up data flow nodes
     dataFlow.registerNode('task-lists', {
       type: 'source',
       data: taskLists,
-      metadata: { component: 'GoogleTasksIntegration', type: 'task-lists' }
-  });
-
+      metadata: { component: 'GoogleTasksIntegration', type: 'task-lists' },
+    });
     dataFlow.registerNode('tasks', {
       type: 'source',
       data: tasks,
-      metadata: { component: 'GoogleTasksIntegration', type: 'tasks' }
-  });
-
+      metadata: { component: 'GoogleTasksIntegration', type: 'tasks' },
+    });
     dataFlow.registerNode('task-form-data', {
       type: 'source',
       data: taskFormData,
-      metadata: { component: 'GoogleTasksIntegration', type: 'task-form-data' }
-  });
-
+      metadata: { component: 'GoogleTasksIntegration', type: 'task-form-data' },
+    });
     dataFlow.registerNode('view-settings', {
       type: 'source',
-      data: { selectedTaskList, filterStatus, sortBy },
-      metadata: { component: 'GoogleTasksIntegration', type: 'view-settings' }
-  });
+      data: {
+        selectedTaskList,
+        filterStatus,
+        sortBy,
+        profession,
+        projectId: projectId || null,
+        userId: effectiveUserId,
+      },
+      metadata: { component: 'GoogleTasksIntegration', type: 'view-settings' },
+    });
 
-    // Listen for Google Tasks events
-    communication.subscribe('google-tasks: create-task', (data) => {
-      if (data.taskData) {
-        setTaskFormData(data.taskData);
+    const unsubscribeCreate = communication.subscribe(
+      'google-tasks: create-task',
+      (data: CreateTaskEventPayload) => {
+        if (data.listId) {
+          setSelectedTaskList(data.listId);
+        }
+        setEditingTask(null);
+        setTaskFormData({
+          title: data.taskData?.title || '',
+          notes: data.taskData?.notes || '',
+          due: data.taskData?.due || '',
+          parent: data.taskData?.parent || '',
+        });
         setCreateTaskOpen(true);
-    }
-  });
+      },
+    );
 
-    communication.subscribe('google-tasks: update-task', (data) => {
-      if (data.task) {
+    const unsubscribeUpdate = communication.subscribe(
+      'google-tasks: update-task',
+      (data: UpdateTaskEventPayload) => {
+        if (!data.task) {
+          return;
+        }
         setEditingTask(data.task);
+        setTaskFormData({
+          title: data.task.title,
+          notes: data.task.notes || '',
+          due: data.task.due || '',
+          parent: data.task.parent || '',
+        });
         setCreateTaskOpen(true);
-    }
-  });
+      },
+    );
 
-    communication.subscribe('google-tasks: complete-task', (data) => {
-      if (data.taskId) {
-        completeTaskMutation.mutate(data.taskId);
-    }
-  });
+    const unsubscribeComplete = communication.subscribe(
+      'google-tasks: complete-task',
+      (data: CompleteTaskEventPayload) => {
+        if (data.taskId) {
+          completeTaskMutation.mutate(data.taskId);
+        }
+      },
+    );
 
-    communication.subscribe('google-tasks: filter-change', (data) => {
-      if (data.filterStatus) {
-        setFilterStatus(data.filterStatus);
-    }
-  });
+    const unsubscribeFilter = communication.subscribe(
+      'google-tasks: filter-change',
+      (data: FilterChangeEventPayload) => {
+        if (data.filterStatus) {
+          setFilterStatus(data.filterStatus);
+        }
+      },
+    );
 
     return () => {
-      componentRegistry.unregisterComponent('GoogleTasksIntegration');
+      if (typeof unsubscribeCreate === 'function') unsubscribeCreate();
+      if (typeof unsubscribeUpdate === 'function') unsubscribeUpdate();
+      if (typeof unsubscribeComplete === 'function') unsubscribeComplete();
+      if (typeof unsubscribeFilter === 'function') unsubscribeFilter();
+      componentRegistry.unregisterComponent(unregisterKey);
       dataFlow.unregisterNode('task-lists');
       dataFlow.unregisterNode('tasks');
       dataFlow.unregisterNode('task-form-data');
       dataFlow.unregisterNode('view-settings');
+    };
+  }, [
+    communication,
+    componentRegistry,
+    dataFlow,
+    effectiveUserId,
+    filterStatus,
+    profession,
+    projectId,
+    selectedTaskList,
+    sortBy,
+    taskFormData,
+    taskLists,
+    tasks,
+  ]);
+
+  const invalidateTasks = async (listIdOverride?: string) => {
+    const activeListId = listIdOverride || selectedTaskList;
+    await queryClient.invalidateQueries({ queryKey: ['/api/google-tasks/lists'] });
+    if (activeListId) {
+      await queryClient.invalidateQueries({ queryKey: ['/api/google-tasks/tasks', activeListId] });
+    }
   };
-}, [taskLists, tasks, taskFormData, selectedTaskList, filterStatus, sortBy, componentRegistry, dataFlow, communication]);
 
-  // Fetch Google Tasks lists
-  const { data: taskLists = [], isLoading: listsLoading } = useQuery({
-    queryKey: ['/api/google-tasks/lists'],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return (await apiRequest('/api/google-tasks/lists', { headers })) || [];
-    },
-    staleTime: 2 * 60 * 100,
-  });
-
-  // Fetch tasks from selected list
-  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
-    queryKey: ['/api/google-tasks/tasks', selectedTaskList],
-    queryFn: async () => {
-      if (!selectedTaskList) return [];
-      const headers = await auth.getAuthHeader();
-      return (
-        (await apiRequest(`/api/google-tasks/lists/${selectedTaskList}/tasks`, { headers })) || []
-      );
-    },
-    enabled: !!selectedTaskList,
-    staleTime: 2 * 60 * 100,
-  });
-
-  // Create task mutation
-  const createTaskMutation = useMutation({
-    mutationFn: async (taskData: any) => {
-      const headers = await auth.getAuthHeader();
-      return await apiRequest(`/api/google-tasks/lists/${selectedTaskList}/tasks`, {
+  const createTaskMutation = useMutation<GoogleTask, Error, TaskFormState>({
+    mutationFn: async (taskData) => {
+      const response = await apiRequest('/api/google-tasks/tasks', {
         method: 'POST',
-        headers,
-        body: JSON.stringify(taskData),
+        body: {
+          ...taskData,
+          listId: selectedTaskList || undefined,
+          profession,
+          userId: effectiveUserId,
+          projectId,
+        },
       });
+      return response as GoogleTask;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/google-tasks/tasks', selectedTaskList] });
-      setCreateTaskOpen(false);
-      setTaskFormData({ title: '', notes: ',', due: '', parent: ',' });
-    },
-  });
-
-  // Update task mutation
-  const updateTaskMutation = useMutation({
-    mutationFn: async ({ taskId, taskData }: { taskId: string; taskData: any }) => {
-      const headers = await auth.getAuthHeader();
-      return await apiRequest(`/api/google-tasks/tasks/${taskId}`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({ ...taskData, listId: selectedTaskList }),
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/google-tasks/tasks', selectedTaskList] });
+    onSuccess: async (createdTask) => {
+      if (createdTask.listId && createdTask.listId !== selectedTaskList) {
+        setSelectedTaskList(createdTask.listId);
+      }
+      await invalidateTasks(createdTask.listId);
       setCreateTaskOpen(false);
       setEditingTask(null);
-      setTaskFormData({ title: '', notes: ',', due: '', parent: ',' });
+      setTaskFormData(createEmptyTaskForm());
     },
   });
 
-  // Complete task mutation
-  const completeTaskMutation = useMutation({
-    mutationFn: async (taskId: string) => {
-      const headers = await auth.getAuthHeader();
-      return await apiRequest(`/api/google-tasks/tasks/${taskId}`, {
+  const updateTaskMutation = useMutation<GoogleTask, Error, { taskId: string; taskData: TaskFormState }>({
+    mutationFn: async ({ taskId, taskData }) => {
+      const response = await apiRequest(`/api/google-tasks/tasks/${taskId}`, {
         method: 'PATCH',
-        headers,
-        body: JSON.stringify({ status: 'completed', listId: selectedTaskList }),
+        body: {
+          ...taskData,
+          listId: selectedTaskList,
+          profession,
+          userId: effectiveUserId,
+          projectId,
+        },
       });
+      return response as GoogleTask;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/google-tasks/tasks', selectedTaskList] });
+    onSuccess: async () => {
+      await invalidateTasks();
+      setCreateTaskOpen(false);
+      setEditingTask(null);
+      setTaskFormData(createEmptyTaskForm());
     },
   });
 
-  // Delete task mutation
-  const deleteTaskMutation = useMutation({
-    mutationFn: async (taskId: string) => {
-      const headers = await auth.getAuthHeader();
-      return await apiRequest(`/api/google-tasks/tasks/${taskId}?listId=${selectedTaskList}`, {
+  const completeTaskMutation = useMutation<GoogleTask, Error, string>({
+    mutationFn: async (taskId) => {
+      const response = await apiRequest(`/api/google-tasks/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: {
+          status: 'completed',
+          listId: selectedTaskList,
+        },
+      });
+      return response as GoogleTask;
+    },
+    onSuccess: async () => {
+      await invalidateTasks();
+    },
+  });
+
+  const deleteTaskMutation = useMutation<{ success: boolean }, Error, string>({
+    mutationFn: async (taskId) => {
+      const response = await apiRequest(`/api/google-tasks/tasks/${taskId}?listId=${encodeURIComponent(selectedTaskList)}`, {
         method: 'DELETE',
-        headers,
       });
+      return response as { success: boolean };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/google-tasks/tasks', selectedTaskList] });
+    onSuccess: async () => {
+      await invalidateTasks();
     },
   });
 
-  const handleCreateTask = () => {
-    if (editingTask) {
-      updateTaskMutation.mutate({
-        taskId: editingTask.id,
-        taskData: taskFormData,
-      });
-    } else {
-      createTaskMutation.mutate(taskFormData);
-    }
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      if (filterStatus === 'all') {
+        return true;
+      }
+      return task.status === filterStatus;
+    });
+  }, [filterStatus, tasks]);
+
+  const sortedTasks = useMemo(() => {
+    return [...filteredTasks].sort((left, right) => {
+      if (sortBy === 'due') {
+        return (left.due || '').localeCompare(right.due || '');
+      }
+      if (sortBy === 'updated') {
+        return (right.updated || '').localeCompare(left.updated || '');
+      }
+      return left.position.localeCompare(right.position);
+    });
+  }, [filteredTasks, sortBy]);
+
+  const selectedTaskListTitle = taskLists.find((taskList) => taskList.id === selectedTaskList)?.title || 'Ingen oppgaveliste valgt';
+
+  const handleOpenCreateDialog = () => {
+    setEditingTask(null);
+    setTaskFormData(createEmptyTaskForm());
+    setCreateTaskOpen(true);
   };
 
   const handleEditTask = (task: GoogleTask) => {
     setEditingTask(task);
     setTaskFormData({
       title: task.title,
-      notes: task.notes ||'',
-      due: task.due ||'',
-      parent: task.parent ||'',
-  });
+      notes: task.notes || '',
+      due: task.due || '',
+      parent: task.parent || '',
+    });
     setCreateTaskOpen(true);
-};
+  };
 
-  const handleCompleteTask = (task: GoogleTask) => {
-    completeTaskMutation.mutate(task.id);
-};
+  const handleSubmitTask = () => {
+    if (!taskFormData.title.trim()) {
+      return;
+    }
 
-  const handleDeleteTask = (task: GoogleTask) => {
-    deleteTaskMutation.mutate(task.id);
-};
+    if (editingTask) {
+      updateTaskMutation.mutate({ taskId: editingTask.id, taskData: taskFormData });
+      return;
+    }
 
-  const filteredTasks = tasks.filter((task: GoogleTask) => {
-    if (filterStatus === 'all') return true;
-    return task.status === filterStatus;
-});
+    createTaskMutation.mutate(taskFormData);
+  };
 
-  const sortedTasks = [...filteredTasks].sort((a: GoogleTask, b: GoogleTask) => {
-    switch (sortBy) {
-      case 'due':
-        return (a.due || ', ').localeCompare(b.due || ', ');
-      case 'updated':
-        return b.updated.localeCompare(a.updated);
-      default:
-        return a.position.localeCompare(b.position);
-}
-});
+  const handleFilterChange = (event: SelectChangeEvent) => {
+    const nextValue = event.target.value;
+    if (nextValue === 'all' || nextValue === 'needsAction' || nextValue === 'completed') {
+      setFilterStatus(nextValue);
+    }
+  };
+
+  const handleSortChange = (event: SelectChangeEvent) => {
+    const nextValue = event.target.value;
+    if (nextValue === 'position' || nextValue === 'due' || nextValue === 'updated') {
+      setSortBy(nextValue);
+    }
+  };
+
+  const handleTaskListChange = (event: SelectChangeEvent) => {
+    setSelectedTaskList(event.target.value);
+  };
+
+  const hasTaskMutationPending =
+    createTaskMutation.isPending ||
+    updateTaskMutation.isPending ||
+    completeTaskMutation.isPending ||
+    deleteTaskMutation.isPending;
 
   return (
-    <Box sx={{ p:  3 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h4" sx={{  fontWeight: 600, color: '#1976d0', display: 'flex', alignItems: 'center'  }}>
-          <Task sx={{ mr: 2, fontSize: 40}} />
-          Google Tasks
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={theming.getThemedIcon('add')}
-          onClick={() => {
-            setEditingTask(null);
-            setTaskFormData({ title: ', ', notes: ', ', due: ', ', parent: ', ' });
-            setCreateTaskOpen(true);
-          }}
-          disabled={!selectedTaskList}
-          sx={theming.getThemedButtonSx()}
-        >
-          Ny oppgave
-        </Button>
-      </Box>
-
-      {/* Task List Selection */}
-      <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
-        <CardContent>
-          <Typography variant="h6" sx={{  mb:  2  }}>
-            Velg oppgaveliste
+    <Box sx={{ p: 3 }}>
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'flex-start', md: 'center' }}
+        spacing={2}
+        sx={{ mb: 3 }}
+      >
+        <Box>
+          <Typography
+            variant="h4"
+            sx={{ fontWeight: 700, color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1.5 }}
+          >
+            <Task sx={{ fontSize: 36 }} />
+            Google Tasks
           </Typography>
-          <FormControl fullWidth>
-            <InputLabel>Oppgaveliste</InputLabel>
-            <Select
-              value={selectedTaskList}
-              label="Oppgaveliste"
-              onChange={(e) => setSelectedTaskList(e.target.value)}
-            >
-              {taskLists.map((list: GoogleTaskList) => (
-                <MenuItem key={list.id} value={list.id}>
-                  {list.title}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </CardContent>
-      </Card>
-
-      {/* Filters and Controls */}
-      {selectedTaskList && (
-        <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
-          <CardContent>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <FormControl size="small" sx={{ minWidth: 120}}>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={filterStatus}
-                  label="Status"
-                  onChange={(e) => setFilterStatus(e.target.value as any)}
-                >
-                  <MenuItem value="all">Alle</MenuItem>
-                  <MenuItem value="needsAction">Aktive</MenuItem>
-                  <MenuItem value="completed">Fullført</MenuItem>
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: 120}}>
-                <InputLabel>Sorter</InputLabel>
-                <Select
-                  value={sortBy}
-                  label="Sorter"
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                >
-                  <MenuItem value="position">Posisjon</MenuItem>
-                  <MenuItem value="due">Frist</MenuItem>
-                  <MenuItem value="updated">Oppdatert</MenuItem>
-                </Select>
-              </FormControl>
-              <Chip
-                label={`${filteredTasks.length} oppgaver`}
-                color="primary"
-                variant="outlined"
-              />
-            </Stack>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Tasks List */}
-      {selectedTaskList ? (
-        <Card sx={theming.getThemedCardSx()}>
-          <CardContent>
-            {tasksLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p:  3 }}>
-                <CircularProgress />
-              </Box>
-            ) : sortedTasks.length === 0 ? (
-              <Box sx={{ textAlign: 'center', p:  4 }}>
-                <Task sx={{ fontSize:  60, color: 'grey.40', mb:  2 }} />
-                <Typography color="text.secondary" variant="h6" sx={{ color: theming.colors.primary }}>
-                  Ingen oppgaver funnet
-                </Typography>
-                <Typography color="text.secondary">
-                  {filterStatus === 'all' ? 'Opprett din første oppgave' : 'Ingen oppgaver med denne statusen'}
-                </Typography>
-              </Box>
+          <Typography variant="body2" color="text.secondary">
+            Oppgaver fra Google Workspace koblet til prosjekt, profesjon og CRM-kontekst.
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1.5 }}>
+            <Chip size="small" color="primary" variant="outlined" label={`Bruker: ${effectiveUserId}`} />
+            <Chip size="small" variant="outlined" label={`Profesjon: ${profession}`} />
+            {projectId ? (
+              <Chip size="small" color="success" variant="outlined" label={`Prosjekt: ${projectId}`} />
             ) : (
-              <List>
-                {sortedTasks.map((task: GoogleTask, index: number) => (
-                  <React.Fragment key={task.id}>
-                    <ListItem sx={{ alignItems: 'flex-start', py:  2 }}>
-                      <Checkbox
-                        checked={task.status === 'completed'}
-                        onChange={() => handleCompleteTask(task)}
-                        color="primary"
-                        sx={{ mr: 2, mt: 0.5}}
-                      />
-                      <ListItemText
-                        primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                            <Typography
-                              variant="body1"
-                              sx={{
-                                textDecoration: task.status === 'completed' ? 'line-through' : 'none',
-                                opacity: task.status === 'completed' ? 0.6 : 1}}
-                            >
-                              {task.title}
-                            </Typography>
-                            {task.due && (
-                              <Chip
-                                label={new Date(task.due).toLocaleDateString('nb-NO')}
-                                size="small"
-                                color="warning"
-                                variant="outlined"
-                              />
-                            )}
-                          </Box>
-                      }
-                        secondary={
-                          <Box>
-                            {task.notes && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                                {task.notes}
-                              </Typography>
-                            )}
-                            <Typography variant="caption" color="text.secondary">
-                              Oppdatert: {new Date(task.updated).toLocaleDateString('nb-NO', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </Typography>
-                          </Box>
-                      }
-                      />
-                      <ListItemSecondaryAction>
-                        <Stack direction="row" spacing={1}>
-                          <IconButton
-                            onClick={() => handleEditTask(task)}
-                            size="small"
-                            color="primary"
-                          >
-                            {theming.getThemedIcon('edit')}
-                          </IconButton>
-                          <IconButton
-                            onClick={() => handleDeleteTask(task)}
-                            size="small"
-                            color="error"
-                          >
-                            {theming.getThemedIcon('delete')}
-                          </IconButton>
-                        </Stack>
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                    {index < sortedTasks.length - 1 && <Divider />}
-                  </React.Fragment>
-                ))}
-              </List>
+              <Chip size="small" color="warning" variant="outlined" label="Ingen prosjektkontekst" />
             )}
-          </CardContent>
-        </Card>
-      ) : (
-        <Alert severity="info">
-          Velg en oppgaveliste for å se oppgaver
+          </Stack>
+        </Box>
+
+        <Stack direction="row" spacing={1}>
+          <Tooltip title="Oppdater task lists og oppgaver">
+            <span>
+              <IconButton
+                color="primary"
+                onClick={() => {
+                  void refetchTaskLists();
+                  if (selectedTaskList) {
+                    void refetchTasks();
+                  }
+                }}
+                disabled={listsFetching || tasksFetching}
+              >
+                <Refresh />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={handleOpenCreateDialog}
+            disabled={hasTaskMutationPending}
+            sx={theming.getThemedButtonSx()}
+          >
+            Ny oppgave
+          </Button>
+        </Stack>
+      </Stack>
+
+      {(taskListsError || tasksError) && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {taskListsError?.message || tasksError?.message || 'Kunne ikke hente Google Tasks-data.'}
         </Alert>
       )}
 
-      {/* Create/Edit Task Dialog */}
+      <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
+        <CardContent>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+            <FormControl fullWidth>
+              <InputLabel>Oppgaveliste</InputLabel>
+              <Select
+                value={selectedTaskList}
+                label="Oppgaveliste"
+                onChange={handleTaskListChange}
+                disabled={listsLoading}
+              >
+                {taskLists.map((taskList) => (
+                  <MenuItem key={taskList.id} value={taskList.id}>
+                    {taskList.title}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl sx={{ minWidth: 140 }}>
+              <InputLabel>Status</InputLabel>
+              <Select value={filterStatus} label="Status" onChange={handleFilterChange}>
+                <MenuItem value="all">Alle</MenuItem>
+                <MenuItem value="needsAction">Aktive</MenuItem>
+                <MenuItem value="completed">Fullførte</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl sx={{ minWidth: 140 }}>
+              <InputLabel>Sorter</InputLabel>
+              <Select value={sortBy} label="Sorter" onChange={handleSortChange}>
+                <MenuItem value="position">Posisjon</MenuItem>
+                <MenuItem value="due">Frist</MenuItem>
+                <MenuItem value="updated">Oppdatert</MenuItem>
+              </Select>
+            </FormControl>
+            <Chip
+              color="primary"
+              variant="outlined"
+              label={`${filteredTasks.length} oppgaver i ${selectedTaskListTitle}`}
+            />
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card sx={theming.getThemedCardSx()}>
+        <CardContent>
+          {listsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : tasksLoading && selectedTaskList ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : sortedTasks.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 5 }}>
+              <Task sx={{ fontSize: 60, color: 'text.disabled', mb: 1.5 }} />
+              <Typography variant="h6" sx={{ mb: 0.5 }}>
+                {taskLists.length === 0 ? 'Ingen Google Tasks-lister funnet' : 'Ingen oppgaver i denne listen'}
+              </Typography>
+              <Typography color="text.secondary">
+                {taskLists.length === 0
+                  ? 'Første oppgave oppretter automatisk en CreatorHub-liste i Google Tasks.'
+                  : 'Opprett en ny oppgave for å starte oppfølgingen.'}
+              </Typography>
+            </Box>
+          ) : (
+            <List disablePadding>
+              {sortedTasks.map((task, index) => (
+                <React.Fragment key={task.id}>
+                  <ListItem sx={{ alignItems: 'flex-start', py: 2, px: 0 }}>
+                    <Checkbox
+                      checked={task.status === 'completed'}
+                      onChange={() => completeTaskMutation.mutate(task.id)}
+                      disabled={completeTaskMutation.isPending}
+                      sx={{ mt: 0.5, mr: 1 }}
+                    />
+                    <ListItemText
+                      primary={
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                          <Typography
+                            variant="body1"
+                            sx={{
+                              textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+                              opacity: task.status === 'completed' ? 0.65 : 1,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {task.title}
+                          </Typography>
+                          {task.due ? (
+                            <Chip
+                              size="small"
+                              color="warning"
+                              variant="outlined"
+                              icon={<Schedule fontSize="small" />}
+                              label={new Date(task.due).toLocaleString('nb-NO', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            />
+                          ) : null}
+                        </Stack>
+                      }
+                      secondary={
+                        <Box sx={{ mt: 0.75 }}>
+                          {task.notes ? (
+                            <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap', mb: 0.75 }}>
+                              {task.notes}
+                            </Typography>
+                          ) : null}
+                          <Typography variant="caption" color="text.secondary">
+                            Oppdatert {task.updated ? new Date(task.updated).toLocaleString('nb-NO') : 'ukjent tidspunkt'}
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                    <ListItemSecondaryAction>
+                      <Stack direction="row" spacing={1}>
+                        <IconButton color="primary" size="small" onClick={() => handleEditTask(task)}>
+                          <Edit fontSize="small" />
+                        </IconButton>
+                        <IconButton color="error" size="small" onClick={() => deleteTaskMutation.mutate(task.id)}>
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                  {index < sortedTasks.length - 1 ? <Divider /> : null}
+                </React.Fragment>
+              ))}
+            </List>
+          )}
+        </CardContent>
+      </Card>
+
       <Dialog open={createTaskOpen} onClose={() => setCreateTaskOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {editingTask ? 'Rediger oppgave' : 'Ny oppgave'}
-        </DialogTitle>
+        <DialogTitle>{editingTask ? 'Rediger Google Task' : 'Ny Google Task'}</DialogTitle>
         <DialogContent>
           <TextField
             label="Tittel"
             fullWidth
             value={taskFormData.title}
-            onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
-            sx={{ mb: 2, mt: 1 }}
+            onChange={(event) => setTaskFormData((current) => ({ ...current, title: event.target.value }))}
+            sx={{ mt: 1, mb: 2 }}
             required
           />
           <TextField
             label="Notater"
-            multiline
-            rows={3}
             fullWidth
+            multiline
+            rows={4}
             value={taskFormData.notes}
-            onChange={(e) => setTaskFormData({ ...taskFormData, notes: e.target.value })}
-            sx={{ mb:  2 }}
+            onChange={(event) => setTaskFormData((current) => ({ ...current, notes: event.target.value }))}
+            sx={{ mb: 2 }}
           />
           <TextField
             label="Frist"
             type="datetime-local"
             fullWidth
             value={taskFormData.due}
-            onChange={(e) => setTaskFormData({ ...taskFormData, due: e.target.value })}
+            onChange={(event) => setTaskFormData((current) => ({ ...current, due: event.target.value }))}
             InputLabelProps={{ shrink: true }}
-            sx={{ mb:  2 }}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateTaskOpen(false)}>
-            Avbryt
-          </Button>
-          <Button onClick={handleCreateTask}
+          <Button onClick={() => setCreateTaskOpen(false)}>Avbryt</Button>
+          <Button
             variant="contained"
+            onClick={handleSubmitTask}
             disabled={!taskFormData.title.trim() || createTaskMutation.isPending || updateTaskMutation.isPending}
-           sx={theming.getThemedButtonSx()}>
+            sx={theming.getThemedButtonSx()}
+          >
             {editingTask ? 'Oppdater' : 'Opprett'}
           </Button>
         </DialogActions>

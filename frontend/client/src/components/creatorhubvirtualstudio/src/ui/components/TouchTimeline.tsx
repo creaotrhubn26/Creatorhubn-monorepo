@@ -188,7 +188,7 @@ const FrameThumbnail = styled(Box, {
   
   // Touch target padding (minimum 44px)
   '&::before': {
-    content: ', ""',
+    content: '""',
     position: 'absolute',
     top: -8,
     left: -4,
@@ -238,7 +238,7 @@ const ScrubHandle = styled(Box, {
   
   // Larger touch target
   '&::before': {
-    content: ', ""',
+    content: '""',
     position: 'absolute',
     top: -12,
     left: -12,
@@ -736,4 +736,3 @@ export const TouchTimeline: React.FC<TouchTimelineProps> = ({
 };
 
 export default TouchTimeline;
-

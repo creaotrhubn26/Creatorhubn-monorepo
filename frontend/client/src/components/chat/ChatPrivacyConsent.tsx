@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
@@ -37,6 +37,44 @@ interface ChatPrivacyConsentProps {
   projectName?: string
 }
 
+interface ChatPrivacyConsentRecord {
+  customerName: string;
+  projectName?: string;
+  consentGiven: boolean;
+  dataProcessingAccepted: boolean;
+  acceptedAt: string;
+  userId?: string;
+}
+
+interface ChatPrivacyConsentResponse {
+  data: ChatPrivacyConsentRecord | null;
+}
+
+function isChatPrivacyConsentRecord(value: unknown): value is ChatPrivacyConsentRecord {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.customerName === 'string' &&
+    typeof candidate.consentGiven === 'boolean' &&
+    typeof candidate.dataProcessingAccepted === 'boolean' &&
+    typeof candidate.acceptedAt === 'string'
+  );
+}
+
+function normalizeConsentResponse(value: unknown): ChatPrivacyConsentResponse {
+  if (!value || typeof value !== 'object') {
+    return { data: null };
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return {
+    data: isChatPrivacyConsentRecord(candidate.data) ? candidate.data : null,
+  };
+}
+
 export const ChatPrivacyConsent: React.FC<ChatPrivacyConsentProps> = ({
   open,
   customerName,
@@ -44,14 +82,82 @@ export const ChatPrivacyConsent: React.FC<ChatPrivacyConsentProps> = ({
   onDecline,
   projectName
 }) => {
+  const { user } = useAuth();
   const [consentGiven, setConsentGiven] = useState(false);
-  
+  const [dataProcessingAccepted, setDataProcessingAccepted] = useState(false);
+  const consentStorageKey = useMemo(() => {
+    const normalizedCustomer = customerName.trim().toLowerCase().replace(/[^a-z0-9]+/gi, '-');
+    const normalizedProject = projectName?.trim().toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'general';
+    return `chat_privacy_consent:${normalizedCustomer}:${normalizedProject}`;
+  }, [customerName, projectName]);
+
   // Theming system
   const theming = useTheming('photographer');
-  const [dataProcessingAccepted, setDataProcessingAccepted] = useState(false);
+  const { data: storedConsentResponse } = useQuery<ChatPrivacyConsentResponse>({
+    queryKey: ['chat-privacy-consent', consentStorageKey, user?.id ?? 'anonymous'],
+    enabled: open,
+    queryFn: async () => {
+      const localRecord = (() => {
+        const raw = localStorage.getItem(consentStorageKey);
+        if (!raw) {
+          return null;
+        }
 
-  const handleAccept = () => {
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          return isChatPrivacyConsentRecord(parsed) ? parsed : null;
+        } catch {
+          return null;
+        }
+      })();
+
+      try {
+        const response = await apiRequest(`/api/user/kv/${encodeURIComponent(consentStorageKey)}`);
+        const normalized = normalizeConsentResponse(response);
+        return normalized.data ? normalized : { data: localRecord };
+      } catch {
+        return { data: localRecord };
+      }
+    },
+  });
+
+  useEffect(() => {
+    const storedConsent = storedConsentResponse?.data;
+    if (!storedConsent) {
+      return;
+    }
+
+    setConsentGiven(storedConsent.consentGiven);
+    setDataProcessingAccepted(storedConsent.dataProcessingAccepted);
+
+    if (open && storedConsent.consentGiven && storedConsent.dataProcessingAccepted) {
+      onAccept();
+    }
+  }, [open, onAccept, storedConsentResponse]);
+
+  const handleAccept = async () => {
     if (consentGiven && dataProcessingAccepted) {
+      const consentRecord: ChatPrivacyConsentRecord = {
+        customerName,
+        projectName,
+        consentGiven,
+        dataProcessingAccepted,
+        acceptedAt: new Date().toISOString(),
+        userId: user?.id,
+      };
+
+      localStorage.setItem(consentStorageKey, JSON.stringify(consentRecord));
+      try {
+        await apiRequest(`/api/user/kv/${encodeURIComponent(consentStorageKey)}`, {
+          method: 'POST',
+          body: {
+            value: consentRecord,
+          },
+        });
+      } catch {
+        // Local fallback above remains authoritative if KV sync is temporarily unavailable.
+      }
+
       onAccept();
   }
 };
@@ -238,8 +344,8 @@ export const ChatPrivacyConsent: React.FC<ChatPrivacyConsentProps> = ({
             background: 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)', '&:hover': {
               background: 'linear-gradient(135deg, #388e3c 0%, #2e7d32 100%)',
           }
-        }}
-         sx={theming.getThemedButtonSx()}>
+        , ...theming.getThemedButtonSx()}}
+        >
           Godta og Start Chat
         </Button>
       </DialogActions>

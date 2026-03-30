@@ -106,7 +106,7 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
 };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('no-N', {
+    return new Date(dateString).toLocaleDateString('no-NO', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -252,4 +252,3 @@ export const ShippingCalculator: React.FC<ShippingCalculatorProps> = ({
 };
 
 export default ShippingCalculator;
-

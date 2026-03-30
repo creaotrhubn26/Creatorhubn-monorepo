@@ -30,6 +30,7 @@ import {
   DialogActions,
   Button,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   Visibility,
   Refresh,
@@ -48,9 +49,16 @@ import {
   Speed as Speed,
   TouchApp,
   Close,
+  FiberManualRecord,
+  Straighten,
+  PlaylistPlay,
 } from '@mui/icons-material';
-import { useVisualEditor } from './VisualEditorContext';
-import type { EditorElement } from './VisualEditorContext';
+import { useVisualEditor, type EditorElement } from './VisualEditorContext';
+import {
+  EDITOR_DEVICE_PROFILES,
+  resolveEditorBrowserViewportMetrics,
+  resolveEditorDeviceProfile,
+} from './visualEditorModel';
 import html2canvas from 'html2canvas';
 import { AccessibilityChecker } from './AccessibilityChecker';
 
@@ -81,20 +89,31 @@ interface InteractionEvent {
   data?: unknown;
 }
 
-const DEVICE_DIMENSIONS = {
-  mobile: { width: 375, height: 667, label: 'iPhone SE' },
-  tablet: { width: 768, height: 1024, label: 'iPad' },
-  desktop: { width: 1920, height: 1080, label: 'Desktop' },
-  custom: { width: 1024, height: 768, label: 'Custom' },
+interface PreviewViewport {
+  width: number;
+  height: number;
+  label: string;
+  browserChromeTop: number;
+  browserChromeBottom: number;
+  safeInsetLeft: number;
+  safeInsetRight: number;
+}
+
+type PreviewRecordingSession = {
+  canvas: HTMLCanvasElement;
+  intervalId: number;
+  mediaRecorder: MediaRecorder;
+  mimeType: string;
+  stream: MediaStream;
 };
 
 const DEVICE_PRESETS = [
-  { name: 'iPhone 15 Pro', width: 393, height: 852 },
+  { name: EDITOR_DEVICE_PROFILES.mobile.model, width: EDITOR_DEVICE_PROFILES.mobile.viewport.width, height: EDITOR_DEVICE_PROFILES.mobile.viewport.height },
   { name: 'iPhone 15', width: 390, height: 844 },
   { name: 'Galaxy S24', width: 360, height: 780 },
   { name: 'Pixel 8', width: 412, height: 915 },
-  { name: 'iPad Pro 12.9', width: 1024, height: 1366 },
-  { name: 'MacBook Air', width: 1280, height: 832 },
+  { name: EDITOR_DEVICE_PROFILES.tablet.model, width: EDITOR_DEVICE_PROFILES.tablet.viewport.width, height: EDITOR_DEVICE_PROFILES.tablet.viewport.height },
+  { name: EDITOR_DEVICE_PROFILES.desktop.model, width: EDITOR_DEVICE_PROFILES.desktop.viewport.width, height: EDITOR_DEVICE_PROFILES.desktop.viewport.height },
   { name: 'Desktop HD', width: 1920, height: 1080 },
   { name: 'Desktop 4K', width: 3840, height: 2160 },
 ];
@@ -102,10 +121,16 @@ const DEVICE_PRESETS = [
 export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode = 'react' }) => {
   const { state } = useVisualEditor();
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [device, setDevice] = useState<DeviceType>('desktop');
+  const previewSurfaceRef = useRef<HTMLDivElement>(null);
+  const recordingSessionRef = useRef<PreviewRecordingSession | null>(null);
+  const [device, setDevice] = useState<DeviceType>(
+    state.currentBreakpoint === 'desktop' ? 'desktop' : state.currentBreakpoint,
+  );
   const [zoom, setZoom] = useState(100);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(
+    state.currentBreakpoint === 'desktop' ? 'landscape' : state.currentOrientation,
+  );
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers, setShowRulers] = useState(false);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
@@ -118,16 +143,54 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
   const [customWidth, setCustomWidth] = useState(1024);
   const [customHeight, setCustomHeight] = useState(768);
   const [showCustomDialog, setShowCustomDialog] = useState(false);
+  const [viewportPreset, setViewportPreset] = useState('responsive');
   const [performanceMetrics, setPerformanceMetrics] = useState({
     loadTime: 0,
     renderTime: 0,
     fps: 60,
   });
   const [touchMode, setTouchMode] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingStatus, setRecordingStatus] = useState<string | null>(null);
 
   useEffect(() => {
     renderPreview();
   }, [state.elements, device, orientation, code]);
+
+  useEffect(() => {
+    if (device !== 'custom') {
+      setViewportPreset('responsive');
+    }
+  }, [device]);
+
+  const getViewportForDevice = useCallback((): PreviewViewport => {
+    if (device === 'custom') {
+      return {
+        width: customWidth,
+        height: customHeight,
+        label: 'Custom viewport',
+        browserChromeTop: 0,
+        browserChromeBottom: 0,
+        safeInsetLeft: 0,
+        safeInsetRight: 0,
+      };
+    }
+
+    const breakpoint = device === 'desktop' ? 'desktop' : device;
+    const resolvedOrientation = breakpoint === 'desktop' ? 'landscape' : orientation;
+    const deviceProfile = resolveEditorDeviceProfile(breakpoint, resolvedOrientation);
+    const browserViewport = resolveEditorBrowserViewportMetrics(breakpoint, resolvedOrientation);
+
+    return {
+      width: browserViewport.contentWidth,
+      height: browserViewport.contentHeight,
+      label: `${deviceProfile.model} web viewport`,
+      browserChromeTop: browserViewport.topBarHeight,
+      browserChromeBottom: browserViewport.bottomBarHeight,
+      safeInsetLeft: browserViewport.contentInsetLeft,
+      safeInsetRight: browserViewport.contentInsetRight,
+    };
+  }, [customHeight, customWidth, device, orientation]);
 
   const renderPreview = () => {
     if (!iframeRef.current) return;
@@ -219,8 +282,8 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
   };
 
   const generatePreviewHTML = () => {
-    const cssContent = generateCSS();
-    const jsContent = generateJS();
+    const cssContent = [generateCSS(), code?.css ?? ''].filter(Boolean).join('\n');
+    const jsContent = [generateJS(), code?.javascript ?? ''].filter(Boolean).join('\n');
     const bodyContent = generateBody();
 
     return `
@@ -241,6 +304,7 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       background: #ffffff;
       overflow: auto;
+      ${touchMode ? 'touch-action: manipulation; -webkit-tap-highlight-color: rgba(0, 122, 204, 0.18);' : ''}
     }
     
     .preview-container {
@@ -377,17 +441,23 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
     const style = `${baseStyle} ${additionalStyles}`;
 
     switch (element.type) {
-      case 'button': return `<button class="element button-element" id="${element.id}" style="${style}">${element.props.text || 'Button'}</button>\n`;
+      case 'button':
+        return `<button class="element button-element" id="${element.id}" style="${style}">${element.props.text || 'Button'}</button>\n`;
 
-      case 'text': return `<div class="element text-element" id="${element.id}" style="${style}">${element.props.text || 'Text'}</div>\n`;
+      case 'text':
+        return `<div class="element text-element" id="${element.id}" style="${style}">${element.props.text || 'Text'}</div>\n`;
 
-      case 'container': return `<div class="element container-element" id="${element.id}" style="${style}"></div>\n`;
+      case 'container':
+        return `<div class="element container-element" id="${element.id}" style="${style}"></div>\n`;
 
-      case 'image': const src = element.props.src || 'https://via.placeholder.com/300x200?text=Image';
+      case 'image': {
+        const src = element.props.src || 'https://via.placeholder.com/300x200?text=Image';
         const alt = element.props.alt || 'Image';
         return `<img class="element image-element" id="${element.id}" src="${src}" alt="${alt}" style="${style}" />\n`;
+      }
 
-      default: return `<div class="element" id="${element.id}" style="${style}"></div>\n`;
+      default:
+        return `<div class="element" id="${element.id}" style="${style}"></div>\n`;
     }
   };
 
@@ -444,15 +514,24 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
     setZoom(100);
   };
 
+  const handleZoomSlider = (_: Event, value: number | number[]) => {
+    const nextZoom = Array.isArray(value) ? value[0] : value;
+    setZoom(nextZoom);
+  };
+
   const handleRotate = () => {
     setOrientation((prev) => (prev === 'portrait' ? 'landscape' : 'portrait'));
   };
 
   const handleScreenshot = async () => {
-    if (!iframeRef.current) return;
+    if (!previewSurfaceRef.current) return;
 
     try {
-      const canvas = await html2canvas(iframeRef.current);
+      const canvas = await html2canvas(previewSurfaceRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 1,
+        useCORS: true,
+      });
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.download = `preview-${Date.now()}.png`;
@@ -463,10 +542,136 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
     }
   };
 
-  const handleVideoRecord = () => {
-    // Video recording implementation
-    console.log('Video recording started');
-  };
+  const stopPreviewRecording = useCallback(() => {
+    const session = recordingSessionRef.current;
+    if (!session) {
+      return;
+    }
+
+    if (session.mediaRecorder.state !== 'inactive') {
+      session.mediaRecorder.stop();
+    } else {
+      window.clearInterval(session.intervalId);
+      session.stream.getTracks().forEach((track) => track.stop());
+      recordingSessionRef.current = null;
+      setIsRecording(false);
+    }
+  }, []);
+
+  const dimensions = getViewportForDevice();
+  const scaledWidth = (dimensions.width * zoom) / 100;
+  const scaledHeight = (dimensions.height * zoom) / 100;
+
+  const captureRecordingFrame = useCallback(async (targetCanvas: HTMLCanvasElement) => {
+    const iframeDocument = iframeRef.current?.contentDocument;
+    const sourceNode = iframeDocument?.documentElement ?? previewSurfaceRef.current;
+
+    if (!sourceNode) {
+      throw new Error('Preview surface is not ready for recording');
+    }
+
+    const frame = await html2canvas(sourceNode as HTMLElement, {
+      backgroundColor: '#ffffff',
+      scale: 1,
+      useCORS: true,
+      width: dimensions.width,
+      height: dimensions.height,
+      windowWidth: dimensions.width,
+      windowHeight: dimensions.height,
+    });
+
+    targetCanvas.width = dimensions.width;
+    targetCanvas.height = dimensions.height;
+    const context = targetCanvas.getContext('2d');
+    if (!context) {
+      throw new Error('Could not create video recording context');
+    }
+
+    context.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+    context.drawImage(frame, 0, 0, targetCanvas.width, targetCanvas.height);
+  }, [dimensions.height, dimensions.width]);
+
+  const handleVideoRecord = useCallback(async () => {
+    if (isRecording) {
+      stopPreviewRecording();
+      return;
+    }
+
+    if (!previewSurfaceRef.current || typeof MediaRecorder === 'undefined') {
+      setRecordingStatus('Video recording is not supported in this browser');
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+
+    try {
+      await captureRecordingFrame(canvas);
+      const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+        .find((candidate) => MediaRecorder.isTypeSupported(candidate))
+        ?? 'video/webm';
+      const stream = canvas.captureStream(6);
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks: Blob[] = [];
+      let frameInFlight = false;
+
+      const intervalId = window.setInterval(() => {
+        if (frameInFlight) {
+          return;
+        }
+
+        frameInFlight = true;
+        void captureRecordingFrame(canvas)
+          .catch((error: unknown) => {
+            setRecordingStatus(error instanceof Error ? error.message : 'Preview capture failed during recording');
+          })
+          .finally(() => {
+            frameInFlight = false;
+          });
+      }, 300);
+
+      mediaRecorder.addEventListener('dataavailable', (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      });
+
+      mediaRecorder.addEventListener('stop', () => {
+        window.clearInterval(intervalId);
+        stream.getTracks().forEach((track) => track.stop());
+        recordingSessionRef.current = null;
+        setIsRecording(false);
+
+        if (chunks.length === 0) {
+          setRecordingStatus('Preview recording ended without captured frames');
+          return;
+        }
+
+        const blob = new Blob(chunks, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const fileName = `preview-recording-${Date.now()}.webm`;
+        const link = document.createElement('a');
+        link.download = fileName;
+        link.href = url;
+        link.click();
+        setRecordingStatus(`Saved ${fileName}`);
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      });
+
+      recordingSessionRef.current = {
+        canvas,
+        intervalId,
+        mediaRecorder,
+        mimeType,
+        stream,
+      };
+
+      mediaRecorder.start(750);
+      setRecordingStatus('Recording preview to WebM');
+      setIsRecording(true);
+    } catch (error) {
+      setRecordingStatus(error instanceof Error ? error.message : 'Could not start preview recording');
+    }
+  }, [captureRecordingFrame, isRecording, stopPreviewRecording]);
 
   const handleAccessibilityCheck = () => {
     setShowAccessibility(!showAccessibility);
@@ -478,24 +683,42 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
 
   const applyCustomViewport = () => {
     setDevice('custom');
-    DEVICE_DIMENSIONS.custom = { width: customWidth, height: customHeight, label: 'Custom' };
+    setViewportPreset(`${customWidth}x${customHeight}`);
     setShowCustomDialog(false);
   };
 
-  const getDimensions = () => {
-    let dims = DEVICE_DIMENSIONS[device];
-    if (device === 'custom') {
-      dims = { width: customWidth, height: customHeight, label: 'Custom' };
+  const handleViewportPresetChange = (event: SelectChangeEvent<string>) => {
+    const value = event.target.value;
+    setViewportPreset(value);
+
+    if (value === 'responsive') {
+      if (device === 'custom') {
+        setDevice(state.currentBreakpoint === 'desktop' ? 'desktop' : state.currentBreakpoint);
+      }
+      return;
     }
-    if (orientation === 'landscape' && device !== 'desktop') {
-      return { width: dims.height, height: dims.width, label: dims.label };
+
+    if (value === 'custom') {
+      handleCustomViewport();
+      return;
     }
-    return dims;
+
+    const preset = DEVICE_PRESETS.find((entry) => entry.name === value);
+    if (!preset) {
+      return;
+    }
+
+    setCustomWidth(preset.width);
+    setCustomHeight(preset.height);
+    setDevice('custom');
   };
 
-  const dimensions = getDimensions();
-  const scaledWidth = (dimensions.width * zoom) / 100;
-  const scaledHeight = (dimensions.height * zoom) / 100;
+  const horizontalRulerMarks = Array.from({ length: Math.max(2, Math.ceil(dimensions.width / 160)) }, (_, index) =>
+    Math.min(dimensions.width, index * 160),
+  );
+  const verticalRulerMarks = Array.from({ length: Math.max(2, Math.ceil(dimensions.height / 160)) }, (_, index) =>
+    Math.min(dimensions.height, index * 160),
+  );
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#F5F5F5' }}>
@@ -514,6 +737,8 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
             Live Preview
           </Typography>
+          <Chip size="small" color="primary" variant="outlined" label={`${mode.toUpperCase()} source`} />
+          <Chip size="small" variant="outlined" label={`${dimensions.width} × ${dimensions.height}`} />
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -521,7 +746,14 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
           <ToggleButtonGroup
             value={device}
             exclusive
-            onChange={(_, newDevice) => newDevice && setDevice(newDevice)}
+            onChange={(_, newDevice: DeviceType | null) => {
+              if (!newDevice) {
+                return;
+              }
+
+              setViewportPreset('responsive');
+              setDevice(newDevice);
+            }}
             size="small"
           >
             <ToggleButton value="mobile">
@@ -541,10 +773,27 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
             </ToggleButton>
           </ToggleButtonGroup>
 
+          <Select
+            value={viewportPreset}
+            size="small"
+            onChange={handleViewportPresetChange}
+            displayEmpty
+            sx={{ minWidth: 180 }}
+            inputProps={{ 'aria-label': 'Viewport preset' }}
+          >
+            <MenuItem value="responsive">Responsive viewport</MenuItem>
+            <MenuItem value="custom">Custom viewport…</MenuItem>
+            {DEVICE_PRESETS.map((preset) => (
+              <MenuItem key={preset.name} value={preset.name}>
+                {preset.name} ({preset.width} × {preset.height})
+              </MenuItem>
+            ))}
+          </Select>
+
           <Divider orientation="vertical" flexItem />
 
           {/* Zoom Controls */}
-          <ButtonGroup size="small">
+          <ButtonGroup size="small" aria-label="Zoom controls">
             <Tooltip title="Zoom Out">
               <IconButton onClick={handleZoomOut} size="small">
                 <ZoomOut fontSize="small" />
@@ -571,6 +820,17 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
               </IconButton>
             </Tooltip>
           </ButtonGroup>
+          <Box sx={{ width: 120, px: 1 }}>
+            <Slider
+              value={zoom}
+              min={50}
+              max={200}
+              step={10}
+              onChange={handleZoomSlider}
+              size="small"
+              aria-label="Preview zoom"
+            />
+          </Box>
 
           <Divider orientation="vertical" flexItem />
 
@@ -590,9 +850,23 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
                 <GridOn fontSize="small" />
               </IconButton>
             </Tooltip>
+            <Tooltip title="Rulers">
+              <IconButton
+                onClick={() => setShowRulers(!showRulers)}
+                size="small"
+                color={showRulers ? 'primary' : 'default'}
+              >
+                <Straighten fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Screenshot">
               <IconButton onClick={handleScreenshot} size="small">
                 <CameraAlt fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={isRecording ? 'Stop recording' : 'Record preview'}>
+              <IconButton onClick={() => void handleVideoRecord()} size="small" color={isRecording ? 'error' : 'default'}>
+                <FiberManualRecord fontSize="small" />
               </IconButton>
             </Tooltip>
           </ButtonGroup>
@@ -636,6 +910,15 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
                 <TouchApp fontSize="small" />
               </IconButton>
             </Tooltip>
+            <Tooltip title="Interaction log">
+              <IconButton
+                onClick={() => setShowInteractions(!showInteractions)}
+                size="small"
+                color={showInteractions ? 'primary' : 'default'}
+              >
+                <PlaylistPlay fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </ButtonGroup>
 
           <Divider orientation="vertical" flexItem />
@@ -668,14 +951,27 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
           fontSize: '0.75rem'
         }}>
         <Typography variant="caption" color="text.secondary">
-          {DEVICE_DIMENSIONS[device].label}
+          {dimensions.label}
         </Typography>
         <Typography variant="caption" color="text.secondary">
           {dimensions.width} × {dimensions.height}
         </Typography>
         <Typography variant="caption" color="text.secondary">
+          Chrome {dimensions.browserChromeTop}px / {dimensions.browserChromeBottom}px
+        </Typography>
+        {(dimensions.safeInsetLeft > 0 || dimensions.safeInsetRight > 0) && (
+          <Typography variant="caption" color="text.secondary">
+            Safe sides {dimensions.safeInsetLeft}px / {dimensions.safeInsetRight}px
+          </Typography>
+        )}
+        <Typography variant="caption" color="text.secondary">
           {state.elements.length} element{state.elements.length !== 1 ? 's' : ', '}
         </Typography>
+        {touchMode && (
+          <Typography variant="caption" color="text.secondary">
+            Touch gestures simulated
+          </Typography>
+        )}
       </Box>
 
       {/* Preview Area */}
@@ -687,8 +983,25 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
           justifyContent: 'center',
           overflow: 'auto',
           p: 3,
-          bgcolor: '#E0E0E0'}}>
+          bgcolor: '#E0E0E0',
+          position: 'relative',
+        }}
+      >
+        {recordingStatus && (
+          <Alert
+            severity={isRecording ? 'info' : errors.length > 0 ? 'warning' : 'success'}
+            sx={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 5 }}
+          >
+            {recordingStatus}
+          </Alert>
+        )}
+        {errors.length > 0 && (
+          <Alert severity="error" sx={{ position: 'absolute', top: recordingStatus ? 68 : 12, left: 12, right: 12, zIndex: 5 }}>
+            Preview reported {errors.length} runtime error{errors.length !== 1 ? 's' : ''}. Open Console to inspect details.
+          </Alert>
+        )}
         <Box
+          ref={previewSurfaceRef}
           sx={{
             width: scaledWidth,
             height: scaledHeight,
@@ -699,6 +1012,80 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
             position: 'relative',
             transition: 'all 0.3s ease'
           }}>
+          {showRulers && (
+            <>
+              <Box
+                data-testid="preview-ruler-horizontal"
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 24,
+                  zIndex: 4,
+                  bgcolor: 'rgba(26, 26, 26, 0.72)',
+                  color: 'white',
+                  pointerEvents: 'none',
+                }}
+              >
+                {horizontalRulerMarks.map((mark) => (
+                  <Box
+                    key={`h-${mark}`}
+                    sx={{
+                      position: 'absolute',
+                      left: `${(mark * zoom) / 100}px`,
+                      top: 0,
+                      bottom: 0,
+                      width: 1,
+                      bgcolor: 'rgba(255,255,255,0.32)',
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{ position: 'absolute', top: 4, left: 4, fontSize: '0.62rem', color: 'white' }}
+                    >
+                      {mark}px
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+              <Box
+                data-testid="preview-ruler-vertical"
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: 24,
+                  zIndex: 4,
+                  bgcolor: 'rgba(26, 26, 26, 0.72)',
+                  color: 'white',
+                  pointerEvents: 'none',
+                }}
+              >
+                {verticalRulerMarks.map((mark) => (
+                  <Box
+                    key={`v-${mark}`}
+                    sx={{
+                      position: 'absolute',
+                      top: `${(mark * zoom) / 100}px`,
+                      left: 0,
+                      right: 0,
+                      height: 1,
+                      bgcolor: 'rgba(255,255,255,0.32)',
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{ position: 'absolute', top: 2, left: 2, fontSize: '0.62rem', color: 'white' }}
+                    >
+                      {mark}px
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </>
+          )}
           <iframe
             ref={iframeRef}
             title="Live Preview"
@@ -792,6 +1179,58 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
         </Box>
       </Drawer>
 
+      <Drawer
+        anchor="right"
+        open={showInteractions}
+        onClose={() => setShowInteractions(false)}
+        PaperProps={{ sx: { width: 320 } }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            p: 1.5,
+            borderBottom: '1px solid #E0E0E0',
+          }}
+        >
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              Interaction Log
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Recent click and input events from the preview frame
+            </Typography>
+          </Box>
+          <IconButton size="small" onClick={() => setShowInteractions(false)}>
+            <Close fontSize="small" />
+          </IconButton>
+        </Box>
+
+        <List dense sx={{ flex: 1, overflowY: 'auto' }}>
+          {interactions.length === 0 ? (
+            <ListItem>
+              <ListItemText
+                primary="No interactions captured yet"
+                secondary="Interact with the preview to populate this panel."
+              />
+            </ListItem>
+          ) : (
+            interactions
+              .slice()
+              .reverse()
+              .map((interaction) => (
+                <ListItem key={interaction.id} divider>
+                  <ListItemText
+                    primary={`${interaction.type.toUpperCase()} • ${interaction.target}`}
+                    secondary={new Date(interaction.timestamp).toLocaleTimeString()}
+                  />
+                </ListItem>
+              ))
+          )}
+        </List>
+      </Drawer>
+
       {/* Performance Panel */}
       {showPerformance && (
         <Paper
@@ -813,6 +1252,9 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
           </Typography>
           <Typography variant="body2" sx={{ mb: 0.5 }}>
             Render Time: {performanceMetrics.renderTime.toFixed(2)}ms
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            Interaction Events: {interactions.length}
           </Typography>
           <Typography variant="body2">FPS: {performanceMetrics.fps}</Typography>
         </Paper>
@@ -882,7 +1324,7 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
           fontSize: '0.75rem'
         }}>
         <Typography variant="caption" sx={{ color: 'white' }}>
-          Ready • {device.toUpperCase()} • {orientation.toUpperCase()}
+          Ready • {device.toUpperCase()} • {orientation.toUpperCase()} • {dimensions.label}
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
           {errors.length > 0 && (

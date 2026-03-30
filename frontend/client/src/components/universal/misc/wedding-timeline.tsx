@@ -569,7 +569,7 @@ export default function WeddingTimeline({
           {/* Navigation Tabs - Original 4 Tab Structure */}
           <Paper sx={{ 
             mb:  3, 
-            background: 'rgba(25, 255, 255, 0.08)',
+            background: 'rgba(255, 255, 255, 0.06)',
             backdropFilter: 'blur(10px)',
             borderRadius: '12px',
             ...theming.getThemedCardSx() }}>
@@ -580,7 +580,7 @@ export default function WeddingTimeline({
                 '& .MuiTab-root': {
                   fontWeight: 700,
                   fontSize: '1.1rem',
-                  color: 'rgba(25, 255, 255, 0.7)',
+                  color: 'rgba(255, 255, 255, 0.72)',
                   padding: '16px 24px',
                   '&:hover': {
                     color: color,

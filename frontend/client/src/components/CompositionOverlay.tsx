@@ -17,6 +17,7 @@ import {
   Slider,
   Stack,
   Switch,
+  TextField,
   Typography,
 } from '@mui/material';
 import {
@@ -504,7 +505,9 @@ export default function CompositionOverlay({
               label="Guide Color"
               type="color"
               value={settings.color}
-              onChange={(event) => updateSetting('color', event.target.value)}
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                updateSetting('color', event.target.value)
+              }
               InputLabelProps={{ shrink: true }}
             />
 

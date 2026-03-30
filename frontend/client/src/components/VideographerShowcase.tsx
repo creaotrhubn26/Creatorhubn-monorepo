@@ -223,12 +223,12 @@ const VideographerShowcase: React.FC<VideographerShowcaseProps> = ({
               sx={{
                 justifyContent: 'flex-start',
                 color: item.active ? '#fff' : '#aaa',
-                bgcolor: item.active ? 'rgba(25,255,255,0.1)' : 'transparent',
+                bgcolor: item.active ? 'rgba(255,255,255,0.08)' : 'transparent',
                 textTransform: 'none',
                 width: '100%',
                 borderRadius:  2,
                 mb: 0.5,
-                py: 1.5, '&:hover': { bgcolor: 'rgba(25,255,255,0.1)',
+                py: 1.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.08)',
                   color: '#fff',
               }}}
             >
@@ -251,7 +251,7 @@ const VideographerShowcase: React.FC<VideographerShowcaseProps> = ({
                 gap:  2,
                 p:  1,
                 borderRadius:  2,
-                cursor: 'pointer','&:hover': { bgcolor: 'rgba(25,255,255,0.05)' }}}
+                cursor: 'pointer','&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }}}
             >
               <Avatar sx={{ width:  24, height: 24}} />
               <Typography variant="body2" sx={{ color: '#aaa', fontSize: '14px'}}>
@@ -353,21 +353,21 @@ const VideographerShowcase: React.FC<VideographerShowcaseProps> = ({
                   onClick={() => featuredVideo && toggleLike(featuredVideo.id)}
                   sx={{
                     color: likedVideos.has(featuredVideo.id) ? '#ff4444' : '#fff',
-                    bgcolor: 'rgba(25,255,255,0.1)','&:hover': { bgcolor: 'rgba(25,255,255,0.2)' }}}
+                    bgcolor: 'rgba(255,255,255,0.12)','&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }}}
                 >
                   {likedVideos.has(featuredVideo.id) ? theming.getThemedIcon('favorite') : <FavoriteBorder />}
                 </IconButton>
                 <IconButton
                   sx={{
                     color: '#fff',
-                    bgcolor: 'rgba(25,255,255,0.1)','&:hover': { bgcolor: 'rgba(25,255,255,0.2)' }}}
+                    bgcolor: 'rgba(255,255,255,0.12)','&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }}}
                 >
                   {theming.getThemedIcon('share')}
                 </IconButton>
                 <IconButton
                   sx={{
                     color: '#fff',
-                    bgcolor: 'rgba(25,255,255,0.1)','&:hover': { bgcolor: 'rgba(25,255,255,0.2)' }}}
+                    bgcolor: 'rgba(255,255,255,0.12)','&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }}}
                 >
                   {theming.getThemedIcon('moreVert')}
                 </IconButton>
@@ -416,7 +416,7 @@ const VideographerShowcase: React.FC<VideographerShowcaseProps> = ({
                         alignItems: 'center',
                         justifyContent: 'center'}}
                      sx={theming.getThemedCardSx()}>
-                      <PlayArrow sx={{ fontSize:  32, color: 'rgba(25,255,255,0.8)' }} />
+                      <PlayArrow sx={{ fontSize:  32, color: 'rgba(255,255,255,0.82)' }} />
                     </CardMedia>
 
                     {/* Duration badge */}

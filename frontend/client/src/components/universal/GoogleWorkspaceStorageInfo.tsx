@@ -531,7 +531,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                 <Grid item xs={12}>
                   <Typography variant="body2" color="text.secondary">Sist oppdatert: </Typography>
                   <Typography variant="body2">
-                    {new Date(data.lastUpdated).toLocaleDateString('no-N', {
+                    {new Date(data.lastUpdated).toLocaleDateString('no-NO', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',

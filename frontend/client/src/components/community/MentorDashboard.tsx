@@ -25,6 +25,9 @@ import {
 import {
   Close,
   HelpOutline,
+  Notifications,
+  NotificationsActive,
+  School,
   Warning,
   CheckCircle,
   Schedule,
@@ -313,4 +316,3 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
 };
 
 export default MentorDashboard;
-

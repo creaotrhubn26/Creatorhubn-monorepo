@@ -9,7 +9,7 @@
  * - Integration with animation state
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import type { AnimationTrack, Keyframe } from '../core/animation/SceneGraphAnimationEngine';
 
@@ -51,8 +51,8 @@ export interface UseMotionPathEditorOptions {
 export interface UseMotionPathEditorReturn {
   // State
   state: MotionPathEditorState;
-  selectedTrack: AnimationTrack | null;
-  positionTracks: AnimationTrack[];
+  selectedTrack: PositionTrack | null;
+  positionTracks: PositionTrack[];
 
   // Visibility controls
   toggleVisibility: () => void;
@@ -93,7 +93,7 @@ export interface UseMotionPathEditorReturn {
 }
 
 export interface MotionPathEditor3DProps {
-  track: AnimationTrack;
+  track: PositionTrack;
   currentTime: number;
   selectedKeyframeIndex: number | null;
   gridSnap: number;
@@ -131,6 +131,23 @@ const DEFAULT_STATE: MotionPathEditorState = {
   pathSegments: 64,
 };
 
+type Vector3Tuple = [number, number, number];
+type PositionKeyframe = Keyframe<Vector3Tuple>;
+type PositionTrack = Omit<AnimationTrack, 'keyframes' | 'type'> & {
+  type: 'position';
+  keyframes: PositionKeyframe[];
+};
+
+function isVector3Tuple(value: unknown): value is Vector3Tuple {
+  return Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((entry) => typeof entry === 'number');
+}
+
+function isPositionTrack(track: AnimationTrack): track is PositionTrack {
+  return track.type === 'position' && track.keyframes.every((keyframe) => isVector3Tuple(keyframe.value));
+}
+
 // ============================================================================
 // Hook Implementation
 // ============================================================================
@@ -160,11 +177,11 @@ export function useMotionPathEditor(
 
   // Filter to position tracks only
   const positionTracks = useMemo(() => {
-    return tracks.filter((t) => t.type === 'position');
+    return tracks.filter(isPositionTrack);
   }, [tracks]);
 
   // Get selected track
-  const selectedTrack = useMemo(() => {
+  const selectedTrack = useMemo<PositionTrack | null>(() => {
     if (!state.selectedTrackId) return null;
     return positionTracks.find((t) => t.id === state.selectedTrackId) || null;
   }, [state.selectedTrackId, positionTracks]);
@@ -298,7 +315,7 @@ export function useMotionPathEditor(
         Math.round(position.z / state.gridSnap) * state.gridSnap
       );
 
-      const newKeyframe: Keyframe = {
+      const newKeyframe: PositionKeyframe = {
         time,
         value: [snappedPosition.x, snappedPosition.y, snappedPosition.z],
         easing: 'easeInOut',
@@ -360,7 +377,7 @@ export function useMotionPathEditor(
         ? (nextKeyframe.time - sourceKeyframe.time) / 2
         : 0.5;
 
-      const newKeyframe: Keyframe = {
+      const newKeyframe: PositionKeyframe = {
         ...sourceKeyframe,
         time: sourceKeyframe.time + timeOffset,
       };
@@ -484,9 +501,14 @@ export function useMotionPathEditor(
     setIsDragging,
 
     // Props generator
-    getEditorProps: getEditorProps as () => MotionPathEditor3DProps,
+    getEditorProps: () => {
+      const editorProps = getEditorProps();
+      if (!editorProps) {
+        throw new Error('Motion path editor props requested without a selected position track');
+      }
+      return editorProps;
+    },
   };
 }
 
 export default useMotionPathEditor;
-

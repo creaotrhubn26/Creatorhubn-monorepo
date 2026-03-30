@@ -32,9 +32,11 @@ const REVIEW_TYPE_LABELS: Record<string, string> = {
   change_order: 'Endringsordre',
   client_intake_request: 'Klientbrief',
   client_material_request: 'Klientmateriale',
+  meeting_decision: 'Møtebeslutning',
   framework_alignment: 'Retning / idé / aktivering',
   phase_checkpoint: 'Fasepunkt',
   content_delivery: 'Innholdsleveranse',
+  account_access: 'Kontotilgang',
   scene_notes: 'Scenenotater',
   location_plan: 'Lokasjonsplan',
   equipment_plan: 'Utstyrsplan',
@@ -53,7 +55,10 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   planning_framework: 'Retning / idé / aktivering',
   phase_plan: 'Faseplan',
   content_calendar: 'Content-kalender',
+  account_access: 'Kontotilgang',
   client_material: 'Klientmateriale',
+  meeting_decision: 'Møtebeslutning',
+  meeting_follow_up: 'Møteoppfølging',
 };
 
 const REVIEW_STATUS_LABELS: Record<string, string> = {
@@ -85,6 +90,7 @@ export const PRODUCER_REVIEW_TYPE_OPTIONS: ProducerReviewTypeOption[] = [
   { value: 'budget_package', label: 'Budsjettpakke', defaultTargetEntityType: 'economy' },
   { value: 'client_approval', label: 'Klientgodkjenning', defaultTargetEntityType: 'project_agreement' },
   { value: 'change_order', label: 'Endringsordre', defaultTargetEntityType: 'project_agreement' },
+  { value: 'meeting_decision', label: 'Møtebeslutning', defaultTargetEntityType: 'meeting_decision' },
   { value: 'phase_checkpoint', label: 'Fasepunkt', defaultTargetEntityType: 'phase_plan' },
   { value: 'content_delivery', label: 'Innholdsleveranse', defaultTargetEntityType: 'content_calendar' },
   { value: 'scene_notes', label: 'Scenenotater', defaultTargetEntityType: 'scene' },

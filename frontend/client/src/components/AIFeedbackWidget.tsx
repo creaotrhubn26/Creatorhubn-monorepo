@@ -224,16 +224,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'inherit',
   },
   thumbUp: {
-    ':hover': {
-      borderColor: '#00ff00',
-      backgroundColor: '#001100',
-    },
+    borderColor: '#333',
+    backgroundColor: '#0a0a0a',
   },
   thumbDown: {
-    ':hover': {
-      borderColor: '#ff0000',
-      backgroundColor: '#110000',
-    },
+    borderColor: '#333',
+    backgroundColor: '#0a0a0a',
   },
   buttonActive: {
     borderColor: '#ff8c00',

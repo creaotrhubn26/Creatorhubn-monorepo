@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Scene } from '@/core/models/scene';
+import type { Scene, SceneNode } from '@/core/models/scene';
 import { addObject } from '@/core/commands/addObject';
 import { updateObject } from '@/core/commands/updateObject';
 import { deleteObject } from '@/core/commands/deleteObject';
@@ -95,6 +95,15 @@ type AppState = {
   measureMode: boolean;
   showLightCones: boolean;
   showStudioGuides: boolean;
+  falseColorEnabled: boolean;
+  heatmapEnabled: boolean;
+  falseColorOpacity: number;
+  heatmapOpacity: number;
+  hdriEnvironmentId: string | null;
+  hdriIntensity: number;
+  hdriRotation: number;
+  hdriVisible: boolean;
+  lightContributionRefreshKey: boolean;
   studioGuideSettings: StudioGuideSettings;
   advancedGuideSettings: AdvancedGuideSettings;
   // actions
@@ -106,11 +115,80 @@ type AppState = {
   undo: () => void;
   redo: () => void;
   setScene: (s: Scene) => void;
+  toggleMeasureMode: () => void;
   toggleLightCones: () => void;
   toggleStudioGuides: () => void;
+  toggleFalseColor: () => void;
+  toggleHeatmap: () => void;
+  setFalseColorOpacity: (opacity: number) => void;
+  setHeatmapOpacity: (opacity: number) => void;
+  setHDRIEnvironment: (environmentId: string | null) => void;
+  setHDRIIntensity: (intensity: number) => void;
+  setHDRIRotation: (rotation: number) => void;
+  toggleHDRIVisible: () => void;
+  toggleLightContribution: () => void;
   updateStudioGuideSettings: (settings: Partial<StudioGuideSettings>) => void;
   updateAdvancedGuideSettings: (settings: Partial<AdvancedGuideSettings>) => void;
+  addMeasurementPoints: (a: [number, number], b: [number, number], label?: string) => void;
+  addMeasurementBetween: (aId: string, bId: string, label?: string) => void;
+  removeMeasurement: (id: string) => void;
 };
+
+type LibraryAssetPayload = {
+  title?: string;
+  type?: string;
+  data?: {
+    userData?: Record<string, unknown>;
+    light?: {
+      power?: number;
+      cct?: number;
+      beam?: number;
+      modifier?: string;
+      modifierSize?: [number, number];
+      role?: string;
+    };
+    patternContext?: Record<string, unknown>;
+  };
+};
+
+function applyLibraryPreset(node: SceneNode & Record<string, unknown>, asset: LibraryAssetPayload) {
+  const assetUserData = asset.data?.userData ?? {};
+
+  node.userData = {
+    ...node.userData,
+    ...assetUserData,
+    equipmentId:
+      typeof assetUserData.equipmentId === 'string' ? assetUserData.equipmentId : node.userData.equipmentId,
+    brand: typeof assetUserData.brand === 'string' ? assetUserData.brand : node.userData.brand,
+    model: typeof assetUserData.model === 'string' ? assetUserData.model : node.userData.model,
+    wattage:
+      typeof assetUserData.wattage === 'number'
+        ? assetUserData.wattage
+        : node.light?.power
+          ? Math.round(node.light.power * 1000)
+          : node.userData.wattage,
+    lightType: typeof assetUserData.lightType === 'string' ? assetUserData.lightType : node.userData.lightType,
+  };
+
+  if (node.light) {
+    node.light = {
+      ...node.light,
+      power: asset.data?.light?.power ?? node.light.power,
+      cct: asset.data?.light?.cct ?? node.light.cct,
+      beam: asset.data?.light?.beam ?? node.light.beam,
+      modifier: asset.data?.light?.modifier ?? node.light.modifier,
+      modifierSize: asset.data?.light?.modifierSize ?? node.light.modifierSize,
+      role: asset.data?.light?.role ?? node.light.role,
+    };
+  }
+
+  if (asset.data?.patternContext) {
+    node.patternContext = {
+      ...node.patternContext,
+      ...asset.data.patternContext,
+    };
+  }
+}
 
 const initialScene: Scene = {
   id: 'scene-1',
@@ -166,6 +244,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   measureMode: false,
   showLightCones: false,
   showStudioGuides: true,
+  falseColorEnabled: false,
+  heatmapEnabled: false,
+  falseColorOpacity: 0.75,
+  heatmapOpacity: 0.6,
+  hdriEnvironmentId: null,
+  hdriIntensity: 1,
+  hdriRotation: 0,
+  hdriVisible: true,
+  lightContributionRefreshKey: false,
   studioGuideSettings: {
     showDistanceGuides: true,
     showAngleGuides: true,
@@ -274,7 +361,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
           
           const nodes = [...s.scene.nodes, node];
-          useAppStore.setState({ scene: { ...s.scene, nodes }, selection: [id] });
+          useAppStore.setState({ scene: { ...s.scene, nodes, selection: [id] } });
         }) as any);
         return {};
       })()
@@ -297,6 +384,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             type: asset.type,
             transform: { position: pos, rotation: [0, 0, 0], scale: [1, 1, 1] },
             visible: true,
+            userData: {},
           };
           if (asset.type === 'light') {
             node.light = {
@@ -343,7 +431,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             };
           }
           const nodes = [...s.scene.nodes, node];
-          useAppStore.setState({ scene: { ...s.scene, nodes }, selection: [id] });
+          useAppStore.setState({ scene: { ...s.scene, nodes, selection: [id] } });
         }) as any);
         return {};
       })()
@@ -408,17 +496,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleMeasureMode: () => set((s) => ({ measureMode: !s.measureMode })),
   toggleLightCones: () => set((s) => ({ showLightCones: !s.showLightCones })),
   toggleStudioGuides: () => set((s) => ({ showStudioGuides: !s.showStudioGuides })),
+  toggleFalseColor: () => set((s) => ({ falseColorEnabled: !s.falseColorEnabled })),
+  toggleHeatmap: () => set((s) => ({ heatmapEnabled: !s.heatmapEnabled })),
+  setFalseColorOpacity: (opacity: number) =>
+    set({ falseColorOpacity: Math.max(0, Math.min(1, opacity)) }),
+  setHeatmapOpacity: (opacity: number) =>
+    set({ heatmapOpacity: Math.max(0, Math.min(1, opacity)) }),
+  setHDRIEnvironment: (environmentId: string | null) => set({ hdriEnvironmentId: environmentId }),
+  setHDRIIntensity: (intensity: number) => set({ hdriIntensity: Math.max(0, intensity) }),
+  setHDRIRotation: (rotation: number) => set({ hdriRotation: rotation }),
+  toggleHDRIVisible: () => set((s) => ({ hdriVisible: !s.hdriVisible })),
+  toggleLightContribution: () =>
+    set((s) => ({ lightContributionRefreshKey: !s.lightContributionRefreshKey })),
   updateStudioGuideSettings: (settings) => set((s) => ({
     studioGuideSettings: { ...s.studioGuideSettings, ...settings },
   })),
   updateAdvancedGuideSettings: (settings) => set((s) => ({
     advancedGuideSettings: { ...s.advancedGuideSettings, ...settings },
   })),
-  addMeasurementPoints: (a, b, label) =>
+  addMeasurementPoints: (a: [number, number], b: [number, number], label?: string) =>
     set((s: AppState) => ({
       measurements: [...s.measurements, { id: `m-${Date.now().toString(36)}`, a, b, label }],
     })),
-  addMeasurementBetween: (aId, bId, label) =>
+  addMeasurementBetween: (aId: string, bId: string, label?: string) =>
     set((s: AppState) => {
       const A = s.scene.nodes.find((n) => n.id === aId);
       const B = s.scene.nodes.find((n) => n.id === bId);
@@ -429,6 +529,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         measurements: [...s.measurements, { id: `m-${Date.now().toString(36)}`, a, b, label }],
       };
     }),
-  removeMeasurement: (id) =>
+  removeMeasurement: (id: string) =>
     set((s: AppState) => ({ measurements: s.measurements.filter((m) => m.id !== id) })),
 }));

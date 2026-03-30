@@ -6,15 +6,18 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { DirectorModeState } from '../core/services/directorModeService';
-import { directorModeService } from '../core/services/directorModeService';
-import type { CameraRecording } from '../core/services/multiCameraRecordingService';
-import { multiCameraRecordingService } from '../core/services/multiCameraRecordingService';
-import type { MonitorLayout } from '../core/services/monitorFeedService';
-import { monitorFeedService } from '../core/services/monitorFeedService';
-import { logger } from '../core/services/logger';
-
-const log = logger.module('useDirectorMode');
+import {
+  directorModeService,
+  type DirectorModeState,
+} from '../core/services/directorModeService';
+import {
+  multiCameraRecordingService,
+  type CameraRecording,
+} from '../core/services/multiCameraRecordingService';
+import {
+  monitorFeedService,
+  type MonitorLayout,
+} from '../core/services/monitorFeedService';
 
 // ============================================================================
 // Types
@@ -83,7 +86,9 @@ export function useDirectorMode(): [DirectorModeHookState, DirectorModeHookActio
     const unsubscribe = directorModeService.subscribe((state) => {
       setDirectorState(state);
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+    };
   }, []);
   
   // Subscribe to recording state
@@ -92,7 +97,9 @@ export function useDirectorMode(): [DirectorModeHookState, DirectorModeHookActio
       setIsRecording(state.isRecording);
       setRecordingTime(state.elapsedTime);
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+    };
   }, []);
   
   // Actions
@@ -219,4 +226,3 @@ export function useDirectorMode(): [DirectorModeHookState, DirectorModeHookActio
 }
 
 export default useDirectorMode;
-

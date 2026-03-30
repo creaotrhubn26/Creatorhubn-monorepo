@@ -259,7 +259,7 @@ export default function WeddingTimeline({
     rgba(255, 255, 255, 0.02);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(25, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.12);
   `;
 
   // State management

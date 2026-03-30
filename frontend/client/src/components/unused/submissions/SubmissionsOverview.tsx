@@ -421,14 +421,19 @@ export default function SubmissionsOverview({
   const renderSubmissionCard = (submission: ClientSubmission) => (
     <Card
       key={submission.id}
-      sx={{
-        mb:  2,
-        position: 'relative', '&:hover': {
-          transform: 'translateY(-2px)',
-          boxShadow:  4,
-    },
-        transition: 'all 0.2s ease-in-out' }}
-     sx={theming.getThemedCardSx()}>
+      sx={[
+        {
+          mb: 2,
+          position: 'relative',
+          '&:hover': {
+            transform: 'translateY(-2px)',
+            boxShadow: 4,
+          },
+          transition: 'all 0.2s ease-in-out',
+        },
+        theming.getThemedCardSx(),
+      ]}
+    >
       <CardContent sx={theming.getThemedCardSx()}>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
           <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
@@ -1000,12 +1005,15 @@ export default function SubmissionsOverview({
 
                 {/* Smart Estimation Section */}
                 <Paper
-                  sx={{
-                    p:  3,
-                    background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
-                    border: '1px solid #e2e8f0'
-            }}
-                 sx={theming.getThemedCardSx()}>
+                  sx={[
+                    {
+                      p: 3,
+                      background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+                      border: '1px solid #e2e8f0',
+                    },
+                    theming.getThemedCardSx(),
+                  ]}
+                >
                   <Typography variant="h6" gutterBottom sx={{  color: 'text.primary', fontWeight: 600}}>
                     <BrainIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
                     Intelligent estimering

@@ -14,10 +14,10 @@ import {
 import type { SelectProps } from '@mui/material/Select';
 import { colors, borderRadius, transitions } from '../../styles/designTokens';
 
-export interface EnhancedSelectProps extends SelectProps {
+export type EnhancedSelectProps = SelectProps & {
   options?: Array<{ value: string | number; label: string }>;
   label?: string;
-}
+};
 
 export const EnhancedSelect: React.FC<EnhancedSelectProps> = ({
   options = [],
@@ -100,5 +100,3 @@ export const EnhancedSelect: React.FC<EnhancedSelectProps> = ({
     </FormControl>
   );
 };
-
-

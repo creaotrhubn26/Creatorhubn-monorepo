@@ -51,16 +51,28 @@ export const CommunityFileAttachment: React.FC<CommunityFileAttachmentProps> = (
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<Array<{ url: string; fileId?: string; name: string }>>([]);
 
-  const handleUploadComplete = (results: any[]) => {
+  const handleUploadComplete = (results?: Array<Record<string, unknown>>) => {
+    if (!results || results.length === 0) {
+      return;
+    }
+
     // Extract URLs and fileIds from upload results
     const fileData = results.map((result) => ({
-      url: result.url || result.fileUrl || result.webViewLink,
-      fileId: result.fileId,
-      name: result.filename || result.name || 'file',
+      url:
+        (typeof result.url === 'string' && result.url) ||
+        (typeof result.fileUrl === 'string' && result.fileUrl) ||
+        (typeof result.webViewLink === 'string' && result.webViewLink) ||
+        '',
+      ...(typeof result.fileId === 'string' ? { fileId: result.fileId } : {}),
+      name:
+        (typeof result.filename === 'string' && result.filename) ||
+        (typeof result.name === 'string' && result.name) ||
+        'file',
     }));
 
-    setAttachedFiles((prev) => [...prev, ...fileData]);
-    onFilesUploaded(fileData.map(f => ({ url: f.url, fileId: f.fileId })));
+    const validFileData = fileData.filter((file) => file.url.length > 0);
+    setAttachedFiles((prev) => [...prev, ...validFileData]);
+    onFilesUploaded(validFileData.map((file) => ({ url: file.url, fileId: file.fileId })));
     setUploadDialogOpen(false);
   };
 
@@ -376,4 +388,3 @@ function extractFileId(url: string): string | undefined {
   const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   return match ? match[1] : undefined;
 }
-

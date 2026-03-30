@@ -12,7 +12,7 @@ export function formatBytes(bytes: number): string {
 }
 
 export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('no-N', {
+  return new Date(dateString).toLocaleDateString('no-NO', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

@@ -9,6 +9,9 @@ import type {
   ProducerClientIntake,
   ProducerClientMaterial,
   ProducerClientMaterialType,
+  ProducerMeetingDecisionItem,
+  ProducerMeetingFollowUpItem,
+  ProducerProjectPlanning,
   ProducerWorkflowProjectMeta,
   ProducerWorkflowProjectStatus,
 } from '../models/casting';
@@ -18,6 +21,7 @@ import { emitProducerWorkflowEvent } from './producerWorkflowEvents';
 import { getCurrentUserId, settingsService } from './settingsService';
 import {
   getProducerPlanningClientMoments,
+  normalizeProducerProjectPlanning,
   summarizeProducerClientGrounding,
 } from '../utils/producerProjectPlanning';
 
@@ -39,8 +43,16 @@ const CLIENT_MATERIAL_TIMELINE_SOURCE = 'client-material-status';
 const CLIENT_GROUNDING_REVIEW_SOURCE = 'client-grounding';
 const CLIENT_INTAKE_REVIEW_TYPE = 'client_intake_request';
 const CLIENT_MATERIAL_REVIEW_TYPE = 'client_material_request';
+const MEETING_WORKSPACE_SOURCE = 'meeting-workspace';
+const MEETING_DECISION_REVIEW_TYPE = 'meeting_decision';
+const MEETING_DECISION_ENTITY_TYPE = 'meeting_decision';
+const MEETING_FOLLOW_UP_ENTITY_TYPE = 'meeting_follow_up';
 
 type LooseRecord = Record<string, unknown>;
+
+const hasText = (value: unknown): value is string => (
+  typeof value === 'string' && value.trim().length > 0
+);
 
 export interface ProducerTimelineItem {
   id: string;
@@ -735,6 +747,14 @@ function normalizeBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+function isMissingProducerTimelineItemError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /fant ikke tidslinjeelement/i.test(error.message)
+    || /producer workflow request failed \\(404\\)/i.test(error.message);
+}
+
 function normalizeNumber(value: unknown, fallback = 0): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -1219,6 +1239,14 @@ function getReviewTimelinePhase(
     return 'postproduction';
   }
 
+  if (normalizedReviewType === 'account_access' || normalizedTargetEntityType === 'account_access') {
+    return 'postproduction';
+  }
+
+  if (normalizedReviewType === MEETING_DECISION_REVIEW_TYPE || normalizedTargetEntityType === MEETING_DECISION_ENTITY_TYPE) {
+    return getMeetingPhase(focusedPhase);
+  }
+
   if (['storyboard', 'manuscript', 'shotlist', 'scene_notes', 'location_plan', 'equipment_plan'].includes(normalizedReviewType)) {
     return 'preproduction';
   }
@@ -1315,6 +1343,7 @@ function isPlanningManagedReview(review: ProducerClientReview): boolean {
       review.review_type === 'framework_alignment'
       || review.review_type === 'phase_checkpoint'
       || review.review_type === 'content_delivery'
+      || review.review_type === 'account_access'
     );
 }
 
@@ -1334,7 +1363,12 @@ function buildPlanningReviewPayload(
     ? 'planning_framework'
     : moment.type === 'phase_checkpoint'
       ? 'phase_plan'
+      : moment.type === 'account_access'
+        ? 'account_access'
       : 'content_calendar';
+  const accountPlatform = moment.type === 'account_access'
+    ? readFirstNonEmptyString(moment.id.split(':')[1])
+    : null;
   const descriptionParts = [
     moment.detail,
     moment.owner ? `Ansvarlig: ${moment.owner}` : '',
@@ -1353,6 +1387,11 @@ function buildPlanningReviewPayload(
       source: 'producer-planning',
       planningMomentId: moment.id,
       planningMomentType: moment.type,
+      deliveryItemIds: moment.type === 'content_delivery'
+        ? [readFirstNonEmptyString(moment.id.replace(/^content:/, ''))].filter((value) => value.length > 0)
+        : [],
+      accountAccessPlatform: accountPlatform,
+      accountAccessPlatforms: accountPlatform ? [accountPlatform] : [],
       focusedPhase: moment.phase,
       phase: moment.phase,
       planningFrameworkKey: moment.type === 'framework_alignment'
@@ -1370,6 +1409,183 @@ function shouldDeletePlanningReview(review: ProducerClientReview): boolean {
   return isPlanningManagedReview(review)
     && isPendingReviewStatus(review.status)
     && (review.comments?.length ?? 0) === 0;
+}
+
+function isMeetingManagedReview(review: ProducerClientReview): boolean {
+  const metadata = asRecord(review.metadata);
+  return readFirstNonEmptyString(metadata.source) === MEETING_WORKSPACE_SOURCE
+    && review.review_type === MEETING_DECISION_REVIEW_TYPE;
+}
+
+function shouldDeleteMeetingReview(review: ProducerClientReview): boolean {
+  return isMeetingManagedReview(review)
+    && isPendingReviewStatus(review.status)
+    && (review.comments?.length ?? 0) === 0;
+}
+
+function isMeetingManagedTimelineItem(item: ProducerTimelineItem): boolean {
+  const metadata = asRecord(item.metadata);
+  return readFirstNonEmptyString(metadata.source) === MEETING_WORKSPACE_SOURCE
+    && (
+      readFirstNonEmptyString(metadata.meetingItemType) === 'decision'
+      || readFirstNonEmptyString(metadata.meetingItemType) === 'follow_up'
+    );
+}
+
+function getMeetingItemIdFromMetadata(metadata: Record<string, unknown>): string | null {
+  return readFirstNonEmptyString(metadata.meetingItemId, metadata.meeting_item_id) ?? null;
+}
+
+function getMeetingPhase(value: unknown): ProducerPhase {
+  if (value === 'preproduction' || value === 'production' || value === 'postproduction') {
+    return value;
+  }
+  return 'preproduction';
+}
+
+function getMeetingDecisionTimelineStatus(decision: ProducerMeetingDecisionItem): string {
+  return decision.status === 'done' ? 'completed' : 'planned';
+}
+
+function getMeetingFollowUpTimelineStatus(followUp: ProducerMeetingFollowUpItem): string {
+  if (followUp.status === 'done') {
+    return 'completed';
+  }
+  if (followUp.status === 'in_progress') {
+    return 'in_progress';
+  }
+  return 'planned';
+}
+
+function buildMeetingDecisionDescription(
+  decision: ProducerMeetingDecisionItem,
+  planning: ProducerProjectPlanning,
+): string {
+  const parts = [
+    planning.meetingWorkspace.sessionLabel?.trim(),
+    decision.owner?.trim() ? `Ansvarlig: ${decision.owner.trim()}` : null,
+    decision.notes?.trim(),
+  ].filter((value): value is string => Boolean(value && value.length > 0));
+  return parts.join(' · ');
+}
+
+function buildMeetingFollowUpDescription(
+  followUp: ProducerMeetingFollowUpItem,
+  planning: ProducerProjectPlanning,
+): string {
+  const parts = [
+    planning.meetingWorkspace.sessionLabel?.trim(),
+    followUp.owner?.trim() ? `Ansvarlig: ${followUp.owner.trim()}` : null,
+    followUp.notes?.trim(),
+  ].filter((value): value is string => Boolean(value && value.length > 0));
+  return parts.join(' · ');
+}
+
+function buildMeetingDecisionReviewPayload(
+  decision: ProducerMeetingDecisionItem,
+  planning: ProducerProjectPlanning,
+): CreateProducerReviewInput {
+  const phase = getMeetingPhase(decision.phase);
+  return {
+    reviewType: MEETING_DECISION_REVIEW_TYPE,
+    title: decision.title.trim(),
+    description: buildMeetingDecisionDescription(decision, planning) || undefined,
+    targetEntityType: MEETING_DECISION_ENTITY_TYPE,
+    targetEntityId: decision.id,
+    dueAt: decision.dueAt ?? undefined,
+    metadata: {
+      source: MEETING_WORKSPACE_SOURCE,
+      meetingItemType: 'decision',
+      meetingItemId: decision.id,
+      meetingStatus: planning.meetingWorkspace.status,
+      meetingSessionLabel: planning.meetingWorkspace.sessionLabel ?? null,
+      focusedPhase: phase,
+      phase,
+      clientVisible: true,
+      owner: decision.owner ?? null,
+      activeMeetUrl: planning.meetingWorkspace.activeMeetUrl ?? null,
+      linkedEntityType: decision.linkedEntityType ?? null,
+      linkedEntityId: decision.linkedEntityId ?? null,
+    },
+  };
+}
+
+function buildMeetingDecisionTimelinePayload(
+  decision: ProducerMeetingDecisionItem,
+  planning: ProducerProjectPlanning,
+  sortOrder: number,
+): CreateProducerTimelineItemInput {
+  const phase = getMeetingPhase(decision.phase);
+  return {
+    phase,
+    title: `Møtebeslutning · ${decision.title.trim()}`,
+    description: buildMeetingDecisionDescription(decision, planning) || undefined,
+    dueAt: decision.dueAt ?? undefined,
+    status: getMeetingDecisionTimelineStatus(decision),
+    linkedEntityType: MEETING_DECISION_ENTITY_TYPE,
+    linkedEntityId: decision.id,
+    sortOrder,
+    metadata: {
+      source: MEETING_WORKSPACE_SOURCE,
+      meetingItemType: 'decision',
+      meetingItemId: decision.id,
+      meetingStatus: planning.meetingWorkspace.status,
+      meetingSessionLabel: planning.meetingWorkspace.sessionLabel ?? null,
+      focusedPhase: phase,
+      phase,
+      owner: decision.owner ?? null,
+      clientVisible: false,
+      activeMeetUrl: planning.meetingWorkspace.activeMeetUrl ?? null,
+      linkedEntityType: decision.linkedEntityType ?? null,
+      linkedEntityId: decision.linkedEntityId ?? null,
+    },
+  };
+}
+
+function buildMeetingFollowUpTimelinePayload(
+  followUp: ProducerMeetingFollowUpItem,
+  planning: ProducerProjectPlanning,
+  sortOrder: number,
+): CreateProducerTimelineItemInput {
+  const phase = getMeetingPhase(followUp.phase);
+  return {
+    phase,
+    title: `Møteoppfølging · ${followUp.title.trim()}`,
+    description: buildMeetingFollowUpDescription(followUp, planning) || undefined,
+    dueAt: followUp.dueAt ?? undefined,
+    status: getMeetingFollowUpTimelineStatus(followUp),
+    linkedEntityType: MEETING_FOLLOW_UP_ENTITY_TYPE,
+    linkedEntityId: followUp.id,
+    sortOrder,
+    metadata: {
+      source: MEETING_WORKSPACE_SOURCE,
+      meetingItemType: 'follow_up',
+      meetingItemId: followUp.id,
+      meetingStatus: planning.meetingWorkspace.status,
+      meetingSessionLabel: planning.meetingWorkspace.sessionLabel ?? null,
+      focusedPhase: phase,
+      phase,
+      owner: followUp.owner ?? null,
+      activeMeetUrl: planning.meetingWorkspace.activeMeetUrl ?? null,
+      linkedEntityType: followUp.linkedEntityType ?? null,
+      linkedEntityId: followUp.linkedEntityId ?? null,
+    },
+  };
+}
+
+function isTimelineEquivalentToPayload(
+  item: ProducerTimelineItem,
+  payload: CreateProducerTimelineItemInput,
+): boolean {
+  return item.phase === payload.phase
+    && item.title === payload.title
+    && (item.description ?? null) === (payload.description ?? null)
+    && (item.due_at ?? null) === (payload.dueAt ?? null)
+    && item.status === payload.status
+    && (item.linked_entity_type ?? null) === (payload.linkedEntityType ?? null)
+    && (item.linked_entity_id ?? null) === (payload.linkedEntityId ?? null)
+    && item.sort_order === (payload.sortOrder ?? item.sort_order)
+    && JSON.stringify(item.metadata ?? {}) === JSON.stringify(payload.metadata ?? {});
 }
 
 function isReviewEquivalentToPayload(
@@ -1994,9 +2210,15 @@ export const producerWorkflowService = {
   },
 
   async deleteTimelineItem(projectId: string, itemId: string): Promise<void> {
-    await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/timeline/${itemId}`, {
-      method: 'DELETE',
-    });
+    try {
+      await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/timeline/${itemId}`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      if (!isMissingProducerTimelineItemError(error)) {
+        throw error;
+      }
+    }
     emitProducerWorkflowEvent({
       projectId,
       domain: 'timeline',
@@ -2306,9 +2528,14 @@ export const producerWorkflowService = {
   },
 
   async deleteReview(projectId: string, reviewId: string): Promise<void> {
+    const timelineItems = await this.getTimeline(projectId);
     await producerWorkflowRequest<undefined>(`/projects/${projectId}/producer/reviews/${reviewId}`, {
       method: 'DELETE',
     });
+    const linkedTimelineItems = timelineItems.filter((item) => isReviewTimelineItem(item, reviewId));
+    await Promise.all(linkedTimelineItems.map(async (item) => {
+      await this.deleteTimelineItem(projectId, item.id);
+    }));
     emitProducerWorkflowEvent({
       projectId,
       domain: 'reviews',
@@ -2448,6 +2675,187 @@ export const producerWorkflowService = {
     }
 
     return this.syncPlanningClientReviews(projectId, planning);
+  },
+
+  async syncMeetingWorkspaceWorkflow(
+    projectId: string,
+    planning: ProducerProjectPlanning,
+  ): Promise<{ reviews: ProducerClientReview[]; timelineItems: ProducerTimelineItem[] }> {
+    const normalizedPlanning = normalizeProducerProjectPlanning({ producerPlanning: planning } as CastingProject);
+    const meetingWorkspace = normalizedPlanning.meetingWorkspace;
+    const currentReviews = await this.getReviews(projectId);
+    const currentTimelineItems = await this.getTimeline(projectId);
+
+    const managedReviews = currentReviews.filter((review) => isMeetingManagedReview(review));
+    const managedTimelineItems = currentTimelineItems.filter((item) => isMeetingManagedTimelineItem(item));
+    const reviewByMeetingItemId = new Map<string, ProducerClientReview>();
+    const timelineByMeetingKey = new Map<string, ProducerTimelineItem>();
+
+    for (const review of managedReviews) {
+      const meetingItemId = getMeetingItemIdFromMetadata(asRecord(review.metadata));
+      if (meetingItemId) {
+        reviewByMeetingItemId.set(meetingItemId, review);
+      }
+    }
+
+    for (const item of managedTimelineItems) {
+      const metadata = asRecord(item.metadata);
+      const meetingItemId = getMeetingItemIdFromMetadata(metadata);
+      const meetingItemType = readFirstNonEmptyString(metadata.meetingItemType);
+      if (meetingItemId && meetingItemType) {
+        timelineByMeetingKey.set(`${meetingItemType}:${meetingItemId}`, item);
+      }
+    }
+
+    const touchedDecisionIds = new Set<string>();
+    const touchedFollowUpIds = new Set<string>();
+    let changed = false;
+
+    for (const [decisionIndex, decision] of meetingWorkspace.decisions.entries()) {
+      const title = decision.title.trim();
+      if (!title) {
+        continue;
+      }
+      touchedDecisionIds.add(decision.id);
+
+      const existingReview = reviewByMeetingItemId.get(decision.id);
+      const existingInternalTimeline = timelineByMeetingKey.get(`decision:${decision.id}`);
+
+      if (decision.clientVisible) {
+        const reviewPayload = buildMeetingDecisionReviewPayload(decision, normalizedPlanning);
+        if (!existingReview) {
+          await this.createReviewWithTimeline(projectId, reviewPayload);
+          changed = true;
+        } else if (!isReviewEquivalentToPayload(existingReview, reviewPayload)) {
+          await this.updateReviewWithTimeline(projectId, existingReview.id, reviewPayload);
+          changed = true;
+        }
+
+        if (existingInternalTimeline) {
+          await this.deleteTimelineItem(projectId, existingInternalTimeline.id);
+          changed = true;
+        }
+        continue;
+      }
+
+      if (existingReview && shouldDeleteMeetingReview(existingReview)) {
+        await this.deleteReview(projectId, existingReview.id);
+        changed = true;
+      }
+
+      if (existingReview && !shouldDeleteMeetingReview(existingReview)) {
+        if (existingInternalTimeline) {
+          await this.deleteTimelineItem(projectId, existingInternalTimeline.id);
+          changed = true;
+        }
+        continue;
+      }
+
+      const timelinePayload = buildMeetingDecisionTimelinePayload(
+        decision,
+        normalizedPlanning,
+        decisionIndex,
+      );
+
+      if (!existingInternalTimeline) {
+        await this.createTimelineItem(projectId, timelinePayload);
+        changed = true;
+      } else if (!isTimelineEquivalentToPayload(existingInternalTimeline, timelinePayload)) {
+        await this.updateTimelineItem(projectId, existingInternalTimeline.id, timelinePayload);
+        changed = true;
+      }
+    }
+
+    for (const [followUpIndex, followUp] of meetingWorkspace.followUps.entries()) {
+      const title = followUp.title.trim();
+      if (!title) {
+        continue;
+      }
+      touchedFollowUpIds.add(followUp.id);
+      const existingTimeline = timelineByMeetingKey.get(`follow_up:${followUp.id}`);
+      const payload = buildMeetingFollowUpTimelinePayload(followUp, normalizedPlanning, followUpIndex);
+
+      if (!existingTimeline) {
+        await this.createTimelineItem(projectId, payload);
+        changed = true;
+      } else if (!isTimelineEquivalentToPayload(existingTimeline, payload)) {
+        await this.updateTimelineItem(projectId, existingTimeline.id, payload);
+        changed = true;
+      }
+    }
+
+    for (const review of managedReviews) {
+      const meetingItemId = getMeetingItemIdFromMetadata(asRecord(review.metadata));
+      if (!meetingItemId || touchedDecisionIds.has(meetingItemId)) {
+        continue;
+      }
+      if (!shouldDeleteMeetingReview(review)) {
+        continue;
+      }
+      await this.deleteReview(projectId, review.id);
+      changed = true;
+    }
+
+    for (const item of managedTimelineItems) {
+      const metadata = asRecord(item.metadata);
+      const meetingItemId = getMeetingItemIdFromMetadata(metadata);
+      const meetingItemType = readFirstNonEmptyString(metadata.meetingItemType);
+
+      if (meetingItemType === 'decision') {
+        if (!meetingItemId || !touchedDecisionIds.has(meetingItemId)) {
+          await this.deleteTimelineItem(projectId, item.id);
+          changed = true;
+        }
+        continue;
+      }
+
+      if (meetingItemType === 'follow_up' && (!meetingItemId || !touchedFollowUpIds.has(meetingItemId))) {
+        await this.deleteTimelineItem(projectId, item.id);
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      return {
+        reviews: currentReviews,
+        timelineItems: currentTimelineItems,
+      };
+    }
+
+    const [refreshedReviews, refreshedTimelineItems] = await Promise.all([
+      this.getReviews(projectId),
+      this.getTimeline(projectId),
+    ]);
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'reviews',
+      mutation: 'reloaded',
+      entityId: projectId,
+    });
+    emitProducerWorkflowEvent({
+      projectId,
+      domain: 'timeline',
+      mutation: 'reloaded',
+      entityId: projectId,
+    });
+    return {
+      reviews: refreshedReviews,
+      timelineItems: refreshedTimelineItems,
+    };
+  },
+
+  async ensureMeetingWorkspaceWorkflow(
+    projectId: string,
+    planning: ProducerProjectPlanning,
+  ): Promise<{ reviews: ProducerClientReview[]; timelineItems: ProducerTimelineItem[] }> {
+    if (!canCurrentSessionMutateProducerWorkflow()) {
+      return {
+        reviews: await this.getReviews(projectId),
+        timelineItems: await this.getTimeline(projectId),
+      };
+    }
+
+    return this.syncMeetingWorkspaceWorkflow(projectId, planning);
   },
 
   async syncBudgetReviewEconomyItems(projectId: string, review: ProducerClientReview): Promise<void> {

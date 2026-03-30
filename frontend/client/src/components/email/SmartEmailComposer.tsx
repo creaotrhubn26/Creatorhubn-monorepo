@@ -1,7 +1,6 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import {
   Dialog,
   DialogTitle,
@@ -13,7 +12,6 @@ import {
   Stack,
   Typography,
   Chip,
-  Avatar,
   FormControl,
   InputLabel,
   Select,
@@ -22,7 +20,6 @@ import {
   FormControlLabel,
   Divider,
   Paper,
-  Grid,
   IconButton,
   Tooltip,
   Alert,
@@ -34,11 +31,7 @@ import {
   Schedule as ScheduleIcon,
   Article as TemplateIcon,
   Person as PersonIcon,
-  Business as BusinessIcon,
-  Event as EventIcon,
   AutoAwesome as AutoAwesomeIcon,
-  Image as ImageIcon,
-  Palette as PaletteIcon,
   Check as CheckIcon,
   FormatBold as BoldIcon,
   FormatItalic as ItalicIcon,
@@ -46,7 +39,6 @@ import {
   FormatListBulleted as BulletListIcon,
   FormatListNumbered as NumberListIcon,
   Link as LinkIcon,
-  FormatSize as FontSizeIcon,
   Settings as SettingsIcon,
   PhotoLibrary as GalleryIcon,
   DesignServices as DesignIcon,
@@ -63,6 +55,7 @@ interface SmartEmailComposerProps {
   userId: string;
   initialTo?: string;
   initialSubject?: string;
+  initialBody?: string;
   replyToEmail?: any
 }
 
@@ -88,6 +81,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
   userId,
   initialTo = '',
   initialSubject = '',
+  initialBody = '',
   replyToEmail
 }) => {
   const [emailData, setEmailData] = useState({
@@ -95,7 +89,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
     cc: '',
     bcc: '',
     subject: initialSubject,
-    body: '',
+    body: initialBody,
     projectId: '',
     template: '',
     priority: 'medium',
@@ -137,8 +131,21 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
   }
 }, [replyToEmail, open]);
 
+  useEffect(() => {
+    if (!open || replyToEmail) {
+      return;
+    }
+
+    setEmailData((prev) => ({
+      ...prev,
+      to: initialTo,
+      subject: initialSubject,
+      body: initialBody,
+    }));
+  }, [initialBody, initialSubject, initialTo, open, replyToEmail]);
+
   // Fetch email templates
-  const { data: templates = [, ],} = useQuery({
+  const { data: templates = [] } = useQuery({
     queryKey: ['/api/emails/templates', profession],
     queryFn: async () => {
       const response = await apiRequest(`/api/emails/templates?profession=${profession}`);
@@ -148,7 +155,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
 });
 
   // Fetch projects for linking
-  const { data: projects = [, ],} = useQuery({
+  const { data: projects = [] } = useQuery({
     queryKey: ['/api/dashboard', profession, userId],
     queryFn: async () => {
       const response = await apiRequest(`/api/dashboard/${profession}/${userId}`);
@@ -158,7 +165,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
 });
 
   // Fetch project galleries when project is selected
-  const { data: projectGalleries = [, ],} = useQuery({
+  const { data: projectGalleries = [] } = useQuery({
     queryKey: ['/api/showcase/project', emailData.projectId],
     queryFn: async () => {
       if (!emailData.projectId) return [];
@@ -173,15 +180,14 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
     mutationFn: async (data: typeof emailData) => {
       return apiRequest('/api/emails/smart/send', {
         method: 'POST',
-        headers: { ...auth, 'Content-Type' : 'application/json' },
-        body: JSON.stringify({
+        body: {
           ...data,
           profession,
           userId,
           timestamp: new Date().toISOString(),
           isReply: !!replyToEmail,
           originalEmailId: replyToEmail?.id
-    })
+        }
     });
   },
     onSuccess: () => {
@@ -214,7 +220,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
   // Gallery functions
   const handleAttachGallery = (gallery: any) => {
     const galleryInfo = {
-      id: gallery.d,
+      id: gallery.id,
       title: gallery.title,
       url: `${window.location.origin}/showcase/${gallery.id}`,
       settings: gallery
@@ -251,7 +257,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
     if (template) {
       setEmailData(prev => ({
         ...prev,
-        template: templated,
+        template: templateId,
         subject: template.subject,
         body: template.body
   }));
@@ -262,15 +268,14 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
     try {
       const response = await apiRequest('/api/emails/generate-content', {
         method: 'POST',
-        headers: { ...auth, 'Content-Type' : 'application/json' },
-        body: JSON.stringify({
+        body: {
           profession,
-          recipient: emailData.o,
+          recipient: emailData.to,
           subject: emailData.subject,
           projectId: emailData.projectId,
           context: replyToEmail ? 'reply' : 'new',
           originalEmail: replyToEmail?.body || replyToEmail?.originalBody || '' // Send original email for intelligent analysis
-    })
+        }
     });
       
       if (response?.body) {
@@ -321,7 +326,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
     const end = textAreaRef.selectionEnd;
     const selectedText = emailData.body.substring(start, end);
     
-    let formattedText = ', ';
+    let formattedText = selectedText;
     
     switch (format) {
       case 'bold':
@@ -340,11 +345,14 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
         formattedText = `\n1. ${selectedText || 'punkt 1'}\n2. punkt 2\n3. punkt 3\n`;
         break;
       case 'link':
-        const url = value || 'https://eksempel.no';
-        formattedText = `[${selectedText || 'lenketekst'}](${url})`;
+        {
+          const url = value || 'https://eksempel.no';
+          formattedText = `[${selectedText || 'lenketekst'}](${url})`;
+        }
         break;
-      default: formattedText = selectedText;
-}
+      default:
+        formattedText = selectedText;
+    }
     
     const newBody = emailData.body.substring(0, start) + formattedText + emailData.body.substring(end);
     setEmailData(prev => ({ ...prev, body: newBody }));
@@ -360,7 +368,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
 };
 
   const insertTemplate = (templateType: string) => {
-    let template = ', ';
+    let template = '';
     
     switch (templateType) {
       case 'signature':
@@ -503,7 +511,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
                     label="Velg Mal"
                   >
                     {templates.map((template: EmailTemplate) => (
-                      <MenuItem key={template.d} value={template.id}>
+                      <MenuItem key={template.id} value={template.id}>
                         <Stack>
                           <Typography variant="body2" fontWeight={600}>
                             {template.name}
@@ -573,7 +581,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
                   >
                     <MenuItem value="">Ingen prosjekt</MenuItem>
                     {projects.map((project: any) => (
-                      <MenuItem key={project.d} value={project.id}>
+                      <MenuItem key={project.id} value={project.id}>
                         {project.title || project.name}
                       </MenuItem>
                     ))}
@@ -639,7 +647,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
                       <em>Ingen prosjekt valgt</em>
                     </MenuItem>
                     {projects.map((project: any) => (
-                      <MenuItem key={project.d} value={project.id}>
+                      <MenuItem key={project.id} value={project.id}>
                         <Stack>
                           <Typography variant="body2" fontWeight={600}>
                             {project.name || project.clientName}
@@ -663,7 +671,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
                 Formatering: </Typography>
               
               <Tooltip title="Fet skrift">
-                <IconButton size="small" onClick={() => applyFormatting(', ')}>
+                <IconButton size="small" onClick={() => applyFormatting('bold')}>
                   <BoldIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -702,13 +710,24 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
               
               <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
 
+              <Button
+                size="small"
+                variant={isRichText ? 'contained' : 'outlined'}
+                onClick={() => setIsRichText((prev) => !prev)}
+                sx={{ fontSize: '0.7rem', minWidth: 'auto', px: 1 }}
+              >
+                {isRichText ? 'Preview på' : 'Preview av'}
+              </Button>
+
+              <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+
               <Typography variant="caption" sx={{ mr: 1, color: '#666' }}>
                 Maler: </Typography>
 
               <Button
                 size="small"
                 variant="text"
-                onClick={() => insertTemplate(', ')}
+                onClick={() => insertTemplate('signature')}
                 sx={{ fontSize: '0.7rem', minWidth: 'auto', px:  1 }}
               >
                 Signatur
@@ -772,7 +791,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
                 
                 <Stack direction="row" spacing={1} flexWrap="wrap">
                   {projectGalleries.map((gallery: any) => (
-                    <Stack key={gallery.d} direction="row" spacing={1} alignItems="center">
+                    <Stack key={gallery.id} direction="row" spacing={1} alignItems="center">
                       <Button
                         size="small"
                         variant="outlined"
@@ -808,7 +827,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
                     <Stack spacing={1}>
                       {attachedGalleries.map((gallery: any) => (
                         <Chip
-                          key={gallery.d}
+                          key={gallery.id}
                           label={`📸 ${gallery.title}`}
                           onDelete={() => removeAttachedGallery(gallery.id)}
                           onClick={() => handleGallerySettings(gallery.settings)}
@@ -868,34 +887,36 @@ ${getProfessionTerms().signature}
             />
             
             {/* Rich Text Preview */}
-            <Paper sx={{ p: 2, mt: 1, bgcolor: '#f8f9fa', border: '1px solid #e9ecef',  ...theming.getThemedCardSx() }}>
-              <Typography variant="caption" color="text.secondary" gutterBottom>
-                Forhåndsvisning (slik mottaker ser den):
-              </Typography>
-              <Box sx={{
-                bgcolor: 'white',
-                p:  2,
-                borderRadius:  1,
-                border: '1px solid #ddd',
-                maxHeight: 10,
-                overflow: 'auto',
-                fontFamily: 'Arial, sans-serif',
-                fontSize: '0.9rem',
-                lineHeight: 1.5,
-                whiteSpace: 'pre-wrap',
-                '& strong': { fontWeight: 'bold' },
-                '& em': { fontStyle: 'italic' },
-                '& u': { textDecoration: 'underline' }
-            }}>
-                {emailData.body
-                  .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                  .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                  .replace(/<u>(.*?)<\/u>/g, '<u>$1</u>')
-                  .replace(/^\• (.+)/gm, '• $1')
-                  .replace(/^(\d+)\. (.+)/gm, '$1. $2') || 'Din melding vil vises her...'
-              }
-              </Box>
-            </Paper>
+            {isRichText && (
+              <Paper sx={{ p: 2, mt: 1, bgcolor: '#f8f9fa', border: '1px solid #e9ecef',  ...theming.getThemedCardSx() }}>
+                <Typography variant="caption" color="text.secondary" gutterBottom>
+                  Forhåndsvisning (slik mottaker ser den):
+                </Typography>
+                <Box sx={{
+                  bgcolor: 'white',
+                  p:  2,
+                  borderRadius:  1,
+                  border: '1px solid #ddd',
+                  maxHeight: 320,
+                  overflow: 'auto',
+                  fontFamily: 'Arial, sans-serif',
+                  fontSize: '0.9rem',
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                  '& strong': { fontWeight: 'bold' },
+                  '& em': { fontStyle: 'italic' },
+                  '& u': { textDecoration: 'underline' }
+              }}>
+                  {emailData.body
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/<u>(.*?)<\/u>/g, '<u>$1</u>')
+                    .replace(/^• (.+)/gm, '• $1')
+                    .replace(/^(\d+)\. (.+)/gm, '$1. $2') || 'Din melding vil vises her...'
+                }
+                </Box>
+              </Paper>
+            )}
 
             {/* Suggestion Overlay */}
             {showSuggestion && suggestion && (
@@ -1015,7 +1036,7 @@ ${getProfessionTerms().signature}
       <QuickWorklogAccess
         context="email"
         contextData={{
-          clientName: emailData.o,
+          clientName: emailData.to,
           subject: emailData.subject,
           projectId: emailData.projectId
     }}

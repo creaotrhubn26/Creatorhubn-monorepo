@@ -67,6 +67,18 @@ interface ToolCard {
   badge: string;
 }
 
+interface ExperienceCard {
+  titleNo: string;
+  titleEn: string;
+  descriptionNo: string;
+  descriptionEn: string;
+  route: string;
+  actionNo: string;
+  actionEn: string;
+  icon: React.ReactNode;
+  badge: string;
+}
+
 const PLACEHOLDER_BACKDROPS = [
   "linear-gradient(145deg, rgba(24,28,38,0.88), rgba(14,17,24,0.95)), radial-gradient(circle at 80% 20%, rgba(245,165,35,0.35), rgba(0,0,0,0))",
   "linear-gradient(145deg, rgba(20,24,33,0.9), rgba(12,15,21,0.96)), radial-gradient(circle at 20% 80%, rgba(245,165,35,0.28), rgba(0,0,0,0))",
@@ -250,6 +262,35 @@ const NEW_STUDIO_TOOLS: ToolCard[] = [
     route: "/academy/instructors",
     icon: <Groups />,
     badge: "ROLES",
+  },
+];
+
+const ROLE_EXPERIENCES: ExperienceCard[] = [
+  {
+    titleNo: "Studentvisning",
+    titleEn: "Student Experience",
+    descriptionNo:
+      "Mine kurs, neste ferdighet, bokmerker, notater, progresjon og sertifikater i en ren læringsflate.",
+    descriptionEn:
+      "My courses, next skill, bookmarks, notes, progress, and certificates in a focused learner interface.",
+    route: "/academy/student-dashboard",
+    actionNo: "Åpne studentsiden",
+    actionEn: "Open student view",
+    icon: <OndemandVideo />,
+    badge: "STUDENT",
+  },
+  {
+    titleNo: "Instruktørstudio",
+    titleEn: "Instructor Studio",
+    descriptionNo:
+      "Kursgrunnlag, ferdighetsbygger, analytics, cohorts og publisering samlet i produksjonsflaten for academy.",
+    descriptionEn:
+      "Course foundation, skills builder, analytics, cohorts, and publishing gathered in the academy production surface.",
+    route: "/academy-dashboard",
+    actionNo: "Åpne instruktørstudio",
+    actionEn: "Open instructor studio",
+    icon: <MovieCreation />,
+    badge: "INSTRUCTOR",
   },
 ];
 
@@ -634,8 +675,8 @@ function AcademyLandingPage() {
                   }}
                 >
                   {tt(
-                    "En moderne landingsside for læring: utforsk kurs, oppdag funksjoner og start reisen din i Academy.",
-                    "A modern learning landing page: explore courses, discover features, and start your Academy journey.",
+                    "Academy har nå to tydelige innganger: en ren studentflate for læring og et instruktørstudio for bygging, drift og publisering.",
+                    "Academy now has two clear entry points: a focused learner interface and an instructor studio for building, operations, and publishing.",
                   )}
                 </Typography>
                 <Stack
@@ -681,8 +722,8 @@ function AcademyLandingPage() {
                     startIcon={<PlayArrow />}
                     onClick={() =>
                       goTo(
-                        "/academy-dashboard",
-                        "academy_landing_open_dashboard",
+                        "/academy/student-dashboard",
+                        "academy_landing_open_student_dashboard",
                       )
                     }
                     sx={{
@@ -698,14 +739,14 @@ function AcademyLandingPage() {
                       boxShadow: "0 8px 24px rgba(245,166,35,0.38)",
                     }}
                   >
-                    {tt("Utforsk Academy", "Explore Academy")}
+                    {tt("Åpne studentsiden", "Open student view")}
                   </Button>
                   <Button
                     variant="outlined"
                     onClick={() =>
                       goTo(
-                        "/academy/course-creator",
-                        "academy_landing_open_course_creator",
+                        "/academy-dashboard",
+                        "academy_landing_open_instructor_dashboard",
                       )
                     }
                     sx={{
@@ -716,7 +757,7 @@ function AcademyLandingPage() {
                       borderColor: "rgba(245,166,35,0.44)",
                     }}
                   >
-                    {tt("Bygg ditt første kurs", "Build your first course")}
+                    {tt("Åpne instruktørstudio", "Open instructor studio")}
                   </Button>
                   <Button
                     variant="outlined"
@@ -794,6 +835,83 @@ function AcademyLandingPage() {
               </Box>
             </Box>
           </Box>
+        </Box>
+
+        <Box
+          sx={{
+            mt: 2.4,
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", xl: "1fr 1fr" },
+            gap: 2,
+          }}
+        >
+          {ROLE_EXPERIENCES.map((item, index) => (
+            <Box
+              key={item.route}
+              sx={{
+                borderRadius: "12px",
+                border: `var(--academy-hairline-width, 1px) solid ${alpha("#f5a623", 0.2)}`,
+                background:
+                  index === 0
+                    ? "radial-gradient(circle at 85% 15%, rgba(245,166,35,0.18), rgba(0,0,0,0) 34%), rgba(7, 10, 16, 0.82)"
+                    : "radial-gradient(circle at 15% 15%, rgba(96,132,201,0.18), rgba(0,0,0,0) 32%), rgba(7, 10, 16, 0.82)",
+                p: 2,
+              }}
+            >
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                <Avatar
+                  sx={{
+                    width: 34,
+                    height: 34,
+                    bgcolor: "rgba(245,166,35,0.18)",
+                    color: "#ffd38c",
+                    border:
+                      "var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)",
+                  }}
+                >
+                  {item.icon}
+                </Avatar>
+                <Chip
+                  label={item.badge}
+                  size="small"
+                  sx={{
+                    color: "#fbe6be",
+                    borderColor: "rgba(245,166,35,0.35)",
+                    background: "rgba(245,166,35,0.16)",
+                  }}
+                />
+              </Stack>
+
+              <Typography
+                sx={{
+                  fontFamily: "Barlow Condensed, sans-serif",
+                  fontSize: { xs: "1.7rem", md: "2rem" },
+                  lineHeight: 1,
+                }}
+              >
+                {tt(item.titleNo, item.titleEn)}
+              </Typography>
+              <Typography sx={{ mt: 0.7, opacity: 0.76, minHeight: 54 }}>
+                {tt(item.descriptionNo, item.descriptionEn)}
+              </Typography>
+
+              <Button
+                onClick={() => goTo(item.route, "academy_landing_open_role_entry")}
+                endIcon={<ArrowForward />}
+                sx={{
+                  mt: 1.1,
+                  textTransform: "none",
+                  color: "#f8f1e7",
+                  border:
+                    "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)",
+                  borderRadius: "8px",
+                  px: 1.6,
+                }}
+              >
+                {tt(item.actionNo, item.actionEn)}
+              </Button>
+            </Box>
+          ))}
         </Box>
 
         <Box

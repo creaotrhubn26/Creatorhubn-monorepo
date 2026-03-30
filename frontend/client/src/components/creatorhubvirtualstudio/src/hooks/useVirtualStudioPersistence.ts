@@ -8,11 +8,19 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { logger } from '../core/services/logger';
 
 const log = logger.module('Persistence');
-import type { Scene } from '../types/scene';
+import type { Scene } from '../core/models/scene';
 import type { ACESConfig } from '../core/services/acesService';
-import type { ASCCDLConfig } from '../core/services/ascCDLService';
-import type { GIConfig } from '../core/services/globalIlluminationService';
+import type { ASCCDLParams } from '../core/services/ascCDLService';
 import type { SpectralCRIMetrics } from '../core/services/spectralCRIService';
+
+type ASCCDLConfig = ASCCDLParams;
+
+interface GIConfig {
+  enabled?: boolean;
+  bounceCount?: number;
+  sampleCount?: number;
+  intensity?: number;
+}
 
 // ============================================================================
 // Types
@@ -337,4 +345,3 @@ export function useAutoSave(
 
   return { save };
 }
-

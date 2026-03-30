@@ -398,7 +398,7 @@ export function SmartInteractionTracker({ isEnabled }: SmartInteractionTrackerPr
               placeholder="Beskriv hva som gikk galt eller hva som var forvirrende..."
               sx={{
                 '& .MuiOutlinedInput-root': {
-                  backgroundColor: 'rgba(25,255,255,0.5)'
+                  backgroundColor: 'rgba(255,255,255,0.34)'
               }
             }}
             />

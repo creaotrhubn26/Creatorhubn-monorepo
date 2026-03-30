@@ -338,7 +338,7 @@ export default function EnhancedTimeline({
             top:  0,
             bottom:  0,
             width:  1,
-            bgcolor: 'rgba(25,255,255,0.2)',
+            bgcolor: 'rgba(255,255,255,0.16)',
             pointerEvents: 'none'}}
         />
       );
@@ -393,7 +393,7 @@ export default function EnhancedTimeline({
               bottom:  0,
               width:  4,
               cursor: 'ew-resize',
-              bgcolor: 'rgba(25,255,255,0.5)', '&:hover': { bgcolor: '#fff'}}}
+              bgcolor: 'rgba(255,255,255,0.34)', '&:hover': { bgcolor: '#fff'}}}
             onMouseDown={(e) => {
               e.stopPropagation();
               handleClipMouseDown(e, clip.id, 'resize-left');
@@ -407,7 +407,7 @@ export default function EnhancedTimeline({
               bottom:  0,
               width:  4,
               cursor: 'ew-resize',
-              bgcolor: 'rgba(25,255,255,0.5)', '&:hover': { bgcolor: '#fff'}}}
+              bgcolor: 'rgba(255,255,255,0.34)', '&:hover': { bgcolor: '#fff'}}}
             onMouseDown={(e) => {
               e.stopPropagation();
               handleClipMouseDown(e, clip.id, 'resize-right');

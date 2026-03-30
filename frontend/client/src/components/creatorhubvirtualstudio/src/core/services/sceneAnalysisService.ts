@@ -7,7 +7,7 @@
  * References:
  * - ASC Manual, 10th Edition
  * - "Film Lighting" by Kris Malkiewicz
- * - "Set Lighting Technician, 's Handbook" by Harry C. Box
+ * - "Set Lighting Technician's Handbook" by Harry C. Box
  */
 
 import type { LightSourceProperties } from '../types';
@@ -45,6 +45,8 @@ export interface SceneAnalysisResult {
     colorConsistency: number;
   };
 }
+
+type SceneAnalysisSummary = SceneAnalysisResult['summary'];
 
 class SceneAnalysisService {
   /**
@@ -184,7 +186,7 @@ class SceneAnalysisService {
   /**
    * Calculate overall score
    */
-  private calculateScore(issues: SceneIssue[], summary: any): number {
+  private calculateScore(issues: SceneIssue[], summary: SceneAnalysisSummary): number {
     let score = 100;
 
     // Deduct for issues
@@ -444,4 +446,3 @@ class SceneAnalysisService {
 }
 
 export const sceneAnalysisService = new SceneAnalysisService();
-

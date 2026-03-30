@@ -33,7 +33,7 @@ class UniversalFileFormatSupport {
   private readonly SUPPORTED_FORMATS = new Map([
     // Canon formats
     [
-      '.cr2, ',
+      '.cr2',
       {
         mimeType: 'image/x-canon-cr',
         manufacturer: 'Canon',
@@ -1264,12 +1264,15 @@ class UniversalFileFormatSupport {
    */
   private getSimilarFormats(extension: string): string[] {
     const allFormats = Array.from(this.SUPPORTED_FORMATS.keys());
+    const normalizedExtension = extension.toLowerCase();
     return allFormats
-      .filter(
-        (format) =>
-          format.substring, (3) === extension.substring(1, 3) ||
-          format.substring(1, 2) === extension.substring(1, 2),
-      )
+      .filter((candidateFormat) => {
+        const candidatePrefix = candidateFormat.substring(1, 3);
+        const extensionPrefix = normalizedExtension.substring(1, 3);
+        const candidateFirstChar = candidateFormat.substring(1, 2);
+        const extensionFirstChar = normalizedExtension.substring(1, 2);
+        return candidatePrefix === extensionPrefix || candidateFirstChar === extensionFirstChar;
+      })
       .slice(0, 3);
 }
 
@@ -1279,7 +1282,7 @@ class UniversalFileFormatSupport {
   getAcceptAttribute(): string {
     const extensions = this.getSupportedExtensions();
     const mimeTypes = Array.from(this.SUPPORTED_FORMATS.values()).map((f) => f.mimeType);
-    return [...extensions, ...mimeTypes].join('');
+    return [...extensions, ...mimeTypes.filter((mimeType): mimeType is string => Boolean(mimeType))].join(',');
 }
 
   /**

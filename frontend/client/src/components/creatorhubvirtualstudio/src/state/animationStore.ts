@@ -9,8 +9,13 @@
  */
 
 import { create } from 'zustand';
+import type { Scene } from '../core/models/scene';
 
 export type EasingFunction = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bezier';
+export type AnimatableValue =
+  | number
+  | number[]
+  | { [key: string]: AnimatableValue };
 
 export interface Keyframe {
   id: string;
@@ -18,7 +23,7 @@ export interface Keyframe {
   nodeId: string;
   property: string; // e.g.'transform.position.x', 'light.power','camera.focalLength',
 
-  value: unknown;
+  value: AnimatableValue;
   easing: EasingFunction;
   // For bezier curves
   bezierControlPoints?: [number, number, number, number];
@@ -89,8 +94,8 @@ interface AnimationActions {
   toggleSnapToFrames: () => void;
 
   // Animation
-  getValueAtTime: (nodeId: string, property: string, time: number) => any;
-  applyAnimationAtTime: (time: number, scene: unknown) => any;
+  getValueAtTime: (nodeId: string, property: string, time: number) => AnimatableValue | null;
+  applyAnimationAtTime: (time: number, scene: Scene) => Scene;
 }
 
 type AnimationStore = TimelineState & AnimationActions;
@@ -99,12 +104,12 @@ type AnimationStore = TimelineState & AnimationActions;
  * Interpolate between two values
  */
 function interpolate(
-  startValue: any,
-  endValue: any,
+  startValue: AnimatableValue,
+  endValue: AnimatableValue,
   progress: number,
   easing: EasingFunction,
   controlPoints?: [number, number, number, number],
-): any {
+): AnimatableValue {
   // Apply easing function
   let easedProgress = progress;
 
@@ -146,12 +151,27 @@ function interpolate(
   }
 
   // Object interpolation (for nested properties)
-  if (typeof startValue === 'object' && typeof endValue ==='object') {
-    const result: unknown = {};
-    for (const key in startValue) {
+  if (
+    typeof startValue === 'object' &&
+    startValue !== null &&
+    !Array.isArray(startValue) &&
+    typeof endValue === 'object' &&
+    endValue !== null &&
+    !Array.isArray(endValue)
+  ) {
+    const result: { [key: string]: AnimatableValue } = {};
+    const startEntries = Object.entries(startValue);
+
+    for (const [key, startChild] of startEntries) {
+      const endChild = endValue[key];
+      if (endChild === undefined) {
+        result[key] = startChild;
+        continue;
+      }
+
       result[key] = interpolate(
-        startValue[key],
-        endValue[key],
+        startChild,
+        endChild,
         easedProgress,
         easing,
         controlPoints,
@@ -167,21 +187,33 @@ function interpolate(
 /**
  * Get value from nested property path
  */
-function getNestedValue(obj: any, path: string): any {
-  return path.split('.').reduce((current, key) => current?.[key], obj);
+function getNestedValue(obj: object, path: string): unknown {
+  return path.split('.').reduce<unknown>((current, key) => {
+    if (typeof current === 'object' && current !== null) {
+      return Reflect.get(current, key);
+    }
+
+    return undefined;
+  }, obj);
 }
 
 /**
  * Set value at nested property path
  */
-function setNestedValue(obj: any, path: string, value: unknown): any {
+function setNestedValue<T extends object>(obj: T, path: string, value: AnimatableValue): T {
   const keys = path.split('.');
   const lastKey = keys.pop()!;
-  const target = keys.reduce((current, key) => {
-    if (!current[key]) current[key] = {};
-    return current[key];
+
+  const target = keys.reduce<object>((current, key) => {
+    const next = Reflect.get(current, key);
+    if (typeof next !== 'object' || next === null || Array.isArray(next)) {
+      Reflect.set(current, key, {});
+    }
+
+    return Reflect.get(current, key) as object;
   }, obj);
-  target[lastKey] = value;
+
+  Reflect.set(target, lastKey, value);
   return obj;
 }
 
@@ -371,7 +403,7 @@ export const useAnimationStore = create<AnimationStore>((set, get) => ({
 
   applyAnimationAtTime: (time, scene) => {
     const { tracks } = get();
-    const newScene = JSON.parse(JSON.stringify(scene)); // Deep clone
+    const newScene = JSON.parse(JSON.stringify(scene)) as Scene;
 
     for (const track of tracks) {
       if (!track.enabled) continue;
@@ -380,8 +412,13 @@ export const useAnimationStore = create<AnimationStore>((set, get) => ({
       if (value === null) continue;
 
       // Find node in scene
-      const node = newScene.nodes.find((n: unknown) => n.id === track.nodeId);
+      const node = newScene.nodes.find((sceneNode) => sceneNode.id === track.nodeId);
       if (!node) continue;
+
+      const currentValue = getNestedValue(node, track.property);
+      if (JSON.stringify(currentValue) === JSON.stringify(value)) {
+        continue;
+      }
 
       // Apply value to node
       setNestedValue(node, track.property, value);

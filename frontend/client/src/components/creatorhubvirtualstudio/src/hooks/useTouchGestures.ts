@@ -118,7 +118,7 @@ const getCenter = (p1: Point, p2: Point): Point => ({
   y: (p1.y + p2.y) / 2,
 });
 
-const getTouchPoint = (touch: Touch): Point => ({
+const getTouchPoint = (touch: Pick<Touch, 'clientX' | 'clientY'>): Point => ({
   x: touch.clientX,
   y: touch.clientY,
 });
@@ -533,4 +533,3 @@ export const useLongPressMenu = (options: UseLongPressMenuOptions) => {
 };
 
 export default useTouchGestures;
-

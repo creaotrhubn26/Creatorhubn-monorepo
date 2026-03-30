@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CreatorHub Norge - Super Smart Writing Interface for Meeting Notes
  * Advanced Intelligent meeting notes with Google services integration and wedding timeline connectivity

@@ -107,7 +107,7 @@ export class AnimationRecorder {
 
     // Initialize tracks
     if (fullConfig.recordPosition) {
-      session.tracks.set('position,', []);
+      session.tracks.set('position', []);
     }
     if (fullConfig.recordRotation) {
       session.tracks.set('rotation', []);

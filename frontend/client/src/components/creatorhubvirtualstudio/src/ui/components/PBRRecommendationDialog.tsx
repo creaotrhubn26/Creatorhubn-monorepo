@@ -20,11 +20,9 @@ import {
   Grid2 as Grid,
   Card,
   CardContent,
-  CardMedia,
   CardActionArea,
   Chip,
   Checkbox,
-  FormControlLabel,
   Divider,
   IconButton,
   Stack,
@@ -46,16 +44,14 @@ import {
   Star,
   ExpandMore,
   Add,
-  Remove,
   ShoppingCart,
   AutoAwesome,
 } from '@mui/icons-material';
-import type {
-  PBRRecommendation,
-  PBRItem,
-  CharacterContext} from '../../core/services/pbrRecommendationService';
 import {
-  getPBRRecommendations
+  getPBRRecommendations,
+  type PBRRecommendation,
+  type PBRItem,
+  type CharacterContext,
 } from '../../core/services/pbrRecommendationService';
 import type { CachedActor } from '../../core/services/actorModelCache';
 import type { HDRIRecommendation } from '../../core/services/hdriRecommendationService';
@@ -107,10 +103,20 @@ export const PBRRecommendationDialog: React.FC<PBRRecommendationDialogProps> = (
   // Get recommendations based on character and HDRI environment
   const recommendations = useMemo(() => {
     if (!actor) return [];
-    
+
+    const tags = [
+      actor.category,
+      actor.description,
+      actor.costume?.clothingStyle,
+      ...(actor.costume?.accessories || []),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .flatMap((value) => value.toLowerCase().split(/[\s,/]+/))
+      .filter((value) => value.length > 2);
+
     const characterContext: CharacterContext = {
       name: actor.name,
-      tags: actor.metadata?.tags || [],
+      tags,
       genre: actor.metadata?.genre,
       mood: actor.metadata?.mood,
     };
@@ -226,7 +232,7 @@ export const PBRRecommendationDialog: React.FC<PBRRecommendationDialogProps> = (
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ display: 'block' }}>
             Add PBR elements for {actor.name}
-            {lighting && ` with ${lighting.name}`}
+            {hdri && ` in ${hdri.name}`}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} alignItems="center">
@@ -255,7 +261,7 @@ export const PBRRecommendationDialog: React.FC<PBRRecommendationDialogProps> = (
           <Typography variant="body2">
             Props and materials selected based on
             {actor.metadata?.genre && ` ${actor.metadata.genre}`} character
-            {lighting && ` and ${lighting.category} lighting`}
+            {hdri && ` and ${hdri.category} environment`}
           </Typography>
         </Alert>
 
@@ -336,6 +342,19 @@ export const PBRRecommendationDialog: React.FC<PBRRecommendationDialogProps> = (
                             justifyContent: 'center',
                             position: 'relative'}}
                         >
+                          <Box
+                            component="img"
+                            src={item.thumbnail}
+                            alt={item.name}
+                            sx={{
+                              position: 'absolute',
+                              inset: 0,
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              opacity: 0.22,
+                            }}
+                          />
                           {/* Type Icon */}
                           <Box sx={{ color: 'rgba(255,255,255,0.3)', fontSize: 40 }}>
                             {TYPE_ICONS[item.type]}
@@ -472,4 +491,3 @@ export const PBRRecommendationDialog: React.FC<PBRRecommendationDialogProps> = (
 };
 
 export default PBRRecommendationDialog;
-

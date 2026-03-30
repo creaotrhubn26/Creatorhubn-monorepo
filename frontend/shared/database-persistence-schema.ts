@@ -14,8 +14,7 @@ import {
   index,
   unique,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
@@ -156,7 +155,7 @@ export {
   type NewUserMetadata,
   type FeatureManagementAuditLog,
   type NewFeatureManagementAuditLog,
-} from '@server/db/schema/feature-management-schema';
+} from './feature-management-schema';
 
 // ============================================================================
 // AI VIDEO GENERATOR (Sora-like Text-to-Video)

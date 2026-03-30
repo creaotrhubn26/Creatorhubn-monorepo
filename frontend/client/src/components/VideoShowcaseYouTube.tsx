@@ -218,12 +218,12 @@ const VideoShowcaseYouTube: React.FC<VideoShowcaseYouTubeProps> = ({
               sx={{
                 justifyContent: 'flex-start',
                 color: item.active ? '#fff' : '#aaa',
-                bgcolor: item.active ? 'rgba(25,255,255,0.1)' : 'transparent',
+                bgcolor: item.active ? 'rgba(255,255,255,0.08)' : 'transparent',
                 textTransform: 'none',
                 width: '100%',
                 borderRadius:  2,
                 mb: 0.5,
-                py: 1.5, '&:hover': { bgcolor: 'rgba(25,255,255,0.1)',
+                py: 1.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.08)',
                   color: '#fff',
               }}}
             >
@@ -246,7 +246,7 @@ const VideoShowcaseYouTube: React.FC<VideoShowcaseYouTubeProps> = ({
                 gap:  2,
                 p:  1,
                 borderRadius:  2,
-                cursor: 'pointer','&:hover': { bgcolor: 'rgba(25,255,255,0.05)' }}}
+                cursor: 'pointer','&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }}}
             >
               <Avatar sx={{ width:  24, height: 24}} />
               <Typography variant="body2" sx={{ color: '#aaa', fontSize: '14px'}}>
@@ -269,20 +269,22 @@ const VideoShowcaseYouTube: React.FC<VideoShowcaseYouTubeProps> = ({
                 overflow: 'hidden',
                 mb:  2}}
             >
-              <CardMedia
-                component="div"
-                sx={{
-                  height: '65vh',
-                  background: featuredVideo.thumbnailPath
+                <CardMedia
+                  component="div"
+                  sx={{
+                    height: '65vh',
+                    background: featuredVideo.thumbnailPath
                     ? `url(${featuredVideo.thumbnailPath})`
                     : 'linear-gradient(135deg, #2d3748 0%, #4a5568 100%)',
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative'}}
-               sx={theming.getThemedCardSx()}>
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                    ...theming.getThemedCardSx(),
+                  }}
+                >
                 {/* Video overlay gradient */}
                 <Box
                   sx={{
@@ -298,7 +300,7 @@ const VideoShowcaseYouTube: React.FC<VideoShowcaseYouTubeProps> = ({
                 <IconButton
                   onClick={() => setIsPlaying(!isPlaying)}
                   sx={{
-                    bgcolor: 'rgba(25,255,255,0.9)','&:hover': { bgcolor: '#fff', transform: 'scale(1.1)',},
+                    bgcolor: alpha('#ffffff', 0.94),'&:hover': { bgcolor: '#fff', transform: 'scale(1.1)',},
                     width:  80,
                     height:  80,
                     transition: 'all 0.2'}}
@@ -324,7 +326,7 @@ const VideoShowcaseYouTube: React.FC<VideoShowcaseYouTubeProps> = ({
                     <Chip
                       label={featuredVideo.category || 'Video'}
                       sx={{
-                        bgcolor: 'rgba(25,255,255,0.2)',
+                        bgcolor: 'rgba(255,255,255,0.18)',
                         color: '#fff',
                         fontWeight: 'bold'}}
                     />
@@ -380,8 +382,11 @@ const VideoShowcaseYouTube: React.FC<VideoShowcaseYouTubeProps> = ({
                     textTransform: 'none',
                     fontWeight: 'bold',
                     borderRadius:  50,
-                    px: 3, '&:hover': { bgcolor: '#e0e0e0',}}}
-                 sx={theming.getThemedButtonSx()}>
+                    px: 3,
+                    '&:hover': { bgcolor: '#e0e0e0' },
+                    ...theming.getThemedButtonSx(),
+                  }}
+                >
                   Subscribe
                 </Button>
               </Box>
@@ -391,21 +396,21 @@ const VideoShowcaseYouTube: React.FC<VideoShowcaseYouTubeProps> = ({
                   onClick={() => featuredVideo && toggleLike(featuredVideo.id)}
                   sx={{
                     color: likedVideos.has(featuredVideo.id) ? '#ff4444' : '#fff',
-                    bgcolor: 'rgba(25,255,255,0.1)','&:hover': { bgcolor: 'rgba(25,255,255,0.2)' }}}
+                    bgcolor: 'rgba(255,255,255,0.12)','&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }}}
                 >
                   {likedVideos.has(featuredVideo.id) ? theming.getThemedIcon('favorite') : <FavoriteBorder />}
                 </IconButton>
                 <IconButton
                   sx={{
                     color: '#fff',
-                    bgcolor: 'rgba(25,255,255,0.1)','&:hover': { bgcolor: 'rgba(25,255,255,0.2)' }}}
+                    bgcolor: 'rgba(255,255,255,0.12)','&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }}}
                 >
                   {theming.getThemedIcon('share')}
                 </IconButton>
                 <IconButton
                   sx={{
                     color: '#fff',
-                    bgcolor: 'rgba(25,255,255,0.1)','&:hover': { bgcolor: 'rgba(25,255,255,0.2)' }}}
+                    bgcolor: 'rgba(255,255,255,0.12)','&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }}}
                 >
                   {theming.getThemedIcon('moreVert')}
                 </IconButton>
@@ -452,9 +457,11 @@ const VideoShowcaseYouTube: React.FC<VideoShowcaseYouTubeProps> = ({
                         borderRadius:  2,
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center'}}
-                     sx={theming.getThemedCardSx()}>
-                      <PlayArrow sx={{ fontSize:  32, color: 'rgba(25,255,255,0.8)' }} />
+                        justifyContent: 'center',
+                        ...theming.getThemedCardSx(),
+                      }}
+                    >
+                      <PlayArrow sx={{ fontSize:  32, color: alpha('#ffffff', 0.82) }} />
                     </CardMedia>
 
                     {/* Duration badge */}

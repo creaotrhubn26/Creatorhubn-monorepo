@@ -1163,7 +1163,7 @@ export default function EvendiTimelineAdmin({
       )}
 
       {/* Prosjektvelger og kulturtilpasning */}
-      <Card sx={{ mb:  3, bgcolor: 'rgba(25,255,255,0.95)', border: '1px solid #e0e0e0',  ...theming.getThemedCardSx() }}>
+      <Card sx={{ mb:  3, bgcolor: 'rgba(255,255,255,0.96)', border: '1px solid rgba(15,23,42,0.08)',  ...theming.getThemedCardSx() }}>
         <CardContent sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
           <Typography variant="h6" sx={{  mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap:  1  }}>
             <Event sx={{ color: '#f57c00'}} />

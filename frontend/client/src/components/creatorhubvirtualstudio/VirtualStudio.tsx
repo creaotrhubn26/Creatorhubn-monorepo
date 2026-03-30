@@ -19,9 +19,15 @@ import {
   SwipeableDrawer,
   useMediaQuery,
   useTheme,
+  Alert,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import AISuggestionsToggle from '../settings/AISuggestionsToggle';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import {
   Menu as MenuIcon,
   ChevronLeft,
@@ -65,7 +71,6 @@ import {
   Share,
   FileUpload,
   Brush,
-  School,
   GridOn,
   Layers,
   RemoveRedEye,
@@ -100,71 +105,54 @@ import { RenderingSettingsPanel } from './src/components/panels/RenderingSetting
 import { useAnimationStore } from './src/state/animationStore';
 import { integrationService } from './src/services/integrations';
 import {
-  Alert,
-  CircularProgress,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-} from '@mui/material';
-import {
   useVirtualStudioIntegration,
   exposeMasterIntegration,
+  type VirtualStudioMasterIntegration,
 } from './src/hooks/useVirtualStudioIntegration';
-import type { OnboardingConfig } from './src/ui/onboarding/VirtualStudioOnboarding';
-import { VirtualStudioOnboarding } from './src/ui/onboarding/VirtualStudioOnboarding';
+import { VirtualStudioOnboarding, type OnboardingConfig } from './src/ui/onboarding/VirtualStudioOnboarding';
 import { FaceAnalysisProvider } from './src/contexts/FaceAnalysisContext';
 import { VirtualStudioProvider, useVirtualStudio } from './VirtualStudioContext';
-import type { SchoolSetupConfig } from './src/ui/components/SchoolPhotographySetupDialog';
-import { SchoolPhotographySetupDialog } from './src/ui/components/SchoolPhotographySetupDialog';
-import type { SessionSummary, SavedProject } from './src/ui/components/ContinueSessionDialog';
-import { ContinueSessionDialog } from './src/ui/components/ContinueSessionDialog';
+import { SchoolPhotographySetupDialog, type SchoolSetupConfig } from './src/ui/components/SchoolPhotographySetupDialog';
+import { ContinueSessionDialog, type SessionSummary, type SavedProject } from './src/ui/components/ContinueSessionDialog';
 import { sessionTrackingService } from './src/core/services/sessionTrackingService';
 import ToastDesigner from '../admin/visual-editor/ToastDesigner';
 import { LightLensIntegrationPanel } from './src/ui/panels/LightLensIntegrationPanel';
 import ViewfinderView, { ViewfinderPanel } from './src/ui/features/ViewfinderView';
 import FlashControllerPanel from './src/ui/panels/FlashControllerPanel';
-import type { EquipmentItem } from './src/ui/panels/EquipmentCatalog';
-import { EquipmentCatalog } from './src/ui/panels/EquipmentCatalog';
-import type { ScenePreset } from './src/ui/panels/ScenePresets';
-import { ScenePresets } from './src/ui/panels/ScenePresets';
+import { EquipmentCatalog, type EquipmentItem } from './src/ui/panels/EquipmentCatalog';
+import { ScenePresets, type ScenePreset } from './src/ui/panels/ScenePresets';
 import { equipmentIntegrationService } from './src/core/services/equipmentIntegrationService';
-import { useKeyboardShortcuts, KeyboardShortcutsFloatingButton } from './src/hooks/useKeyboardShortcuts';
-import { KeyboardShortcutsPanel } from './src/ui/components/KeyboardShortcutsPanel';
+import useKeyboardShortcuts from './src/hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsPanel, KeyboardShortcutsFloatingButton } from './src/ui/components/KeyboardShortcutsPanel';
 import { undoRedoService } from './src/core/services/undoRedoService';
 import { equipmentGroupingService } from './src/core/services/equipmentGroupingService';
 import HistoryPanel from './src/ui/panels/HistoryPanel';
 import EquipmentHierarchyPanel from './src/ui/panels/EquipmentHierarchyPanel';
 import { SceneComparisonPanel, snapshotManager } from './src/ui/components/SceneComparison';
 import { SceneAnimationPanel } from './src/ui/panels/SceneAnimationPanel';
-import type { TransformMode } from './src/ui/components/QuickAccessToolbar';
-import { QuickAccessToolbar } from './src/ui/components/QuickAccessToolbar';
+import { QuickAccessToolbar, type TransformMode } from './src/ui/components/QuickAccessToolbar';
 import { selectionService } from './src/core/services/selectionService';
 import { AnimationStudioPanel } from './src/ui/panels/AnimationStudioPanel';
 import { animationRecorder } from './src/core/animation/AnimationRecorder';
 import { animationTemplateService } from './src/core/animation/AnimationTemplates';
 import type { AnimationTrack, AnimationClip } from './src/core/animation/SceneGraphAnimationEngine';
-import { sceneAnimationService } from './src/core/animation/SceneGraphAnimationEngine';
-import type { ExportResult } from './src/core/animation/VideoExportService';
-import { videoExportService } from './src/core/animation/VideoExportService';
+import { videoExportService, type ExportResult } from './src/core/animation/VideoExportService';
 import { animationStateManager } from './src/core/animation/AnimationStateManager';
-import type {
-  VirtualStudioProject} from './src/ui/panels/ProjectManagerPanel';
 import {
   ProjectManagerPanel,
-  AutoSaveIndicator
+  AutoSaveIndicator,
+  type VirtualStudioProject,
 } from './src/ui/panels/ProjectManagerPanel';
 import { ShotListIntegrationPanel, Shot } from './src/ui/panels/ShotListIntegrationPanel';
 import { StoryboardPanel } from './src/ui/panels/StoryboardPanel';
 
 // Additional panels
-import { AssetLibraryPanel } from './src/ui/panels/AssetLibraryPanel';
+import AssetLibraryPanel from './src/ui/panels/AssetLibraryPanel';
 import { BrandKitShowcase } from './src/ui/panels/BrandKitShowcase';
 import { CharacterModelLoader } from './src/ui/panels/CharacterModelLoader';
 import { ColorGrading } from './src/ui/panels/ColorGrading';
-import { MeasurementsPanel } from './src/ui/panels/MeasurementsPanel';
-import { ModifierBrowser } from './src/ui/panels/ModifierBrowser';
+import MeasurementsPanel from './src/ui/panels/MeasurementsPanel';
+import ModifierBrowser from './src/ui/panels/ModifierBrowser';
 import { SceneTemplates } from './src/ui/panels/SceneTemplates';
 import { ClientSharingPanel } from './src/ui/panels/ClientSharingPanel';
 import { ImportDialog } from './src/ui/dialogs/ImportDialog';
@@ -173,7 +161,7 @@ import { errorHandler } from './src/core/services/errorHandler';
 // Training & Guides
 import { PhotographyTrainingPanel } from './src/ui/panels/PhotographyTrainingPanel';
 import { StudioGuidesPanel } from './src/ui/panels/StudioGuidesPanel';
-import { AdvancedGuidesPanel, AdvancedGuideSettings } from './src/ui/panels/AdvancedGuidesPanel';
+import { AdvancedGuidesPanel, AdvancedGuideSettings as PanelAdvancedGuideSettings } from './src/ui/panels/AdvancedGuidesPanel';
 import { useStudioGuideSettings, useShowStudioGuides, useAdvancedGuideSettings, useActions, useNodes } from './src/state/selectors';
 
 // Advanced Visual Guides
@@ -198,25 +186,15 @@ import { BackgroundAnalyzer } from './src/ui/components/BackgroundAnalyzer';
 import { AIShotSuggestions } from './src/ui/components/AIShotSuggestions';
 import { BodyAnimationPanel } from './src/ui/panels/BodyAnimationPanel';
 import type { HandGesture, HEAD_PRESETS, HAND_PRESETS, FULL_BODY_POSES, BODY_ANIMATION_PRESETS } from './src/core/animations/BodyAnimations';
-import { ClassPhotoPanel } from './src/ui/panels/ClassPhotoPanel';
+import { ClassPhotoPanel, type ClassPhotoGuideSettings } from './src/ui/panels/ClassPhotoPanel';
 import { ClassPhotoView } from './src/ui/components/ClassPhotoView';
-import type { ClassPhotoSession } from './src/core/services/classPhotoService';
-import { classPhotoService } from './src/core/services/classPhotoService';
-import type { ClassPhotoGuideSettings } from './src/ui/panels/ClassPhotoPanel';
+import { classPhotoService, type ClassPhotoSession } from './src/core/services/classPhotoService';
 import { FacialFeaturesPanel } from './src/ui/panels/FacialFeaturesPanel';
-import { 
-  createFacialHairModel, 
-  FacialHairOptions,
-  MakeupOptions,
-  SkinDetailOptions 
-} from './src/core/models/FacialFeaturesModel';
 import { MonitorFeedPanel } from './src/ui/panels/MonitorFeedPanel';
 import { DirectorMonitor3D } from './src/ui/components/DirectorMonitor3D';
 import { DirectorModeOverlay } from './src/ui/components/DirectorModeOverlay';
-import type { MonitorLayout } from './src/core/services/monitorFeedService';
-import { monitorFeedService } from './src/core/services/monitorFeedService';
-import type { DirectorModeState } from './src/core/services/directorModeService';
-import { directorModeService } from './src/core/services/directorModeService';
+import { monitorFeedService, type MonitorLayout } from './src/core/services/monitorFeedService';
+import { directorModeService, type DirectorModeState } from './src/core/services/directorModeService';
 
 // Environment Service
 import { environmentService, useEnvironment } from './src/core/services/environmentService';
@@ -270,6 +248,7 @@ function TabPanel(props: TabPanelProps) {
 
 const VirtualStudioInner: React.FC = () => {
   const { addToast } = useVirtualStudio();
+  const { user } = useAuth();
   const theme = useTheme();
   
   // Tablet support
@@ -356,9 +335,20 @@ const VirtualStudioInner: React.FC = () => {
   // Import dialog
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+
+  // Director Mode state (zoomed into monitor view)
+  const [directorModeState, setDirectorModeState] = useState<DirectorModeState>({
+    isActive: false,
+    monitorId: null,
+    monitorName: ', ',
+    originalCameraPosition: null,
+    originalCameraTarget: null,
+    monitorPosition: null,
+    isAnimating: false,
+  });
   
   // Push notifications
-  const userId = user?.id || user?.sub;
+  const userId = user?.id != null ? String(user.id) : undefined;
   const { pushEnabled, isSupported } = usePushNotifications(userId);
   
   // Error handler listener for toasts
@@ -492,7 +482,7 @@ const VirtualStudioInner: React.FC = () => {
       // Add actor nodes to scene
       actors.forEach((actorNode: any) => {
         // Check if node already exists
-        const existingNode = nodes.find(n => n.id === actorNode.id);
+        const existingNode = nodes.find((n: any) => n.id === actorNode.id);
         if (existingNode) {
           updateNode(actorNode.id, actorNode);
         } else {
@@ -502,7 +492,7 @@ const VirtualStudioInner: React.FC = () => {
       
       // Add prop nodes
       props.forEach((propNode: any) => {
-        const existingNode = nodes.find(n => n.id === propNode.id);
+        const existingNode = nodes.find((n: any) => n.id === propNode.id);
         if (existingNode) {
           updateNode(propNode.id, propNode);
         } else {
@@ -573,7 +563,7 @@ const VirtualStudioInner: React.FC = () => {
       const { expression, blendShapes } = e.detail;
       log.debug('Actor expression changed:', expression);
       // Update selected actor's expression blend shapes
-      const selectedNode = nodes.find(n => n.selected && n.type === 'model');
+      const selectedNode = nodes.find((n: any) => n.selected && n.type === 'model');
       if (selectedNode) {
         updateNode(selectedNode.id, {
           userData: {
@@ -589,7 +579,7 @@ const VirtualStudioInner: React.FC = () => {
     const handleActorFacialHair = (e: CustomEvent) => {
       const { options } = e.detail;
       log.debug('Facial hair changed:', options.style);
-      const selectedNode = nodes.find(n => n.selected && n.type === 'model');
+      const selectedNode = nodes.find((n: any) => n.selected && n.type === 'model');
       if (selectedNode) {
         updateNode(selectedNode.id, {
           userData: {
@@ -604,7 +594,7 @@ const VirtualStudioInner: React.FC = () => {
     const handleActorMakeup = (e: CustomEvent) => {
       const { preset, items } = e.detail;
       log.debug('Makeup changed:', preset);
-      const selectedNode = nodes.find(n => n.selected && n.type === 'model');
+      const selectedNode = nodes.find((n: any) => n.selected && n.type === 'model');
       if (selectedNode) {
         updateNode(selectedNode.id, {
           userData: {
@@ -619,7 +609,7 @@ const VirtualStudioInner: React.FC = () => {
     const handleActorSkinDetails = (e: CustomEvent) => {
       const options = e.detail;
       log.debug('Skin details changed:', options);
-      const selectedNode = nodes.find(n => n.selected && n.type === 'model');
+      const selectedNode = nodes.find((n: any) => n.selected && n.type === 'model');
       if (selectedNode) {
         updateNode(selectedNode.id, {
           userData: {
@@ -633,7 +623,7 @@ const VirtualStudioInner: React.FC = () => {
     const handleApplyPose = (e: CustomEvent) => {
       const { poseId, pose } = e.detail;
       log.debug('Applying pose:', poseId);
-      const selectedNode = nodes.find(n => n.selected && n.type === 'model');
+      const selectedNode = nodes.find((n: any) => n.selected && n.type === 'model');
       if (selectedNode) {
         updateNode(selectedNode.id, {
           userData: {
@@ -788,13 +778,13 @@ const VirtualStudioInner: React.FC = () => {
     // --- Lens Events ---
     const handleLensAttached = (e: CustomEvent) => {
       const { cameraId, lensId, lens } = e.detail;
-      log.debug('Lens attached:', lensId, 'to camera:', cameraId);
+      log.debug('Lens attached', { lensId, cameraId, lensName: lens?.name });
       addToast({ message: `Lens attached: ${lens?.name || lensId}`, type: 'success' });
     };
 
     const handleLensDetached = (e: CustomEvent) => {
       const { cameraId, lensId } = e.detail;
-      log.debug('Lens detached:', lensId, 'from camera:', cameraId);
+      log.debug('Lens detached', { lensId, cameraId });
       addToast({ message: 'Lens detached', type: 'info' });
     };
 
@@ -983,13 +973,13 @@ const VirtualStudioInner: React.FC = () => {
     // --- Photogrammetry/Neural Events ---
     const handlePhotogrammetryProgress = (e: CustomEvent) => {
       const { progress, stage, status } = e.detail;
-      log.debug('Photogrammetry progress:', progress, stage);
+      log.debug('Photogrammetry progress', { progress, stage, status });
       // Could show progress in UI
     };
 
     const handleNeRFProgress = (e: CustomEvent) => {
       const { progress, stage, status } = e.detail;
-      log.debug('NeRF capture progress:', progress, stage);
+      log.debug('NeRF capture progress', { progress, stage, status });
     };
 
     // Register all event listeners
@@ -1182,7 +1172,7 @@ const VirtualStudioInner: React.FC = () => {
     // vs-actor-entrance: Play entrance animation for newly added actors
     const handleActorEntrance = (e: CustomEvent) => {
       const { nodeId, genre, characterType } = e.detail;
-      log.debug('Actor entrance:', nodeId, genre);
+      log.debug('Actor entrance', { nodeId, genre, characterType });
       // The animation is handled by AnimatedActorCard, but we can show a toast
       addToast({ 
         message: `Character, entered: ${characterType || 'Actor'}`,
@@ -1220,7 +1210,7 @@ const VirtualStudioInner: React.FC = () => {
     // vs-selection: Sync selection state across panels
     const handleSelection = (e: CustomEvent) => {
       const { type, ids } = e.detail;
-      log.debug('Selection changed:', type, ids);
+      log.debug('Selection changed', { type, ids });
       // Selection is already handled by selectionService, this is for UI sync
       if (ids && ids.length > 0) {
         // Could update focused node here if needed
@@ -1359,6 +1349,7 @@ const VirtualStudioInner: React.FC = () => {
 
   // Project Management state
   const [currentProject, setCurrentProject] = useState<VirtualStudioProject | null>(null);
+  const capturedImage = currentProject?.thumbnailUrl;
 
   // Director Monitor state
   const [directorMonitors, setDirectorMonitors] = useState<Array<{
@@ -1368,17 +1359,6 @@ const VirtualStudioInner: React.FC = () => {
     layout: MonitorLayout;
     isActive: boolean;
   }>>([]);
-  
-  // Director Mode state (zoomed into monitor view)
-  const [directorModeState, setDirectorModeState] = useState<DirectorModeState>({
-    isActive: false,
-    monitorId: null,
-    monitorName: ', ',
-    originalCameraPosition: null,
-    originalCameraTarget: null,
-    monitorPosition: null,
-    isAnimating: false,
-  });
 
   // Server-first onboarding state
   useEffect(() => {
@@ -1403,10 +1383,6 @@ const VirtualStudioInner: React.FC = () => {
     return () => { mounted = false; };
   }, []);
 
-  // Use master integration for auth
-  const { auth: masterAuth } = useEnhancedMasterIntegration();
-  const user = masterAuth.state.user;
-
   const { tracks, isPlaying, isRecording } = useAnimationStore();
 
   // Connect to master integration and services
@@ -1418,6 +1394,11 @@ const VirtualStudioInner: React.FC = () => {
     enableSVGRenderer: true,
     enableAIVision: true,
   });
+  const integrationStatus = integration.status as { lut?: { library?: number } } | undefined;
+  const integrationAuth = integration.auth as { isAuthenticated?: () => boolean } | undefined;
+  const integrationWithDrive = integration as VirtualStudioMasterIntegration & {
+    googleDrive?: { isAuthenticated?: boolean };
+  };
 
   // Expose for debugging (use ref to prevent infinite loops)
   const integrationRef = useRef(integration);
@@ -2026,8 +2007,8 @@ const VirtualStudioInner: React.FC = () => {
         {integration.isInitialized && !showOnboarding && (
           <Alert severity="success" sx={{ m: 2 }} onClose={() => {}}>
             ✅ All systems ready: Master Integration Connected • LUT Library (
-            {integration.status.lut?.library || 627} LUTs) • SVG Renderer (Resvg WASM) • AI Vision
-            (ONNX) • Flask Backend ({integration.auth.isAuthenticated() ? 'Authenticated' : 'Ready'}
+            {integrationStatus?.lut?.library || 627} LUTs) • SVG Renderer (Resvg WASM) • AI Vision
+            (ONNX) • Flask Backend ({integrationAuth?.isAuthenticated?.() ? 'Authenticated' : 'Ready'}
             )
           </Alert>
         )}
@@ -2066,7 +2047,7 @@ const VirtualStudioInner: React.FC = () => {
                 onProjectLoad={handleProjectLoad}
                 onProjectSave={handleProjectSave}
                 currentProject={currentProject}
-                googleDriveConnected={integration.googleDrive?.isAuthenticated || false}
+                googleDriveConnected={integrationWithDrive.googleDrive?.isAuthenticated || false}
                 userId={user?.id}
               />
             </Box>
@@ -2753,7 +2734,7 @@ const VirtualStudioInner: React.FC = () => {
                   {/* Advanced Visual Guides */}
                   <Box sx={{ height: '100%', mx: -2, mt: -2 }}>
                     <AdvancedGuidesPanel
-                      settings={advancedGuideSettings}
+                      settings={advancedGuideSettings as unknown as PanelAdvancedGuideSettings}
                       onSettingsChange={updateAdvancedGuideSettings}
                     />
                   </Box>
@@ -2962,7 +2943,7 @@ const VirtualStudioInner: React.FC = () => {
                     {/* Facial Features Panel */}
                     <FacialFeaturesPanel
                       onExpressionChange={(expression, blendShapes) => {
-                        log.debug('Expression changed:', expression, blendShapes);
+                        log.debug('Expression changed', { expression, blendShapes });
                       }}
                       onFacialHairChange={(options) => {
                         log.debug('Facial hair changed:', options);
@@ -3145,16 +3126,16 @@ const VirtualStudioInner: React.FC = () => {
               monitorId={directorModeState.monitorId || ', '}
               monitorName={directorModeState.monitorName}
               onExit={handleExitDirectorMode}
-              cameraCount={nodes.filter(n => n.type === 'camera' || n.camera).length || 1}
+              cameraCount={nodes.filter((n: any) => n.type === 'camera' || n.camera).length || 1}
               cameras={nodes
-                .filter(n => n.type === 'camera' || n.camera)
-                .map(n => ({ id: n.id, name: n.name || `Camera ${n.id.substring(0, 8)}` }))}
+                .filter((n: any) => n.type === 'camera' || n.camera)
+                .map((n: any) => ({ id: n.id, name: n.name || `Camera ${n.id.substring(0, 8)}` }))}
             />
 
             {/* 2D Composition & Video Production Overlays */}
             {advancedGuideSettings.composition.enabled && (
               <CompositionOverlays
-                activeGuides={advancedGuideSettings.composition.guides}
+                activeGuides={advancedGuideSettings.composition.guides as CompositionGuideType[]}
                 color={advancedGuideSettings.composition.color}
                 opacity={advancedGuideSettings.composition.opacity}
               />
@@ -3166,7 +3147,7 @@ const VirtualStudioInner: React.FC = () => {
                 showActionSafe={advancedGuideSettings.videoProduction.showActionSafe}
                 showAspectRatioMask={advancedGuideSettings.videoProduction.showAspectRatioMask}
                 showCenterMarkers={advancedGuideSettings.videoProduction.showCenterMarkers}
-                aspectRatio={advancedGuideSettings.videoProduction.aspectRatio}
+                aspectRatio={advancedGuideSettings.videoProduction.aspectRatio as AspectRatioType}
               />
             )}
 
@@ -3354,7 +3335,7 @@ const VirtualStudioInner: React.FC = () => {
             
             {/* Prototype Feedback Tool - Only shows for prototype testers */}
             <PrototypeFeedbackTool 
-              profession={userEnvironment?.profession || 'photographer'}
+              profession={profession || 'photographer'}
               component="Virtual Studio"
             />
             

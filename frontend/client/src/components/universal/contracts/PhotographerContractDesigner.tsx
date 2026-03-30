@@ -481,7 +481,7 @@ export default function UniversalContractDesigner({
       if (onContractCreated) {
         onContractCreated(response.contract?.id);
     }
-      queryClient.invalidateQueries({ queryKey: ['/api/contracts'],});
+      queryClient.invalidateQueries({ queryKey: ['/api/contracts'] });
   },
     onError: (error: any) => {
       console.error('Contract creation error:', error);
@@ -514,6 +514,7 @@ export default function UniversalContractDesigner({
         method: 'POST' }),
     onSuccess: (response) => {
       console.log('Contract backed up:', response);
+      alert('Kontrakten er klargjort i Google Drive.');
   },
 });
 
@@ -530,6 +531,8 @@ export default function UniversalContractDesigner({
     }),
     onSuccess: (response) => {
       console.log('Email sent:', response);
+      setCurrentContractId(response.contract?.id || response.contractId || currentContractId);
+      queryClient.invalidateQueries({ queryKey: ['/api/contracts'] });
       setActiveStep(4);
   },
     onError: (error: any) => {
@@ -703,8 +706,12 @@ export default function UniversalContractDesigner({
 };
 
   const handleSendForReview = () => {
+    if (!currentContractId) {
+      alert('Opprett eller lagre kontrakten før du sender den til signering.');
+      return;
+    }
     const emailData = {
-      contractId: 'latest',
+      contractId: currentContractId,
       photographerName: 'Daniel Nordhagen - CreatorHub Norge',
       photographerEmail: 'daniel@creatorhubn.com',
       targetEmail: contractData.clientEmail,

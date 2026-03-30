@@ -1152,7 +1152,7 @@ export default function WeddingTimelineClientView({
                             </TimelineSeparator>
                             
                             <TimelineContent>
-                              <Paper sx={{ p: 2, bgcolor: 'rgba(25,255,255,0.9)' ,  ...theming.getThemedCardSx() }}>
+                              <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.96)' ,  ...theming.getThemedCardSx() }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb:  1 }}>
                                   <Typography variant="h6" sx={{  fontWeight: 600}}>
                                     {event.title}
@@ -1252,7 +1252,7 @@ export default function WeddingTimelineClientView({
                 </Typography>
                 {timeline.previous_projects.map((project) => (
                   <Box key={project.id} sx={{ 
-                    p: 2, mb: 1, bgcolor: 'rgba(25,255,255,0.7)', 
+                    p: 2, mb: 1, bgcolor: 'rgba(255,255,255,0.92)', 
                     borderRadius: 1,
                     border: '1px solid rgba(23, 30, 99, 0.1)'
                   }}>

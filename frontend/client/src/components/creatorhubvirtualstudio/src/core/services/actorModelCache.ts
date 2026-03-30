@@ -9,11 +9,10 @@
  */
 
 import { logger } from './logger';
-import type { ActorParameters, ActorMeshData, ActorPreset } from './virtualActorService';
-import { virtualActorService } from './virtualActorService';
+import { virtualActorService, type ActorParameters, type ActorMeshData, type ActorPreset } from './virtualActorService';
 import type { SKIN_TONES } from '../data/actorPresets';
 
-const log = logger.module('ActorModelCache, ');
+const log = logger.module('ActorModelCache');
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050';
 
@@ -258,7 +257,7 @@ class ActorModelCacheService {
    * Initialize IndexedDB for offline fallback
    */
   private async initIndexedDB(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
@@ -386,7 +385,7 @@ class ActorModelCacheService {
         id: `cached-${presetId}-${Date.now()}`,
         presetId: preset.id,
         name: preset.name,
-        description: preset.description || ', ',
+        description: preset.description || '',
         category: preset.category,
         parameters: preset.parameters,
         meshData,
@@ -402,7 +401,7 @@ class ActorModelCacheService {
       await this.saveActor(cachedActor);
       return cachedActor;
     } catch (error) {
-      log.error('Failed to generate actor from preset:', presetId, error);
+      log.error('Failed to generate actor from preset', { presetId, error });
       return null;
     }
   }
@@ -418,7 +417,7 @@ class ActorModelCacheService {
     const progress: GenerationProgress = {
       total: presetIds.length,
       completed: 0,
-      current: ', ',
+      current: '',
       errors: [],
     };
 
@@ -444,7 +443,7 @@ class ActorModelCacheService {
         progress.completed++;
       } catch (error) {
         progress.errors.push(`${presetId}: ${error}`);
-        log.error('Batch generation error:', presetId, error);
+        log.error('Batch generation error', { presetId, error });
       }
 
       onProgress?.(progress);
@@ -453,7 +452,7 @@ class ActorModelCacheService {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    progress.current = ', ';
+    progress.current = '';
     onProgress?.(progress);
 
     log.info('Batch generation complete:', {

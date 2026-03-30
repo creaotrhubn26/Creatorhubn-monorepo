@@ -5,35 +5,42 @@
  */
 
 import { getAllProfessionFeatures } from '../../../shared/profession-feature-matrix';
-import { MASTER_FOLDER_CONFIG, FolderConfig } from '../../../shared/folder-configuration';
+import { MASTER_FOLDER_CONFIG, type FolderConfig } from '../../../shared/folder-configuration';
+
+type PlanTier = FolderConfig['plan'];
+type FolderAccessEntry = {
+  name: string;
+  description: string;
+  requiredFeatures: string[];
+  professions: string[];
+  plan: PlanTier;
+};
+type ProfessionFeatures = NonNullable<ReturnType<typeof getAllProfessionFeatures>>;
+
+const planRank: Record<PlanTier, number> = {
+  basic: 1,
+  pro: 2,
+  enterprise: 3,
+  marketplace: 4,
+};
 
 /**
  * ✅ Auto-generated from MASTER_FOLDER_CONFIG
  * Comprehensive folder structure with feature requirements
  * Maps folder IDs to required features from profession-feature-matrix
  */
-export const FOLDER_FEATURE_MAP: Record<string, {
-  name: string;
-  description: string;
-  requiredFeatures: string[];
-  professions: string[];
-  plan: 'basic' | 'pro' | 'enterprise' | 'marketplace';
-}> = MASTER_FOLDER_CONFIG.reduce((acc, folder) => {
+export const FOLDER_FEATURE_MAP: Record<string, FolderAccessEntry> = MASTER_FOLDER_CONFIG.reduce<
+  Record<string, FolderAccessEntry>
+>((acc, folder) => {
   acc[folder.id] = {
     name: folder.name,
     description: folder.description,
     requiredFeatures: folder.requiredFeatures,
     professions: folder.professions,
-    plan: folder.plan as 'basic' | 'pro' | 'enterprise' | 'marketplace',
+    plan: folder.plan,
   };
   return acc;
-}, {} as Record<string, {
-  name: string;
-  description: string;
-  requiredFeatures: string[];
-  professions: string[];
-  plan: 'basic' | 'pro' | 'enterprise' | 'marketplace';
-}>);
+}, {});
 
 // ✅ All folder definitions now come from MASTER_FOLDER_CONFIG
 // To add/edit folders, modify /Users/usmanqazi/creatorhub-backend/shared/folder-configuration.ts
@@ -43,12 +50,14 @@ export const FOLDER_FEATURE_MAP: Record<string, {
  */
 export function getAccessibleFolders(
   profession: string,
-  userPlan: 'basic' | 'pro' | 'enterprise' = 'basic'
+  userPlan: PlanTier = 'basic'
 ): string[] {
   const professionFeatures = getAllProfessionFeatures(profession);
-  if (!professionFeatures) return Object.keys(FOLDER_FEATURE_MAP).filter(folderId => 
-    FOLDER_FEATURE_MAP[folderId].professions.includes('all')
-  );
+  if (!professionFeatures) {
+    return Object.entries(FOLDER_FEATURE_MAP)
+      .filter(([, folderConfig]) => folderConfig.professions.includes('all'))
+      .map(([folderId]) => folderId);
+  }
 
   const accessibleFolders: string[] = [];
 
@@ -60,12 +69,11 @@ export function getAccessibleFolders(
     if (!professionMatch) return;
 
     // Check if user's plan meets folder requirements
-    const planRank = { basic: 1, pro: 2, enterprise: 3 };
     if (planRank[userPlan] < planRank[folderConfig.plan]) return;
 
     // Check if all required features are available
-    const hasAllFeatures = folderConfig.requiredFeatures.every(featureId => {
-      const feature = professionFeatures[featureId];
+    const hasAllFeatures = folderConfig.requiredFeatures.every((featureId) => {
+      const feature = (professionFeatures as ProfessionFeatures)[featureId];
       return feature && feature.enabled;
     });
 
@@ -82,8 +90,14 @@ export function getAccessibleFolders(
  */
 export function getMissingFolders(
   profession: string,
-  userPlan: 'basic' | 'pro' | 'enterprise' ='basic'
-): Array<{ folderId: string; name: string; description: string; requiredPlan: string; requiredFeatures: string[] }> {
+  userPlan: PlanTier = 'basic'
+): Array<{
+  folderId: string;
+  name: string;
+  description: string;
+  requiredPlan: PlanTier;
+  requiredFeatures: string[];
+}> {
   const accessibleFolders = getAccessibleFolders(profession, userPlan);
   const allFolders = Object.keys(FOLDER_FEATURE_MAP);
   
@@ -103,4 +117,3 @@ export function getMissingFolders(
 
   return missingFolders;
 }
-

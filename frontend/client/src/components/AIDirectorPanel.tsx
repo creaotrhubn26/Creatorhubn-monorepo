@@ -162,6 +162,11 @@ export const AIDirectorPanel: React.FC<AIDirectorPanelProps> = ({
     );
   }
 
+  const activeAnalysis = analysis;
+  if (!activeAnalysis) {
+    return null;
+  }
+
   const getScoreColor = (score: number): string => {
     if (score >= 85) return '#00ff00';
     if (score >= 70) return '#ffaa00';
@@ -186,10 +191,10 @@ export const AIDirectorPanel: React.FC<AIDirectorPanelProps> = ({
           <span
             style={{
               ...styles.score,
-              color: getScoreColor(analysis.overallScore)}}>
-            {analysis.overallScore}/100
+              color: getScoreColor(activeAnalysis.overallScore)}}>
+            {activeAnalysis.overallScore}/100
           </span>
-          {analysis.readyToShoot ? (
+          {activeAnalysis.readyToShoot ? (
             <span style={{ ...styles.readyBadge, backgroundColor: '#00ff00' }}>✓ READY</span>
           ) : (
             <span style={{ ...styles.readyBadge, backgroundColor: '#ff0000' }}>⚠ NOT READY</span>
@@ -198,22 +203,22 @@ export const AIDirectorPanel: React.FC<AIDirectorPanelProps> = ({
       </div>
 
       {/* Timing Info */}
-      {analysis.timing.captureNow && (
+      {activeAnalysis.timing.captureNow && (
         <div style={styles.captureNow}>
           <span style={{ fontSize: '24px' }}>📸</span>
           <span style={{ fontWeight: 'bold', fontSize: '16px' }}>CAPTURE NOW!</span>
-          {analysis.timing.countdown !== undefined && (
+          {activeAnalysis.timing.countdown !== undefined && (
             <span style={{ fontSize: '20px', marginLeft: '12px' }}>
-              {analysis.timing.countdown}
+              {activeAnalysis.timing.countdown}
             </span>
           )}
         </div>
       )}
 
-      {analysis.timing.waitFor && !analysis.timing.captureNow && (
+      {activeAnalysis.timing.waitFor && !activeAnalysis.timing.captureNow && (
         <div style={styles.waitFor}>
           <span>⏳</span>
-          <span>{analysis.timing.waitFor}</span>
+          <span>{activeAnalysis.timing.waitFor}</span>
         </div>
       )}
 
@@ -221,13 +226,13 @@ export const AIDirectorPanel: React.FC<AIDirectorPanelProps> = ({
       <div style={styles.section}>
         <div style={styles.sectionTitle}>Suggestions</div>
         <div style={styles.suggestionsList}>
-          {analysis.suggestions.length === 0 ? (
+          {activeAnalysis.suggestions.length === 0 ? (
             <div style={styles.noSuggestions}>
               <span>✨</span>
               <span>Perfect shot! No adjustments needed.</span>
             </div>
           ) : (
-            analysis.suggestions.map((suggestion, i) => (
+            activeAnalysis.suggestions.map((suggestion, i) => (
               <div
                 key={`suggestion-${i}`}
                 style={{
@@ -270,39 +275,39 @@ export const AIDirectorPanel: React.FC<AIDirectorPanelProps> = ({
           <div style={styles.scoresGrid}>
             <ScoreCard
               label="Composition"
-              score={analysis.composition.score}
+              score={activeAnalysis.composition.score}
               details={[
-                `Rule of Thirds: ${analysis.composition.ruleOfThirds ? '✓' : '✗'}`,
-                `Symmetry: ${analysis.composition.symmetry ? '✓' : '✗'}`,
-                `Negative Space: ${analysis.composition.negativeSpace ? '✓' : '✗'}`,
+                `Rule of Thirds: ${activeAnalysis.composition.ruleOfThirds ? '✓' : '✗'}`,
+                `Symmetry: ${activeAnalysis.composition.symmetry ? '✓' : '✗'}`,
+                `Negative Space: ${activeAnalysis.composition.negativeSpace ? '✓' : '✗'}`,
               ]}
             />
             <ScoreCard
               label="Lighting"
-              score={analysis.lighting.score}
+              score={activeAnalysis.lighting.score}
               details={[
-                `Exposure: ${analysis.lighting.exposure}`,
-                `Contrast: ${analysis.lighting.contrast}`,
-                `Highlights: ${analysis.lighting.highlights.percentage}% clipped`,
+                `Exposure: ${activeAnalysis.lighting.exposure}`,
+                `Contrast: ${activeAnalysis.lighting.contrast}`,
+                `Highlights: ${activeAnalysis.lighting.highlights.percentage}% clipped`,
               ]}
             />
             <ScoreCard
               label="Framing"
-              score={analysis.framing.score}
+              score={activeAnalysis.framing.score}
               details={[
-                `Headroom: ${analysis.framing.headroom}`,
-                `Look Space: ${analysis.framing.lookSpace}`,
-                `Balance: ${analysis.framing.balance}/100`,
+                `Headroom: ${activeAnalysis.framing.headroom}`,
+                `Look Space: ${activeAnalysis.framing.lookSpace}`,
+                `Balance: ${activeAnalysis.framing.balance}/100`,
               ]}
             />
-            {analysis.subject.pose && (
+            {activeAnalysis.subject.pose && (
               <ScoreCard
                 label="Subject Pose"
-                score={analysis.subject.pose.score}
+                score={activeAnalysis.subject.pose.score}
                 details={[
-                  `Naturalness: ${analysis.subject.pose.naturalness}/100`,
-                  `Tension: ${analysis.subject.pose.tension}/100`,
-                  `In Focus: ${analysis.subject.inFocus ? '✓' : '✗'}`,
+                  `Naturalness: ${activeAnalysis.subject.pose.naturalness}/100`,
+                  `Tension: ${activeAnalysis.subject.pose.tension}/100`,
+                  `In Focus: ${activeAnalysis.subject.inFocus ? '✓' : '✗'}`,
                 ]}
               />
             )}
@@ -316,16 +321,16 @@ export const AIDirectorPanel: React.FC<AIDirectorPanelProps> = ({
         <div style={styles.metadata}>
           <div style={styles.metadataItem}>
             <span style={styles.metadataLabel}>Type:</span>
-            <span>{analysis.metadata.sceneType}</span>
+            <span>{activeAnalysis.metadata.sceneType}</span>
           </div>
           <div style={styles.metadataItem}>
             <span style={styles.metadataLabel}>Mood:</span>
-            <span>{analysis.metadata.mood}</span>
+            <span>{activeAnalysis.metadata.mood}</span>
           </div>
           <div style={styles.metadataItem}>
             <span style={styles.metadataLabel}>Colors:</span>
             <div style={{ display: 'flex', gap: '4px' }}>
-              {analysis.metadata.dominantColors.map((color, i) => (
+              {activeAnalysis.metadata.dominantColors.map((color, i) => (
                 <div
                   key={`color-${i}`}
                   style={{
@@ -343,7 +348,7 @@ export const AIDirectorPanel: React.FC<AIDirectorPanelProps> = ({
               <div
                 style={{
                   ...styles.complexityFill,
-                  width: `${analysis.metadata.complexity}%`,
+                  width: `${activeAnalysis.metadata.complexity}%`,
                 }}
               />
             </div>

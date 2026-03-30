@@ -10,10 +10,10 @@ import type { ContentProductionEstimate } from './contentProductionEstimateServi
 import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import {
   type ProducerDeliveryManifest,
+  getProducerClientMomentDisplayLabel,
   getProducerClientContributionTasks,
   PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS,
   PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS,
-  PRODUCER_PLANNING_CLIENT_MOMENT_LABELS,
   PRODUCER_PLANNING_FRAMEWORK_LABELS,
   PRODUCER_PLANNING_PHASE_LABELS,
 } from '../utils/producerProjectPlanning';
@@ -129,6 +129,7 @@ class ProducerHandoffPdfExportService {
     this.addClientFlowPage(doc, payload);
     this.addDeliveryPage(doc, payload);
     this.addBrandAndWorkflowPage(doc, payload);
+    this.addAccountAccessPage(doc, payload);
     this.addClientInputPage(doc, payload);
     this.addEstimatePage(doc, payload);
     this.addFooter(doc, generatedAt);
@@ -330,7 +331,7 @@ class ProducerHandoffPdfExportService {
       theme: 'grid',
       head: [['Type', 'Tittel', 'Fase', 'Dato', 'Status']],
       body: payload.manifest.pendingClientMoments.map((moment) => [
-        PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type],
+        getProducerClientMomentDisplayLabel(moment),
         moment.title,
         PRODUCER_PLANNING_PHASE_LABELS[moment.phase],
         moment.date || 'Ikke satt',
@@ -355,11 +356,12 @@ class ProducerHandoffPdfExportService {
       startY: 42,
       margin: { left: MARGIN, right: MARGIN },
       theme: 'grid',
-      head: [['Leveranse', 'Kanal', 'Format', 'Stage', 'Status']],
+      head: [['Leveranse', 'Kanal', 'Format', 'Logo', 'Stage', 'Status']],
       body: payload.manifest.deliveryItems.map((item) => [
         item.title,
         item.channel,
         item.format,
+        item.logoVariantResolvedLabel,
         item.deliveryStageLabel,
         item.statusLabel,
       ]),
@@ -372,13 +374,46 @@ class ProducerHandoffPdfExportService {
         textColor: [30, 41, 59],
       },
       columnStyles: {
-        0: { cellWidth: 46 },
-        1: { cellWidth: 40 },
-        2: { cellWidth: 20 },
-        3: { cellWidth: 38 },
-        4: { cellWidth: 34 },
+        0: { cellWidth: 36 },
+        1: { cellWidth: 34 },
+        2: { cellWidth: 18 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 32 },
+        5: { cellWidth: 28 },
       },
     });
+
+    if (payload.manifest.logoUsageMatrix.length > 0) {
+      autoTable(doc, {
+        startY: ((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 108) + 8,
+        margin: { left: MARGIN, right: MARGIN },
+        theme: 'striped',
+        head: [['Leveranse', 'Format', 'Valg', 'Brukes', 'Anbefalt']],
+        body: payload.manifest.logoUsageMatrix.map((item) => [
+          `${item.title}\n${item.channel} · ${item.deliveryStageLabel}`,
+          item.format,
+          item.selectionLabel,
+          item.resolvedLabel,
+          `${item.recommendedLabel}${item.autoApplied ? ' · auto aktiv' : ''}`,
+        ]),
+        headStyles: {
+          fillColor: [59, 130, 246],
+          textColor: [239, 246, 255],
+        },
+        bodyStyles: {
+          fontSize: 8.2,
+          textColor: [30, 41, 59],
+          valign: 'top',
+        },
+        columnStyles: {
+          0: { cellWidth: 42 },
+          1: { cellWidth: 18 },
+          2: { cellWidth: 34 },
+          3: { cellWidth: 28 },
+          4: { cellWidth: 50 },
+        },
+      });
+    }
 
     autoTable(doc, {
       startY: ((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 108) + 8,
@@ -393,6 +428,7 @@ class ProducerHandoffPdfExportService {
           `Filnavn: ${toPdfWrappedText(item.filename)}`,
           `Versjon: ${item.versionLabel}`,
           `Leveringstrinn: ${item.deliveryStageLabel}`,
+          `Logovariant: ${item.logoVariantResolvedLabel} (${item.logoVariantSelectionLabel})`,
           `Estimert lengde: ${item.estimatedDurationLabel || 'Ikke beregnet'}`,
           item.publishDateLabel ? `Publisering: ${item.publishDateLabel}` : 'Publisering: Ikke satt',
           `Backup: ${item.backupRuleLabel || 'Ikke satt'}`,
@@ -420,21 +456,69 @@ class ProducerHandoffPdfExportService {
 
     const brandParagraphs = [
       `Logo: ${payload.planning.brandGuide.logoUrl || 'Ikke koblet til prosjektet'}`,
+      `Logo plassering: ${payload.manifest.logoPlacementLabel || 'Ikke satt'}`,
+      `Logo behandling: ${payload.manifest.logoTreatmentLabel || 'Ikke satt'}`,
+      `Logo i video: ${payload.manifest.logoTimingDetail || 'Ikke satt'}`,
+      'Automatisk logovalg: Primær i 16:9 / 4:5, ikon i 9:16 / 1:1 når ikonvariant finnes.',
+      `Safe zone: ${payload.manifest.overlayEditorGuidance.safeZone.label}`,
+      `Opacity: ${payload.manifest.overlayEditorGuidance.opacity.label}`,
+      `Anbefalt margin: ${payload.manifest.overlayEditorGuidance.recommendedMargin.label}`,
+      `Editornotat: ${payload.manifest.overlayEditorGuidance.note}`,
       `Fonter: ${payload.planning.brandGuide.fonts?.join(', ') || 'Ikke satt'}`,
       `Tone of voice: ${payload.planning.brandGuide.toneOfVoice || 'Ikke satt'}`,
       `Visuell stil: ${payload.planning.brandGuide.visualStyle || 'Ikke satt'}`,
     ];
     this.addParagraphs(doc, brandParagraphs, 44);
 
+    if (payload.manifest.overlayFormatProfiles.length > 0) {
+      const overlayRows = payload.manifest.overlayFormatProfiles.map((profile) => [
+        profile.formatLabel,
+        profile.recommendedVariantLabel,
+        profile.safeZone.label,
+        profile.opacity.label,
+        profile.recommendedMargin.label,
+        toPdfWrappedText(profile.note),
+      ]);
+
+      autoTable(doc, {
+        startY: 76,
+        margin: { left: MARGIN, right: MARGIN },
+        theme: 'striped',
+        head: [['Format', 'Variant', 'Safe zone', 'Opacity', 'Margin', 'Notat']],
+        body: overlayRows,
+        headStyles: {
+          fillColor: [76, 29, 149],
+          textColor: [245, 243, 255],
+        },
+        bodyStyles: {
+          fontSize: 8.3,
+          textColor: [30, 41, 59],
+          valign: 'top',
+        },
+        columnStyles: {
+          0: { cellWidth: 16 },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 24 },
+          3: { cellWidth: 18 },
+          4: { cellWidth: 24 },
+          5: { cellWidth: 74 },
+        },
+      });
+    }
+
     const colorRows = (payload.planning.brandGuide.colors ?? []).map((color) => [
       color.label,
       color.hex,
       color.usage || 'Ikke satt',
     ]);
+    const colorTableStartY = payload.manifest.overlayFormatProfiles.length > 0
+      && (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY
+      ? ((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 0) + 10
+      : 92;
 
     if (colorRows.length > 0) {
       autoTable(doc, {
-        startY: 92,
+        startY: colorTableStartY,
         margin: { left: MARGIN, right: MARGIN },
         theme: 'striped',
         head: [['Farge', 'HEX', 'Bruk']],
@@ -478,6 +562,53 @@ class ProducerHandoffPdfExportService {
     });
   }
 
+  private addAccountAccessPage(doc: jsPDF, payload: ProducerHandoffPdfExportPayload): void {
+    doc.addPage();
+    this.addSectionHeader(doc, 'Kontotilgang', 'Sikrer trygg invite-flyt, OAuth og revoke uten delte passord.');
+
+    this.addParagraphs(doc, [
+      `Nødvendige plattformer koblet: ${payload.manifest.accountAccessSummary.connectedCount}/${payload.manifest.accountAccessSummary.requiredPlatformCount}`,
+      `Trenger klienthandling: ${payload.manifest.accountAccessSummary.clientActionCount}`,
+      `Invitasjoner sendt: ${payload.manifest.accountAccessSummary.inviteSentCount}`,
+      `Sikkerhetsnotat: ${payload.manifest.accountAccessSummary.securityNotes || 'Ikke satt'}`,
+      `Revoke-plan: ${payload.manifest.accountAccessSummary.revokePlan || 'Ikke satt'}`,
+    ], 44);
+
+    autoTable(doc, {
+      startY: 76,
+      margin: { left: MARGIN, right: MARGIN },
+      theme: 'striped',
+      head: [['Plattform', 'Status', 'Metode', 'Scope / invite / eier']],
+      body: payload.manifest.accountAccessSummary.entries.map((entry) => [
+        `${entry.platformLabel}${entry.requiredForProject ? '\nKreves for prosjektet' : ''}`,
+        `${entry.statusLabel}\n2FA hos eier: ${entry.twoFactorRequired ? 'Ja' : 'Nei'}`,
+        entry.methodLabel,
+        [
+          `Scope: ${toPdfWrappedText(entry.accessScope || 'Ikke satt')}`,
+          `Konto / side: ${toPdfWrappedText(entry.accountLabel || 'Ikke satt')}`,
+          `Invite: ${toPdfWrappedText(entry.inviteTarget || 'Ikke satt')}`,
+          `Eier: ${toPdfWrappedText(entry.clientOwnerLabel || 'Ikke satt')}`,
+          `Notat: ${toPdfWrappedText(entry.notes || 'Ingen notater.')}`,
+        ].join('\n'),
+      ]),
+      headStyles: {
+        fillColor: [13, 148, 136],
+        textColor: [240, 253, 250],
+      },
+      bodyStyles: {
+        fontSize: 8.4,
+        textColor: [30, 41, 59],
+        valign: 'top',
+      },
+      columnStyles: {
+        0: { cellWidth: 32 },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 26 },
+        3: { cellWidth: 98 },
+      },
+    });
+  }
+
   private addClientInputPage(doc: jsPDF, payload: ProducerHandoffPdfExportPayload): void {
     const clientContributionTasks = getProducerClientContributionTasks(
       payload.planning,
@@ -498,6 +629,11 @@ class ProducerHandoffPdfExportService {
         ['Leveranser', payload.clientIntake.deliverables || 'Ikke satt'],
         ['Målgruppe', payload.clientIntake.targetAudience || 'Ikke satt'],
         ['Kjernebudskap', payload.clientIntake.keyMessage || 'Ikke satt'],
+        ['Content Logic mål', payload.manifest.contentLogicSummary.objective || 'Ikke satt'],
+        ['Hook', payload.manifest.contentLogicSummary.hook || 'Ikke satt'],
+        ['CTA', payload.manifest.contentLogicSummary.callToAction || 'Ikke satt'],
+        ['Proof points', payload.manifest.contentLogicSummary.proofPoints.length > 0 ? payload.manifest.contentLogicSummary.proofPoints.join(' · ') : 'Ikke satt'],
+        ['Distribusjon', payload.manifest.contentLogicSummary.distributionPlan || 'Ikke satt'],
         ['Tidsrammer', payload.clientIntake.timingConstraints || 'Ikke satt'],
         ['Brand-notater', payload.clientIntake.brandNotes || 'Ikke satt'],
         ['Materialoversikt', payload.clientIntake.materialOverview || 'Ikke satt'],

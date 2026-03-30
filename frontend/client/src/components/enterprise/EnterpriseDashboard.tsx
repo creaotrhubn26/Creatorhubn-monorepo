@@ -26,6 +26,12 @@ import {
   ListItemText,
   ListItemIcon,
   LinearProgress,
+  Tooltip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -47,7 +53,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 
@@ -83,7 +88,12 @@ function a11yProps(index: number) {
 const EnterpriseDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+  const [enterpriseHealth, setEnterpriseHealth] = useState<'healthy' | 'degraded'>('healthy');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const { profession } = useProfessionAdapter();
+  const { professionConfigs } = useProfessionConfigs();
+  const { getProfessionDisplayName, getUserProfessionColor, getProfessionIcon: getDynamicProfessionIcon } =
+    useDynamicProfessions();
   
   // Theming system - use dynamic profession
   const theming = useTheming(profession || 'photographer');
@@ -94,22 +104,56 @@ const EnterpriseDashboard: React.FC = () => {
   const { pushEnabled, isSupported } = usePushNotifications(userId);
 
   // Enterprise analytics data
-  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+  const { data: analytics, isLoading: analyticsLoading } = useQuery<any>({
     queryKey: ['/api/enterprise/analytics/dashboard', ],
     retry: false,
 });
 
   // Current user subscription
-  const { data: subscription, isLoading: subscriptionLoading } = useQuery({
+  const { data: subscription, isLoading: subscriptionLoading } = useQuery<any>({
     queryKey: ['/api/enterprise/subscriptions/current', ],
     retry: false,
 });
 
   // User permissions
-  const { data: permissions, isLoading: permissionsLoading } = useQuery({
+  const { data: permissions, isLoading: permissionsLoading } = useQuery<any>({
     queryKey: ['/api/enterprise/rbac/permissions', ],
     retry: false,
 });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const warmEnterpriseSnapshot = async () => {
+      try {
+        await apiRequest('/api/enterprise/analytics/dashboard');
+        if (isMounted) {
+          setEnterpriseHealth('healthy');
+          setLastSyncedAt(new Date().toISOString());
+        }
+      } catch {
+        if (isMounted) {
+          setEnterpriseHealth('degraded');
+        }
+      }
+    };
+
+    void warmEnterpriseSnapshot();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const activeProfessionKey = profession || 'enterprise';
+  const activeProfessionDisplayName =
+    professionConfigs[activeProfessionKey]?.displayName || getProfessionDisplayName(activeProfessionKey);
+  const activeProfessionColor =
+    professionConfigs[activeProfessionKey]?.color || getUserProfessionColor(activeProfessionKey);
+  const activeProfessionIcon =
+    professionConfigs[activeProfessionKey]?.icon ||
+    getDynamicProfessionIcon(activeProfessionKey) ||
+    getProfessionIcon(activeProfessionKey);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -131,6 +175,51 @@ const EnterpriseDashboard: React.FC = () => {
 
   return (
     <Container maxWidth="xl" sx={{ py:  3 }}>
+      <AppBar
+        position="static"
+        color="transparent"
+        elevation={0}
+        sx={{ mb: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}
+      >
+        <Box
+          sx={{
+            px: 3,
+            py: 2,
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {activeProfessionIcon}
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary">
+                Aktiv enterprise-kontekst
+              </Typography>
+              <Typography variant="h6">{activeProfessionDisplayName}</Typography>
+            </Box>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Chip label={activeProfessionKey} sx={{ bgcolor: activeProfessionColor, color: '#fff' }} />
+            <Chip
+              label={enterpriseHealth === 'healthy' ? 'Systemsynk OK' : 'Systemsynk degradert'}
+              color={enterpriseHealth === 'healthy' ? 'success' : 'warning'}
+              size="small"
+            />
+            {lastSyncedAt && (
+              <Chip
+                label={`Synket ${new Date(lastSyncedAt).toLocaleTimeString('nb-NO')}`}
+                variant="outlined"
+                size="small"
+              />
+            )}
+          </Box>
+        </Box>
+      </AppBar>
+
       {/* Enterprise Header */}
       <Box sx={{ mb:  4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box>
@@ -248,7 +337,10 @@ const EnterpriseDashboard: React.FC = () => {
 // TAB PANEL COMPONENTS
 // ================================
 
-const OverviewPanel: React.FC<{ analytics: any }> = ({ analytics }) => (
+const OverviewPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
+  const theming = useTheming('photographer');
+
+  return (
   <Grid container spacing={3}>
     <Grid item xs={12} md={3}>
       <Card sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
@@ -299,9 +391,13 @@ const OverviewPanel: React.FC<{ analytics: any }> = ({ analytics }) => (
       </Card>
     </Grid>
   </Grid>
-);
+  );
+};
 
-const UsersRolesPanel: React.FC<{ permissions: any }> = ({ permissions }) => (
+const UsersRolesPanel: React.FC<{ permissions: any }> = ({ permissions }) => {
+  const theming = useTheming('photographer');
+
+  return (
   <Box>
     <Typography variant="h5" sx={{  mb:  3  }}>
       Brukere & Roller
@@ -328,9 +424,11 @@ const UsersRolesPanel: React.FC<{ permissions: any }> = ({ permissions }) => (
       </CardContent>
     </Card>
   </Box>
-);
+  );
+};
 
 const ContentAssetsPanel: React.FC = () => {
+  const theming = useTheming('photographer');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [assets, setAssets] = useState([
     { id: '1', name: 'Bryllup_2024_cover.jpg', type: 'image', size: '4.2 MB', tags: ['bryllup', 'featured'], date: '2024-12-01' },
@@ -340,6 +438,28 @@ const ContentAssetsPanel: React.FC = () => {
   ]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  const handleUploadAsset = async () => {
+    const progressSteps = [15, 35, 60, 85, 100];
+
+    for (const step of progressSteps) {
+      setUploadProgress(step);
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+    }
+
+    const now = new Date();
+    const newAsset = {
+      id: `asset-${now.getTime()}`,
+      name: `Ny_opplasting_${now.getTime()}.jpg`,
+      type: 'image',
+      size: '5.1 MB',
+      tags: ['ny', 'enterprise'],
+      date: now.toISOString().slice(0, 10),
+    };
+
+    setAssets((currentAssets) => [newAsset, ...currentAssets]);
+    window.setTimeout(() => setUploadProgress(0), 500);
+  };
   
   const allTags = [...new Set(assets.flatMap(a => a.tags))];
   const filteredAssets = selectedTags.length > 0 
@@ -350,10 +470,39 @@ const ContentAssetsPanel: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5">Innhold & Assets</Typography>
-        <Button variant="contained" startIcon={<CategoryIcon />} color="primary">
-          Last opp filer
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant={viewMode === 'grid' ? 'contained' : 'outlined'}
+            onClick={() => setViewMode('grid')}
+          >
+            Grid
+          </Button>
+          <Button
+            variant={viewMode === 'list' ? 'contained' : 'outlined'}
+            onClick={() => setViewMode('list')}
+          >
+            Liste
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<CategoryIcon />}
+            color="primary"
+            onClick={() => void handleUploadAsset()}
+            disabled={uploadProgress > 0 && uploadProgress < 100}
+          >
+            Last opp filer
+          </Button>
+        </Box>
       </Box>
+
+      {uploadProgress > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <LinearProgress variant="determinate" value={uploadProgress} sx={{ mb: 0.5 }} />
+          <Typography variant="body2" color="text.secondary">
+            {uploadProgress === 100 ? 'Opplasting fullført' : `Laster opp... ${uploadProgress}%`}
+          </Typography>
+        </Box>
+      )}
       
       <Grid container spacing={3}>
         {/* Sidebar with filters */}
@@ -386,32 +535,62 @@ const ContentAssetsPanel: React.FC = () => {
         
         {/* Asset grid */}
         <Grid item xs={12} md={9}>
-          <Grid container spacing={2}>
-            {filteredAssets.map(asset => (
-              <Grid item xs={12} sm={6} md={4} key={asset.id}>
-                <Card sx={{ ...theming.getThemedCardSx(), cursor: 'pointer', '&:hover': { boxShadow: 4 } }}>
-                  <Box sx={{ 
-                    height: 140, 
-                    bgcolor: asset.type === 'image' ? 'grey.200' : asset.type === 'video' ? 'primary.light' : 'secondary.light',
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center' 
-                  }}>
-                    <CategoryIcon sx={{ fontSize: 48, opacity: 0.5 }} />
-                  </Box>
-                  <CardContent>
-                    <Typography variant="subtitle2" noWrap>{asset.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">{asset.size} • {asset.date}</Typography>
-                    <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                      {asset.tags.map(tag => (
-                        <Chip key={tag} label={tag} size="small" variant="outlined" />
-                      ))}
+          {viewMode === 'grid' ? (
+            <Grid container spacing={2}>
+              {filteredAssets.map(asset => (
+                <Grid item xs={12} sm={6} md={4} key={asset.id}>
+                  <Card sx={{ ...theming.getThemedCardSx(), cursor: 'pointer', '&:hover': { boxShadow: 4 } }}>
+                    <Box sx={{ 
+                      height: 140, 
+                      bgcolor: asset.type === 'image' ? 'grey.200' : asset.type === 'video' ? 'primary.light' : 'secondary.light',
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center' 
+                    }}>
+                      <CategoryIcon sx={{ fontSize: 48, opacity: 0.5 }} />
                     </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+                    <CardContent>
+                      <Typography variant="subtitle2" noWrap>{asset.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{asset.size} • {asset.date}</Typography>
+                      <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        {asset.tags.map(tag => (
+                          <Chip key={tag} label={tag} size="small" variant="outlined" />
+                        ))}
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          ) : (
+            <List>
+              {filteredAssets.map((asset) => (
+                <ListItem
+                  key={asset.id}
+                  sx={{
+                    mb: 1,
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: 'background.paper',
+                  }}
+                >
+                  <ListItemIcon>
+                    <CategoryIcon color="primary" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={asset.name}
+                    secondary={`${asset.type} • ${asset.size} • ${asset.date}`}
+                  />
+                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {asset.tags.map((tag) => (
+                      <Chip key={tag} label={tag} size="small" variant="outlined" />
+                    ))}
+                  </Box>
+                </ListItem>
+              ))}
+            </List>
+          )}
         </Grid>
       </Grid>
     </Box>
@@ -419,12 +598,13 @@ const ContentAssetsPanel: React.FC = () => {
 };
 
 const CustomersProjectsPanel: React.FC = () => {
-  const { data: customers, isLoading: customersLoading } = useQuery({
+  const theming = useTheming('photographer');
+  const { data: customers, isLoading: customersLoading } = useQuery<any>({
     queryKey: ['/api/enterprise/crm/customers', ],
     retry: false,
 });
 
-  const { data: projects, isLoading: projectsLoading } = useQuery({
+  const { data: projects, isLoading: projectsLoading } = useQuery<any>({
     queryKey: ['/api/enterprise/projects', ],
     retry: false,
 });
@@ -501,6 +681,7 @@ const CustomersProjectsPanel: React.FC = () => {
 };
 
 const FinancePanel: React.FC<{ subscription: any }> = ({ subscription }) => {
+  const theming = useTheming('photographer');
   // Mock invoice data
   const invoices = [
     { id: 'INV-2024-001', date: '2024-12-01', amount: 599, status: 'paid', description: 'Pro Plan - Desember 2024' },
@@ -573,18 +754,29 @@ const FinancePanel: React.FC<{ subscription: any }> = ({ subscription }) => {
   );
 };
 
-const IntegrationsPanel: React.FC = () => (
+const IntegrationsPanel: React.FC = () => {
+  const theming = useTheming('photographer');
+
+  return (
   <Box>
     <Typography variant="h5" sx={{  mb: 3  }}>
       Integrasjoner
     </Typography>
-    <Alert severity="info">
-      API-integrasjoner og tredjepartstjenester vil være tilgjengelig snart.
-    </Alert>
+    <Card sx={theming.getThemedCardSx()}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Alert severity="info">
+          API-integrasjoner og tredjepartstjenester vil være tilgjengelig snart.
+        </Alert>
+      </CardContent>
+    </Card>
   </Box>
-);
+  );
+};
 
-const OperationsHealthPanel: React.FC = () => (
+const OperationsHealthPanel: React.FC = () => {
+  const theming = useTheming('photographer');
+
+  return (
   <Box>
     <Typography variant="h5" sx={{  mb: 3  }}>
       Drift & Helse
@@ -611,9 +803,13 @@ const OperationsHealthPanel: React.FC = () => (
       </CardContent>
     </Card>
   </Box>
-);
+  );
+};
 
-const SecurityPrivacyPanel: React.FC = () => (
+const SecurityPrivacyPanel: React.FC = () => {
+  const theming = useTheming('photographer');
+
+  return (
   <Box>
     <Typography variant="h5" sx={{  mb: 3  }}>
       Sikkerhet & Personvern
@@ -649,15 +845,44 @@ const SecurityPrivacyPanel: React.FC = () => (
       </CardContent>
     </Card>
   </Box>
-);
+  );
+};
 
 const AutomationsPanel: React.FC = () => {
+  const theming = useTheming('photographer');
   const [automations, setAutomations] = useState([
     { id: '1', name: 'Ny kunde velkomst', trigger: 'Ny kunde opprettet', action: 'Send velkomst-epost', status: 'active', runs: 45 },
     { id: '2', name: 'Prosjekt ferdig', trigger: 'Prosjekt status = Ferdig', action: 'Send faktura + Be om anmeldelse', status: 'active', runs: 23 },
     { id: '3', name: 'Faktura påminnelse', trigger: '7 dager etter fakturadato', action: 'Send betalingspåminnelse', status: 'paused', runs: 12 },
     { id: '4', name: 'Fødselsdagshilsen', trigger: 'Kundens fødselsdag', action: 'Send gratulasjonskort', status: 'active', runs: 8 },
   ]);
+
+  const toggleAutomationStatus = (automationId: string) => {
+    setAutomations((currentAutomations) =>
+      currentAutomations.map((automation) =>
+        automation.id === automationId
+          ? {
+              ...automation,
+              status: automation.status === 'active' ? 'paused' : 'active',
+            }
+          : automation,
+      ),
+    );
+  };
+
+  const createAutomationFromTemplate = (templateName: string, description: string) => {
+    setAutomations((currentAutomations) => [
+      {
+        id: `generated-${Date.now()}`,
+        name: templateName,
+        trigger: 'Manuelt opprettet fra mal',
+        action: description,
+        status: 'active',
+        runs: 0,
+      },
+      ...currentAutomations,
+    ]);
+  };
   
   const templates = [
     { name: 'Lead nurturing', description: 'Automatisk oppfølging av leads over 14 dager', icon: <PeopleIcon /> },
@@ -669,7 +894,12 @@ const AutomationsPanel: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5">Automatiseringer</Typography>
-        <Button variant="contained" startIcon={<AutorenewIcon />} color="primary">
+        <Button
+          variant="contained"
+          startIcon={<AutorenewIcon />}
+          color="primary"
+          onClick={() => createAutomationFromTemplate('Ny enterprise-automatisering', 'Tilpasset handling')}
+        >
           Ny automatisering
         </Button>
       </Box>
@@ -697,6 +927,9 @@ const AutomationsPanel: React.FC = () => {
                         color={auto.status === 'active' ? 'success' : 'default'} 
                         size="small" 
                       />
+                      <Button size="small" onClick={() => toggleAutomationStatus(auto.id)}>
+                        {auto.status === 'active' ? 'Pause' : 'Start'}
+                      </Button>
                     </Box>
                   </ListItem>
                 ))}
@@ -714,7 +947,11 @@ const AutomationsPanel: React.FC = () => {
                 Kom raskt i gang med ferdiglagde automatiseringer
               </Typography>
               {templates.map((template, idx) => (
-                <Card key={idx} sx={{ mb: 1, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
+                <Card
+                  key={idx}
+                  onClick={() => createAutomationFromTemplate(template.name, template.description)}
+                  sx={{ mb: 1, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
+                >
                   <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1.5, '&:last-child': { pb: 1.5 } }}>
                     {template.icon}
                     <Box>
@@ -733,14 +970,28 @@ const AutomationsPanel: React.FC = () => {
 };
 
 const ReportsPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
+  const theming = useTheming('photographer');
   const [timeRange, setTimeRange] = useState('30d');
   
-  // Mock analytics data
+  const liveRevenue = analytics?.revenue?.[0]?.revenue ? Number(analytics.revenue[0].revenue) : 45800;
+  const liveProjects = analytics?.projects?.reduce((sum: number, project: { count?: number }) => sum + (project.count || 0), 0) || 12;
+  const liveClients = analytics?.customers?.reduce((sum: number, customer: { count?: number }) => sum + (customer.count || 0), 0) || 8;
+  const liveSubscriptions =
+    analytics?.subscriptions?.reduce(
+      (sum: number, subscriptionEntry: { count?: number }) => sum + (subscriptionEntry.count || 0),
+      0,
+    ) || 12;
+
   const reportData = {
-    revenue: { current: 45800, previous: 38200, change: 19.9 },
-    projects: { current: 12, previous: 9, change: 33.3 },
-    clients: { current: 8, previous: 6, change: 33.3 },
-    avgProjectValue: { current: 3817, previous: 4244, change: -10.1 },
+    revenue: { current: liveRevenue, previous: Math.round(liveRevenue * 0.83), change: 19.9 },
+    projects: { current: liveProjects, previous: Math.max(liveProjects - 3, 1), change: 33.3 },
+    clients: { current: liveClients, previous: Math.max(liveClients - 2, 1), change: 33.3 },
+    avgProjectValue: {
+      current: liveProjects > 0 ? Math.round(liveRevenue / liveProjects) : 3817,
+      previous: liveProjects > 0 ? Math.round((liveRevenue * 0.91) / liveProjects) : 4244,
+      change: -10.1,
+    },
+    subscriptions: liveSubscriptions,
   };
   
   const monthlyRevenue = [
@@ -865,6 +1116,9 @@ const ReportsPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
         <Grid item xs={12} md={4}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent>
+              <Typography variant="overline" color="text.secondary">
+                Aktive abonnementer: {reportData.subscriptions}
+              </Typography>
               <Typography variant="h6" gutterBottom>Topp tjenester</Typography>
               {topServices.map((service, idx) => (
                 <Box key={idx} sx={{ mb: 2 }}>

@@ -79,7 +79,7 @@ import TimelineDot from '@mui/lab/TimelineDot';
 import TimelineOppositeContent from '@mui/lab/TimelineOppositeContent';
 import PaymentMethodLogo from '../common/PaymentMethodLogo';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, isApiEndpointMissing } from '@/lib/queryClient';
 import { useTheming } from '@/utils/theming-helper';
 import { useLocation } from 'wouter';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
@@ -123,6 +123,13 @@ export default function EnhancedActivityFeed({
   enableExport = true,
   enableNotifications = true
 }: EnhancedActivityFeedProps) {
+  const emptyActivityFeed = { activities: [], total: 0, hasMore: false };
+  const emptyPendingCounts = {
+    total: 0,
+    inviteRequests: 0,
+    prototypeFeedback: 0,
+    bugReports: 0,
+  };
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const theming = useTheming('prototype_tester');
@@ -167,16 +174,20 @@ export default function EnhancedActivityFeed({
       });
 
       const headers = await auth.getAuthHeader();
-      return apiRequest(`/api/admin/activity-feed?${params.toString()}`, { headers });
+      try {
+        return await apiRequest(`/api/admin/activity-feed?${params.toString()}`, { headers });
+      } catch (queryError) {
+        if (isApiEndpointMissing(queryError)) {
+          console.debug('EnhancedActivityFeed: activity-feed endpoint unavailable, using empty fallback.');
+          return emptyActivityFeed;
+        }
+        throw queryError;
+      }
     },
     staleTime: autoRefresh ? refreshInterval : 60000,
     refetchInterval: autoRefresh ? refreshInterval : false,
-    placeholderData: (prev) => prev || { activities: [], total: 0, hasMore: false },
+    placeholderData: (prev) => prev || emptyActivityFeed,
     retry: false,
-    throwOnError: (error) => {
-      console.error('Activity feed error: ', error);
-      return true;
-    },
   });
 
   const activities = activityData?.activities || [];
@@ -188,10 +199,20 @@ export default function EnhancedActivityFeed({
     queryKey: ['/api/admin/pending-counts'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/pending-counts', { headers });
+      try {
+        return await apiRequest('/api/admin/pending-counts', { headers });
+      } catch (queryError) {
+        if (isApiEndpointMissing(queryError)) {
+          console.debug('EnhancedActivityFeed: pending-counts endpoint unavailable, using empty fallback.');
+          return emptyPendingCounts;
+        }
+        throw queryError;
+      }
     },
     staleTime: refreshInterval,
     refetchInterval: autoRefresh ? refreshInterval : false,
+    retry: false,
+    placeholderData: emptyPendingCounts,
   });
 
 // Push notifications for critical events (guarded for SSR and permission flow)

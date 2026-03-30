@@ -5,15 +5,7 @@
  */
 
 import { apiRequest } from '@/lib/queryClient';
-import type {
-  PermissionLevel} from '../storyboard/StoryboardCollaborationService';
-import {
-  Comment,
-  VersionSnapshot,
-  TeamMember,
-  ShareLink
-} from '../storyboard/StoryboardCollaborationService';
-import { Storyboard, StoryboardFrame } from '../../state/storyboardStore';
+import type { PermissionLevel } from '../storyboard/StoryboardCollaborationService';
 
 // =============================================================================
 // Types
@@ -130,6 +122,10 @@ interface ShareLinkDB {
 
 const API_BASE = '/api/virtual-studio/storyboard';
 
+async function requestJson<T>(url: string, options?: Parameters<typeof apiRequest>[1]): Promise<T> {
+  return apiRequest(url, options) as Promise<T>;
+}
+
 // =============================================================================
 // Storyboard API
 // =============================================================================
@@ -137,14 +133,12 @@ const API_BASE = '/api/virtual-studio/storyboard';
 export const storyboardApi = {
   // Get all storyboards for current user
   async getAll(): Promise<StoryboardDB[]> {
-    const response = await apiRequest('GET', `${API_BASE}/storyboards, `);
-    return response.json();
+    return requestJson<StoryboardDB[]>(`${API_BASE}/storyboards`);
   },
 
   // Get single storyboard with frames
   async get(id: string): Promise<StoryboardDB> {
-    const response = await apiRequest('GET', `${API_BASE}/storyboards/${id}`);
-    return response.json();
+    return requestJson<StoryboardDB>(`${API_BASE}/storyboards/${id}`);
   },
 
   // Create new storyboard
@@ -155,19 +149,23 @@ export const storyboardApi = {
     projectId?: string;
     settings?: any;
   }): Promise<StoryboardDB> {
-    const response = await apiRequest('POST', `${API_BASE}/storyboards`, data);
-    return response.json();
+    return requestJson<StoryboardDB>(`${API_BASE}/storyboards`, {
+      method: 'POST',
+      body: data,
+    });
   },
 
   // Update storyboard
   async update(id: string, data: Partial<StoryboardDB>): Promise<StoryboardDB> {
-    const response = await apiRequest('PUT', `${API_BASE}/storyboards/${id}`, data);
-    return response.json();
+    return requestJson<StoryboardDB>(`${API_BASE}/storyboards/${id}`, {
+      method: 'PUT',
+      body: data,
+    });
   },
 
   // Delete storyboard
   async delete(id: string): Promise<void> {
-    await apiRequest('DELETE', `${API_BASE}/storyboards/${id}`);
+    await apiRequest(`${API_BASE}/storyboards/${id}`, { method: 'DELETE' });
   },
 };
 
@@ -178,30 +176,36 @@ export const storyboardApi = {
 export const framesApi = {
   // Get frames for storyboard
   async getAll(storyboardId: string): Promise<StoryboardFrameDB[]> {
-    const response = await apiRequest('GET', `${API_BASE}/storyboards/${storyboardId}/frames`);
-    return response.json();
+    return requestJson<StoryboardFrameDB[]>(`${API_BASE}/storyboards/${storyboardId}/frames`);
   },
 
   // Create frame
   async create(storyboardId: string, data: Omit<StoryboardFrameDB, 'id' | 'storyboardId' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<StoryboardFrameDB> {
-    const response = await apiRequest('POST', `${API_BASE}/storyboards/${storyboardId}/frames`, data);
-    return response.json();
+    return requestJson<StoryboardFrameDB>(`${API_BASE}/storyboards/${storyboardId}/frames`, {
+      method: 'POST',
+      body: data,
+    });
   },
 
   // Update frame
   async update(id: string, data: Partial<StoryboardFrameDB>): Promise<StoryboardFrameDB> {
-    const response = await apiRequest('PUT', `${API_BASE}/frames/${id}`, data);
-    return response.json();
+    return requestJson<StoryboardFrameDB>(`${API_BASE}/frames/${id}`, {
+      method: 'PUT',
+      body: data,
+    });
   },
 
   // Delete frame
   async delete(id: string): Promise<void> {
-    await apiRequest('DELETE', `${API_BASE}/frames/${id}`);
+    await apiRequest(`${API_BASE}/frames/${id}`, { method: 'DELETE' });
   },
 
   // Reorder frames
   async reorder(storyboardId: string, frameIds: string[]): Promise<void> {
-    await apiRequest('POST', `${API_BASE}/storyboards/${storyboardId}/frames/reorder`, { frameIds });
+    await apiRequest(`${API_BASE}/storyboards/${storyboardId}/frames/reorder`, {
+      method: 'POST',
+      body: { frameIds },
+    });
   },
 };
 
@@ -215,8 +219,7 @@ export const commentsApi = {
     const url = frameId
       ? `${API_BASE}/storyboards/${storyboardId}/comments?frameId=${frameId}`
       : `${API_BASE}/storyboards/${storyboardId}/comments`;
-    const response = await apiRequest('GET', url);
-    return response.json();
+    return requestJson<CommentDB[]>(url);
   },
 
   // Add comment
@@ -230,31 +233,39 @@ export const commentsApi = {
       parentId?: string;
     }
   ): Promise<CommentDB> {
-    const response = await apiRequest('POST', `${API_BASE}/storyboards/${storyboardId}/comments`, data);
-    return response.json();
+    return requestJson<CommentDB>(`${API_BASE}/storyboards/${storyboardId}/comments`, {
+      method: 'POST',
+      body: data,
+    });
   },
 
   // Update comment
   async update(id: string, text: string): Promise<CommentDB> {
-    const response = await apiRequest('PUT', `${API_BASE}/comments/${id}`, { text });
-    return response.json();
+    return requestJson<CommentDB>(`${API_BASE}/comments/${id}`, {
+      method: 'PUT',
+      body: { text },
+    });
   },
 
   // Resolve comment
   async resolve(id: string): Promise<CommentDB> {
-    const response = await apiRequest('POST', `${API_BASE}/comments/${id}/resolve`, {});
-    return response.json();
+    return requestJson<CommentDB>(`${API_BASE}/comments/${id}/resolve`, {
+      method: 'POST',
+      body: {},
+    });
   },
 
   // Reopen comment
   async reopen(id: string): Promise<CommentDB> {
-    const response = await apiRequest('POST', `${API_BASE}/comments/${id}/reopen`, {});
-    return response.json();
+    return requestJson<CommentDB>(`${API_BASE}/comments/${id}/reopen`, {
+      method: 'POST',
+      body: {},
+    });
   },
 
   // Delete comment
   async delete(id: string): Promise<void> {
-    await apiRequest('DELETE', `${API_BASE}/comments/${id}`);
+    await apiRequest(`${API_BASE}/comments/${id}`, { method: 'DELETE' });
   },
 };
 
@@ -265,8 +276,7 @@ export const commentsApi = {
 export const versionsApi = {
   // Get versions for storyboard
   async getAll(storyboardId: string): Promise<VersionDB[]> {
-    const response = await apiRequest('GET', `${API_BASE}/storyboards/${storyboardId}/versions`);
-    return response.json();
+    return requestJson<VersionDB[]>(`${API_BASE}/storyboards/${storyboardId}/versions`);
   },
 
   // Create version
@@ -280,19 +290,20 @@ export const versionsApi = {
       thumbnailUrl?: string;
     }
   ): Promise<VersionDB> {
-    const response = await apiRequest('POST', `${API_BASE}/storyboards/${storyboardId}/versions`, data);
-    return response.json();
+    return requestJson<VersionDB>(`${API_BASE}/storyboards/${storyboardId}/versions`, {
+      method: 'POST',
+      body: data,
+    });
   },
 
   // Get single version
   async get(id: string): Promise<VersionDB> {
-    const response = await apiRequest('GET', `${API_BASE}/versions/${id}`);
-    return response.json();
+    return requestJson<VersionDB>(`${API_BASE}/versions/${id}`);
   },
 
   // Delete version
   async delete(id: string): Promise<void> {
-    await apiRequest('DELETE', `${API_BASE}/versions/${id}`);
+    await apiRequest(`${API_BASE}/versions/${id}`, { method: 'DELETE' });
   },
 };
 
@@ -303,8 +314,7 @@ export const versionsApi = {
 export const teamApi = {
   // Get team members
   async getAll(storyboardId: string): Promise<TeamMemberDB[]> {
-    const response = await apiRequest('GET', `${API_BASE}/storyboards/${storyboardId}/team`);
-    return response.json();
+    return requestJson<TeamMemberDB[]>(`${API_BASE}/storyboards/${storyboardId}/team`);
   },
 
   // Invite member
@@ -316,19 +326,23 @@ export const teamApi = {
       permission?: PermissionLevel;
     }
   ): Promise<TeamMemberDB> {
-    const response = await apiRequest('POST', `${API_BASE}/storyboards/${storyboardId}/team`, data);
-    return response.json();
+    return requestJson<TeamMemberDB>(`${API_BASE}/storyboards/${storyboardId}/team`, {
+      method: 'POST',
+      body: data,
+    });
   },
 
   // Update permission
   async updatePermission(id: string, permission: PermissionLevel): Promise<TeamMemberDB> {
-    const response = await apiRequest('PUT', `${API_BASE}/team/${id}`, { permission });
-    return response.json();
+    return requestJson<TeamMemberDB>(`${API_BASE}/team/${id}`, {
+      method: 'PUT',
+      body: { permission },
+    });
   },
 
   // Remove member
   async remove(id: string): Promise<void> {
-    await apiRequest('DELETE', `${API_BASE}/team/${id}`);
+    await apiRequest(`${API_BASE}/team/${id}`, { method: 'DELETE' });
   },
 };
 
@@ -339,8 +353,7 @@ export const teamApi = {
 export const shareLinksApi = {
   // Get share links
   async getAll(storyboardId: string): Promise<ShareLinkDB[]> {
-    const response = await apiRequest('GET', `${API_BASE}/storyboards/${storyboardId}/share-links`);
-    return response.json();
+    return requestJson<ShareLinkDB[]>(`${API_BASE}/storyboards/${storyboardId}/share-links`);
   },
 
   // Create share link
@@ -353,8 +366,10 @@ export const shareLinksApi = {
       password?: string;
     }
   ): Promise<ShareLinkDB> {
-    const response = await apiRequest('POST', `${API_BASE}/storyboards/${storyboardId}/share-links`, data);
-    return response.json();
+    return requestJson<ShareLinkDB>(`${API_BASE}/storyboards/${storyboardId}/share-links`, {
+      method: 'POST',
+      body: data,
+    });
   },
 
   // Access shared storyboard (public)
@@ -362,13 +377,12 @@ export const shareLinksApi = {
     const url = password
       ? `${API_BASE}/shared/${token}?password=${encodeURIComponent(password)}`
       : `${API_BASE}/shared/${token}`;
-    const response = await apiRequest('GET', url);
-    return response.json();
+    return requestJson<{ permission: PermissionLevel; storyboard: StoryboardDB }>(url);
   },
 
   // Delete share link
   async delete(id: string): Promise<void> {
-    await apiRequest('DELETE', `${API_BASE}/share-links/${id}`);
+    await apiRequest(`${API_BASE}/share-links/${id}`, { method: 'DELETE' });
   },
 
   // Get share URL
@@ -391,4 +405,3 @@ export const storyboardCollaborationApi = {
 };
 
 export default storyboardCollaborationApi;
-

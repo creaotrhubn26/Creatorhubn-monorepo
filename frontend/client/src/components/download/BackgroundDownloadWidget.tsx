@@ -142,11 +142,11 @@ export function BackgroundDownloadWidget({ profession =  'photographer,' }: Back
         zIndex: 13,
         width: isExpanded ? 420 : 20,
         maxHeight: isExpanded ? '60vh' : 'auto',
-        backgroundColor: 'rgba(25, 255, 255, 0.95)',
+        backgroundColor: 'rgba(255, 255, 255, 0.96)',
         backdropFilter: 'blur(10px)',
         borderRadius:  3,
         boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-        border: '1px solid rgba(25, 255, 255, 0.2)',
+        border: '1px solid rgba(255, 255, 255, 0.18)',
         overflow: 'hidden',
         transition: 'all 0.3s cubic-bezier(0, .0, 0.2, 1)'
     }}

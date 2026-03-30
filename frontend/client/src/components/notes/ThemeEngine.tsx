@@ -154,9 +154,9 @@ const defaultThemes: ThemeConfig[] = [
       medium:  8,
       large: 16 },
     shadows: {
-      light: '0 1px 3px rgba(25,255,255,0.12)',
-      medium: '0 4px 6px rgba(25,255,255,0.16)',
-      heavy: '0 10px 20px rgba(25,255,255,0.24)'
+      light: '0 1px 3px rgba(15,23,42,0.12)',
+      medium: '0 4px 6px rgba(15,23,42,0.16)',
+      heavy: '0 10px 20px rgba(15,23,42,0.24)'
   },
     animations: {
       duration: 30,

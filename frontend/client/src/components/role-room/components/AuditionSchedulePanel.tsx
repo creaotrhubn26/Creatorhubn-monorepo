@@ -64,9 +64,18 @@ type ViewMode = 'grid' | 'table' | 'compact';
 type StatusFilter = ReducerStatusFilter;
 type WorkspaceView = 'standard' | 'pro';
 type ProSortField = 'priority' | 'date' | 'candidate' | 'role' | 'status';
+type ScheduleStatus = NonNullable<Schedule['status']>;
+type NormalizedSchedule = Schedule & {
+  candidateId: string;
+  roleId: string;
+  date: string;
+  time: string;
+  location: string;
+  status: ScheduleStatus;
+};
 
 const PRO_STATUS_COLUMNS: Array<{
-  status: Schedule['status'];
+  status: ScheduleStatus;
   label: string;
 }> = [
   { status: 'scheduled', label: 'Planlagt' },
@@ -178,13 +187,13 @@ function AuditionSchedulePanelInner({
   const [proViewMode, setProViewMode] = useState<ProViewMode>('pipeline');
   const [proTimelineMode, setProTimelineMode] = useState<ProTimelineMode>('week');
   const [proTimelineDate, setProTimelineDate] = useState<string>('');
-  const [statusOverrides, setStatusOverrides] = useState<Record<string, Schedule['status']>>({});
-  const [dragOverStatus, setDragOverStatus] = useState<Schedule['status'] | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, ScheduleStatus>>({});
+  const [dragOverStatus, setDragOverStatus] = useState<ScheduleStatus | null>(null);
   const [proCompareIds, setProCompareIds] = useState<Set<string>>(new Set());
   const [proSavedViews, setProSavedViews] = useState<ProSavedView[]>([]);
   const [selectedProViewId, setSelectedProViewId] = useState<string>('none');
   const [statusUndoOpen, setStatusUndoOpen] = useState(false);
-  const [statusUndoRecord, setStatusUndoRecord] = useState<{ scheduleId: string; from: Schedule['status']; to: Schedule['status'] } | null>(null);
+  const [statusUndoRecord, setStatusUndoRecord] = useState<{ scheduleId: string; from: ScheduleStatus; to: ScheduleStatus } | null>(null);
   const [proActivityLog, setProActivityLog] = useState<ProActivityRecord[]>([]);
   const [bulkPlanDate, setBulkPlanDate] = useState('');
   const [bulkPlanStart, setBulkPlanStart] = useState('09:00');
@@ -258,7 +267,10 @@ function AuditionSchedulePanelInner({
 
   // Derive favorites as a Set<id> from per-row flag returned by the API
   const favorites = useMemo(
-    () => new Set(hookItems.filter(i => (i as Record<string, unknown>).favorite === true).map(i => i.id)),
+    () => {
+      const rows = hookItems as Array<Record<string, unknown> & { id: string }>;
+      return new Set(rows.filter((item) => item.favorite === true).map((item) => item.id));
+    },
     [hookItems],
   );
 
@@ -372,11 +384,11 @@ function AuditionSchedulePanelInner({
   );
 
   const getCandidateName = useCallback(
-    (id: string) => candidateById.get(id) ?? 'Ukjent',
+    (id?: string) => (id ? candidateById.get(id) ?? 'Ukjent' : 'Ukjent'),
     [candidateById],
   );
   const getRoleName = useCallback(
-    (id: string) => roleById.get(id) ?? 'Ukjent',
+    (id?: string) => (id ? roleById.get(id) ?? 'Ukjent' : 'Ukjent'),
     [roleById],
   );
   const getSceneName = useCallback(
@@ -385,7 +397,21 @@ function AuditionSchedulePanelInner({
   );
 
   // Helper functions
-  const getStatusColor = (status: string) => {
+  const normalizeSchedule = useCallback((schedule: Schedule): NormalizedSchedule => ({
+    ...schedule,
+    candidateId: schedule.candidateId ?? schedule.candidate_id ?? '',
+    roleId: schedule.roleId ?? schedule.role_id ?? '',
+    sceneId: schedule.sceneId ?? schedule.scene_id,
+    locationId: schedule.locationId ?? schedule.location_id,
+    date: schedule.date ?? '',
+    time: schedule.time ?? schedule.startTime ?? schedule.start_time ?? '',
+    endTime: schedule.endTime ?? schedule.end_time,
+    location: schedule.location ?? '',
+    status: schedule.status ?? 'scheduled',
+    favorite: schedule.favorite ?? false,
+  }), []);
+
+  const getStatusColor = (status?: string) => {
     switch (status) {
       case 'confirmed':         return '#3b82f6';  // blue
       case 'awaiting_callback': return '#a855f7';  // purple
@@ -396,7 +422,7 @@ function AuditionSchedulePanelInner({
     }
   };
 
-  const getStatusLabel = (status: string) => {
+  const getStatusLabel = (status?: string) => {
     switch (status) {
       case 'confirmed':         return 'Bekreftet';
       case 'awaiting_callback': return 'Tilbakemelding';
@@ -412,21 +438,24 @@ function AuditionSchedulePanelInner({
   const renderFormattedNotes = formatNotesToReactNodes;
 
   // Map a server AuditionScheduleRow (snake_case, denormalized) to the component's Schedule shape
-  const mapHookItem = useCallback((item: Record<string, unknown>): Schedule & { candidateName?: string; roleName?: string; isFavorite?: boolean } => ({
-    id:          String(item.id ?? ''),
-    candidateId: String(item.candidate_id ?? item.candidateId ?? ''),
-    roleId:      String(item.role_id      ?? item.roleId      ?? ''),
-    sceneId:     item.scene_id    ? String(item.scene_id)    : undefined,
-    locationId:  item.location_id ? String(item.location_id) : undefined,
-    date:        String(item.date ?? ''),
-    time:        String(item.time ?? ''),
-    location:    String(item.location ?? ''),
-    notes:       item.notes ? String(item.notes) : undefined,
-    status:      (item.status as Schedule['status']) ?? 'scheduled',
-    candidateName: item.candidate_name ? String(item.candidate_name) : undefined,
-    roleName:      item.role_name      ? String(item.role_name)      : undefined,
-    isFavorite:    Boolean(item.favorite),
-  }), []);
+  const mapHookItem = useCallback((item: Record<string, unknown>): NormalizedSchedule & { candidateName?: string; roleName?: string; isFavorite?: boolean } => ({
+    ...normalizeSchedule({
+      id:          String(item.id ?? ''),
+      candidateId: String(item.candidate_id ?? item.candidateId ?? ''),
+      roleId:      String(item.role_id      ?? item.roleId      ?? ''),
+      sceneId:     item.scene_id    ? String(item.scene_id)    : undefined,
+      locationId:  item.location_id ? String(item.location_id) : undefined,
+      date:        String(item.date ?? ''),
+      time:        String(item.time ?? ''),
+      location:    String(item.location ?? ''),
+      notes:       item.notes ? String(item.notes) : undefined,
+      status:      (item.status as ScheduleStatus | undefined) ?? 'scheduled',
+      candidateName: item.candidate_name ? String(item.candidate_name) : undefined,
+      roleName:      item.role_name      ? String(item.role_name)      : undefined,
+      favorite:      Boolean(item.favorite),
+    }),
+    isFavorite: Boolean(item.favorite),
+  }), [normalizeSchedule]);
 
   /**
    * The active schedule list.
@@ -434,14 +463,19 @@ function AuditionSchedulePanelInner({
    * all filters + sort, so we just map rows to the Schedule shape.
    * Otherwise fall back to local filter+sort on the prop array.
    */
-  const schedules = usingHookData
-    ? (hookItems as Record<string, unknown>[]).map(mapHookItem)
-    : schedulesProp;
+  const schedules = useMemo(
+    () => (
+      usingHookData
+        ? (hookItems as Record<string, unknown>[]).map(mapHookItem)
+        : schedulesProp.map(normalizeSchedule)
+    ),
+    [hookItems, mapHookItem, normalizeSchedule, schedulesProp, usingHookData],
+  );
 
   // Precomputed timestamps for O(1) sort comparisons (only used in fallback path)
   const scheduleTimeMs = useMemo(
-    () => new Map(schedulesProp.map(s => [s.id, Date.parse(`${s.date}T${s.time}`)])),
-    [schedulesProp],
+    () => new Map(schedules.map((schedule) => [schedule.id, Date.parse(`${schedule.date}T${schedule.time || '00:00'}`)])),
+    [schedules],
   );
 
   // Filter and sort — only runs when NOT using hook data (server handles it otherwise)
@@ -450,7 +484,7 @@ function AuditionSchedulePanelInner({
       // Already filtered + sorted by server; just return the mapped array
       return schedules;
     }
-    let result = [...schedulesProp];
+    let result = [...schedules];
     
     // Search
     if (searchQuery) {
@@ -513,21 +547,21 @@ function AuditionSchedulePanelInner({
     });
     
     return result;
-  }, [usingHookData, schedules, schedulesProp, searchQuery, statusFilter, dateFilter, candidateFilter, roleFilter, locationFilter, sortField, sortDirection, favorites, scheduleTimeMs, getCandidateName, getRoleName]);
+  }, [usingHookData, schedules, searchQuery, statusFilter, dateFilter, candidateFilter, roleFilter, locationFilter, sortField, sortDirection, favorites, scheduleTimeMs, getCandidateName, getRoleName]);
 
   // Unique location strings derived from the full schedule list (used by the toolbar filter)
   const uniqueLocations = useMemo(
-    () => [...new Set(schedules.filter(s => s.location).map(s => s.location))].sort(),
+    () => [...new Set(schedules.map((schedule) => schedule.location).filter((location): location is string => Boolean(location)))].sort(),
     [schedules],
   );
 
-  const getScheduleTimestamp = useCallback((schedule: Schedule) => {
+  const getScheduleTimestamp = useCallback((schedule: Schedule | NormalizedSchedule) => {
     const timestamp = Date.parse(`${schedule.date}T${schedule.time || '00:00'}`);
     return Number.isFinite(timestamp) ? timestamp : 0;
   }, []);
 
-  const getProPriorityScore = useCallback((schedule: Schedule) => {
-    const statusWeight: Record<Schedule['status'], number> = {
+  const getProPriorityScore = useCallback((schedule: Schedule | NormalizedSchedule) => {
+    const statusWeight: Record<ScheduleStatus, number> = {
       confirmed: 34,
       awaiting_callback: 30,
       scheduled: 26,
@@ -542,10 +576,10 @@ function AuditionSchedulePanelInner({
     const noteStrength = schedule.notes ? Math.min(14, Math.ceil(schedule.notes.length / 40)) : 0;
     const favoriteBoost = favorites.has(schedule.id) ? 14 : 0;
     const callbackBoost = schedule.status === 'awaiting_callback' ? 8 : 0;
-    return Math.max(0, Math.min(100, statusWeight[schedule.status] + urgency + noteStrength + favoriteBoost + callbackBoost));
+    return Math.max(0, Math.min(100, statusWeight[schedule.status ?? 'scheduled'] + urgency + noteStrength + favoriteBoost + callbackBoost));
   }, [favorites, getScheduleTimestamp]);
 
-  const getPriorityBreakdown = useCallback((schedule: Schedule) => {
+  const getPriorityBreakdown = useCallback((schedule: Schedule | NormalizedSchedule) => {
     const now = Date.now();
     const scheduleTime = getScheduleTimestamp(schedule);
     const daysToAudition = scheduleTime > 0 ? Math.max(0, (scheduleTime - now) / (1000 * 60 * 60 * 24)) : 365;
@@ -811,18 +845,18 @@ function AuditionSchedulePanelInner({
     }
     // Fallback: compute from prop data
     return {
-      total:     schedulesProp.length,
-      scheduled: schedulesProp.filter(s => s.status === 'scheduled').length,
-      completed: schedulesProp.filter(s => s.status === 'completed').length,
-      cancelled: schedulesProp.filter(s => s.status === 'cancelled').length,
-      upcoming:  schedulesProp.filter(s => {
-        if (s.status !== 'scheduled') return false;
-        const ms = scheduleTimeMs.get(s.id);
+      total:     schedules.length,
+      scheduled: schedules.filter((schedule) => schedule.status === 'scheduled').length,
+      completed: schedules.filter((schedule) => schedule.status === 'completed').length,
+      cancelled: schedules.filter((schedule) => schedule.status === 'cancelled').length,
+      upcoming:  schedules.filter((schedule) => {
+        if (schedule.status !== 'scheduled') return false;
+        const ms = scheduleTimeMs.get(schedule.id);
         return ms !== undefined && ms >= Date.now();
       }).length,
       favorites: favorites.size,
     };
-  }, [serverCounts, schedulesProp, favorites, scheduleTimeMs]);
+  }, [serverCounts, schedules, favorites, scheduleTimeMs]);
 
   // Handlers
   const handleSort = (field: SortField) => {
@@ -878,12 +912,12 @@ function AuditionSchedulePanelInner({
 
   const applyStatusUpdate = useCallback(async (
     scheduleId: string,
-    nextStatus: Schedule['status'],
+    nextStatus: ScheduleStatus,
     options?: { reason?: string; allowUndo?: boolean },
   ) => {
     const schedule = effectiveSchedules.find((item) => item.id === scheduleId);
     if (!schedule) return;
-    const previousStatus = schedule.status as Schedule['status'];
+    const previousStatus = schedule.status as ScheduleStatus;
     if (previousStatus === nextStatus) return;
 
     setStatusOverrides((prev) => ({ ...prev, [scheduleId]: nextStatus }));
@@ -908,11 +942,11 @@ function AuditionSchedulePanelInner({
   }, [appendProActivity, effectiveSchedules, getCandidateName, onSchedulesChange, patchMutation, showError]);
 
   /** Called from the Details Drawer when user picks a new status */
-  const handleStatusChange = useCallback(async (id: string, status: Schedule['status']) => {
+  const handleStatusChange = useCallback(async (id: string, status: ScheduleStatus) => {
     await applyStatusUpdate(id, status, { allowUndo: true });
   }, [applyStatusUpdate]);
 
-  const handleStatusDrop = useCallback(async (scheduleId: string, targetStatus: Schedule['status']) => {
+  const handleStatusDrop = useCallback(async (scheduleId: string, targetStatus: ScheduleStatus) => {
     const schedule = proSchedules.find((item) => item.id === scheduleId);
     if (!schedule || schedule.status === targetStatus) return;
     await applyStatusUpdate(scheduleId, targetStatus, { reason: 'Drag & drop', allowUndo: true });
@@ -1215,7 +1249,7 @@ function AuditionSchedulePanelInner({
   // Keep stable ref in sync for ⌘D keyboard shortcut
   useEffect(() => { handleDuplicateRef.current = handleDuplicate; });
 
-  const handleBulkStatusChange = async (status: Schedule['status']) => {
+  const handleBulkStatusChange = async (status: ScheduleStatus) => {
     const ids = Array.from(selectedIds);
     try {
       await Promise.all(ids.map(id => applyStatusUpdate(id, status, { reason: 'Bulk-status', allowUndo: false })));
@@ -1676,7 +1710,7 @@ function AuditionSchedulePanelInner({
             <Button
               variant={showStats ? 'contained' : 'outlined'}
               startIcon={<StatsIcon />}
-              onClick={() => setShowStats(!showStats)}
+              onClick={setShowStats}
               sx={{
                 borderColor: showStats ? roleTabAccent : roleBorder,
                 color: showStats ? '#160a24' : roleText,
@@ -3782,7 +3816,7 @@ function AuditionSchedulePanelInner({
           ) : (
             <Grid container spacing={{ xs: 1, sm: 2 }}>
               {poolAuditions.map((poolAudition) => (
-                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={poolAudition.id}>
+                <Grid item xs={12} sm={6} md={4} lg={3} key={poolAudition.id}>
                   <Card
                     sx={{
                       bgcolor: 'rgba(156, 39, 176, 0.08)',
@@ -4055,7 +4089,7 @@ function AuditionSchedulePanelInner({
             <Select
               displayEmpty
               value=""
-              onChange={(e) => { if (e.target.value) handleBulkStatusChange(e.target.value as Schedule['status']); }}
+              onChange={(e) => { if (e.target.value) handleBulkStatusChange(e.target.value as ScheduleStatus); }}
               startAdornment={<BulkStatusIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', mr: 0.5 }} />}
               renderValue={() => <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Endre status</Typography>}
               sx={{

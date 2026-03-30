@@ -2,10 +2,9 @@
  * Enhanced Visual Editor Page - Integrates all advanced features
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Box,
-  IconButton,
   Tooltip,
   Fab,
   Drawer,
@@ -16,6 +15,10 @@ import {
   Button,
   Stack,
   TextField,
+  Chip,
+  MenuItem,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Code,
@@ -28,11 +31,23 @@ import {
   AutoAwesome,
   Tune,
   Settings as SettingsIcon,
+  StayCurrentLandscape,
+  StayCurrentPortrait,
+  TextFields,
+  SmartButton,
+  ViewQuilt,
+  WebAsset,
 } from '@mui/icons-material';
 
 // Existing components
-import type { EditorElement, Project } from './VisualEditorContext';
-import { VisualEditorProvider, useVisualEditor } from './VisualEditorContext';
+import {
+  VisualEditorProvider,
+  type EditorDesignTokenMap,
+  useVisualEditor,
+  type EditorElement,
+  type EditorStyleClassMap,
+  type Project,
+} from './VisualEditorContext';
 import { EnhancedTopToolbar } from './EnhancedTopToolbar';
 import { FabricCanvas } from './FabricCanvas';
 import VisualEditorSidebar from './VisualEditorSidebar';
@@ -44,16 +59,16 @@ import { LivePreviewPanel } from './LivePreviewPanel';
 import { AccessibilityChecker } from './AccessibilityChecker';
 import { PlatformExporter } from './PlatformExporter';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
-import { ComponentLibrary } from './ComponentLibrary';
+import { ComponentLibrary, type ComponentLibrarySnapshot, type LibraryComponent } from './ComponentLibrary';
 import { UnifiedCodeStudio } from './UnifiedCodeStudio';
 import { getVisualEditorTokens } from './visualEditorTokens';
+import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useDatabase } from '@/hooks/useDatabase';
 import ModalCreator from './ModalCreator';
 import DashboardComponentManager from './DashboardComponentManager';
 import LibrarySuggestionDialog from './LibrarySuggestionDialog';
-import type { ProfessionConfiguration } from './ProfessionConfigWizard';
-import ProfessionConfigWizard from './ProfessionConfigWizard';
+import ProfessionConfigWizard, { type ProfessionConfiguration } from './ProfessionConfigWizard';
 import ToastDesigner from './ToastDesigner';
 import TemplateDashboard from './TemplateDashboard';
 import ExportPresetsDashboard from './ExportPresetsDashboard';
@@ -79,14 +94,25 @@ import { LogoManagementPanel } from './LogoManagementPanel';
 import ThemingAdminPanel from './ThemingAdminPanel';
 import LandingSettingsPanel from './LandingSettingsPanel';
 import ShowcasePublisherPanel from '../../showcase/ShowcasePublisherPanel';
-
-/** Shape passed by ComponentLibrary's onUseComponent callback */
-interface LibraryComponent {
-  id: string;
-  name: string;
-  category?: string;
-  props?: Record<string, unknown>;
-}
+import {
+  BREAKPOINT_MEDIA_QUERIES,
+  buildComponentManifest,
+  extractDesignTokenNameFromReference,
+  EDITOR_BREAKPOINTS,
+  getDesignTokenCssVariableName,
+  getDesignTokenReference,
+  getElementComponentBinding,
+  getElementClassNames,
+  getDisplayViewport,
+  getEditorLayoutMode,
+  getProjectViewport,
+  resolveEditorBrowserViewportMetrics,
+  resolveEditorDeviceProfile,
+  sanitizeComponentSlotName,
+  stripComponentBindingFromProps,
+  type EditorResponsiveOverride,
+  withComponentBinding,
+} from './visualEditorModel';
 
 interface EnhancedVisualEditorPageProps {
   projectId?: string;
@@ -99,6 +125,14 @@ interface IntegrationMessage {
   data?: unknown;
   [key: string]: unknown;
 }
+
+type GeneratedCodeState = {
+  html: string;
+  react: string;
+  css: string;
+  javascript: string;
+  manifest: string;
+};
 
 interface IntegrationStateSnapshot {
   projectId: string;
@@ -147,8 +181,381 @@ const toElementType = (raw: string): EditorElement['type'] => {
   return VALID_ELEMENT_TYPES.includes(lower) ? lower : 'container';
 };
 
+const createEditorElementId = () =>
+  `component-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const cloneEditorElement = (element: EditorElement): EditorElement => ({
+  ...element,
+  styles: { ...element.styles },
+  props: { ...element.props },
+  children: [...(element.children ?? [])],
+  responsive: element.responsive
+    ? {
+        tablet: element.responsive.tablet
+          ? {
+              ...element.responsive.tablet,
+              styles: { ...(element.responsive.tablet.styles ?? {}) },
+            }
+          : undefined,
+        mobile: element.responsive.mobile
+          ? {
+              ...element.responsive.mobile,
+              styles: { ...(element.responsive.mobile.styles ?? {}) },
+            }
+          : undefined,
+      }
+    : undefined,
+});
+
+const cloneStyleClassMap = (styleClasses: EditorStyleClassMap): EditorStyleClassMap =>
+  Object.entries(styleClasses).reduce<EditorStyleClassMap>((acc, [name, styleClass]) => {
+    acc[name] = {
+      name: styleClass.name,
+      styles: { ...styleClass.styles },
+      responsive: styleClass.responsive
+        ? {
+            tablet: styleClass.responsive.tablet
+              ? { ...styleClass.responsive.tablet }
+              : undefined,
+            mobile: styleClass.responsive.mobile
+              ? { ...styleClass.responsive.mobile }
+              : undefined,
+          }
+        : undefined,
+    };
+    return acc;
+  }, {});
+
+const cloneDesignTokenMap = (designTokens: EditorDesignTokenMap): EditorDesignTokenMap =>
+  Object.entries(designTokens).reduce<EditorDesignTokenMap>((acc, [name, token]) => {
+    acc[name] = {
+      name: token.name,
+      value: token.value,
+      type: token.type,
+      description: token.description,
+    };
+    return acc;
+  }, {});
+
+const buildComponentSlotNameMap = (
+  elements: EditorElement[],
+  rootElementIds: string[],
+): Map<string, string> => {
+  const slotCounts = new Map<string, number>();
+
+  return elements.reduce<Map<string, string>>((acc, element) => {
+    const fallbackName = rootElementIds.includes(element.id)
+      ? element.name ?? 'root'
+      : element.name ?? `${element.type}-slot`;
+    const normalizedBase = sanitizeComponentSlotName(fallbackName);
+    const nextCount = (slotCounts.get(normalizedBase) ?? 0) + 1;
+    slotCounts.set(normalizedBase, nextCount);
+    acc.set(element.id, nextCount === 1 ? normalizedBase : `${normalizedBase}-${nextCount}`);
+    return acc;
+  }, new Map());
+};
+
+const collectUsedDesignTokenNames = (
+  styleMap: Partial<EditorElement['styles']>,
+  tokenNames: Set<string>,
+) => {
+  Object.values(styleMap).forEach((value) => {
+    if (typeof value !== 'string') {
+      return;
+    }
+
+    const tokenName = extractDesignTokenNameFromReference(value);
+    if (tokenName) {
+      tokenNames.add(tokenName);
+    }
+  });
+};
+
+const rewriteTokenReferencesInStyleMap = (
+  styleMap: Partial<EditorElement['styles']>,
+  tokenNameMap: Map<string, string>,
+): Partial<EditorElement['styles']> =>
+  Object.entries(styleMap).reduce<Partial<EditorElement['styles']>>((acc, [key, value]) => {
+    const styleKey = key as keyof EditorElement['styles'];
+    const mutableAcc = acc as Record<string, EditorElement['styles'][keyof EditorElement['styles']] | undefined>;
+    if (typeof value !== 'string') {
+      mutableAcc[styleKey] = value as EditorElement['styles'][typeof styleKey];
+      return acc;
+    }
+
+    const currentTokenName = extractDesignTokenNameFromReference(value);
+    if (!currentTokenName) {
+      mutableAcc[styleKey] = value as EditorElement['styles'][typeof styleKey];
+      return acc;
+    }
+
+    const rewrittenTokenName = tokenNameMap.get(currentTokenName) ?? currentTokenName;
+    mutableAcc[styleKey] = getDesignTokenReference(rewrittenTokenName) as EditorElement['styles'][typeof styleKey];
+    return acc;
+  }, {});
+
+const buildSelectionSnapshot = (
+  elements: EditorElement[],
+  selectedIds: string[],
+  styleClasses: EditorStyleClassMap,
+  designTokens: EditorDesignTokenMap,
+): ComponentLibrarySnapshot | null => {
+  if (selectedIds.length === 0) {
+    return null;
+  }
+
+  const elementsById = new Map(elements.map((element) => [element.id, element]));
+  const selectedSet = new Set(selectedIds);
+  const rootElementIds = selectedIds.filter((id) => {
+    let parentId = elementsById.get(id)?.parent;
+    while (parentId) {
+      if (selectedSet.has(parentId)) {
+        return false;
+      }
+      parentId = elementsById.get(parentId)?.parent;
+    }
+    return true;
+  });
+
+  if (rootElementIds.length === 0) {
+    return null;
+  }
+
+  const includedIds = new Set<string>();
+  const visit = (id: string) => {
+    if (includedIds.has(id)) {
+      return;
+    }
+
+    const element = elementsById.get(id);
+    if (!element) {
+      return;
+    }
+
+    includedIds.add(id);
+    (element.children ?? []).forEach((childId) => visit(childId));
+  };
+  rootElementIds.forEach((id) => visit(id));
+
+  const snapshotElements = elements
+    .filter((element) => includedIds.has(element.id))
+    .map((element) => {
+      const clonedElement = cloneEditorElement(element);
+      return {
+        ...clonedElement,
+        props: stripComponentBindingFromProps(clonedElement.props),
+      };
+    });
+  const usedClassNames = new Set(
+    snapshotElements.flatMap((element) => getElementClassNames(element.className)),
+  );
+  const snapshotStyleClasses = Array.from(usedClassNames).reduce<EditorStyleClassMap>((acc, className) => {
+    const styleClass = styleClasses[className];
+    if (styleClass) {
+      acc[className] = {
+        name: styleClass.name,
+        styles: { ...styleClass.styles },
+        responsive: styleClass.responsive
+          ? {
+              tablet: styleClass.responsive.tablet
+                ? { ...styleClass.responsive.tablet }
+                : undefined,
+              mobile: styleClass.responsive.mobile
+                ? { ...styleClass.responsive.mobile }
+                : undefined,
+            }
+          : undefined,
+      };
+    }
+    return acc;
+  }, {});
+  const usedTokenNames = new Set<string>();
+  snapshotElements.forEach((element) => {
+    collectUsedDesignTokenNames(element.styles, usedTokenNames);
+    collectUsedDesignTokenNames(element.responsive?.tablet?.styles ?? {}, usedTokenNames);
+    collectUsedDesignTokenNames(element.responsive?.mobile?.styles ?? {}, usedTokenNames);
+  });
+  Object.values(snapshotStyleClasses).forEach((styleClass) => {
+    collectUsedDesignTokenNames(styleClass.styles, usedTokenNames);
+    collectUsedDesignTokenNames(styleClass.responsive?.tablet ?? {}, usedTokenNames);
+    collectUsedDesignTokenNames(styleClass.responsive?.mobile ?? {}, usedTokenNames);
+  });
+  const snapshotDesignTokens = Array.from(usedTokenNames).reduce<EditorDesignTokenMap>((acc, tokenName) => {
+    const token = designTokens[tokenName];
+    if (token) {
+      acc[tokenName] = {
+        name: token.name,
+        value: token.value,
+        type: token.type,
+        description: token.description,
+      };
+    }
+    return acc;
+  }, {});
+
+  return {
+    rootElementIds: [...rootElementIds],
+    elements: snapshotElements,
+    styleClasses: snapshotStyleClasses,
+    designTokens: snapshotDesignTokens,
+  };
+};
+
+const instantiateSnapshotComponent = (
+  component: LibraryComponent,
+  existingStyleClasses: EditorStyleClassMap,
+  existingDesignTokens: EditorDesignTokenMap,
+  insertionIndex: number,
+): { elements: EditorElement[]; styleClasses: EditorStyleClassMap; designTokens: EditorDesignTokenMap; rootIds: string[] } | null => {
+  if (!component.snapshot) {
+    return null;
+  }
+
+  const snapshot = {
+    rootElementIds: [...component.snapshot.rootElementIds],
+    elements: component.snapshot.elements.map((element) => cloneEditorElement(element)),
+    styleClasses: cloneStyleClassMap(component.snapshot.styleClasses),
+    designTokens: cloneDesignTokenMap(component.snapshot.designTokens ?? {}),
+  };
+  const instanceId = `${component.familyId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const componentSlotNameMap = buildComponentSlotNameMap(snapshot.elements, snapshot.rootElementIds);
+
+  const elementIdMap = new Map(snapshot.elements.map((element) => [element.id, createEditorElementId()]));
+  const mergedStyleClasses = cloneStyleClassMap(existingStyleClasses);
+  const mergedDesignTokens = cloneDesignTokenMap(existingDesignTokens);
+  const styleClassNameMap = new Map<string, string>();
+  const designTokenNameMap = new Map<string, string>();
+
+  Object.entries(snapshot.designTokens).forEach(([name, token]) => {
+    let resolvedName = name;
+    const existing = mergedDesignTokens[resolvedName];
+
+    if (existing && JSON.stringify(existing) !== JSON.stringify(token)) {
+      let suffix = 2;
+      while (mergedDesignTokens[`${name}-${suffix}`]) {
+        suffix += 1;
+      }
+      resolvedName = `${name}-${suffix}`;
+    }
+
+    designTokenNameMap.set(name, resolvedName);
+    mergedDesignTokens[resolvedName] = {
+      name: resolvedName,
+      value: token.value,
+      type: token.type,
+      description: token.description,
+    };
+  });
+
+  Object.entries(snapshot.styleClasses).forEach(([name, styleClass]) => {
+    let resolvedName = name;
+    const existing = mergedStyleClasses[resolvedName];
+    const existingSignature = existing ? JSON.stringify(existing) : null;
+    const snapshotSignature = JSON.stringify(styleClass);
+
+    if (existingSignature && existingSignature !== snapshotSignature) {
+      let suffix = 2;
+      while (mergedStyleClasses[`${name}-${suffix}`]) {
+        suffix += 1;
+      }
+      resolvedName = `${name}-${suffix}`;
+    }
+
+    styleClassNameMap.set(name, resolvedName);
+    mergedStyleClasses[resolvedName] = {
+      name: resolvedName,
+      styles: rewriteTokenReferencesInStyleMap(styleClass.styles, designTokenNameMap) as EditorElement['styles'],
+      responsive: styleClass.responsive
+        ? {
+            tablet: styleClass.responsive.tablet
+              ? rewriteTokenReferencesInStyleMap(styleClass.responsive.tablet, designTokenNameMap)
+              : undefined,
+            mobile: styleClass.responsive.mobile
+              ? rewriteTokenReferencesInStyleMap(styleClass.responsive.mobile, designTokenNameMap)
+              : undefined,
+          }
+        : undefined,
+    };
+  });
+
+  const rootElements = snapshot.rootElementIds
+    .map((id) => snapshot.elements.find((element) => element.id === id))
+    .filter((element): element is EditorElement => Boolean(element));
+  const minRootX = rootElements.reduce((minValue, element) => Math.min(minValue, element.x), Number.POSITIVE_INFINITY);
+  const minRootY = rootElements.reduce((minValue, element) => Math.min(minValue, element.y), Number.POSITIVE_INFINITY);
+  const offsetX = 96 + (insertionIndex % 5) * 24 - (Number.isFinite(minRootX) ? minRootX : 0);
+  const offsetY = 96 + (insertionIndex % 4) * 24 - (Number.isFinite(minRootY) ? minRootY : 0);
+
+  const clonedElements = snapshot.elements.map((element) => {
+    const nextId = elementIdMap.get(element.id) ?? createEditorElementId();
+    const isRootElement = snapshot.rootElementIds.includes(element.id);
+    const nextClassName = getElementClassNames(element.className)
+      .map((className) => styleClassNameMap.get(className) ?? className)
+      .join(' ') || undefined;
+
+    return withComponentBinding({
+      ...cloneEditorElement(element),
+      id: nextId,
+      parent: element.parent ? elementIdMap.get(element.parent) : undefined,
+      children: (element.children ?? []).map((childId) => elementIdMap.get(childId) ?? childId),
+      className: nextClassName,
+      styles: rewriteTokenReferencesInStyleMap(element.styles, designTokenNameMap) as EditorElement['styles'],
+      responsive: element.responsive
+        ? {
+            tablet: element.responsive.tablet
+              ? {
+                  ...element.responsive.tablet,
+                  styles: rewriteTokenReferencesInStyleMap(
+                    element.responsive.tablet.styles ?? {},
+                    designTokenNameMap,
+                  ) as Partial<EditorElement['styles']>,
+                }
+              : undefined,
+            mobile: element.responsive.mobile
+              ? {
+                  ...element.responsive.mobile,
+                  styles: rewriteTokenReferencesInStyleMap(
+                    element.responsive.mobile.styles ?? {},
+                    designTokenNameMap,
+                  ) as Partial<EditorElement['styles']>,
+                }
+              : undefined,
+          }
+        : undefined,
+      x: isRootElement ? element.x + offsetX : element.x,
+      y: isRootElement ? element.y + offsetY : element.y,
+    }, {
+      componentId: component.id,
+      componentName: component.name,
+      familyId: component.familyId,
+      variantName: component.variantName,
+      instanceId,
+      slotName: componentSlotNameMap.get(element.id) ?? 'slot',
+      isRoot: isRootElement,
+    });
+  });
+
+  return {
+    elements: clonedElements,
+    styleClasses: mergedStyleClasses,
+    designTokens: mergedDesignTokens,
+    rootIds: snapshot.rootElementIds.map((id) => elementIdMap.get(id) ?? id),
+  };
+};
+
 export const EnhancedVisualEditorContent: React.FC = () => {
-  const { state, dispatch, saveProject, loadProject } = useVisualEditor();
+  const {
+    state,
+    dispatch,
+    saveProject,
+    loadProject,
+    createTemplate,
+    loadTemplate,
+    setCurrentBreakpoint,
+    setCurrentOrientation,
+    setElements,
+    selectElements,
+  } = useVisualEditor();
   const { integration, communication, dataFlow } = useEnhancedMasterIntegration();
   const {
     isConnected: dbConnected,
@@ -158,6 +565,7 @@ export const EnhancedVisualEditorContent: React.FC = () => {
     trackProjectUsage,
   } = useDatabase();
   const tokens = getVisualEditorTokens();
+  useKeyboardShortcuts();
 
   // Panel visibility states
   const [showUnifiedStudio, setShowUnifiedStudio] = useState(false);
@@ -180,6 +588,7 @@ export const EnhancedVisualEditorContent: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [integrationProjectId, setIntegrationProjectId] = useState('default-project');
   const [templateName, setTemplateName] = useState('My template name');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [lastIntegrationEvent, setLastIntegrationEvent] = useState('Idle');
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const autoSaveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -187,70 +596,280 @@ export const EnhancedVisualEditorContent: React.FC = () => {
     id: state.currentProject?.id ?? 'visual-editor-project',
     name: state.currentProject?.name ?? 'Visual Editor Project',
   };
+  const selectedCanvasIds = state.selectedElements.length > 0
+    ? state.selectedElements
+    : state.selectedElement
+      ? [state.selectedElement]
+      : [];
+  const componentSelectionSnapshot = useMemo(
+    () => buildSelectionSnapshot(state.elements, selectedCanvasIds, state.styleClasses, state.designTokens),
+    [selectedCanvasIds, state.elements, state.styleClasses, state.designTokens],
+  );
 
   // Generated code state
-  const [generatedCode, setGeneratedCode] = useState({
+  const [generatedCode, setGeneratedCode] = useState<GeneratedCodeState>({
     html: '',
     react: '',
     css: '',
     javascript: '',
+    manifest: '[]',
   });
 
-  // Update generated code when elements change
-  useEffect(() => {
-    if (state.elements) {
-      // Generate code from current elements
-      const code = generateCodeFromElements(state.elements);
-      setGeneratedCode(code);
-    }
-  }, [state.elements]);
-
   const generateCodeFromElements = useCallback((elements: EditorElement[]) => {
-    // Generate HTML
-    let html = `<!DOCTYPE html>\n<html>\n<head><style>\n.container { position: relative; width: 100%; min-height: 100vh; }\n`;
-    elements.forEach((element) => {
-      html += `.el-${element.id} {\n  position: absolute;\n  left: ${element.x}px;\n  top: ${element.y}px;\n  width: ${element.width}px;\n  height: ${element.height}px;\n`;
-      if (element.styles) {
-        Object.entries(element.styles).forEach(([key, value]) => {
-          if (value !== undefined) {
-            const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
-            html += `  ${cssKey}: ${String(value)};\n`;
-          }
-        });
+    const componentManifest = buildComponentManifest(elements);
+    const instanceClassNameForElement = (element: EditorElement) => `el-${element.id}`;
+    const classTokensForElement = (element: EditorElement) => {
+      const sharedTokens = getElementClassNames(element.className);
+      return [...sharedTokens, instanceClassNameForElement(element)];
+    };
+    const escapeAttributeValue = (value: string): string =>
+      value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const toCssRule = (selector: string, styles: Record<string, unknown>) => {
+      const styleEntries = Object.entries(styles).filter(([, value]) => value !== undefined);
+      if (styleEntries.length === 0) {
+        return '';
       }
-      html += `}\n`;
-    });
-    html += `</style></head>\n<body>\n<div class="container">\n`;
+
+      let rule = `${selector} {\n`;
+      styleEntries.forEach(([key, value]) => {
+        const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+        rule += `  ${cssKey}: ${String(value)};\n`;
+      });
+      rule += '}\n';
+      return rule;
+    };
+
+    const elementsById = new Map(elements.map((element) => [element.id, element]));
+    const childIdsByParent = new Map<string | undefined, string[]>();
     elements.forEach((element) => {
-      const text = typeof element.props?.text === 'string' ? element.props.text : '';
-      html += `  <div class="el-${element.id}">${text}</div>\n`;
+      const bucket = childIdsByParent.get(element.parent) ?? [];
+      bucket.push(element.id);
+      childIdsByParent.set(element.parent, bucket);
     });
+
+    const getParentLayoutMode = (element: EditorElement): ReturnType<typeof getEditorLayoutMode> => {
+      if (!element.parent) {
+        return 'absolute';
+      }
+
+      const parent = elementsById.get(element.parent);
+      return parent ? getEditorLayoutMode(parent) : 'absolute';
+    };
+
+    const getBaseStylesForElement = (element: EditorElement): Record<string, unknown> => {
+      const parentLayoutMode = getParentLayoutMode(element);
+      const layoutMode = getEditorLayoutMode(element);
+      const baseStyles: Record<string, unknown> = {
+        width: `${element.width}px`,
+        height: `${element.height}px`,
+        ...(element.styles ?? {}),
+      };
+
+      if (!element.parent || parentLayoutMode === 'absolute') {
+        baseStyles.position = 'absolute';
+        baseStyles.left = `${element.x}px`;
+        baseStyles.top = `${element.y}px`;
+      } else {
+        baseStyles.position = 'relative';
+      }
+
+      if (layoutMode === 'absolute' && !element.parent) {
+        baseStyles.position = 'absolute';
+      }
+
+      return baseStyles;
+    };
+
+    const getResponsiveOverrideStyles = (
+      element: EditorElement,
+      override: EditorResponsiveOverride,
+    ): Record<string, unknown> => {
+      const parentLayoutMode = getParentLayoutMode(element);
+
+      return {
+        ...(parentLayoutMode === 'absolute'
+          ? {
+              ...(override.x !== undefined ? { left: `${override.x}px` } : {}),
+              ...(override.y !== undefined ? { top: `${override.y}px` } : {}),
+            }
+          : {}),
+        ...(override.width !== undefined ? { width: `${override.width}px` } : {}),
+        ...(override.height !== undefined ? { height: `${override.height}px` } : {}),
+        ...(override.styles ?? {}),
+        ...(override.visible === false ? { display: 'none' } : {}),
+      };
+    };
+
+    const getComponentDataAttributes = (element: EditorElement): Record<string, string> => {
+      const binding = getElementComponentBinding(element);
+      if (!binding) {
+        return {};
+      }
+
+      return {
+        'data-ve-component-id': binding.componentId,
+        'data-ve-component-name': binding.componentName,
+        'data-ve-component-family': binding.familyId,
+        'data-ve-component-variant': binding.variantName,
+        'data-ve-component-instance': binding.instanceId,
+        'data-ve-component-slot': binding.slotName,
+        'data-ve-component-root': String(binding.isRoot),
+      };
+    };
+
+    const renderAttributeString = (attributes: Record<string, string>): string =>
+      Object.entries(attributes)
+        .map(([name, value]) => `${name}="${escapeAttributeValue(value)}"`)
+        .join(' ');
+
+    const renderHtmlNode = (element: EditorElement, depth: number): string => {
+      const className = classTokensForElement(element).join(' ');
+      const indent = '  '.repeat(depth);
+      const dataAttributes = renderAttributeString({
+        'data-ve-element-id': element.id,
+        ...getComponentDataAttributes(element),
+      });
+      const attributeSuffix = dataAttributes ? ` ${dataAttributes}` : '';
+      const childIds = childIdsByParent.get(element.id) ?? [];
+      const children = childIds
+        .map((childId) => elementsById.get(childId))
+        .filter((child): child is EditorElement => Boolean(child))
+        .map((child) => renderHtmlNode(child, depth + 1))
+        .join('');
+
+      if (element.type === 'image') {
+        const alt = typeof element.props?.alt === 'string' ? element.props.alt : '';
+        const src = typeof element.props?.src === 'string' ? element.props.src : '';
+        return `${indent}<img class="${className}"${attributeSuffix} src="${src}" alt="${alt}" />\n`;
+      }
+
+      const tag = element.type === 'button' ? 'button' : 'div';
+      const text = typeof element.props?.text === 'string' ? element.props.text : '';
+      return `${indent}<${tag} class="${className}"${attributeSuffix}>${text}${children ? `\n${children}${indent}` : ''}</${tag}>\n`;
+    };
+
+    const renderReactNode = (element: EditorElement, depth: number): string => {
+      const className = classTokensForElement(element).join(' ');
+      const indent = '  '.repeat(depth);
+      const dataAttributes = renderAttributeString({
+        'data-ve-element-id': element.id,
+        ...getComponentDataAttributes(element),
+      });
+      const attributeSuffix = dataAttributes ? ` ${dataAttributes}` : '';
+      const childIds = childIdsByParent.get(element.id) ?? [];
+      const children = childIds
+        .map((childId) => elementsById.get(childId))
+        .filter((child): child is EditorElement => Boolean(child))
+        .map((child) => renderReactNode(child, depth + 1))
+        .join('');
+
+      if (element.type === 'image') {
+        const alt = typeof element.props?.alt === 'string' ? element.props.alt : '';
+        const src = typeof element.props?.src === 'string' ? element.props.src : '';
+        return `${indent}<img className="${className}"${attributeSuffix} src="${src}" alt="${alt}" />\n`;
+      }
+
+      const tag = element.type === 'button' ? 'button' : 'div';
+      const text = typeof element.props?.text === 'string' ? element.props.text : '';
+      return `${indent}<${tag} className="${className}"${attributeSuffix}>${text}${children ? `\n${children}${indent}` : ''}</${tag}>\n`;
+    };
+
+    const sharedClassCss = Object.values(state.styleClasses)
+      .map((styleClass) => toCssRule(`.${styleClass.name}`, styleClass.styles))
+      .filter(Boolean)
+      .join('\n');
+    const designTokenCss = Object.values(state.designTokens)
+      .map((token) => `  ${getDesignTokenCssVariableName(token.name)}: ${token.value};`)
+      .join('\n');
+    const sharedResponsiveCss = Object.values(state.styleClasses)
+      .flatMap((styleClass) =>
+        Object.entries(styleClass.responsive ?? {}).flatMap(([breakpoint, styles]) => {
+          if ((breakpoint !== 'tablet' && breakpoint !== 'mobile') || !styles) {
+            return [];
+          }
+
+          const rule = toCssRule(`.${styleClass.name}`, styles);
+          return rule ? [`${BREAKPOINT_MEDIA_QUERIES[breakpoint]} {\n${rule}}\n`] : [];
+        }),
+      )
+      .join('\n');
+
+    // Generate HTML
+    let html = `<!DOCTYPE html>\n<html>\n<head><style>\n`;
+    html += designTokenCss ? `:root {\n${designTokenCss}\n}\n` : '';
+    html += `.container { position: relative; width: 100%; min-height: 100vh; }\n`;
+    html += sharedClassCss ? `${sharedClassCss}\n` : '';
+    elements.forEach((element) => {
+      html += toCssRule(`.${instanceClassNameForElement(element)}`, getBaseStylesForElement(element));
+    });
+
+    const responsiveCss = elements
+      .flatMap((element) =>
+        Object.entries(element.responsive ?? {}).flatMap(([breakpoint, override]) => {
+          if ((breakpoint !== 'tablet' && breakpoint !== 'mobile') || !override) {
+            return [];
+          }
+
+          return [
+            `${BREAKPOINT_MEDIA_QUERIES[breakpoint]} {\n${toCssRule(
+              `.${instanceClassNameForElement(element)}`,
+              getResponsiveOverrideStyles(element, override),
+            )}}\n`,
+          ];
+        }),
+      )
+      .join('\n');
+
+    html += sharedResponsiveCss ? `${sharedResponsiveCss}\n` : '';
+    html += responsiveCss ? `${responsiveCss}\n` : '';
+    html += `</style></head>\n<body>\n`;
+    html += componentManifest.length > 0
+      ? `<!-- ve-component-manifest ${componentManifest.length} instance${componentManifest.length === 1 ? '' : 's'} -->\n`
+      : '';
+    html += `<div class="container" data-ve-export="creatorhub-visual-editor">\n`;
+    const rootElements = childIdsByParent.get(undefined) ?? [];
+    rootElements
+      .map((elementId) => elementsById.get(elementId))
+      .filter((element): element is EditorElement => Boolean(element))
+      .forEach((element) => {
+        html += renderHtmlNode(element, 1);
+      });
     html += `</div>\n</body>\n</html>`;
 
     // Generate React code
-    let react = `import React from 'react';\n\nexport default function GeneratedComponent() {\n  return (\n    <div className="container">\n`;
-    elements.forEach((element) => {
-      react += `      <div className="${element.type}" style={{ position: 'absolute', left: ${element.x}, top: ${element.y}, width: ${element.width}, height: ${element.height} }}>\n`;
-      if (typeof element.props?.text === 'string') {
-        react += `        ${element.props.text}\n`;
-      }
-      react += `      </div>\n`;
-    });
+    let react = `import React from 'react';\n\nexport default function GeneratedComponent() {\n  return (\n    <div className="container" data-ve-export="creatorhub-visual-editor">\n`;
+    rootElements
+      .map((elementId) => elementsById.get(elementId))
+      .filter((element): element is EditorElement => Boolean(element))
+      .forEach((element) => {
+        react += renderReactNode(element, 3);
+      });
     react += `    </div>\n  );\n}`;
 
     // Generate CSS
-    let css = `.container {\n  position: relative;\n  width: 100%;\n  min-height: 100vh;\n}\n\n`;
+    let css = designTokenCss ? `:root {\n${designTokenCss}\n}\n\n` : '';
+    css += `.container {\n  position: relative;\n  width: 100%;\n  min-height: 100vh;\n}\n\n`;
+    css += sharedClassCss ? `${sharedClassCss}\n\n` : '';
     elements.forEach((element) => {
-      css += `.${element.type} {\n`;
-      if (element.styles) {
-        Object.entries(element.styles).forEach(([key, value]) => {
-          if (value !== undefined) {
-            const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
-            css += `  ${cssKey}: ${String(value)};\n`;
-          }
-        });
+      const rule = toCssRule(`.${instanceClassNameForElement(element)}`, getBaseStylesForElement(element));
+      if (rule) {
+        css += `${rule}\n`;
       }
-      css += `}\n\n`;
+    });
+
+    if (sharedResponsiveCss) {
+      css += `${sharedResponsiveCss}\n`;
+    }
+    elements.forEach((element) => {
+      Object.entries(element.responsive ?? {}).forEach(([breakpoint, override]) => {
+        if ((breakpoint !== 'tablet' && breakpoint !== 'mobile') || !override) {
+          return;
+        }
+
+        css += `${BREAKPOINT_MEDIA_QUERIES[breakpoint]} {\n`;
+        css += toCssRule(`.${instanceClassNameForElement(element)}`, getResponsiveOverrideStyles(element, override));
+        css += '}\n\n';
+      });
     });
 
     // Generate JavaScript
@@ -261,8 +880,22 @@ export const EnhancedVisualEditorContent: React.FC = () => {
       }
     });
 
-    return { html, react, css, javascript };
-  }, []);
+    return {
+      html,
+      react,
+      css,
+      javascript,
+      manifest: JSON.stringify(componentManifest, null, 2),
+    };
+  }, [state.designTokens, state.styleClasses]);
+
+  // Update generated code when elements change
+  useEffect(() => {
+    if (state.elements) {
+      const code = generateCodeFromElements(state.elements);
+      setGeneratedCode(code);
+    }
+  }, [generateCodeFromElements, state.elements, state.styleClasses]);
 
   const callIfFunction = useCallback((candidate: unknown, ...args: unknown[]) => {
     if (typeof candidate === 'function') {
@@ -492,47 +1125,73 @@ export const EnhancedVisualEditorContent: React.FC = () => {
   }, [dbConnected, isVisualEditorProject, loadProject, loadProjectFromDatabase, notify, state.currentProject?.id]);
 
   const handleSaveCurrentAsTemplate = useCallback(async () => {
-    if (!dbConnected) {
-      notify('warning', 'Database Offline', 'Cannot save template while database is disconnected');
-      return;
-    }
-
-    const projectToSave: Project = state.currentProject ?? {
-      id: selectedProjectForPanels.id,
-      name: selectedProjectForPanels.name,
-      elements: state.elements,
-      settings: {
-        width: 1200,
-        height: 800,
-        backgroundColor: '#ffffff',
-        gridSize: 10,
-        snapToGrid: true,
-      },
-      metadata: {
-        createdBy: 'local-user',
-        createdAt: new Date(),
-        lastModified: new Date(),
-        version: 1,
-      },
-      status: 'draft',
-    };
+    const projectToSave: Project = state.currentProject
+      ? {
+          ...state.currentProject,
+          elements: state.elements,
+          styleClasses: state.styleClasses,
+          designTokens: state.designTokens,
+        }
+      : {
+          id: selectedProjectForPanels.id,
+          name: selectedProjectForPanels.name,
+          elements: state.elements,
+          styleClasses: state.styleClasses,
+          designTokens: state.designTokens,
+          settings: {
+            width: 1200,
+            height: 800,
+            backgroundColor: '#ffffff',
+            gridSize: 10,
+            snapToGrid: true,
+          },
+          metadata: {
+            createdBy: 'local-user',
+            createdAt: new Date(),
+            lastModified: new Date(),
+            version: 1,
+          },
+          status: 'draft',
+        };
 
     try {
-      await saveAsTemplate(projectToSave, `${projectToSave.name}-template`);
-      await trackProjectUsage(projectToSave.id, 'template_saved', { source: 'enhanced-visual-editor' });
-      notify('success', 'Template Saved', `Saved ${projectToSave.name} as template`);
+      const templateLabel = `${projectToSave.name}-template`;
+
+      createTemplate({
+        name: templateLabel,
+        description: projectToSave.description ?? `Template generated from ${projectToSave.name}`,
+        category: 'project',
+        elements: projectToSave.elements,
+        tags: ['visual-editor', 'saved-template'],
+      });
+
+      if (dbConnected) {
+        await saveAsTemplate(projectToSave, templateLabel);
+        await trackProjectUsage(projectToSave.id, 'template_saved', { source: 'enhanced-visual-editor' });
+      }
+
+      notify(
+        'success',
+        'Template Saved',
+        dbConnected
+          ? `Saved ${projectToSave.name} as template`
+          : `Saved ${projectToSave.name} locally as template`,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save template';
       notify('error', 'Template Save Failed', message);
     }
   }, [
+    createTemplate,
     dbConnected,
     notify,
     saveAsTemplate,
     selectedProjectForPanels.id,
     selectedProjectForPanels.name,
     state.currentProject,
+    state.designTokens,
     state.elements,
+    state.styleClasses,
     trackProjectUsage,
   ]);
 
@@ -661,48 +1320,70 @@ export const EnhancedVisualEditorContent: React.FC = () => {
 
   const handleSaveAsTemplateByName = useCallback(async (name: string) => {
     setTemplateName(name);
-    if (!dbConnected) {
-      notify('warning', 'Database Offline', 'Cannot save template while database is disconnected');
-      return;
-    }
-
-    const projectToSave: Project = state.currentProject ?? {
-      id: selectedProjectForPanels.id,
-      name: selectedProjectForPanels.name,
-      elements: state.elements,
-      settings: {
-        width: 1200,
-        height: 800,
-        backgroundColor: '#ffffff',
-        gridSize: 10,
-        snapToGrid: true,
-      },
-      metadata: {
-        createdBy: 'local-user',
-        createdAt: new Date(),
-        lastModified: new Date(),
-        version: 1,
-      },
-      status: 'draft',
-    };
+    const projectToSave: Project = state.currentProject
+      ? {
+          ...state.currentProject,
+          elements: state.elements,
+          styleClasses: state.styleClasses,
+          designTokens: state.designTokens,
+        }
+      : {
+          id: selectedProjectForPanels.id,
+          name: selectedProjectForPanels.name,
+          elements: state.elements,
+          styleClasses: state.styleClasses,
+          designTokens: state.designTokens,
+          settings: {
+            width: 1200,
+            height: 800,
+            backgroundColor: '#ffffff',
+            gridSize: 10,
+            snapToGrid: true,
+          },
+          metadata: {
+            createdBy: 'local-user',
+            createdAt: new Date(),
+            lastModified: new Date(),
+            version: 1,
+          },
+          status: 'draft',
+        };
 
     try {
-      await saveAsTemplate(projectToSave, name);
-      await trackProjectUsage(projectToSave.id, 'template_saved', { source: 'enhanced-visual-editor', templateName: name });
-      notify('success', 'Template Saved', `Saved template ${name}`);
+      createTemplate({
+        name,
+        description: projectToSave.description ?? `Template generated from ${projectToSave.name}`,
+        category: 'project',
+        elements: projectToSave.elements,
+        tags: ['visual-editor', 'named-template'],
+      });
+
+      if (dbConnected) {
+        await saveAsTemplate(projectToSave, name);
+        await trackProjectUsage(projectToSave.id, 'template_saved', { source: 'enhanced-visual-editor', templateName: name });
+      }
+
+      notify(
+        'success',
+        'Template Saved',
+        dbConnected ? `Saved template ${name}` : `Saved template ${name} locally`,
+      );
       syncIntegrationState('manual-template-save');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save template';
       notify('error', 'Template Save Failed', message);
     }
   }, [
+    createTemplate,
     dbConnected,
     notify,
     saveAsTemplate,
     selectedProjectForPanels.id,
     selectedProjectForPanels.name,
     state.currentProject,
+    state.designTokens,
     state.elements,
+    state.styleClasses,
     syncIntegrationState,
     trackProjectUsage,
   ]);
@@ -810,12 +1491,16 @@ export const EnhancedVisualEditorContent: React.FC = () => {
       clearInterval(autoSaveIntervalRef.current);
     }
 
+    if (!state.settings.autoSave) {
+      autoSaveIntervalRef.current = null;
+      return undefined;
+    }
+
     autoSaveIntervalRef.current = setInterval(() => {
       if (!state.currentProject) {
         return;
       }
 
-      saveProject();
       syncIntegrationState('autosave');
 
       if (dbConnected) {
@@ -826,7 +1511,7 @@ export const EnhancedVisualEditorContent: React.FC = () => {
           notify('warning', 'Autosave Metrics', 'Project saved but usage metric failed');
         });
       }
-    }, 30000);
+    }, state.settings.autoSaveInterval);
 
     return () => {
       if (autoSaveIntervalRef.current) {
@@ -837,9 +1522,10 @@ export const EnhancedVisualEditorContent: React.FC = () => {
   }, [
     dbConnected,
     notify,
-    saveProject,
     state.currentProject,
     state.elements.length,
+    state.settings.autoSave,
+    state.settings.autoSaveInterval,
     syncIntegrationState,
     trackProjectUsage,
   ]);
@@ -1111,6 +1797,38 @@ export const EnhancedVisualEditorContent: React.FC = () => {
                 Save Template
               </Button>
             </Stack>
+            <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+              <TextField
+                select
+                size="small"
+                label="Saved Template"
+                value={selectedTemplateId}
+                onChange={(event) => setSelectedTemplateId(event.target.value)}
+                sx={{ minWidth: 220 }}
+              >
+                {state.templates.length === 0 && (
+                  <MenuItem value="" disabled>
+                    No saved templates
+                  </MenuItem>
+                )}
+                {state.templates.map((template) => (
+                  <MenuItem key={template.id} value={template.id}>
+                    {template.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <Button
+                variant="outlined"
+                disabled={!selectedTemplateId}
+                onClick={() => {
+                  loadTemplate(selectedTemplateId);
+                  notify('success', 'Template Loaded', 'Loaded selected template into the editor');
+                  syncIntegrationState('manual-template-load');
+                }}
+              >
+                Load Template
+              </Button>
+            </Stack>
             <Stack direction="row" spacing={1} sx={{ mb: 1 }} flexWrap="wrap">
               <Button variant="outlined" onClick={() => updateAnyComponent('admin-dashboard', 'refresh', { source: 'enhanced-visual-editor' })}>
                 Refresh Admin
@@ -1225,19 +1943,47 @@ export const EnhancedVisualEditorContent: React.FC = () => {
         break;
       case 'toggle-preview': setShowLivePreviewPanel(prev => !prev);
         break;
+      case 'rotate-device':
+        if (state.currentBreakpoint !== 'desktop') {
+          setCurrentOrientation(state.currentOrientation === 'portrait' ? 'landscape' : 'portrait');
+        }
+        break;
       case 'toggle-settings': setShowSettings(prev => !prev);
         setShowAdvancedWorkspace(true);
         setActiveWorkspaceTab('system-management');
         break;
       default: break;
     }
-  }, [saveProject, generateCodeFromElements, state.elements]);
+  }, [
+    generateCodeFromElements,
+    saveProject,
+    setCurrentOrientation,
+    state.currentBreakpoint,
+    state.currentOrientation,
+    state.elements,
+  ]);
 
   const handleUseComponent = useCallback((component: LibraryComponent) => {
+    const snapshotInstance = instantiateSnapshotComponent(
+      component,
+      state.styleClasses,
+      state.designTokens,
+      state.elements.length,
+    );
+
+    if (snapshotInstance) {
+      dispatch({ type: 'SET_STYLE_CLASSES', payload: snapshotInstance.styleClasses });
+      dispatch({ type: 'SET_DESIGN_TOKENS', payload: snapshotInstance.designTokens });
+      setElements([...state.elements, ...snapshotInstance.elements]);
+      selectElements(snapshotInstance.rootIds);
+      setShowComponentLibrary(false);
+      return;
+    }
+
     dispatch({
       type: 'ADD_ELEMENT',
       payload: {
-        id: `component-${Date.now()}`,
+        id: createEditorElementId(),
         type: toElementType(component.category ?? 'container'),
         x: 100,
         y: 100,
@@ -1245,10 +1991,11 @@ export const EnhancedVisualEditorContent: React.FC = () => {
         height: 100,
         styles: {},
         props: { ...(component.props ?? {}) },
+        name: component.name,
       },
     });
     setShowComponentLibrary(false);
-  }, [dispatch]);
+  }, [dispatch, selectElements, setElements, state.designTokens, state.elements, state.styleClasses]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -1282,54 +2029,492 @@ export const EnhancedVisualEditorContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showUnifiedStudio]);
 
+  const selectedElementCount = state.selectedElements.length > 0
+    ? state.selectedElements.length
+    : state.selectedElement
+      ? 1
+      : 0;
+  const deviceProfile = resolveEditorDeviceProfile(state.currentBreakpoint, state.currentOrientation);
+  const viewport = getProjectViewport(
+    state.currentProject,
+    state.currentBreakpoint,
+    state.currentOrientation,
+  );
+  const displayViewport = getDisplayViewport(state.currentBreakpoint, state.currentOrientation);
+  const browserViewport = resolveEditorBrowserViewportMetrics(
+    state.currentBreakpoint,
+    state.currentOrientation,
+  );
+  const projectWidth = viewport.width;
+  const projectHeight = viewport.height;
+  const isPreviewMode = showLivePreview;
+
+  const addCanvasElement = useCallback((
+    componentType: string,
+    position?: { x: number; y: number },
+    overrides?: Partial<EditorElement>,
+  ) => {
+    const elementType = toElementType(componentType);
+    const elementId = overrides?.id ?? `component-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const canvasCenterX = Math.max(48, Math.round(projectWidth * 0.14));
+    const canvasCenterY = Math.max(88, Math.round(projectHeight * 0.16)) + state.elements.length * 20;
+
+    const presets: Record<EditorElement['type'], Omit<EditorElement, 'id'>> = {
+      text: {
+        type: 'text',
+        x: canvasCenterX,
+        y: canvasCenterY,
+        width: 520,
+        height: 92,
+        styles: {
+          color: '#2b2016',
+          fontSize: '52px',
+          fontWeight: '800',
+          lineHeight: '1.05',
+          fontFamily: '"IBM Plex Sans", sans-serif',
+        },
+        props: { text: 'Write a bold headline' },
+      },
+      button: {
+        type: 'button',
+        x: canvasCenterX,
+        y: canvasCenterY,
+        width: 220,
+        height: 56,
+        styles: {
+          backgroundColor: '#ff6b35',
+          color: '#ffffff',
+          borderRadius: '18px',
+          fontSize: '16px',
+          fontWeight: '700',
+          boxShadow: '0 16px 30px rgba(255,107,53,0.18)',
+        },
+        props: { text: 'Primary action' },
+      },
+      image: {
+        type: 'image',
+        x: canvasCenterX,
+        y: canvasCenterY,
+        width: 360,
+        height: 240,
+        styles: {
+          backgroundColor: '#f2e6d8',
+          borderRadius: '24px',
+          boxShadow: '0 24px 40px rgba(64, 42, 18, 0.12)',
+        },
+        props: { src: '', alt: 'Visual placeholder', text: 'Add image' },
+      },
+      card: {
+        type: 'card',
+        x: canvasCenterX,
+        y: canvasCenterY,
+        width: 320,
+        height: 220,
+        styles: {
+          backgroundColor: '#ffffff',
+          borderRadius: '24px',
+          boxShadow: '0 24px 44px rgba(64, 42, 18, 0.1)',
+          padding: '28px',
+        },
+        props: { text: 'Feature card\n\nUse this for highlights, pricing or benefits.' },
+      },
+      container: {
+        type: 'container',
+        x: 72,
+        y: 72,
+        width: Math.min(projectWidth - 144, 720),
+        height: 320,
+        styles: {
+          backgroundColor: '#1f1812',
+          borderRadius: '32px',
+          boxShadow: '0 28px 52px rgba(31,24,18,0.18)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-start',
+          alignItems: 'flex-start',
+          gap: '24px',
+          padding: '28px',
+        },
+        props: { text: '' },
+      },
+      grid: {
+        type: 'grid',
+        x: canvasCenterX,
+        y: canvasCenterY,
+        width: 540,
+        height: 280,
+        styles: {
+          backgroundColor: '#ffffff',
+          borderRadius: '28px',
+          boxShadow: '0 18px 36px rgba(64, 42, 18, 0.08)',
+          display: 'grid',
+          gap: '24px',
+          padding: '24px',
+          alignItems: 'stretch',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        },
+        props: { text: 'Grid layout' },
+      },
+      audio: {
+        type: 'audio',
+        x: canvasCenterX,
+        y: canvasCenterY,
+        width: 320,
+        height: 100,
+        styles: {
+          backgroundColor: '#ffffff',
+          borderRadius: '22px',
+          boxShadow: '0 18px 36px rgba(64, 42, 18, 0.08)',
+        },
+        props: { text: 'Audio player' },
+      },
+      video: {
+        type: 'video',
+        x: canvasCenterX,
+        y: canvasCenterY,
+        width: 420,
+        height: 240,
+        styles: {
+          backgroundColor: '#171717',
+          borderRadius: '24px',
+          boxShadow: '0 18px 36px rgba(0,0,0,0.2)',
+        },
+        props: { text: 'Video block' },
+      },
+    };
+
+    const preset = presets[elementType] ?? presets.container;
+    const payload: EditorElement = {
+      ...preset,
+      ...overrides,
+      id: elementId,
+      type: elementType,
+      x: position?.x ?? overrides?.x ?? preset.x,
+      y: position?.y ?? overrides?.y ?? preset.y,
+      width: overrides?.width ?? preset.width,
+      height: overrides?.height ?? preset.height,
+      styles: {
+        ...preset.styles,
+        ...overrides?.styles,
+      },
+      props: {
+        ...preset.props,
+        ...(overrides?.props ?? {}),
+      },
+    };
+
+    dispatch({ type: 'ADD_ELEMENT', payload });
+    dispatch({ type: 'SET_SELECTED_ELEMENT', payload: elementId });
+
+    updateAnyComponent('timeline', 'element-added', {
+      id: elementId,
+      componentType: elementType,
+      position: { x: payload.x, y: payload.y },
+      timestamp: Date.now(),
+    });
+  }, [dispatch, projectHeight, projectWidth, state.elements.length, updateAnyComponent]);
+
+  const addHeroStarter = useCallback(() => {
+    const heroContainerId = `component-${Date.now()}-hero`;
+    addCanvasElement('container', { x: 72, y: 72 }, {
+      id: heroContainerId,
+      name: 'Hero Section',
+      width: Math.min(projectWidth - 144, 860),
+      height: 360,
+      styles: {
+        backgroundColor: '#1f1812',
+        borderRadius: '36px',
+        boxShadow: '0 32px 60px rgba(31,24,18,0.2)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'flex-start',
+        gap: '20px',
+        padding: '48px',
+      },
+    });
+    addCanvasElement('text', { x: 44, y: 56 }, {
+      parent: heroContainerId,
+      name: 'Hero Heading',
+      width: 540,
+      height: 120,
+      styles: {
+        color: '#ffffff',
+        fontSize: '58px',
+        fontWeight: '800',
+        lineHeight: '1.02',
+      },
+      props: { text: 'Build a cinematic landing page' },
+    });
+    addCanvasElement('text', { x: 48, y: 188 }, {
+      parent: heroContainerId,
+      name: 'Hero Subcopy',
+      width: 420,
+      height: 80,
+      styles: {
+        color: 'rgba(255,255,255,0.78)',
+        fontSize: '18px',
+        fontWeight: '400',
+        lineHeight: '1.6',
+      },
+      props: { text: 'Start with a strong headline, a concise pitch and one clear action.' },
+    });
+    addCanvasElement('button', { x: 48, y: 252 }, {
+      parent: heroContainerId,
+      name: 'Hero CTA',
+      props: { text: 'Start free trial' },
+    });
+  }, [addCanvasElement, projectWidth]);
+
+  const addFeatureGridStarter = useCallback(() => {
+    const gridContainerId = `component-${Date.now()}-grid`;
+    addCanvasElement('grid', { x: 72, y: 72 }, {
+      id: gridContainerId,
+      name: 'Feature Grid',
+      width: Math.min(projectWidth - 144, 980),
+      height: 320,
+      styles: {
+        backgroundColor: '#fffaf4',
+        borderRadius: '32px',
+        boxShadow: '0 24px 54px rgba(64,42,18,0.12)',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: '22px',
+        padding: '28px',
+        alignItems: 'stretch',
+      },
+    });
+
+    ['Fast setup', 'Responsive by default', 'Production ready'].forEach((title, index) => {
+      addCanvasElement('card', { x: 0, y: 0 }, {
+        parent: gridContainerId,
+        name: `Feature Card ${index + 1}`,
+        width: 220,
+        height: 220,
+        styles: {
+          backgroundColor: '#ffffff',
+          borderRadius: '24px',
+          boxShadow: '0 18px 34px rgba(64, 42, 18, 0.08)',
+          padding: '20px',
+        },
+        props: {
+          text: `${title}\n\nUse structured sections, clean spacing and reusable patterns to ship pages faster.`,
+        },
+      });
+    });
+  }, [addCanvasElement, projectWidth]);
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <Box
+      data-testid="visual-editor-shell"
+      sx={{
+        '--ve-shell-bg': '#f4ebdd',
+        '--ve-panel-bg': 'rgba(255,255,255,0.82)',
+        '--ve-panel-bg-strong': 'rgba(255,255,255,0.94)',
+        '--ve-panel-border': 'rgba(113, 87, 59, 0.14)',
+        '--ve-panel-shadow': '0 24px 60px rgba(66, 42, 17, 0.12)',
+        '--ve-accent': '#ff6b35',
+        '--ve-accent-soft': 'rgba(255, 107, 53, 0.12)',
+        '--ve-deep': '#221c16',
+        '--ve-ink': '#2b2016',
+        '--ve-muted': '#6f6358',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh',
+        overflow: 'hidden',
+        px: { xs: 1, md: 2 },
+        py: { xs: 1, md: 1.5 },
+        gap: 1.5,
+        bgcolor: 'var(--ve-shell-bg)',
+        background: `
+          radial-gradient(circle at top left, rgba(255, 183, 94, 0.28), transparent 26%),
+          radial-gradient(circle at top right, rgba(249, 220, 165, 0.24), transparent 22%),
+          linear-gradient(180deg, #f8f2e8 0%, #f1e9db 100%)
+        `,
+      }}
+    >
       {/* Top Toolbar */}
-      <EnhancedTopToolbar />
+      <EnhancedTopToolbar
+        previewOpen={showLivePreview}
+        onTogglePreview={() => setShowLivePreview((prev) => !prev)}
+      />
+
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: { xs: 'flex-start', lg: 'center' },
+          justifyContent: 'space-between',
+          gap: 1,
+          px: { xs: 0.5, md: 1 },
+          flexWrap: 'wrap',
+        }}
+      >
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+          <Chip
+            label={`${state.elements.length} elementer`}
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.72)',
+              color: 'var(--ve-ink)',
+              fontWeight: 600,
+              border: '1px solid var(--ve-panel-border)',
+            }}
+          />
+          <Chip
+            label={`${Math.round(state.zoom * 100)}% zoom`}
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.62)',
+              color: 'var(--ve-muted)',
+              border: '1px solid rgba(113, 87, 59, 0.1)',
+            }}
+          />
+          <Chip
+            label={`${deviceProfile.model} • Web ${projectWidth} × ${projectHeight}`}
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.62)',
+              color: 'var(--ve-muted)',
+              border: '1px solid rgba(113, 87, 59, 0.1)',
+            }}
+          />
+          <Chip
+            label={`Display ${displayViewport.width} × ${displayViewport.height} pt`}
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.62)',
+              color: 'var(--ve-muted)',
+              border: '1px solid rgba(113, 87, 59, 0.1)',
+            }}
+          />
+          <Chip
+            label={`Browser UI ${browserViewport.topBarHeight + browserViewport.bottomBarHeight} pt`}
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.62)',
+              color: 'var(--ve-muted)',
+              border: '1px solid rgba(113, 87, 59, 0.1)',
+            }}
+          />
+          <Chip
+            label={`${deviceProfile.viewport.nativeWidth} × ${deviceProfile.viewport.nativeHeight} px • @${deviceProfile.viewport.devicePixelRatio}x`}
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.62)',
+              color: 'var(--ve-muted)',
+              border: '1px solid rgba(113, 87, 59, 0.1)',
+            }}
+          />
+        </Stack>
+
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={state.currentBreakpoint}
+          onChange={(_, breakpoint) => {
+            if (breakpoint) {
+              setCurrentBreakpoint(breakpoint);
+            }
+          }}
+          aria-label="Editor breakpoint switcher"
+          sx={{
+            bgcolor: 'rgba(255,255,255,0.56)',
+            borderRadius: 999,
+            '& .MuiToggleButton-root': {
+              border: 0,
+              px: 1.5,
+              textTransform: 'none',
+              color: 'var(--ve-muted)',
+              fontWeight: 700,
+            },
+            '& .Mui-selected': {
+              bgcolor: 'rgba(255,107,53,0.14) !important',
+              color: 'var(--ve-accent) !important',
+            },
+          }}
+        >
+          {EDITOR_BREAKPOINTS.map((breakpoint) => (
+            <ToggleButton
+              key={breakpoint.id}
+              value={breakpoint.id}
+              aria-label={`${breakpoint.label} breakpoint`}
+            >
+              {breakpoint.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+
+        {state.currentBreakpoint !== 'desktop' && (
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={state.currentOrientation}
+            onChange={(_, orientation) => {
+              if (orientation) {
+                setCurrentOrientation(orientation);
+              }
+            }}
+            aria-label="Editor orientation switcher"
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.56)',
+              borderRadius: 999,
+              '& .MuiToggleButton-root': {
+                border: 0,
+                px: 1.25,
+                textTransform: 'none',
+                color: 'var(--ve-muted)',
+                fontWeight: 700,
+                gap: 0.75,
+              },
+              '& .Mui-selected': {
+                bgcolor: 'rgba(255,107,53,0.14) !important',
+                color: 'var(--ve-accent) !important',
+              },
+            }}
+          >
+            <ToggleButton value="portrait" aria-label="Portrait orientation">
+              <StayCurrentPortrait fontSize="small" />
+              Portrait
+            </ToggleButton>
+            <ToggleButton value="landscape" aria-label="Landscape orientation">
+              <StayCurrentLandscape fontSize="small" />
+              Landscape
+            </ToggleButton>
+          </ToggleButtonGroup>
+        )}
+
+        <Typography variant="body2" sx={{ color: 'var(--ve-muted)', px: 0.5 }}>
+          {isPreviewMode
+            ? 'Preview mode aktiv. Sidepanelene er skjult for et renere lerret.'
+            : selectedElementCount > 0
+            ? `${selectedElementCount} valgt${selectedElementCount > 1 ? 'e' : ''}`
+            : 'Velg et element for å redigere egenskaper'}
+        </Typography>
+      </Box>
 
       {/* Main Editor Area */}
-      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <Box
+        data-testid="visual-editor-main-area"
+        sx={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', gap: isPreviewMode ? 0 : 2 }}
+      >
         {/* Left Sidebar - Component Library */}
-        <VisualEditorSidebar
-          onClientSelect={(clientId) => {
-            dispatch({ type: 'ADD_NOTIFICATION', payload: { id: `notif-${Date.now()}`, type: 'info', title: 'Client Selected', message: `Client selected: ${clientId}`, timestamp: new Date(), read: false } });
-          }}
-          onComponentDrag={(componentType) => {
-            dispatch({ type: 'ADD_NOTIFICATION', payload: { id: `notif-${Date.now()}`, type: 'info', title: 'Component Drag', message: `Dragging: ${componentType}`, timestamp: new Date(), read: false } });
-            updateAnyComponent('component-library', 'drag-start', { componentType, timestamp: Date.now() });
-          }}
-          onComponentAdd={(componentType, position) => {
-            const elementId = `component-${Date.now()}`;
-            dispatch({
-              type: 'ADD_ELEMENT',
-              payload: {
-                id: elementId,
-                type: toElementType(componentType),
-                x: position.x,
-                y: position.y,
-                width: 200,
-                height: 100,
-                styles: {},
-                props: {},
-              },
-            });
-            updateAnyComponent('timeline', 'element-added', {
-              id: elementId,
-              componentType,
-              position,
-              timestamp: Date.now(),
-            });
-          }}
-          searchQuery={sidebarSearch}
-          onSearchChange={setSidebarSearch}
-          selectedCategory={selectedCategory}
-          onCategoryChange={setSelectedCategory}
-          onOpenAssetLibrary={handleOpenAssetLibrary}
-          onOpenScrollStories={handleOpenScrollStories}
-          onOpenGoogleServices={handleOpenGoogleServices}
-          onOpenNoteEditor={handleOpenNoteEditor}
-          onOpenSettings={handleOpenGoogleServices}
-        />
+        {!isPreviewMode && (
+          <VisualEditorSidebar
+            onClientSelect={(clientId) => {
+              dispatch({ type: 'ADD_NOTIFICATION', payload: { id: `notif-${Date.now()}`, type: 'info', title: 'Client Selected', message: `Client selected: ${clientId}`, timestamp: new Date(), read: false } });
+            }}
+            onComponentDrag={(componentType) => {
+              dispatch({ type: 'ADD_NOTIFICATION', payload: { id: `notif-${Date.now()}`, type: 'info', title: 'Component Drag', message: `Dragging: ${componentType}`, timestamp: new Date(), read: false } });
+              updateAnyComponent('component-library', 'drag-start', { componentType, timestamp: Date.now() });
+            }}
+            onComponentAdd={(componentType, position) => {
+              addCanvasElement(componentType, position);
+            }}
+            searchQuery={sidebarSearch}
+            onSearchChange={setSidebarSearch}
+            selectedCategory={selectedCategory}
+            onCategoryChange={setSelectedCategory}
+            onOpenAssetLibrary={handleOpenAssetLibrary}
+            onOpenScrollStories={handleOpenScrollStories}
+            onOpenGoogleServices={handleOpenGoogleServices}
+            onOpenNoteEditor={handleOpenNoteEditor}
+            onOpenSettings={handleOpenGoogleServices}
+          />
+        )}
 
         {/* Canvas Area */}
         <Box
@@ -1338,322 +2523,607 @@ export const EnhancedVisualEditorContent: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            position: 'relative'}}>
-          <FabricCanvas />
-
-          {/* Floating Action Buttons */}
+            position: 'relative',
+            minWidth: 0,
+            gap: 1.5,
+          }}
+        >
           <Box
             sx={{
-              position: 'absolute',
-              right: 16,
-              bottom: 16,
+              px: 2.25,
+              py: 1.5,
+              borderRadius: 999,
+              border: '1px solid rgba(113, 87, 59, 0.1)',
+              bgcolor: 'rgba(255,255,255,0.56)',
+              backdropFilter: 'blur(14px)',
+              boxShadow: '0 18px 36px rgba(76, 48, 17, 0.08)',
               display: 'flex',
-              flexDirection: 'column',
-              gap: 1,
-              zIndex: 100}}>
-            <Tooltip title={tokens.enhancedPage.fabs.unifiedStudio} placement="left">
-              <Fab
-                size="small"
-                color={showUnifiedStudio ? 'primary' : 'default'}
-                onClick={() => setShowUnifiedStudio(!showUnifiedStudio)}
+              alignItems: { xs: 'flex-start', md: 'center' },
+              justifyContent: 'space-between',
+              gap: 1.5,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Box>
+              <Typography
+                variant="overline"
+                sx={{ color: 'var(--ve-accent)', letterSpacing: '0.18em', fontWeight: 700 }}
               >
-                <Code />
-              </Fab>
-            </Tooltip>
+                {isPreviewMode ? 'Live Preview' : 'Canvas Stage'}
+              </Typography>
+              <Typography variant="h6" sx={{ color: 'var(--ve-ink)', fontWeight: 700 }}>
+                {isPreviewMode
+                  ? 'Focused preview workspace'
+                  : state.elements.length === 0
+                    ? 'Start with a polished section or build from scratch'
+                    : 'Responsive design workspace'}
+              </Typography>
+            </Box>
 
-            <Tooltip title={tokens.enhancedPage.fabs.accessibility} placement="left">
-              <Fab
-                size="small"
-                color={showAccessibility ? 'primary' : 'default'}
-                onClick={() => setShowAccessibility(!showAccessibility)}
-              >
-                <Accessible />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title={tokens.enhancedPage.fabs.exportPanel} placement="left">
-              <Fab size="small" onClick={() => setShowExporter(true)}>
-                <CloudUpload />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title={tokens.enhancedPage.fabs.componentLibrary} placement="left">
-              <Fab
-                size="small"
-                color={showComponentLibrary ? 'primary' : 'default'}
-                onClick={() => setShowComponentLibrary(!showComponentLibrary)}
-              >
-                <Folder />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title="Advanced Workspace" placement="left">
-              <Fab
-                size="small"
-                color={showAdvancedWorkspace ? 'primary' : 'default'}
-                onClick={() => setShowAdvancedWorkspace((prev) => !prev)}
-              >
-                <DashboardCustomize />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title="Smart Library Suggestions" placement="left">
-              <Fab
-                size="small"
-                color={showLibrarySuggestions ? 'primary' : 'default'}
-                onClick={() => openSmartSuggestions('video-player')}
-              >
-                <AutoAwesome />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title="Profession Config Wizard" placement="left">
-              <Fab
-                size="small"
-                color={showProfessionWizard ? 'primary' : 'default'}
-                onClick={() => setShowProfessionWizard(true)}
-              >
-                <Tune />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title={tokens.enhancedPage.fabs.shortcuts} placement="left">
-              <Fab size="small" onClick={() => setShowShortcuts(true)}>
-                <Keyboard />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title={tokens.enhancedPage.fabs.codeEditor} placement="left">
-              <Fab
-                size="small"
-                color={showCodeEditor ? 'primary' : 'default'}
-                onClick={() => setShowCodeEditor(!showCodeEditor)}
-              >
-                <Code />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title={tokens.enhancedPage.fabs.livePreviewPanel} placement="left">
-              <Fab
-                size="small"
-                color={showLivePreviewPanel ? 'primary' : 'default'}
-                onClick={() => setShowLivePreviewPanel(!showLivePreviewPanel)}
-              >
-                <Visibility />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title={tokens.enhancedPage.fabs.previewMode} placement="left">
-              <Fab
-                size="small"
-                color={showLivePreview ? 'primary' : 'default'}
-                onClick={() => setShowLivePreview(!showLivePreview)}
-              >
-                <Visibility />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title={tokens.enhancedPage.fabs.settings} placement="left">
-              <IconButton
-                size="small"
-                color={showSettings ? 'primary' : 'default'}
-                onClick={() => {
-                  setShowSettings((prev) => !prev);
-                  setShowAdvancedWorkspace(true);
-                  setActiveWorkspaceTab('system-management');
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+              {isPreviewMode && (
+                <Button
+                  variant="contained"
+                  onClick={() => setShowLivePreview(false)}
+                  sx={{
+                    textTransform: 'none',
+                    borderRadius: 999,
+                    bgcolor: 'var(--ve-accent)',
+                    '&:hover': {
+                      bgcolor: '#ef5b24',
+                    },
+                  }}
+                >
+                  Back to editing
+                </Button>
+              )}
+              <Chip
+                label={showLivePreview ? 'Preview live' : 'Edit mode'}
+                sx={{
+                  bgcolor: showLivePreview ? 'var(--ve-accent-soft)' : 'rgba(255,255,255,0.72)',
+                  color: showLivePreview ? 'var(--ve-accent)' : 'var(--ve-muted)',
+                  fontWeight: 600,
                 }}
-                sx={{ bgcolor: 'background.paper', boxShadow: 1 }}
+              />
+              <Chip
+                label={state.gridVisible ? 'Grid on' : 'Grid off'}
+                sx={{
+                  bgcolor: 'rgba(255,255,255,0.72)',
+                  color: 'var(--ve-muted)',
+                }}
+              />
+              <Chip
+                label={dbConnected ? 'Synced to database' : 'Local session'}
+                sx={{
+                  bgcolor: dbConnected ? 'rgba(34, 197, 94, 0.12)' : 'rgba(255,255,255,0.72)',
+                  color: dbConnected ? '#15803d' : 'var(--ve-muted)',
+                  fontWeight: 600,
+                }}
+              />
+            </Stack>
+          </Box>
+
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              position: 'relative',
+              overflow: 'hidden',
+              borderRadius: 5,
+              border: '1px solid var(--ve-panel-border)',
+              bgcolor: 'rgba(255,255,255,0.3)',
+              boxShadow: 'var(--ve-panel-shadow)',
+              backdropFilter: 'blur(12px)',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                inset: 0,
+                background: `
+                  radial-gradient(circle at center, rgba(255,255,255,0.12), transparent 56%),
+                  linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08))
+                `,
+                pointerEvents: 'none',
+              },
+            }}
+          >
+            <FabricCanvas />
+
+            {state.elements.length === 0 && !isPreviewMode && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  px: 3,
+                  py: 4,
+                  pointerEvents: 'none',
+                }}
               >
-                <SettingsIcon />
-              </IconButton>
-            </Tooltip>
+                <Box
+                  sx={{
+                    width: 'min(640px, 100%)',
+                    p: { xs: 2.5, md: 3 },
+                    borderRadius: 4,
+                    bgcolor: 'rgba(255,255,255,0.9)',
+                    border: '1px solid rgba(113, 87, 59, 0.1)',
+                    boxShadow: '0 24px 60px rgba(66, 42, 17, 0.12)',
+                    backdropFilter: 'blur(18px)',
+                    pointerEvents: 'auto',
+                  }}
+                >
+                  <Typography
+                    variant="overline"
+                    sx={{ color: 'var(--ve-accent)', letterSpacing: '0.18em', fontWeight: 700 }}
+                  >
+                    Quick Start
+                  </Typography>
+                  <Typography variant="h4" sx={{ color: 'var(--ve-ink)', fontWeight: 800, mb: 1 }}>
+                    Build your first section in seconds
+                  </Typography>
+                  <Typography variant="body1" sx={{ color: 'var(--ve-muted)', mb: 3 }}>
+                    Start with a ready-made hero, or drop in a few foundational blocks and shape the page from there.
+                  </Typography>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<WebAsset />}
+                      onClick={addHeroStarter}
+                      sx={{
+                        textTransform: 'none',
+                        borderRadius: 999,
+                        bgcolor: 'var(--ve-accent)',
+                        px: 2,
+                        py: 1.1,
+                        '&:hover': {
+                          bgcolor: '#ef5b24',
+                        },
+                      }}
+                    >
+                      Add hero section
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<TextFields />}
+                      onClick={() => addCanvasElement('text')}
+                      sx={{ textTransform: 'none', borderRadius: 999 }}
+                    >
+                      Add headline
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<SmartButton />}
+                      onClick={() => addCanvasElement('button')}
+                      sx={{ textTransform: 'none', borderRadius: 999 }}
+                    >
+                      Add CTA
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<ViewQuilt />}
+                      onClick={addFeatureGridStarter}
+                      sx={{ textTransform: 'none', borderRadius: 999 }}
+                    >
+                      Add feature grid
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<ViewQuilt />}
+                      onClick={() => addCanvasElement('card')}
+                      sx={{ textTransform: 'none', borderRadius: 999 }}
+                    >
+                      Add card
+                    </Button>
+                  </Stack>
+
+                  <Button
+                    variant="text"
+                    startIcon={<Folder />}
+                    onClick={() => setShowComponentLibrary(true)}
+                    sx={{ textTransform: 'none', color: 'var(--ve-accent)' }}
+                  >
+                    Open component library
+                  </Button>
+                </Box>
+              </Box>
+            )}
+
+            {/* Floating Action Buttons */}
+            {!isPreviewMode && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  right: { xs: 12, lg: 20 },
+                  bottom: { xs: 12, lg: 20 },
+                  top: 'auto',
+                  transform: 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1,
+                  zIndex: 100,
+                  p: 1,
+                  maxHeight: 'calc(100% - 96px)',
+                  pointerEvents: 'none',
+                  borderRadius: 999,
+                  bgcolor: 'rgba(29, 22, 17, 0.82)',
+                  backdropFilter: 'blur(16px)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  boxShadow: '0 24px 60px rgba(32, 20, 9, 0.28)',
+                  '& .MuiFab-root': {
+                    width: 44,
+                    height: 44,
+                    minHeight: 44,
+                    bgcolor: 'rgba(255,255,255,0.08)',
+                    color: 'rgba(255,255,255,0.92)',
+                    boxShadow: 'none',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    pointerEvents: 'auto',
+                    '&:hover': {
+                      bgcolor: 'rgba(255,255,255,0.16)',
+                    },
+                  },
+                  '& .MuiFab-primary': {
+                    bgcolor: 'var(--ve-accent)',
+                    color: '#fff',
+                    borderColor: 'rgba(255,255,255,0.18)',
+                    '&:hover': {
+                      bgcolor: '#ef5b24',
+                    },
+                  },
+                }}
+              >
+                <Tooltip title={tokens.enhancedPage.fabs.unifiedStudio} placement="left">
+                  <Fab
+                    size="small"
+                    color={showUnifiedStudio ? 'primary' : 'default'}
+                    onClick={() => setShowUnifiedStudio(!showUnifiedStudio)}
+                  >
+                    <Code />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title={tokens.enhancedPage.fabs.accessibility} placement="left">
+                  <Fab
+                    size="small"
+                    color={showAccessibility ? 'primary' : 'default'}
+                    onClick={() => setShowAccessibility(!showAccessibility)}
+                  >
+                    <Accessible />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title={tokens.enhancedPage.fabs.exportPanel} placement="left">
+                  <Fab size="small" aria-label="Open export panel" onClick={() => setShowExporter(true)}>
+                    <CloudUpload />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title={tokens.enhancedPage.fabs.componentLibrary} placement="left">
+                  <Fab
+                    size="small"
+                    color={showComponentLibrary ? 'primary' : 'default'}
+                    aria-label={showComponentLibrary ? 'Close component library drawer' : 'Open component library drawer'}
+                    onClick={() => setShowComponentLibrary(!showComponentLibrary)}
+                  >
+                    <Folder />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title="Advanced Workspace" placement="left">
+                  <Fab
+                    size="small"
+                    color={showAdvancedWorkspace ? 'primary' : 'default'}
+                    aria-label={showAdvancedWorkspace ? 'Close advanced workspace' : 'Open advanced workspace'}
+                    onClick={() => setShowAdvancedWorkspace((prev) => !prev)}
+                  >
+                    <DashboardCustomize />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title="Smart Library Suggestions" placement="left">
+                  <Fab
+                    size="small"
+                    color={showLibrarySuggestions ? 'primary' : 'default'}
+                    aria-label="Open smart library suggestions"
+                    onClick={() => openSmartSuggestions('video-player')}
+                  >
+                    <AutoAwesome />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title="Profession Config Wizard" placement="left">
+                  <Fab
+                    size="small"
+                    color={showProfessionWizard ? 'primary' : 'default'}
+                    aria-label="Open profession config wizard"
+                    onClick={() => setShowProfessionWizard(true)}
+                  >
+                    <Tune />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title={tokens.enhancedPage.fabs.shortcuts} placement="left">
+                  <Fab size="small" aria-label="Open keyboard shortcuts" onClick={() => setShowShortcuts(true)}>
+                    <Keyboard />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title={tokens.enhancedPage.fabs.codeEditor} placement="left">
+                  <Fab
+                    size="small"
+                    color={showCodeEditor ? 'primary' : 'default'}
+                    aria-label={showCodeEditor ? 'Close code editor' : 'Open code editor'}
+                    onClick={() => setShowCodeEditor(!showCodeEditor)}
+                  >
+                    <Code />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title={tokens.enhancedPage.fabs.livePreviewPanel} placement="left">
+                  <Fab
+                    size="small"
+                    color={showLivePreviewPanel ? 'primary' : 'default'}
+                    aria-label={showLivePreviewPanel ? 'Close live preview panel' : 'Open live preview panel'}
+                    onClick={() => setShowLivePreviewPanel(!showLivePreviewPanel)}
+                  >
+                    <Visibility />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title={tokens.enhancedPage.fabs.previewMode} placement="left">
+                  <Fab
+                    size="small"
+                    color={showLivePreview ? 'primary' : 'default'}
+                    aria-label={showLivePreview ? 'Exit preview mode' : 'Enter preview mode'}
+                    onClick={() => setShowLivePreview(!showLivePreview)}
+                  >
+                    <Visibility />
+                  </Fab>
+                </Tooltip>
+
+                <Tooltip title={tokens.enhancedPage.fabs.settings} placement="left">
+                  <Fab
+                    size="small"
+                    color={showSettings ? 'primary' : 'default'}
+                    aria-label={showSettings ? 'Close system settings workspace' : 'Open system settings workspace'}
+                    onClick={() => {
+                      setShowSettings((prev) => !prev);
+                      setShowAdvancedWorkspace(true);
+                      setActiveWorkspaceTab('system-management');
+                    }}
+                  >
+                    <SettingsIcon />
+                  </Fab>
+                </Tooltip>
+              </Box>
+            )}
           </Box>
         </Box>
 
         {/* Right Properties Panel */}
-        <EnhancedPropertiesPanel />
+        {!isPreviewMode && <EnhancedPropertiesPanel />}
       </Box>
 
       {/* Advanced Workspace Drawer */}
-      <Drawer
-        anchor="bottom"
-        open={showAdvancedWorkspace}
-        onClose={() => setShowAdvancedWorkspace(false)}
-        variant="persistent"
-        PaperProps={{
-          sx: {
-            height: '48vh',
-            borderTopLeftRadius: 10,
-            borderTopRightRadius: 10,
-            borderTop: '1px solid',
-            borderColor: 'divider',
-          },
-        }}
-      >
-        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <Box
-            sx={{
-              px: 2,
-              py: 1,
-              display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
-            }}
-          >
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                Advanced Workspace
-              </Typography>
-              <Typography variant="caption" color={dbConnected ? 'success.main' : 'warning.main'}>
-                {dbConnected ? 'Database connected' : 'Database disconnected'}
-              </Typography>
-              {dbError && (
-                <Typography variant="caption" color="error.main">
-                  {dbError}
+      {showAdvancedWorkspace && (
+        <Drawer
+          anchor="bottom"
+          open={showAdvancedWorkspace}
+          onClose={() => setShowAdvancedWorkspace(false)}
+          variant="persistent"
+          PaperProps={{
+            sx: {
+              height: '48vh',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              borderTop: '1px solid',
+              borderColor: 'var(--ve-panel-border)',
+              bgcolor: 'rgba(255,255,255,0.96)',
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,238,227,0.98))',
+              backdropFilter: 'blur(18px)',
+              boxShadow: '0 -24px 60px rgba(54, 34, 13, 0.12)',
+            },
+          }}
+        >
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+            <Box
+              sx={{
+                px: 2,
+                py: 1,
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                position: 'relative',
+                zIndex: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 0.25,
+                  flex: 1,
+                  pr: { xs: 2, sm: 3 },
+                  minWidth: 0,
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  Advanced Workspace
                 </Typography>
-              )}
-              <Typography variant="caption" color="text.secondary">
-                {lastIntegrationEvent}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {lastSyncedAt ? `Last sync: ${new Date(lastSyncedAt).toLocaleTimeString()}` : 'Last sync: never'}
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1, pt: 0.5 }}>
-                <Fab
-                  size="small"
-                  onClick={handleLoadProjectFromDb}
-                  title="Load current project from database"
-                >
-                  <CloudUpload />
-                </Fab>
-                <Fab
-                  size="small"
-                  onClick={handleSaveCurrentAsTemplate}
-                  title="Save current project as template"
-                >
-                  <Folder />
-                </Fab>
-                <Fab
-                  size="small"
-                  onClick={handleProbeAdminData}
-                  title="Probe admin component data"
-                >
-                  <AutoAwesome />
-                </Fab>
-                <Fab
-                  size="small"
-                  onClick={() => syncIntegrationState('manual-sync')}
-                  title="Manual integration sync"
-                >
-                  <Code />
-                </Fab>
-                <Fab
-                  size="small"
-                  onClick={() => updateAnyComponent('admin-dashboard', 'refresh', { source: 'enhanced-visual-editor' })}
-                  title="Refresh admin dashboard"
-                >
-                  <DashboardCustomize />
-                </Fab>
-                <Fab
-                  size="small"
-                  onClick={() => updateAnyComponent('client-portal', 'project-sync', { projectId: selectedProjectForPanels.id })}
-                  title="Sync to client portal"
-                >
-                  <Visibility />
-                </Fab>
+                <Typography variant="caption" color={dbConnected ? 'success.main' : 'warning.main'}>
+                  {dbConnected ? 'Database connected' : 'Database disconnected'}
+                </Typography>
+                {dbError && (
+                  <Typography variant="caption" color="error.main">
+                    {dbError}
+                  </Typography>
+                )}
+                <Typography variant="caption" color="text.secondary">
+                  {lastIntegrationEvent}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {lastSyncedAt ? `Last sync: ${new Date(lastSyncedAt).toLocaleTimeString()}` : 'Last sync: never'}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, pt: 0.5, flexWrap: 'wrap' }}>
+                  <Fab
+                    size="small"
+                    onClick={handleLoadProjectFromDb}
+                    title="Load current project from database"
+                  >
+                    <CloudUpload />
+                  </Fab>
+                  <Fab
+                    size="small"
+                    onClick={handleSaveCurrentAsTemplate}
+                    title="Save current project as template"
+                  >
+                    <Folder />
+                  </Fab>
+                  <Fab
+                    size="small"
+                    onClick={handleProbeAdminData}
+                    title="Probe admin component data"
+                  >
+                    <AutoAwesome />
+                  </Fab>
+                  <Fab
+                    size="small"
+                    onClick={() => syncIntegrationState('manual-sync')}
+                    title="Manual integration sync"
+                  >
+                    <Code />
+                  </Fab>
+                  <Fab
+                    size="small"
+                    onClick={() => updateAnyComponent('admin-dashboard', 'refresh', { source: 'enhanced-visual-editor' })}
+                    title="Refresh admin dashboard"
+                  >
+                    <DashboardCustomize />
+                  </Fab>
+                  <Fab
+                    size="small"
+                    onClick={() => updateAnyComponent('client-portal', 'project-sync', { projectId: selectedProjectForPanels.id })}
+                    title="Sync to client portal"
+                  >
+                    <Visibility />
+                  </Fab>
+                  <Fab
+                    size="small"
+                    aria-label="Open logo manager"
+                    onClick={() => setLogoManagerOpen(true)}
+                    title="Open logo manager"
+                  >
+                    <Folder />
+                  </Fab>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    aria-label="Close advanced workspace drawer"
+                    onClick={() => setShowAdvancedWorkspace(false)}
+                    sx={{ textTransform: 'none', borderRadius: 999 }}
+                  >
+                    Close workspace
+                  </Button>
+                </Box>
               </Box>
             </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Fab size="small" onClick={() => setLogoManagerOpen(true)}>
-                <Folder />
-              </Fab>
-              <Fab size="small" onClick={() => setShowAdvancedWorkspace(false)}>
-                <Visibility />
-              </Fab>
+
+            <Tabs
+              value={activeWorkspaceTab}
+              onChange={(_, value: AdvancedWorkspaceTab) => setActiveWorkspaceTab(value)}
+              variant="scrollable"
+              scrollButtons="auto"
+              sx={{ px: 1 }}
+            >
+              <Tab value="templates" label="Templates" />
+              <Tab value="export-presets" label="Export" />
+              <Tab value="cloud-sync" label="Cloud" />
+              <Tab value="team-collaboration" label="Team" />
+              <Tab value="plugins" label="Plugins" />
+              <Tab value="animations" label="Animation" />
+              <Tab value="component-library" label="Library" />
+              <Tab value="design-system" label="Design System" />
+              <Tab value="analytics" label="Analytics" />
+              <Tab value="audit" label="Audit" />
+              <Tab value="monitoring" label="Monitoring" />
+              <Tab value="system-management" label="System" />
+              <Tab value="ml-optimization" label="ML" />
+              <Tab value="advanced-analytics" label="Adv Analytics" />
+              <Tab value="ai-assistance" label="AI" />
+              <Tab value="templates-presets" label="Templates & Presets" />
+              <Tab value="template-presets" label="Presets" />
+              <Tab value="client-communication" label="Client Comms" />
+              <Tab value="revenue-optimization" label="Revenue" />
+              <Tab value="seo" label="SEO" />
+              <Tab value="modals" label="Modals" />
+              <Tab value="dashboard-components" label="Components" />
+              <Tab value="toasts" label="Toasts" />
+              <Tab value="branding" label="Branding" />
+              <Tab value="landing-settings" label="Landing" />
+              <Tab value="showcase-publisher" label="Publish" />
+              <Tab value="theming-admin" label="Theming" />
+              <Tab value="integration-tools" label="Integration" />
+            </Tabs>
+            <Divider />
+
+            <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
+              {renderAdvancedWorkspace()}
             </Box>
           </Box>
-
-          <Tabs
-            value={activeWorkspaceTab}
-            onChange={(_, value: AdvancedWorkspaceTab) => setActiveWorkspaceTab(value)}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{ px: 1 }}
-          >
-            <Tab value="templates" label="Templates" />
-            <Tab value="export-presets" label="Export" />
-            <Tab value="cloud-sync" label="Cloud" />
-            <Tab value="team-collaboration" label="Team" />
-            <Tab value="plugins" label="Plugins" />
-            <Tab value="animations" label="Animation" />
-            <Tab value="component-library" label="Library" />
-            <Tab value="design-system" label="Design System" />
-            <Tab value="analytics" label="Analytics" />
-            <Tab value="audit" label="Audit" />
-            <Tab value="monitoring" label="Monitoring" />
-            <Tab value="system-management" label="System" />
-            <Tab value="ml-optimization" label="ML" />
-            <Tab value="advanced-analytics" label="Adv Analytics" />
-            <Tab value="ai-assistance" label="AI" />
-            <Tab value="templates-presets" label="Templates & Presets" />
-            <Tab value="template-presets" label="Presets" />
-            <Tab value="client-communication" label="Client Comms" />
-            <Tab value="revenue-optimization" label="Revenue" />
-            <Tab value="seo" label="SEO" />
-            <Tab value="modals" label="Modals" />
-            <Tab value="dashboard-components" label="Components" />
-            <Tab value="toasts" label="Toasts" />
-            <Tab value="branding" label="Branding" />
-            <Tab value="landing-settings" label="Landing" />
-            <Tab value="showcase-publisher" label="Publish" />
-            <Tab value="theming-admin" label="Theming" />
-            <Tab value="integration-tools" label="Integration" />
-          </Tabs>
-          <Divider />
-
-          <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
-            {renderAdvancedWorkspace()}
-          </Box>
-        </Box>
-      </Drawer>
+        </Drawer>
+      )}
 
       {/* Enhanced Panels - Overlays */}
 
       {/* Unified Code Studio (replaces separate Code Editor + Live Preview) */}
-      <UnifiedCodeStudio
-        open={showUnifiedStudio}
-        onClose={() => setShowUnifiedStudio(false)}
-        initialCode={generatedCode}
-      />
+      {showUnifiedStudio && (
+        <UnifiedCodeStudio
+          open={showUnifiedStudio}
+          onClose={() => setShowUnifiedStudio(false)}
+          initialCode={generatedCode}
+        />
+      )}
 
       {/* Accessibility Checker Drawer */}
-      <AccessibilityChecker
-        open={showAccessibility}
-        onClose={() => setShowAccessibility(false)}
-        iframeRef={React.createRef()}
-      />
+      {showAccessibility && (
+        <AccessibilityChecker
+          open={showAccessibility}
+          onClose={() => setShowAccessibility(false)}
+          iframeRef={React.createRef()}
+        />
+      )}
 
       {/* Platform Exporter Dialog */}
-      <PlatformExporter
-        open={showExporter}
-        onClose={() => setShowExporter(false)}
-        code={generatedCode}
-        exportFormat={exportFormat}
-      />
+      {showExporter && (
+        <PlatformExporter
+          open={showExporter}
+          onClose={() => setShowExporter(false)}
+          code={generatedCode}
+          exportFormat={exportFormat}
+        />
+      )}
 
       {/* Component Library Drawer */}
-      <ComponentLibrary
-        open={showComponentLibrary}
-        onClose={() => setShowComponentLibrary(false)}
-        onUseComponent={handleUseComponent}
-      />
+      {showComponentLibrary && (
+        <ComponentLibrary
+          open={showComponentLibrary}
+          onClose={() => setShowComponentLibrary(false)}
+          onUseComponent={handleUseComponent}
+          selectionSnapshot={componentSelectionSnapshot}
+        />
+      )}
 
       {/* Keyboard Shortcuts Dialog */}
-      <KeyboardShortcuts
-        open={showShortcuts}
-        onClose={() => setShowShortcuts(false)}
-        onExecuteCommand={handleCommandExecute}
-      />
+      {showShortcuts && (
+        <KeyboardShortcuts
+          open={showShortcuts}
+          onClose={() => setShowShortcuts(false)}
+          onExecuteCommand={handleCommandExecute}
+        />
+      )}
 
       {/* Code Editor Panel - conditionally rendered */}
       {showCodeEditor && (
@@ -1681,26 +3151,32 @@ export const EnhancedVisualEditorContent: React.FC = () => {
         </Box>
       )}
 
-      <LibrarySuggestionDialog
-        open={showLibrarySuggestions}
-        onClose={() => setShowLibrarySuggestions(false)}
-        componentType={suggestedComponentType}
-        profession="videographer"
-        onEnableFeatures={handleEnableFeatures}
-      />
+      {showLibrarySuggestions && (
+        <LibrarySuggestionDialog
+          open={showLibrarySuggestions}
+          onClose={() => setShowLibrarySuggestions(false)}
+          componentType={suggestedComponentType}
+          profession="videographer"
+          onEnableFeatures={handleEnableFeatures}
+        />
+      )}
 
-      <ProfessionConfigWizard
-        open={showProfessionWizard}
-        onClose={() => setShowProfessionWizard(false)}
-        onSave={handleSaveProfession}
-        enableClone
-        enableImportExport
-        enablePreview
-        enableABTesting
-        enableAnalytics
-      />
+      {showProfessionWizard && (
+        <ProfessionConfigWizard
+          open={showProfessionWizard}
+          onClose={() => setShowProfessionWizard(false)}
+          onSave={handleSaveProfession}
+          enableClone
+          enableImportExport
+          enablePreview
+          enableABTesting
+          enableAnalytics
+        />
+      )}
 
-      <LogoManagementPanel open={logoManagerOpen} onClose={() => setLogoManagerOpen(false)} />
+      {logoManagerOpen && (
+        <LogoManagementPanel open={logoManagerOpen} onClose={() => setLogoManagerOpen(false)} />
+      )}
     </Box>
   );
 };
@@ -1719,29 +3195,36 @@ export const EnhancedVisualEditorPage: React.FC<EnhancedVisualEditorPageProps> =
 /** Inner component that can access the visual editor context to load a project */
 const EnhancedVisualEditorPageLoader: React.FC<{ projectId?: string }> = ({ projectId }) => {
   const { loadProject } = useVisualEditor();
+  const lastLoadedProjectIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (projectId) {
-      loadProject({
-        id: projectId,
-        name: `Project ${projectId}`,
-        elements: [],
-        settings: {
-          width: 1200,
-          height: 800,
-          backgroundColor: '#ffffff',
-          gridSize: 10,
-          snapToGrid: true,
-        },
-        metadata: {
-          createdBy: 'current-user',
-          createdAt: new Date(),
-          lastModified: new Date(),
-          version: 1,
-        },
-        status: 'draft',
-      });
+    const nextProjectId = projectId ?? 'visual-editor-project';
+    if (lastLoadedProjectIdRef.current === nextProjectId) {
+      return;
     }
+
+    lastLoadedProjectIdRef.current = nextProjectId;
+    const nextProjectName = projectId ? `Project ${projectId}` : 'Visual Editor Project';
+
+    loadProject({
+      id: nextProjectId,
+      name: nextProjectName,
+      elements: [],
+      settings: {
+        width: 1200,
+        height: 800,
+        backgroundColor: '#ffffff',
+        gridSize: 10,
+        snapToGrid: true,
+      },
+      metadata: {
+        createdBy: 'current-user',
+        createdAt: new Date(),
+        lastModified: new Date(),
+        version: 1,
+      },
+      status: 'draft',
+    });
   }, [projectId, loadProject]);
 
   return <EnhancedVisualEditorContent />;

@@ -16,15 +16,16 @@
 // ============================================================================
 
 export type FlashControllerBrand = 
-  | 'profoto, ' 
-  | 'godox, ' 
+  | 'profoto'
+  | 'godox'
   | 'pocketwizard' 
   | 'elinchrom' 
   | 'broncolor' 
   | 'phottix' 
   | 'yongnuo'
   | 'nissin'
-  | 'flashpoint';
+  | 'flashpoint'
+  | 'cactus';
 
 export type ControllerMount = 
   | 'canon' 
@@ -33,6 +34,7 @@ export type ControllerMount =
   | 'fujifilm' 
   | 'olympus' 
   | 'panasonic' 
+  | 'pentax'
   | 'universal';
 
 export type CommunicationProtocol = 

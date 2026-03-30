@@ -391,7 +391,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
           fullWidth
           PaperProps={{
             sx: { 
-              backgroundColor: 'rgba(25, 255, 255, 0.05)', 
+              backgroundColor: 'rgba(255, 255, 255, 0.06)', 
               backdropFilter: 'blur(10px)',
               minHeight: '80vh'
         }
@@ -421,7 +421,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
         {/* Header with Statistics */}
         <Grid container spacing={3} sx={{ mb:  4 }}>
           <Grid item xs={12}>
-            <MuiCard sx={{ backgroundColor: 'rgba(25, 255, 255, 0.02)' }}>
+            <MuiCard sx={{ backgroundColor: 'rgba(255, 255, 255, 0.04)' }}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center'}}>
                   <Avatar sx={{ backgroundColor: '#f44330', mr:  2 }}>
@@ -431,7 +431,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
                     <Typography variant="h4" sx={{  color: theming.colors.primary }}>
                       {openTickets}
                     </Typography>
-                    <Typography variant="body2" sx={{ color: 'rgba(25, 255, 255, 0.7)' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.72)' }}>
                       Åpne saker
                     </Typography>
                   </Box>
@@ -440,7 +440,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
             </MuiCard>
           </Grid>
           <Grid item xs={12}>
-            <MuiCard sx={{ backgroundColor: 'rgba(25, 255, 255, 0.02)' }}>
+            <MuiCard sx={{ backgroundColor: 'rgba(255, 255, 255, 0.04)' }}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center'}}>
                   <Avatar sx={{ backgroundColor: '#4caf50', mr:  2 }}>
@@ -450,7 +450,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
                     <Typography variant="h4" sx={{  color: theming.colors.primary }}>
                       {resolvedTickets}
                     </Typography>
-                    <Typography variant="body2" sx={{ color: 'rgba(25, 255, 255, 0.7)' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.72)' }}>
                       Løst
                     </Typography>
                   </Box>
@@ -459,7 +459,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
             </MuiCard>
           </Grid>
           <Grid item xs={12}>
-            <MuiCard sx={{ backgroundColor: 'rgba(25, 255, 255, 0.02)' }}>
+            <MuiCard sx={{ backgroundColor: 'rgba(255, 255, 255, 0.04)' }}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center'}}>
                   <Avatar sx={{ backgroundColor: '#2196f0', mr:  2 }}>
@@ -469,7 +469,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
                     <Typography variant="h4" sx={{  color: theming.colors.primary }}>
                       {tickets.length}
                     </Typography>
-                    <Typography variant="body2" sx={{ color: 'rgba(25, 255, 255, 0.7)' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.72)' }}>
                       Totalt
                     </Typography>
                   </Box>
@@ -521,7 +521,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
 
         {/* Create Ticket Tab */}
         {activeTab === 'create' && (
-          <Paper sx={{ p:  3, backgroundColor: 'rgba(25, 255, 255, 0.05)' ,  ...theming.getThemedCardSx() }}>
+          <Paper sx={{ p:  3, backgroundColor: 'rgba(255, 255, 255, 0.06)' ,  ...theming.getThemedCardSx() }}>
             <Typography variant="h6" sx={{  color: 'white', mb:  3  }}>
               Opprett ny support-sak
             </Typography>
@@ -535,20 +535,20 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
                   onChange={(e) => setNewTicket(prev => ({ ...prev, title: e.target.value }))}
                   sx={{
                     '& .MuiOutlinedInput-root': {
-                      color: 'white','& fieldset': { borderColor: 'rgba(25, 255, 255, 0.3)' }, '&:hover fieldset': { borderColor: '#ff8c00' }, '&.Mui-focused fieldset': { borderColor: '#ff8c00' }
-                    }, '& .MuiInputLabel-root': { color: 'rgba(25, 255, 255, 0.7)' }
+                      color: 'white','& fieldset': { borderColor: 'rgba(255, 255, 255, 0.24)' }, '&:hover fieldset': { borderColor: '#ff8c00' }, '&.Mui-focused fieldset': { borderColor: '#ff8c00' }
+                    }, '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.72)' }
                   }}
                 />
               </Grid>
 
               <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel sx={{ color: 'rgba(25, 255, 255, 0.7)' }}>Kategori</InputLabel>
+                  <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.72)' }}>Kategori</InputLabel>
                   <Select
                     value={newTicket.category}
                     onChange={(e) => setNewTicket(prev => ({ ...prev, category: e.target.value as any }))}
                     sx={{
-                      color: 'white','& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(25, 255, 255, 0.3)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff8c00' }
+                      color: 'white','& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.24)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff8c00' }
                     }}
                   >
                     <MenuItem value="question">Spørsmål</MenuItem>
@@ -563,12 +563,12 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
 
               <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel sx={{ color: 'rgba(25, 255, 255, 0.7)' }}>Prioritet</InputLabel>
+                  <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.72)' }}>Prioritet</InputLabel>
                   <Select
                     value={newTicket.priority}
                     onChange={(e) => setNewTicket(prev => ({ ...prev, priority: e.target.value as any }))}
                     sx={{
-                      color: 'white','& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(25, 255, 255, 0.3)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff8c00' }
+                      color: 'white','& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.24)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff8c00' }
                     }}
                   >
                     <MenuItem value="low">Lav</MenuItem>
@@ -581,12 +581,12 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
 
               <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel sx={{ color: 'rgba(25, 255, 255, 0.7)' }}>Dashboard funksjon (valgfritt)</InputLabel>
+                  <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.72)' }}>Dashboard funksjon (valgfritt)</InputLabel>
                   <Select
                     value={newTicket.dashboardFeature}
                     onChange={(e) => setNewTicket(prev => ({ ...prev, dashboardFeature: e.target.value }))}
                     sx={{
-                      color: 'white','& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(25, 255, 255, 0.3)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff8c00' }
+                      color: 'white','& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.24)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff8c00' }
                     }}
                   >
                     <MenuItem value="">Velg funksjon...</MenuItem>
@@ -608,8 +608,8 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
                   onChange={(e) => setNewTicket(prev => ({ ...prev, description: e.target.value }))}
                   sx={{
                     '& .MuiOutlinedInput-root': {
-                      color: 'white','& fieldset': { borderColor: 'rgba(25, 255, 255, 0.3)' }, '&:hover fieldset': { borderColor: '#ff8c00' }, '&.Mui-focused fieldset': { borderColor: '#ff8c00' }
-                    }, '& .MuiInputLabel-root': { color: 'rgba(25, 255, 255, 0.7)' }
+                      color: 'white','& fieldset': { borderColor: 'rgba(255, 255, 255, 0.24)' }, '&:hover fieldset': { borderColor: '#ff8c00' }, '&.Mui-focused fieldset': { borderColor: '#ff8c00' }
+                    }, '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.72)' }
                   }}
                 />
               </Grid>
@@ -639,7 +639,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
               <Grid container spacing={2}>
                 {tickets.map((ticket: HelpdeskTicket) => (
                   <Grid item xs={12} key={ticket.id}>
-                    <MuiCard sx={{ backgroundColor: 'rgba(25, 255, 255, 0.02)' }}>
+                    <MuiCard sx={{ backgroundColor: 'rgba(255, 255, 255, 0.04)' }}>
                       <CardHeader
                         avatar={
                           <Avatar sx={{ backgroundColor: getCategoryColor(ticket.category, ),  ...theming.getThemedCardSx() }}>
@@ -673,7 +673,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
                               label={ticket.category.replace('_', ', ').toUpperCase()}
                               size="small"
                               variant="outlined"
-                              sx={{ borderColor: 'rgba(25, 255, 255, 0.3)', color: 'rgba(25, 255, 255, 0.7)' }}
+                              sx={{ borderColor: 'rgba(255, 255, 255, 0.22)', color: 'rgba(255, 255, 255, 0.72)' }}
                             />
                           </Box>
                         }
@@ -688,13 +688,13 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
                         }
                       />
                       <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="body2" sx={{ color: 'rgba(25, 255, 255, 0.8)' }}>
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
                           {ticket.description.length > 200
                             ? `${ticket.description.substring(0, 200)}...`
                             : ticket.description
                           }
                         </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(25, 255, 255, 0.6)', mt: 1, display: 'block' }}>
+                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.64)', mt: 1, display: 'block' }}>
                           Opprettet: {new Date(ticket.createdAt).toLocaleDateString('nb-NO')}
                         </Typography>
                       </CardContent>
@@ -724,7 +724,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
           maxWidth="md"
           fullWidth
           PaperProps={{
-            sx: { backgroundColor: 'rgba(25, 255, 255, 0.05)', backdropFilter: 'blur(10px)' }
+            sx: { backgroundColor: 'rgba(255, 255, 255, 0.06)', backdropFilter: 'blur(10px)' }
           }}
         >
           {selectedTicket && (
@@ -756,7 +756,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
                 
                 {/* Add response section for open tickets */}
                 {(selectedTicket.status === 'open' || selectedTicket.status === 'in_progress') && (
-                  <Box sx={{ mt: 3, p: 2, backgroundColor: 'rgba(25, 255, 255, 0.05)', borderRadius: 2 }}>
+                  <Box sx={{ mt: 3, p: 2, backgroundColor: 'rgba(255, 255, 255, 0.06)', borderRadius: 2 }}>
                     <Typography variant="subtitle2" sx={{ color: 'white', mb: 2 }}>
                       Legg til mer informasjon:
                     </Typography>
@@ -771,7 +771,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
                         mb: 2,
                         '& .MuiOutlinedInput-root': {
                           color: 'white',
-                          '& fieldset': { borderColor: 'rgba(25, 255, 255, 0.3)' },
+                          '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.24)' },
                           '&:hover fieldset': { borderColor: '#ff8c00' },
                           '&.Mui-focused fieldset': { borderColor: '#ff8c00' }
                         }
@@ -837,7 +837,7 @@ const FAQSection: React.FC<{ profession: string }> = ({ profession }) => {
         <Accordion
           key={index}
           sx={{
-            backgroundColor: 'rgba(25, 255, 255, 0.02)',
+            backgroundColor: 'rgba(255, 255, 255, 0.04)',
             mb: 1, '&:before': { display: 'none' }
           }}
         >
@@ -867,7 +867,7 @@ const FAQSection: React.FC<{ profession: string }> = ({ profession }) => {
             </Box>
           </AccordionSummary>
           <AccordionDetails>
-            <Typography variant="body2" sx={{ color:'rgba(25, 255, 255, 0.8)' }}>
+            <Typography variant="body2" sx={{ color:'rgba(255, 255, 255, 0.82)' }}>
               {item.answer}
             </Typography>
           </AccordionDetails>

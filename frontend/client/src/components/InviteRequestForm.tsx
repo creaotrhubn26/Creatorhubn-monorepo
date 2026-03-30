@@ -513,7 +513,7 @@ export function InviteRequestForm({
             right: 8,
             top: 8,
             color: "white",
-            "&:hover": { backgroundColor: "rgba(25,255,255,0.1)" }
+            "&:hover": { backgroundColor: "rgba(255,255,255,0.12)" }
           }}
         >
           <CloseIcon />

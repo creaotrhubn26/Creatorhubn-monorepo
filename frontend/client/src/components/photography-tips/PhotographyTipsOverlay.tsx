@@ -229,13 +229,13 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
       >
         <DialogTitle
           sx={{
-            background: 'rgba(25, 255, 255, 0.1)',
+            background: 'rgba(255, 255, 255, 0.08)',
             backdropFilter: 'blur(10px)',
             color: 'white',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottom: '1px solid rgba(25, 255, 255, 0.2)'
+            borderBottom: '1px solid rgba(255, 255, 255, 0.16)'
         }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -248,9 +248,9 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                 label={`${contextualTipCount} relevante tips`}
                 size="small"
                 sx={{
-                  background: 'rgba(25, 255, 255, 0.2)',
+                  background: 'rgba(255, 255, 255, 0.14)',
                   color: 'white',
-                  border: '1px solid rgba(25, 255, 255, 0.3)'
+                  border: '1px solid rgba(255, 255, 255, 0.2)'
               }}
               />
             )}
@@ -276,9 +276,9 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
           <Box
             sx={{
               p:  2,
-              background: 'rgba(25, 255, 255, 0.05)',
+              background: 'rgba(255, 255, 255, 0.05)',
               backdropFilter: 'blur(10px)',
-              borderBottom: '1px solid rgba(25, 255, 255, 0.1)'
+              borderBottom: '1px solid rgba(255, 255, 255, 0.12)'
           }}
           >
             <Grid container spacing={2} alignItems="center">
@@ -296,9 +296,9 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                     ),
                     sx: {
                       color: 'white','& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(25, 255, 255, 0.3)'
+                        borderColor: 'rgba(255, 255, 255, 0.18)'
                     }, '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(25, 255, 255, 0.5)'
+                        borderColor: 'rgba(255, 255, 255, 0.28)'
                     }, '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                         borderColor: '#ff6b35'
                   }
@@ -314,9 +314,9 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                     onChange={(e) => setSelectedCategory(e.target.value)}
                     sx={{
                       color: 'white','& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(25, 255, 255, 0.3)'
+                        borderColor: 'rgba(255, 255, 255, 0.18)'
                     }, '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(25, 255, 255, 0.5)'
+                        borderColor: 'rgba(255, 255, 255, 0.28)'
                     }, '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                         borderColor: '#ff6b35'
                   }
@@ -338,9 +338,9 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                   startIcon={<FilterIcon />}
                   sx={{
                     color: 'white',
-                    borderColor: 'rgba(25, 255, 255, 0.3)','&:hover': {
-                      borderColor: 'rgba(25, 255, 255, 0.5)',
-                      background: 'rgba(25, 255, 255, 0.05)'
+                    borderColor: 'rgba(255, 255, 255, 0.18)','&:hover': {
+                      borderColor: 'rgba(255, 255, 255, 0.28)',
+                      background: 'rgba(255, 255, 255, 0.06)'
                   }
                 }}
                 >
@@ -355,8 +355,8 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
             <Box
               sx={{
                 p:  2,
-                background: 'rgba(25, 255, 255, 0.08)',
-                borderBottom: '1px solid rgba(25, 255, 255, 0.1)'
+                background: 'rgba(255, 255, 255, 0.06)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.12)'
             }}
             >
               <Typography variant="body2" sx={{ color: 'white', mb: 1, opacity: 0.9}}>
@@ -367,7 +367,7 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                     icon={<CameraIcon />}
                     label={context.currentCamera}
                     size="small"
-                    sx={{ background: 'rgba(25, 255, 255, 0.2)', color: 'white' }}
+                    sx={{ background: 'rgba(255, 255, 255, 0.14)', color: 'white' }}
                   />
                 )}
                 {context.lightingCondition && (
@@ -375,7 +375,7 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                     icon={<LightingIcon />}
                     label={context.lightingCondition}
                     size="small"
-                    sx={{ background: 'rgba(25, 255, 255, 0.2)', color: 'white' }}
+                    sx={{ background: 'rgba(255, 255, 255, 0.14)', color: 'white' }}
                   />
                 )}
                 {context.location && (
@@ -383,7 +383,7 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                     icon={<LocationIcon />}
                     label={context.location}
                     size="small"
-                    sx={{ background: 'rgba(25, 255, 255, 0.2)', color: 'white' }}
+                    sx={{ background: 'rgba(255, 255, 255, 0.14)', color: 'white' }}
                   />
                 )}
                 {context.timeOfDay && (
@@ -391,7 +391,7 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                     icon={<TimeIcon />}
                     label={context.timeOfDay}
                     size="small"
-                    sx={{ background: 'rgba(25, 255, 255, 0.2)', color: 'white' }}
+                    sx={{ background: 'rgba(255, 255, 255, 0.14)', color: 'white' }}
                   />
                 )}
               </Box>
@@ -408,7 +408,7 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
               <Alert
                 severity="info"
                 sx={{
-                  background: 'rgba(25, 255, 255, 0.1)',
+                  background: 'rgba(255, 255, 255, 0.08)',
                   color: 'white','& .MuiAlert-icon': { color: 'white' }
               }}
               >
@@ -423,14 +423,14 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                   <Grid size={{ xs: 12 }} sm={6} lg={4} key={tip.id || index}>
                     <Card
                       sx={{
-                        background: 'rgba(25, 255, 255, 0.1)',
+                        background: 'rgba(255, 255, 255, 0.08)',
                         backdropFilter: 'blur(10px)',
-                        border: '1px solid rgba(25, 255, 255, 0.2)',
+                        border: '1px solid rgba(255, 255, 255, 0.16)',
                         cursor: 'pointer',
                         transition: 'all 0.3s ease','&:hover': {
                           transform: 'translateY(-4px)',
                           boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                          background: 'rgba(25, 255, 255, 0.15)'
+                          background: 'rgba(255, 255, 255, 0.12)'
                       }
                     }}
                       onClick={() => openTipDetails(tip)}
@@ -462,7 +462,7 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                         <Typography
                           variant="body2"
                           sx={{
-                            color: 'rgba(25, 255, 255, 0.8)',
+                            color: 'rgba(255, 255, 255, 0.82)',
                             mb:  2,
                             display: '-webkit-box',
                             WebkitLineClamp:  3,
@@ -478,7 +478,7 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                             size="small"
                             variant="outlined"
                             sx={{
-                              borderColor: 'rgba(25, 255, 255, 0.5)',
+                              borderColor: 'rgba(255, 255, 255, 0.28)',
                               color: 'white',
                               textTransform: 'capitalize'
                         }}
@@ -551,7 +551,7 @@ const TipDetailsDialog: React.FC<TipDetailsDialogProps> = ({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          borderBottom: '1px solid rgba(25, 255, 255, 0.2)'
+          borderBottom: '1px solid rgba(255, 255, 255, 0.16)'
       }}
       >
         <Box>
@@ -594,7 +594,7 @@ const TipDetailsDialog: React.FC<TipDetailsDialogProps> = ({
         {tip.recommendedSettings && (
           <Accordion
             sx={{
-              background: 'rgba(25, 255, 255, 0.1)',
+              background: 'rgba(255, 255, 255, 0.08)',
               color: 'white',
               mb: 2, '&:before': { display: 'none' }
           }}
@@ -619,7 +619,7 @@ const TipDetailsDialog: React.FC<TipDetailsDialogProps> = ({
                           label={setting}
                           size="small"
                           variant="outlined"
-                          sx={{ borderColor: 'rgba(25, 255, 255, 0.5)', color: 'white' }}
+                          sx={{ borderColor: 'rgba(255, 255, 255, 0.28)', color: 'white' }}
                         />
                       ))}
                     </Box>
@@ -637,7 +637,7 @@ const TipDetailsDialog: React.FC<TipDetailsDialogProps> = ({
                           label={setting}
                           size="small"
                           variant="outlined"
-                          sx={{ borderColor: 'rgba(25, 255, 255, 0.5)', color: 'white' }}
+                          sx={{ borderColor: 'rgba(255, 255, 255, 0.28)', color: 'white' }}
                         />
                       ))}
                     </Box>
@@ -655,7 +655,7 @@ const TipDetailsDialog: React.FC<TipDetailsDialogProps> = ({
                           label={setting}
                           size="small"
                           variant="outlined"
-                          sx={{ borderColor: 'rgba(25, 255, 255, 0.5)', color: 'white' }}
+                          sx={{ borderColor: 'rgba(255, 255, 255, 0.28)', color: 'white' }}
                         />
                       ))}
                     </Box>
@@ -670,7 +670,7 @@ const TipDetailsDialog: React.FC<TipDetailsDialogProps> = ({
         {tip.recommendedEquipment && (
           <Accordion
             sx={{
-              background: 'rgba(25, 255, 255, 0.1)',
+              background: 'rgba(255, 255, 255, 0.08)',
               color: 'white',
               mb: 2, '&:before': { display: 'none' }
           }}
@@ -706,7 +706,7 @@ const TipDetailsDialog: React.FC<TipDetailsDialogProps> = ({
       <DialogActions
         sx={{
           p:  3,
-          borderTop: '1px solid rgba(25, 255, 255, 0.2)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.16)',
           justifyContent: 'space-between'
     }}
       >

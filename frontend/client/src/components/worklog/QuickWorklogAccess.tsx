@@ -284,7 +284,7 @@ export const QuickWorklogAccess: React.FC<QuickWorklogAccessProps> = ({
                       </Typography>
                   }
                     secondary={
-                      <Typography variant="caption" sx={{ color: 'rgba(25,255,255,0.7)' }}>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.68)' }}>
                         {entry.timeSpent}min • {entry.category}
                       </Typography>
                   }
@@ -300,10 +300,10 @@ export const QuickWorklogAccess: React.FC<QuickWorklogAccessProps> = ({
               onClick={() => setQuickNoteOpen(true)}
               sx={{
                 flex:  1,
-                bgcolor: 'rgba(25,255,255,0.2)',
+                bgcolor: 'rgba(255,255,255,0.14)',
                 color: 'white',
                 fontSize: '11px','&:hover': {
-                  bgcolor: 'rgba(25,255,255,0.3)'
+                  bgcolor: 'rgba(255,255,255,0.22)'
               }
             }}
             >
@@ -314,10 +314,10 @@ export const QuickWorklogAccess: React.FC<QuickWorklogAccessProps> = ({
               onClick={() => setOpen(true)}
               sx={{
                 flex:  1,
-                bgcolor: 'rgba(25,255,255,0.2)',
+                bgcolor: 'rgba(255,255,255,0.14)',
                 color: 'white',
                 fontSize: '11px','&:hover': {
-                  bgcolor: 'rgba(25,255,255,0.3)'
+                  bgcolor: 'rgba(255,255,255,0.22)'
               }
             }}
             >

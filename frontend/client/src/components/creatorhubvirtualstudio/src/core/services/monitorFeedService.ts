@@ -5,14 +5,10 @@
  * Supports multi-camera layouts, live switching, and technical overlays.
  */
 
+import * as THREE from 'three';
 import { logger } from './logger';
 
-const log = logger.module('MonitorFeedService, ');
-
-let THREE: any = null;
-try {
-  THREE = require('three');
-} catch {}
+const log = logger.module('MonitorFeedService');
 
 // ============================================================================
 // Types
@@ -63,8 +59,19 @@ export class MonitorRenderer {
   private renderTargets: Map<string, any> = new Map();
   private cameras: Map<string, any> = new Map();
   private scene: any;
-  private canvas: HTMLCanvasElement;
-  private config: MonitorConfig;
+  private canvas: HTMLCanvasElement | null = null;
+  private config: MonitorConfig = {
+    id: 'main-monitor',
+    layout: 'single',
+    feeds: [],
+    activeFeedIndex: 0,
+    showTimecode: true,
+    showWaveform: false,
+    showHistogram: false,
+    showSafeAreas: true,
+    showCameraInfo: true,
+    brightness: 1.0,
+  };
   private timecode: number = 0;
   private frameCount: number = 0;
   
@@ -89,20 +96,6 @@ export class MonitorRenderer {
     this.renderer.setPixelRatio(1);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1;
-    
-    // Default config
-    this.config = {
-      id: 'main-monitor',
-      layout: 'single',
-      feeds: [],
-      activeFeedIndex: 0,
-      showTimecode: true,
-      showWaveform: false,
-      showHistogram: false,
-      showSafeAreas: true,
-      showCameraInfo: true,
-      brightness: 1.0,
-    };
     
     log.info('MonitorRenderer initialized', { width, height });
   }
@@ -268,6 +261,8 @@ export class MonitorRenderer {
    * Composite feeds based on layout
    */
   private compositeLayout() {
+    if (!this.canvas) return;
+
     const ctx = this.canvas.getContext('2d');
     if (!ctx) return;
     
@@ -303,7 +298,7 @@ export class MonitorRenderer {
         this.drawFeed(ctx, 3, feeds[3], w / 2, h / 2, w / 2, h / 2);
         break;
         
-      case '3x3':
+      case '3x3': {
         const cellW = w / 3;
         const cellH = h / 3;
         for (let i = 0; i < 9 && i < feeds.length; i++) {
@@ -312,8 +307,9 @@ export class MonitorRenderer {
           this.drawFeed(ctx, i, feeds[i], col * cellW, row * cellH, cellW, cellH);
         }
         break;
-        
-      case 'pip': // Picture-in-picture
+      }
+
+      case 'pip': { // Picture-in-picture
         this.drawFeed(ctx, 0, feeds[this.config.activeFeedIndex], 0, 0, w, h);
         // Small PIP in corner
         const pipW = w * 0.25;
@@ -326,6 +322,7 @@ export class MonitorRenderer {
         const nextIndex = (this.config.activeFeedIndex + 1) % feeds.length;
         this.drawFeed(ctx, nextIndex, feeds[nextIndex], pipX, pipY, pipW, pipH);
         break;
+      }
     }
     
     // Draw overlays
@@ -461,6 +458,8 @@ export class MonitorRenderer {
    * Draw timecode overlay
    */
   private drawTimecode(ctx: CanvasRenderingContext2D) {
+    if (!this.canvas) return;
+
     const w = this.canvas.width;
     const h = this.canvas.height;
     
@@ -485,7 +484,7 @@ export class MonitorRenderer {
    * Get the rendered texture
    */
   getTexture(): any {
-    if (!THREE) return null;
+    if (!THREE || !this.canvas) return null;
     
     const texture = new THREE.CanvasTexture(this.canvas);
     texture.needsUpdate = true;
@@ -495,7 +494,7 @@ export class MonitorRenderer {
   /**
    * Get canvas for direct use
    */
-  getCanvas(): HTMLCanvasElement {
+  getCanvas(): HTMLCanvasElement | null {
     return this.canvas;
   }
   
@@ -545,4 +544,3 @@ export const monitorFeedService = {
 };
 
 export default monitorFeedService;
-

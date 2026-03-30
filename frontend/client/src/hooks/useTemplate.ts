@@ -4,16 +4,16 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import type { 
-  TemplateConfig, 
-  TemplateManagerState, 
-  Template,
-  TemplateCategory,
-  TemplateSearchQuery
+import {
+  templateManager,
+  type TemplateConfig,
+  type TemplateManagerState,
+  type Template,
+  type TemplateCategory,
+  type TemplateSearchQuery,
 } from '../utils/templateManager';
-import { 
-  templateManager
-} from'../utils/templateManager';
+
+const EMPTY_TEMPLATE_CONFIG: Partial<TemplateConfig> = {};
 
 export interface UseTemplateOptions {
   config?: Partial<TemplateConfig>;
@@ -59,7 +59,7 @@ export interface UseTemplateReturn {
  */
 export const useTemplate = (options: UseTemplateOptions = {}): UseTemplateReturn => {
   const {
-    config = {},
+    config: incomingConfig,
     onTemplateAdded,
     onCategoryAdded,
     onSearchCompleted,
@@ -67,6 +67,7 @@ export const useTemplate = (options: UseTemplateOptions = {}): UseTemplateReturn
     onError,
     onInitialized
   } = options;
+  const config = incomingConfig ?? EMPTY_TEMPLATE_CONFIG;
 
   const [state, setState] = useState<TemplateManagerState>({
     isEnabled: false,
@@ -157,7 +158,29 @@ export const useTemplate = (options: UseTemplateOptions = {}): UseTemplateReturn
   useEffect(() => {
     stateIntervalRef.current = setInterval(() => {
       const currentState = templateManager.getState();
-      setState(currentState);
+      setState((previousState) => {
+        if (
+          previousState.isEnabled === currentState.isEnabled
+          && previousState.isInitialized === currentState.isInitialized
+          && previousState.hasError === currentState.hasError
+          && previousState.error === currentState.error
+          && previousState.lastUpdate === currentState.lastUpdate
+          && previousState.totalTemplates === currentState.totalTemplates
+          && previousState.totalCategories === currentState.totalCategories
+          && previousState.totalUsage === currentState.totalUsage
+          && previousState.totalErrors === currentState.totalErrors
+          && previousState.totalConflicts === currentState.totalConflicts
+          && previousState.totalOverrides === currentState.totalOverrides
+          && previousState.searchResults === currentState.searchResults
+          && previousState.lastSearchQuery === currentState.lastSearchQuery
+          && previousState.templates === currentState.templates
+          && previousState.categories === currentState.categories
+        ) {
+          return previousState;
+        }
+
+        return currentState;
+      });
   }, 100);
 
     return () => {
@@ -269,5 +292,3 @@ export const useTemplate = (options: UseTemplateOptions = {}): UseTemplateReturn
 };
 
 export default useTemplate;
-
-

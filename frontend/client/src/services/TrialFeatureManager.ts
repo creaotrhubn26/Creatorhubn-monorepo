@@ -1,4 +1,5 @@
 // client/src/services/TrialFeatureManager.ts
+import type { ComponentType } from 'react';
 import { apiRequest } from '../lib/queryClient';
 
 export interface TrialFeature {
@@ -9,7 +10,7 @@ export interface TrialFeature {
   trialDuration: number; // days
   componentId: string;
   featureId: string;
-  previewComponent: React.ComponentType<any>;
+  previewComponent: ComponentType<Record<string, never>>;
   upgradeRequired: boolean;
   category: 'editor' | 'analytics' | 'ai' | 'productivity' | 'communication';
   icon?: string;
@@ -259,7 +260,7 @@ export class TrialFeatureManager {
   // Clean up expired trials
   cleanupExpiredTrials() {
     const now = new Date();
-    for (const [key, status] of this.activeTrials.entries()) {
+    for (const status of this.activeTrials.values()) {
       if (now > status.endDate && status.isActive) {
         status.isActive = false;
         status.hasExpired = true;

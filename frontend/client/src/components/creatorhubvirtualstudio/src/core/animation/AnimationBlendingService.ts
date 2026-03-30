@@ -14,10 +14,7 @@ import type {
   AnimationClip,
   AnimationTrack,
   Keyframe,
-  EasingName} from './SceneGraphAnimationEngine';
-import {
-  AnimationPlaybackState,
-  EASING_FUNCTIONS,
+  EasingName,
 } from './SceneGraphAnimationEngine';
 
 // ============================================================================
@@ -68,7 +65,7 @@ export interface CameraAnimationPreset {
   name: string;
   tracks: Partial<AnimationTrack>[];
   duration: number;
-  parameters?: Record<string, number>;
+  parameters?: Record<string, number | string | string[]>;
 }
 
 // ============================================================================
@@ -672,11 +669,12 @@ export class AnimationBlendingService {
       const qIncoming = new THREE.Quaternion().setFromEuler(incoming);
 
       switch (mode) {
-        case 'additive':
+        case 'additive': {
           // For additive rotation, multiply quaternions
           const additive = qIncoming.clone();
           additive.slerp(new THREE.Quaternion(), 1 - weight);
           return new THREE.Euler().setFromQuaternion(qBase.multiply(additive));
+        }
         case 'replace':
         default:
           qBase.slerp(qIncoming, weight);
@@ -692,17 +690,22 @@ export class AnimationBlendingService {
           return result.add(incoming.clone().multiplyScalar(weight));
         case 'multiply':
           return result.multiply(incoming.clone().lerp(new THREE.Color(1, 1, 1), 1 - weight));
-        case 'screen':
+        case 'screen': {
           const screen = new THREE.Color(
             1 - (1 - result.r) * (1 - incoming.r * weight),
             1 - (1 - result.g) * (1 - incoming.g * weight),
             1 - (1 - result.b) * (1 - incoming.b * weight)
           );
           return screen;
+        }
         case 'replace':
         default:
           return result.lerp(incoming, weight);
       }
+    }
+
+    if (propertyType === 'visibility') {
+      return weight >= 0.5 ? incoming : base;
     }
 
     // Default: simple lerp for replace, return incoming for others

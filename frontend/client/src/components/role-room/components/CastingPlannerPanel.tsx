@@ -18,6 +18,7 @@ import {
   TextField,
   Select,
   MenuItem,
+  Menu,
   FormControl,
   FormControlLabel,
   Checkbox,
@@ -95,6 +96,9 @@ import {
   FactCheck as FactCheckIcon,
   ImportExport as ImportExportIcon,
   PermMedia as PermMediaIcon,
+  MoreHoriz as MoreHorizIcon,
+  PushPin as PushPinIcon,
+  DragIndicator as DragIndicatorIcon,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 
@@ -129,7 +133,7 @@ import { storyLogicService, type StoryLogicState } from '../services/storyLogicS
 
 // Custom icon: Person holding camera with list/clipboard
 import { castingService } from '../services/castingService';
-import { googleWorkspaceApi } from '../services/castingApiService';
+import { googleWorkspaceApi, linkedInWorkspaceApi } from '../services/castingApiService';
 import { resetMockCastingData } from '../data/mockCastingData';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
@@ -182,6 +186,12 @@ const ProducerMediaPanel = lazy(() => import('./producer/ProducerMediaPanel'));
 const ProducerExtrasPanel = lazy(() => import('./producer/ProducerExtrasPanel'));
 const ProducerExportHandoffPanel = lazy(() => import('./producer/ProducerExportHandoffPanel'));
 import RoleRoomGoogleContextBar from './producer/RoleRoomGoogleContextBar';
+import RoleRoomDiagnosticsProbe from './shared/RoleRoomDiagnosticsProbe';
+import {
+  clearRoleRoomDiagnostics,
+  isRoleRoomDiagnosticsEnabled,
+  logRoleRoomDiagnostic,
+} from '../utils/roleRoomDiagnostics';
 
 // Lazy load dialogs and modals for better initial load
 const AdminDashboard = lazy(() => import('./AdminDashboard'));
@@ -566,7 +576,7 @@ export function CastingPlannerPanel({
   }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi]);
 
   const navActionButtonSizePx = useMemo(() => {
-    let base = quickTier7 ? 46 : quickTier6 ? 44 : quickTier5 ? 40 : quickTier4 ? 38 : quickTier3 ? 36 : 32;
+    let base = quickTier7 ? 48 : quickTier6 ? 46 : quickTier5 ? 44 : quickTier4 ? 42 : quickTier3 ? 40 : 44;
     if (isHiDpi) base += 1;
     return base;
   }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi]);
@@ -863,12 +873,20 @@ export function CastingPlannerPanel({
     canViewEconomy: false,
   });
   const producerAccess = useProducerAccess(currentUserRole, permissions);
-  const [, setPermissionsLoading] = useState(false);
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [producerWorkflowBootstrapVersion, setProducerWorkflowBootstrapVersion] = useState(0);
   
   // Ref to track current project ID for stale response detection
   const currentProjectIdRef = useRef<string | null>(null);
   const currentProjectRef = useRef<CastingProject | null>(null);
+  const projectSwitchInFlightRef = useRef<string | null>(null);
+  const projectSwitchTraceRef = useRef<{
+    fromProjectId: string | null;
+    targetProjectId: string;
+    startedAt: number;
+    activeTab: number;
+  } | null>(null);
+  const lastPermissionsLoadingRef = useRef<boolean | null>(null);
   const producerWorkflowBootstrappedProjectsRef = useRef<Set<string>>(new Set());
   
   const [profession, setProfession] = useState<'photographer' | 'videographer' | null>(null);
@@ -952,9 +970,27 @@ export function CastingPlannerPanel({
       message: params.get('rrGoogleMessage'),
     };
   }, []);
+  const roleRoomLinkedInIntent = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return {
+        status: null as string | null,
+        transferId: null as string | null,
+        mode: null as 'link' | null,
+        message: null as string | null,
+      };
+    }
+    const params = new URLSearchParams(window.location.search);
+    return {
+      status: params.get('rrLinkedInStatus'),
+      transferId: params.get('rrLinkedInTransfer'),
+      mode: params.get('rrLinkedInMode') === 'link' ? 'link' : null,
+      message: params.get('rrLinkedInMessage'),
+    };
+  }, []);
   const isExternalClientPortalMode = Boolean(clientPortalIntent);
   const appliedClientPortalIntentRef = useRef<string | null>(null);
   const handledGoogleTransferRef = useRef<string | null>(null);
+  const handledLinkedInTransferRef = useRef<string | null>(null);
   const [producerMediaFocus, setProducerMediaFocus] = useState<ClientPortalWorkspaceFocus | null>(null);
 
   const handleOpenTechnicalTeamDashboard = useCallback(() => {
@@ -965,10 +1001,63 @@ export function CastingPlannerPanel({
   }, []);
   const [projectSelectorOpen, setProjectSelectorOpen] = useState(false);
   const [projectSelectorQuery, setProjectSelectorQuery] = useState('');
+  const [projectQuickActionsAnchorEl, setProjectQuickActionsAnchorEl] = useState<HTMLElement | null>(null);
+  const [projectQuickActionsProject, setProjectQuickActionsProject] = useState<CastingProject | null>(null);
+  const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>([]);
+  const [draggingPinnedProjectId, setDraggingPinnedProjectId] = useState<string | null>(null);
+
+  // Keep the UI fallback aligned with settingsService/castingService demo seeds.
+  const getUserId = useCallback((): string => {
+    const session = authSessionService.getSessionSync();
+    if (session.currentUserId) return session.currentUserId;
+    if (session.adminUser?.id !== undefined && session.adminUser?.id !== null) {
+      return String(session.adminUser.id);
+    }
+    return 'default-user';
+  }, []);
 
   useEffect(() => {
     currentProjectRef.current = currentProject;
   }, [currentProject]);
+
+  useEffect(() => {
+    if (!isRoleRoomDiagnosticsEnabled()) {
+      return;
+    }
+    clearRoleRoomDiagnostics();
+    logRoleRoomDiagnostic('diagnostics:ready', {
+      currentProjectId: currentProject?.id ?? null,
+      note: 'Inspect window.__roleRoomDiagnostics or filter console on [RoleRoomDiag].',
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPinnedProjects = async () => {
+      const userId = adminUser?.id !== undefined && adminUser?.id !== null
+        ? String(adminUser.id)
+        : getUserId();
+
+      try {
+        const stored = await settingsService.getSetting<string[]>(pinnedProjectsNamespace, { userId });
+        if (!cancelled) {
+          setPinnedProjectIds(Array.isArray(stored) ? stored.filter((value): value is string => typeof value === 'string' && value.trim().length > 0) : []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPinnedProjectIds([]);
+        }
+        console.warn('Failed to load pinned projects:', error);
+      }
+    };
+
+    void loadPinnedProjects();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [adminUser?.id, getUserId]);
 
   // Preload lazily-rendered dialog modules after initial mount so first open
   // does not suspend during a synchronous user interaction.
@@ -1317,10 +1406,21 @@ export function CastingPlannerPanel({
     return [...projects].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
   }, [projects]);
 
+  const orderedProjects = useMemo(() => {
+    if (pinnedProjectIds.length === 0) {
+      return sortedProjects;
+    }
+
+    const pinnedSet = new Set(pinnedProjectIds);
+    const pinned = sortedProjects.filter((project) => pinnedSet.has(project.id));
+    const rest = sortedProjects.filter((project) => !pinnedSet.has(project.id));
+    return [...pinned, ...rest];
+  }, [pinnedProjectIds, sortedProjects]);
+
   const filteredProjectSelectorItems = useMemo(() => {
     const query = projectSelectorQuery.trim().toLowerCase();
-    if (!query) return sortedProjects;
-    return sortedProjects.filter((project) => {
+    if (!query) return orderedProjects;
+    return orderedProjects.filter((project) => {
       const name = (project.name || '').toLowerCase();
       const id = (project.id || '').toLowerCase();
       const description = (project.description || '').toLowerCase();
@@ -1332,13 +1432,122 @@ export function CastingPlannerPanel({
         client.includes(query)
       );
     });
-  }, [projectSelectorQuery, sortedProjects]);
+  }, [orderedProjects, projectSelectorQuery]);
 
-  const recentProjects = useMemo(() => {
-    return sortedProjects.slice(0, 4);
-  }, [sortedProjects]);
+  const filteredPinnedProjectSelectorItems = useMemo(
+    () => {
+      const pinnedSet = new Set(pinnedProjectIds);
+      return filteredProjectSelectorItems.filter((project) => pinnedSet.has(project.id));
+    },
+    [filteredProjectSelectorItems, pinnedProjectIds],
+  );
 
-  const hasMoreProjects = sortedProjects.length > 4;
+  const filteredUnpinnedProjectSelectorItems = useMemo(
+    () => {
+      const pinnedSet = new Set(pinnedProjectIds);
+      return filteredProjectSelectorItems.filter((project) => !pinnedSet.has(project.id));
+    },
+    [filteredProjectSelectorItems, pinnedProjectIds],
+  );
+
+  const latestCreatedProjectId = useMemo(() => {
+    if (orderedProjects.length === 0) {
+      return null;
+    }
+
+    const sortedByCreation = [...orderedProjects].sort((left, right) => {
+      const leftTimestamp = new Date(left.createdAt || left.updatedAt || 0).getTime();
+      const rightTimestamp = new Date(right.createdAt || right.updatedAt || 0).getTime();
+      return rightTimestamp - leftTimestamp;
+    });
+
+    return sortedByCreation[0]?.id ?? null;
+  }, [orderedProjects]);
+
+  const headerProjects = useMemo(() => {
+    const visibleProjects: CastingProject[] = [];
+    const activeProjectId = currentProject?.id ?? null;
+    const activeProject = activeProjectId
+      ? orderedProjects.find((project) => project.id === activeProjectId) ?? currentProject
+      : null;
+
+    if (activeProject) {
+      visibleProjects.push(activeProject);
+    }
+
+    for (const project of orderedProjects) {
+      if (activeProject && project.id === activeProject.id) {
+        continue;
+      }
+      visibleProjects.push(project);
+      if (visibleProjects.length >= 3) {
+        break;
+      }
+    }
+
+    return visibleProjects;
+  }, [currentProject, orderedProjects]);
+
+  const hiddenProjectsCount = Math.max(0, orderedProjects.length - headerProjects.length);
+  const hasMoreProjects = hiddenProjectsCount > 0;
+  const handleOpenProjectQuickActions = useCallback((event: MouseEvent<HTMLElement>, project: CastingProject) => {
+    event.stopPropagation();
+    setProjectQuickActionsAnchorEl(event.currentTarget);
+    setProjectQuickActionsProject(project);
+  }, []);
+
+  const handleCloseProjectQuickActions = useCallback(() => {
+    setProjectQuickActionsAnchorEl(null);
+    setProjectQuickActionsProject(null);
+  }, []);
+
+  const pinnedProjectIdSet = useMemo(() => new Set(pinnedProjectIds), [pinnedProjectIds]);
+  const pinnedProjectAccentColorById = useMemo(() => {
+    const accentMap = new Map<string, string>();
+    pinnedProjectIds.forEach((projectId, index) => {
+      accentMap.set(projectId, PINNED_PROJECT_ACCENT_COLORS[index % PINNED_PROJECT_ACCENT_COLORS.length]);
+    });
+    return accentMap;
+  }, [pinnedProjectIds]);
+
+  const persistPinnedProjects = useCallback(async (nextPinnedProjectIds: string[]) => {
+    const userId = adminUser?.id !== undefined && adminUser?.id !== null
+      ? String(adminUser.id)
+      : getUserId();
+    const sanitized = nextPinnedProjectIds.filter((value, index, array) => value && array.indexOf(value) === index);
+    setPinnedProjectIds(sanitized);
+    try {
+      await settingsService.setSetting(pinnedProjectsNamespace, sanitized, { userId });
+    } catch (error) {
+      console.warn('Failed to persist pinned projects:', error);
+    }
+  }, [adminUser?.id, getUserId]);
+
+  const handleTogglePinnedProject = useCallback(async (projectId: string) => {
+    const nextPinnedProjectIds = pinnedProjectIdSet.has(projectId)
+      ? pinnedProjectIds.filter((id) => id !== projectId)
+      : [projectId, ...pinnedProjectIds].slice(0, 3);
+    await persistPinnedProjects(nextPinnedProjectIds);
+  }, [persistPinnedProjects, pinnedProjectIdSet, pinnedProjectIds]);
+
+  const handleReorderPinnedProjects = useCallback(async (sourceProjectId: string, targetProjectId: string) => {
+    if (!sourceProjectId || !targetProjectId || sourceProjectId === targetProjectId) {
+      return;
+    }
+
+    const nextPinnedProjectIds = [...pinnedProjectIds];
+    const sourceIndex = nextPinnedProjectIds.indexOf(sourceProjectId);
+    const targetIndex = nextPinnedProjectIds.indexOf(targetProjectId);
+
+    if (sourceIndex === -1 || targetIndex === -1) {
+      return;
+    }
+
+    const [moved] = nextPinnedProjectIds.splice(sourceIndex, 1);
+    nextPinnedProjectIds.splice(targetIndex, 0, moved);
+    await persistPinnedProjects(nextPinnedProjectIds);
+  }, [persistPinnedProjects, pinnedProjectIds]);
+
   const { user } = useAuth();
 
   const getHeaderRoleLabel = (role?: string | null): string => {
@@ -1469,6 +1678,42 @@ export function CastingPlannerPanel({
     () => mapAccountRoleToProjectRole(adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole),
     [adminUser?.role, adminUser?.loginAs, adminUser?.requestedRole],
   );
+  const ensureScopedSessionProjectRole = useCallback(async (projectId: string) => {
+    if (!adminUser) {
+      return;
+    }
+
+    const mappedRole = mapAccountRoleToProjectRole(
+      adminUser.role,
+      adminUser.loginAs,
+      adminUser.requestedRole,
+    );
+
+    if (!mappedRole) {
+      return;
+    }
+
+    const userId = adminUser.id !== undefined && adminUser.id !== null
+      ? String(adminUser.id)
+      : getUserId();
+    const userRoles = await castingService.getUserRoles(projectId);
+    const existingRole = userRoles.find((userRole) => String(userRole.userId ?? userRole.user_id ?? '') === userId);
+    const now = new Date().toISOString();
+
+    if (existingRole?.role === mappedRole) {
+      return;
+    }
+
+    await castingService.saveUserRole(projectId, {
+      id: existingRole?.id || `userrole-${userId}-${projectId}`,
+      userId,
+      projectId,
+      role: mappedRole,
+      permissions: castingAuthService.getDefaultPermissions(mappedRole),
+      createdAt: existingRole?.createdAt || existingRole?.created_at || now,
+      updatedAt: now,
+    });
+  }, [adminUser, getUserId]);
   const isContentProducerSession = mappedSessionProjectRole === 'content_producer';
   const isClientReviewerSession = mappedSessionProjectRole === 'client_reviewer';
   const isProducerWorkspaceSession = isContentProducerSession || isClientReviewerSession;
@@ -1645,6 +1890,7 @@ export function CastingPlannerPanel({
     producerMediaFocus,
     storyArcView,
   ]);
+  const producerProjectSwitchPending = Boolean(currentProject && isProducerWorkspaceSession && permissionsLoading);
 
   const isTrollProject = useCallback((project: CastingProject): boolean => {
     const projectId = String(project.id || '').trim().toLowerCase();
@@ -1694,15 +1940,98 @@ export function CastingPlannerPanel({
       toast.showWarning('TROLL-prosjektet er kun tilgjengelig for produksjonsteam.');
       return;
     }
-    const fullProject = await castingService.getProject(project.id);
-    if (fullProject) {
-      setCurrentProject(fullProject);
-    } else {
-      setCurrentProject(project);
+
+    if (currentProjectRef.current?.id === project.id) {
+      setProjectSelectorOpen(false);
+      setProjectSelectorQuery('');
+      setProjectQuickActionsAnchorEl(null);
+      setProjectQuickActionsProject(null);
+      return;
     }
+
+    if (projectSwitchInFlightRef.current === project.id) {
+      return;
+    }
+
+    const switchStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    projectSwitchTraceRef.current = {
+      fromProjectId: currentProjectRef.current?.id ?? null,
+      targetProjectId: project.id,
+      startedAt: switchStartedAt,
+      activeTab,
+    };
+    logRoleRoomDiagnostic('project-switch:start', {
+      fromProjectId: currentProjectRef.current?.id ?? null,
+      targetProjectId: project.id,
+      activeTab,
+    });
+
+    projectSwitchInFlightRef.current = project.id;
     setProjectSelectorOpen(false);
     setProjectSelectorQuery('');
-  }, [isProducerWorkspaceSession, isTrollProject, toast]);
+    setProjectQuickActionsAnchorEl(null);
+    setProjectQuickActionsProject(null);
+    setCurrentProjectId(project.id);
+    setPermissionsLoading(true);
+
+    try {
+      logRoleRoomDiagnostic('project-switch:scoped-role:start', {
+        targetProjectId: project.id,
+      });
+      await ensureScopedSessionProjectRole(project.id);
+      logRoleRoomDiagnostic('project-switch:scoped-role:done', {
+        targetProjectId: project.id,
+        elapsedMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - switchStartedAt),
+      });
+      const projectFetchStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      logRoleRoomDiagnostic('project-switch:project-fetch:start', {
+        targetProjectId: project.id,
+      });
+      const fullProject = await castingService.getProject(project.id);
+      logRoleRoomDiagnostic('project-switch:project-fetch:done', {
+        targetProjectId: project.id,
+        elapsedMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - projectFetchStartedAt),
+        resolvedProjectId: fullProject?.id ?? project.id,
+      });
+      startTransition(() => {
+        logRoleRoomDiagnostic('project-switch:commit-requested', {
+          targetProjectId: project.id,
+        });
+        setCurrentProject(fullProject ?? project);
+      });
+    } finally {
+      if (projectSwitchInFlightRef.current === project.id) {
+        projectSwitchInFlightRef.current = null;
+      }
+    }
+  }, [activeTab, ensureScopedSessionProjectRole, isProducerWorkspaceSession, isTrollProject, toast]);
+
+  useEffect(() => {
+    if (lastPermissionsLoadingRef.current === permissionsLoading) {
+      return;
+    }
+    lastPermissionsLoadingRef.current = permissionsLoading;
+    logRoleRoomDiagnostic('project-switch:permissions-loading', {
+      loading: permissionsLoading,
+      currentProjectId: currentProject?.id ?? null,
+      inFlightProjectId: projectSwitchInFlightRef.current ?? null,
+    });
+  }, [currentProject?.id, permissionsLoading]);
+
+  useEffect(() => {
+    const trace = projectSwitchTraceRef.current;
+    if (!trace || permissionsLoading || currentProject?.id !== trace.targetProjectId) {
+      return;
+    }
+
+    logRoleRoomDiagnostic('project-switch:ready', {
+      fromProjectId: trace.fromProjectId,
+      targetProjectId: trace.targetProjectId,
+      activeTab: trace.activeTab,
+      elapsedMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - trace.startedAt),
+    });
+    projectSwitchTraceRef.current = null;
+  }, [currentProject?.id, permissionsLoading]);
 
   // Get terminology helper (must be after profession state is defined)
   const getTerm = (key: string): string => {
@@ -1916,7 +2245,7 @@ export function CastingPlannerPanel({
   ]);
 
   useEffect(() => {
-    if (!currentProject || !isContentProducerDemoProject(currentProject) || !isContentProducerMode) {
+    if (!currentProject || !isContentProducerDemoProject(currentProject) || !isContentProducerMode || permissionsLoading) {
       return;
     }
 
@@ -1945,24 +2274,16 @@ export function CastingPlannerPanel({
     return () => {
       cancelled = true;
     };
-  }, [currentProject, isContentProducerDemoProject, isContentProducerMode]);
+  }, [currentProject, isContentProducerDemoProject, isContentProducerMode, permissionsLoading]);
 
   const roleDialogAccentColor = '#b86bff';
   const roleDialogAccentSoftColor = alpha(roleDialogAccentColor, 0.2);
   const roleDialogBackdrop = `url(${rolesBackdrop4})`;
   const standaloneRoleRoomMode = shouldUseRoleRoomLocalFallback();
   const currentRoleRoomProfessionNamespace = 'roleRoom_castingProfession';
-  const legacyRoleRoomProfessionNamespace = 'virtualStudio_castingProfession';
-
-  // Keep the UI fallback aligned with settingsService/castingService demo seeds.
-  const getUserId = useCallback((): string => {
-    const session = authSessionService.getSessionSync();
-    if (session.currentUserId) return session.currentUserId;
-    if (session.adminUser?.id !== undefined && session.adminUser?.id !== null) {
-      return String(session.adminUser.id);
-    }
-    return 'default-user';
-  }, []);
+const legacyRoleRoomProfessionNamespace = 'virtualStudio_castingProfession';
+const pinnedProjectsNamespace = 'roleRoom_pinnedProjects';
+const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
   // Load profession from API or settings cache
   const loadProfession = useCallback(async (): Promise<'photographer' | 'videographer' | null> => {
@@ -2148,7 +2469,11 @@ export function CastingPlannerPanel({
             );
             setAdminUser(normalizeAdminUser(transfer.user));
             setLoginDialogOpen(false);
-            toast.showSuccess(`Google-konto koblet for ${transfer.google.email}`);
+            toast.showSuccess(
+              transfer.autoConfiguredProjectBinding
+                ? `Google-konto koblet for ${transfer.google.email}, og prosjektet er klargjort.`
+                : `Google-konto koblet for ${transfer.google.email}`,
+            );
           } else {
             toast.showError('Google-innlogging manglet Role Room-sesjon');
           }
@@ -2162,8 +2487,15 @@ export function CastingPlannerPanel({
           return;
         }
 
-        await googleWorkspaceApi.completeLink(roleRoomGoogleIntent.transferId!);
-        toast.showSuccess(`Google Workspace koblet til ${transfer.google.email}`);
+        const linkedStatus = await googleWorkspaceApi.completeLink(roleRoomGoogleIntent.transferId!);
+        const linkedProjectReady = Boolean(
+          linkedStatus.projectBinding?.driveRootFolderId && linkedStatus.projectBinding?.calendarId,
+        );
+        toast.showSuccess(
+          linkedProjectReady
+            ? `Google Workspace koblet til ${transfer.google.email}, og prosjektet er klargjort.`
+            : `Google Workspace koblet til ${transfer.google.email}`,
+        );
         clearGoogleIntentFromUrl();
       } catch (googleError) {
         if (cancelled) {
@@ -2184,6 +2516,76 @@ export function CastingPlannerPanel({
     roleRoomGoogleIntent.mode,
     roleRoomGoogleIntent.status,
     roleRoomGoogleIntent.transferId,
+    toast,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const clearLinkedInIntentFromUrl = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('rrLinkedInStatus');
+      url.searchParams.delete('rrLinkedInTransfer');
+      url.searchParams.delete('rrLinkedInMode');
+      url.searchParams.delete('rrLinkedInMessage');
+      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    };
+
+    if (roleRoomLinkedInIntent.status === 'error') {
+      toast.showError(roleRoomLinkedInIntent.message || 'LinkedIn-kobling feilet');
+      clearLinkedInIntentFromUrl();
+      return;
+    }
+
+    if (!authLoaded || roleRoomLinkedInIntent.status !== 'success' || !roleRoomLinkedInIntent.transferId || !roleRoomLinkedInIntent.mode) {
+      return;
+    }
+
+    const transferKey = `${roleRoomLinkedInIntent.mode}:${roleRoomLinkedInIntent.transferId}`;
+    if (handledLinkedInTransferRef.current === transferKey) {
+      return;
+    }
+    handledLinkedInTransferRef.current = transferKey;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const transfer = await linkedInWorkspaceApi.getOauthSessionResult(roleRoomLinkedInIntent.transferId!);
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!adminUser) {
+          toast.showError('Du må være innlogget i Role Room før du kan koble LinkedIn');
+          clearLinkedInIntentFromUrl();
+          return;
+        }
+
+        await linkedInWorkspaceApi.completeLink(roleRoomLinkedInIntent.transferId!);
+        toast.showSuccess(`LinkedIn koblet til ${transfer.linkedIn.name ?? transfer.linkedIn.email ?? transfer.linkedIn.memberId}`);
+        clearLinkedInIntentFromUrl();
+      } catch (linkedInError) {
+        if (cancelled) {
+          return;
+        }
+        toast.showError(linkedInError instanceof Error ? linkedInError.message : 'Kunne ikke fullføre LinkedIn-flyten');
+        clearLinkedInIntentFromUrl();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    adminUser,
+    authLoaded,
+    roleRoomLinkedInIntent.message,
+    roleRoomLinkedInIntent.mode,
+    roleRoomLinkedInIntent.status,
+    roleRoomLinkedInIntent.transferId,
     toast,
   ]);
 
@@ -2374,9 +2776,11 @@ export function CastingPlannerPanel({
   ]);
 
   const loadUserRole = useCallback(async () => {
-    if (currentProject) {
+    const activeProject = currentProjectRef.current;
+
+    if (activeProject) {
       // Capture the project ID at the start of this async operation
-      const projectIdForRequest = currentProject.id;
+      const projectIdForRequest = activeProject.id;
       currentProjectIdRef.current = projectIdForRequest;
       
       // Reset permissions and show loading state when switching projects
@@ -2435,8 +2839,8 @@ export function CastingPlannerPanel({
 
       const sessionUserId = authSessionService.getSessionSync().currentUserId;
       const isUnauthenticatedDemoSession = !adminUser && (!sessionUserId || sessionUserId === 'default' || sessionUserId === 'default-user');
-        if (isUnauthenticatedDemoSession && isContentProducerDemoProject(currentProject)) {
-          const seededProducerRole = (currentProject.userRoles ?? []).find((role) => role?.role === 'content_producer');
+        if (isUnauthenticatedDemoSession && isContentProducerDemoProject(activeProject)) {
+          const seededProducerRole = (activeProject.userRoles ?? []).find((role) => role?.role === 'content_producer');
           if (seededProducerRole) {
             const normalizedUserId = String(seededProducerRole.userId ?? seededProducerRole.user_id ?? 'default-user');
             const mergedPermissions = {
@@ -2612,7 +3016,7 @@ export function CastingPlannerPanel({
         canViewEconomy: false,
       });
     }
-  }, [adminUser, buildPermissionStateFromRole, currentProject, getUserId, isGuestMode, isContentProducerDemoProject]);
+  }, [adminUser, buildPermissionStateFromRole, getUserId, isGuestMode, isContentProducerDemoProject]);
 
   const loadAvailableScenes = useCallback(() => {
     const sceneMap = new Map<string, { id: string; name: string; thumbnail?: string }>();
@@ -2663,19 +3067,19 @@ export function CastingPlannerPanel({
     setAvailableScenes(Array.from(sceneMap.values()));
   }, [branding.tokens.labels.sceneFallbackPrefix, currentProject]);
 
-  // Re-run when profession changes in case UI needs updating
+  // Re-run the scene registry when profession changes. Project-role loading is handled
+  // by the dedicated currentProject effect below and should not double-fire here.
   useEffect(() => {
-    if (profession && projects.length > 0) {
+    if (profession && currentProject) {
       loadAvailableScenes();
-      loadUserRole();
     }
-  }, [profession, loadAvailableScenes, loadUserRole]);
+  }, [profession, currentProject, loadAvailableScenes]);
 
   useEffect(() => {
-    if (currentProject) {
+    if (currentProject?.id) {
       loadUserRole();
     }
-  }, [currentProject, adminUser, loadUserRole]);
+  }, [currentProject?.id, adminUser, loadUserRole]);
 
   // Preload frequently used lazy modules to avoid sync-input suspense errors
   useEffect(() => {
@@ -3473,8 +3877,12 @@ export function CastingPlannerPanel({
     if (['awaiting_callback', 'callback', 'shortlist', 'requested'].includes(status)) return 'callbacks';
     return 'screening';
   }, []);
+  const selectionWorkspaceActive = activeTab === SELECTION_TAB_INDEX;
 
   const auditionSchedulesByCandidate = useMemo(() => {
+    if (!selectionWorkspaceActive) {
+      return new Map<string, Schedule[]>();
+    }
     const map = new Map<string, Schedule[]>();
     schedules.forEach((schedule) => {
       const scheduleType = String(schedule.type || '').toLowerCase();
@@ -3496,9 +3904,12 @@ export function CastingPlannerPanel({
       map.set(candidateId, existing);
     });
     return map;
-  }, [schedules]);
+  }, [schedules, selectionWorkspaceActive]);
 
   const selectionCandidates = useMemo(() => {
+    if (!selectionWorkspaceActive) {
+      return [] as Candidate[];
+    }
     const selectionStatuses = new Set([
       'auditioned',
       'awaiting_callback',
@@ -3522,21 +3933,27 @@ export function CastingPlannerPanel({
         if (ratingA !== ratingB) return ratingB - ratingA;
         return a.name.localeCompare(b.name, 'no');
       });
-  }, [candidates, getCandidateAuditionNotes, auditionSchedulesByCandidate, getCandidateAuditionRating]);
+  }, [candidates, getCandidateAuditionNotes, auditionSchedulesByCandidate, getCandidateAuditionRating, selectionWorkspaceActive]);
 
   const selectionCandidatesFiltered = useMemo(() => {
+    if (!selectionWorkspaceActive) return [] as Candidate[];
     if (selectionPhaseFilter === 'all') return selectionCandidates;
     return selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === selectionPhaseFilter);
-  }, [selectionCandidates, selectionPhaseFilter, getCandidateSelectionStage]);
+  }, [selectionCandidates, selectionPhaseFilter, getCandidateSelectionStage, selectionWorkspaceActive]);
 
   const selectionMetrics = useMemo(
-    () => ({
-      screening: selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === 'screening').length,
-      callbacks: selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === 'callbacks').length,
-      final: selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === 'final').length,
-      total: selectionCandidates.length,
-    }),
-    [selectionCandidates, getCandidateSelectionStage],
+    () => {
+      if (!selectionWorkspaceActive) {
+        return { screening: 0, callbacks: 0, final: 0, total: 0 };
+      }
+      return {
+        screening: selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === 'screening').length,
+        callbacks: selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === 'callbacks').length,
+        final: selectionCandidates.filter((candidate) => getCandidateSelectionStage(candidate) === 'final').length,
+        total: selectionCandidates.length,
+      };
+    },
+    [selectionCandidates, getCandidateSelectionStage, selectionWorkspaceActive],
   );
 
   const getCandidatePrimaryPhoto = useCallback((candidate: Candidate): string | null => {
@@ -3663,14 +4080,16 @@ export function CastingPlannerPanel({
   );
 
   useEffect(() => {
+    if (!selectionWorkspaceActive) return;
     if (!currentProject?.id) {
       setSelectionDecisionLog([]);
       return;
     }
     setSelectionDecisionLog(selectionDecisionLogFromProject);
-  }, [currentProject?.id]);
+  }, [currentProject?.id, selectionDecisionLogFromProject, selectionWorkspaceActive]);
 
   useEffect(() => {
+    if (!selectionWorkspaceActive) return;
     if (!currentProject?.id) return;
     if (selectionDecisionLogSnapshot === selectionProjectLogSnapshot) return;
     if (typeof window === 'undefined') return;
@@ -3731,6 +4150,7 @@ export function CastingPlannerPanel({
     currentProject?.id,
     selectionDecisionLogSnapshot,
     selectionProjectLogSnapshot,
+    selectionWorkspaceActive,
   ]);
 
   const appendSelectionDecisionLog = useCallback((candidate: Candidate, action: string) => {
@@ -3746,12 +4166,15 @@ export function CastingPlannerPanel({
   }, [selectionActorLabel]);
 
   const selectionCompareCandidates = useMemo(
-    () => selectionCandidates.filter((candidate) => selectionCompareCandidateIds.includes(candidate.id)).slice(0, MAX_SELECTION_COMPARE),
-    [selectionCandidates, selectionCompareCandidateIds],
+    () => {
+      if (!selectionWorkspaceActive) return [] as Candidate[];
+      return selectionCandidates.filter((candidate) => selectionCompareCandidateIds.includes(candidate.id)).slice(0, MAX_SELECTION_COMPARE);
+    },
+    [selectionCandidates, selectionCompareCandidateIds, selectionWorkspaceActive],
   );
   const selectionCandidateIdSignature = useMemo(
-    () => selectionCandidates.map((candidate) => candidate.id).join('|'),
-    [selectionCandidates],
+    () => (selectionWorkspaceActive ? selectionCandidates.map((candidate) => candidate.id).join('|') : ''),
+    [selectionCandidates, selectionWorkspaceActive],
   );
   const selectionCandidateIdSet = useMemo(
     () => new Set(selectionCandidateIdSignature ? selectionCandidateIdSignature.split('|') : []),
@@ -3781,6 +4204,7 @@ export function CastingPlannerPanel({
   }, []);
 
   useEffect(() => {
+    if (!selectionWorkspaceActive) return;
     if (selectionCandidateIdSet.size === 0) {
       setSelectionCompareCandidateIds((prev) => (prev.length === 0 ? prev : []));
       return;
@@ -3790,9 +4214,10 @@ export function CastingPlannerPanel({
       if (filtered.length === prev.length && filtered.every((id, idx) => id === prev[idx])) return prev;
       return filtered.slice(0, MAX_SELECTION_COMPARE);
     });
-  }, [selectionCandidateIdSet, selectionCandidateIdSignature]);
+  }, [selectionCandidateIdSet, selectionCandidateIdSignature, selectionWorkspaceActive]);
 
   useEffect(() => {
+    if (!selectionWorkspaceActive) return;
     if (selectionCandidatesFiltered.length === 0) {
       if (selectedSelectionCandidateId !== null) setSelectedSelectionCandidateId(null);
       return;
@@ -3801,7 +4226,7 @@ export function CastingPlannerPanel({
     if (!stillExists) {
       setSelectedSelectionCandidateId(selectionCandidatesFiltered[0].id);
     }
-  }, [selectionCandidatesFiltered, selectedSelectionCandidateId]);
+  }, [selectionCandidatesFiltered, selectedSelectionCandidateId, selectionWorkspaceActive]);
 
   const selectedSelectionCandidate = useMemo(
     () => selectionCandidatesFiltered.find((candidate) => candidate.id === selectedSelectionCandidateId) ?? null,
@@ -4013,6 +4438,7 @@ export function CastingPlannerPanel({
   }, [normalizeSelectionNoteToken]);
 
   const selectionMentionCandidates = useMemo(() => {
+    if (!selectionWorkspaceActive) return [] as string[];
     const deduped = new Set<string>();
     for (const candidate of allCandidates) {
       if (candidate.name && candidate.name.trim().length > 0) {
@@ -4033,7 +4459,7 @@ export function CastingPlannerPanel({
       }
     }
     return Array.from(deduped).sort((left, right) => left.localeCompare(right, 'no-NO'));
-  }, [adminUser?.display_name, allCandidates, currentProject?.crew, globalTagRegistry]);
+  }, [adminUser?.display_name, allCandidates, currentProject?.crew, globalTagRegistry, selectionWorkspaceActive]);
 
   const escapeSelectionRegex = useCallback((value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), []);
 
@@ -4050,9 +4476,10 @@ export function CastingPlannerPanel({
   );
 
   const selectionTrailingToken = useMemo(() => {
+    if (!selectionWorkspaceActive) return '';
     const match = selectionNotesDraftPlain.match(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u);
     return match?.[1] ?? '';
-  }, [selectionNotesDraftPlain]);
+  }, [selectionNotesDraftPlain, selectionWorkspaceActive]);
 
   const levenshteinDistance = useCallback((left: string, right: string): number => {
     if (left === right) return 0;
@@ -4073,6 +4500,7 @@ export function CastingPlannerPanel({
   }, []);
 
   const selectionDidYouMeanSuggestions = useMemo(() => {
+    if (!selectionWorkspaceActive) return [] as string[];
     const normalizedToken = normalizeSelectionNoteToken(selectionTrailingToken);
     if (normalizedToken.length < 2) return [] as string[];
     const rankedMatches = selectionMentionCandidates
@@ -4125,9 +4553,11 @@ export function CastingPlannerPanel({
     selectionMentionCandidates,
     selectionNotesDraftPlain,
     selectionTrailingToken,
+    selectionWorkspaceActive,
   ]);
 
   const selectionAutoTagChips = useMemo(() => {
+    if (!selectionWorkspaceActive) return [] as string[];
     if (!selectionNotesDraftPlain.trim()) return [] as string[];
     const excluded = new Set(selectionNotesTagExclusions.map((value) => normalizeSelectionNoteToken(value)));
     return selectionMentionCandidates.filter((name) => {
@@ -4141,6 +4571,7 @@ export function CastingPlannerPanel({
     selectionMentionCandidates,
     selectionNotesDraftPlain,
     selectionNotesTagExclusions,
+    selectionWorkspaceActive,
   ]);
 
   const selectedSelectionTagExclusionsKey = useMemo(
@@ -4459,7 +4890,7 @@ export function CastingPlannerPanel({
         background: 'linear-gradient(180deg, #1c2128 0%, #161b22 100%)',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
         px: { xs: 1.5, sm: 2, md: 3 },
-        py: { xs: 0.75, sm: 1 },
+        py: { xs: 0.5, sm: 0.75 },
         position: 'relative',
       }}>
         {/* Centered Role Room logo (overlay to avoid adding extra header height) */}
@@ -4467,7 +4898,7 @@ export function CastingPlannerPanel({
           sx={{
             position: 'absolute',
             left: '50%',
-            top: { xs: -10, sm: -16 },
+            top: { xs: -8, sm: -12 },
             transform: 'translateX(-50%)',
             zIndex: 2,
             pointerEvents: 'none',
@@ -4498,8 +4929,8 @@ export function CastingPlannerPanel({
               src={branding.logoUrl || branding.iconUrl}
               alt={branding.appName}
               sx={{
-                width: { xs: 244, sm: 420 },
-                height: { xs: 90, sm: 132 },
+                width: { xs: 228, sm: 388 },
+                height: { xs: 80, sm: 118 },
                 objectFit: 'contain',
                 objectPosition: 'center',
                 display: 'block',
@@ -4514,292 +4945,396 @@ export function CastingPlannerPanel({
         </Box>
 
         {/* Project chips row */}
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: { xs: 0.75, sm: 1 },
-          overflowX: 'auto',
-          pt: { xs: 0.5, sm: 0.75 },
-          pb: { xs: 0.75, sm: 1 },
-          WebkitOverflowScrolling: 'touch',
-          scrollbarWidth: 'thin',
-          '&::-webkit-scrollbar': { height: 4 },
-          '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.2)', borderRadius: 2 },
-        }}>
-          {recentProjects.map((project) => {
-            const isActive = currentProject?.id === project.id;
-            const candidateCount = project.candidates?.length || 0;
-            const workflowStatus = project.producerWorkflowStatus;
-            const workflowStatusLabel = workflowStatus ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus] : null;
-            const workflowStatusStyle = workflowStatus ? PRODUCER_PROJECT_STATUS_COLORS[workflowStatus] : null;
-            return (
-              <Box
-                key={project.id}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: { xs: 0.75, sm: 1.5 },
-                  px: { xs: 1.5, sm: 2.5 },
-                  py: { xs: 1, sm: 1.25 },
-                  borderRadius: { xs: 2, sm: 2.5 },
-                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                  border: isActive 
-                    ? '2px solid #00d4ff' 
-                    : '1px solid rgba(255,255,255,0.08)',
-                  bgcolor: isActive 
-                    ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 180, 230, 0.15) 100%)'
-                    : 'rgba(255,255,255,0.02)',
-                  background: isActive 
-                    ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 180, 230, 0.15) 100%)'
-                    : 'rgba(255,255,255,0.02)',
-                  boxShadow: isActive 
-                    ? '0 4px 20px rgba(0, 212, 255, 0.25), 0 0 0 1px rgba(0, 212, 255, 0.1), inset 0 1px 0 rgba(255,255,255,0.15)' 
-                    : 'inset 0 1px 0 rgba(255,255,255,0.03)',
-                  transform: 'scale(1)',
-                  '&:hover, &:active': {
-                    bgcolor: isActive 
-                      ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.25) 0%, rgba(0, 180, 230, 0.2) 100%)'
-                      : 'rgba(255,255,255,0.06)',
-                    background: isActive 
-                      ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.25) 0%, rgba(0, 180, 230, 0.2) 100%)'
-                      : 'rgba(255,255,255,0.06)',
-                    borderColor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.15)',
-                    transform: 'scale(1)',
-                  },
-                  flexShrink: 0,
-                  minHeight: { xs: 44, sm: 48 },
-                  touchAction: 'manipulation',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  // Active indicator bar at bottom
-                  '&::after': isActive ? {
-                    content: '""',
-                    position: 'absolute',
-                    bottom: 0,
-                    left: '10%',
-                    right: '10%',
-                    height: '3px',
-                    bgcolor: '#00d4ff',
-                    borderRadius: '3px 3px 0 0',
-                    boxShadow: '0 0 10px rgba(0, 212, 255, 0.5)',
-                  } : {},
-                }}
-              >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: { xs: 0.75, sm: 1 },
+            minWidth: 0,
+            pt: { xs: 0.35, sm: 0.5 },
+            pb: { xs: 0.55, sm: 0.75 },
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'stretch',
+              gap: { xs: 0.75, sm: 1 },
+              flex: 1,
+              minWidth: 0,
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'thin',
+              scrollSnapType: 'x proximity',
+              pr: 0.25,
+              '&::-webkit-scrollbar': { height: 4 },
+              '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2 },
+            }}
+          >
+            {headerProjects.map((project) => {
+              const isActive = currentProject?.id === project.id;
+              const isPinned = pinnedProjectIdSet.has(project.id);
+              const pinnedAccentColor = pinnedProjectAccentColorById.get(project.id) ?? '#fbbf24';
+              const candidateCount = project.candidates?.length || 0;
+              const workflowStatus = project.producerWorkflowStatus;
+              const workflowStatusLabel = workflowStatus
+                ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus]
+                : 'Klar for arbeid';
+              const workflowStatusStyle = workflowStatus
+                ? PRODUCER_PROJECT_STATUS_COLORS[workflowStatus]
+                : {
+                    background: 'rgba(148, 163, 184, 0.12)',
+                    color: 'rgba(226, 232, 240, 0.9)',
+                    border: '1px solid rgba(148, 163, 184, 0.18)',
+                  };
+
+              return (
                 <Box
-                  onClick={() => setCurrentProject(project)}
+                  key={project.id}
                   sx={{
-                    display: 'flex',
+                    width: { xs: 252, sm: 294, md: 320 },
+                    minWidth: { xs: 252, sm: 294, md: 320 },
+                    maxWidth: { xs: 252, sm: 294, md: 320 },
+                    minHeight: { xs: 62, sm: 68 },
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) auto',
+                    columnGap: { xs: 1, sm: 1.25 },
                     alignItems: 'center',
-                    gap: { xs: 0.75, sm: 1.25 },
-                    cursor: 'pointer',
-                    flex: 1,
+                    px: { xs: 1.25, sm: 1.5 },
+                    py: { xs: 1, sm: 1.1 },
+                    borderRadius: { xs: 2, sm: 2.5 },
+                    border: isActive ? '2px solid #00d4ff' : '1px solid rgba(255,255,255,0.06)',
+                    background: isActive
+                      ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.18) 0%, rgba(0, 180, 230, 0.12) 100%)'
+                      : 'rgba(255,255,255,0.018)',
+                    boxShadow: isActive
+                      ? '0 4px 20px rgba(0, 212, 255, 0.18), inset 0 1px 0 rgba(255,255,255,0.12)'
+                      : 'inset 0 1px 0 rgba(255,255,255,0.03)',
+                    transition: 'border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    scrollSnapAlign: 'start',
+                    '&::after': isActive ? {
+                      content: '""',
+                      position: 'absolute',
+                      bottom: 0,
+                      left: '8%',
+                      right: '8%',
+                      height: '3px',
+                      backgroundColor: '#00d4ff',
+                      borderRadius: '3px 3px 0 0',
+                      boxShadow: '0 0 10px rgba(0, 212, 255, 0.4)',
+                    } : {},
+                    '&::before': isPinned ? {
+                      content: '""',
+                      position: 'absolute',
+                      top: 10,
+                      left: 10,
+                      width: 7,
+                      height: 7,
+                      borderRadius: '999px',
+                      backgroundColor: pinnedAccentColor,
+                      boxShadow: `0 0 10px ${pinnedAccentColor}55`,
+                    } : {},
+                    '&:hover': {
+                      borderColor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.16)',
+                      background: isActive
+                        ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.22) 0%, rgba(0, 180, 230, 0.16) 100%)'
+                        : 'rgba(255,255,255,0.04)',
+                    },
                   }}
                 >
-                  {/* Active indicator dot with pulse animation */}
-                  <Box sx={{ 
-                    width: { xs: 10, sm: 12 }, 
-                    height: { xs: 10, sm: 12 }, 
-                    borderRadius: '50%', 
-                    bgcolor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.2)',
-                    boxShadow: isActive ? '0 0 12px #00d4ff, 0 0 4px #00d4ff' : 'none',
-                    flexShrink: 0,
-                    border: isActive ? '2px solid rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.1)',
-                    animation: isActive ? 'activePulse 2s ease-in-out infinite' : 'none',
-                  }} />
-                  <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                    <Typography 
-                      sx={{ 
-                        color: isActive ? '#fff' : 'rgba(255,255,255,0.75)',
-                        fontSize: { xs: '0.8rem', sm: '0.9rem' },
-                        fontWeight: isActive ? 700 : 500,
-                        whiteSpace: 'nowrap',
-                        maxWidth: { xs: '90px', sm: '130px', md: '180px' },
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        letterSpacing: isActive ? '0.02em' : 'normal',
-                        textShadow: isActive ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
-                      }}
-                    >
-                      {project.name}
-                    </Typography>
-                    {isActive && (
-                      <Typography 
-                        sx={{ 
-                          color: '#00d4ff',
-                          fontSize: { xs: '0.6rem', sm: '0.65rem' },
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
-                          mt: 0.25,
+                  <Box
+                    onClick={() => { void handleSelectProjectFromSelector(project); }}
+                    sx={{
+                      display: 'grid',
+                      rowGap: 0.75,
+                      minWidth: 0,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                      <Box
+                        sx={{
+                          width: { xs: 10, sm: 12 },
+                          height: { xs: 10, sm: 12 },
+                          borderRadius: '50%',
+                          bgcolor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.2)',
+                          border: isActive ? '2px solid rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.1)',
+                          boxShadow: isActive ? '0 0 12px rgba(0, 212, 255, 0.45)' : 'none',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <Typography
+                        sx={{
+                          color: isActive ? '#fff' : 'rgba(255,255,255,0.74)',
+                          fontSize: { xs: '0.84rem', sm: '0.95rem' },
+                          fontWeight: isActive ? 700 : 600,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          minWidth: 0,
                         }}
                       >
-                        {branding.tokens.labels.activeProjectLabel}
+                        {project.name}
                       </Typography>
-                    )}
+                    </Box>
+
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                      {isActive ? (
+                        <Typography
+                          sx={{
+                            color: 'rgba(255,255,255,0.6)',
+                            fontSize: { xs: '0.64rem', sm: '0.68rem' },
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            minWidth: 0,
+                            flexShrink: 1,
+                          }}
+                        >
+                          {[project.clientName, headerRoleLabel].filter(Boolean).join(' • ') || branding.tokens.labels.activeProjectLabel}
+                        </Typography>
+                      ) : (
+                        <Typography
+                          sx={{
+                            color: 'rgba(255,255,255,0.56)',
+                            fontSize: { xs: '0.62rem', sm: '0.66rem' },
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.08em',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
+                        >
+                          Prosjekt
+                        </Typography>
+                      )}
+                      <Chip
+                        size="small"
+                        label={workflowStatusLabel}
+                        sx={{
+                          height: 24,
+                          maxWidth: { xs: 132, sm: 144, md: 156 },
+                          bgcolor: isActive ? workflowStatusStyle.background : 'rgba(255,255,255,0.04)',
+                          color: isActive ? workflowStatusStyle.color : 'rgba(255,255,255,0.68)',
+                          border: isActive ? workflowStatusStyle.border : '1px solid rgba(255,255,255,0.08)',
+                          fontSize: { xs: '0.66rem', sm: '0.7rem' },
+                          fontWeight: isActive ? 700 : 600,
+                          '& .MuiChip-label': {
+                            px: 0.9,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          },
+                        }}
+                      />
+                    </Box>
                   </Box>
-                  {workflowStatusLabel && workflowStatusStyle ? (
-                    <Chip
-                      size="small"
-                      label={workflowStatusLabel}
-                      sx={{
-                        height: { xs: 22, sm: 24 },
-                        bgcolor: workflowStatusStyle.background,
-                        color: workflowStatusStyle.color,
-                        border: workflowStatusStyle.border,
-                        fontSize: { xs: '0.64rem', sm: '0.68rem' },
-                        fontWeight: 700,
-                        '& .MuiChip-label': { px: { xs: 0.7, sm: 0.9 } },
-                        display: { xs: 'none', md: 'flex' },
-                      }}
-                    />
-                  ) : null}
-                  <Chip
-                    size="small"
-                    label={candidateCount}
+
+                  <Box
                     sx={{
-                      height: { xs: 22, sm: 24 },
-                      minWidth: { xs: 28, sm: 32 },
-                      bgcolor: isActive ? 'rgba(0, 212, 255, 0.35)' : 'rgba(255,255,255,0.08)',
-                      color: isActive ? '#fff' : 'rgba(255,255,255,0.5)',
-                      fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                      fontWeight: 700,
-                      border: isActive ? '1px solid rgba(0, 212, 255, 0.5)' : '1px solid rgba(255,255,255,0.1)',
-                      '& .MuiChip-label': { px: { xs: 0.75, sm: 1 } },
-                      display: { xs: 'none', sm: 'flex' },
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.35,
+                      flexShrink: 0,
                     }}
-                  />
+                  >
+                    <Box
+                      sx={{
+                        minWidth: { xs: 28, sm: 32 },
+                        height: { xs: 28, sm: 30 },
+                        px: 0.75,
+                        borderRadius: 999,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        bgcolor: isActive ? 'rgba(0, 212, 255, 0.22)' : 'rgba(255,255,255,0.04)',
+                        border: isActive ? '1px solid rgba(0, 212, 255, 0.35)' : '1px solid rgba(255,255,255,0.06)',
+                        color: isActive ? '#fff' : 'rgba(255,255,255,0.6)',
+                        fontSize: { xs: '0.72rem', sm: '0.78rem' },
+                        fontWeight: 700,
+                      }}
+                    >
+                      {candidateCount}
+                    </Box>
+
+                    <IconButton
+                      size="small"
+                      onClick={(event: MouseEvent<HTMLElement>) => handleOpenProjectQuickActions(event, project)}
+                      aria-label={`Flere handlinger for ${project.name}`}
+                      title="Flere handlinger"
+                      sx={{
+                        color: isActive ? 'rgba(255,255,255,0.68)' : 'rgba(255,255,255,0.34)',
+                        '&:hover, &:active': {
+                          color: isActive ? '#00d4ff' : 'rgba(255,255,255,0.88)',
+                          bgcolor: isActive ? 'rgba(0, 212, 255, 0.15)' : 'rgba(255,255,255,0.08)',
+                        },
+                        width: projectChipActionSizePx,
+                        height: projectChipActionSizePx,
+                        minWidth: projectChipActionSizePx,
+                        p: 0,
+                        borderRadius: 1.5,
+                      }}
+                    >
+                      <MoreHorizIcon sx={{ fontSize: Math.max(18, navIconSizePx) }} />
+                    </IconButton>
+                  </Box>
                 </Box>
-                {/* Edit button */}
-                <IconButton
-                  size="small"
-                  onClick={(e: MouseEvent) => {
-                    e.stopPropagation();
-                    setProjectToEdit(project);
-                    openProjectCreationModal();
-                  }}
-                  aria-label={branding.tokens.labels.editProjectAriaLabel.replace('{project}', project.name)}
-                  title={branding.tokens.labels.editProjectLabel}
-                  sx={{
-                    color: isActive ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.4)',
-                    '&:hover, &:active': {
-                      color: '#00d4ff',
-                      bgcolor: 'rgba(0, 212, 255, 0.15)',
-                    },
-                    width: projectChipActionSizePx,
-                    height: projectChipActionSizePx,
-                    minWidth: projectChipActionSizePx,
-                    p: 0,
-                    borderRadius: 1.5,
-                  }}
-                >
-                  <EditIcon sx={{ fontSize: Math.max(16, navIconSizePx - 2) }} />
-                </IconButton>
-                {/* Delete button */}
-                <IconButton
-                  size="small"
-                  onClick={(e: MouseEvent) => {
-                    e.stopPropagation();
-                    setConfirmDeleteContext({ type: 'project', id: project.id, name: project.name });
-                    setConfirmDeleteOpen(true);
-                  }}
-                  aria-label={branding.tokens.labels.deleteProjectAriaLabel.replace('{project}', project.name)}
-                  title={branding.tokens.labels.deleteProjectLabel}
-                  sx={{
-                    color: isActive ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.3)',
-                    '&:hover, &:active': {
-                      color: '#ff4444',
-                      bgcolor: 'rgba(255, 68, 68, 0.15)',
-                    },
-                    width: projectChipActionSizePx,
-                    height: projectChipActionSizePx,
-                    minWidth: projectChipActionSizePx,
-                    p: 0,
-                    borderRadius: 1.5,
-                  }}
-                >
-                  <DeleteIcon sx={{ fontSize: Math.max(16, navIconSizePx - 2) }} />
-                </IconButton>
-              </Box>
-            );
-          })}
-          
-          {/* Show all projects button when more than 4 */}
-          {hasMoreProjects && (
-            <Button
+              );
+            })}
+
+            {hasMoreProjects && (
+              <Button
+                size="small"
+                onClick={() => setProjectSelectorOpen(true)}
+                sx={{
+                  minWidth: { xs: 136, sm: 148 },
+                  px: { xs: 1.25, sm: 1.5 },
+                  borderRadius: { xs: 2, sm: 2.5 },
+                  border: '1px solid rgba(139, 92, 246, 0.28)',
+                  bgcolor: 'rgba(139, 92, 246, 0.08)',
+                  color: '#c4b5fd',
+                  fontSize: { xs: '0.72rem', sm: '0.76rem' },
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  scrollSnapAlign: 'start',
+                  '&:hover': {
+                    bgcolor: 'rgba(139, 92, 246, 0.16)',
+                    borderColor: 'rgba(167, 139, 250, 0.55)',
+                  },
+                }}
+              >
+                {hiddenProjectsCount > 0 ? `Alle prosjekter · ${orderedProjects.length}` : 'Alle prosjekter'}
+              </Button>
+            )}
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
+            {/* Add new project button */}
+            <IconButton
               size="small"
-              onClick={() => setProjectSelectorOpen(true)}
+              onClick={() => {
+                setProjectToEdit(null);
+                openProjectCreationModal();
+              }}
+              aria-label={branding.tokens.labels.newProjectTitle}
+              data-tutorial-target="create-project-button"
               sx={{
-                minWidth: 'auto',
-                px: { xs: 1.5, sm: 2 },
-                py: { xs: 0.5, sm: 0.75 },
+                width: navActionButtonSizePx,
+                height: navActionButtonSizePx,
+                minWidth: navActionButtonSizePx,
+                border: '1px dashed rgba(255,255,255,0.2)',
                 borderRadius: { xs: 1.5, sm: 2 },
-                border: '1px solid rgba(139, 92, 246, 0.3)',
-                bgcolor: 'rgba(139, 92, 246, 0.1)',
-                color: '#a78bfa',
-                fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
+                color: 'rgba(255,255,255,0.87)',
                 flexShrink: 0,
-                '&:hover': {
-                  bgcolor: 'rgba(139, 92, 246, 0.2)',
-                  borderColor: '#8b5cf6',
+                '&:hover, &:active': {
+                  borderColor: '#00d4ff',
+                  color: '#00d4ff',
+                  bgcolor: 'rgba(0, 212, 255, 0.1)',
                 },
               }}
             >
-              +{projects.length - 4} til
-            </Button>
-          )}
+              <AddIcon sx={{ fontSize: navIconSizePx }} />
+            </IconButton>
 
-          {/* Add new project button */}
-          <IconButton
-            size="small"
-            onClick={() => {
-              setProjectToEdit(null);
-              openProjectCreationModal();
-            }}
-            aria-label={branding.tokens.labels.newProjectTitle}
-            data-tutorial-target="create-project-button"
-            sx={{
-              width: navActionButtonSizePx,
-              height: navActionButtonSizePx,
-              minWidth: navActionButtonSizePx,
-              border: '1px dashed rgba(255,255,255,0.2)',
-              borderRadius: { xs: 1.5, sm: 2 },
-              color: 'rgba(255,255,255,0.87)',
-              flexShrink: 0,
-              '&:hover, &:active': {
-                borderColor: '#00d4ff',
-                color: '#00d4ff',
-                bgcolor: 'rgba(0, 212, 255, 0.1)',
+            {/* Tutorial button */}
+            <IconButton
+              size="small"
+              onClick={openTutorial}
+              aria-label={branding.tokens.labels.tutorialLabel}
+              title={branding.tokens.labels.tutorialTitle}
+              sx={{
+                width: navActionButtonSizePx,
+                height: navActionButtonSizePx,
+                minWidth: navActionButtonSizePx,
+                border: '1px solid rgba(233, 30, 99, 0.3)',
+                borderRadius: { xs: 1.5, sm: 2 },
+                color: '#e91e63',
+                flexShrink: 0,
+                bgcolor: 'rgba(233, 30, 99, 0.1)',
+                '&:hover, &:active': {
+                  borderColor: '#e91e63',
+                  bgcolor: 'rgba(233, 30, 99, 0.2)',
+                },
+              }}
+            >
+              <TutorialIcon sx={{ fontSize: navIconSizePx }} />
+            </IconButton>
+          </Box>
+
+          <Menu
+            anchorEl={projectQuickActionsAnchorEl}
+            open={Boolean(projectQuickActionsAnchorEl && projectQuickActionsProject)}
+            onClose={handleCloseProjectQuickActions}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+            slotProps={{
+              paper: {
+                sx: {
+                  mt: 0.75,
+                  minWidth: 180,
+                  borderRadius: 2,
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  bgcolor: 'rgba(18, 24, 33, 0.96)',
+                  color: '#fff',
+                  backdropFilter: 'blur(14px)',
+                  boxShadow: '0 18px 40px rgba(0,0,0,0.42)',
+                },
               },
             }}
           >
-            <AddIcon sx={{ fontSize: navIconSizePx }} />
-          </IconButton>
-
-          {/* Tutorial button */}
-          <IconButton
-            size="small"
-            onClick={openTutorial}
-            aria-label={branding.tokens.labels.tutorialLabel}
-            title={branding.tokens.labels.tutorialTitle}
-            sx={{
-              width: navActionButtonSizePx,
-              height: navActionButtonSizePx,
-              minWidth: navActionButtonSizePx,
-              border: '1px solid rgba(233, 30, 99, 0.3)',
-              borderRadius: { xs: 1.5, sm: 2 },
-              color: '#e91e63',
-              flexShrink: 0,
-              bgcolor: 'rgba(233, 30, 99, 0.1)',
-              '&:hover, &:active': {
-                borderColor: '#e91e63',
-                bgcolor: 'rgba(233, 30, 99, 0.2)',
-              },
-            }}
-          >
-            <TutorialIcon sx={{ fontSize: navIconSizePx }} />
-          </IconButton>
+            <MenuItem
+              onClick={() => {
+                if (!projectQuickActionsProject) return;
+                void handleTogglePinnedProject(projectQuickActionsProject.id);
+                handleCloseProjectQuickActions();
+              }}
+              sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+            >
+              <PushPinIcon
+                sx={{
+                  fontSize: 18,
+                  color: pinnedProjectIdSet.has(projectQuickActionsProject?.id ?? '')
+                    ? '#fbbf24'
+                    : 'rgba(255,255,255,0.72)',
+                  transform: pinnedProjectIdSet.has(projectQuickActionsProject?.id ?? '') ? 'rotate(0deg)' : 'rotate(35deg)',
+                }}
+              />
+              {pinnedProjectIdSet.has(projectQuickActionsProject?.id ?? '') ? 'Løsne fra toppen' : 'Fest til toppen'}
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                if (!projectQuickActionsProject) return;
+                setProjectToEdit(projectQuickActionsProject);
+                openProjectCreationModal();
+                handleCloseProjectQuickActions();
+              }}
+              sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1 }}
+            >
+              <EditIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
+              Rediger prosjekt
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                if (!projectQuickActionsProject) return;
+                setConfirmDeleteContext({
+                  type: 'project',
+                  id: projectQuickActionsProject.id,
+                  name: projectQuickActionsProject.name,
+                });
+                setConfirmDeleteOpen(true);
+                handleCloseProjectQuickActions();
+              }}
+              sx={{ minHeight: 40, fontSize: '0.86rem', gap: 1, color: '#fda4af' }}
+            >
+              <DeleteIcon sx={{ fontSize: 18 }} />
+              Slett prosjekt
+            </MenuItem>
+          </Menu>
 
           <Box sx={{ flex: 1 }} />
 
@@ -4833,12 +5368,13 @@ export function CastingPlannerPanel({
               />
               {/* Bytt profesjon - tilgjengelig for alle innloggede brukere */}
               <IconButton
-                size="small"
                 onClick={openProfessionDialog}
                 aria-label={branding.tokens.labels.switchProfessionLabel}
                 title={branding.tokens.labels.switchProfessionLabel}
                 sx={{
                   color: '#10b981',
+                  width: navActionButtonSizePx,
+                  height: navActionButtonSizePx,
                   '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' },
                 }}
               >
@@ -4848,31 +5384,32 @@ export function CastingPlannerPanel({
               {(adminUser.role === 'owner' || adminUser.role === 'admin') && (
                 <>
                   <IconButton
-                    size="small"
                     onClick={openTutorialEditor}
                     aria-label={branding.tokens.labels.editTutorialsLabel}
                     title={branding.tokens.labels.editTutorialsLabel}
                     sx={{
                       color: '#e91e63',
+                      width: navActionButtonSizePx,
+                      height: navActionButtonSizePx,
                       '&:hover': { bgcolor: 'rgba(233,30,99,0.1)' },
                     }}
                   >
                     <TutorialIcon sx={{ fontSize: navIconSizePx }} />
                   </IconButton>
                   <IconButton
-                    size="small"
                     onClick={openAdminDashboard}
                     aria-label={branding.tokens.labels.manageUsersLabel}
                     title={branding.tokens.labels.manageUsersLabel}
                     sx={{
                       color: '#8b5cf6',
+                      width: navActionButtonSizePx,
+                      height: navActionButtonSizePx,
                       '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
                     }}
                   >
                     <AdminPanelSettingsIcon sx={{ fontSize: navIconSizePx }} />
                   </IconButton>
                   <IconButton
-                    size="small"
                     onClick={async () => {
                       setConfirmDeleteContext({ type: 'project', id: '__reset_demo__', name: 'Demo Data' });
                       setConfirmDeleteOpen(true);
@@ -4881,6 +5418,8 @@ export function CastingPlannerPanel({
                     title={branding.tokens.labels.resetDemoDataLabel}
                     sx={{
                       color: '#9333ea',
+                      width: navActionButtonSizePx,
+                      height: navActionButtonSizePx,
                       '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
                     }}
                   >
@@ -4890,7 +5429,6 @@ export function CastingPlannerPanel({
               )}
               {/* Onboarding controls */}
               <IconButton
-                size="small"
                 onClick={() => {
                   resetOnboarding();
                   startTransition(() => {
@@ -4901,14 +5439,19 @@ export function CastingPlannerPanel({
                 title={branding.tokens.labels.showIntroTitle}
                 sx={{
                   color: '#ffb800',
+                  width: navActionButtonSizePx,
+                  height: navActionButtonSizePx,
                   '&:hover': { bgcolor: 'rgba(255,184,0,0.1)' },
                 }}
               >
                 <PlayArrowIcon sx={{ fontSize: navIconSizePx }} />
               </IconButton>
               <IconButton
-                size="small"
                 onClick={async () => {
+                  if (_onClose) {
+                    _onClose();
+                    return;
+                  }
                   await authSessionService.clearSession();
                   setAdminUser(null);
                   setCurrentProject(null);
@@ -4924,6 +5467,8 @@ export function CastingPlannerPanel({
                 title={branding.tokens.labels.logoutLabel}
                 sx={{
                   color: 'rgba(255,255,255,0.87)',
+                  width: navActionButtonSizePx,
+                  height: navActionButtonSizePx,
                   '&:hover': { color: '#ef4444', bgcolor: 'rgba(239,68,68,0.1)' },
                 }}
               >
@@ -5143,7 +5688,7 @@ export function CastingPlannerPanel({
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
-                          color: isSelected ? '#ffd36a' : 'rgba(255, 184, 0, 0.75)',
+                          color: isSelected ? '#fde68a' : '#fcd34d',
                           fontWeight: 800,
                         }}
                       >
@@ -5172,7 +5717,7 @@ export function CastingPlannerPanel({
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
-                          color: isSelected ? '#f9a8d4' : 'rgba(236, 72, 153, 0.78)',
+                          color: isSelected ? '#fbcfe8' : '#f9a8d4',
                           fontWeight: 800,
                         }}
                       >
@@ -5201,7 +5746,7 @@ export function CastingPlannerPanel({
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
-                          color: isSelected ? '#7dd3fc' : 'rgba(56, 189, 248, 0.78)',
+                          color: isSelected ? '#bae6fd' : '#7dd3fc',
                           fontWeight: 800,
                         }}
                       >
@@ -5230,7 +5775,7 @@ export function CastingPlannerPanel({
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
-                          color: isSelected ? '#d8b4fe' : 'rgba(192, 132, 252, 0.8)',
+                          color: isSelected ? '#e9d5ff' : '#d8b4fe',
                           fontWeight: 800,
                         }}
                       >
@@ -5259,7 +5804,7 @@ export function CastingPlannerPanel({
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
-                          color: isSelected ? '#fca5a5' : 'rgba(239, 68, 68, 0.8)',
+                          color: isSelected ? '#fecaca' : '#fca5a5',
                           fontWeight: 800,
                         }}
                       >
@@ -5288,7 +5833,7 @@ export function CastingPlannerPanel({
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
-                          color: isSelected ? '#bfdbfe' : 'rgba(96, 165, 250, 0.82)',
+                          color: isSelected ? '#dbeafe' : '#bfdbfe',
                           fontWeight: 800,
                         }}
                       >
@@ -5352,32 +5897,58 @@ export function CastingPlannerPanel({
 
       {/* Content */}
       <Box sx={{ flex: 1, overflow: 'hidden', bgcolor: '#0d1117', display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%' }}>
-        {!isLiveSetImmersive && currentProject && producerGoogleContext ? (
-          <RoleRoomGoogleContextBar
-            project={currentProject}
-            projectId={currentProject.id}
-            projectName={currentProject.name}
-            contextLabel={producerGoogleContext.contextLabel}
-            workspaceFocus={producerGoogleContext.focus}
-            primaryAction={producerGoogleContext.primaryAction}
-            secondaryAction={producerGoogleContext.secondaryAction}
-            canManage={!isClientReviewerMode}
-            onOpenWorkspace={(focus) => {
-              navigateToProducerMediaWorkspace(focus);
-            }}
-          />
-        ) : null}
-        {projectsLoading ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
-            <CircularProgress size={40} sx={{ color: '#8b5cf6' }} />
-            <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
-              {branding.tokens.labels.loadingLabel || 'Loading...'}
-            </Typography>
-          </Box>
-        ) : (
-        <ErrorBoundary>
-        <Suspense fallback={<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.87)' }}>{branding.tokens.labels.loadingLabel}</Box>}>
-        {isContentProducerMode && (
+        <ProjectProvider>
+          {!isLiveSetImmersive && currentProject && producerGoogleContext && activeTab !== PRODUCER_MEDIA_TAB_INDEX && !producerProjectSwitchPending ? (
+            <RoleRoomDiagnosticsProbe
+              name="RoleRoomGoogleContextBar"
+              projectId={currentProject.id}
+              detail={{ activeTab, contextLabel: producerGoogleContext.contextLabel }}
+            >
+              <RoleRoomGoogleContextBar
+                project={currentProject}
+                projectId={currentProject.id}
+                projectName={currentProject.name}
+                contextLabel={producerGoogleContext.contextLabel}
+                workspaceFocus={producerGoogleContext.focus}
+                primaryAction={producerGoogleContext.primaryAction}
+                secondaryAction={producerGoogleContext.secondaryAction}
+                canManage={!isClientReviewerMode}
+                onOpenWorkspace={(focus) => {
+                  navigateToProducerMediaWorkspace(focus);
+                }}
+              />
+            </RoleRoomDiagnosticsProbe>
+          ) : null}
+          {producerProjectSwitchPending ? (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 1.25,
+                px: 2,
+                py: 1.5,
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                bgcolor: 'rgba(8,12,20,0.88)',
+              }}
+            >
+              <CircularProgress size={18} sx={{ color: '#60a5fa' }} />
+              <Typography sx={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.74)', fontWeight: 600 }}>
+                Bytter prosjekt og laster tilgang for workspace
+              </Typography>
+            </Box>
+          ) : null}
+          {projectsLoading ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
+              <CircularProgress size={40} sx={{ color: '#8b5cf6' }} />
+              <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
+                {branding.tokens.labels.loadingLabel || 'Loading...'}
+              </Typography>
+            </Box>
+          ) : (
+          <ErrorBoundary>
+          <Suspense fallback={<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.87)' }}>{branding.tokens.labels.loadingLabel}</Box>}>
+          {isContentProducerMode && activeTab !== PRODUCER_MEDIA_TAB_INDEX && (
           <Box
             sx={{
               px: { xs: 1.5, md: 2 },
@@ -7743,129 +8314,154 @@ export function CastingPlannerPanel({
         </TabPanel>
 
         <TabPanel value={activeTab} index={PRODUCER_MEDIA_TAB_INDEX}>
-          {!currentProject ? (
+          {producerProjectSwitchPending ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+              <CircularProgress size={28} sx={{ color: '#60a5fa', mb: 1.25 }} />
+              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                Laster nytt prosjektgrunnlag
+              </Typography>
+            </Box>
+          ) : !currentProject ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
                 {branding.tokens.labels.noProjectSelected}
               </Typography>
             </Box>
           ) : (
-            <ProducerMediaPanel
-              project={currentProject}
+            <RoleRoomDiagnosticsProbe
+              name="ProducerMediaPanel"
               projectId={currentProject.id}
-              projectName={currentProject.name}
-              mediaCount={(currentProject.props?.length ?? 0) + (currentProject.shotLists?.length ?? 0)}
-              storyboardCount={currentProject.sceneBreakdowns?.length ?? 0}
-              shotCount={currentProject.shotLists?.length ?? 0}
-              shotLists={currentProject.shotLists ?? []}
-              readOnly={!canCommentInProducerWorkflow && !canEditProducerWorkflow}
-              canContributeClientInput={canCommentInProducerWorkflow || canEditProducerWorkflow}
-              isClientReviewerMode={isClientReviewerMode}
-              initialWorkspace={
-                producerMediaFocus?.workspace
-                ?? (
-                  isClientReviewerSession
-                  && clientPortalIntent
-                  && clientPortalIntent.projectId === currentProject.id
-                    ? clientPortalIntent.workspace
-                    : undefined
-                )
-              }
-              initialSectionId={
-                producerMediaFocus?.sectionId
-                ?? (
-                  isClientReviewerSession
-                  && clientPortalIntent
-                  && clientPortalIntent.projectId === currentProject.id
-                    ? clientPortalIntent.sectionId
-                    : undefined
-                )
-              }
-              initialPageId={
-                producerMediaFocus?.pageId
-                ?? (
-                  isClientReviewerSession
-                  && clientPortalIntent
-                  && clientPortalIntent.projectId === currentProject.id
-                    ? clientPortalIntent.pageId
-                    : undefined
-                )
-              }
-              initialArtifactId={
-                producerMediaFocus?.artifactId
-                ?? (
-                  isClientReviewerSession
-                  && clientPortalIntent
-                  && clientPortalIntent.projectId === currentProject.id
-                    ? clientPortalIntent.artifactId
-                    : undefined
-                )
-              }
-              onProjectUpdated={async (updatedProject) => {
-                setCurrentProject(updatedProject);
-                await loadProjects();
-              }}
-              onOpenStoryboard={() => {
-                navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
-              }}
-              onOpenManuscript={() => {
-                navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
-              }}
-              onOpenShotList={() => {
-                navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
-              }}
-              onOpenSceneNotes={() => {
-                navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-logic' });
-              }}
-              onPrepareStoryboardReview={() => {
-                if (!currentProject) {
-                  return;
+              detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion }}
+            >
+              <ProducerMediaPanel
+                project={currentProject}
+                projectId={currentProject.id}
+                projectName={currentProject.name}
+                mediaCount={(currentProject.props?.length ?? 0) + (currentProject.shotLists?.length ?? 0)}
+                storyboardCount={currentProject.sceneBreakdowns?.length ?? 0}
+                shotCount={currentProject.shotLists?.length ?? 0}
+                shotLists={currentProject.shotLists ?? []}
+                readOnly={!canCommentInProducerWorkflow && !canEditProducerWorkflow}
+                canContributeClientInput={canCommentInProducerWorkflow || canEditProducerWorkflow}
+                isClientReviewerMode={isClientReviewerMode}
+                initialWorkspace={
+                  producerMediaFocus?.workspace
+                  ?? (
+                    isClientReviewerSession
+                    && clientPortalIntent
+                    && clientPortalIntent.projectId === currentProject.id
+                      ? clientPortalIntent.workspace
+                      : undefined
+                  )
                 }
-                queueProducerReviewCreate({
-                  reviewType: 'storyboard',
-                  title: 'Storyboard klar for klientgodkjenning',
-                  description: 'Vennligst gjennomgå storyboard og gi godkjenning eller endringsønsker.',
-                  targetEntityType: 'storyboard',
-                  targetEntityId: makeProducerPackageEntityId('storyboard', currentProject.id),
-                });
-              }}
-              onPrepareManuscriptReview={() => {
-                if (!currentProject) {
-                  return;
+                initialSectionId={
+                  producerMediaFocus?.sectionId
+                  ?? (
+                    isClientReviewerSession
+                    && clientPortalIntent
+                    && clientPortalIntent.projectId === currentProject.id
+                      ? clientPortalIntent.sectionId
+                      : undefined
+                  )
                 }
-                queueProducerReviewCreate({
-                  reviewType: 'manuscript',
-                  title: 'Manus klar for klientgodkjenning',
-                  description: 'Vennligst gjennomgå manus og gi godkjenning eller endringsønsker.',
-                  targetEntityType: 'manuscript',
-                  targetEntityId: makeProducerPackageEntityId('manuscript', currentProject.id),
-                });
-              }}
-              onPrepareShotListReview={() => {
-                if (!currentProject) {
-                  return;
+                initialPageId={
+                  producerMediaFocus?.pageId
+                  ?? (
+                    isClientReviewerSession
+                    && clientPortalIntent
+                    && clientPortalIntent.projectId === currentProject.id
+                      ? clientPortalIntent.pageId
+                      : undefined
+                  )
                 }
-                queueProducerReviewCreate({
-                  reviewType: 'shotlist',
-                  title: 'Shotlist klar for klientgodkjenning',
-                  description: 'Vennligst gjennomgå shotlist og gi godkjenning eller endringsønsker.',
-                  targetEntityType: 'shotlist',
-                  targetEntityId: makeProducerPackageEntityId('shotlist', currentProject.id),
-                });
-              }}
-            />
+                initialArtifactId={
+                  producerMediaFocus?.artifactId
+                  ?? (
+                    isClientReviewerSession
+                    && clientPortalIntent
+                    && clientPortalIntent.projectId === currentProject.id
+                      ? clientPortalIntent.artifactId
+                      : undefined
+                  )
+                }
+                onProjectUpdated={async (updatedProject) => {
+                  setCurrentProject(updatedProject);
+                  await loadProjects();
+                }}
+                onOpenStoryboard={() => {
+                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
+                }}
+                onOpenManuscript={() => {
+                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+                }}
+                onOpenShotList={() => {
+                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+                }}
+                onOpenSceneNotes={() => {
+                  navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-logic' });
+                }}
+                onPrepareStoryboardReview={() => {
+                  if (!currentProject) {
+                    return;
+                  }
+                  queueProducerReviewCreate({
+                    reviewType: 'storyboard',
+                    title: 'Storyboard klar for klientgodkjenning',
+                    description: 'Vennligst gjennomgå storyboard og gi godkjenning eller endringsønsker.',
+                    targetEntityType: 'storyboard',
+                    targetEntityId: makeProducerPackageEntityId('storyboard', currentProject.id),
+                  });
+                }}
+                onPrepareManuscriptReview={() => {
+                  if (!currentProject) {
+                    return;
+                  }
+                  queueProducerReviewCreate({
+                    reviewType: 'manuscript',
+                    title: 'Manus klar for klientgodkjenning',
+                    description: 'Vennligst gjennomgå manus og gi godkjenning eller endringsønsker.',
+                    targetEntityType: 'manuscript',
+                    targetEntityId: makeProducerPackageEntityId('manuscript', currentProject.id),
+                  });
+                }}
+                onPrepareShotListReview={() => {
+                  if (!currentProject) {
+                    return;
+                  }
+                  queueProducerReviewCreate({
+                    reviewType: 'shotlist',
+                    title: 'Shotlist klar for klientgodkjenning',
+                    description: 'Vennligst gjennomgå shotlist og gi godkjenning eller endringsønsker.',
+                    targetEntityType: 'shotlist',
+                    targetEntityId: makeProducerPackageEntityId('shotlist', currentProject.id),
+                  });
+                }}
+              />
+            </RoleRoomDiagnosticsProbe>
           )}
         </TabPanel>
 
         <TabPanel value={activeTab} index={PRODUCER_ECONOMY_TAB_INDEX}>
-          {!currentProject ? (
+          {producerProjectSwitchPending ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+              <CircularProgress size={28} sx={{ color: '#60a5fa', mb: 1.25 }} />
+              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                Laster nytt prosjektgrunnlag
+              </Typography>
+            </Box>
+          ) : !currentProject ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
                 {branding.tokens.labels.noProjectSelected}
               </Typography>
             </Box>
           ) : (
-            <ProjectEconomyHub
+            <RoleRoomDiagnosticsProbe
+              name="ProjectEconomyHub"
+              projectId={currentProject.id}
+              detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion }}
+            >
+              <ProjectEconomyHub
               key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:economy-hub`}
               project={currentProject}
               profession={profession ?? 'videographer'}
@@ -7898,19 +8494,32 @@ export function CastingPlannerPanel({
                 }
                 navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
               } : undefined}
-            />
+              />
+            </RoleRoomDiagnosticsProbe>
           )}
         </TabPanel>
 
         <TabPanel value={activeTab} index={PRODUCER_TIMELINE_TAB_INDEX}>
-          {!currentProject ? (
+          {producerProjectSwitchPending ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+              <CircularProgress size={28} sx={{ color: '#60a5fa', mb: 1.25 }} />
+              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                Laster nytt prosjektgrunnlag
+              </Typography>
+            </Box>
+          ) : !currentProject ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
                 {branding.tokens.labels.noProjectSelected}
               </Typography>
             </Box>
           ) : (
-            <ProducerTimelinePanel
+            <RoleRoomDiagnosticsProbe
+              name="ProducerTimelinePanel"
+              projectId={currentProject.id}
+              detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion }}
+            >
+              <ProducerTimelinePanel
               key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:timeline`}
               projectId={currentProject.id}
               readOnly={!canEditProducerWorkflow}
@@ -7932,19 +8541,32 @@ export function CastingPlannerPanel({
               onOpenMedia={isContentProducerMode || isClientReviewerMode ? (focus) => {
                 navigateToProducerMediaWorkspace(focus);
               } : undefined}
-            />
+              />
+            </RoleRoomDiagnosticsProbe>
           )}
         </TabPanel>
 
         <TabPanel value={activeTab} index={PRODUCER_REVIEWS_TAB_INDEX}>
-          {!currentProject ? (
+          {producerProjectSwitchPending ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+              <CircularProgress size={28} sx={{ color: '#60a5fa', mb: 1.25 }} />
+              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                Laster nytt prosjektgrunnlag
+              </Typography>
+            </Box>
+          ) : !currentProject ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
                 {branding.tokens.labels.noProjectSelected}
               </Typography>
             </Box>
           ) : (
-            <ProducerClientReviewPanel
+            <RoleRoomDiagnosticsProbe
+              name="ProducerClientReviewPanel"
+              projectId={currentProject.id}
+              detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion }}
+            >
+              <ProducerClientReviewPanel
               key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:reviews`}
               projectId={currentProject.id}
               projectName={currentProject.name}
@@ -7974,41 +8596,55 @@ export function CastingPlannerPanel({
               onOpenEconomy={isContentProducerMode || isClientReviewerMode ? (focus) => {
                 navigateToProducerWorkflowTabWithFocus(PRODUCER_ECONOMY_TAB_INDEX, focus);
               } : undefined}
-            />
+              />
+            </RoleRoomDiagnosticsProbe>
           )}
         </TabPanel>
 
         <TabPanel value={activeTab} index={PRODUCER_EXPORT_TAB_INDEX}>
-          {!currentProject ? (
+          {producerProjectSwitchPending ? (
+            <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
+              <CircularProgress size={28} sx={{ color: '#60a5fa', mb: 1.25 }} />
+              <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
+                Laster nytt prosjektgrunnlag
+              </Typography>
+            </Box>
+          ) : !currentProject ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
                 {branding.tokens.labels.noProjectSelected}
               </Typography>
             </Box>
           ) : (
-            <ProducerExportHandoffPanel
-              project={currentProject}
-              onOpenManuscript={() => {
-                setStoryArcView('story-writer');
-                navigateToTab(STORY_ARC_TAB_INDEX);
-              }}
-              onOpenShotList={() => {
-                setStoryArcView('shot-list');
-                navigateToTab(STORY_ARC_TAB_INDEX);
-              }}
-              onOpenMedia={isContentProducerMode || isClientReviewerMode ? (focus) => {
-                navigateToProducerMediaWorkspace(focus);
-              } : undefined}
-              onOpenReviews={isContentProducerMode || isClientReviewerMode ? () => {
-                navigateToProducerWorkflowTabWithFocus(PRODUCER_REVIEWS_TAB_INDEX);
-              } : undefined}
-              onOpenTimeline={isContentProducerMode || isClientReviewerMode ? () => {
-                navigateToProducerWorkflowTabWithFocus(PRODUCER_TIMELINE_TAB_INDEX);
-              } : undefined}
-              onSendToClient={isContentProducerMode || isClientReviewerMode ? async () => {
+            <RoleRoomDiagnosticsProbe
+              name="ProducerExportHandoffPanel"
+              projectId={currentProject.id}
+              detail={{ activeTab, bootstrapVersion: producerWorkflowBootstrapVersion }}
+            >
+              <ProducerExportHandoffPanel
+                project={currentProject}
+                onOpenManuscript={() => {
+                  setStoryArcView('story-writer');
+                  navigateToTab(STORY_ARC_TAB_INDEX);
+                }}
+                onOpenShotList={() => {
+                  setStoryArcView('shot-list');
+                  navigateToTab(STORY_ARC_TAB_INDEX);
+                }}
+                onOpenMedia={isContentProducerMode || isClientReviewerMode ? (focus) => {
+                  navigateToProducerMediaWorkspace(focus);
+                } : undefined}
+                onOpenReviews={isContentProducerMode || isClientReviewerMode ? () => {
+                  navigateToProducerWorkflowTabWithFocus(PRODUCER_REVIEWS_TAB_INDEX);
+                } : undefined}
+                onOpenTimeline={isContentProducerMode || isClientReviewerMode ? () => {
+                  navigateToProducerWorkflowTabWithFocus(PRODUCER_TIMELINE_TAB_INDEX);
+                } : undefined}
+                onSendToClient={isContentProducerMode || isClientReviewerMode ? async () => {
                 openSharingModal();
-              } : undefined}
-            />
+                } : undefined}
+              />
+            </RoleRoomDiagnosticsProbe>
           )}
         </TabPanel>
 
@@ -8109,9 +8745,10 @@ export function CastingPlannerPanel({
             onExit={handleExitLiveSet}
           />
         </TabPanel>
-        </Suspense>
-        </ErrorBoundary>
-        )}
+          </Suspense>
+          </ErrorBoundary>
+          )}
+        </ProjectProvider>
       </Box>
 
       {currentProject && (
@@ -9919,6 +10556,147 @@ export function CastingPlannerPanel({
             />
           </Box>
           <Box sx={{ maxHeight: '60vh', overflow: 'auto' }}>
+            {filteredPinnedProjectSelectorItems.length > 0 ? (
+              <Box sx={{ px: 2, pt: 1.25, pb: 0.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
+                  Pinnet
+                </Typography>
+                <Typography sx={{ mt: 0.35, fontSize: '0.76rem', color: 'rgba(255,255,255,0.52)' }}>
+                  Maks tre prosjekter kan ligge fast øverst.
+                </Typography>
+                <Box
+                  sx={{
+                    mt: 1.1,
+                    display: 'flex',
+                    gap: 1,
+                    overflowX: 'auto',
+                    pb: 0.35,
+                    scrollbarWidth: 'thin',
+                    '&::-webkit-scrollbar': { height: 4 },
+                    '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 2 },
+                  }}
+                >
+                  {filteredPinnedProjectSelectorItems.map((project) => {
+                    const isActive = currentProject?.id === project.id;
+                    const isLatestCreated = latestCreatedProjectId === project.id;
+                    const pinnedAccentColor = pinnedProjectAccentColorById.get(project.id) ?? '#fbbf24';
+                    const workflowStatus = project.producerWorkflowStatus;
+                    const workflowStatusLabel = workflowStatus
+                      ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus]
+                      : 'Klar for arbeid';
+                    const isDragging = draggingPinnedProjectId === project.id;
+
+                    return (
+                      <Box
+                        key={`pinned-hero-${project.id}`}
+                        onClick={() => { void handleSelectProjectFromSelector(project); }}
+                        draggable
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('text/plain', project.id);
+                          setDraggingPinnedProjectId(project.id);
+                        }}
+                        onDragEnd={() => {
+                          setDraggingPinnedProjectId(null);
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'move';
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          const sourceProjectId = event.dataTransfer.getData('text/plain');
+                          void handleReorderPinnedProjects(sourceProjectId, project.id);
+                          setDraggingPinnedProjectId(null);
+                        }}
+                        sx={{
+                          width: 236,
+                          minWidth: 236,
+                          maxWidth: 236,
+                          px: 1.4,
+                          py: 1.2,
+                          borderRadius: 2.5,
+                          cursor: isDragging ? 'grabbing' : 'grab',
+                          border: isActive ? '1px solid rgba(0, 212, 255, 0.45)' : `1px solid ${pinnedAccentColor}44`,
+                          background: isActive
+                            ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.14) 0%, rgba(0, 180, 230, 0.08) 100%)'
+                            : `linear-gradient(135deg, ${pinnedAccentColor}1f 0%, ${pinnedAccentColor}0d 100%)`,
+                          boxShadow: isActive
+                            ? '0 10px 24px rgba(0,0,0,0.22)'
+                            : 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                          opacity: isDragging ? 0.66 : 1,
+                          '&:hover': {
+                            background: isActive
+                              ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.17) 0%, rgba(0, 180, 230, 0.1) 100%)'
+                              : `linear-gradient(135deg, ${pinnedAccentColor}29 0%, ${pinnedAccentColor}12 100%)`,
+                          },
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, minWidth: 0 }}>
+                          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.35, color: 'rgba(255,255,255,0.48)', flexShrink: 0 }}>
+                            <PushPinIcon sx={{ fontSize: 15, color: pinnedAccentColor }} />
+                            <DragIndicatorIcon sx={{ fontSize: 15 }} />
+                          </Box>
+                          <Typography sx={{ fontSize: '0.86rem', fontWeight: 700, color: '#fff', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {project.name}
+                          </Typography>
+                          {isLatestCreated ? (
+                            <Chip
+                              size="small"
+                              label="Siste"
+                              sx={{
+                                height: 20,
+                                bgcolor: 'rgba(16,185,129,0.16)',
+                                color: '#86efac',
+                                border: '1px solid rgba(16,185,129,0.32)',
+                                fontSize: '0.62rem',
+                                fontWeight: 800,
+                                flexShrink: 0,
+                              }}
+                            />
+                          ) : null}
+                        </Box>
+                        <Typography sx={{ mt: 0.7, fontSize: '0.72rem', color: 'rgba(255,255,255,0.64)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {project.clientName || 'Uten klientnavn'}
+                        </Typography>
+                        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                          <Chip
+                            size="small"
+                            label={workflowStatusLabel}
+                            sx={{
+                              height: 22,
+                              maxWidth: 132,
+                              bgcolor: isActive ? 'rgba(0,212,255,0.18)' : 'rgba(255,255,255,0.06)',
+                              color: isActive ? '#7dd3fc' : 'rgba(255,255,255,0.72)',
+                              border: isActive ? '1px solid rgba(0,212,255,0.28)' : '1px solid rgba(255,255,255,0.08)',
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                            }}
+                          />
+                          <Button
+                            size="small"
+                            onClick={(e: MouseEvent) => {
+                              e.stopPropagation();
+                              void handleTogglePinnedProject(project.id);
+                            }}
+                            sx={{
+                              minWidth: 'auto',
+                              px: 0.75,
+                              color: pinnedAccentColor,
+                              fontSize: '0.68rem',
+                              textTransform: 'none',
+                              '&:hover': { bgcolor: `${pinnedAccentColor}14` },
+                            }}
+                          >
+                            Løsne
+                          </Button>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            ) : null}
             {filteredProjectSelectorItems.length === 0 ? (
               <Box sx={{ px: 3, py: 3.5 }}>
                 <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 600 }}>
@@ -9929,133 +10707,222 @@ export function CastingPlannerPanel({
                 </Typography>
               </Box>
             ) : (
-              filteredProjectSelectorItems.map((project) => {
-                const isActive = currentProject?.id === project.id;
-                const candidateCount = project.candidatesCount ?? project.candidates?.length ?? 0;
-                const updatedDate = project.updatedAt 
-                  ? new Date(project.updatedAt).toLocaleDateString('nb-NO', { 
-                      day: '2-digit', 
-                      month: 'short', 
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })
-                  : branding.tokens.labels.unknownLabel;
-                return (
-                  <Box
-                    key={project.id}
-                    onClick={() => { void handleSelectProjectFromSelector(project); }}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 2,
-                      px: 3,
-                      py: 2,
-                      cursor: 'pointer',
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                      bgcolor: isActive ? 'rgba(0, 212, 255, 0.1)' : 'transparent',
-                      '&:hover': {
-                        bgcolor: isActive ? 'rgba(0, 212, 255, 0.15)' : 'rgba(255,255,255,0.05)',
-                      },
-                    }}
-                  >
-                    <Box sx={{ 
-                      width: 10, 
-                      height: 10, 
-                      borderRadius: '50%', 
-                      bgcolor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.3)',
-                      flexShrink: 0,
-                    }} />
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography 
-                        sx={{ 
-                          fontWeight: isActive ? 600 : 500,
-                          color: isActive ? '#fff' : 'rgba(255,255,255,0.9)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {project.name}
+              [
+                {
+                  key: 'pinned',
+                  title: 'Pinnet',
+                  description: 'Prosjekter du holder faste øverst i arbeidsflaten.',
+                  items: filteredPinnedProjectSelectorItems,
+                },
+                {
+                  key: 'all',
+                  title: filteredPinnedProjectSelectorItems.length > 0 ? 'Andre prosjekter' : 'Prosjekter',
+                  description: filteredPinnedProjectSelectorItems.length > 0 ? 'Resterende prosjekter i arbeidsbiblioteket.' : null,
+                  items: filteredPinnedProjectSelectorItems.length > 0 ? filteredUnpinnedProjectSelectorItems : filteredProjectSelectorItems,
+                },
+              ]
+                .filter((section) => section.items.length > 0)
+                .map((section) => (
+                  <Box key={section.key} sx={{ py: 0.75 }}>
+                    <Box sx={{ px: 2.5, pt: 0.75, pb: 0.25 }}>
+                      <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
+                        {section.title}
                       </Typography>
-                      <Typography 
-                        sx={{ 
-                          fontSize: '0.75rem',
-                          color: 'rgba(255,255,255,0.87)',
-                        }}
-                      >
-                        {branding.tokens.labels.lastUpdatedLabel} {updatedDate}
-                      </Typography>
-                      {project.clientName ? (
-                        <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.64)' }}>
-                          Klient: {project.clientName}
+                      {section.description ? (
+                        <Typography sx={{ mt: 0.35, fontSize: '0.76rem', color: 'rgba(255,255,255,0.52)' }}>
+                          {section.description}
                         </Typography>
                       ) : null}
                     </Box>
-                    <Chip
-                      size="small"
-                      label={branding.tokens.labels.candidatesCountLabel.replace('{count}', String(candidateCount))}
-                      sx={{
-                        height: 24,
-                        bgcolor: 'rgba(255,255,255,0.1)',
-                        color: 'rgba(255,255,255,0.87)',
-                        fontSize: '0.7rem',
-                      }}
-                    />
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <Button
-                        size="small"
-                        onClick={(e: MouseEvent) => {
-                          e.stopPropagation();
-                          void handleSelectProjectFromSelector(project);
-                        }}
-                        sx={{
-                          textTransform: 'none',
-                          minHeight: 28,
-                          px: 1,
-                          color: '#7dd3fc',
-                          border: '1px solid rgba(125,211,252,0.32)',
-                          bgcolor: 'rgba(56,189,248,0.08)',
-                          '&:hover': { bgcolor: 'rgba(56,189,248,0.18)', borderColor: 'rgba(56,189,248,0.65)' },
-                        }}
-                      >
-                        Åpne
-                      </Button>
-                      <IconButton
-                        size="small"
-                        onClick={(e: MouseEvent) => {
-                          e.stopPropagation();
-                          setProjectToEdit(project);
-                          openProjectCreationModal();
-                          setProjectSelectorOpen(false);
-                          setProjectSelectorQuery('');
-                        }}
-                        sx={{
-                          color: 'rgba(255,255,255,0.87)',
-                          '&:hover': { color: '#00d4ff' },
-                        }}
-                      >
-                        <EditIcon sx={{ fontSize: 18 }} />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        aria-label={branding.tokens.labels.deleteProjectAriaLabel?.replace('{project}', project.name) || 'Delete project'}
-                        onClick={(e: MouseEvent) => {
-                          e.stopPropagation();
-                          setConfirmDeleteContext({ type: 'project', id: project.id, name: project.name });
-                          setConfirmDeleteOpen(true);
-                        }}
-                        sx={{
-                          color: 'rgba(255,255,255,0.87)',
-                          '&:hover': { color: '#ff4444' },
-                        }}
-                      >
-                        <DeleteIcon sx={{ fontSize: 18 }} />
-                      </IconButton>
-                    </Box>
+                    {section.items.map((project) => {
+                      const isActive = currentProject?.id === project.id;
+                      const isLatestCreated = latestCreatedProjectId === project.id;
+                      const isPinned = pinnedProjectIdSet.has(project.id);
+                      const pinnedAccentColor = pinnedProjectAccentColorById.get(project.id) ?? '#fbbf24';
+                      const candidateCount = project.candidatesCount ?? project.candidates?.length ?? 0;
+                      const workflowStatus = project.producerWorkflowStatus;
+                      const workflowStatusLabel = workflowStatus
+                        ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus]
+                        : 'Klar for arbeid';
+                      const workflowStatusStyle = workflowStatus
+                        ? PRODUCER_PROJECT_STATUS_COLORS[workflowStatus]
+                        : {
+                            background: 'rgba(148, 163, 184, 0.12)',
+                            color: 'rgba(226, 232, 240, 0.9)',
+                            border: '1px solid rgba(148, 163, 184, 0.18)',
+                          };
+                      const updatedDate = project.updatedAt
+                        ? new Date(project.updatedAt).toLocaleDateString('nb-NO', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : branding.tokens.labels.unknownLabel;
+
+                      return (
+                        <Box
+                          key={project.id}
+                          onClick={() => { void handleSelectProjectFromSelector(project); }}
+                          sx={{
+                            mx: 1.5,
+                            my: 1,
+                            px: 2,
+                            py: 1.6,
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(0, 1fr) auto',
+                            gap: 1.5,
+                            cursor: 'pointer',
+                            borderRadius: 2.5,
+                            border: isActive ? '1px solid rgba(0, 212, 255, 0.45)' : '1px solid rgba(255,255,255,0.08)',
+                            bgcolor: isActive
+                              ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.12) 0%, rgba(0, 180, 230, 0.08) 100%)'
+                              : 'rgba(255,255,255,0.025)',
+                            background: isActive
+                              ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.12) 0%, rgba(0, 180, 230, 0.08) 100%)'
+                              : 'rgba(255,255,255,0.025)',
+                            boxShadow: isActive
+                              ? '0 12px 28px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.08)'
+                              : 'inset 0 1px 0 rgba(255,255,255,0.03)',
+                            '&:hover': {
+                              bgcolor: isActive ? undefined : 'rgba(255,255,255,0.04)',
+                              background: isActive
+                                ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.14) 0%, rgba(0, 180, 230, 0.1) 100%)'
+                                : 'rgba(255,255,255,0.04)',
+                            },
+                          }}
+                        >
+                          <Box sx={{ minWidth: 0 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                              <Box sx={{ 
+                                width: 10, 
+                                height: 10, 
+                                borderRadius: '50%', 
+                                bgcolor: isActive ? '#00d4ff' : isPinned ? pinnedAccentColor : 'rgba(255,255,255,0.3)',
+                                boxShadow: isActive ? '0 0 10px rgba(0,212,255,0.4)' : 'none',
+                                flexShrink: 0,
+                              }} />
+                              <Typography 
+                                sx={{ 
+                                  fontWeight: isActive ? 700 : 600,
+                                  color: isActive ? '#fff' : 'rgba(255,255,255,0.9)',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  minWidth: 0,
+                                }}
+                              >
+                                {project.name}
+                              </Typography>
+                              {isLatestCreated ? (
+                                <Chip
+                                  size="small"
+                                  label="Siste opprettet"
+                                  sx={{
+                                    height: 22,
+                                    bgcolor: 'rgba(16,185,129,0.14)',
+                                    color: '#86efac',
+                                    border: '1px solid rgba(16,185,129,0.28)',
+                                    fontSize: '0.64rem',
+                                    fontWeight: 800,
+                                    flexShrink: 0,
+                                  }}
+                                />
+                              ) : null}
+                              {isPinned ? (
+                                <PushPinIcon sx={{ fontSize: 15, color: pinnedAccentColor, flexShrink: 0 }} />
+                              ) : null}
+                            </Box>
+
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.7, minWidth: 0, flexWrap: 'wrap' }}>
+                              <Chip
+                                size="small"
+                                label={workflowStatusLabel}
+                                sx={{
+                                  height: 23,
+                                  bgcolor: isActive ? workflowStatusStyle.background : 'rgba(255,255,255,0.04)',
+                                  color: isActive ? workflowStatusStyle.color : 'rgba(255,255,255,0.72)',
+                                  border: isActive ? workflowStatusStyle.border : '1px solid rgba(255,255,255,0.08)',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                }}
+                              />
+                              <Typography sx={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.6)', minWidth: 0 }}>
+                                {project.clientName ? `${project.clientName} • ` : ''}{branding.tokens.labels.lastUpdatedLabel} {updatedDate}
+                              </Typography>
+                            </Box>
+                          </Box>
+
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+                            <Box
+                              sx={{
+                                minWidth: 34,
+                                height: 28,
+                                px: 0.9,
+                                borderRadius: 999,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                bgcolor: isActive ? 'rgba(0,212,255,0.18)' : 'rgba(255,255,255,0.06)',
+                                border: isActive ? '1px solid rgba(0,212,255,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                                color: isActive ? '#fff' : 'rgba(255,255,255,0.76)',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              {candidateCount}
+                            </Box>
+                            <Button
+                              size="small"
+                              onClick={(e: MouseEvent) => {
+                                e.stopPropagation();
+                                void handleSelectProjectFromSelector(project);
+                              }}
+                              sx={{
+                                textTransform: 'none',
+                                minHeight: 28,
+                                px: 1,
+                                color: '#7dd3fc',
+                                border: '1px solid rgba(125,211,252,0.32)',
+                                bgcolor: 'rgba(56,189,248,0.08)',
+                                '&:hover': { bgcolor: 'rgba(56,189,248,0.18)', borderColor: 'rgba(56,189,248,0.65)' },
+                              }}
+                            >
+                              Åpne
+                            </Button>
+                            <IconButton
+                              size="small"
+                              onClick={(e: MouseEvent) => {
+                                e.stopPropagation();
+                                void handleTogglePinnedProject(project.id);
+                              }}
+                              sx={{
+                                color: isPinned ? pinnedAccentColor : 'rgba(255,255,255,0.56)',
+                                '&:hover': { color: isPinned ? pinnedAccentColor : '#fbbf24', bgcolor: isPinned ? `${pinnedAccentColor}14` : 'rgba(251,191,36,0.08)' },
+                              }}
+                            >
+                              <PushPinIcon sx={{ fontSize: 18, transform: isPinned ? 'rotate(0deg)' : 'rotate(35deg)' }} />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={(e: MouseEvent) => {
+                                e.stopPropagation();
+                                handleOpenProjectQuickActions(e, project);
+                              }}
+                              sx={{
+                                color: 'rgba(255,255,255,0.64)',
+                                '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.08)' },
+                              }}
+                            >
+                              <MoreHorizIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
+                          </Box>
+                        </Box>
+                      );
+                    })}
                   </Box>
-                );
-              })
+                ))
             )}
           </Box>
         </DialogContent>
@@ -10432,17 +11299,27 @@ export function CastingPlannerPanel({
                         setCurrentProjectId(null);
                       }}
                       onProjectCreated={async (projectData) => {
-                        setProjectCreationModalOpen(false);
-                        setProjectToEdit(null);
+                        const deferCloseForInvite = Boolean(projectData?.__deferCloseForInvite);
+                        const normalizedProjectData = projectData && typeof projectData === 'object'
+                          ? Object.fromEntries(
+                              Object.entries(projectData as Record<string, unknown>).filter(([key]) => !key.startsWith('__')),
+                            )
+                          : projectData;
+
+                        if (!deferCloseForInvite) {
+                          setProjectCreationModalOpen(false);
+                          setProjectToEdit(null);
+                        }
                         
                         // Use the project data returned from backend directly
                         // The ID should always be set (generated when modal opens)
-                        if (projectData?.id) {
+                        if (normalizedProjectData && typeof normalizedProjectData === 'object' && 'id' in normalizedProjectData && normalizedProjectData.id) {
+                          const normalizedProjectId = String((normalizedProjectData as Record<string, unknown>).id);
                           // Ensure crew is initialized as an array if missing
                           const projectWithCrew = {
-                            ...projectData,
-                            id: projectData.id, // Explicitly set ID to ensure it's used
-                            crew: projectData.crew || [],
+                            ...(normalizedProjectData as Record<string, unknown>),
+                            id: normalizedProjectId,
+                            crew: (normalizedProjectData as Record<string, unknown>).crew || [],
                           } as CastingProject;
                           
                           // Save to database
@@ -10464,7 +11341,7 @@ export function CastingPlannerPanel({
                             const loadedProjects = filterProjectsForSession(await castingService.getProjects());
                             setProjects(loadedProjects);
                             // Ensure the new project is still set as current (in case reload changed something)
-                            const foundProject = loadedProjects.find(p => p.id === projectData.id);
+                            const foundProject = loadedProjects.find((project) => project.id === normalizedProjectId);
                             if (foundProject) {
                               // Ensure crew is initialized
                               const projectWithCrewFromDb = {
@@ -10480,13 +11357,13 @@ export function CastingPlannerPanel({
                               if (isProducerWorkspaceSession && isTrollProject(projectWithCrew)) {
                                 return prev.filter((project) => !isTrollProject(project));
                               }
-                              const exists = prev.some(p => p.id === projectData.id);
+                              const exists = prev.some((project) => project.id === normalizedProjectId);
                               if (exists) {
-                                return prev.map(p => {
-                                  if (p.id === projectData.id) {
+                                return prev.map((project) => {
+                                  if (project.id === normalizedProjectId) {
                                     return projectWithCrew;
                                   }
-                                  return p;
+                                  return project;
                                 });
                               } else {
                                 return [projectWithCrew, ...prev];

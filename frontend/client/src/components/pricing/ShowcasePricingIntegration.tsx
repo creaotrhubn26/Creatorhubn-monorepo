@@ -253,7 +253,7 @@ export default function ShowcasePricingIntegration({
                 <Card
                   sx={{
                     height: '100%',
-                    background: 'rgba(25, 255, 255, 0.9)',
+                    background: 'rgba(255, 255, 255, 0.96)',
                     backdropFilter: 'blur(10px)',
                     border: '1px solid rgba(25, 107, 53, 0.2)','&:hover': {
                       boxShadow:  3,
@@ -321,7 +321,7 @@ export default function ShowcasePricingIntegration({
                 <Card
                   sx={{
                     height: '100%',
-                    background: 'rgba(25, 255, 255, 0.9)',
+                    background: 'rgba(255, 255, 255, 0.96)',
                     backdropFilter: 'blur(10px)',
                     border: '1px solid rgba(25, 107, 53, 0.2)','&:hover': {
                       boxShadow:  3,

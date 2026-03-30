@@ -996,6 +996,7 @@ export function ProfessionOnboardingDialog({
         <IconButton
           onClick={handleSkip}
           size="small"
+          aria-label="Lukk onboarding"
           sx={{ color: 'rgba(255,255,255,0.87)', '&:hover': { color: 'white' } }}
         >
           <CloseIcon />

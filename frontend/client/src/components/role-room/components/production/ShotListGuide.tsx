@@ -557,8 +557,8 @@ const STEPS: Step[] = [
                 <Chip key={col} label={col} size="small" sx={{ height: 20, fontSize: '0.62rem', bgcolor: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.2)' }} />
               ))}
             </Box>
-            <Callout color="#f97316">
-              PDF export is coming soon. The option is visible in the export dialog but will show a notification until PDF generation is wired up.
+            <Callout color="#10b981">
+              Exportdialogen støtter nå `Board PDF`, `Contact Sheet` og `Shot Deck`, i tillegg til CSV.
             </Callout>
           </>
         ),

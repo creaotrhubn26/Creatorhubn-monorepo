@@ -10,8 +10,10 @@ const _require = createRequire(import.meta.url);
 const pdfParseModule: any = _require('pdf-parse');
 import mammoth from 'mammoth';
 import crypto from 'crypto';
+import { google } from 'googleapis';
 import fs from 'fs/promises';
 import { existsSync, readFileSync } from 'fs';
+import PDFDocument from 'pdfkit';
 import path from 'path';
 import os from 'os';
 import { spawn } from 'child_process';
@@ -22,7 +24,30 @@ import { Pool } from 'pg';
 import * as schema from '../migrations/schema.js';
 import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { createRoleRoomRouter } from './role-room-routes.js';
+import { createRoleRoomIntegrationsV1Router } from './role-room-integrations-v1-routes.js';
 import { createCommunicationRouter } from './communication-routes.js';
+import { createDashboardCompatRouter } from './dashboard-compat-routes.js';
+import { createLightroomRouter } from './lightroom-routes.js';
+import {
+  ensureContractsCompatibilitySchema,
+  getContractGoogleESignature,
+  prepareContractGoogleESignature,
+  resolveRoleRoomGoogleConnection,
+  sendGoogleWorkspaceChatMessage,
+  sendContractGoogleESignature,
+  syncContractGoogleESignature,
+  updateContractGoogleESignatureStatus,
+} from './contract-google-signing.js';
+import {
+  BUSINESS_BRANDING_SETTINGS_NAMESPACE,
+  ensureCustomerWorkflowFolder,
+  resolveDocumentBranding,
+  upsertStructuredGoogleDocument,
+  type DocumentBrandingProfile,
+  type StructuredGoogleDocumentBlock,
+} from './customer-drive-sync.js';
+import { getGoogleChatLiveHealthCheck } from './google-chat-health.js';
+import { createGoogleMeetLink } from './google-meet.js';
 import { createWebSocketServer } from './websocket-chat.js';
 import { createReferenceProxyRouter } from './reference-proxy-routes.js';
 import { createServer } from 'http';
@@ -40,6 +65,7 @@ import {
 } from '../../frontend/client/src/data/audio-storage-device-database.ts';
 import { WORLD_CAMERA_DATABASE } from '../../frontend/shared/camera-database.ts';
 import { CAMERA_RELEASE_REGISTRY_2020_2026 } from '../../frontend/shared/camera-release-registry.ts';
+import { DEFAULT_PROFESSION_CONFIGS } from '../../frontend/client/src/types/ProfessionConfig.ts';
 import {
   ACADEMY_PRESENTATION_GRAMMAR_BUDGETS,
   ACADEMY_PRESENTATION_THEME_TOKENS,
@@ -79,6 +105,27 @@ const upload = multer({
       cb(new Error('Ugyldig filformat. Kun PDF og DOCX støttes.'));
     }
   }
+});
+
+const brandingLogoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowedMimes = [
+      'image/jpeg',
+      'image/png',
+      'image/svg+xml',
+      'image/webp',
+      'image/gif',
+    ];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Ugyldig filformat. Kun JPEG, PNG, SVG, WebP og GIF støttes.'));
+    }
+  },
 });
 
 const audioUpload = multer({
@@ -301,6 +348,7 @@ app.use((req, _res, next) => {
 // ── Role Room API (x-api-key or Bearer session token) ────
 const activeSessions: Map<string, { userId: string; email: string; name: string; role: string; loginAt: string }> = new Map();
 app.use('/api/role-room', createRoleRoomRouter(pool, activeSessions));
+app.use('/api/integrations/v1/role-room', createRoleRoomIntegrationsV1Router(pool));
 
 const forwardRoleRoomGoogleCallback = (req: express.Request, res: express.Response) => {
   const params = new URLSearchParams();
@@ -324,6 +372,29 @@ const forwardRoleRoomGoogleCallback = (req: express.Request, res: express.Respon
 
 app.get('/api/auth/google/callback', forwardRoleRoomGoogleCallback);
 app.get('/auth/google/callback', forwardRoleRoomGoogleCallback);
+
+const forwardRoleRoomLinkedInCallback = (req: express.Request, res: express.Response) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(req.query)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (entry != null) {
+          params.append(key, String(entry));
+        }
+      }
+      continue;
+    }
+    if (value != null) {
+      params.set(key, String(value));
+    }
+  }
+
+  const queryString = params.toString();
+  res.redirect(`/api/role-room/linkedin/oauth/callback${queryString ? `?${queryString}` : ''}`);
+};
+
+app.get('/api/auth/linkedin/callback', forwardRoleRoomLinkedInCallback);
+app.get('/auth/linkedin/callback', forwardRoleRoomLinkedInCallback);
 
 const maybeStartRoleRoomGoogleRedirectBridge = () => {
   const redirectCandidate = process.env.ROLE_ROOM_GOOGLE_REDIRECT_URI || process.env.GOOGLE_REDIRECT_URI;
@@ -390,6 +461,74 @@ const maybeStartRoleRoomGoogleRedirectBridge = () => {
   });
   bridgeServer.listen(bridgePort, '0.0.0.0', () => {
     console.log(`Role Room Google redirect bridge listening on http://localhost:${bridgePort}`);
+  });
+};
+
+const maybeStartRoleRoomLinkedInRedirectBridge = () => {
+  const redirectCandidate = process.env.ROLE_ROOM_LINKEDIN_REDIRECT_URI;
+  if (!redirectCandidate) {
+    return;
+  }
+
+  let parsedRedirect: URL;
+  try {
+    parsedRedirect = new URL(redirectCandidate);
+  } catch {
+    return;
+  }
+
+  if (!['localhost', '127.0.0.1'].includes(parsedRedirect.hostname)) {
+    return;
+  }
+
+  const bridgePort = parsedRedirect.port
+    ? Number(parsedRedirect.port)
+    : parsedRedirect.protocol === 'https:'
+      ? 443
+      : 80;
+  if (!Number.isFinite(bridgePort) || bridgePort === PORT) {
+    return;
+  }
+
+  const callbackPaths = new Set(['/api/auth/linkedin/callback', '/auth/linkedin/callback']);
+  if (!callbackPaths.has(parsedRedirect.pathname)) {
+    return;
+  }
+
+  const bridgeApp = express();
+  const bridgeHandler = (req: express.Request, res: express.Response) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(req.query)) {
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          if (entry != null) {
+            params.append(key, String(entry));
+          }
+        }
+        continue;
+      }
+      if (value != null) {
+        params.set(key, String(value));
+      }
+    }
+
+    const queryString = params.toString();
+    res.redirect(`http://localhost:${PORT}/api/role-room/linkedin/oauth/callback${queryString ? `?${queryString}` : ''}`);
+  };
+
+  bridgeApp.get('/api/auth/linkedin/callback', bridgeHandler);
+  bridgeApp.get('/auth/linkedin/callback', bridgeHandler);
+
+  const bridgeServer = createServer(bridgeApp);
+  bridgeServer.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.warn(`Role Room LinkedIn redirect bridge skipped: port ${bridgePort} is already in use.`);
+      return;
+    }
+    console.warn('Role Room LinkedIn redirect bridge failed:', error);
+  });
+  bridgeServer.listen(bridgePort, '0.0.0.0', () => {
+    console.log(`Role Room LinkedIn redirect bridge listening on http://localhost:${bridgePort}`);
   });
 };
 
@@ -3969,13 +4108,18 @@ const categoryFromCameraRecord = (camera: CameraRecord): CompatCatalogItem['cate
   return 'cameras';
 };
 
+const slugifyCatalogIdentityPart = (value: string): string =>
+  normalizeModelLookupValue(value)
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-+|-+$/gu, '') || 'item';
+
 const toCatalogItemFromCameraRecord = (camera: CameraRecord): CompatCatalogItem => {
   const releaseYear = Number.parseInt(String(camera.releaseDate || '').slice(0, 4), 10);
   const resolvedYear = Number.isInteger(releaseYear) ? releaseYear : 2026;
   const category = categoryFromCameraRecord(camera);
 
   return {
-    id: `camera-${camera.id}`,
+    id: `camera-${slugifyCatalogIdentityPart(camera.brand)}-${slugifyCatalogIdentityPart(camera.model)}-${slugifyCatalogIdentityPart(category)}`,
     brand: camera.brand,
     model: camera.model,
     category,
@@ -4129,6 +4273,109 @@ app.get('/api/equipment/search', async (req, res) => {
   }
 });
 
+app.get('/api/equipment/brands', async (_req, res) => {
+  try {
+    const catalog = await loadUnifiedEquipmentCatalog();
+    const brands = Array.from(
+      new Set(
+        catalog
+          .map((item) => item.brand)
+          .filter((brand): brand is string => typeof brand === 'string' && brand.trim().length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, 'nb'));
+
+    res.json({
+      success: true,
+      data: brands,
+      total: brands.length,
+    });
+  } catch (error) {
+    console.error('Failed to load equipment brands:', error);
+    res.status(500).json({ success: false, error: 'Failed to load equipment brands' });
+  }
+});
+
+app.get('/api/equipment/stats', async (_req, res) => {
+  try {
+    const catalog = await loadUnifiedEquipmentCatalog();
+    const releaseYears = catalog
+      .map((item) => item.releaseYear)
+      .filter((value): value is number => Number.isFinite(value));
+    const categories = Array.from(
+      new Set(
+        catalog
+          .map((item) => item.category)
+          .filter((category) => category.trim().length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, 'nb'));
+    const brands = Array.from(
+      new Set(
+        catalog
+          .map((item) => item.brand)
+          .filter((brand): brand is string => typeof brand === 'string' && brand.trim().length > 0)
+      )
+    );
+    const authenticItems = catalog.filter((item) => item.imageUrl || item.norwegianSupplier).length;
+    const catalogItems = catalog.filter((item) => item.category !== 'video' || item.type !== 'legacy').length;
+
+    res.json({
+      success: true,
+      data: {
+        totalItems: catalog.length,
+        authenticItems,
+        catalogItems,
+        brandCount: brands.length,
+        categories,
+        yearRange: {
+          min: releaseYears.length > 0 ? Math.min(...releaseYears) : new Date().getFullYear(),
+          max: releaseYears.length > 0 ? Math.max(...releaseYears) : new Date().getFullYear(),
+        },
+        lastUpdate: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error('Failed to load equipment stats:', error);
+    res.status(500).json({ success: false, error: 'Failed to load equipment stats' });
+  }
+});
+
+app.post('/api/equipment/category-icons/generate', async (_req, res) => {
+  try {
+    const catalog = await loadUnifiedEquipmentCatalog();
+    const iconMap: Record<string, string> = {
+      cameras: 'camera',
+      lenses: 'lens',
+      flash: 'flash',
+      lighting: 'lightbulb',
+      audio: 'mic',
+      tripods: 'tripod',
+      support: 'build',
+      accessories: 'build',
+      software: 'settings',
+      video: 'videocam',
+    };
+    const categories = Array.from(
+      new Set(
+        catalog
+          .map((item) => item.category)
+          .filter((category) => category.trim().length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, 'nb'));
+
+    res.json({
+      success: true,
+      data: categories.map((category) => ({
+        category,
+        icon: iconMap[category] || 'category',
+      })),
+      total: categories.length,
+    });
+  } catch (error) {
+    console.error('Failed to generate equipment category icons:', error);
+    res.status(500).json({ success: false, error: 'Failed to generate equipment category icons' });
+  }
+});
+
 app.get('/api/gear-news', async (req, res) => {
   const profession = typeof req.query.profession === 'string' ? req.query.profession : '';
   const normalizedProfession = profession.trim().toLowerCase();
@@ -4246,6 +4493,542 @@ app.get('/api/equipment/lenses', (_req, res) => {
     }));
 
   res.json(lenses);
+});
+
+type CompatSoftwareCatalogEntry = {
+  id: string;
+  name: string;
+  vendor: string;
+  category: string;
+  pricingModel: string | null;
+  price: string | null;
+  website: string | null;
+  description: string | null;
+  photographerRating: string | null;
+  videographerRating: string | null;
+  overallRating: string | null;
+  freeTrialAvailable: boolean;
+  freeTrialDays: number | null;
+  downloadUrl: string | null;
+};
+
+type CompatSoftwareUpdateEntry = {
+  id: string;
+  softwareName: string;
+  vendor: string;
+  category: string;
+  version: string;
+  releaseDate: string;
+  updateType: string;
+  isLatest: boolean;
+  isCritical: boolean;
+  downloadSize: string | null;
+  downloadUrl: string | null;
+  priority: string;
+};
+
+type SoftwareCatalogRow = {
+  id: string;
+  name: string;
+  vendor: string;
+  category: string;
+  pricing_model: string | null;
+  price: string | null;
+  website: string | null;
+  description: string | null;
+  photographer_rating: string | null;
+  videographer_rating: string | null;
+  overall_rating: string | null;
+  current_version: string | null;
+  is_recommended: boolean | null;
+  download_url: string | null;
+};
+
+type SoftwareUpdateRow = {
+  id: string;
+  software: string;
+  vendor: string;
+  category: string;
+  version: string;
+  release_date: string;
+  update_type: string;
+  is_latest: boolean | null;
+  download_size: string | null;
+  priority: string | null;
+  source_url: string | null;
+  last_verified: string | null;
+};
+
+const COMPAT_SOFTWARE_DATABASE: CompatSoftwareCatalogEntry[] = [
+  {
+    id: 'sw-lightroom-classic',
+    name: 'Adobe Lightroom Classic',
+    vendor: 'Adobe',
+    category: 'photo_editing',
+    pricingModel: 'subscription',
+    price: '159.00',
+    website: 'https://www.adobe.com/products/photoshop-lightroom-classic.html',
+    description: 'RAW workflow, katalogstyring og eksport for fotografer.',
+    photographerRating: '4.90',
+    videographerRating: '3.80',
+    overallRating: '4.70',
+    freeTrialAvailable: true,
+    freeTrialDays: 7,
+    downloadUrl: 'https://www.adobe.com/creativecloud/photography.html',
+  },
+  {
+    id: 'sw-capture-one-pro',
+    name: 'Capture One Pro',
+    vendor: 'Capture One',
+    category: 'photo_editing',
+    pricingModel: 'subscription',
+    price: '219.00',
+    website: 'https://www.captureone.com/',
+    description: 'Tethering, fargekontroll og premium RAW-redigering.',
+    photographerRating: '4.80',
+    videographerRating: '3.40',
+    overallRating: '4.50',
+    freeTrialAvailable: true,
+    freeTrialDays: 30,
+    downloadUrl: 'https://www.captureone.com/en/download-trial',
+  },
+  {
+    id: 'sw-photo-mechanic',
+    name: 'Photo Mechanic',
+    vendor: 'Camera Bits',
+    category: 'specialized',
+    pricingModel: 'one_time',
+    price: '189.00',
+    website: 'https://home.camerabits.com/',
+    description: 'Rask culling, metadata og leveringsforberedelse.',
+    photographerRating: '4.70',
+    videographerRating: '3.20',
+    overallRating: '4.20',
+    freeTrialAvailable: true,
+    freeTrialDays: 30,
+    downloadUrl: 'https://home.camerabits.com/download/',
+  },
+  {
+    id: 'sw-davinci-resolve-studio',
+    name: 'DaVinci Resolve Studio',
+    vendor: 'Blackmagic Design',
+    category: 'video_editing',
+    pricingModel: 'one_time',
+    price: '3795.00',
+    website: 'https://www.blackmagicdesign.com/products/davinciresolve',
+    description: 'Klipp, grading, lyd og finishing i ett system.',
+    photographerRating: '3.90',
+    videographerRating: '4.90',
+    overallRating: '4.70',
+    freeTrialAvailable: true,
+    freeTrialDays: 0,
+    downloadUrl: 'https://www.blackmagicdesign.com/support/',
+  },
+  {
+    id: 'sw-premiere-pro',
+    name: 'Adobe Premiere Pro',
+    vendor: 'Adobe',
+    category: 'video_editing',
+    pricingModel: 'subscription',
+    price: '349.00',
+    website: 'https://www.adobe.com/products/premiere.html',
+    description: 'Bransjestandard for redigering, teamflyt og distribusjon.',
+    photographerRating: '3.70',
+    videographerRating: '4.60',
+    overallRating: '4.40',
+    freeTrialAvailable: true,
+    freeTrialDays: 7,
+    downloadUrl: 'https://www.adobe.com/products/premiere/free-trial-download.html',
+  },
+  {
+    id: 'sw-final-cut-pro',
+    name: 'Final Cut Pro',
+    vendor: 'Apple',
+    category: 'video_editing',
+    pricingModel: 'one_time',
+    price: '3990.00',
+    website: 'https://www.apple.com/final-cut-pro/',
+    description: 'Mac-optimalisert videoarbeidsflate for rask levering.',
+    photographerRating: '3.50',
+    videographerRating: '4.50',
+    overallRating: '4.20',
+    freeTrialAvailable: true,
+    freeTrialDays: 90,
+    downloadUrl: 'https://www.apple.com/final-cut-pro/trial/',
+  },
+  {
+    id: 'sw-ableton-live-suite',
+    name: 'Ableton Live Suite',
+    vendor: 'Ableton',
+    category: 'music_production',
+    pricingModel: 'one_time',
+    price: '6999.00',
+    website: 'https://www.ableton.com/live/',
+    description: 'Produksjon, live performance og arrangement i ett.',
+    photographerRating: '2.80',
+    videographerRating: '3.00',
+    overallRating: '4.50',
+    freeTrialAvailable: true,
+    freeTrialDays: 30,
+    downloadUrl: 'https://www.ableton.com/en/trial/',
+  },
+  {
+    id: 'sw-logic-pro',
+    name: 'Logic Pro',
+    vendor: 'Apple',
+    category: 'music_production',
+    pricingModel: 'one_time',
+    price: '2490.00',
+    website: 'https://www.apple.com/logic-pro/',
+    description: 'Komplett DAW for komponering, miks og mastering.',
+    photographerRating: '2.60',
+    videographerRating: '2.90',
+    overallRating: '4.40',
+    freeTrialAvailable: true,
+    freeTrialDays: 90,
+    downloadUrl: 'https://www.apple.com/logic-pro/trial/',
+  },
+  {
+    id: 'sw-pro-tools-studio',
+    name: 'Pro Tools Studio',
+    vendor: 'Avid',
+    category: 'audio_processing',
+    pricingModel: 'subscription',
+    price: '349.00',
+    website: 'https://www.avid.com/pro-tools',
+    description: 'Studio-standard for opptak, redigering og postproduksjon.',
+    photographerRating: '2.40',
+    videographerRating: '3.40',
+    overallRating: '4.10',
+    freeTrialAvailable: true,
+    freeTrialDays: 30,
+    downloadUrl: 'https://www.avid.com/pro-tools/trial',
+  },
+];
+
+const COMPAT_SOFTWARE_UPDATES: CompatSoftwareUpdateEntry[] = [
+  {
+    id: 'swu-lightroom-14-2',
+    softwareName: 'Adobe Lightroom Classic',
+    vendor: 'Adobe',
+    category: 'photo_editing',
+    version: '14.2',
+    releaseDate: '2026-03-18T00:00:00.000Z',
+    updateType: 'minor',
+    isLatest: true,
+    isCritical: false,
+    downloadSize: '1.8 GB',
+    downloadUrl: 'https://helpx.adobe.com/lightroom-classic/help/whats-new.html',
+    priority: 'recommended',
+  },
+  {
+    id: 'swu-captureone-17-1',
+    softwareName: 'Capture One Pro',
+    vendor: 'Capture One',
+    category: 'photo_editing',
+    version: '17.1',
+    releaseDate: '2026-03-11T00:00:00.000Z',
+    updateType: 'minor',
+    isLatest: true,
+    isCritical: false,
+    downloadSize: '1.2 GB',
+    downloadUrl: 'https://support.captureone.com/hc/en-us',
+    priority: 'recommended',
+  },
+  {
+    id: 'swu-resolve-20-1',
+    softwareName: 'DaVinci Resolve Studio',
+    vendor: 'Blackmagic Design',
+    category: 'video_editing',
+    version: '20.1',
+    releaseDate: '2026-03-09T00:00:00.000Z',
+    updateType: 'major',
+    isLatest: true,
+    isCritical: true,
+    downloadSize: '4.6 GB',
+    downloadUrl: 'https://www.blackmagicdesign.com/support/',
+    priority: 'critical',
+  },
+  {
+    id: 'swu-premiere-25-4',
+    softwareName: 'Adobe Premiere Pro',
+    vendor: 'Adobe',
+    category: 'video_editing',
+    version: '25.4',
+    releaseDate: '2026-03-20T00:00:00.000Z',
+    updateType: 'minor',
+    isLatest: true,
+    isCritical: false,
+    downloadSize: '3.1 GB',
+    downloadUrl: 'https://helpx.adobe.com/premiere-pro/using/whats-new.html',
+    priority: 'recommended',
+  },
+  {
+    id: 'swu-ableton-12-3',
+    softwareName: 'Ableton Live Suite',
+    vendor: 'Ableton',
+    category: 'music_production',
+    version: '12.3',
+    releaseDate: '2026-03-07T00:00:00.000Z',
+    updateType: 'minor',
+    isLatest: true,
+    isCritical: false,
+    downloadSize: '2.3 GB',
+    downloadUrl: 'https://www.ableton.com/en/release-notes/live-12/',
+    priority: 'recommended',
+  },
+  {
+    id: 'swu-protools-24-12',
+    softwareName: 'Pro Tools Studio',
+    vendor: 'Avid',
+    category: 'audio_processing',
+    version: '24.12',
+    releaseDate: '2026-02-27T00:00:00.000Z',
+    updateType: 'patch',
+    isLatest: true,
+    isCritical: false,
+    downloadSize: '1.1 GB',
+    downloadUrl: 'https://avidtech.my.salesforce-sites.com/pkb/articles/readme/Pro-Tools-Read-Me',
+    priority: 'optional',
+  },
+];
+
+function resolveSoftwareCategoriesForProfession(profession: string | null): string[] | null {
+  switch (profession) {
+    case 'photographer':
+      return ['photo_editing', 'hybrid', 'specialized'];
+    case 'videographer':
+      return ['video_editing', 'hybrid', 'specialized'];
+    case 'music_producer':
+      return ['music_production', 'audio_processing', 'free_audio', 'specialized'];
+    default:
+      return null;
+  }
+}
+
+function formatSoftwareCategoryLabel(category: string | null): string {
+  switch (category) {
+    case 'photo_editing':
+      return 'Fotoredigering';
+    case 'video_editing':
+      return 'Videoredigering';
+    case 'music_production':
+      return 'Musikkproduksjon';
+    case 'audio_processing':
+      return 'Lydbehandling';
+    case 'free_audio':
+      return 'Gratis lydverktøy';
+    case 'hybrid':
+      return 'Hybrid';
+    case 'specialized':
+      return 'Spesialisert';
+    default:
+      return category || 'Programvare';
+  }
+}
+
+function mapSoftwareCatalogEntry(entry: CompatSoftwareCatalogEntry) {
+  return {
+    id: entry.id,
+    name: entry.name,
+    developer: entry.vendor,
+    vendor: entry.vendor,
+    category: formatSoftwareCategoryLabel(entry.category),
+    pricingModel: entry.pricingModel,
+    price: entry.price,
+    website: entry.website,
+    description: entry.description,
+    photographerRating: entry.photographerRating,
+    videographerRating: entry.videographerRating,
+    overallRating: entry.overallRating,
+    freeTrialAvailable: entry.freeTrialAvailable,
+    freeTrialDays: entry.freeTrialDays,
+    downloadUrl: entry.downloadUrl,
+  };
+}
+
+function mapSoftwareUpdateEntry(entry: CompatSoftwareUpdateEntry) {
+  return {
+    id: entry.id,
+    softwareName: entry.softwareName,
+    vendor: entry.vendor,
+    category: formatSoftwareCategoryLabel(entry.category),
+    version: entry.version,
+    releaseDate: entry.releaseDate,
+    updateType: entry.updateType,
+    isLatest: entry.isLatest,
+    isCritical: entry.isCritical,
+    downloadSize: entry.downloadSize,
+    downloadUrl: entry.downloadUrl,
+    priority: entry.priority,
+  };
+}
+
+function resolveFallbackSoftwareCatalog(profession: string | null) {
+  const categories = resolveSoftwareCategoriesForProfession(profession);
+  return COMPAT_SOFTWARE_DATABASE
+    .filter((entry) => (categories ? categories.includes(entry.category) : true))
+    .map(mapSoftwareCatalogEntry);
+}
+
+function resolveFallbackSoftwareUpdates(profession: string | null) {
+  const categories = resolveSoftwareCategoriesForProfession(profession);
+  return COMPAT_SOFTWARE_UPDATES
+    .filter((entry) => (categories ? categories.includes(entry.category) : true))
+    .map(mapSoftwareUpdateEntry);
+}
+
+function resolveSoftwareOrderColumn(profession: string | null): string {
+  switch (profession) {
+    case 'videographer':
+      return 'videographer_rating';
+    case 'photographer':
+      return 'photographer_rating';
+    default:
+      return 'overall_rating';
+  }
+}
+
+app.get('/api/equipment/software', async (req, res) => {
+  const profession =
+    typeof req.query.profession === 'string'
+      ? req.query.profession.trim().toLowerCase()
+      : null;
+  const categories = resolveSoftwareCategoriesForProfession(profession);
+
+  try {
+    const params: Array<string | string[]> = [];
+    const whereClauses = [`COALESCE(is_active, true) = true`];
+
+    if (categories && categories.length > 0) {
+      params.push(categories);
+      whereClauses.push(`category = ANY($${params.length})`);
+    }
+
+    const orderColumn = resolveSoftwareOrderColumn(profession);
+    const result = await pool.query<SoftwareCatalogRow>(
+      `SELECT
+         id,
+         name,
+         vendor,
+         category,
+         pricing_model,
+         price,
+         website,
+         description,
+         photographer_rating,
+         videographer_rating,
+         overall_rating,
+         current_version,
+         is_recommended,
+         download_url
+       FROM software_database
+       WHERE ${whereClauses.join(' AND ')}
+       ORDER BY COALESCE(${orderColumn}, overall_rating, 0::numeric) DESC NULLS LAST, name ASC`,
+      params,
+    );
+
+    if (result.rows.length === 0) {
+      res.json(resolveFallbackSoftwareCatalog(profession));
+      return;
+    }
+
+    const data = result.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      developer: row.vendor,
+      vendor: row.vendor,
+      category: formatSoftwareCategoryLabel(row.category),
+      pricingModel: row.pricing_model,
+      price: row.price,
+      website: row.website,
+      description: row.description,
+      photographerRating: row.photographer_rating,
+      videographerRating: row.videographer_rating,
+      overallRating: row.overall_rating,
+      freeTrialAvailable: false,
+      freeTrialDays: null,
+      currentVersion: row.current_version,
+      isRecommended: Boolean(row.is_recommended),
+      downloadUrl: row.download_url,
+    }));
+
+    res.json(data);
+  } catch (error) {
+    console.error('Failed to load equipment software catalog, returning fallback:', error);
+    res.json(resolveFallbackSoftwareCatalog(profession));
+  }
+});
+
+app.get('/api/equipment/software-updates', async (req, res) => {
+  const profession =
+    typeof req.query.profession === 'string'
+      ? req.query.profession.trim().toLowerCase()
+      : null;
+  const categories = resolveSoftwareCategoriesForProfession(profession);
+
+  try {
+    const params: Array<string | string[]> = [];
+    const whereClauses = ['1 = 1'];
+
+    if (categories && categories.length > 0) {
+      params.push(categories);
+      whereClauses.push(`category = ANY($${params.length})`);
+    }
+
+    const result = await pool.query<SoftwareUpdateRow>(
+      `SELECT
+         id,
+         software,
+         vendor,
+         category,
+         version,
+         release_date,
+         update_type,
+         is_latest,
+         download_size,
+         priority,
+         source_url,
+         last_verified
+       FROM software_updates
+       WHERE ${whereClauses.join(' AND ')}
+       ORDER BY
+         COALESCE(is_latest, true) DESC,
+         CASE COALESCE(priority, 'optional')
+           WHEN 'critical' THEN 0
+           WHEN 'recommended' THEN 1
+           ELSE 2
+         END,
+         release_date DESC`,
+      params,
+    );
+
+    if (result.rows.length === 0) {
+      res.json(resolveFallbackSoftwareUpdates(profession));
+      return;
+    }
+
+    const data = result.rows.map((row) => ({
+      id: row.id,
+      softwareName: row.software,
+      vendor: row.vendor,
+      category: formatSoftwareCategoryLabel(row.category),
+      version: row.version,
+      releaseDate: row.release_date,
+      updateType: row.update_type,
+      isLatest: row.is_latest ?? true,
+      isCritical: row.priority === 'critical',
+      downloadSize: row.download_size,
+      downloadUrl: row.source_url,
+      priority: row.priority || 'optional',
+      lastVerified: row.last_verified,
+    }));
+
+    res.json(data);
+  } catch (error) {
+    console.error('Failed to load equipment software updates, returning fallback:', error);
+    res.json(resolveFallbackSoftwareUpdates(profession));
+  }
 });
 
 app.get('/api/equipment/firmware-updates/:userId', async (req, res) => {
@@ -5271,6 +6054,154 @@ function legacySettingKey(userId: string, namespace: string, projectId?: string)
   return `${userId}::${projectId || ''}::${namespace}`;
 }
 
+function professionConfigCompatKey(profession: string): string {
+  return `profession-config::${profession}`;
+}
+
+function cloneJsonValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function buildDefaultProfessionConfig(profession: string) {
+  const defaultConfig = DEFAULT_PROFESSION_CONFIGS[profession];
+  if (!defaultConfig) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  return {
+    ...cloneJsonValue(defaultConfig),
+    id: profession,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: 'system',
+    isActive: true,
+    isDefault: true,
+  };
+}
+
+function mergeProfessionConfig(
+  baseConfig: Record<string, unknown>,
+  overrideConfig: Record<string, unknown>,
+) {
+  return {
+    ...baseConfig,
+    ...overrideConfig,
+    terminology: {
+      ...(baseConfig.terminology as Record<string, unknown> | undefined),
+      ...(overrideConfig.terminology as Record<string, unknown> | undefined),
+    },
+    settings: {
+      ...(baseConfig.settings as Record<string, unknown> | undefined),
+      ...(overrideConfig.settings as Record<string, unknown> | undefined),
+    },
+    workflows: {
+      ...(baseConfig.workflows as Record<string, unknown> | undefined),
+      ...(overrideConfig.workflows as Record<string, unknown> | undefined),
+    },
+    ui: {
+      ...(baseConfig.ui as Record<string, unknown> | undefined),
+      ...(overrideConfig.ui as Record<string, unknown> | undefined),
+    },
+    integrations: {
+      ...(baseConfig.integrations as Record<string, unknown> | undefined),
+      ...(overrideConfig.integrations as Record<string, unknown> | undefined),
+    },
+    metadataSchema: {
+      ...(baseConfig.metadataSchema as Record<string, unknown> | undefined),
+      ...(overrideConfig.metadataSchema as Record<string, unknown> | undefined),
+    },
+    enhancementPresets: {
+      ...(baseConfig.enhancementPresets as Record<string, unknown> | undefined),
+      ...(overrideConfig.enhancementPresets as Record<string, unknown> | undefined),
+    },
+    batchOperations: {
+      ...(baseConfig.batchOperations as Record<string, unknown> | undefined),
+      ...(overrideConfig.batchOperations as Record<string, unknown> | undefined),
+    },
+    analytics: {
+      ...(baseConfig.analytics as Record<string, unknown> | undefined),
+      ...(overrideConfig.analytics as Record<string, unknown> | undefined),
+    },
+  };
+}
+
+app.get('/api/profession/config/:profession', async (req, res) => {
+  const profession =
+    typeof req.params.profession === 'string'
+      ? req.params.profession.trim().toLowerCase()
+      : '';
+
+  const defaultConfig = buildDefaultProfessionConfig(profession);
+  if (!defaultConfig) {
+    res.status(404).json({ error: `Unknown profession: ${profession}` });
+    return;
+  }
+
+  try {
+    const storedConfig = await compatStoreGet<Record<string, unknown>>(professionConfigCompatKey(profession));
+    if (!storedConfig) {
+      res.json(defaultConfig);
+      return;
+    }
+
+    res.json(mergeProfessionConfig(defaultConfig, storedConfig));
+  } catch (error) {
+    console.error('Failed to load profession config, returning default:', {
+      profession,
+      error,
+    });
+    res.json(defaultConfig);
+  }
+});
+
+app.post('/api/profession/config/:profession', async (req, res) => {
+  const profession =
+    typeof req.params.profession === 'string'
+      ? req.params.profession.trim().toLowerCase()
+      : '';
+  const defaultConfig = buildDefaultProfessionConfig(profession);
+
+  if (!defaultConfig) {
+    res.status(404).json({ error: `Unknown profession: ${profession}` });
+    return;
+  }
+
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    res.status(400).json({ error: 'Invalid profession config payload' });
+    return;
+  }
+
+  try {
+    const incomingConfig = req.body as Record<string, unknown>;
+    const existingConfig =
+      (await compatStoreGet<Record<string, unknown>>(professionConfigCompatKey(profession))) ?? {};
+    const mergedConfig = mergeProfessionConfig(
+      mergeProfessionConfig(defaultConfig, existingConfig),
+      {
+        ...incomingConfig,
+        id: profession,
+        updatedAt: new Date().toISOString(),
+        createdAt:
+          typeof existingConfig.createdAt === 'string'
+            ? existingConfig.createdAt
+            : defaultConfig.createdAt,
+        createdBy:
+          typeof existingConfig.createdBy === 'string'
+            ? existingConfig.createdBy
+            : defaultConfig.createdBy,
+      },
+    );
+
+    await compatStoreSet(professionConfigCompatKey(profession), mergedConfig);
+    res.json(mergedConfig);
+  } catch (error) {
+    console.error('Failed to save profession config:', { profession, error });
+    res.status(500).json({ error: 'Failed to save profession config' });
+  }
+});
+
 function legacyFavoritesKey(projectId: string, favoriteType: string): string {
   return `${projectId}::${favoriteType}`;
 }
@@ -5858,8 +6789,188 @@ app.get('/api/settings/list', async (req, res) => {
   res.json({ entries });
 });
 
-app.get('/api/branding/settings', (_req, res) => {
-  res.json({ settings: {} });
+app.get('/api/branding/business-info', async (req, res) => {
+  const userId =
+    readString(req.query.userId)
+    || readString(req.query.user_id)
+    || readString(req.headers['x-user-id']);
+  const profession = readString(req.query.profession);
+
+  if (!userId) {
+    res.status(400).json({ error: 'userId is required' });
+    return;
+  }
+
+  try {
+    const storedBranding = await getStoredBusinessBrandingInfo(userId);
+    const branding = await resolveDocumentBranding(pool, userId, {
+      businessName: storedBranding.businessName,
+      email: storedBranding.email,
+      phone: storedBranding.phone,
+      website: storedBranding.website,
+      businessAddress: storedBranding.businessAddress,
+      organizationNumber: storedBranding.organizationNumber,
+      vatNumber: storedBranding.vatNumber,
+      tagline: storedBranding.tagline,
+      accentColor: storedBranding.brandingColor,
+      logoUrl: storedBranding.customLogo,
+      businessDescription: storedBranding.businessDescription,
+      customFooterText: storedBranding.customFooterText,
+    });
+
+    res.json({
+      businessInfo: toBusinessBrandingResponse(branding, {
+        ...storedBranding,
+        profession: profession || storedBranding.profession || '',
+      }),
+      source: branding.source,
+    });
+  } catch (error) {
+    console.error('Branding business info lookup failed:', error);
+    res.status(500).json({ error: 'Failed to load branding business info' });
+  }
+});
+
+app.put('/api/branding/business-info/:userId', async (req, res) => {
+  const userId = readString(req.params.userId);
+  if (!userId) {
+    res.status(400).json({ error: 'userId is required' });
+    return;
+  }
+
+  try {
+    const normalized = normalizeBusinessBrandingInfo(req.body);
+    normalized.profession =
+      readString(req.body?.profession)
+      || normalized.profession
+      || readString(req.headers['x-profession'])
+      || null;
+
+    const stored = await persistBusinessBrandingInfo(userId, normalized);
+    const branding = await resolveDocumentBranding(pool, userId, {
+      businessName: stored.businessName,
+      email: stored.email,
+      phone: stored.phone,
+      website: stored.website,
+      businessAddress: stored.businessAddress,
+      organizationNumber: stored.organizationNumber,
+      vatNumber: stored.vatNumber,
+      tagline: stored.tagline,
+      accentColor: stored.brandingColor,
+      logoUrl: stored.customLogo,
+      businessDescription: stored.businessDescription,
+      customFooterText: stored.customFooterText,
+    });
+
+    res.json({
+      ok: true,
+      businessInfo: toBusinessBrandingResponse(branding, stored),
+      source: branding.source,
+    });
+  } catch (error) {
+    console.error('Branding business info update failed:', error);
+    res.status(500).json({ error: 'Failed to update branding business info' });
+  }
+});
+
+app.post('/api/branding/upload-logo', brandingLogoUpload.single('logo'), async (req, res) => {
+  const userId =
+    readString(req.body?.userId)
+    || readString(req.body?.user_id)
+    || readString(req.headers['x-user-id']);
+
+  if (!userId || !req.file) {
+    res.status(400).json({ error: 'userId and logo are required' });
+    return;
+  }
+
+  try {
+    const fileName = readString(req.file.originalname) || 'branding-logo.png';
+    const mimeType = req.file.mimetype || resolveMimeType(fileName);
+    const dataUrl = `data:${mimeType};base64,${req.file.buffer.toString('base64')}`;
+    const stored = await persistBusinessBrandingInfo(userId, {
+      customLogo: dataUrl,
+      profession: readString(req.body?.profession),
+    });
+
+    await persistBrandingLogoAsset({
+      userId,
+      fileName,
+      dataUrl,
+      mimeType,
+      size: req.file.size,
+    });
+
+    res.json({
+      success: true,
+      logoUrl: stored.customLogo || dataUrl,
+      fileName,
+    });
+  } catch (error) {
+    console.error('Branding logo upload failed:', error);
+    res.status(500).json({ error: 'Failed to upload branding logo' });
+  }
+});
+
+app.delete('/api/branding/logo/:userId', async (req, res) => {
+  const userId = readString(req.params.userId);
+  if (!userId) {
+    res.status(400).json({ error: 'userId is required' });
+    return;
+  }
+
+  try {
+    const stored = await persistBusinessBrandingInfo(userId, {
+      customLogo: null,
+      profession: readString(req.query.profession),
+    });
+    const branding = await resolveDocumentBranding(pool, userId, {
+      businessName: stored.businessName,
+      email: stored.email,
+      phone: stored.phone,
+      website: stored.website,
+      businessAddress: stored.businessAddress,
+      organizationNumber: stored.organizationNumber,
+      vatNumber: stored.vatNumber,
+      tagline: stored.tagline,
+      accentColor: stored.brandingColor,
+      logoUrl: stored.customLogo,
+      businessDescription: stored.businessDescription,
+      customFooterText: stored.customFooterText,
+    });
+
+    res.json({
+      ok: true,
+      businessInfo: toBusinessBrandingResponse(branding, stored),
+      source: branding.source,
+    });
+  } catch (error) {
+    console.error('Branding logo delete failed:', error);
+    res.status(500).json({ error: 'Failed to delete branding logo' });
+  }
+});
+
+app.get('/api/branding/settings', async (req, res) => {
+  const userId =
+    readString(req.query.userId)
+    || readString(req.query.user_id)
+    || readString(req.headers['x-user-id']);
+
+  if (!userId) {
+    res.json({ settings: {} });
+    return;
+  }
+
+  try {
+    const stored = await getStoredBusinessBrandingInfo(userId);
+    res.json({
+      settings: {
+        businessInfo: stored,
+      },
+    });
+  } catch {
+    res.json({ settings: {} });
+  }
 });
 
 app.get('/api/pages/:pageId/published', (req, res) => {
@@ -7419,11 +8530,11 @@ app.get('/api/role-room/projects/:projectId/live-set/events', async (req, res) =
 app.post('/api/role-room/projects/:projectId/live-set/sync/ack', async (req, res) => {
   const projectId = req.params.projectId;
   const payload = req.body || {};
-  const eventIds = Array.isArray(payload.eventIds) ? payload.eventIds.map((value) => String(value)) : [];
+  const eventIds = Array.isArray(payload.eventIds) ? payload.eventIds.map((value: unknown) => String(value)) : [];
   const current = await getLegacyLiveSetEvents(projectId);
   const known = new Set(current.map((event) => String(event?.eventId || event?.id || '')));
-  const ackedEventIds = eventIds.filter((eventId) => known.has(eventId));
-  const unknownEventIds = eventIds.filter((eventId) => !known.has(eventId));
+  const ackedEventIds = eventIds.filter((eventId: string) => known.has(eventId));
+  const unknownEventIds = eventIds.filter((eventId: string) => !known.has(eventId));
   res.json({ success: true, ackedEventIds, unknownEventIds });
 });
 
@@ -8050,6 +9161,519 @@ function normalizeBase64Upload(payload: string, fileName?: string | null) {
     size: buffer.length,
     mimeType
   };
+}
+
+type BusinessBrandingInfoRecord = {
+  businessName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  businessAddress?: string | null;
+  organizationNumber?: string | null;
+  website?: string | null;
+  vatNumber?: string | null;
+  tagline?: string | null;
+  brandingColor?: string | null;
+  customLogo?: string | null;
+  businessDescription?: string | null;
+  customFooterText?: string | null;
+  profession?: string | null;
+};
+
+function normalizeBrandingHexColor(value: unknown): string | null {
+  const raw = readString(value);
+  if (!raw) return null;
+  const normalized = raw.startsWith('#') ? raw.slice(1) : raw;
+  if (/^[0-9a-f]{3}$/i.test(normalized)) {
+    return `#${normalized
+      .split('')
+      .map((entry) => `${entry}${entry}`)
+      .join('')
+      .toLowerCase()}`;
+  }
+  if (/^[0-9a-f]{6}$/i.test(normalized)) {
+    return `#${normalized.toLowerCase()}`;
+  }
+  return null;
+}
+
+function normalizeBusinessBrandingInfo(payload: unknown): BusinessBrandingInfoRecord {
+  const record = normalizeJsonObjectField(payload) || {};
+  return {
+    businessName:
+      readString(record.businessName)
+      || readString(record.companyName)
+      || readString(record.name),
+    email:
+      readString(record.email)
+      || readString(record.contactEmail),
+    phone: readString(record.phone),
+    businessAddress:
+      readString(record.businessAddress)
+      || readString(record.address),
+    organizationNumber:
+      readString(record.organizationNumber)
+      || readString(record.orgNumber),
+    website: readString(record.website),
+    vatNumber:
+      readString(record.vatNumber)
+      || readString(record.taxId),
+    tagline: readString(record.tagline),
+    brandingColor:
+      normalizeBrandingHexColor(record.brandingColor)
+      || normalizeBrandingHexColor(record.brandColor)
+      || normalizeBrandingHexColor(record.primaryColor),
+    customLogo:
+      readString(record.customLogo)
+      || readString(record.logoUrl)
+      || readString(record.logo),
+    businessDescription:
+      readString(record.businessDescription)
+      || readString(record.description),
+    customFooterText:
+      readString(record.customFooterText)
+      || readString(record.footerText),
+    profession: readString(record.profession),
+  };
+}
+
+function toBusinessBrandingResponse(
+  branding: DocumentBrandingProfile,
+  overrides?: BusinessBrandingInfoRecord | null,
+) {
+  return {
+    businessName: overrides?.businessName ?? branding.businessName ?? '',
+    email: overrides?.email ?? branding.email ?? '',
+    phone: overrides?.phone ?? branding.phone ?? '',
+    businessAddress: overrides?.businessAddress ?? branding.businessAddress ?? '',
+    organizationNumber: overrides?.organizationNumber ?? branding.organizationNumber ?? '',
+    website: overrides?.website ?? branding.website ?? '',
+    vatNumber: overrides?.vatNumber ?? branding.vatNumber ?? '',
+    tagline: overrides?.tagline ?? branding.tagline ?? '',
+    brandingColor: overrides?.brandingColor ?? branding.accentColor ?? '',
+    customLogo: overrides?.customLogo ?? branding.logoUrl ?? '',
+    businessDescription: overrides?.businessDescription ?? branding.businessDescription ?? '',
+    customFooterText: overrides?.customFooterText ?? branding.customFooterText ?? '',
+    profession: overrides?.profession ?? '',
+  };
+}
+
+function brandingSettingsStoreKey(userId: string) {
+  return dbLegacySettingKey(userId, BUSINESS_BRANDING_SETTINGS_NAMESPACE);
+}
+
+function userSettingsStoreKey(userId: string) {
+  return dbLegacySettingKey(userId, 'creatorhub_user_settings');
+}
+
+function normalizeBrandingProfession(profession: string | null | undefined): string {
+  const normalized = readString(profession)?.toLowerCase();
+  if (!normalized) return 'other';
+  if (normalized === 'music_producer') return 'musician';
+  if (normalized === 'enterprise') return 'other';
+  return normalized;
+}
+
+function omitNilValues(record: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(record).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+  );
+}
+
+async function getStoredBusinessBrandingInfo(userId: string): Promise<BusinessBrandingInfoRecord> {
+  const entry = await compatStoreGet<LegacySettingEntry>(brandingSettingsStoreKey(userId));
+  return normalizeBusinessBrandingInfo(entry?.data);
+}
+
+async function syncBrandingIntoUserSettings(
+  userId: string,
+  businessInfo: BusinessBrandingInfoRecord,
+): Promise<void> {
+  try {
+    const existingEntry = await compatStoreGet<LegacySettingEntry>(userSettingsStoreKey(userId));
+    const existingData = normalizeJsonObjectField(existingEntry?.data) || {};
+    const existingUi = normalizeJsonObjectField(existingData.ui) || {};
+    const nextUi = {
+      ...existingUi,
+      ...(businessInfo.brandingColor
+        ? {
+            accentColor: businessInfo.brandingColor,
+            primaryColor: readString(existingUi.primaryColor) || businessInfo.brandingColor,
+          }
+        : {}),
+    };
+
+    const nextEntry: LegacySettingEntry = {
+      userId,
+      projectId: existingEntry?.projectId,
+      namespace: 'creatorhub_user_settings',
+      data: {
+        ...existingData,
+        ui: nextUi,
+      },
+    };
+
+    await compatStoreSet(userSettingsStoreKey(userId), nextEntry);
+  } catch (error) {
+    console.warn('Unable to mirror branding into user settings:', error);
+  }
+}
+
+async function mirrorBusinessBrandingToProfiles(
+  userId: string,
+  profession: string | null | undefined,
+  businessInfo: BusinessBrandingInfoRecord,
+): Promise<void> {
+  const vendorType = normalizeBrandingProfession(profession || businessInfo.profession);
+  const vendorName = businessInfo.businessName || 'CreatorHub';
+  const now = new Date().toISOString();
+  const businessInfoPatch = omitNilValues({
+    businessName: businessInfo.businessName,
+    companyName: businessInfo.businessName,
+    email: businessInfo.email,
+    contactEmail: businessInfo.email,
+    phone: businessInfo.phone,
+    website: businessInfo.website,
+    businessAddress: businessInfo.businessAddress,
+    organizationNumber: businessInfo.organizationNumber,
+    orgNumber: businessInfo.organizationNumber,
+    vatNumber: businessInfo.vatNumber,
+    tagline: businessInfo.tagline,
+    brandingColor: businessInfo.brandingColor,
+    customLogo: businessInfo.customLogo,
+    logoUrl: businessInfo.customLogo,
+    businessDescription: businessInfo.businessDescription,
+    description: businessInfo.businessDescription,
+    customFooterText: businessInfo.customFooterText,
+    updatedFromBrandingSettingsAt: now,
+  });
+  const contactInfoPatch = omitNilValues({
+    email: businessInfo.email,
+    phone: businessInfo.phone,
+    website: businessInfo.website,
+    address: businessInfo.businessAddress,
+  });
+
+  if (Object.prototype.hasOwnProperty.call(businessInfo, 'customLogo')) {
+    businessInfoPatch.customLogo = businessInfo.customLogo ?? null;
+    businessInfoPatch.logoUrl = businessInfo.customLogo ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(businessInfo, 'brandingColor')) {
+    businessInfoPatch.brandingColor = businessInfo.brandingColor ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(businessInfo, 'customFooterText')) {
+    businessInfoPatch.customFooterText = businessInfo.customFooterText ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(businessInfo, 'businessDescription')) {
+    businessInfoPatch.businessDescription = businessInfo.businessDescription ?? null;
+    businessInfoPatch.description = businessInfo.businessDescription ?? null;
+  }
+
+  if (await hasTable('vendors')) {
+    try {
+      const vendorColumns = await getTableColumns('vendors');
+      if (vendorColumns.has('user_id')) {
+        const selectFragments = ['id'];
+        if (vendorColumns.has('business_info')) selectFragments.push('business_info');
+        if (vendorColumns.has('contact_info')) selectFragments.push('contact_info');
+
+        const existingVendor = await pool.query(
+          `SELECT ${selectFragments.join(', ')}
+             FROM vendors
+            WHERE user_id = $1
+            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+            LIMIT 1`,
+          [userId],
+        );
+
+        if (existingVendor.rows[0]?.id) {
+          const mergedBusinessInfo = vendorColumns.has('business_info')
+            ? {
+                ...(normalizeJsonObjectField(existingVendor.rows[0].business_info) || {}),
+                ...businessInfoPatch,
+              }
+            : null;
+          const mergedContactInfo = vendorColumns.has('contact_info')
+            ? {
+                ...(normalizeJsonObjectField(existingVendor.rows[0].contact_info) || {}),
+                ...contactInfoPatch,
+              }
+            : null;
+
+          const assignments: string[] = [];
+          const values: unknown[] = [existingVendor.rows[0].id];
+          let parameterIndex = values.length + 1;
+
+          if (vendorColumns.has('vendor_name')) {
+            assignments.push(`vendor_name = $${parameterIndex++}`);
+            values.push(vendorName);
+          }
+          if (vendorColumns.has('vendor_type')) {
+            assignments.push(`vendor_type = $${parameterIndex++}`);
+            values.push(vendorType);
+          }
+          if (vendorColumns.has('business_info')) {
+            assignments.push(`business_info = $${parameterIndex++}::jsonb`);
+            values.push(JSON.stringify(mergedBusinessInfo));
+          }
+          if (vendorColumns.has('contact_info')) {
+            assignments.push(`contact_info = $${parameterIndex++}::jsonb`);
+            values.push(JSON.stringify(mergedContactInfo));
+          }
+          if (vendorColumns.has('business_name')) {
+            assignments.push(`business_name = $${parameterIndex++}`);
+            values.push(businessInfo.businessName ?? vendorName);
+          }
+          if (vendorColumns.has('organization_number')) {
+            assignments.push(`organization_number = $${parameterIndex++}`);
+            values.push(businessInfo.organizationNumber ?? null);
+          }
+          if (vendorColumns.has('description')) {
+            assignments.push(`description = $${parameterIndex++}`);
+            values.push(businessInfo.businessDescription ?? null);
+          }
+          if (vendorColumns.has('phone')) {
+            assignments.push(`phone = $${parameterIndex++}`);
+            values.push(businessInfo.phone ?? null);
+          }
+          if (vendorColumns.has('website')) {
+            assignments.push(`website = $${parameterIndex++}`);
+            values.push(businessInfo.website ?? null);
+          }
+          if (vendorColumns.has('image_url')) {
+            assignments.push(`image_url = $${parameterIndex++}`);
+            values.push(businessInfo.customLogo ?? null);
+          }
+          if (vendorColumns.has('updated_at')) {
+            assignments.push('updated_at = NOW()');
+          }
+
+          if (assignments.length > 0) {
+            await pool.query(
+              `UPDATE vendors SET ${assignments.join(', ')} WHERE id = $1`,
+              values,
+            );
+          }
+        } else {
+          const insertColumns = ['id', 'user_id'];
+          const insertValues: unknown[] = [crypto.randomUUID(), userId];
+          const insertFragments = ['$1', '$2'];
+          let parameterIndex = insertValues.length + 1;
+
+          if (vendorColumns.has('vendor_name')) {
+            insertColumns.push('vendor_name');
+            insertValues.push(vendorName);
+            insertFragments.push(`$${parameterIndex++}`);
+          }
+          if (vendorColumns.has('vendor_type')) {
+            insertColumns.push('vendor_type');
+            insertValues.push(vendorType);
+            insertFragments.push(`$${parameterIndex++}`);
+          }
+          if (vendorColumns.has('contact_info')) {
+            insertColumns.push('contact_info');
+            insertValues.push(JSON.stringify(contactInfoPatch));
+            insertFragments.push(`$${parameterIndex++}::jsonb`);
+          }
+          if (vendorColumns.has('business_info')) {
+            insertColumns.push('business_info');
+            insertValues.push(JSON.stringify(businessInfoPatch));
+            insertFragments.push(`$${parameterIndex++}::jsonb`);
+          }
+          if (vendorColumns.has('business_name')) {
+            insertColumns.push('business_name');
+            insertValues.push(businessInfo.businessName ?? vendorName);
+            insertFragments.push(`$${parameterIndex++}`);
+          }
+          if (vendorColumns.has('organization_number')) {
+            insertColumns.push('organization_number');
+            insertValues.push(businessInfo.organizationNumber ?? null);
+            insertFragments.push(`$${parameterIndex++}`);
+          }
+          if (vendorColumns.has('description')) {
+            insertColumns.push('description');
+            insertValues.push(businessInfo.businessDescription ?? null);
+            insertFragments.push(`$${parameterIndex++}`);
+          }
+          if (vendorColumns.has('phone')) {
+            insertColumns.push('phone');
+            insertValues.push(businessInfo.phone ?? null);
+            insertFragments.push(`$${parameterIndex++}`);
+          }
+          if (vendorColumns.has('website')) {
+            insertColumns.push('website');
+            insertValues.push(businessInfo.website ?? null);
+            insertFragments.push(`$${parameterIndex++}`);
+          }
+          if (vendorColumns.has('image_url')) {
+            insertColumns.push('image_url');
+            insertValues.push(businessInfo.customLogo ?? null);
+            insertFragments.push(`$${parameterIndex++}`);
+          }
+          if (vendorColumns.has('created_at')) {
+            insertColumns.push('created_at');
+            insertFragments.push('NOW()');
+          }
+          if (vendorColumns.has('updated_at')) {
+            insertColumns.push('updated_at');
+            insertFragments.push('NOW()');
+          }
+
+          await pool.query(
+            `INSERT INTO vendors (${insertColumns.join(', ')}) VALUES (${insertFragments.join(', ')})`,
+            insertValues,
+          );
+        }
+      }
+    } catch (error) {
+      if (!isUndefinedTableError(error, 'vendors')) {
+        console.warn('Unable to mirror business branding to vendors:', error);
+      }
+    }
+  }
+
+  if (await hasTable('vendor_onboarding_profiles')) {
+    try {
+      const existingProfile = await pool.query(
+        `SELECT id, business_info
+           FROM vendor_onboarding_profiles
+          WHERE user_id = $1
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          LIMIT 1`,
+        [userId],
+      );
+
+      if (existingProfile.rows[0]?.id) {
+        const mergedBusinessInfo = {
+          ...(normalizeJsonObjectField(existingProfile.rows[0].business_info) || {}),
+          ...businessInfoPatch,
+        };
+
+        await pool.query(
+          `UPDATE vendor_onboarding_profiles
+              SET vendor_name = COALESCE($2, vendor_name),
+                  vendor_type = COALESCE($3, vendor_type),
+                  business_info = $4::jsonb,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [
+            existingProfile.rows[0].id,
+            vendorName,
+            vendorType,
+            JSON.stringify(mergedBusinessInfo),
+          ],
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO vendor_onboarding_profiles (
+             id, user_id, vendor_type, vendor_name, business_info, vendor_specific_data,
+             is_complete, completed_at, created_at, updated_at
+           ) VALUES (
+             $1, $2, $3, $4, $5::jsonb, '{}'::jsonb, false, NULL, NOW(), NOW()
+           )`,
+          [
+            crypto.randomUUID(),
+            userId,
+            vendorType,
+            vendorName,
+            JSON.stringify(businessInfoPatch),
+          ],
+        );
+      }
+    } catch (error) {
+      if (!isUndefinedTableError(error, 'vendor_onboarding_profiles')) {
+        console.warn('Unable to mirror business branding to onboarding profiles:', error);
+      }
+    }
+  }
+}
+
+async function persistBusinessBrandingInfo(
+  userId: string,
+  businessInfo: BusinessBrandingInfoRecord,
+): Promise<BusinessBrandingInfoRecord> {
+  const existing = await getStoredBusinessBrandingInfo(userId);
+  const next: BusinessBrandingInfoRecord = {
+    ...existing,
+    ...businessInfo,
+  };
+
+  const entry: LegacySettingEntry = {
+    userId,
+    namespace: BUSINESS_BRANDING_SETTINGS_NAMESPACE,
+    data: next,
+  };
+
+  await compatStoreSet(brandingSettingsStoreKey(userId), entry);
+  await syncBrandingIntoUserSettings(userId, next);
+  await mirrorBusinessBrandingToProfiles(userId, next.profession, next);
+  return next;
+}
+
+async function persistBrandingLogoAsset(params: {
+  userId: string;
+  fileName: string;
+  dataUrl: string;
+  mimeType: string;
+  size: number;
+}) {
+  if (!(await hasTable('user_files'))) {
+    return;
+  }
+
+  try {
+    const columns = await getTableColumns('user_files');
+    const insertColumns = [
+      'id',
+      'user_id',
+      'file_name',
+      'file_path',
+      'file_type',
+      'file_size',
+      'mime_type',
+      'metadata',
+    ].filter((column) => columns.has(column));
+
+    if (columns.has('file_url')) {
+      insertColumns.splice(4, 0, 'file_url');
+    }
+
+    if (insertColumns.length === 0) {
+      return;
+    }
+
+    const values = insertColumns.map((column) => {
+      switch (column) {
+        case 'id':
+          return crypto.randomUUID();
+        case 'user_id':
+          return params.userId;
+        case 'file_name':
+          return params.fileName;
+        case 'file_path':
+          return `branding-logos/${params.userId}/${Date.now()}-${params.fileName}`;
+        case 'file_url':
+          return params.dataUrl;
+        case 'file_type':
+          return 'branding_logo';
+        case 'file_size':
+          return String(params.size);
+        case 'mime_type':
+          return params.mimeType;
+        case 'metadata':
+          return JSON.stringify({ source: 'branding-settings' });
+        default:
+          return null;
+      }
+    });
+
+    const placeholders = insertColumns.map((_, index) => `$${index + 1}`).join(', ');
+    await pool.query(
+      `INSERT INTO user_files (${insertColumns.join(', ')}) VALUES (${placeholders})`,
+      values,
+    );
+  } catch (error) {
+    console.warn('Unable to persist branding logo asset:', error);
+  }
 }
 
 function normalizeEquipmentType(raw?: string | null): EquipmentType {
@@ -9225,6 +10849,82 @@ function isMissingRelationError(error: unknown): boolean {
   return pgError.code === '42P01';
 }
 
+function isMissingColumnError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const pgError = error as PostgresErrorLike;
+  return pgError.code === '42703';
+}
+
+type SalesLeadsStorageShape = 'modern' | 'legacy';
+let salesLeadsStorageShapeCache:
+  | { value: SalesLeadsStorageShape; checkedAt: number }
+  | null = null;
+
+async function resolveSalesLeadsStorageShape(): Promise<SalesLeadsStorageShape> {
+  const now = Date.now();
+  if (salesLeadsStorageShapeCache && now - salesLeadsStorageShapeCache.checkedAt < 60_000) {
+    return salesLeadsStorageShapeCache.value;
+  }
+
+  try {
+    const result = await pool.query<{ column_name: string }>(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'sales_leads'`,
+    );
+
+    const columns = new Set(result.rows.map((row) => String(row.column_name)));
+    const shape: SalesLeadsStorageShape = columns.has('contact_name') && !columns.has('name')
+      ? 'legacy'
+      : 'modern';
+    salesLeadsStorageShapeCache = {
+      value: shape,
+      checkedAt: now,
+    };
+    return shape;
+  } catch {
+    return 'modern';
+  }
+}
+
+function buildSalesLeadSelectColumns(shape: SalesLeadsStorageShape): string {
+  if (shape === 'legacy') {
+    return `
+      id, user_id,
+      contact_name AS name,
+      contact_email AS email,
+      contact_phone AS phone,
+      company,
+      NULL::varchar AS project_type,
+      status,
+      source,
+      estimated_value AS value,
+      probability,
+      NULL::varchar AS timeline,
+      NULL::timestamp AS last_contact,
+      expected_close_date AS next_follow,
+      NULL::varchar AS location,
+      notes AS special_requests,
+      NULL::varchar AS customer_type,
+      NULL::varchar AS submission_id,
+      NULL::varchar AS project_id,
+      created_at,
+      updated_at
+    `;
+  }
+
+  return `
+    id, user_id, name, email, phone, company, project_type, status, source, value, probability,
+    timeline, last_contact, next_follow, location, special_requests, customer_type, submission_id,
+    project_id, created_at, updated_at
+  `;
+}
+
+function buildSalesLeadSelectQuery(shape: SalesLeadsStorageShape): string {
+  return `SELECT ${buildSalesLeadSelectColumns(shape)} FROM sales_leads`;
+}
+
 // GET /api/wedding-projects — fetch recent wedding/photo projects for dashboard overview
 app.get('/api/wedding-projects', async (req, res) => {
   try {
@@ -9636,9 +11336,15 @@ app.get('/api/file-management/google-photos/status', async (req, res) => {
 // GET /api/communication/google-chat/status — verify Google Chat integration health
 app.get('/api/communication/google-chat/status', async (req, res) => {
   try {
+    const forceRefresh = ['1', 'true', 'yes'].includes(String(req.query.force ?? '').toLowerCase());
     const headerUserId = readString(req.headers['x-user-id']);
     const queryUserId = readString(req.query.userId);
     const userId = queryUserId || headerUserId;
+    const liveCheck = await getGoogleChatLiveHealthCheck({
+      forceRefresh,
+      pool,
+      userId,
+    });
 
     const params: string[] = [];
     const filters: string[] = [];
@@ -9648,52 +11354,63 @@ app.get('/api/communication/google-chat/status', async (req, res) => {
     }
     const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
 
-    const result = await pool.query(
-      `SELECT user_id, space_id, space_name, sync_status, sync_enabled, last_sync, updated_at
-       FROM google_chat_connected
-       ${whereClause}
-       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-       LIMIT 1`,
-      params
-    );
+    let dbConnection: Record<string, unknown> | null = null;
 
-    if (!result.rows.length) {
-      return res.status(200).json({
-        connected: false,
-        status: 'disconnected',
-        message: 'No Google Chat connection found',
-      });
+    try {
+      const result = await pool.query(
+        `SELECT user_id, space_id, space_name, sync_status, sync_enabled, last_sync, updated_at
+         FROM google_chat_connected
+         ${whereClause}
+         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+         LIMIT 1`,
+        params
+      );
+
+      if (!result.rows.length) {
+        dbConnection = {
+          connected: false,
+          status: 'disconnected',
+          message: 'No Google Chat connection found',
+        };
+      } else {
+        const row = result.rows[0] as Record<string, unknown>;
+        dbConnection = {
+          connected:
+            String(row.sync_status || '').toLowerCase() === 'active'
+            && Boolean(row.sync_enabled),
+          status: row.sync_status || 'disconnected',
+          syncEnabled: Boolean(row.sync_enabled),
+          spaceId: row.space_id || null,
+          spaceName: row.space_name || null,
+          lastSync: row.last_sync || null,
+          updatedAt: row.updated_at || null,
+        };
+      }
+    } catch (error) {
+      if (isMissingRelationError(error)) {
+        dbConnection = {
+          connected: false,
+          status: 'unavailable',
+          message: 'Google Chat integration table not available',
+        };
+      } else {
+        throw error;
+      }
     }
 
-    const row = result.rows[0] as Record<string, unknown>;
-    const connected =
-      String(row.sync_status || '').toLowerCase() === 'active' &&
-      Boolean(row.sync_enabled);
-
-    if (!connected) {
-      return res.status(200).json({
-        connected: false,
-        status: row.sync_status || 'disconnected',
-        syncEnabled: Boolean(row.sync_enabled),
-        lastSync: row.last_sync || null,
-      });
-    }
-
-    res.json({
-      connected: true,
-      status: 'active',
-      spaceId: row.space_id || null,
-      spaceName: row.space_name || null,
-      lastSync: row.last_sync || null,
+    res.status(200).json({
+      connected: liveCheck.connected,
+      status: liveCheck.status,
+      message: liveCheck.message,
+      checkedAt: liveCheck.checkedAt,
+      source: liveCheck.source,
+      grantedScopes: liveCheck.grantedScopes,
+      missingScopes: liveCheck.missingScopes,
+      sampleSpace: liveCheck.sampleSpace ?? null,
+      connection: liveCheck.connection ?? null,
+      dbConnection,
     });
   } catch (error) {
-    if (isMissingRelationError(error)) {
-      return res.status(200).json({
-        connected: false,
-        status: 'unavailable',
-        message: 'Google Chat integration table not available',
-      });
-    }
     console.error('Google Chat status check failed:', error);
     res.status(500).json({
       connected: false,
@@ -9864,14 +11581,9 @@ app.get('/api/sales/leads/:status', async (req, res) => {
       return res.json([]);
     }
 
+    const storageShape = await resolveSalesLeadsStorageShape();
     const params: string[] = [userId];
-    let query = `
-      SELECT id, user_id, name, email, phone, company, project_type, status, source, value, probability,
-             timeline, last_contact, next_follow, location, special_requests, customer_type, submission_id,
-             project_id, created_at, updated_at
-      FROM sales_leads
-      WHERE user_id = $1
-    `;
+    let query = `${buildSalesLeadSelectQuery(storageShape)} WHERE user_id = $1`;
 
     if (status !== 'all') {
       params.push(status);
@@ -9884,7 +11596,7 @@ app.get('/api/sales/leads/:status', async (req, res) => {
     res.json(result.rows.map((row: Record<string, unknown>) => mapSalesLeadRow(row)));
   } catch (error) {
     console.error('Error fetching sales leads:', error);
-    if (isMissingRelationError(error)) {
+    if (isMissingRelationError(error) || isMissingColumnError(error)) {
       return res.json([]);
     }
     res.status(500).json({ error: 'Could not fetch sales leads' });
@@ -9899,6 +11611,7 @@ app.put('/api/sales/leads/:leadId', async (req, res) => {
       return res.status(400).json({ error: 'Lead ID is required' });
     }
 
+    const storageShape = await resolveSalesLeadsStorageShape();
     const payload = req.body as Record<string, unknown>;
     const updates: string[] = [];
     const params: unknown[] = [];
@@ -9910,28 +11623,30 @@ app.put('/api/sales/leads/:leadId', async (req, res) => {
 
     if (readString(payload.status)) assign('status', readString(payload.status));
     if (readNumber(payload.probability) !== null) assign('probability', readNumber(payload.probability));
-    if (readString(payload.nextFollow)) assign('next_follow', readString(payload.nextFollow));
-    if (readString(payload.lastContact)) assign('last_contact', readString(payload.lastContact));
-    if (readNumber(payload.value) !== null) assign('value', readNumber(payload.value));
-    if (readString(payload.projectId)) assign('project_id', readString(payload.projectId));
-    if (readString(payload.notes)) assign('special_requests', readString(payload.notes));
-    if (readString(payload.timeline)) assign('timeline', readString(payload.timeline));
-    if (readString(payload.location)) assign('location', readString(payload.location));
+    if (readString(payload.nextFollow)) {
+      assign(storageShape === 'legacy' ? 'expected_close_date' : 'next_follow', readString(payload.nextFollow));
+    }
+    if (readString(payload.lastContact) && storageShape === 'modern') {
+      assign('last_contact', readString(payload.lastContact));
+    }
+    if (readNumber(payload.value) !== null) {
+      assign(storageShape === 'legacy' ? 'estimated_value' : 'value', readNumber(payload.value));
+    }
+    if (readString(payload.projectId) && storageShape === 'modern') assign('project_id', readString(payload.projectId));
+    if (readString(payload.notes)) {
+      assign(storageShape === 'legacy' ? 'notes' : 'special_requests', readString(payload.notes));
+    }
+    if (readString(payload.timeline) && storageShape === 'modern') assign('timeline', readString(payload.timeline));
+    if (readString(payload.location) && storageShape === 'modern') assign('location', readString(payload.location));
 
     updates.push('updated_at = NOW()');
-
-    if (!updates.length) {
-      return res.status(400).json({ error: 'No valid updates provided' });
-    }
 
     params.push(leadId);
     const result = await pool.query(
       `UPDATE sales_leads
        SET ${updates.join(', ')}
        WHERE id = $${params.length}
-       RETURNING id, user_id, name, email, phone, company, project_type, status, source, value, probability,
-                 timeline, last_contact, next_follow, location, special_requests, customer_type, submission_id,
-                 project_id, created_at, updated_at`,
+       RETURNING ${buildSalesLeadSelectColumns(storageShape)}`,
       params
     );
 
@@ -9942,7 +11657,7 @@ app.put('/api/sales/leads/:leadId', async (req, res) => {
     res.json(mapSalesLeadRow(result.rows[0] as Record<string, unknown>));
   } catch (error) {
     console.error('Error updating sales lead:', error);
-    if (isMissingRelationError(error)) {
+    if (isMissingRelationError(error) || isMissingColumnError(error)) {
       return res.status(503).json({ error: 'Sales leads table is not available' });
     }
     res.status(500).json({ error: 'Could not update sales lead' });
@@ -11468,15 +13183,35 @@ app.get('/api/file-management/google-photos/status', (req, res) => {
 });
 
 // Communication integration health
-app.get('/api/communication/google-chat/status', (req, res) => {
-  const userId = compatResolveUserId(req);
-  res.json({
-    connected: true,
-    status: 'ok',
-    userId,
-    provider: 'google-chat',
-    lastChecked: new Date().toISOString(),
-  });
+app.get('/api/communication/google-chat/status', async (req, res) => {
+  try {
+    const forceRefresh = ['1', 'true', 'yes'].includes(String(req.query.force ?? '').toLowerCase());
+    const userId = compatResolveUserId(req);
+    const liveCheck = await getGoogleChatLiveHealthCheck({
+      forceRefresh,
+      pool,
+      userId: userId === 'guest' ? null : userId,
+    });
+    res.json({
+      connected: liveCheck.connected,
+      status: liveCheck.status,
+      userId,
+      provider: 'google-chat',
+      lastChecked: liveCheck.checkedAt,
+      message: liveCheck.message,
+      source: liveCheck.source,
+      grantedScopes: liveCheck.grantedScopes,
+      missingScopes: liveCheck.missingScopes,
+      sampleSpace: liveCheck.sampleSpace ?? null,
+      connection: liveCheck.connection ?? null,
+    });
+  } catch (error) {
+    res.status(500).json({
+      connected: false,
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to check Google Chat status',
+    });
+  }
 });
 
 // Google Workspace storage summary
@@ -12918,6 +14653,10 @@ const academyPresentationSuggestTitle = (
     process: `Steg ${index + 1}`,
     kpi: 'Resultater',
     timeline: 'Fremdrift',
+    roadmap: 'Veikart',
+    architecture: 'Arkitektur',
+    scenario: 'Scenario',
+    'knowledge-check': 'Kunnskapssjekk',
     comparison: 'Sammenligning',
     demo: 'Demo',
     quote: 'Kundesitat',
@@ -12933,6 +14672,10 @@ const academyPresentationSuggestTitle = (
     process: `Step ${index + 1}`,
     kpi: 'Results',
     timeline: 'Roadmap',
+    roadmap: 'Roadmap',
+    architecture: 'Architecture',
+    scenario: 'Scenario',
+    'knowledge-check': 'Knowledge Check',
     comparison: 'Comparison',
     demo: 'Demo',
     quote: 'Customer Quote',
@@ -46518,6 +48261,56 @@ app.patch('/api/user/preferences/tutorial/:id/progress', (req, res) => {
 // User Interface Preferences API - DB Persistence
 // ============================================
 
+type InterfacePreferencesPayload = {
+  theme: string;
+  language: string;
+  notificationsEnabled: boolean;
+  dashboardLayout: string;
+  timezone: string;
+  currency: string;
+};
+
+function getDefaultInterfacePreferences(): InterfacePreferencesPayload {
+  return {
+    theme: 'light',
+    language: 'nb-NO',
+    notificationsEnabled: true,
+    dashboardLayout: 'cards',
+    timezone: 'Europe/Oslo',
+    currency: 'NOK',
+  };
+}
+
+function normalizeInterfacePreferencesRecord(
+  row: Record<string, unknown> | null | undefined,
+): InterfacePreferencesPayload {
+  const defaults = getDefaultInterfacePreferences();
+  const preferences = readJsonObject(row?.preferences);
+  const dashboard = readJsonObject(row?.dashboard);
+  const notifications = readJsonObject(row?.notifications);
+
+  const notificationsEnabled =
+    typeof notifications.enabled === 'boolean'
+      ? notifications.enabled
+      : typeof preferences.notificationsEnabled === 'boolean'
+        ? preferences.notificationsEnabled
+        : defaults.notificationsEnabled;
+
+  const dashboardLayout =
+    readString(dashboard.layout)
+    || readString(preferences.dashboardLayout)
+    || defaults.dashboardLayout;
+
+  return {
+    theme: readString(row?.theme) || readString(preferences.theme) || defaults.theme,
+    language: readString(row?.language) || readString(preferences.language) || defaults.language,
+    notificationsEnabled,
+    dashboardLayout,
+    timezone: readString(row?.timezone) || readString(preferences.timezone) || defaults.timezone,
+    currency: readString(preferences.currency) || defaults.currency,
+  };
+}
+
 // Get user interface preferences
 app.get('/api/user/interface-preferences/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
@@ -46541,12 +48334,22 @@ app.get('/api/user/interface-preferences/:sessionId', async (req, res) => {
   }
   
   try {
-    const prefs = await db.select().from(schema.userPreferences).where(eq(schema.userPreferences.sessionId, sessionId));
-    
-    if (prefs.length > 0) {
+    const prefs = await pool.query<Record<string, unknown>>(
+      `SELECT id, user_id, preferences, theme, language, timezone, notifications, dashboard, created_at, updated_at
+       FROM user_preferences
+       WHERE user_id = $1
+       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+       LIMIT 1`,
+      [sessionId],
+    );
+
+    if (prefs.rows.length > 0) {
+      const normalized = normalizeInterfacePreferencesRecord(prefs.rows[0]);
+      compatInterfacePreferencesStore.set(sessionId, normalized);
+      await compatStoreSet(dbCompatInterfacePreferencesKey(sessionId), normalized);
       return res.json({
         success: true,
-        preferences: prefs[0],
+        preferences: normalized,
         source: 'database'
       });
     }
@@ -46554,28 +48357,14 @@ app.get('/api/user/interface-preferences/:sessionId', async (req, res) => {
     // Return defaults if no preferences found
     res.json({
       success: true,
-      preferences: {
-        theme: 'light',
-        language: 'nb-NO',
-        notificationsEnabled: true,
-        dashboardLayout: 'cards',
-        timezone: 'Europe/Oslo',
-        currency: 'NOK'
-      },
+      preferences: getDefaultInterfacePreferences(),
       source: 'defaults'
     });
   } catch (error) {
     console.error('Error fetching interface preferences:', error);
     res.json({
       success: true,
-      preferences: {
-        theme: 'light',
-        language: 'nb-NO',
-        notificationsEnabled: true,
-        dashboardLayout: 'cards',
-        timezone: 'Europe/Oslo',
-        currency: 'NOK'
-      },
+      preferences: getDefaultInterfacePreferences(),
       source: 'defaults'
     });
   }
@@ -46594,35 +48383,75 @@ app.put('/api/user/interface-preferences/:sessionId', async (req, res) => {
   await compatStoreSet(dbCompatInterfacePreferencesKey(sessionId), compatNext);
   
   try {
-    // Check if preferences exist
-    const existing = await db.select().from(schema.userPreferences).where(eq(schema.userPreferences.sessionId, sessionId));
-    
-    if (existing.length > 0) {
+    const normalized = {
+      ...getDefaultInterfacePreferences(),
+      ...(preferences || {}),
+    };
+    const existing = await pool.query<{ id: string }>(
+      `SELECT id
+       FROM user_preferences
+       WHERE user_id = $1
+       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+       LIMIT 1`,
+      [sessionId],
+    );
+
+    const dashboardPayload = {
+      layout: normalized.dashboardLayout,
+    };
+    const notificationsPayload = {
+      enabled: normalized.notificationsEnabled,
+    };
+    const preferencesPayload = {
+      theme: normalized.theme,
+      language: normalized.language,
+      notificationsEnabled: normalized.notificationsEnabled,
+      dashboardLayout: normalized.dashboardLayout,
+      timezone: normalized.timezone,
+      currency: normalized.currency,
+    };
+
+    if (existing.rows.length > 0) {
       // Update existing
-      await db.update(schema.userPreferences)
-        .set({
-          theme: preferences.theme || 'light',
-          language: preferences.language || 'nb-NO',
-          notificationsEnabled: preferences.notificationsEnabled ?? true,
-          dashboardLayout: preferences.dashboardLayout || 'cards',
-          timezone: preferences.timezone || 'Europe/Oslo',
-          currency: preferences.currency || 'NOK',
-          updatedAt: new Date().toISOString()
-        })
-        .where(eq(schema.userPreferences.sessionId, sessionId));
+      await pool.query(
+        `UPDATE user_preferences
+         SET theme = $2,
+             language = $3,
+             timezone = $4,
+             notifications = $5::jsonb,
+             dashboard = $6::jsonb,
+             preferences = $7::jsonb,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [
+          existing.rows[0].id,
+          normalized.theme,
+          normalized.language,
+          normalized.timezone,
+          JSON.stringify(notificationsPayload),
+          JSON.stringify(dashboardPayload),
+          JSON.stringify(preferencesPayload),
+        ],
+      );
     } else {
       // Insert new
-      await db.insert(schema.userPreferences).values({
-        id: crypto.randomUUID(),
-        sessionId,
-        profession: preferences.profession || 'photographer',
-        theme: preferences.theme || 'light',
-        language: preferences.language || 'nb-NO',
-        notificationsEnabled: preferences.notificationsEnabled ?? true,
-        dashboardLayout: preferences.dashboardLayout || 'cards',
-        timezone: preferences.timezone || 'Europe/Oslo',
-        currency: preferences.currency || 'NOK'
-      });
+      await pool.query(
+        `INSERT INTO user_preferences (
+          id, user_id, preferences, theme, language, timezone, notifications, dashboard, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3::jsonb, $4, $5, $6, $7::jsonb, $8::jsonb, NOW(), NOW()
+        )`,
+        [
+          crypto.randomUUID(),
+          sessionId,
+          JSON.stringify(preferencesPayload),
+          normalized.theme,
+          normalized.language,
+          normalized.timezone,
+          JSON.stringify(notificationsPayload),
+          JSON.stringify(dashboardPayload),
+        ],
+      );
     }
     
     res.json({
@@ -47202,24 +49031,781 @@ app.delete('/api/price-administration/discounts/:id', async (req, res) => {
 // Price Administration — Quotes (DB: quotes)
 // ============================================
 
+const normalizeJsonArrayField = (value: unknown) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const normalizeJsonObjectField = (value: unknown) => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const readJsonObject = (value: unknown): Record<string, unknown> => normalizeJsonObjectField(value) || {};
+
+const toNumericValue = (value: unknown, fallback = 0) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(',', '.'));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+};
+
+const normalizeLegacyQuoteStatus = (value: unknown) => {
+  const status = String(value || 'draft');
+  if (status === 'sent' || status === 'viewed') {
+    return 'pending';
+  }
+  if (status === 'accepted' || status === 'rejected' || status === 'expired' || status === 'pending') {
+    return status;
+  }
+  return 'draft';
+};
+
+let ensureQuotesCompatibilitySchemaPromise: Promise<void> | null = null;
+
+async function ensureQuotesCompatibilitySchema() {
+  if (!ensureQuotesCompatibilitySchemaPromise) {
+    ensureQuotesCompatibilitySchemaPromise = pool.query(`
+      CREATE TABLE IF NOT EXISTS quotes (
+        id VARCHAR PRIMARY KEY,
+        quote_number VARCHAR,
+        client_id VARCHAR,
+        client_name VARCHAR,
+        client_email VARCHAR,
+        title VARCHAR(255),
+        description TEXT,
+        base_price NUMERIC(10, 2) DEFAULT 0,
+        additional_services JSONB DEFAULT '[]'::jsonb,
+        services JSONB DEFAULT '[]'::jsonb,
+        additional_costs JSONB DEFAULT '[]'::jsonb,
+        discounts JSONB DEFAULT '[]'::jsonb,
+        subtotal NUMERIC(10, 2) DEFAULT 0,
+        mva NUMERIC(10, 2) DEFAULT 0,
+        total_amount NUMERIC(10, 2) DEFAULT 0,
+        currency VARCHAR(10) DEFAULT 'NOK',
+        status VARCHAR(50) DEFAULT 'draft',
+        valid_until TIMESTAMPTZ,
+        notes TEXT,
+        internal_notes TEXT,
+        client_info JSONB DEFAULT '{}'::jsonb,
+        approvers JSONB DEFAULT '[]'::jsonb,
+        project_creation_data JSONB DEFAULT '{}'::jsonb,
+        business_info JSONB DEFAULT '{}'::jsonb,
+        project_id VARCHAR,
+        profession VARCHAR,
+        project_type VARCHAR,
+        contract_id VARCHAR,
+        quote_type VARCHAR(50) DEFAULT 'standard',
+        contract_amendment_for VARCHAR,
+        google_doc_id VARCHAR(255),
+        google_doc_url TEXT,
+        signature_status VARCHAR(50) DEFAULT 'pending',
+        created_by VARCHAR,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        sent_at TIMESTAMPTZ,
+        viewed_at TIMESTAMPTZ,
+        responded_at TIMESTAMPTZ,
+        accepted_at TIMESTAMPTZ,
+        fiken_invoice_id VARCHAR,
+        fiken_invoice_number VARCHAR,
+        fiken_customer_id VARCHAR,
+        fiken_invoice_status VARCHAR,
+        fiken_sync_status VARCHAR,
+        fiken_invoice_url TEXT,
+        fiken_synced_at TIMESTAMPTZ
+      );
+
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS client_name VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS client_email VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS title VARCHAR(255);
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS description TEXT;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS base_price NUMERIC(10, 2);
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS additional_services JSONB;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS client_info JSONB;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS approvers JSONB;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS project_creation_data JSONB;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS business_info JSONB;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS project_id VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS profession VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS project_type VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS contract_id VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS quote_type VARCHAR(50) DEFAULT 'standard';
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS contract_amendment_for VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS google_doc_id VARCHAR(255);
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS google_doc_url TEXT;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS signature_status VARCHAR(50) DEFAULT 'pending';
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMP;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS viewed_at TIMESTAMP;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS responded_at TIMESTAMP;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_invoice_id VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_invoice_number VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_customer_id VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_invoice_status VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_sync_status VARCHAR;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_invoice_url TEXT;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS fiken_synced_at TIMESTAMP;
+      CREATE INDEX IF NOT EXISTS idx_quotes_contract_id ON quotes(contract_id);
+    `).then(() => undefined);
+  }
+
+  return ensureQuotesCompatibilitySchemaPromise;
+}
+
+const mapPriceAdministrationQuote = (r: any) => {
+  const services = normalizeJsonArrayField(r.services);
+  const additionalCosts = normalizeJsonArrayField(r.additional_costs);
+  const discounts = normalizeJsonArrayField(r.discounts);
+  const additionalServices = normalizeJsonArrayField(r.additional_services);
+  const clientInfo = normalizeJsonObjectField(r.client_info) || {
+    name: r.client_name || '',
+    email: r.client_email || '',
+  };
+  const projectCreationData = normalizeJsonObjectField(r.project_creation_data) || {};
+
+  return {
+  id: r.id,
+  quoteNumber: r.quote_number,
+  clientId: r.client_id,
+  clientName: r.client_name,
+  clientEmail: r.client_email,
+  title: r.title,
+  description: r.description,
+  basePrice: toNumericValue(r.base_price, toNumericValue(r.subtotal)),
+  additionalServices,
+  totalAmount: parseFloat(r.total_amount || '0'),
+  subtotal: parseFloat(r.subtotal || '0'),
+  mva: parseFloat(r.mva || '0'),
+  status: r.status || 'draft',
+  currency: r.currency || 'NOK',
+  validUntil: r.valid_until,
+  services,
+  additionalCosts,
+  discounts,
+  notes: r.notes,
+  internalNotes: r.internal_notes,
+  clientInfo,
+  approvers: normalizeJsonArrayField(r.approvers),
+  projectCreationData,
+  businessInfo: normalizeJsonObjectField(r.business_info),
+  projectId: r.project_id,
+  contractId: r.contract_id,
+  profession: r.profession,
+  projectType: r.project_type,
+  quoteType: r.quote_type || 'standard',
+  contractAmendmentFor: r.contract_amendment_for,
+  googleDocId: r.google_doc_id,
+  googleDocUrl: r.google_doc_url,
+  signatureStatus: r.signature_status || 'pending',
+  createdBy: r.created_by,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+  sentAt: r.sent_at,
+  viewedAt: r.viewed_at,
+  respondedAt: r.responded_at,
+  acceptedAt: r.accepted_at,
+  fikenInvoiceId: r.fiken_invoice_id,
+  fikenInvoiceNumber: r.fiken_invoice_number,
+  fikenCustomerId: r.fiken_customer_id,
+  fikenInvoiceStatus: r.fiken_invoice_status,
+  fikenSyncStatus: r.fiken_sync_status,
+  fikenInvoiceUrl: r.fiken_invoice_url,
+  fikenSyncedAt: r.fiken_synced_at,
+  isFinal: r.status === 'accepted',
+  };
+};
+
+type QuoteCompatibilityRecord = Omit<
+  ReturnType<typeof mapPriceAdministrationQuote>,
+  'status' | 'basePrice' | 'totalAmount' | 'clientInfo' | 'approvers' | 'contractId' | 'projectCreationData'
+> & {
+  status: string;
+  basePrice: string;
+  totalAmount: string;
+  clientInfo: Record<string, unknown>;
+  approvers: unknown[];
+  contractId: string | null;
+  projectCreationData: Record<string, unknown>;
+};
+
+const mapQuoteCompatibilityRecord = (r: any): QuoteCompatibilityRecord => {
+  const quote = mapPriceAdministrationQuote(r);
+  const packageLine = Array.isArray(quote.services)
+    ? quote.services.find((entry: any) => entry?.type === 'package')
+    : null;
+  const projectCreationData =
+    quote.projectCreationData && typeof quote.projectCreationData === 'object'
+      ? quote.projectCreationData as Record<string, unknown>
+      : {};
+
+  return {
+    ...quote,
+    status: normalizeLegacyQuoteStatus(quote.status),
+    basePrice: String(quote.basePrice ?? quote.subtotal ?? 0),
+    totalAmount: String(quote.totalAmount ?? 0),
+    clientInfo: quote.clientInfo || {
+      name: quote.clientName || '',
+      email: quote.clientEmail || '',
+      address: '',
+      phoneNumber: '',
+    },
+    approvers: Array.isArray(quote.approvers) ? quote.approvers : [],
+    contractId: quote.contractId || null,
+    projectCreationData: {
+      ...projectCreationData,
+      contractId: quote.contractId || null,
+      package: packageLine
+        ? {
+            name: String(packageLine.description || quote.title || 'Pakke'),
+          }
+        : undefined,
+    },
+  };
+};
+
+function serializeQuoteDocument(quoteLike: any, branding?: DocumentBrandingProfile | null) {
+  const quote = quoteLike?.quoteNumber !== undefined
+    ? quoteLike
+    : mapPriceAdministrationQuote(quoteLike);
+  const clientInfo = normalizeJsonObjectField(quote.clientInfo) || {};
+  const businessInfo = normalizeJsonObjectField(quote.businessInfo) || {};
+  const formatDate = (value: unknown) => {
+    if (!value) return null;
+    const parsed = new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+    return parsed.toLocaleDateString('no-NO');
+  };
+  const formatCurrency = (value: unknown) => `${toNumericValue(value, 0).toLocaleString('no-NO')} NOK`;
+  const translateQuoteStatus = (status: unknown) => {
+    const normalized = String(status || 'draft').trim().toLowerCase();
+    if (normalized === 'accepted') return 'Godkjent';
+    if (normalized === 'sent') return 'Sendt';
+    if (normalized === 'viewed') return 'Åpnet';
+    if (normalized === 'rejected') return 'Avvist';
+    return 'Utkast';
+  };
+  const issuerName =
+    readString(branding?.businessName)
+    || readString(businessInfo.companyName)
+    || readString(businessInfo.businessName)
+    || readString(businessInfo.name)
+    || 'CreatorHub';
+  const clientName = quote.clientName || readString(clientInfo.name) || 'kunde';
+  const projectReference = readString(quote.projectId);
+  const readableProjectReference =
+    projectReference && !/^proj[-_]/i.test(projectReference) ? projectReference : null;
+  const issuerTagline =
+    readString(branding?.tagline)
+    || readString(businessInfo.tagline)
+    || null;
+  const contactLine = [
+    readString(branding?.email) || readString(businessInfo.email) || readString(businessInfo.contactEmail),
+    readString(branding?.phone) || readString(businessInfo.phone),
+    readString(branding?.website) || readString(businessInfo.website),
+  ].filter(Boolean).join(' · ');
+  const blocks: StructuredGoogleDocumentBlock[] = [];
+
+  const serviceItems = Array.isArray(quote.services)
+    ? quote.services.map((service: any) => {
+        const description = readString(service?.description) || readString(service?.name) || 'Tjeneste';
+        const quantity = toNumericValue(service?.quantity, 1);
+        const unitPrice = toNumericValue(service?.unitPrice, toNumericValue(service?.price, toNumericValue(service?.totalPrice, 0)));
+        const totalPrice = toNumericValue(service?.totalPrice, quantity * unitPrice);
+        return `${description} · ${quantity} stk á ${formatCurrency(unitPrice)} · Linjesum ${formatCurrency(totalPrice)}`;
+      }).filter(Boolean)
+    : [];
+
+  const additionalCostItems = Array.isArray(quote.additionalCosts)
+    ? quote.additionalCosts.map((cost: any) => {
+        const description = readString(cost?.description) || readString(cost?.name) || 'Tillegg';
+        return `${description} · ${formatCurrency(cost?.amount)}`;
+      }).filter(Boolean)
+    : [];
+
+  const discountItems = Array.isArray(quote.discounts)
+    ? quote.discounts.map((discount: any) => {
+        const description = readString(discount?.description) || readString(discount?.name) || 'Rabatt';
+        return `${description} · -${formatCurrency(toNumericValue(discount?.amount, toNumericValue(discount?.value, 0)))}`;
+      }).filter(Boolean)
+    : [];
+
+  blocks.push(
+    { type: 'eyebrow', text: issuerName },
+    { type: 'title', text: quote.title || quote.quoteNumber || 'Tilbud' },
+    {
+      type: 'subtitle',
+      text: `Tilbud for ${clientName}${formatDate(quote.validUntil) ? ` · Gyldig til ${formatDate(quote.validUntil)}` : ''}`
+    },
+    {
+      type: 'spotlight',
+      label: 'Totalramme',
+      value: formatCurrency(quote.totalAmount),
+      note: `${translateQuoteStatus(quote.status)}${quote.quoteNumber ? ` · ${quote.quoteNumber}` : ''}`,
+    },
+    { type: 'divider' },
+    {
+      type: 'meta-list',
+      items: [
+        { label: 'Tilbudsnummer', value: quote.quoteNumber || quote.id },
+        { label: 'Status', value: translateQuoteStatus(quote.status) },
+        { label: 'Kunde', value: clientName },
+        { label: 'E-post', value: quote.clientEmail || readString(clientInfo.email) },
+        { label: 'Prosjekt', value: readableProjectReference },
+        { label: 'Gyldig til', value: formatDate(quote.validUntil) },
+        { label: 'Leverandør', value: issuerName },
+      ],
+    },
+  );
+
+  if (issuerTagline || contactLine) {
+    blocks.push({
+      type: 'callout',
+      title: `Fra ${issuerName}`,
+      body: [issuerTagline, contactLine].filter(Boolean).join('\n\n'),
+    });
+  }
+
+  if (readString(quote.description) || readString(quote.notes)) {
+    blocks.push(
+      {
+        type: 'callout',
+        title: 'Oppsummering',
+        body:
+          readString(quote.description)
+          || readString(quote.notes)
+          || `Dette tilbudet beskriver leveransen, rammene og neste steg for ${clientName}.`,
+      },
+    );
+  }
+
+  if (serviceItems.length > 0) {
+    blocks.push(
+      { type: 'heading', text: 'Hva som er inkludert' },
+      { type: 'bullet-list', items: serviceItems },
+    );
+  }
+
+  if (additionalCostItems.length > 0 || discountItems.length > 0) {
+    blocks.push({ type: 'heading', text: 'Tillegg og justeringer' });
+    if (additionalCostItems.length > 0) {
+      blocks.push(
+        { type: 'subheading', text: 'Tilleggskostnader' },
+        { type: 'bullet-list', items: additionalCostItems },
+      );
+    }
+    if (discountItems.length > 0) {
+      blocks.push(
+        { type: 'subheading', text: 'Rabatter' },
+        { type: 'bullet-list', items: discountItems },
+      );
+    }
+  }
+
+  blocks.push(
+    { type: 'heading', text: 'Kommersiell oversikt' },
+    {
+      type: 'meta-list',
+      items: [
+        { label: 'Subtotal', value: formatCurrency(quote.subtotal) },
+        { label: 'MVA', value: formatCurrency(quote.mva) },
+        { label: 'Totalt', value: formatCurrency(quote.totalAmount) },
+      ],
+    },
+    { type: 'divider' },
+    { type: 'heading', text: 'Neste steg' },
+    {
+      type: 'numbered-list',
+      items: [
+        'Gå gjennom leveransen og prisoversikten i dokumentet.',
+        'Svar i CreatorHub hvis du ønsker justeringer eller avklaringer.',
+        'Godkjenn tilbudet når du er klar til å gå videre til kontrakt og planlegging.',
+        formatDate(quote.validUntil)
+          ? `Gi beskjed før ${formatDate(quote.validUntil)} for å beholde gjeldende rammer og fremdrift.`
+          : 'Ta kontakt dersom du ønsker justeringer før godkjenning.',
+      ],
+    },
+  );
+
+  if (readString(quote.notes)) {
+    blocks.push(
+      { type: 'heading', text: 'Tilleggsnotater' },
+      { type: 'paragraph', text: String(quote.notes).trim() },
+    );
+  }
+
+  blocks.push({
+    type: 'meta-list',
+    items: [{ label: 'Sist oppdatert', value: new Date().toLocaleString('no-NO') }],
+  });
+
+  if (readString(branding?.customFooterText)) {
+    blocks.push({
+      type: 'callout',
+      title: 'Merknad',
+      body: String(branding?.customFooterText).trim(),
+    });
+  }
+
+  return blocks;
+}
+
+async function syncQuoteArtifactToCustomerDrive(quoteRow: any, preferredUserId?: string | null) {
+  const quote = mapPriceAdministrationQuote(quoteRow);
+  const userId = readString(preferredUserId) || readString(quote.createdBy);
+  if (!userId || !quote.id) {
+    return quoteRow;
+  }
+
+  try {
+    const authorized = await resolveRoleRoomGoogleConnection(pool, userId);
+    const driveApi = google.drive({ version: 'v3', auth: authorized.oauthClient });
+    const docsApi = google.docs({ version: 'v1', auth: authorized.oauthClient });
+    const clientInfo = normalizeJsonObjectField(quote.clientInfo) || {};
+    const folder = await ensureCustomerWorkflowFolder(pool, driveApi, {
+      userId,
+      customerId: readString(quote.clientId),
+      customerEmail: readString(quote.clientEmail) || readString(clientInfo.email),
+      projectId: readString(quote.projectId),
+      customerName: readString(quote.clientName) || readString(clientInfo.name),
+      companyName: readString(clientInfo.company) || readString(clientInfo.organizationName),
+      profession: readString(quote.profession),
+      category: 'quotes',
+    });
+
+    if (!folder.targetFolder) {
+      return quoteRow;
+    }
+
+    const branding = await resolveDocumentBranding(pool, userId, {
+      businessName:
+        readString(quote.businessInfo?.companyName)
+        || readString(quote.businessInfo?.businessName)
+        || readString(quote.businessInfo?.name),
+      accentColor: readString(quote.businessInfo?.brandingColor),
+      email:
+        readString(quote.businessInfo?.email)
+        || readString(quote.businessInfo?.contactEmail),
+      phone: readString(quote.businessInfo?.phone),
+      website: readString(quote.businessInfo?.website),
+      businessAddress: readString(quote.businessInfo?.businessAddress),
+      organizationNumber: readString(quote.businessInfo?.organizationNumber),
+      vatNumber: readString(quote.businessInfo?.vatNumber),
+      tagline: readString(quote.businessInfo?.tagline),
+      businessDescription:
+        readString(quote.businessInfo?.businessDescription)
+        || readString(quote.businessInfo?.description),
+      customFooterText: readString(quote.businessInfo?.customFooterText),
+      logoUrl:
+        readString(quote.businessInfo?.customLogo)
+        || readString(quote.businessInfo?.logoUrl),
+    });
+
+    const title = `${quote.quoteNumber || quote.id} · ${quote.clientName || readString(clientInfo.name) || 'Tilbud'}`
+      .replace(/[\\/:*?"<>|#]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120);
+    const document = await upsertStructuredGoogleDocument(docsApi, driveApi, {
+      title,
+      blocks: serializeQuoteDocument(quote, branding),
+      parentFolderId: folder.targetFolder.id,
+      existingDocumentId: readString(quote.googleDocId),
+      theme: {
+        accentColor: branding.accentColor,
+      },
+    });
+
+    const updated = await pool.query(
+      `UPDATE quotes
+          SET google_doc_id = $2,
+              google_doc_url = $3,
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [quote.id, document.fileId, document.webViewUrl || document.webContentLink || null],
+    );
+
+    return updated.rows[0] || quoteRow;
+  } catch (error) {
+    console.warn('Quote Google Drive sync skipped:', error instanceof Error ? error.message : error);
+    return quoteRow;
+  }
+}
+
+const normalizeQuoteCreationPayload = (payload: any) => {
+  const services = Array.isArray(payload?.services) && payload.services.length > 0
+    ? payload.services
+    : Array.isArray(payload?.items) && payload.items.length > 0
+      ? payload.items.map((item: any) => {
+          const quantity = Math.max(1, toNumericValue(item?.quantity, 1));
+          const unitPrice = toNumericValue(item?.unitPrice, toNumericValue(item?.amount));
+          return {
+            type: item?.type || 'custom',
+            description: item?.description || item?.title || item?.name || 'Tilbudslinje',
+            quantity,
+            unitPrice,
+            totalPrice: toNumericValue(item?.totalPrice, quantity * unitPrice),
+          };
+        })
+      : [];
+
+  const additionalCosts = Array.isArray(payload?.additionalCosts) ? payload.additionalCosts : [];
+  const discounts = Array.isArray(payload?.discounts) ? payload.discounts : [];
+
+  const subtotal = payload?.subtotal !== undefined
+    ? toNumericValue(payload.subtotal)
+    : services.reduce((sum: number, item: any) => sum + toNumericValue(item?.totalPrice), 0);
+  const additionalCostsTotal = additionalCosts.reduce((sum: number, item: any) => sum + toNumericValue(item?.amount), 0);
+  const discountTotal = discounts.reduce((sum: number, item: any) => sum + toNumericValue(item?.amount), 0);
+  const taxableBase = Math.max(subtotal + additionalCostsTotal - discountTotal, 0);
+  const mva = payload?.mva !== undefined ? toNumericValue(payload.mva) : taxableBase * 0.25;
+  const totalAmount = payload?.totalAmount !== undefined
+    ? toNumericValue(payload.totalAmount)
+    : taxableBase + mva;
+  const quoteNumber = `Q-${Date.now().toString(36).toUpperCase()}`;
+  const validUntilValue = payload?.validUntil
+    ? new Date(payload.validUntil)
+    : new Date(Date.now() + toNumericValue(payload?.validDays, 30) * 86400000);
+
+  const clientInfo = payload?.clientInfo && typeof payload.clientInfo === 'object'
+    ? payload.clientInfo
+    : {
+        name: payload?.clientName || '',
+        email: payload?.clientEmail || '',
+        address: '',
+        phoneNumber: '',
+      };
+
+  const approvers = Array.isArray(payload?.approvers) ? payload.approvers : [];
+  const projectCreationData = payload?.projectCreationData && typeof payload.projectCreationData === 'object'
+    ? payload.projectCreationData
+    : {};
+
+  const basePrice =
+    payload?.basePrice !== undefined
+      ? toNumericValue(payload.basePrice)
+      : services.length === 1
+        ? toNumericValue(services[0]?.totalPrice)
+        : subtotal;
+
+  return {
+    quoteNumber,
+    clientId: String(
+      payload?.clientId ||
+      payload?.crmCustomerId ||
+      payload?.customerId ||
+      clientInfo?.id ||
+      payload?.clientEmail ||
+      `quote-client-${Date.now()}`
+    ),
+    clientName: String(payload?.clientName || clientInfo?.name || ''),
+    clientEmail: String(payload?.clientEmail || clientInfo?.email || ''),
+    title: String(payload?.title || payload?.description || `Quote ${quoteNumber}`),
+    description: String(payload?.description || ''),
+    basePrice,
+    additionalServices: Array.isArray(payload?.additionalServices) ? payload.additionalServices : [],
+    services,
+    additionalCosts,
+    discounts,
+    subtotal,
+    mva,
+    totalAmount,
+    currency: String(payload?.currency || 'NOK'),
+    status: String(payload?.status || 'draft'),
+    validUntil: Number.isNaN(validUntilValue.getTime()) ? null : validUntilValue,
+    notes: String(payload?.notes || ''),
+    internalNotes: String(payload?.internalNotes || ''),
+    clientInfo,
+    approvers,
+    projectCreationData,
+    businessInfo: payload?.businessInfo && typeof payload.businessInfo === 'object' ? payload.businessInfo : null,
+    projectId: payload?.projectId ? String(payload.projectId) : null,
+    profession: String(payload?.profession || 'fotograf'),
+    projectType: payload?.projectType ? String(payload.projectType) : null,
+    quoteType: String(payload?.quoteType || 'standard'),
+    contractAmendmentFor: payload?.contractAmendmentFor ? String(payload.contractAmendmentFor) : null,
+    googleDocId: payload?.googleDocId ? String(payload.googleDocId) : null,
+    googleDocUrl: payload?.googleDocUrl ? String(payload.googleDocUrl) : null,
+    signatureStatus: String(payload?.signatureStatus || 'pending'),
+    sentAt: payload?.sentAt ? new Date(payload.sentAt) : null,
+    viewedAt: payload?.viewedAt ? new Date(payload.viewedAt) : null,
+    respondedAt: payload?.respondedAt ? new Date(payload.respondedAt) : null,
+    acceptedAt: payload?.acceptedAt ? new Date(payload.acceptedAt) : null,
+    fikenInvoiceId: payload?.fikenInvoiceId ? String(payload.fikenInvoiceId) : null,
+    fikenInvoiceNumber: payload?.fikenInvoiceNumber ? String(payload.fikenInvoiceNumber) : null,
+    fikenCustomerId: payload?.fikenCustomerId ? String(payload.fikenCustomerId) : null,
+    fikenInvoiceStatus: payload?.fikenInvoiceStatus ? String(payload.fikenInvoiceStatus) : null,
+    fikenSyncStatus: payload?.fikenSyncStatus ? String(payload.fikenSyncStatus) : null,
+    fikenInvoiceUrl: payload?.fikenInvoiceUrl ? String(payload.fikenInvoiceUrl) : null,
+    fikenSyncedAt: payload?.fikenSyncedAt ? new Date(payload.fikenSyncedAt) : null,
+  };
+};
+
+async function insertSharedQuote(rawPayload: any, userId: string) {
+  await ensureQuotesCompatibilitySchema();
+
+  const payload = normalizeQuoteCreationPayload(rawPayload);
+  const id = crypto.randomUUID();
+  const result = await pool.query(
+    `INSERT INTO quotes (
+      id, quote_number, client_id, client_name, client_email, title, description, base_price,
+      additional_services, services, additional_costs, discounts, subtotal, mva, total_amount,
+      currency, status, valid_until, notes, internal_notes, client_info, approvers,
+      project_creation_data, business_info, project_id, profession, project_type, quote_type,
+      contract_amendment_for, google_doc_id, google_doc_url, signature_status, created_by,
+      created_at, updated_at, sent_at, viewed_at, responded_at, accepted_at, fiken_invoice_id,
+      fiken_invoice_number, fiken_customer_id, fiken_invoice_status, fiken_sync_status,
+      fiken_invoice_url, fiken_synced_at
+    ) VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,
+      $17,$18,$19,$20,$21::jsonb,$22::jsonb,$23::jsonb,$24::jsonb,$25,$26,$27,$28,$29,$30,
+      $31,$32,$33,NOW(),NOW(),$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44
+    ) RETURNING *`,
+    [
+      id,
+      payload.quoteNumber,
+      payload.clientId,
+      payload.clientName,
+      payload.clientEmail,
+      payload.title,
+      payload.description,
+      payload.basePrice,
+      JSON.stringify(payload.additionalServices || []),
+      JSON.stringify(payload.services || []),
+      JSON.stringify(payload.additionalCosts || []),
+      JSON.stringify(payload.discounts || []),
+      payload.subtotal,
+      payload.mva,
+      payload.totalAmount,
+      payload.currency,
+      payload.status,
+      payload.validUntil,
+      payload.notes,
+      payload.internalNotes,
+      JSON.stringify(payload.clientInfo || {}),
+      JSON.stringify(payload.approvers || []),
+      JSON.stringify(payload.projectCreationData || {}),
+      JSON.stringify(payload.businessInfo || {}),
+      payload.projectId,
+      payload.profession,
+      payload.projectType,
+      payload.quoteType,
+      payload.contractAmendmentFor,
+      payload.googleDocId,
+      payload.googleDocUrl,
+      payload.signatureStatus,
+      userId,
+      payload.sentAt,
+      payload.viewedAt,
+      payload.respondedAt,
+      payload.acceptedAt,
+      payload.fikenInvoiceId,
+      payload.fikenInvoiceNumber,
+      payload.fikenCustomerId,
+      payload.fikenInvoiceStatus,
+      payload.fikenSyncStatus,
+      payload.fikenInvoiceUrl,
+      payload.fikenSyncedAt,
+    ],
+  );
+
+  return result.rows[0];
+}
+
 app.get('/api/price-administration/quotes', async (req, res) => {
   try {
+    await ensureQuotesCompatibilitySchema();
+
     const userId = getPricingUserId(req);
-    let result;
+    const projectId = typeof req.query.projectId === 'string' && req.query.projectId.trim()
+      ? req.query.projectId.trim()
+      : '';
+    const clientId = typeof req.query.clientId === 'string' && req.query.clientId.trim()
+      ? req.query.clientId.trim()
+      : '';
+    const status = typeof req.query.status === 'string' && req.query.status.trim()
+      ? req.query.status.trim()
+      : '';
+    const quoteType = typeof req.query.quoteType === 'string' && req.query.quoteType.trim()
+      ? req.query.quoteType.trim()
+      : '';
+    const contractAmendmentFor = typeof req.query.contractAmendmentFor === 'string' && req.query.contractAmendmentFor.trim()
+      ? req.query.contractAmendmentFor.trim()
+      : '';
+    const signatureStatus = typeof req.query.signatureStatus === 'string' && req.query.signatureStatus.trim()
+      ? req.query.signatureStatus.trim()
+      : '';
+
+    const whereClauses: string[] = [];
+    const params: any[] = [];
+
     if (userId) {
-      result = await pool.query('SELECT * FROM quotes WHERE created_by = $1 ORDER BY created_at DESC', [userId]);
-    } else {
-      result = await pool.query('SELECT * FROM quotes ORDER BY created_at DESC LIMIT 100');
+      params.push(userId);
+      whereClauses.push(`created_by = $${params.length}`);
     }
-    res.json(result.rows.map((r: any) => ({
-      id: r.id, quoteNumber: r.quote_number, clientId: r.client_id, clientName: r.client_name,
-      clientEmail: r.client_email, title: r.title, description: r.description,
-      totalAmount: parseFloat(r.total_amount || '0'), subtotal: parseFloat(r.subtotal || '0'),
-      mva: parseFloat(r.mva || '0'), status: r.status || 'draft', currency: r.currency || 'NOK',
-      validUntil: r.valid_until, services: r.services, additionalCosts: r.additional_costs,
-      discounts: r.discounts, notes: r.notes, projectId: r.project_id, profession: r.profession,
-      createdBy: r.created_by, createdAt: r.created_at, sentAt: r.sent_at, acceptedAt: r.accepted_at
-    })));
+
+    if (projectId) {
+      params.push(projectId);
+      whereClauses.push(`project_id = $${params.length}`);
+    }
+
+    if (clientId) {
+      params.push(clientId);
+      whereClauses.push(`client_id = $${params.length}`);
+    }
+
+    if (status) {
+      params.push(status);
+      whereClauses.push(`status = $${params.length}`);
+    }
+
+    if (quoteType) {
+      params.push(quoteType);
+      whereClauses.push(`quote_type = $${params.length}`);
+    }
+
+    if (contractAmendmentFor) {
+      params.push(contractAmendmentFor);
+      whereClauses.push(`contract_amendment_for = $${params.length}`);
+    }
+
+    if (signatureStatus) {
+      params.push(signatureStatus);
+      whereClauses.push(`signature_status = $${params.length}`);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const limitSql = userId ? '' : 'LIMIT 100';
+    const result = await pool.query(
+      `SELECT * FROM quotes ${whereSql} ORDER BY created_at DESC ${limitSql}`,
+      params,
+    );
+
+    res.json(result.rows.map(mapPriceAdministrationQuote));
   } catch (error) {
     console.error('Error fetching quotes:', error);
     res.status(500).json({ error: 'Kunne ikke hente tilbud' });
@@ -47228,17 +49814,25 @@ app.get('/api/price-administration/quotes', async (req, res) => {
 
 app.post('/api/price-administration/quotes', async (req, res) => {
   try {
-    const { userId, clientId, clientName, clientEmail, title, description, services, additionalCosts, discounts, subtotal, mva, totalAmount, currency, validUntil, notes, projectId, profession } = req.body;
-    const uid = userId || getPricingUserId(req);
-    const id = crypto.randomUUID();
-    const quoteNumber = `Q-${Date.now().toString(36).toUpperCase()}`;
-    const result = await pool.query(
-      `INSERT INTO quotes (id, quote_number, client_id, client_name, client_email, title, description, services, additional_costs, discounts, subtotal, mva, total_amount, currency, status, valid_until, notes, project_id, profession, created_by, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13,$14,'draft',$15,$16,$17,$18,$19,NOW(),NOW()) RETURNING *`,
-      [id, quoteNumber, clientId || null, clientName || '', clientEmail || '', title || 'Tilbud', description || '', JSON.stringify(services || []), JSON.stringify(additionalCosts || []), JSON.stringify(discounts || []), subtotal || 0, mva || 0, totalAmount || 0, currency || 'NOK', validUntil || null, notes || '', projectId || null, profession || 'fotograf', uid]
-    );
-    const r = result.rows[0];
-    res.status(201).json({ id: r.id, quoteNumber: r.quote_number, clientName: r.client_name, totalAmount: parseFloat(r.total_amount), status: r.status, createdAt: r.created_at });
+    const uid = req.body?.userId || getPricingUserId(req);
+    const row = await insertSharedQuote(req.body, uid);
+    const syncedRow = await syncQuoteArtifactToCustomerDrive(row, uid);
+    let quote = mapPriceAdministrationQuote(syncedRow);
+    if (quote.status === 'accepted') {
+      const contract = await ensureContractForAcceptedQuote(syncedRow);
+      quote = {
+        ...quote,
+        contractId: contract.id,
+        projectCreationData: {
+          ...((quote.projectCreationData && typeof quote.projectCreationData === 'object')
+            ? quote.projectCreationData as Record<string, unknown>
+            : {}),
+          contractId: contract.id,
+          contractStatus: contract.status,
+        },
+      };
+    }
+    res.status(201).json(quote);
   } catch (error) {
     console.error('Error creating quote:', error);
     res.status(500).json({ error: 'Kunne ikke opprette tilbud' });
@@ -49847,31 +52441,151 @@ app.post('/api/projects/:projectId/worklog', async (req, res) => {
 // GET /api/contracts/summary — Get contract summary for project
 app.get('/api/contracts/summary', async (req, res) => {
   try {
+    await ensureContractsCompatibilitySchema(pool);
     const { projectId } = req.query;
+    const userId =
+      readString(req.headers['x-user-id'])
+      ?? readString(req.query.userId)
+      ?? null;
+
+    if (!projectId && userId) {
+      const [pendingResult, expiringResult, recentResult] = await Promise.all([
+        pool.query(
+          `SELECT id, contract_title, title, client_name, project_description, signature_status, status
+           FROM contracts
+           WHERE user_id = $1
+             AND COALESCE(signature_status, 'not_started') <> 'signed'
+             AND COALESCE(status, 'draft') NOT IN ('cancelled', 'completed')
+           ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+           LIMIT 5`,
+          [userId],
+        ),
+        pool.query(
+          `SELECT id, contract_title, title, client_name, project_description, event_date
+           FROM contracts
+           WHERE user_id = $1
+             AND event_date IS NOT NULL
+             AND event_date >= CURRENT_DATE
+             AND event_date <= CURRENT_DATE + INTERVAL '45 days'
+           ORDER BY event_date ASC
+           LIMIT 5`,
+          [userId],
+        ),
+        pool.query(
+          `SELECT id, contract_title, title, client_name, project_description, signed_at, status
+           FROM contracts
+           WHERE user_id = $1
+           ORDER BY COALESCE(signed_at, updated_at, created_at) DESC NULLS LAST
+           LIMIT 5`,
+          [userId],
+        ),
+      ]);
+
+      return res.json({
+        pending: pendingResult.rows.map((row: Record<string, unknown>) => ({
+          id: String(row.id),
+          title: String(row.contract_title || row.title || 'Kontrakt'),
+          client_name: String(row.client_name || ''),
+          project_name: row.project_description ? String(row.project_description) : undefined,
+        })),
+        expiring: expiringResult.rows.map((row: Record<string, unknown>) => {
+          const eventDate = row.event_date ? new Date(String(row.event_date)) : null;
+          const today = new Date();
+          const daysUntilExpiry = eventDate
+            ? Math.max(0, Math.ceil((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)))
+            : undefined;
+
+          return {
+            id: String(row.id),
+            title: String(row.contract_title || row.title || 'Kontrakt'),
+            client_name: String(row.client_name || ''),
+            project_name: row.project_description ? String(row.project_description) : undefined,
+            daysUntilExpiry,
+          };
+        }),
+        recent: recentResult.rows.map((row: Record<string, unknown>) => ({
+          id: String(row.id),
+          title: String(row.contract_title || row.title || 'Kontrakt'),
+          client_name: String(row.client_name || ''),
+          project_name: row.project_description ? String(row.project_description) : undefined,
+          signed_at: row.signed_at ? new Date(String(row.signed_at)).toISOString() : undefined,
+        })),
+      });
+    }
+
     if (!projectId) return res.json({ hasContract: false });
     
     const result = await pool.query(
-      `SELECT id, status, client_name, is_signed FROM contracts WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      `SELECT * FROM contracts WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [projectId]
     );
     
     if (result.rows.length === 0) return res.json({ hasContract: false });
-    const c = result.rows[0];
+    const c = mapContractRecord(result.rows[0]);
     res.json({
       hasContract: true,
       contractId: c.id,
-      isSigned: c.is_signed || c.status === 'signed',
+      isSigned: c.signatureStatus === 'signed' || c.status === 'signed',
       status: c.status,
-      clientName: c.client_name
+      clientName: c.clientName
     });
   } catch (error) {
     res.json({ hasContract: false });
   }
 });
 
+// GET /api/contracts/stats — Aggregate contract statistics for BI and CRM
+app.get('/api/contracts/stats', async (req, res) => {
+  try {
+    await ensureContractsCompatibilitySchema(pool);
+    const userId =
+      readString(req.headers['x-user-id'])
+      ?? readString(req.query.userId)
+      ?? null;
+
+    const values: Array<string> = [];
+    const userFilter = userId
+      ? (() => {
+          values.push(userId);
+          return `WHERE user_id = $${values.length}`;
+        })()
+      : '';
+
+    const result = await pool.query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE COALESCE(status, 'draft') NOT IN ('completed', 'cancelled'))::int AS active,
+         COUNT(*) FILTER (WHERE COALESCE(status, 'draft') IN ('completed', 'signed'))::int AS completed,
+         COUNT(*) FILTER (
+           WHERE COALESCE(signature_status, 'not_started') <> 'signed'
+             AND COALESCE(status, 'draft') NOT IN ('cancelled', 'completed')
+         )::int AS pending_signatures,
+         COALESCE(SUM(total_amount), 0)::numeric AS total_value
+       FROM contracts
+       ${userFilter}`,
+      values,
+    );
+
+    const row = (result.rows[0] ?? {}) as Record<string, unknown>;
+    res.json({
+      stats: {
+        total: Math.round(toBiNumericMetric(row.total, 0)),
+        active: Math.round(toBiNumericMetric(row.active, 0)),
+        completed: Math.round(toBiNumericMetric(row.completed, 0)),
+        pendingSignatures: Math.round(toBiNumericMetric(row.pending_signatures, 0)),
+        totalValue: toBiNumericMetric(row.total_value, 0),
+      },
+    });
+  } catch (error) {
+    console.error('Contract stats error:', error);
+    res.status(500).json({ error: 'Failed to load contract statistics' });
+  }
+});
+
 // GET /api/contracts/signers — Get contract signers
 app.get('/api/contracts/signers', async (req, res) => {
   try {
+    await ensureContractsCompatibilitySchema(pool);
     const { projectId, contractId } = req.query;
     let query = 'SELECT * FROM contracts WHERE ';
     let param: any;
@@ -49883,13 +52597,13 @@ app.get('/api/contracts/signers', async (req, res) => {
     const result = await pool.query(query, [param]);
     if (result.rows.length === 0) return res.json([]);
     
-    const contract = result.rows[0];
+    const contract = mapContractRecord(result.rows[0]);
     const signers = [];
-    if (contract.client_name) {
+    if (contract.clientName) {
       signers.push({
-        name: contract.client_name,
-        email: contract.client_email || '',
-        signedDate: contract.signed_at || null
+        name: contract.clientName,
+        email: contract.clientEmail || '',
+        signedDate: contract.signedAt || null
       });
     }
     res.json(signers);
@@ -49901,17 +52615,18 @@ app.get('/api/contracts/signers', async (req, res) => {
 // GET /api/contracts/:contractId/signers — Get contract signers by contract ID
 app.get('/api/contracts/:contractId/signers', async (req, res) => {
   try {
+    await ensureContractsCompatibilitySchema(pool);
     const { contractId } = req.params;
     const result = await pool.query('SELECT * FROM contracts WHERE id = $1', [contractId]);
     if (result.rows.length === 0) return res.json({ signers: [] });
     
-    const contract = result.rows[0];
+    const contract = mapContractRecord(result.rows[0]);
     const signers = [];
-    if (contract.client_name) {
+    if (contract.clientName) {
       signers.push({
-        name: contract.client_name,
-        email: contract.client_email || '',
-        signedDate: contract.signed_at || null
+        name: contract.clientName,
+        email: contract.clientEmail || '',
+        signedDate: contract.signedAt || null
       });
     }
     res.json({ signers });
@@ -49920,39 +52635,45 @@ app.get('/api/contracts/:contractId/signers', async (req, res) => {
   }
 });
 
-// POST /api/google-meet/create — Create Google Meet link (stub)
+// POST /api/google-meet/create — Create live Google Meet link
 app.post('/api/google-meet/create', async (req, res) => {
   try {
-    const { title, date, time, projectId } = req.body;
-    // Generate a placeholder meet link
-    const meetId = crypto.randomUUID().substring(0, 12).replace(/(.{3})(.{4})(.{3})/, '$1-$2-$3');
-    res.json({
-      success: true,
-      meetLink: `https://meet.google.com/${meetId}`,
-      title: title || 'Møte',
-      scheduledAt: date && time ? `${date}T${time}` : new Date().toISOString()
-    });
+    const preferredUserId =
+      readString(req.headers['x-user-id'])
+      ?? readString(req.body?.userId)
+      ?? null;
+    if (!preferredUserId) {
+      return res.status(400).json({
+        error: 'Du må være logget inn med en koblet Google Workspace-bruker for å starte Google Meet.',
+      });
+    }
+    const meeting = await createGoogleMeetLink(pool, req.body ?? {}, preferredUserId);
+    res.json(meeting);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create meeting' });
+    console.error('Failed to create Google Meet meeting:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to create Google Meet meeting',
+    });
   }
 });
 
 // GET /api/projects/:projectId/contract/status — Get contract status for project
 app.get('/api/projects/:projectId/contract/status', async (req, res) => {
   try {
+    await ensureContractsCompatibilitySchema(pool);
     const { projectId } = req.params;
     const result = await pool.query(
-      'SELECT id, status, client_name, is_signed FROM contracts WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1',
+      'SELECT * FROM contracts WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1',
       [projectId]
     );
     if (result.rows.length === 0) return res.json({ hasContract: false });
-    const c = result.rows[0];
+    const c = mapContractRecord(result.rows[0]);
     res.json({
       hasContract: true,
       contractId: c.id,
-      isSigned: c.is_signed || c.status === 'signed',
+      isSigned: c.signatureStatus === 'signed' || c.status === 'signed',
       status: c.status,
-      clientName: c.client_name
+      clientName: c.clientName
     });
   } catch (error) {
     res.json({ hasContract: false });
@@ -50603,48 +53324,722 @@ app.post('/api/deployment/feedback-deploy', async (req, res) => {
   }
 });
 
+async function resolveContractUserId(req: any) {
+  const rawUserId =
+    readString(req.headers['x-user-id'])
+    ?? readString(req.body?.userId)
+    ?? readString(req.query?.userId);
+
+  if (!rawUserId) {
+    return 'default-user';
+  }
+
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(rawUserId)) {
+    return rawUserId;
+  }
+
+  try {
+    const lookup = await pool.query(
+      `SELECT id
+         FROM users
+        WHERE username = $1 OR email = $1
+        LIMIT 1`,
+      [rawUserId],
+    );
+    return lookup.rows[0]?.id || rawUserId;
+  } catch {
+    return rawUserId;
+  }
+}
+
+function normalizeContractStatusValue(value: unknown) {
+  const normalized = readString(value)?.toLowerCase() ?? 'draft';
+  switch (normalized) {
+    case 'draft':
+    case 'active':
+    case 'completed':
+    case 'cancelled':
+    case 'pending_signatures':
+    case 'signed':
+    case 'rejected':
+      return normalized;
+    default:
+      return 'draft';
+  }
+}
+
+function buildContractNumber() {
+  return `CTR-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
+
+function normalizeContractSections(value: unknown) {
+  return normalizeJsonArrayField(value).map((entry: any, index: number) => ({
+    id: readString(entry?.id) ?? `section-${index + 1}`,
+    title: readString(entry?.title) ?? readString(entry?.heading) ?? `Seksjon ${index + 1}`,
+    content: readString(entry?.content) ?? readString(entry?.body) ?? '',
+    type: readString(entry?.type) ?? 'custom',
+    required: typeof entry?.required === 'boolean' ? entry.required : false,
+  }));
+}
+
+function buildContractSectionsFromQuote(quote: any) {
+  const services = Array.isArray(quote.services) ? quote.services : [];
+  const additionalCosts = Array.isArray(quote.additionalCosts) ? quote.additionalCosts : [];
+  const discounts = Array.isArray(quote.discounts) ? quote.discounts : [];
+
+  const servicesText = services.length > 0
+    ? services.map((service: any) => {
+        const name = readString(service?.description) ?? readString(service?.name) ?? 'Tjeneste';
+        const quantity = Number.isFinite(Number(service?.quantity)) ? ` x ${Number(service.quantity)}` : '';
+        const price = toNumericValue(service?.totalPrice, toNumericValue(service?.unitPrice, 0));
+        return `- ${name}${quantity} · ${price.toLocaleString('no-NO')} NOK`;
+      }).join('\n')
+    : 'Tilbudet inneholder standard leveranser i henhold til avtalt pakke.';
+
+  const pricingLines = [
+    `Subtotal: ${toNumericValue(quote.subtotal, toNumericValue(quote.basePrice, 0)).toLocaleString('no-NO')} NOK`,
+    additionalCosts.length > 0
+      ? `Tillegg: ${additionalCosts.map((cost: any) => `${readString(cost?.name) ?? readString(cost?.description) ?? 'Tillegg'} (${toNumericValue(cost?.amount, 0).toLocaleString('no-NO')} NOK)`).join(', ')}`
+      : null,
+    discounts.length > 0
+      ? `Rabatter: ${discounts.map((discount: any) => `${readString(discount?.name) ?? readString(discount?.discountCode) ?? 'Rabatt'} (${toNumericValue(discount?.value ?? discount?.discountValue, 0).toLocaleString('no-NO')} NOK)`).join(', ')}`
+      : null,
+    `Total: ${toNumericValue(quote.totalAmount, 0).toLocaleString('no-NO')} NOK`,
+  ].filter(Boolean).join('\n');
+
+  return [
+    {
+      id: 'services',
+      title: 'Leveranse og omfang',
+      content: servicesText,
+      type: 'responsibilities',
+      required: true,
+    },
+    {
+      id: 'pricing',
+      title: 'Pris og betalingsbetingelser',
+      content: pricingLines,
+      type: 'pricing',
+      required: true,
+    },
+    {
+      id: 'schedule',
+      title: 'Fremdrift og neste steg',
+      content: readString(quote.notes)
+        ?? `Tilbudet ble akseptert ${quote.acceptedAt ? new Date(quote.acceptedAt).toLocaleDateString('no-NO') : 'nylig'}. Kontrakten følger samme prosjektgrunnlag og leveransebeskrivelse som tilbudet.`,
+      type: 'schedule',
+      required: false,
+    },
+  ];
+}
+
+function mapContractRecord(row: any) {
+  const metadata = normalizeJsonObjectField(row?.metadata) || {};
+  const googleSignature = normalizeJsonObjectField(metadata.googleSignature) || {};
+  const sections = normalizeContractSections(row?.sections);
+  const totalAmount = toNumericValue(row?.total_amount, toNumericValue(row?.totalAmount, 0));
+  const signatureStatus = readString(row?.signature_status) ?? 'not_started';
+  const status = normalizeContractStatusValue(row?.status ?? (signatureStatus === 'signed' ? 'signed' : signatureStatus === 'sent' || signatureStatus === 'viewed' ? 'pending_signatures' : 'draft'));
+
+  return {
+    id: row.id,
+    userId: row.user_id ?? null,
+    user_id: row.user_id ?? null,
+    clientId: row.client_id ?? null,
+    client_id: row.client_id ?? null,
+    projectId: row.project_id ?? null,
+    project_id: row.project_id ?? null,
+    sourceQuoteId: row.source_quote_id ?? metadata.sourceQuoteId ?? null,
+    source_quote_id: row.source_quote_id ?? metadata.sourceQuoteId ?? null,
+    contractId: row.id,
+    contractNumber: row.contract_number ?? row.contractNumber ?? null,
+    contract_number: row.contract_number ?? row.contractNumber ?? null,
+    contractTitle: row.contract_title ?? row.contractTitle ?? row.title ?? 'Kontrakt',
+    contract_title: row.contract_title ?? row.contractTitle ?? row.title ?? 'Kontrakt',
+    title: row.title ?? row.contract_title ?? row.contractTitle ?? 'Kontrakt',
+    clientName: row.client_name ?? row.clientName ?? '',
+    client_name: row.client_name ?? row.clientName ?? '',
+    clientEmail: row.client_email ?? row.clientEmail ?? '',
+    client_email: row.client_email ?? row.clientEmail ?? '',
+    clientPhone: row.client_phone ?? row.clientPhone ?? null,
+    client_phone: row.client_phone ?? row.clientPhone ?? null,
+    customerType: row.customer_type ?? row.customerType ?? 'private',
+    customer_type: row.customer_type ?? row.customerType ?? 'private',
+    organizationNumber: row.organization_number ?? row.organizationNumber ?? null,
+    organization_number: row.organization_number ?? row.organizationNumber ?? null,
+    organizationName: row.organization_name ?? row.organizationName ?? null,
+    organization_name: row.organization_name ?? row.organizationName ?? null,
+    projectType: row.project_type ?? row.projectType ?? null,
+    project_type: row.project_type ?? row.projectType ?? null,
+    contractType: row.contract_type ?? row.contractType ?? null,
+    contract_type: row.contract_type ?? row.contractType ?? null,
+    projectDescription: row.project_description ?? row.projectDescription ?? row.title ?? '',
+    project_description: row.project_description ?? row.projectDescription ?? row.title ?? '',
+    eventDate: row.event_date ?? row.eventDate ?? null,
+    event_date: row.event_date ?? row.eventDate ?? null,
+    eventLocation: row.event_location ?? row.eventLocation ?? null,
+    event_location: row.event_location ?? row.eventLocation ?? null,
+    totalAmount,
+    total_amount: totalAmount,
+    profession: row.profession ?? null,
+    templateUsed: row.template_used ?? row.templateUsed ?? null,
+    template_used: row.template_used ?? row.templateUsed ?? null,
+    content: row.content ?? null,
+    sections,
+    metadata,
+    status,
+    googleDocId: row.google_doc_id ?? readString(googleSignature.driveSourceFileId) ?? null,
+    google_doc_id: row.google_doc_id ?? readString(googleSignature.driveSourceFileId) ?? null,
+    googleDocUrl: row.google_doc_url ?? readString(googleSignature.requestUrl) ?? readString(googleSignature.webViewUrl) ?? null,
+    google_doc_url: row.google_doc_url ?? readString(googleSignature.requestUrl) ?? readString(googleSignature.webViewUrl) ?? null,
+    signatureStatus,
+    signature_status: signatureStatus,
+    signerName: row.signer_name ?? row.signerName ?? readString(googleSignature.counterpartyName) ?? null,
+    signer_name: row.signer_name ?? row.signerName ?? readString(googleSignature.counterpartyName) ?? null,
+    signerEmail: row.signer_email ?? row.signerEmail ?? readString(googleSignature.counterpartyEmail) ?? null,
+    signer_email: row.signer_email ?? row.signerEmail ?? readString(googleSignature.counterpartyEmail) ?? null,
+    signedAt: row.signed_at ?? row.signed_date ?? row.signedAt ?? null,
+    signed_at: row.signed_at ?? row.signed_date ?? row.signedAt ?? null,
+    createdAt: row.created_at ?? row.createdAt ?? null,
+    created_at: row.created_at ?? row.createdAt ?? null,
+    updatedAt: row.updated_at ?? row.updatedAt ?? null,
+    updated_at: row.updated_at ?? row.updatedAt ?? null,
+    documentHash: row.document_hash ?? row.documentHash ?? null,
+    document_hash: row.document_hash ?? row.documentHash ?? null,
+  };
+}
+
+async function fetchContractById(contractId: string) {
+  await ensureContractsCompatibilitySchema(pool);
+  const result = await pool.query(`SELECT * FROM contracts WHERE id = $1 LIMIT 1`, [contractId]);
+  if (!result.rows.length) {
+    return null;
+  }
+  return mapContractRecord(result.rows[0]);
+}
+
+async function buildContractPdfBuffer(contract: any): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const chunks: Buffer[] = [];
+    doc.on('data', (chunk: Buffer | Uint8Array) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const sections = Array.isArray(contract.sections) ? contract.sections : [];
+    doc.fontSize(22).text(contract.contractTitle || contract.title || 'Kontrakt', { underline: true });
+    doc.moveDown(0.5);
+    doc.fontSize(10).fillColor('#555').text(`Kontraktnummer: ${contract.contractNumber || contract.id}`);
+    doc.text(`Status: ${contract.status || 'draft'}`);
+    doc.text(`Klient: ${contract.clientName || 'Ukjent klient'}${contract.clientEmail ? ` · ${contract.clientEmail}` : ''}`);
+    if (contract.projectDescription) {
+      doc.text(`Prosjekt: ${contract.projectDescription}`);
+    }
+    if (contract.eventDate) {
+      doc.text(`Dato: ${new Date(contract.eventDate).toLocaleDateString('no-NO')}`);
+    }
+    if (contract.eventLocation) {
+      doc.text(`Lokasjon: ${contract.eventLocation}`);
+    }
+    doc.text(`Beløp: ${toNumericValue(contract.totalAmount, 0).toLocaleString('no-NO')} NOK`);
+    doc.moveDown();
+    doc.fillColor('#111');
+
+    if (sections.length > 0) {
+      sections.forEach((section: any) => {
+        doc.fontSize(14).text(section.title || 'Seksjon', { continued: false });
+        doc.moveDown(0.2);
+        doc.fontSize(11).text(section.content || 'Ingen innhold tilgjengelig');
+        doc.moveDown();
+      });
+    } else if (contract.content) {
+      doc.fontSize(11).text(contract.content);
+      doc.moveDown();
+    }
+
+    doc.fontSize(10).fillColor('#666').text(`Generert av CreatorHub ${new Date().toLocaleString('no-NO')}`);
+    if (contract.googleDocUrl) {
+      doc.moveDown(0.4);
+      doc.text(`Google-signaturdokument: ${contract.googleDocUrl}`);
+    }
+    doc.end();
+  });
+}
+
+function buildContractEventSummary(contract: any, eventType: string) {
+  const title = contract.contractTitle || contract.projectDescription || 'Kontrakt';
+  switch (eventType) {
+    case 'created':
+      return {
+        subject: `Kontrakt opprettet: ${title}`,
+        message: `Kontrakten for ${contract.clientName || 'kunde'} er opprettet og klar for gjennomgang.`,
+      };
+    case 'created_from_quote':
+      return {
+        subject: `Tilbud akseptert: kontrakt opprettet`,
+        message: `Tilbudet for ${contract.clientName || 'kunde'} ble akseptert og er nå konvertert til kontrakt.`,
+      };
+    case 'signature_prepared':
+      return {
+        subject: `Google-signatur klargjort`,
+        message: `Kontrakten ${title} er klargjort for Google Docs-signering.`,
+      };
+    case 'signature_sent':
+      return {
+        subject: `Kontrakt sendt til signering`,
+        message: `Kontrakten ${title} er sendt til ${contract.clientEmail || 'kunden'} for signering.`,
+      };
+    case 'signed':
+      return {
+        subject: `Kontrakt signert`,
+        message: `Kontrakten ${title} er signert av ${contract.signerName || contract.clientName || 'kunden'}.`,
+      };
+    case 'rejected':
+      return {
+        subject: `Kontrakt avvist`,
+        message: `Kontrakten ${title} ble avvist eller trenger endringer.`,
+      };
+    default:
+      return {
+        subject: `Kontrakt oppdatert`,
+        message: `Kontrakten ${title} har fått en ny status: ${eventType}.`,
+      };
+  }
+}
+
+async function postContractGoogleChatUpdate(spaceName: string, preferredUserId: string | null, text: string) {
+  if (!spaceName || !preferredUserId || !text) {
+    return;
+  }
+
+  try {
+    await sendGoogleWorkspaceChatMessage(pool, {
+      preferredUserId,
+      space: spaceName,
+      text,
+    });
+  } catch (error) {
+    console.warn('Skipping Google Chat contract sync:', error instanceof Error ? error.message : error);
+  }
+}
+
+async function syncContractLifecycleArtifacts(params: {
+  contract: any;
+  eventType: string;
+  actorUserId?: string | null;
+}) {
+  const contract = mapContractRecord(params.contract);
+  const actorUserId = params.actorUserId ?? contract.userId ?? 'system';
+  const { subject, message } = buildContractEventSummary(contract, params.eventType);
+  const externalRef = `contract:${contract.id}:${params.eventType}`;
+
+  if (contract.sourceQuoteId) {
+    try {
+      const quoteResult = await pool.query(
+        `SELECT project_creation_data, signature_status
+           FROM quotes
+          WHERE id = $1
+          LIMIT 1`,
+        [contract.sourceQuoteId],
+      );
+      if (quoteResult.rows.length > 0) {
+        const row = quoteResult.rows[0];
+        const projectCreationData: Record<string, unknown> = normalizeJsonObjectField(row.project_creation_data) || {};
+        const nextProjectCreationData = {
+          ...projectCreationData,
+          contractId: contract.id,
+          contractStatus: contract.status,
+          contractSignatureStatus: contract.signatureStatus,
+          contractGoogleDocId: contract.googleDocId || readString(projectCreationData.contractGoogleDocId) || null,
+          contractGoogleDocUrl: contract.googleDocUrl || readString(projectCreationData.contractGoogleDocUrl) || null,
+        };
+        await pool.query(
+          `UPDATE quotes
+             SET contract_id = $2,
+                 project_creation_data = $3::jsonb,
+                 signature_status = $4,
+                 updated_at = NOW()
+           WHERE id = $1`,
+          [
+            contract.sourceQuoteId,
+            contract.id,
+            JSON.stringify(nextProjectCreationData),
+            contract.signatureStatus || row.signature_status || 'pending',
+          ],
+        );
+      }
+    } catch (error) {
+      console.warn('Quote sync skipped for contract event:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  const conversationLinkParams: any[] = [];
+  const conversationWhere: string[] = [];
+  if (contract.clientId) {
+    conversationLinkParams.push(contract.clientId);
+    conversationWhere.push(`customer_id = $${conversationLinkParams.length}`);
+  }
+  if (contract.projectId) {
+    conversationLinkParams.push(contract.projectId);
+    conversationWhere.push(`project_id = $${conversationLinkParams.length}`);
+  }
+
+  let relatedLinks: Array<{ provider: string; conversation_id: string; customer_id: string | null; deal_id: string | null; project_id: string | null }> = [];
+  if (conversationWhere.length > 0) {
+    try {
+      const linkResult = await pool.query(
+        `SELECT provider, conversation_id, customer_id, deal_id, project_id
+           FROM crm_conversation_links
+          WHERE ${conversationWhere.join(' OR ')}`,
+        conversationLinkParams,
+      );
+      relatedLinks = linkResult.rows;
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      if (code !== '42P01') {
+        console.warn('Conversation link lookup skipped:', error instanceof Error ? error.message : error);
+      }
+    }
+  }
+
+  const primaryLink = relatedLinks[0];
+  const customerId = contract.clientId || primaryLink?.customer_id || null;
+  const dealId = primaryLink?.deal_id || null;
+
+  if (customerId) {
+    try {
+      const existingActivity = await pool.query(
+        `SELECT id
+           FROM crm_activities
+          WHERE customer_id::text = $1 AND subject = $2 AND description = $3
+          LIMIT 1`,
+        [customerId, subject, `${message}\n\n[ref:${externalRef}]`],
+      );
+      if (existingActivity.rowCount === 0) {
+        await pool.query(
+          `INSERT INTO crm_activities (
+             id, customer_id, deal_id, type, subject, description, direction, outcome, created_at, updated_at
+           ) VALUES (
+             gen_random_uuid(), $1, $2, $3, $4, $5, 'outbound', $6, NOW(), NOW()
+           )`,
+          [
+            customerId,
+            dealId,
+            'contract',
+            subject,
+            `${message}\n\n[ref:${externalRef}]`,
+            params.eventType,
+          ],
+        );
+      }
+    } catch (error) {
+      console.warn('CRM sync skipped for contract event:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  if (contract.projectId) {
+    try {
+      const existingMilestone = await pool.query(
+        `SELECT id
+           FROM project_milestones
+          WHERE project_id = $1
+            AND type = 'contract_event'
+            AND internal_notes = $2
+          LIMIT 1`,
+        [contract.projectId, `[ref:${externalRef}]`],
+      );
+      if (existingMilestone.rowCount === 0) {
+        await pool.query(
+          `INSERT INTO project_milestones (
+             id, project_id, user_id, title, description, category, type, status, priority, location, internal_notes, client_visible
+           ) VALUES (
+             $1, $2, $3, $4, $5, 'contracts', 'contract_event', $6, 'medium', $7, $8, false
+           )`,
+          [
+            crypto.randomUUID(),
+            contract.projectId,
+            actorUserId,
+            subject,
+            message,
+            contract.signatureStatus === 'signed' || params.eventType === 'signed' ? 'completed' : 'pending',
+            contract.eventLocation,
+            `[ref:${externalRef}]`,
+          ],
+        );
+      }
+    } catch (error) {
+      console.warn('Project timeline sync skipped for contract event:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  for (const link of relatedLinks) {
+    if (link.provider === 'internal-chat') {
+      try {
+        await pool.query(
+          `INSERT INTO communication_channels (id, name, type, is_active, settings, created_at, updated_at)
+           VALUES ($1, $2, 'chat', true, '{}'::jsonb, NOW(), NOW())
+           ON CONFLICT (id) DO NOTHING`,
+          [link.conversation_id, `Kontrakt · ${contract.clientName || contract.projectDescription || contract.id}`],
+        );
+
+        const existingMessage = await pool.query(
+          `SELECT id
+             FROM communication_messages
+            WHERE channel_id = $1
+              AND metadata->>'externalRef' = $2
+            LIMIT 1`,
+          [link.conversation_id, externalRef],
+        );
+        if (existingMessage.rowCount === 0) {
+          await pool.query(
+            `INSERT INTO communication_messages (
+               id, channel_id, sender_id, message_type, content, metadata, is_read, is_priority, is_system_generated, created_at, updated_at
+             ) VALUES (
+               $1, $2, $3, 'system', $4, $5::jsonb, false, false, true, NOW(), NOW()
+             )`,
+            [
+              crypto.randomUUID(),
+              link.conversation_id,
+              actorUserId,
+              message,
+              JSON.stringify({
+                externalRef,
+                source: 'contracts',
+                eventType: params.eventType,
+                contractId: contract.id,
+                quoteId: contract.sourceQuoteId,
+                googleDocUrl: contract.googleDocUrl,
+                signatureStatus: contract.signatureStatus,
+              }),
+            ],
+          );
+        }
+      } catch (error) {
+        console.warn('Internal chat sync skipped for contract event:', error instanceof Error ? error.message : error);
+      }
+    }
+
+    if (
+      link.provider === 'google-chat'
+      && link.conversation_id
+      && ['created_from_quote', 'signature_sent', 'signed', 'rejected'].includes(params.eventType)
+    ) {
+      await postContractGoogleChatUpdate(link.conversation_id.startsWith('spaces/') ? link.conversation_id : `spaces/${link.conversation_id}`, contract.userId, message);
+    }
+  }
+}
+
+async function ensureContractForAcceptedQuote(quoteRow: any) {
+  await ensureContractsCompatibilitySchema(pool);
+  const quote = mapQuoteCompatibilityRecord(quoteRow);
+
+  if (quote.contractId) {
+    const existingContract = await fetchContractById(String(quote.contractId));
+    if (existingContract) {
+      return existingContract;
+    }
+  }
+
+  const existingBySource = await pool.query(
+    `SELECT * FROM contracts WHERE source_quote_id = $1 LIMIT 1`,
+    [quote.id],
+  );
+  if (existingBySource.rows.length > 0) {
+    const existingContract = mapContractRecord(existingBySource.rows[0]);
+    await pool.query(
+      `UPDATE quotes
+         SET contract_id = $2,
+             project_creation_data = COALESCE(project_creation_data, '{}'::jsonb) || $3::jsonb,
+             updated_at = NOW()
+       WHERE id = $1`,
+      [quote.id, existingContract.id, JSON.stringify({ contractId: existingContract.id })],
+    );
+    return existingContract;
+  }
+
+  const clientInfo = (quote.clientInfo && typeof quote.clientInfo === 'object')
+    ? quote.clientInfo as Record<string, any>
+    : {};
+  const contractNumber = buildContractNumber();
+  const contractTitle = quote.title || `Kontrakt · ${clientInfo.name || quote.clientName || 'Prosjekt'}`;
+  const contractMetadata = {
+    sourceQuoteId: quote.id,
+    quoteNumber: quote.quoteNumber,
+    quoteStatus: quote.status,
+    quoteBusinessInfo: quote.businessInfo || {},
+    quoteSummary: {
+      title: quote.title,
+      totalAmount: quote.totalAmount,
+      subtotal: quote.subtotal,
+      services: quote.services,
+      additionalCosts: quote.additionalCosts,
+      discounts: quote.discounts,
+    },
+    projectCreationData: quote.projectCreationData || {},
+  };
+
+  const insertResult = await pool.query(
+    `INSERT INTO contracts (
+       id, user_id, client_id, project_id, source_quote_id, contract_number,
+       contract_title, title, client_name, client_email, client_phone,
+       customer_type, contract_type, project_type, project_description,
+       total_amount, profession, template_used, sections, status, signature_status,
+       metadata, created_at, updated_at
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6,
+       $7, $8, $9, $10, $11,
+       $12, $13, $14, $15,
+       $16, $17, $18, $19::jsonb, 'draft', 'not_started',
+       $20::jsonb, NOW(), NOW()
+     )
+     RETURNING *`,
+    [
+      crypto.randomUUID(),
+      quote.createdBy || 'default-user',
+      quote.clientId || null,
+      quote.projectId || null,
+      quote.id,
+      contractNumber,
+      contractTitle,
+      contractTitle,
+      clientInfo.name || quote.clientName || '',
+      clientInfo.email || quote.clientEmail || '',
+      clientInfo.phoneNumber || clientInfo.phone || null,
+      clientInfo.customerType || 'private',
+      quote.projectType || quote.quoteType || 'service_agreement',
+      quote.projectType || quote.quoteType || 'service_agreement',
+      quote.description || quote.title || 'Kontrakt generert fra akseptert tilbud',
+      toNumericValue(quote.totalAmount, 0),
+      quote.profession || 'photographer',
+      quote.projectType || quote.quoteType || 'quote_conversion',
+      JSON.stringify(buildContractSectionsFromQuote(quote)),
+      JSON.stringify(contractMetadata),
+    ],
+  );
+
+  const createdContract = mapContractRecord(insertResult.rows[0]);
+
+  const nextProjectCreationData = {
+    ...((quote.projectCreationData && typeof quote.projectCreationData === 'object')
+      ? quote.projectCreationData
+      : {}),
+    contractId: createdContract.id,
+    contractStatus: createdContract.status,
+  };
+
+  await pool.query(
+    `UPDATE quotes
+       SET contract_id = $2,
+           project_creation_data = $3::jsonb,
+           updated_at = NOW()
+     WHERE id = $1`,
+    [quote.id, createdContract.id, JSON.stringify(nextProjectCreationData)],
+  );
+
+  await syncContractLifecycleArtifacts({
+    contract: createdContract,
+    eventType: 'created_from_quote',
+    actorUserId: createdContract.userId,
+  });
+
+  return createdContract;
+}
+
 // Contracts endpoints
 app.post('/api/contracts', async (req, res) => {
   try {
-    const contractData = req.body;
-    
-    // Generate unique contract number
-    const contractNumber = `CTR-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-    
-    // Insert into database
-    const [contract] = await db.insert(schema.contracts).values({
-      userId: 'default-user', // TODO: Get from auth session
-      contractNumber,
-      contractTitle: contractData.contractTitle || 'Ny kontrakt',
-      logoUrl: contractData.logoUrl,
-      customerType: contractData.customerType || 'private',
-      organizationNumber: contractData.organizationNumber,
-      organizationName: contractData.organizationName,
-      businessAddress: contractData.businessAddress,
-      contractType: contractData.contractType,
-      clientName: contractData.clientName,
-      clientEmail: contractData.clientEmail,
-      projectType: contractData.contractType || 'photography',
-      projectDescription: contractData.projectDescription,
-      eventDate: contractData.eventDate,
-      eventLocation: contractData.eventLocation,
-      totalAmount: contractData.totalAmount,
-      profession: contractData.profession || 'photographer',
-      templateUsed: contractData.templateUsed,
-      sections: contractData.sections || [],
-      status: 'draft',
-    }).returning();
-    
-    console.log('✅ Contract created:', contract.id);
-    
+    await ensureContractsCompatibilitySchema(pool);
+
+    const contractData = req.body || {};
+    const userId = await resolveContractUserId(req);
+    const contractNumber = buildContractNumber();
+    const sourceQuoteId = readString(contractData.sourceQuoteId) ?? null;
+    const title = readString(contractData.contractTitle) ?? readString(contractData.title) ?? 'Ny kontrakt';
+    const sections = normalizeContractSections(contractData.sections);
+    const metadata = {
+      ...(normalizeJsonObjectField(contractData.metadata) || {}),
+      ...(sourceQuoteId ? { sourceQuoteId } : {}),
+    };
+
+    const result = await pool.query(
+      `INSERT INTO contracts (
+         id, user_id, client_id, project_id, source_quote_id, contract_number,
+         contract_title, title, logo_url, customer_type, organization_number, organization_name,
+         business_address, contract_type, project_type, project_description, event_date, event_location,
+         total_amount, profession, template_used, sections, content, metadata, status, signature_status,
+         created_at, updated_at
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6,
+         $7, $8, $9, $10, $11, $12,
+         $13, $14, $15, $16, $17, $18,
+         $19, $20, $21, $22::jsonb, $23, $24::jsonb, $25, $26,
+         NOW(), NOW()
+       )
+       RETURNING *`,
+      [
+        crypto.randomUUID(),
+        userId,
+        readString(contractData.clientId),
+        readString(contractData.projectId),
+        sourceQuoteId,
+        contractNumber,
+        title,
+        readString(contractData.title) ?? title,
+        readString(contractData.logoUrl),
+        readString(contractData.customerType) ?? 'private',
+        readString(contractData.organizationNumber),
+        readString(contractData.organizationName),
+        readString(contractData.businessAddress),
+        readString(contractData.contractType) ?? 'service_agreement',
+        readString(contractData.projectType) ?? readString(contractData.contractType) ?? 'service_agreement',
+        readString(contractData.projectDescription) ?? '',
+        readString(contractData.eventDate),
+        readString(contractData.eventLocation),
+        toNumericValue(contractData.totalAmount, 0),
+        readString(contractData.profession) ?? 'photographer',
+        readString(contractData.templateUsed),
+        JSON.stringify(sections),
+        readString(contractData.content),
+        JSON.stringify(metadata),
+        normalizeContractStatusValue(contractData.status),
+        readString(contractData.signatureStatus) ?? 'not_started',
+      ],
+    );
+
+    const contract = mapContractRecord(result.rows[0]);
+
+    if (sourceQuoteId) {
+      const quoteResult = await pool.query(`SELECT project_creation_data FROM quotes WHERE id = $1 LIMIT 1`, [sourceQuoteId]).catch(() => ({ rows: [] as any[] }));
+      const projectCreationData: Record<string, unknown> = normalizeJsonObjectField(quoteResult.rows[0]?.project_creation_data) || {};
+      await pool.query(
+        `UPDATE quotes
+           SET contract_id = $2,
+               project_creation_data = $3::jsonb,
+               updated_at = NOW()
+         WHERE id = $1`,
+        [
+          sourceQuoteId,
+          contract.id,
+          JSON.stringify({
+            ...projectCreationData,
+            contractId: contract.id,
+            contractStatus: contract.status,
+          }),
+        ],
+      ).catch(() => undefined);
+    }
+
+    await syncContractLifecycleArtifacts({
+      contract,
+      eventType: sourceQuoteId ? 'created_from_quote' : 'created',
+      actorUserId: userId,
+    });
+
     res.json({
       success: true,
       message: 'Contract created successfully',
       contractId: contract.id,
-      contract: {
-        ...contract,
-        createdAt: new Date().toISOString(),
-      }
+      contract,
     });
   } catch (error: any) {
     console.error('❌ Contract creation error:', error.message || error);
@@ -50657,35 +54052,84 @@ app.post('/api/contracts', async (req, res) => {
 
 app.put('/api/contracts/:contractId', async (req, res) => {
   try {
-    const contractData = req.body;
-    const [contract] = await db
-      .update(schema.contracts)
-      .set({
-        contractTitle: contractData.contractTitle,
-        logoUrl: contractData.logoUrl,
-        customerType: contractData.customerType || 'private',
-        organizationNumber: contractData.organizationNumber,
-        organizationName: contractData.organizationName,
-        businessAddress: contractData.businessAddress,
-        contractType: contractData.contractType,
-        clientName: contractData.clientName,
-        clientEmail: contractData.clientEmail,
-        projectType: contractData.contractType || 'photography',
-        projectDescription: contractData.projectDescription,
-        eventDate: contractData.eventDate,
-        eventLocation: contractData.eventLocation,
-        totalAmount: contractData.totalAmount,
-        profession: contractData.profession || 'photographer',
-        templateUsed: contractData.templateUsed,
-        sections: contractData.sections || [],
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(schema.contracts.id, req.params.contractId))
-      .returning();
+    await ensureContractsCompatibilitySchema(pool);
 
-    if (!contract) {
+    const contractData = req.body || {};
+    const setClauses = ['updated_at = NOW()'];
+    const params: any[] = [];
+    let idx = 1;
+
+    const scalarFields: Array<[string, string, (value: unknown) => unknown]> = [
+      ['contractTitle', 'contract_title', (value) => readString(value)],
+      ['title', 'title', (value) => readString(value)],
+      ['logoUrl', 'logo_url', (value) => readString(value)],
+      ['customerType', 'customer_type', (value) => readString(value) ?? 'private'],
+      ['organizationNumber', 'organization_number', (value) => readString(value)],
+      ['organizationName', 'organization_name', (value) => readString(value)],
+      ['businessAddress', 'business_address', (value) => readString(value)],
+      ['contractType', 'contract_type', (value) => readString(value)],
+      ['projectType', 'project_type', (value) => readString(value)],
+      ['projectDescription', 'project_description', (value) => readString(value)],
+      ['eventDate', 'event_date', (value) => readString(value)],
+      ['eventLocation', 'event_location', (value) => readString(value)],
+      ['profession', 'profession', (value) => readString(value)],
+      ['templateUsed', 'template_used', (value) => readString(value)],
+      ['clientId', 'client_id', (value) => readString(value)],
+      ['projectId', 'project_id', (value) => readString(value)],
+      ['clientName', 'client_name', (value) => readString(value)],
+      ['clientEmail', 'client_email', (value) => readString(value)],
+      ['clientPhone', 'client_phone', (value) => readString(value)],
+      ['status', 'status', (value) => normalizeContractStatusValue(value)],
+      ['signatureStatus', 'signature_status', (value) => readString(value)],
+      ['googleDocId', 'google_doc_id', (value) => readString(value)],
+      ['googleDocUrl', 'google_doc_url', (value) => readString(value)],
+      ['signerName', 'signer_name', (value) => readString(value)],
+      ['signerEmail', 'signer_email', (value) => readString(value)],
+      ['content', 'content', (value) => readString(value)],
+    ];
+
+    for (const [inputKey, column, transform] of scalarFields) {
+      if (contractData[inputKey] !== undefined) {
+        setClauses.push(`${column} = $${idx++}`);
+        params.push(transform(contractData[inputKey]));
+      }
+    }
+
+    if (contractData.totalAmount !== undefined) {
+      setClauses.push(`total_amount = $${idx++}`);
+      params.push(toNumericValue(contractData.totalAmount, 0));
+    }
+
+    if (contractData.sections !== undefined) {
+      setClauses.push(`sections = $${idx++}::jsonb`);
+      params.push(JSON.stringify(normalizeContractSections(contractData.sections)));
+    }
+
+    if (contractData.metadata !== undefined) {
+      setClauses.push(`metadata = $${idx++}::jsonb`);
+      params.push(JSON.stringify(normalizeJsonObjectField(contractData.metadata) || {}));
+    }
+
+    if (setClauses.length === 1) {
+      return res.status(400).json({ success: false, message: 'No updates provided' });
+    }
+
+    params.push(req.params.contractId);
+    const result = await pool.query(
+      `UPDATE contracts SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
+      params,
+    );
+
+    if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Contract not found' });
     }
+
+    const contract = mapContractRecord(result.rows[0]);
+    await syncContractLifecycleArtifacts({
+      contract,
+      eventType: 'updated',
+      actorUserId: await resolveContractUserId(req),
+    });
 
     res.json({ success: true, contractId: contract.id, contract });
   } catch (error: any) {
@@ -50696,72 +54140,111 @@ app.put('/api/contracts/:contractId', async (req, res) => {
 
 app.post('/api/contracts/:contractId/sign', async (req, res) => {
   try {
+    await ensureContractsCompatibilitySchema(pool);
+
     const { signerName, signerEmail, signatureData } = req.body;
     const signedAt = new Date().toISOString();
     const ipAddress = String(req.headers['x-forwarded-for'] || req.ip || 'unknown');
     const userAgent = String(req.headers['user-agent'] || 'unknown');
-    
-    // Fetch current contract to include in hash
-    const [existingContract] = await db
-      .select()
-      .from(schema.contracts)
-      .where(eq(schema.contracts.id, req.params.contractId))
-      .limit(1);
 
+    const existingContract = await fetchContractById(req.params.contractId);
     if (!existingContract) {
       return res.status(404).json({ success: false, message: 'Contract not found' });
     }
 
-    // Update contract with signing info
-    const [contract] = await db
-      .update(schema.contracts)
-      .set({
-        signerName,
-        signerEmail,
-        digitalSignature: signatureData || signerName,
-        signedDate: signedAt,
+    const updateResult = await pool.query(
+      `UPDATE contracts
+         SET signer_name = $2,
+             signer_email = $3,
+             digital_signature = $4,
+             signed_date = $5,
+             signed_at = $5,
+             signature_ip_address = $6,
+             status = 'signed',
+             signature_status = 'signed',
+             updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [
+        req.params.contractId,
+        readString(signerName) ?? existingContract.clientName,
+        readString(signerEmail) ?? existingContract.clientEmail,
+        readString(signatureData) ?? readString(signerName) ?? existingContract.clientName,
         signedAt,
-        signatureIpAddress: ipAddress,
-        status: 'signed',
-        updatedAt: signedAt,
-      })
-      .where(eq(schema.contracts.id, req.params.contractId))
-      .returning();
+        ipAddress,
+      ],
+    );
 
-    // Calculate comprehensive hash with all contract data
+    const contract = mapContractRecord(updateResult.rows[0]);
     const documentHash = calculateContractHash(contract);
 
     // Store signature record with hash for verification
-    await db.insert(schema.customerSignatures).values({
-      contractId: contract.id,
-      signerPersonId: 'default-signer',
-      signerName,
-      signerEmail: signerEmail || contract.clientEmail,
-      authMethod: 'basic',
-      documentHash,
-      signatureData: signatureData || signerName,
-      ipAddress,
-      userAgent,
-      status: 'valid',
-    });
-
-    // Update contract with the computed hash
-    const [signedContract] = await db
-      .update(schema.contracts)
-      .set({ documentHash })
-      .where(eq(schema.contracts.id, req.params.contractId))
-      .returning();
-
-    res.json({ 
-      success: true, 
-      contractId: signedContract.id, 
-      contract: {
-        ...signedContract,
-        _verification: {
+    try {
+      await pool.query(
+        `INSERT INTO customer_signatures (
+           id, contract_id, signer_person_id, signer_name, signer_email, auth_method,
+           document_hash, signature_data, ip_address, user_agent, status, signed_at, created_at
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6,
+           $7, $8, $9, $10, $11, NOW(), NOW()
+         )`,
+        [
+          crypto.randomUUID(),
+          contract.id,
+          existingContract.clientId || 'default-signer',
+          readString(signerName) ?? existingContract.clientName,
+          readString(signerEmail) ?? existingContract.clientEmail,
+          'basic',
           documentHash,
-          verifiedAt: signedAt
-        }
+          readString(signatureData) ?? readString(signerName) ?? existingContract.clientName,
+          ipAddress,
+          userAgent,
+          'valid',
+        ],
+      );
+    } catch (signatureAuditError) {
+      console.warn('Skipping customer_signatures audit insert:', signatureAuditError instanceof Error ? signatureAuditError.message : signatureAuditError);
+    }
+
+    await pool.query(
+      `UPDATE contracts SET document_hash = $2, updated_at = NOW() WHERE id = $1`,
+      [req.params.contractId, documentHash],
+    );
+
+    let signedContract = await fetchContractById(req.params.contractId);
+
+    try {
+      const googleSignature = await getContractGoogleESignature(pool, req.params.contractId);
+      if (googleSignature.signature) {
+        const updatedGoogleSignature = await updateContractGoogleESignatureStatus(pool, {
+          contractId: req.params.contractId,
+          status: 'signed',
+          preferredUserId: existingContract.userId,
+          signerName: readString(signerName) ?? existingContract.clientName,
+          signerEmail: readString(signerEmail) ?? existingContract.clientEmail,
+        });
+        signedContract = mapContractRecord(updatedGoogleSignature.contract);
       }
+    } catch (error) {
+      console.warn('Google signature sync skipped during contract sign:', error instanceof Error ? error.message : error);
+    }
+
+    if (signedContract) {
+      signedContract = {
+        ...signedContract,
+        documentHash,
+      };
+      await syncContractLifecycleArtifacts({
+        contract: signedContract,
+        eventType: 'signed',
+        actorUserId: existingContract.userId,
+      });
+    }
+
+    res.json({
+      success: true,
+      contractId: signedContract?.id ?? req.params.contractId,
+      contract: signedContract,
     });
   } catch (error: any) {
     console.error('Contract sign error:', error);
@@ -50771,12 +54254,9 @@ app.post('/api/contracts/:contractId/sign', async (req, res) => {
 
 app.get('/api/contracts/:contractId', async (req, res) => {
   try {
-    const [contract] = await db
-      .select()
-      .from(schema.contracts)
-      .where(eq(schema.contracts.id, req.params.contractId))
-      .limit(1);
-    
+    await ensureContractsCompatibilitySchema(pool);
+    const contract = await fetchContractById(req.params.contractId);
+
     if (!contract) {
       return res.status(404).json({
         success: false,
@@ -50802,8 +54282,11 @@ app.get('/api/contracts/:contractId', async (req, res) => {
       }
     }
     
+    const googleSignature = await getContractGoogleESignature(pool, req.params.contractId).catch(() => ({ signature: null }));
+
     res.json({
       ...contract,
+      googleSignature: googleSignature.signature,
       _verification: verificationStatus
     });
   } catch (error: any) {
@@ -50815,24 +54298,338 @@ app.get('/api/contracts/:contractId', async (req, res) => {
   }
 });
 
+app.get('/api/contracts/:contractId/signature-status', async (req, res) => {
+  try {
+    await ensureContractsCompatibilitySchema(pool);
+    const contract = await fetchContractById(req.params.contractId);
+    if (!contract) {
+      return res.status(404).json({ success: false, message: 'Contract not found' });
+    }
+
+    const googleSignature = await getContractGoogleESignature(pool, req.params.contractId).catch(() => ({ signature: null }));
+    const signature = googleSignature.signature;
+    res.json({
+      success: true,
+      signatureStatus: {
+        isSigned: contract.signatureStatus === 'signed' || contract.status === 'signed',
+        signedDate: contract.signedAt,
+        signerName: contract.signerName,
+        signerEmail: contract.signerEmail,
+        signatureStatus: contract.signatureStatus,
+        googleDocId: contract.googleDocId,
+        googleDocUrl: contract.googleDocUrl,
+        requestUrl: signature?.request_url ?? null,
+        webViewUrl: signature?.web_view_url ?? null,
+      },
+      contract,
+    });
+  } catch (error: any) {
+    console.error('Contract signature status error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to fetch contract signature status' });
+  }
+});
+
+app.post('/api/contracts/:contractId/google-esignature', async (req, res) => {
+  try {
+    const preferredUserId = await resolveContractUserId(req);
+    const response = await sendContractGoogleESignature(pool, {
+      contractId: req.params.contractId,
+      preferredUserId,
+      requestedBy: preferredUserId,
+      requestedByEmail: readString(req.headers['x-user-email']) ?? undefined,
+    });
+    const contract = mapContractRecord(response.contract);
+    await syncContractLifecycleArtifacts({
+      contract,
+      eventType: 'signature_sent',
+      actorUserId: preferredUserId,
+    });
+    res.json({
+      success: true,
+      contract,
+      data: {
+        documentId: contract.googleDocId,
+        documentUrl: contract.googleDocUrl,
+        signatureStatus: contract.signatureStatus,
+      },
+      connection: response.connection,
+    });
+  } catch (error: any) {
+    console.error('Contract Google e-signature error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to create Google e-signature document',
+    });
+  }
+});
+
+app.post('/api/contracts/:contractId/backup-drive', async (req, res) => {
+  try {
+    const preferredUserId = await resolveContractUserId(req);
+    const response = await prepareContractGoogleESignature(pool, {
+      contractId: req.params.contractId,
+      preferredUserId,
+      requestedBy: preferredUserId,
+      requestedByEmail: readString(req.headers['x-user-email']) ?? undefined,
+      sendNow: false,
+    });
+    const contract = mapContractRecord(response.contract);
+    await syncContractLifecycleArtifacts({
+      contract,
+      eventType: 'signature_prepared',
+      actorUserId: preferredUserId,
+    });
+    res.json({
+      success: true,
+      contract,
+      driveBackupUrl: contract.googleDocUrl,
+    });
+  } catch (error: any) {
+    console.error('Contract backup-drive error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to back up contract to Google Drive' });
+  }
+});
+
+app.get('/api/contracts/:contractId/google-signature', async (req, res) => {
+  try {
+    const response = await getContractGoogleESignature(pool, req.params.contractId);
+    res.json({
+      success: true,
+      contract: response.contract ? mapContractRecord(response.contract) : null,
+      signature: response.signature,
+    });
+  } catch (error: any) {
+    console.error('Get contract Google signature error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to fetch contract Google signature' });
+  }
+});
+
+app.post('/api/contracts/:contractId/google-signature/prepare', async (req, res) => {
+  try {
+    const preferredUserId = await resolveContractUserId(req);
+    const response = await prepareContractGoogleESignature(pool, {
+      contractId: req.params.contractId,
+      preferredUserId,
+      requestedBy: preferredUserId,
+      requestedByEmail: readString(req.headers['x-user-email']) ?? undefined,
+      sendNow: false,
+    });
+    const contract = mapContractRecord(response.contract);
+    await syncContractLifecycleArtifacts({
+      contract,
+      eventType: 'signature_prepared',
+      actorUserId: preferredUserId,
+    });
+    res.json({ success: true, contract, signature: response.signature, connection: response.connection });
+  } catch (error: any) {
+    console.error('Prepare contract Google signature error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to prepare contract Google signature' });
+  }
+});
+
+app.post('/api/contracts/:contractId/google-signature/send', async (req, res) => {
+  try {
+    const preferredUserId = await resolveContractUserId(req);
+    const response = await sendContractGoogleESignature(pool, {
+      contractId: req.params.contractId,
+      preferredUserId,
+      requestedBy: preferredUserId,
+      requestedByEmail: readString(req.headers['x-user-email']) ?? undefined,
+    });
+    const contract = mapContractRecord(response.contract);
+    await syncContractLifecycleArtifacts({
+      contract,
+      eventType: 'signature_sent',
+      actorUserId: preferredUserId,
+    });
+    res.json({ success: true, contract, signature: response.signature, connection: response.connection });
+  } catch (error: any) {
+    console.error('Send contract Google signature error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to send contract Google signature' });
+  }
+});
+
+app.post('/api/contracts/:contractId/google-signature/sync', async (req, res) => {
+  try {
+    const preferredUserId = await resolveContractUserId(req);
+    const response = await syncContractGoogleESignature(pool, {
+      contractId: req.params.contractId,
+      preferredUserId,
+    });
+    const contract = response.contract ? mapContractRecord(response.contract) : null;
+    if (contract) {
+      await syncContractLifecycleArtifacts({
+        contract,
+        eventType: contract.signatureStatus === 'signed' ? 'signed' : 'updated',
+        actorUserId: preferredUserId,
+      });
+    }
+    res.json({ success: true, contract, signature: response.signature, connection: response.connection });
+  } catch (error: any) {
+    console.error('Sync contract Google signature error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to sync contract Google signature' });
+  }
+});
+
+app.post('/api/contracts/:contractId/google-signature/status', async (req, res) => {
+  try {
+    const preferredUserId = await resolveContractUserId(req);
+    const status = readString(req.body?.status) as any;
+    if (!status) {
+      return res.status(400).json({ success: false, message: 'status is required' });
+    }
+    if (!['not_started', 'prepared', 'sent', 'viewed', 'signed', 'changes_requested', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Unsupported contract Google signature status' });
+    }
+    const response = await updateContractGoogleESignatureStatus(pool, {
+      contractId: req.params.contractId,
+      status,
+      preferredUserId,
+      signerName: readString(req.body?.signerName),
+      signerEmail: readString(req.body?.signerEmail),
+      requestUrl: readString(req.body?.requestUrl),
+      webViewUrl: readString(req.body?.webViewUrl),
+    });
+    const contract = mapContractRecord(response.contract);
+    await syncContractLifecycleArtifacts({
+      contract,
+      eventType: status === 'signed' ? 'signed' : status === 'rejected' ? 'rejected' : 'updated',
+      actorUserId: preferredUserId,
+    });
+    res.json({ success: true, contract, signature: response.signature });
+  } catch (error: any) {
+    console.error('Update contract Google signature status error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to update contract Google signature status' });
+  }
+});
+
+app.put('/api/contracts/:contractId/status', async (req, res) => {
+  try {
+    await ensureContractsCompatibilitySchema(pool);
+    const status = normalizeContractStatusValue(req.body?.status);
+    const result = await pool.query(
+      `UPDATE contracts
+         SET status = $2,
+             updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.contractId, status],
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Contract not found' });
+    }
+    const contract = mapContractRecord(result.rows[0]);
+    await syncContractLifecycleArtifacts({
+      contract,
+      eventType: status === 'signed' ? 'signed' : 'updated',
+      actorUserId: await resolveContractUserId(req),
+    });
+    res.json({ success: true, contract });
+  } catch (error: any) {
+    console.error('Contract status update error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to update contract status' });
+  }
+});
+
+app.delete('/api/contracts/:contractId', async (req, res) => {
+  try {
+    await ensureContractsCompatibilitySchema(pool);
+    const contract = await fetchContractById(req.params.contractId);
+    if (!contract) {
+      return res.status(404).json({ success: false, message: 'Contract not found' });
+    }
+
+    await pool.query(`DELETE FROM contracts WHERE id = $1`, [req.params.contractId]);
+
+    if (contract.sourceQuoteId) {
+      await pool.query(
+        `UPDATE quotes
+           SET contract_id = NULL,
+               project_creation_data = COALESCE(project_creation_data, '{}'::jsonb) - 'contractId' - 'contractStatus',
+               updated_at = NOW()
+         WHERE id = $1`,
+        [contract.sourceQuoteId],
+      ).catch(() => undefined);
+    }
+
+    res.json({ success: true, deleted: true, contractId: req.params.contractId });
+  } catch (error: any) {
+    console.error('Contract delete error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to delete contract' });
+  }
+});
+
+app.get('/api/contracts/:contractId/pdf', async (req, res) => {
+  try {
+    const contract = await fetchContractById(req.params.contractId);
+    if (!contract) {
+      return res.status(404).json({ success: false, message: 'Contract not found' });
+    }
+    const pdfBuffer = await buildContractPdfBuffer(contract);
+    const safeFileName = (contract.contractNumber || contract.id).replace(/[^a-z0-9-_]+/giu, '-');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${safeFileName}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (error: any) {
+    console.error('Contract PDF error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to generate contract PDF' });
+  }
+});
+
 // Send contract email
-app.post('/api/contracts/send-email', (req, res) => {
-  const { contractId, photographerName, photographerEmail, targetEmail, message } = req.body;
-  
-  console.log('📧 Sending contract email:', {
-    from: photographerEmail,
-    to: targetEmail,
-    contractId
-  });
-  
-  // Mock email sending (in production, integrate with SendGrid, AWS SES, etc.)
-  res.json({
-    success: true,
-    message: 'Email sent successfully',
-    emailId: `email-${Date.now()}`,
-    sentTo: targetEmail,
-    sentAt: new Date().toISOString()
-  });
+app.post('/api/contracts/send-email', async (req, res) => {
+  try {
+    await ensureContractsCompatibilitySchema(pool);
+
+    const { contractId, photographerEmail, targetEmail } = req.body || {};
+    const preferredUserId = await resolveContractUserId(req);
+    let resolvedContractId = readString(contractId);
+
+    if (resolvedContractId === 'latest') {
+      const latest = await pool.query(
+        `SELECT id FROM contracts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [preferredUserId],
+      );
+      resolvedContractId = latest.rows[0]?.id ?? null;
+    }
+
+    if (resolvedContractId) {
+      const response = await sendContractGoogleESignature(pool, {
+        contractId: resolvedContractId,
+        preferredUserId,
+        requestedBy: preferredUserId,
+        requestedByEmail: readString(req.headers['x-user-email']) ?? readString(photographerEmail) ?? undefined,
+      });
+      const contract = mapContractRecord(response.contract);
+      await syncContractLifecycleArtifacts({
+        contract,
+        eventType: 'signature_sent',
+        actorUserId: preferredUserId,
+      });
+
+      return res.json({
+        success: true,
+        message: 'Contract signature document sent successfully',
+        contract,
+        sentTo: contract.clientEmail || targetEmail || null,
+        sentAt: new Date().toISOString(),
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Email sent successfully',
+      emailId: `email-${Date.now()}`,
+      sentTo: targetEmail,
+      sentAt: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Contract send-email error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to send contract email',
+    });
+  }
 });
 
 // Import contract from PDF/DOCX
@@ -52691,38 +56488,64 @@ console.log('[CRM] Universal CRM API routes registered at /api/universal-crm/*')
 
 app.get('/api/contracts', async (req, res) => {
   try {
-    const clientId = req.query.clientId as string;
-    const xUserId = req.headers['x-user-id'] as string || '';
+    await ensureContractsCompatibilitySchema(pool);
 
-    // Resolve user_id from users table
-    const userLookup = await pool.query('SELECT id FROM users WHERE username = $1 LIMIT 1', [xUserId]);
-    const userId = userLookup.rows[0]?.id || xUserId;
+    const clientId = readString(req.query.clientId);
+    const projectId = readString(req.query.projectId);
+    const sourceQuoteId = readString(req.query.sourceQuoteId);
+    const status = readString(req.query.status);
+    const signatureStatus = readString(req.query.signature_status);
+    const userId = await resolveContractUserId(req);
 
-    let query = `SELECT c.id, c.title, c.status, c.created_at, c.client_id,
-                        cm.name as client_name, cm.email as client_email
-                 FROM contracts c
-                 LEFT JOIN crm_customers cm ON cm.id::text = c.client_id
-                 WHERE c.user_id = $1`;
-    const params: any[] = [userId];
+    const whereClauses = ['1 = 1'];
+    const params: any[] = [];
 
+    if (userId && userId !== 'default-user') {
+      params.push(userId);
+      whereClauses.push(`c.user_id = $${params.length}`);
+    }
     if (clientId) {
-      query += ' AND c.client_id = $2';
       params.push(clientId);
+      whereClauses.push(`c.client_id = $${params.length}`);
+    }
+    if (projectId) {
+      params.push(projectId);
+      whereClauses.push(`c.project_id = $${params.length}`);
+    }
+    if (sourceQuoteId) {
+      params.push(sourceQuoteId);
+      whereClauses.push(`c.source_quote_id = $${params.length}`);
+    }
+    if (status) {
+      params.push(status);
+      whereClauses.push(`c.status = $${params.length}`);
+    }
+    if (signatureStatus) {
+      params.push(signatureStatus);
+      whereClauses.push(`COALESCE(c.signature_status, 'not_started') = $${params.length}`);
     }
 
-    query += ' ORDER BY c.created_at DESC';
+    const result = await pool.query(
+      `SELECT c.*, cm.name as linked_client_name, cm.email as linked_client_email
+         FROM contracts c
+         LEFT JOIN crm_customers cm ON cm.id::text = c.client_id
+        WHERE ${whereClauses.join(' AND ')}
+        ORDER BY c.created_at DESC`,
+      params,
+    );
 
-    const result = await pool.query(query, params);
     return res.json({
-      contracts: result.rows.map((r: any) => ({
-        id: r.id,
-        projectDescription: r.title,
-        status: r.status,
-        totalAmount: 0,
-        createdAt: r.created_at,
-        clientName: r.client_name || '',
-        clientEmail: r.client_email || '',
-      }))
+      contracts: result.rows.map((row: any) => {
+        const mapped = mapContractRecord({
+          ...row,
+          client_name: row.client_name || row.linked_client_name,
+          client_email: row.client_email || row.linked_client_email,
+        });
+        return {
+          ...mapped,
+          google_signature: mapped.metadata?.googleSignature || null,
+        };
+      })
     });
   } catch (error) {
     console.error('Contracts list error:', error);
@@ -52730,74 +56553,1439 @@ app.get('/api/contracts', async (req, res) => {
   }
 });
 
+let ensureMeetingNotesCompatibilitySchemaPromise: Promise<void> | null = null;
+
+async function ensureMeetingNotesCompatibilitySchema() {
+  if (!ensureMeetingNotesCompatibilitySchemaPromise) {
+    ensureMeetingNotesCompatibilitySchemaPromise = pool.query(`
+      CREATE TABLE IF NOT EXISTS meeting_notes (
+        id SERIAL PRIMARY KEY,
+        meeting_id VARCHAR NOT NULL UNIQUE,
+        project_id VARCHAR,
+        wedding_timeline_id INTEGER,
+        client_id VARCHAR,
+        creator_id VARCHAR NOT NULL,
+        profession VARCHAR NOT NULL,
+        meeting_title VARCHAR NOT NULL,
+        meeting_date TIMESTAMPTZ NOT NULL,
+        meeting_duration INTEGER,
+        meeting_type VARCHAR NOT NULL,
+        meeting_location VARCHAR,
+        personal_notes JSONB,
+        client_notes JSONB,
+        action_items JSONB,
+        decisions JSONB,
+        next_steps JSONB,
+        ai_summary TEXT,
+        ai_tags JSONB,
+        ai_sentiment VARCHAR,
+        ai_key_topics JSONB,
+        timeline_updates JSONB,
+        practical_info JSONB,
+        vendor_info JSONB,
+        equipment_needs JSONB,
+        google_doc_id VARCHAR,
+        google_drive_folder_id VARCHAR,
+        google_calendar_event_id VARCHAR,
+        google_meet_recording_url VARCHAR,
+        is_client_visible BOOLEAN DEFAULT false,
+        client_access_level VARCHAR DEFAULT 'none',
+        is_archived BOOLEAN DEFAULT false,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        last_synced_to_google TIMESTAMPTZ
+      );
+
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS project_id VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS wedding_timeline_id INTEGER;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS client_id VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS user_id VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS creator_id VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS title VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS content TEXT;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS note_type VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS position JSONB DEFAULT '{"x":0,"y":0,"z":0}'::jsonb;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS size JSONB DEFAULT '{"width":200,"height":150}'::jsonb;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS style JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS profession VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS meeting_title VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS meeting_date TIMESTAMPTZ;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS meeting_duration INTEGER;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS meeting_type VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS meeting_location VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS personal_notes TEXT;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS client_notes TEXT;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS practical_info TEXT;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS action_items JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS decisions JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS follow_up_tasks JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS participants JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS agenda JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS next_steps JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS ai_summary TEXT;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS ai_tags JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS ai_sentiment VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS ai_key_topics JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS timeline_updates JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS vendor_info JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS equipment_needs JSONB;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS google_doc_id VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS google_drive_folder_id VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS google_calendar_event_id VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS google_meet_recording_url VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS is_client_visible BOOLEAN DEFAULT false;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS position_x INTEGER DEFAULT 0;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS position_y INTEGER DEFAULT 0;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS width INTEGER DEFAULT 200;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS height INTEGER DEFAULT 150;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS color VARCHAR DEFAULT '#ffeb3b';
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS created_by VARCHAR;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS client_access_level VARCHAR DEFAULT 'none';
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT false;
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE meeting_notes ADD COLUMN IF NOT EXISTS last_synced_to_google TIMESTAMPTZ;
+    `).then(() => undefined);
+  }
+
+  return ensureMeetingNotesCompatibilitySchemaPromise;
+}
+
+function mapMeetingNotesRecord(row: any) {
+  const personalNotes = normalizeJsonObjectField(row?.personal_notes) || {};
+  const clientNotes = normalizeJsonObjectField(row?.client_notes) || {};
+  const actionItems = normalizeJsonArrayField(row?.action_items);
+  const decisions = normalizeJsonArrayField(row?.decisions);
+  const nextSteps = normalizeJsonArrayField(row?.next_steps);
+  const timelineUpdates = normalizeJsonArrayField(row?.timeline_updates);
+  const aiTags = normalizeJsonArrayField(row?.ai_tags);
+  const practicalInfo = normalizeJsonObjectField(row?.practical_info) || {};
+  const vendorInfo = normalizeJsonObjectField(row?.vendor_info) || {};
+
+  return {
+    id: String(row.id),
+    meetingId: row.meeting_id,
+    projectId: row.project_id || undefined,
+    weddingTimelineId: row.wedding_timeline_id ? String(row.wedding_timeline_id) : undefined,
+    clientId: row.client_id || undefined,
+    content: readString(personalNotes.content) || readString(row?.content) || '',
+    personalNotes: readString(personalNotes.content) || readString(row?.content) || '',
+    clientVisibleNotes: readString(clientNotes.content) || '',
+    structuredNotes: {
+      keyPoints: normalizeJsonArrayField(personalNotes.keyPoints),
+      actionItems,
+      decisions,
+      nextSteps,
+      clientRequests: normalizeJsonArrayField(clientNotes.requests),
+      timeline: timelineUpdates,
+      personalReminders: normalizeJsonArrayField(personalNotes.personalReminders),
+      technicalNotes: normalizeJsonArrayField(personalNotes.technicalNotes),
+    },
+    aiSummary: {
+      full: row.ai_summary || '',
+      clientVersion: readString(clientNotes.summary) || '',
+    },
+    tags: aiTags.map((entry: any) => String(entry)).filter(Boolean),
+    attendees: normalizeJsonArrayField(vendorInfo.attendees).map((entry: any) => String(entry)).filter(Boolean),
+    meetingDate: row.meeting_date,
+    meetingType: row.meeting_type || row.note_type || 'planning',
+    meetingTitle: row.meeting_title || row.title,
+    visibility: {
+      defaultMode: row.is_client_visible ? 'client' : 'personal',
+      clientCanView: Boolean(row.is_client_visible),
+      sharedSections: row.is_client_visible ? ['keyPoints', 'decisions', 'nextSteps'] : [],
+    },
+    googleDriveBackup: {
+      enabled: Boolean(row.google_doc_id),
+      lastBackup: row.last_synced_to_google || '',
+      documentId: row.google_doc_id || undefined,
+      folderPath: row.google_drive_folder_id || '',
+      documentUrl: practicalInfo.googleDocUrl || undefined,
+    },
+    weddingTimelineIntegration: {
+      enabled: Boolean(row.wedding_timeline_id),
+      syncedSections: timelineUpdates.length > 0 ? ['timeline'] : [],
+      lastSync: row.updated_at,
+    },
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function resolveMeetingNotesProjectContext(projectId?: string | null) {
+  const parsedProjectId = readString(projectId);
+  if (!parsedProjectId) {
+    return null;
+  }
+
+  const result = await pool.query(
+    `SELECT id, customer_id, client_name, client_email, title, name, profession
+       FROM legacy.projects
+      WHERE id = $1
+      LIMIT 1`,
+    [parsedProjectId],
+  ).catch(() => ({ rows: [] as any[] }));
+
+  return result.rows[0] || null;
+}
+
+async function normalizeMeetingNotesPayload(rawPayload: any, creatorId: string) {
+  const visibility = normalizeJsonObjectField(rawPayload?.visibility) || {};
+  const structuredNotes = normalizeJsonObjectField(rawPayload?.structuredNotes) || {};
+  const personalNotesInput = rawPayload?.personalNotes ?? rawPayload?.personal_notes;
+  const clientNotesInput = rawPayload?.clientNotes ?? rawPayload?.client_notes;
+  const projectId = readString(rawPayload?.projectId) || readString(rawPayload?.project_id);
+  const projectContext = await resolveMeetingNotesProjectContext(projectId);
+  const resolvedClientId =
+    readString(rawPayload?.clientId)
+    || readString(rawPayload?.client_id)
+    || readString(projectContext?.customer_id);
+
+  const resolvedClientName =
+    readString(rawPayload?.clientName)
+    || readString(projectContext?.client_name)
+    || readString(rawPayload?.client?.name);
+
+  const resolvedClientEmail =
+    readString(rawPayload?.clientEmail)
+    || readString(projectContext?.client_email)
+    || readString(rawPayload?.client?.email);
+
+  const personalContent =
+    readString(rawPayload?.content)
+    || readString(rawPayload?.personalNotes)
+    || readString(rawPayload?.personal_notes?.content)
+    || readString(personalNotesInput?.content)
+    || '';
+  const clientContent =
+    readString(rawPayload?.clientVisibleNotes)
+    || readString(rawPayload?.clientNotes)
+    || readString(rawPayload?.client_notes?.content)
+    || readString(clientNotesInput?.content)
+    || '';
+
+  const isClientVisible =
+    typeof rawPayload?.isClientVisible === 'boolean'
+      ? rawPayload.isClientVisible
+      : Boolean(visibility.clientCanView);
+
+  const meetingId = readString(rawPayload?.meetingId) || `meeting-${crypto.randomUUID()}`;
+  const meetingDate = rawPayload?.meetingDate
+    ? new Date(rawPayload.meetingDate)
+    : rawPayload?.meeting_date
+      ? new Date(rawPayload.meeting_date)
+      : new Date();
+  const meetingTitle =
+    readString(rawPayload?.meetingTitle)
+    || readString(rawPayload?.title)
+    || readString(projectContext?.title)
+    || 'Møtenotat';
+
+  return {
+    meetingId,
+    projectId,
+    weddingTimelineId: rawPayload?.weddingTimelineId ? Number(rawPayload.weddingTimelineId) : null,
+    clientId: resolvedClientId,
+    creatorId,
+    profession: readString(rawPayload?.profession) || readString(projectContext?.profession) || 'photographer',
+    meetingTitle,
+    meetingDate: Number.isNaN(meetingDate.getTime()) ? new Date() : meetingDate,
+    meetingDuration: Number.isFinite(Number(rawPayload?.meetingDuration)) ? Number(rawPayload.meetingDuration) : null,
+    meetingType: readString(rawPayload?.meetingType) || readString(rawPayload?.noteType) || 'planning',
+    meetingLocation: readString(rawPayload?.meetingLocation) || null,
+    personalNotes: {
+      ...(normalizeJsonObjectField(personalNotesInput) || {}),
+      content: personalContent,
+      keyPoints: normalizeJsonArrayField(structuredNotes.keyPoints),
+      personalReminders: normalizeJsonArrayField(structuredNotes.personalReminders),
+      technicalNotes: normalizeJsonArrayField(structuredNotes.technicalNotes),
+      tags: normalizeJsonArrayField(rawPayload?.tags),
+      clientName: resolvedClientName || null,
+      clientEmail: resolvedClientEmail || null,
+    },
+    clientNotes: clientContent || isClientVisible
+      ? {
+          ...(normalizeJsonObjectField(clientNotesInput) || {}),
+          content: clientContent,
+          requests: normalizeJsonArrayField(structuredNotes.clientRequests),
+          summary: readString(rawPayload?.aiSummary?.clientVersion) || '',
+        }
+      : null,
+    actionItems: normalizeJsonArrayField(rawPayload?.actionItems || structuredNotes.actionItems),
+    decisions: normalizeJsonArrayField(rawPayload?.decisions || structuredNotes.decisions),
+    nextSteps: normalizeJsonArrayField(rawPayload?.nextSteps || structuredNotes.nextSteps),
+    aiSummary: readString(rawPayload?.aiSummary?.full) || readString(rawPayload?.aiSummary) || null,
+    aiTags: normalizeJsonArrayField(rawPayload?.tags || rawPayload?.aiTags),
+    aiSentiment: readString(rawPayload?.aiSentiment) || null,
+    aiKeyTopics: normalizeJsonArrayField(rawPayload?.aiKeyTopics),
+    timelineUpdates: normalizeJsonArrayField(rawPayload?.timelineUpdates || structuredNotes.timeline),
+    practicalInfo: {
+      ...(normalizeJsonObjectField(rawPayload?.practicalInfo) || {}),
+      googleDriveBackupEnabled: Boolean(rawPayload?.googleDriveBackupEnabled || personalNotesInput?.googleDriveBackup),
+      source: readString(rawPayload?.source) || 'meeting-notes',
+    },
+    vendorInfo: {
+      ...(normalizeJsonObjectField(rawPayload?.vendorInfo) || {}),
+      attendees: normalizeJsonArrayField(rawPayload?.attendees),
+      clientName: resolvedClientName || null,
+      clientEmail: resolvedClientEmail || null,
+    },
+    equipmentNeeds: normalizeJsonObjectField(rawPayload?.equipmentNeeds) || {},
+    isClientVisible,
+    clientAccessLevel:
+      readString(rawPayload?.clientAccessLevel)
+      || (isClientVisible ? 'summary' : 'none'),
+  };
+}
+
+function buildMeetingNotesDocument(noteLike: any, branding?: DocumentBrandingProfile | null) {
+  const note = mapMeetingNotesRecord(noteLike);
+  const vendorInfo = normalizeJsonObjectField(noteLike?.vendor_info) || {};
+  const clientName = readString(vendorInfo.clientName);
+  const attendeeList = Array.isArray(note.attendees) ? note.attendees.filter(Boolean) : [];
+  const issuerName = readString(branding?.businessName) || 'CreatorHub';
+  const issuerTagline = readString(branding?.tagline);
+  const contactLine = [
+    readString(branding?.email),
+    readString(branding?.phone),
+    readString(branding?.website),
+  ].filter(Boolean).join(' · ');
+  const blocks: StructuredGoogleDocumentBlock[] = [];
+  const translateMeetingType = (value: unknown) => {
+    const normalized = String(value || 'planning').trim().toLowerCase();
+    if (normalized === 'follow-up') return 'Oppfølging';
+    if (normalized === 'kickoff') return 'Kickoff';
+    if (normalized === 'review') return 'Review';
+    if (normalized === 'delivery') return 'Leveranse';
+    return 'Planlegging';
+  };
+  const projectReference = readString(note.projectId);
+  const readableProjectReference =
+    projectReference && !/^proj[-_]/i.test(projectReference) ? projectReference : null;
+  const formatDateTime = (value: unknown) => {
+    if (!value) return 'Ukjent tidspunkt';
+    const parsed = new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) {
+      return 'Ukjent tidspunkt';
+    }
+    return parsed.toLocaleString('no-NO');
+  };
+  const toReadableList = (items: unknown[], fallback: string) => items
+    .map((item: any) => {
+      if (typeof item === 'string') {
+        const trimmed = item.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      }
+      return readString(item?.task)
+        || readString(item?.text)
+        || readString(item?.event)
+        || readString(item?.decision)
+        || readString(item?.title)
+        || readString(item?.name)
+        || fallback;
+    })
+    .filter((entry): entry is string => Boolean(entry));
+
+  blocks.push(
+    { type: 'eyebrow', text: issuerName },
+    { type: 'title', text: note.meetingTitle || 'Møtenotat' },
+    {
+      type: 'subtitle',
+      text: [formatDateTime(note.meetingDate), clientName || (note.clientId ? `CRM-kunde ${note.clientId}` : null)]
+        .filter(Boolean)
+        .join(' · '),
+    },
+    {
+      type: 'spotlight',
+      label: 'Status',
+      value: note.visibility?.clientCanView ? 'Klar til deling' : 'Internt notat',
+      note: translateMeetingType(note.meetingType),
+    },
+    { type: 'divider' },
+    {
+      type: 'meta-list',
+      items: [
+        { label: 'Type', value: translateMeetingType(note.meetingType) },
+        { label: 'Prosjekt', value: readableProjectReference },
+        { label: 'Kunde', value: clientName || null },
+        { label: 'Deltakere', value: attendeeList.length > 0 ? attendeeList.join(', ') : null },
+        { label: 'Delt med kunde', value: note.visibility?.clientCanView ? 'Ja' : 'Nei' },
+        { label: 'Sist oppdatert', value: new Date().toLocaleString('no-NO') },
+      ],
+    },
+  );
+
+  if (issuerTagline || contactLine) {
+    blocks.push({
+      type: 'callout',
+      title: 'Delt fra arbeidsflaten',
+      body: [issuerTagline, contactLine].filter(Boolean).join('\n\n'),
+    });
+  }
+
+  if (readString(note.aiSummary?.full)) {
+    blocks.push(
+      { type: 'callout', title: 'Kort oppsummering', body: note.aiSummary.full },
+    );
+  }
+
+  const keyPoints = toReadableList(normalizeJsonArrayField(note.structuredNotes?.keyPoints), 'Viktig punkt');
+  if (keyPoints.length > 0) {
+    blocks.push(
+      { type: 'heading', text: 'Viktige punkter' },
+      { type: 'bullet-list', items: keyPoints },
+    );
+  }
+
+  if (note.personalNotes) {
+    blocks.push(
+      { type: 'heading', text: 'Interne notater' },
+      { type: 'paragraph', text: note.personalNotes },
+    );
+  }
+
+  if (note.clientVisibleNotes) {
+    blocks.push(
+      { type: 'heading', text: 'Klientvennlig oppsummering' },
+      { type: 'paragraph', text: note.clientVisibleNotes },
+    );
+  }
+
+  const decisions = toReadableList(normalizeJsonArrayField(note.structuredNotes?.decisions), 'Beslutning');
+  if (decisions.length > 0) {
+    blocks.push(
+      { type: 'heading', text: 'Beslutninger' },
+      { type: 'bullet-list', items: decisions },
+    );
+  }
+
+  const actionItems = toReadableList(normalizeJsonArrayField(note.structuredNotes?.actionItems), 'Oppfølging');
+  if (actionItems.length > 0) {
+    blocks.push(
+      { type: 'heading', text: 'Oppfølgingspunkter' },
+      { type: 'bullet-list', items: actionItems },
+    );
+  }
+
+  const nextSteps = toReadableList(normalizeJsonArrayField(note.structuredNotes?.nextSteps), 'Neste steg');
+  if (nextSteps.length > 0) {
+    blocks.push(
+      { type: 'heading', text: 'Neste steg' },
+      { type: 'numbered-list', items: nextSteps },
+    );
+  }
+
+  const timelineUpdates = toReadableList(normalizeJsonArrayField(note.structuredNotes?.timeline), 'Timeline-oppdatering');
+  if (timelineUpdates.length > 0) {
+    blocks.push(
+      { type: 'heading', text: 'Tidslinje og synk' },
+      { type: 'bullet-list', items: timelineUpdates },
+    );
+  }
+
+  if (readString(branding?.customFooterText)) {
+    blocks.push({
+      type: 'callout',
+      title: 'Merknad',
+      body: String(branding?.customFooterText).trim(),
+    });
+  }
+
+  return blocks;
+}
+
+async function syncMeetingNotesToCustomerDrive(noteRow: any, preferredUserId?: string | null) {
+  const note = mapMeetingNotesRecord(noteRow);
+  const userId = readString(preferredUserId) || readString(noteRow?.creator_id);
+  if (!userId || !note.meetingId) {
+    return noteRow;
+  }
+
+  try {
+    const authorized = await resolveRoleRoomGoogleConnection(pool, userId);
+    const driveApi = google.drive({ version: 'v3', auth: authorized.oauthClient });
+    const docsApi = google.docs({ version: 'v1', auth: authorized.oauthClient });
+    const vendorInfo = normalizeJsonObjectField(noteRow?.vendor_info) || {};
+    const folder = await ensureCustomerWorkflowFolder(pool, driveApi, {
+      userId,
+      customerId: readString(note.clientId),
+      projectId: readString(note.projectId),
+      customerName: readString(vendorInfo.clientName),
+      customerEmail: readString(vendorInfo.clientEmail),
+      profession: readString(noteRow?.profession),
+      category: 'meeting_notes',
+    });
+
+    if (!folder.targetFolder) {
+      return noteRow;
+    }
+
+    const branding = await resolveDocumentBranding(pool, userId, {
+      businessName: readString(vendorInfo.businessName),
+      email: readString(vendorInfo.email) || readString(vendorInfo.clientEmail),
+      phone: readString(vendorInfo.phone),
+      website: readString(vendorInfo.website),
+      tagline: readString(vendorInfo.tagline),
+      accentColor: readString(vendorInfo.brandingColor),
+      logoUrl: readString(vendorInfo.customLogo) || readString(vendorInfo.logoUrl),
+    });
+
+    const title = `${note.meetingTitle || 'Møtenotat'} · ${new Date(note.meetingDate).toLocaleDateString('no-NO')}`
+      .replace(/[\\/:*?"<>|#]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120);
+
+    const document = await upsertStructuredGoogleDocument(docsApi, driveApi, {
+      title,
+      blocks: buildMeetingNotesDocument(noteRow, branding),
+      parentFolderId: folder.targetFolder.id,
+      existingDocumentId: readString(noteRow?.google_doc_id),
+      theme: {
+        accentColor: branding.accentColor,
+      },
+    });
+
+    const practicalInfo = normalizeJsonObjectField(noteRow?.practical_info) || {};
+    const updated = await pool.query(
+      `UPDATE meeting_notes
+          SET google_doc_id = $2,
+              google_drive_folder_id = $3,
+              practical_info = $4,
+              last_synced_to_google = NOW(),
+              updated_at = NOW()
+        WHERE meeting_id = $1
+        RETURNING *`,
+      [
+        note.meetingId,
+        document.fileId,
+        folder.targetFolder.id,
+        JSON.stringify({
+          ...practicalInfo,
+          googleDocUrl: document.webViewUrl || document.webContentLink || null,
+          googleDriveFolderName: folder.targetFolder.name,
+        }),
+      ],
+    );
+
+    return updated.rows[0] || noteRow;
+  } catch (error) {
+    console.warn('Meeting notes Google Drive sync skipped:', error instanceof Error ? error.message : error);
+    return noteRow;
+  }
+}
+
+async function syncMeetingNotesLifecycleArtifacts(noteRow: any, actorUserId?: string | null) {
+  const note = mapMeetingNotesRecord(noteRow);
+  const noteSubject = `Møtenotat lagret: ${note.meetingTitle || note.meetingId}`;
+  const noteMessage = `Møtenotat for ${note.meetingTitle || 'møte'} ble lagret${note.googleDriveBackup?.documentUrl ? ` og synket til Google Drive: ${note.googleDriveBackup.documentUrl}` : '.'}`;
+  const externalRef = `meeting-note:${note.meetingId}`;
+  const resolvedActorUserId = readString(actorUserId) || readString(noteRow?.creator_id) || 'system';
+
+  if (note.clientId) {
+    const existingActivity = await pool.query(
+      `SELECT id
+         FROM crm_activities
+        WHERE customer_id::text = $1
+          AND description = $2
+        LIMIT 1`,
+      [note.clientId, `${noteMessage}\n\n[ref:${externalRef}]`],
+    ).catch(() => ({ rows: [] as any[] }));
+
+    if (existingActivity.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO crm_activities (
+           id, customer_id, type, subject, description, direction, outcome, created_at, updated_at
+         ) VALUES (
+           gen_random_uuid(), $1, 'meeting', $2, $3, 'outbound', 'saved', NOW(), NOW()
+         )`,
+        [note.clientId, noteSubject, `${noteMessage}\n\n[ref:${externalRef}]`],
+      ).catch(() => undefined);
+    }
+  }
+
+  if (note.projectId) {
+    const existingMilestone = await pool.query(
+      `SELECT id
+         FROM project_milestones
+        WHERE project_id = $1
+          AND type = 'meeting_note'
+          AND internal_notes = $2
+        LIMIT 1`,
+      [note.projectId, `[ref:${externalRef}]`],
+    ).catch(() => ({ rows: [] as any[] }));
+
+    if (existingMilestone.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO project_milestones (
+           id, project_id, user_id, title, description, category, type, status, priority, internal_notes, client_visible
+         ) VALUES (
+           $1, $2, $3, $4, $5, 'meetings', 'meeting_note', 'completed', 'medium', $6, false
+         )`,
+        [
+          crypto.randomUUID(),
+          note.projectId,
+          resolvedActorUserId,
+          noteSubject,
+          noteMessage,
+          `[ref:${externalRef}]`,
+        ],
+      ).catch(() => undefined);
+    }
+  }
+
+  const lookupParams: any[] = [];
+  const whereParts: string[] = [];
+  if (note.clientId) {
+    lookupParams.push(note.clientId);
+    whereParts.push(`customer_id = $${lookupParams.length}`);
+  }
+  if (note.projectId) {
+    lookupParams.push(note.projectId);
+    whereParts.push(`project_id = $${lookupParams.length}`);
+  }
+
+  if (whereParts.length === 0) {
+    return;
+  }
+
+  const relatedLinks = await pool.query(
+    `SELECT provider, conversation_id
+       FROM crm_conversation_links
+      WHERE ${whereParts.join(' OR ')}`,
+    lookupParams,
+  ).catch(() => ({ rows: [] as any[] }));
+
+  for (const link of relatedLinks.rows) {
+    if (link.provider === 'internal-chat') {
+      const existingMessage = await pool.query(
+        `SELECT id
+           FROM communication_messages
+          WHERE channel_id = $1
+            AND metadata->>'externalRef' = $2
+          LIMIT 1`,
+        [link.conversation_id, externalRef],
+      ).catch(() => ({ rows: [] as any[] }));
+
+      if (existingMessage.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO communication_messages (
+             id, channel_id, sender_id, message_type, content, metadata, is_read, is_priority, is_system_generated, created_at, updated_at
+           ) VALUES (
+             $1, $2, $3, 'system', $4, $5::jsonb, false, false, true, NOW(), NOW()
+           )`,
+          [
+            crypto.randomUUID(),
+            link.conversation_id,
+            resolvedActorUserId,
+            noteMessage,
+            JSON.stringify({
+              externalRef,
+              source: 'meeting_notes',
+              meetingId: note.meetingId,
+              googleDocUrl: note.googleDriveBackup?.documentUrl || null,
+            }),
+          ],
+        ).catch(() => undefined);
+      }
+    }
+
+    if (link.provider === 'google-chat' && link.conversation_id) {
+      await sendGoogleWorkspaceChatMessage(pool, {
+        preferredUserId: resolvedActorUserId,
+        space: link.conversation_id.startsWith('spaces/')
+          ? link.conversation_id
+          : `spaces/${link.conversation_id}`,
+        text: noteMessage,
+      }).catch(() => undefined);
+    }
+  }
+}
+
+app.get('/api/meeting-notes', async (req, res) => {
+  try {
+    await ensureMeetingNotesCompatibilitySchema();
+
+    const meetingId = readString(req.query.meetingId);
+    const creatorId = readString(req.query.creatorId) || getUserIdFromAuth(req) || compatResolveUserId(req);
+
+    if (meetingId) {
+      const single = await pool.query(
+        `SELECT * FROM meeting_notes WHERE meeting_id = $1 LIMIT 1`,
+        [meetingId],
+      );
+      if (single.rows[0]) {
+        return res.json(mapMeetingNotesRecord(single.rows[0]));
+      }
+      return res.status(404).json({ error: 'Meeting notes not found' });
+    }
+
+    const result = creatorId
+      ? await pool.query(
+          `SELECT * FROM meeting_notes WHERE creator_id = $1 ORDER BY updated_at DESC LIMIT 50`,
+          [creatorId],
+        )
+      : await pool.query(`SELECT * FROM meeting_notes ORDER BY updated_at DESC LIMIT 50`);
+
+    return res.json({ notes: result.rows.map(mapMeetingNotesRecord) });
+  } catch (error) {
+    console.error('Meeting notes fetch error:', error);
+    return res.status(500).json({ error: 'Failed to fetch meeting notes' });
+  }
+});
+
+app.get('/api/meeting-notes/:meetingId', async (req, res) => {
+  try {
+    await ensureMeetingNotesCompatibilitySchema();
+    const result = await pool.query(
+      `SELECT * FROM meeting_notes WHERE meeting_id = $1 OR id::text = $1 ORDER BY updated_at DESC LIMIT 1`,
+      [req.params.meetingId],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Meeting notes not found' });
+    }
+    return res.json(mapMeetingNotesRecord(result.rows[0]));
+  } catch (error) {
+    console.error('Meeting notes get error:', error);
+    return res.status(500).json({ error: 'Failed to fetch meeting notes' });
+  }
+});
+
+app.post('/api/meeting-notes', async (req, res) => {
+  try {
+    await ensureMeetingNotesCompatibilitySchema();
+    const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
+    const payload = await normalizeMeetingNotesPayload(req.body || {}, creatorId);
+
+    const result = await pool.query(
+      `INSERT INTO meeting_notes (
+         id, user_id, creator_id, title, content, note_type, position, size, style, metadata,
+         meeting_id, project_id, wedding_timeline_id, client_id, profession, meeting_title, meeting_date,
+         meeting_duration, meeting_type, meeting_location, personal_notes, client_notes, practical_info,
+         action_items, decisions, follow_up_tasks, participants, agenda, next_steps,
+         ai_summary, ai_tags, ai_sentiment, ai_key_topics, timeline_updates,
+         is_client_visible, position_x, position_y, width, height, color, created_by,
+         vendor_info, equipment_needs, client_access_level, is_archived, created_at, updated_at
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb,
+         $11, $12, $13, $14, $15, $16, $17,
+         $18, $19, $20, $21, $22, $23,
+         $24::jsonb, $25::jsonb, $26::jsonb, $27::jsonb, $28::jsonb, $29::jsonb,
+         $30, $31::jsonb, $32, $33::jsonb, $34::jsonb,
+         $35, $36, $37, $38, $39, $40, $41,
+         $42::jsonb, $43::jsonb, $44, $45, NOW(), NOW()
+       )
+       RETURNING *`,
+      [
+        crypto.randomUUID(),
+        payload.creatorId,
+        payload.creatorId,
+        payload.meetingTitle,
+        readString(payload.personalNotes?.content) || '',
+        payload.meetingType,
+        JSON.stringify({ x: 0, y: 0, z: 0 }),
+        JSON.stringify({ width: 200, height: 150 }),
+        JSON.stringify({ fontSize: '14px', textColor: '#333333', fontFamily: 'Inter' }),
+        JSON.stringify({ source: 'meeting-notes-api' }),
+        payload.meetingId,
+        payload.projectId,
+        payload.weddingTimelineId,
+        payload.clientId,
+        payload.profession,
+        payload.meetingTitle,
+        payload.meetingDate.toISOString().slice(0, 10),
+        payload.meetingDuration,
+        payload.meetingType,
+        payload.meetingLocation,
+        JSON.stringify(payload.personalNotes),
+        JSON.stringify(payload.clientNotes || {}),
+        JSON.stringify(payload.practicalInfo || {}),
+        JSON.stringify(payload.actionItems || []),
+        JSON.stringify(payload.decisions || []),
+        JSON.stringify(payload.actionItems || []),
+        JSON.stringify(payload.vendorInfo?.attendees || []),
+        JSON.stringify([]),
+        JSON.stringify(payload.nextSteps || []),
+        payload.aiSummary,
+        JSON.stringify(payload.aiTags || []),
+        payload.aiSentiment,
+        JSON.stringify(payload.aiKeyTopics || []),
+        JSON.stringify(payload.timelineUpdates || []),
+        payload.isClientVisible,
+        0,
+        0,
+        200,
+        150,
+        '#ffeb3b',
+        payload.creatorId,
+        JSON.stringify(payload.vendorInfo || {}),
+        JSON.stringify(payload.equipmentNeeds || {}),
+        payload.clientAccessLevel,
+        false,
+      ],
+    );
+
+    const syncedRow = await syncMeetingNotesToCustomerDrive(result.rows[0], creatorId);
+    await syncMeetingNotesLifecycleArtifacts(syncedRow, creatorId);
+    return res.status(201).json(mapMeetingNotesRecord(syncedRow));
+  } catch (error) {
+    console.error('Meeting notes create error:', error);
+    return res.status(500).json({ error: 'Failed to create meeting notes' });
+  }
+});
+
+app.put('/api/meeting-notes/:meetingId', async (req, res) => {
+  try {
+    await ensureMeetingNotesCompatibilitySchema();
+    const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
+    const existingResult = await pool.query(
+      `SELECT * FROM meeting_notes WHERE meeting_id = $1 OR id::text = $1 ORDER BY updated_at DESC LIMIT 1`,
+      [req.params.meetingId],
+    );
+    if (existingResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Meeting notes not found' });
+    }
+
+    const existing = existingResult.rows[0];
+    const payload = await normalizeMeetingNotesPayload(
+      {
+        ...existing,
+        ...req.body,
+        meetingId: existing.meeting_id,
+        meetingTitle: req.body?.meetingTitle || existing.meeting_title,
+        projectId: req.body?.projectId || existing.project_id,
+        clientId: req.body?.clientId || existing.client_id,
+      },
+      creatorId,
+    );
+
+    const result = await pool.query(
+      `UPDATE meeting_notes
+          SET project_id = $2,
+              wedding_timeline_id = $3,
+              client_id = $4,
+              profession = $5,
+              title = $6,
+              content = $7,
+              note_type = $8,
+              meeting_title = $9,
+              meeting_date = $10,
+              meeting_duration = $11,
+              meeting_type = $12,
+              meeting_location = $13,
+              personal_notes = $14,
+              client_notes = $15,
+              practical_info = $16,
+              action_items = $17::jsonb,
+              decisions = $18::jsonb,
+              follow_up_tasks = $19::jsonb,
+              participants = $20::jsonb,
+              agenda = $21::jsonb,
+              next_steps = $22::jsonb,
+              ai_summary = $23,
+              ai_tags = $24::jsonb,
+              ai_sentiment = $25,
+              ai_key_topics = $26::jsonb,
+              timeline_updates = $27::jsonb,
+              is_client_visible = $28,
+              created_by = $29,
+              vendor_info = $30::jsonb,
+              equipment_needs = $31::jsonb,
+              client_access_level = $32,
+              updated_at = NOW()
+        WHERE meeting_id = $1
+        RETURNING *`,
+      [
+        existing.meeting_id,
+        payload.projectId,
+        payload.weddingTimelineId,
+        payload.clientId,
+        payload.profession,
+        payload.meetingTitle,
+        readString(payload.personalNotes?.content) || '',
+        payload.meetingType,
+        payload.meetingTitle,
+        payload.meetingDate.toISOString().slice(0, 10),
+        payload.meetingDuration,
+        payload.meetingType,
+        payload.meetingLocation,
+        JSON.stringify(payload.personalNotes),
+        JSON.stringify(payload.clientNotes || {}),
+        JSON.stringify(payload.practicalInfo || {}),
+        JSON.stringify(payload.actionItems || []),
+        JSON.stringify(payload.decisions || []),
+        JSON.stringify(payload.actionItems || []),
+        JSON.stringify(payload.vendorInfo?.attendees || []),
+        JSON.stringify([]),
+        JSON.stringify(payload.nextSteps || []),
+        payload.aiSummary,
+        JSON.stringify(payload.aiTags || []),
+        payload.aiSentiment,
+        JSON.stringify(payload.aiKeyTopics || []),
+        JSON.stringify(payload.timelineUpdates || []),
+        payload.isClientVisible,
+        payload.creatorId,
+        JSON.stringify(payload.vendorInfo || {}),
+        JSON.stringify(payload.equipmentNeeds || {}),
+        payload.clientAccessLevel,
+      ],
+    );
+
+    const syncedRow = await syncMeetingNotesToCustomerDrive(result.rows[0], creatorId);
+    return res.json(mapMeetingNotesRecord(syncedRow));
+  } catch (error) {
+    console.error('Meeting notes update error:', error);
+    return res.status(500).json({ error: 'Failed to update meeting notes' });
+  }
+});
+
+app.post('/api/meeting-notes/google-backup', async (req, res) => {
+  try {
+    await ensureMeetingNotesCompatibilitySchema();
+    const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
+    const meetingId = readString(req.body?.meetingId);
+    if (!meetingId) {
+      return res.status(400).json({ error: 'meetingId is required' });
+    }
+
+    let recordResult = await pool.query(
+      `SELECT * FROM meeting_notes WHERE meeting_id = $1 LIMIT 1`,
+      [meetingId],
+    );
+
+    if (recordResult.rows.length === 0) {
+      const payload = await normalizeMeetingNotesPayload(
+        {
+          ...(normalizeJsonObjectField(req.body?.notes) || {}),
+          meetingId,
+          projectId: req.body?.projectId,
+          profession: req.body?.profession,
+          title: 'Møtenotat',
+        },
+        creatorId,
+      );
+
+      recordResult = await pool.query(
+        `INSERT INTO meeting_notes (
+           id, user_id, creator_id, title, content, note_type, position, size, style, metadata,
+           meeting_id, project_id, wedding_timeline_id, client_id, profession, meeting_title, meeting_date,
+           meeting_type, personal_notes, client_notes, practical_info, action_items, decisions, follow_up_tasks,
+           participants, agenda, next_steps, ai_summary, ai_tags, ai_key_topics, timeline_updates,
+           is_client_visible, position_x, position_y, width, height, color, created_by,
+           vendor_info, equipment_needs, client_access_level, is_archived, created_at, updated_at
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb,
+           $11, $12, $13, $14, $15, $16, $17,
+           $18, $19, $20, $21, $22::jsonb, $23::jsonb, $24::jsonb,
+           $25::jsonb, $26::jsonb, $27::jsonb, $28, $29::jsonb, $30::jsonb, $31::jsonb,
+           $32, $33, $34, $35, $36, $37, $38,
+           $39::jsonb, $40::jsonb, $41, $42, NOW(), NOW()
+         )
+         RETURNING *`,
+        [
+          crypto.randomUUID(),
+          payload.creatorId,
+          payload.creatorId,
+          payload.meetingTitle,
+          readString(payload.personalNotes?.content) || '',
+          payload.meetingType,
+          JSON.stringify({ x: 0, y: 0, z: 0 }),
+          JSON.stringify({ width: 200, height: 150 }),
+          JSON.stringify({ fontSize: '14px', textColor: '#333333', fontFamily: 'Inter' }),
+          JSON.stringify({ source: 'meeting-notes-backup' }),
+          payload.meetingId,
+          payload.projectId,
+          payload.weddingTimelineId,
+          payload.clientId,
+          payload.profession,
+          payload.meetingTitle,
+          payload.meetingDate.toISOString().slice(0, 10),
+          payload.meetingType,
+          JSON.stringify(payload.personalNotes),
+          JSON.stringify(payload.clientNotes || {}),
+          JSON.stringify(payload.practicalInfo || {}),
+          JSON.stringify(payload.actionItems || []),
+          JSON.stringify(payload.decisions || []),
+          JSON.stringify(payload.actionItems || []),
+          JSON.stringify(payload.vendorInfo?.attendees || []),
+          JSON.stringify([]),
+          JSON.stringify(payload.nextSteps || []),
+          payload.aiSummary,
+          JSON.stringify(payload.aiTags || []),
+          JSON.stringify(payload.aiKeyTopics || []),
+          JSON.stringify(payload.timelineUpdates || []),
+          payload.isClientVisible,
+          0,
+          0,
+          200,
+          150,
+          '#ffeb3b',
+          payload.creatorId,
+          JSON.stringify(payload.vendorInfo || {}),
+          JSON.stringify(payload.equipmentNeeds || {}),
+          payload.clientAccessLevel,
+          false,
+        ],
+      );
+    }
+
+    const syncedRow = await syncMeetingNotesToCustomerDrive(recordResult.rows[0], creatorId);
+    return res.json({
+      success: true,
+      note: mapMeetingNotesRecord(syncedRow),
+    });
+  } catch (error) {
+    console.error('Meeting notes Google backup error:', error);
+    return res.status(500).json({ error: 'Failed to sync meeting notes to Google Drive' });
+  }
+});
+
 // ============================================================
 // Google People API (Stub endpoints for CRM integration)
 // ============================================================
 
+const GOOGLE_PEOPLE_READ_SCOPES = [
+  'https://www.googleapis.com/auth/contacts.readonly',
+  'https://www.googleapis.com/auth/contacts',
+] as const;
+const GOOGLE_PEOPLE_WRITE_SCOPES = [
+  'https://www.googleapis.com/auth/contacts',
+] as const;
+
+function readWorkspaceIdentity(req: express.Request, payload?: Record<string, unknown>) {
+  const readHeaderValue = (headerName: string) => {
+    const raw = req.headers[headerName.toLowerCase()];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+  };
+
+  const readPayloadString = (value: unknown) => (typeof value === 'string' && value.trim().length > 0 ? value.trim() : null);
+
+  return {
+    userId:
+      readHeaderValue('x-role-room-user-id')
+      || readHeaderValue('x-user-id')
+      || readPayloadString(req.query.userId)
+      || readPayloadString(payload?.userId)
+      || null,
+  };
+}
+
+function hasAnyStoredGoogleScope(storedScopes: string[] | null | undefined, acceptableScopes: readonly string[]) {
+  const normalizedScopes = new Set((storedScopes || []).map((scope) => scope.toLowerCase()));
+  return acceptableScopes.some((scope) => normalizedScopes.has(scope.toLowerCase()));
+}
+
+function mapGooglePeopleContact(person: Record<string, unknown>) {
+  const names = Array.isArray(person.names) ? person.names as Array<Record<string, unknown>> : [];
+  const emails = Array.isArray(person.emailAddresses) ? person.emailAddresses as Array<Record<string, unknown>> : [];
+  const phones = Array.isArray(person.phoneNumbers) ? person.phoneNumbers as Array<Record<string, unknown>> : [];
+  const organizations = Array.isArray(person.organizations) ? person.organizations as Array<Record<string, unknown>> : [];
+  const photos = Array.isArray(person.photos) ? person.photos as Array<Record<string, unknown>> : [];
+  const metadata = person.metadata && typeof person.metadata === 'object'
+    ? person.metadata as Record<string, unknown>
+    : null;
+  const sources = Array.isArray(metadata?.sources) ? metadata.sources as Array<Record<string, unknown>> : [];
+
+  const displayName = typeof names[0]?.displayName === 'string' ? names[0].displayName : '';
+  const email = typeof emails[0]?.value === 'string' ? emails[0].value : '';
+  const phone = typeof phones[0]?.value === 'string' ? phones[0].value : '';
+  const company = typeof organizations[0]?.name === 'string' ? organizations[0].name : '';
+  const photoUrl = typeof photos[0]?.url === 'string' ? photos[0].url : null;
+  const etag = typeof sources[0]?.etag === 'string' ? sources[0].etag : null;
+  const resourceName = typeof person.resourceName === 'string' ? person.resourceName : crypto.randomUUID();
+
+  return {
+    id: resourceName,
+    resourceName,
+    etag,
+    name: displayName,
+    email,
+    phone,
+    company,
+    photoUrl,
+    source: 'google-workspace',
+  };
+}
+
+async function buildGooglePeopleClient(req: express.Request, payload?: Record<string, unknown>) {
+  const identity = readWorkspaceIdentity(req, payload);
+  return resolveRoleRoomGoogleConnection(pool, identity.userId);
+}
+
+async function mirrorGoogleContactToCrm(payload: {
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  notes?: string | null;
+}) {
+  const normalizedEmail = payload.email.trim().toLowerCase();
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const existing = await pool.query<{ id: string }>(
+    `SELECT id FROM crm_customers WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+    [normalizedEmail],
+  );
+
+  if (existing.rows[0]?.id) {
+    await pool.query(
+      `UPDATE crm_customers
+          SET name = COALESCE(NULLIF($1, ''), name),
+              phone = COALESCE(NULLIF($2, ''), phone),
+              company = COALESCE(NULLIF($3, ''), company),
+              notes = COALESCE(NULLIF($4, ''), notes),
+              updated_at = NOW()
+        WHERE id = $5`,
+      [payload.name, payload.phone, payload.company, payload.notes || '', existing.rows[0].id],
+    );
+    return existing.rows[0].id;
+  }
+
+  const inserted = await pool.query<{ id: string }>(
+    `INSERT INTO crm_customers (id, name, email, phone, company, status, source, notes, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, 'lead', 'google-workspace', $5, NOW(), NOW())
+     RETURNING id`,
+    [payload.name || payload.email, normalizedEmail, payload.phone, payload.company, payload.notes || 'Synkronisert fra Google Kontakter'],
+  );
+  return inserted.rows[0]?.id ?? null;
+}
+
+function collectShowcaseContacts(payload: Record<string, unknown>) {
+  const contacts = new Map<string, { name: string; email: string; phone: string; company: string; notes: string }>();
+  const pushContact = (candidate: { name?: string | null; email?: string | null; phone?: string | null; company?: string | null; notes?: string | null }) => {
+    const email = typeof candidate.email === 'string' ? candidate.email.trim().toLowerCase() : '';
+    if (!email) {
+      return;
+    }
+    contacts.set(email, {
+      name: typeof candidate.name === 'string' && candidate.name.trim().length > 0 ? candidate.name.trim() : email,
+      email,
+      phone: typeof candidate.phone === 'string' ? candidate.phone.trim() : '',
+      company: typeof candidate.company === 'string' ? candidate.company.trim() : '',
+      notes: typeof candidate.notes === 'string' ? candidate.notes.trim() : '',
+    });
+  };
+
+  pushContact({
+    name: typeof payload.clientName === 'string' ? payload.clientName : null,
+    email: typeof payload.clientEmail === 'string' ? payload.clientEmail : null,
+    phone: typeof payload.clientPhone === 'string' ? payload.clientPhone : null,
+    company: typeof payload.projectName === 'string' ? payload.projectName : null,
+    notes: 'Kunde fra showcase-synk',
+  });
+
+  const items = Array.isArray(payload.items) ? payload.items as Array<Record<string, unknown>> : [];
+  items.forEach((item) => {
+    pushContact({
+      name: typeof item.name === 'string' ? item.name : (typeof item.title === 'string' ? item.title : null),
+      email:
+        typeof item.email === 'string'
+          ? item.email
+          : typeof item.clientEmail === 'string'
+            ? item.clientEmail
+            : typeof item.contactEmail === 'string'
+              ? item.contactEmail
+              : null,
+      phone:
+        typeof item.phone === 'string'
+          ? item.phone
+          : typeof item.clientPhone === 'string'
+            ? item.clientPhone
+            : null,
+      company:
+        typeof item.company === 'string'
+          ? item.company
+          : typeof item.clientName === 'string'
+            ? item.clientName
+            : null,
+      notes: 'Synkronisert fra Universal Showcase',
+    });
+
+    const nestedCollections = ['collaborators', 'contacts', 'teamMembers', 'vendors', 'clients'];
+    nestedCollections.forEach((key) => {
+      const nested = Array.isArray(item[key]) ? item[key] as Array<Record<string, unknown>> : [];
+      nested.forEach((entry) => {
+        pushContact({
+          name: typeof entry.name === 'string' ? entry.name : null,
+          email: typeof entry.email === 'string' ? entry.email : null,
+          phone: typeof entry.phone === 'string' ? entry.phone : null,
+          company: typeof entry.company === 'string' ? entry.company : null,
+          notes: `Synkronisert fra showcase (${key})`,
+        });
+      });
+    });
+  });
+
+  return Array.from(contacts.values());
+}
+
 app.get('/api/google/people/search-contacts', async (req, res) => {
   try {
-    const q = (req.query.q as string || '').toLowerCase();
-    // Search CRM customers as contacts since Google OAuth not integrated
-    const result = await pool.query(
-      `SELECT id, name, email, phone, company FROM crm_customers
-       WHERE LOWER(name) LIKE $1 OR LOWER(email) LIKE $1 OR LOWER(company) LIKE $1
-       ORDER BY name ASC LIMIT 20`,
-      [`%${q}%`]
-    );
-    return res.json(result.rows.map((r: any) => ({
-      id: r.id,
-      name: r.name,
-      email: r.email,
-      phone: r.phone,
-      company: r.company,
-      source: 'crm',
-    })));
+    const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    if (!query) {
+      return res.json([]);
+    }
+
+    const googleClient = await buildGooglePeopleClient(req);
+    if (!hasAnyStoredGoogleScope(googleClient.connection.storedScopes, GOOGLE_PEOPLE_READ_SCOPES)) {
+      return res.status(409).json({ error: 'Google Workspace er koblet til, men mangler Google Kontakter-tilgang. Koble Google Workspace på nytt for å søke i kontakter.' });
+    }
+
+    const peopleApi = google.people({ version: 'v1', auth: googleClient.oauthClient });
+    const result = await peopleApi.people.searchContacts({
+      query,
+      pageSize: 20,
+      readMask: 'names,emailAddresses,phoneNumbers,organizations,photos,metadata',
+    });
+
+    const contacts = (result.data.results ?? [])
+      .map((entry) => {
+        const person = entry.person;
+        return person ? mapGooglePeopleContact(person as Record<string, unknown>) : null;
+      })
+      .filter((entry): entry is ReturnType<typeof mapGooglePeopleContact> => Boolean(entry));
+
+    return res.json(contacts);
   } catch (error) {
-    console.error('Contact search error:', error);
-    return res.json([]);
+    console.error('Google contact search error:', error);
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to search contacts' });
   }
 });
 
 app.post('/api/google/people/create-contact', async (req, res) => {
   try {
-    const { name, email, phone, company } = req.body;
-    const result = await pool.query(
-      `INSERT INTO crm_customers (id, name, email, phone, company, status, source, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, 'lead', 'google-contacts', NOW(), NOW()) RETURNING id`,
-      [name || '', email || '', phone || '', company || '']
-    );
-    return res.json({ contactId: result.rows[0].id });
+    const payload = (req.body || {}) as Record<string, unknown>;
+    const googleClient = await buildGooglePeopleClient(req, payload);
+    if (!hasAnyStoredGoogleScope(googleClient.connection.storedScopes, GOOGLE_PEOPLE_WRITE_SCOPES)) {
+      return res.status(409).json({ error: 'Google Workspace er koblet til, men mangler skrivetilgang til Google Kontakter. Koble Google Workspace på nytt for å opprette kontakter.' });
+    }
+
+    const firstName = typeof payload.firstName === 'string' ? payload.firstName.trim() : '';
+    const lastName = typeof payload.lastName === 'string' ? payload.lastName.trim() : '';
+    const displayName = typeof payload.name === 'string' && payload.name.trim().length > 0
+      ? payload.name.trim()
+      : [firstName, lastName].filter(Boolean).join(' ').trim();
+    const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    const phone = typeof payload.phone === 'string' ? payload.phone.trim() : '';
+    const company = typeof payload.companyName === 'string'
+      ? payload.companyName.trim()
+      : (typeof payload.company === 'string' ? payload.company.trim() : '');
+    const notes = typeof payload.notes === 'string' ? payload.notes.trim() : '';
+
+    if (!displayName && !email) {
+      return res.status(400).json({ error: 'Navn eller e-post er påkrevd for å opprette kontakt.' });
+    }
+
+    const peopleApi = google.people({ version: 'v1', auth: googleClient.oauthClient });
+    const created = await peopleApi.people.createContact({
+      requestBody: {
+        names: [{ givenName: firstName || displayName || email, familyName: lastName || undefined, displayName: displayName || undefined }],
+        emailAddresses: email ? [{ value: email }] : undefined,
+        phoneNumbers: phone ? [{ value: phone }] : undefined,
+        organizations: company ? [{ name: company }] : undefined,
+        biographies: notes ? [{ value: notes }] : undefined,
+      },
+    });
+
+    const mapped = mapGooglePeopleContact((created.data || {}) as Record<string, unknown>);
+    const crmCustomerId = await mirrorGoogleContactToCrm({
+      name: mapped.name,
+      email: mapped.email,
+      phone: mapped.phone,
+      company: mapped.company,
+      notes,
+    });
+
+    return res.status(201).json({
+      success: true,
+      contactId: mapped.resourceName,
+      id: mapped.resourceName,
+      contact: mapped,
+      crmCustomerId,
+    });
   } catch (error) {
-    console.error('Create contact error:', error);
-    return res.status(500).json({ error: 'Failed to create contact' });
+    console.error('Create Google contact error:', error);
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create contact' });
   }
 });
 
 app.put('/api/google/people/update-contact/:contactId', async (req, res) => {
   try {
     const { contactId } = req.params;
-    const { name, email, phone, company } = req.body;
-    await pool.query(
-      `UPDATE crm_customers SET name = COALESCE($1, name), email = COALESCE($2, email),
-       phone = COALESCE($3, phone), company = COALESCE($4, company), updated_at = NOW()
-       WHERE id = $5`,
-      [name, email, phone, company, contactId]
-    );
-    return res.json({ success: true, contactId });
+    const payload = (req.body || {}) as Record<string, unknown>;
+    const googleClient = await buildGooglePeopleClient(req, payload);
+    if (!hasAnyStoredGoogleScope(googleClient.connection.storedScopes, GOOGLE_PEOPLE_WRITE_SCOPES)) {
+      return res.status(409).json({ error: 'Google Workspace er koblet til, men mangler skrivetilgang til Google Kontakter. Koble Google Workspace på nytt for å oppdatere kontakter.' });
+    }
+
+    const peopleApi = google.people({ version: 'v1', auth: googleClient.oauthClient });
+    const existing = await peopleApi.people.get({
+      resourceName: contactId,
+      personFields: 'names,emailAddresses,phoneNumbers,organizations,biographies,metadata,photos',
+    });
+    const current = (existing.data || {}) as Record<string, unknown>;
+    const metadata = current.metadata && typeof current.metadata === 'object' ? current.metadata as Record<string, unknown> : null;
+    const sources = Array.isArray(metadata?.sources) ? metadata.sources as Array<Record<string, unknown>> : [];
+    const etag = typeof sources[0]?.etag === 'string' ? sources[0].etag : undefined;
+
+    const firstName = typeof payload.firstName === 'string' ? payload.firstName.trim() : '';
+    const lastName = typeof payload.lastName === 'string' ? payload.lastName.trim() : '';
+    const displayName = typeof payload.name === 'string' && payload.name.trim().length > 0
+      ? payload.name.trim()
+      : [firstName, lastName].filter(Boolean).join(' ').trim();
+    const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    const phone = typeof payload.phone === 'string' ? payload.phone.trim() : '';
+    const company = typeof payload.companyName === 'string'
+      ? payload.companyName.trim()
+      : (typeof payload.company === 'string' ? payload.company.trim() : '');
+    const notes = typeof payload.notes === 'string' ? payload.notes.trim() : '';
+
+    const updated = await peopleApi.people.updateContact({
+      resourceName: contactId,
+      updatePersonFields: 'names,emailAddresses,phoneNumbers,organizations,biographies',
+      requestBody: {
+        etag,
+        names: [{ givenName: firstName || displayName || email, familyName: lastName || undefined, displayName: displayName || undefined }],
+        emailAddresses: email ? [{ value: email }] : undefined,
+        phoneNumbers: phone ? [{ value: phone }] : undefined,
+        organizations: company ? [{ name: company }] : undefined,
+        biographies: notes ? [{ value: notes }] : undefined,
+      },
+    });
+
+    const mapped = mapGooglePeopleContact((updated.data || {}) as Record<string, unknown>);
+    const crmCustomerId = await mirrorGoogleContactToCrm({
+      name: mapped.name,
+      email: mapped.email,
+      phone: mapped.phone,
+      company: mapped.company,
+      notes,
+    });
+
+    return res.json({
+      success: true,
+      contactId,
+      id: mapped.resourceName,
+      contact: mapped,
+      crmCustomerId,
+    });
   } catch (error) {
-    console.error('Update contact error:', error);
-    return res.status(500).json({ error: 'Failed to update contact' });
+    console.error('Update Google contact error:', error);
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to update contact' });
   }
 });
 
 app.post('/api/google/people/set-contact-photo/:contactId', async (req, res) => {
   try {
     const { contactId } = req.params;
-    // Photo storage not implemented — acknowledge and return success
-    return res.json({ success: true, contactId, message: 'Photo update acknowledged' });
+    const payload = (req.body || {}) as Record<string, unknown>;
+    const photoUrl = typeof payload.photoUrl === 'string' ? payload.photoUrl.trim() : '';
+    if (!photoUrl) {
+      return res.status(400).json({ error: 'photoUrl er påkrevd.' });
+    }
+
+    const googleClient = await buildGooglePeopleClient(req, payload);
+    if (!hasAnyStoredGoogleScope(googleClient.connection.storedScopes, GOOGLE_PEOPLE_WRITE_SCOPES)) {
+      return res.status(409).json({ error: 'Google Workspace er koblet til, men mangler skrivetilgang til Google Kontakter. Koble Google Workspace på nytt for å oppdatere kontaktbilder.' });
+    }
+
+    const photoResponse = await fetch(photoUrl);
+    if (!photoResponse.ok) {
+      return res.status(400).json({ error: 'Kunne ikke hente kontaktbildet fra angitt URL.' });
+    }
+
+    const imageBuffer = Buffer.from(await photoResponse.arrayBuffer());
+    const peopleApi = google.people({ version: 'v1', auth: googleClient.oauthClient });
+    await peopleApi.people.updateContactPhoto({
+      resourceName: contactId,
+      requestBody: {
+        photoBytes: imageBuffer.toString('base64'),
+      },
+    });
+
+    return res.json({ success: true, contactId, photoUrl });
   } catch (error) {
-    console.error('Set contact photo error:', error);
-    return res.status(500).json({ error: 'Failed to set contact photo' });
+    console.error('Set Google contact photo error:', error);
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to set contact photo' });
+  }
+});
+
+app.post('/api/google/people/sync-contacts-to-showcase', async (req, res) => {
+  try {
+    const payload = (req.body || {}) as Record<string, unknown>;
+    const googleClient = await buildGooglePeopleClient(req, payload);
+    const hasReadScope = hasAnyStoredGoogleScope(googleClient.connection.storedScopes, GOOGLE_PEOPLE_READ_SCOPES);
+    const hasWriteScope = hasAnyStoredGoogleScope(googleClient.connection.storedScopes, GOOGLE_PEOPLE_WRITE_SCOPES);
+    if (!hasReadScope) {
+      return res.status(409).json({ error: 'Google Workspace er koblet til, men mangler Google Kontakter-tilgang. Koble Google Workspace på nytt for å synkronisere showcase-kontakter.' });
+    }
+
+    const peopleApi = google.people({ version: 'v1', auth: googleClient.oauthClient });
+    const existingConnections = await peopleApi.people.connections.list({
+      resourceName: 'people/me',
+      personFields: 'names,emailAddresses,phoneNumbers,organizations,photos,metadata',
+      pageSize: 200,
+    });
+    const existingContacts = (existingConnections.data.connections ?? [])
+      .map((person) => mapGooglePeopleContact(person as Record<string, unknown>));
+    const existingByEmail = new Map(
+      existingContacts
+        .filter((contact) => contact.email)
+        .map((contact) => [contact.email.toLowerCase(), contact]),
+    );
+
+    const showcaseContacts = collectShowcaseContacts(payload);
+    const exportedContacts: Array<ReturnType<typeof mapGooglePeopleContact>> = [];
+
+    if (hasWriteScope) {
+      for (const contact of showcaseContacts) {
+        if (existingByEmail.has(contact.email.toLowerCase())) {
+          continue;
+        }
+
+        const [firstName, ...rest] = contact.name.split(' ');
+        const created = await peopleApi.people.createContact({
+          requestBody: {
+            names: [{ givenName: firstName || contact.email, familyName: rest.join(' ') || undefined, displayName: contact.name }],
+            emailAddresses: [{ value: contact.email }],
+            phoneNumbers: contact.phone ? [{ value: contact.phone }] : undefined,
+            organizations: contact.company ? [{ name: contact.company }] : undefined,
+            biographies: contact.notes ? [{ value: contact.notes }] : undefined,
+          },
+        });
+        const mapped = mapGooglePeopleContact((created.data || {}) as Record<string, unknown>);
+        exportedContacts.push(mapped);
+        existingByEmail.set(mapped.email.toLowerCase(), mapped);
+        await mirrorGoogleContactToCrm({
+          name: mapped.name,
+          email: mapped.email,
+          phone: mapped.phone,
+          company: mapped.company,
+          notes: contact.notes,
+        });
+      }
+    }
+
+    const contacts = Array.from(existingByEmail.values())
+      .sort((left, right) => left.name.localeCompare(right.name, 'nb-NO'))
+      .slice(0, 250);
+
+    return res.json({
+      success: true,
+      contacts,
+      importedCount: contacts.length,
+      exportedCount: exportedContacts.length,
+      showcaseContacts: showcaseContacts.length,
+      workspaceEmail: googleClient.connection.googleEmail,
+      canExport: hasWriteScope,
+    });
+  } catch (error) {
+    console.error('Showcase Google contacts sync error:', error);
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to sync showcase contacts' });
   }
 });
 
@@ -52888,56 +58076,1138 @@ app.get('/api/projects/timeline/:clientId', async (req, res) => {
 // Quotes API
 // ============================================================
 
-app.post('/api/quotes/create', async (req, res) => {
-  try {
-    const { clientId, items, description, validDays } = req.body;
-    const xUserId = req.headers['x-user-id'] as string || '';
+async function resolveQuoteUserId(req: any) {
+  const headerUserId = getPricingUserId(req);
+  if (headerUserId) {
+    return String(headerUserId);
+  }
 
-    // Resolve user_id: try users table by username, fallback to first user
-    let userId: string;
-    const userLookup = await pool.query('SELECT id FROM users WHERE username = $1 LIMIT 1', [xUserId]);
-    if (userLookup.rows.length > 0) {
-      userId = userLookup.rows[0].id;
+  const fallback = await pool.query('SELECT id FROM users LIMIT 1');
+  return fallback.rows[0]?.id || 'default-user';
+}
+
+function buildSharedQuoteWhereClause(options: {
+  userId?: string | null;
+  status?: string | null;
+  quoteType?: string | null;
+  contractAmendmentFor?: string | null;
+  signatureStatus?: string | null;
+  clientId?: string | null;
+}) {
+  const whereClauses: string[] = [];
+  const params: any[] = [];
+
+  if (options.userId) {
+    params.push(options.userId);
+    whereClauses.push(`created_by = $${params.length}`);
+  }
+
+  if (options.clientId) {
+    params.push(options.clientId);
+    whereClauses.push(`client_id = $${params.length}`);
+  }
+
+  if (options.quoteType) {
+    params.push(options.quoteType);
+    whereClauses.push(`quote_type = $${params.length}`);
+  }
+
+  if (options.contractAmendmentFor) {
+    params.push(options.contractAmendmentFor);
+    whereClauses.push(`contract_amendment_for = $${params.length}`);
+  }
+
+  if (options.signatureStatus) {
+    params.push(options.signatureStatus);
+    whereClauses.push(`signature_status = $${params.length}`);
+  }
+
+  if (options.status) {
+    if (options.status === 'pending') {
+      params.push(['pending', 'sent', 'viewed']);
+      whereClauses.push(`COALESCE(status, 'draft') = ANY($${params.length})`);
     } else {
-      const fallback = await pool.query('SELECT id FROM users LIMIT 1');
-      userId = fallback.rows[0]?.id || 'default-user';
+      params.push(options.status);
+      whereClauses.push(`COALESCE(status, 'draft') = $${params.length}`);
+    }
+  }
+
+  return {
+    params,
+    whereSql: whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '',
+  };
+}
+
+function buildQuoteReminderConfigStoreKey(userId: string) {
+  return `quotes:reminders:config:${userId}`;
+}
+
+function buildQuoteReminderStatusStoreKey(userId: string) {
+  return `quotes:reminders:status:${userId}`;
+}
+
+function createDefaultQuoteReminderConfig() {
+  return {
+    expiryReminders: {
+      enabled: true,
+      daysBeforeExpiry: [7, 3, 1],
+    },
+    followUpReminders: {
+      enabled: true,
+      daysAfterSent: [3, 7, 14],
+    },
+    emailSubjectPrefix: '[Påminnelse]',
+    defaultEmailFrom: 'noreply@creatorhub.no',
+  };
+}
+
+function normalizeReminderDayList(value: unknown, fallback: number[]) {
+  const source = Array.isArray(value) ? value : fallback;
+  const seen = new Set<number>();
+  return source
+    .map((entry) => Number(entry))
+    .filter((entry) => Number.isFinite(entry) && entry >= 0)
+    .sort((a, b) => a - b)
+    .filter((entry) => {
+      if (seen.has(entry)) return false;
+      seen.add(entry);
+      return true;
+    });
+}
+
+function normalizeQuoteReminderConfig(input: unknown) {
+  const defaults = createDefaultQuoteReminderConfig();
+  const source = input && typeof input === 'object' ? input as Record<string, any> : {};
+  const expirySource = source.expiryReminders && typeof source.expiryReminders === 'object'
+    ? source.expiryReminders as Record<string, unknown>
+    : {};
+  const followUpSource = source.followUpReminders && typeof source.followUpReminders === 'object'
+    ? source.followUpReminders as Record<string, unknown>
+    : {};
+
+  return {
+    expiryReminders: {
+      enabled: typeof expirySource.enabled === 'boolean'
+        ? expirySource.enabled
+        : defaults.expiryReminders.enabled,
+      daysBeforeExpiry: normalizeReminderDayList(
+        expirySource.daysBeforeExpiry,
+        defaults.expiryReminders.daysBeforeExpiry,
+      ),
+    },
+    followUpReminders: {
+      enabled: typeof followUpSource.enabled === 'boolean'
+        ? followUpSource.enabled
+        : defaults.followUpReminders.enabled,
+      daysAfterSent: normalizeReminderDayList(
+        followUpSource.daysAfterSent,
+        defaults.followUpReminders.daysAfterSent,
+      ),
+    },
+    emailSubjectPrefix: typeof source.emailSubjectPrefix === 'string' && source.emailSubjectPrefix.trim()
+      ? source.emailSubjectPrefix.trim()
+      : defaults.emailSubjectPrefix,
+    defaultEmailFrom: typeof source.defaultEmailFrom === 'string' && source.defaultEmailFrom.trim()
+      ? source.defaultEmailFrom.trim()
+      : defaults.defaultEmailFrom,
+  };
+}
+
+function buildQuoteProfessionVariants(profession: unknown) {
+  const normalized = typeof profession === 'string' ? profession.trim().toLowerCase() : '';
+  if (!normalized || normalized === 'all') {
+    return [];
+  }
+
+  const aliasMap: Record<string, string[]> = {
+    fotograf: ['fotograf', 'photographer'],
+    photographer: ['photographer', 'fotograf'],
+    videograf: ['videograf', 'videographer'],
+    videographer: ['videographer', 'videograf'],
+    musikkprodusent: ['musikkprodusent', 'music_producer', 'music producer', 'music-producer'],
+    music_producer: ['music_producer', 'music producer', 'music-producer', 'musikkprodusent'],
+    'music producer': ['music_producer', 'music producer', 'music-producer', 'musikkprodusent'],
+    'music-producer': ['music_producer', 'music producer', 'music-producer', 'musikkprodusent'],
+  };
+
+  return Array.from(new Set(aliasMap[normalized] || [normalized]));
+}
+
+function normalizeQuoteTemplateItems(value: unknown) {
+  return normalizeJsonArrayField(value)
+    .map((entry: any) => {
+      if (typeof entry === 'string') return entry.trim();
+      if (entry && typeof entry === 'object') {
+        return String(
+          entry.name ||
+          entry.label ||
+          entry.title ||
+          entry.description ||
+          '',
+        ).trim();
+      }
+      return '';
+    })
+    .filter(Boolean);
+}
+
+function normalizeQuoteTemplateServices(value: unknown) {
+  return normalizeJsonArrayField(value)
+    .map((entry: any) => {
+      if (typeof entry === 'string') {
+        return {
+          name: entry.trim(),
+          price: '0',
+        };
+      }
+      if (entry && typeof entry === 'object') {
+        const name = String(
+          entry.name ||
+          entry.label ||
+          entry.title ||
+          entry.description ||
+          '',
+        ).trim();
+        if (!name) return null;
+        return {
+          name,
+          price: String(
+            toNumericValue(
+              entry.price,
+              toNumericValue(entry.unitPrice, toNumericValue(entry.totalPrice)),
+            ),
+          ),
+        };
+      }
+      return null;
+    })
+    .filter((entry): entry is { name: string; price: string } => entry !== null);
+}
+
+type QuoteTemplateRecord = {
+  id: string;
+  name: string;
+  description: string;
+  profession: string;
+  projectType: string;
+  category: string;
+  basePrice: string;
+  services: Array<{ name: string; price: string }>;
+  additionalServices: Array<{ name: string; price: string }>;
+  includedItems: string[];
+  deliverables: string[];
+  validityDays: number;
+  notes: string;
+  isPublic: boolean;
+  usageCount: number;
+  tags: string[];
+  createdBy: string;
+  createdAt: string;
+};
+
+function buildQuoteTemplateFromPackageRow(row: any, source: 'pricing_package' | 'legacy_package'): QuoteTemplateRecord {
+  const name = String(row.package_name || row.name || 'Pakke').trim();
+  const includedItems = normalizeQuoteTemplateItems(row.included_services ?? row.inclusions);
+  const deliverables = normalizeQuoteTemplateItems(row.deliverables);
+  const basePrice = String(
+    toNumericValue(
+      row.base_price,
+      toNumericValue(row.price, toNumericValue(row.basePrice)),
+    ),
+  );
+  const services = normalizeQuoteTemplateServices(row.included_services ?? row.inclusions);
+
+  return {
+    id: `${source}:${row.id}`,
+    name,
+    description: String(row.description || '').trim(),
+    profession: String(row.profession || 'fotograf'),
+    projectType: String(row.category || row.package_type || 'general'),
+    category: source === 'pricing_package' ? 'pricing-package' : 'package',
+    basePrice,
+    services: services.length > 0
+      ? services
+      : [{ name, price: basePrice }],
+    additionalServices: [],
+    includedItems,
+    deliverables: deliverables.length > 0 ? deliverables : includedItems,
+    validityDays: 30,
+    notes: String(row.description || '').trim(),
+    isPublic: Boolean(row.is_visible ?? row.isVisible ?? false),
+    usageCount: 0,
+    tags: Array.from(
+      new Set(
+        [row.profession, row.category, row.package_type]
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter(Boolean),
+      ),
+    ),
+    createdBy: String(row.user_id || row.userId || ''),
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+  };
+}
+
+function buildQuoteTemplateFromQuoteRow(row: any): QuoteTemplateRecord {
+  const quote = mapQuoteCompatibilityRecord(row);
+  const services = Array.isArray(quote.services)
+    ? quote.services
+        .map((service: any) => {
+          const name = String(service?.description || service?.name || '').trim();
+          if (!name) return null;
+          return {
+            name,
+            price: String(
+              toNumericValue(
+                service?.totalPrice,
+                toNumericValue(service?.unitPrice),
+              ),
+            ),
+          };
+        })
+        .filter((service): service is { name: string; price: string } => service !== null)
+    : [];
+
+  return {
+    id: `quote:${quote.id}`,
+    name: quote.title || quote.quoteNumber || 'Tilbudsmal',
+    description: quote.description || '',
+    profession: quote.profession || 'fotograf',
+    projectType: quote.projectType || 'general',
+    category: quote.quoteType || 'standard',
+    basePrice: String(toNumericValue(quote.basePrice)),
+    services: services.length > 0
+      ? services
+      : [{ name: quote.title || 'Tjeneste', price: String(toNumericValue(quote.basePrice)) }],
+    additionalServices: Array.isArray(quote.additionalServices)
+      ? quote.additionalServices.map((service: any) => ({
+          name: String(service?.description || service?.name || 'Tillegg').trim(),
+          price: String(
+            toNumericValue(service?.totalPrice, toNumericValue(service?.unitPrice, toNumericValue(service?.price))),
+          ),
+        }))
+      : [],
+    includedItems: Array.isArray(quote.services)
+      ? quote.services
+          .map((service: any) => String(service?.description || service?.name || '').trim())
+          .filter(Boolean)
+      : [],
+    deliverables: Array.isArray(quote.services)
+      ? quote.services
+          .map((service: any) => String(service?.description || service?.name || '').trim())
+          .filter(Boolean)
+      : [],
+    validityDays: quote.validUntil
+      ? Math.max(0, Math.round((new Date(quote.validUntil).getTime() - Date.now()) / 86400000))
+      : 30,
+    notes: quote.notes || '',
+    isPublic: false,
+    usageCount: 1,
+    tags: Array.from(
+      new Set(
+        [quote.profession, quote.projectType, quote.quoteType]
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter(Boolean),
+      ),
+    ),
+    createdBy: String(quote.createdBy || ''),
+    createdAt: quote.createdAt || new Date().toISOString(),
+  };
+}
+
+app.get('/api/quotes/templates', async (req, res) => {
+  try {
+    const userId = typeof req.query.userId === 'string' && req.query.userId.trim()
+      ? req.query.userId.trim()
+      : await resolveQuoteUserId(req);
+    const professionVariants = buildQuoteProfessionVariants(req.query.profession);
+
+    const params: any[] = [userId];
+    let pricingWhere = 'WHERE user_id = $1';
+    let legacyWhere = 'WHERE user_id = $1 AND active = true';
+    let quoteWhere = 'WHERE created_by = $1';
+
+    if (professionVariants.length > 0) {
+      params.push(professionVariants);
+      const filterIndex = params.length;
+      pricingWhere += ` AND LOWER(COALESCE(profession, '')) = ANY($${filterIndex}::text[])`;
+      legacyWhere += ` AND LOWER(COALESCE(profession, '')) = ANY($${filterIndex}::text[])`;
+      quoteWhere += ` AND LOWER(COALESCE(profession, '')) = ANY($${filterIndex}::text[])`;
     }
 
-    // Generate quote number
-    const quoteNumber = `QT-${Date.now().toString(36).toUpperCase()}`;
-    const totalAmount = (items || []).reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
+    const [pricingPackagesResult, legacyPackagesResult] = await Promise.all([
+      pool.query(
+        `SELECT id::text, user_id, package_name, description, base_price, included_services, profession,
+                is_visible, created_at
+         FROM pricing_packages ${pricingWhere}
+         ORDER BY created_at DESC
+         LIMIT 24`,
+        params,
+      ),
+      pool.query(
+        `SELECT id::text, user_id, name, description, price, inclusions, deliverables, category, profession, created_at
+         FROM packages ${legacyWhere}
+         ORDER BY created_at DESC
+         LIMIT 24`,
+        params,
+      ),
+    ]);
 
-    const result = await pool.query(
-      `INSERT INTO contracts (id, user_id, title, client_id, status, content, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, 'draft', $4, NOW(), NOW()) RETURNING id`,
-      [userId, description || `Quote ${quoteNumber}`, clientId || null, JSON.stringify({ quoteNumber, items, totalAmount })]
+    let templates: QuoteTemplateRecord[] = [
+      ...pricingPackagesResult.rows.map((row: any) => buildQuoteTemplateFromPackageRow(row, 'pricing_package')),
+      ...legacyPackagesResult.rows.map((row: any) => buildQuoteTemplateFromPackageRow(row, 'legacy_package')),
+    ];
+
+    if (templates.length === 0) {
+      const quoteTemplatesResult = await pool.query(
+        `SELECT * FROM quotes ${quoteWhere}
+         ORDER BY accepted_at DESC NULLS LAST, created_at DESC
+         LIMIT 12`,
+        params,
+      );
+      templates = quoteTemplatesResult.rows.map(buildQuoteTemplateFromQuoteRow);
+    }
+
+    const deduped = Array.from(
+      templates.reduce((acc, template) => {
+        const key = `${template.name.toLowerCase()}::${template.profession.toLowerCase()}`;
+        if (!acc.has(key)) {
+          acc.set(key, template);
+        }
+        return acc;
+      }, new Map<string, QuoteTemplateRecord>()).values(),
     );
 
-    return res.json({
-      quoteNumber,
-      id: result.rows[0].id,
-      totalAmount,
-      status: 'draft',
-      validUntil: new Date(Date.now() + (validDays || 30) * 86400000).toISOString(),
+    res.json({ templates: deduped });
+  } catch (error) {
+    console.error('Quote templates error:', error);
+    res.status(500).json({ error: 'Failed to fetch quote templates' });
+  }
+});
+
+app.get('/api/quotes/reminders/config', async (req, res) => {
+  try {
+    const userId = typeof req.query.userId === 'string' && req.query.userId.trim()
+      ? req.query.userId.trim()
+      : await resolveQuoteUserId(req);
+    const stored = await compatStoreGet<unknown>(buildQuoteReminderConfigStoreKey(userId));
+    res.json({
+      success: true,
+      config: normalizeQuoteReminderConfig(stored),
     });
+  } catch (error) {
+    console.error('Quote reminder config fetch error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch reminder config' });
+  }
+});
+
+app.put('/api/quotes/reminders/config', async (req, res) => {
+  try {
+    const userId = typeof req.body?.userId === 'string' && req.body.userId.trim()
+      ? req.body.userId.trim()
+      : await resolveQuoteUserId(req);
+    const config = normalizeQuoteReminderConfig(req.body?.config);
+    await compatStoreSet(buildQuoteReminderConfigStoreKey(userId), config);
+    res.json({ success: true, config });
+  } catch (error) {
+    console.error('Quote reminder config save error:', error);
+    res.status(500).json({ success: false, error: 'Failed to save reminder config' });
+  }
+});
+
+app.get('/api/quotes/reminders/status', async (req, res) => {
+  try {
+    const userId = typeof req.query.userId === 'string' && req.query.userId.trim()
+      ? req.query.userId.trim()
+      : await resolveQuoteUserId(req);
+    const storedStatus = await compatStoreGet<{ lastCheck?: string }>(buildQuoteReminderStatusStoreKey(userId));
+    res.json({
+      success: true,
+      status: {
+        isRunning: true,
+        lastCheck: storedStatus?.lastCheck || null,
+      },
+    });
+  } catch (error) {
+    console.error('Quote reminder status error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch reminder service status' });
+  }
+});
+
+app.post('/api/quotes/reminders/trigger', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const userId = typeof req.body?.userId === 'string' && req.body.userId.trim()
+      ? req.body.userId.trim()
+      : await resolveQuoteUserId(req);
+    const config = normalizeQuoteReminderConfig(
+      await compatStoreGet<unknown>(buildQuoteReminderConfigStoreKey(userId)),
+    );
+    const result = await pool.query(
+      `SELECT * FROM quotes
+       WHERE created_by = $1
+         AND COALESCE(status, 'draft') = ANY($2::text[])
+       ORDER BY created_at DESC`,
+      [userId, ['pending', 'sent', 'viewed']],
+    );
+
+    const now = Date.now();
+    const dueExpiryQuotes = result.rows.filter((row: any) => {
+      if (!config.expiryReminders.enabled || !row.valid_until) return false;
+      const diffDays = Math.ceil((new Date(row.valid_until).getTime() - now) / 86400000);
+      return config.expiryReminders.daysBeforeExpiry.includes(diffDays);
+    });
+
+    const dueFollowUpQuotes = result.rows.filter((row: any) => {
+      if (!config.followUpReminders.enabled || !row.sent_at) return false;
+      const diffDays = Math.floor((now - new Date(row.sent_at).getTime()) / 86400000);
+      return config.followUpReminders.daysAfterSent.includes(diffDays);
+    });
+
+    const summary = {
+      lastCheck: new Date().toISOString(),
+      processedQuotes: result.rows.length,
+      remindersGenerated: dueExpiryQuotes.length + dueFollowUpQuotes.length,
+      dueExpiryQuotes: dueExpiryQuotes.length,
+      dueFollowUpQuotes: dueFollowUpQuotes.length,
+    };
+
+    await compatStoreSet(buildQuoteReminderStatusStoreKey(userId), summary);
+
+    res.json({
+      success: true,
+      ...summary,
+    });
+  } catch (error) {
+    console.error('Quote reminder trigger error:', error);
+    res.status(500).json({ success: false, error: 'Failed to trigger quote reminders' });
+  }
+});
+
+app.post('/api/quotes/items', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const userId = await resolveQuoteUserId(req);
+    const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
+    const quantity = Math.max(1, Math.floor(toNumericValue(req.body?.quantity, 1)));
+    const unitPrice = toNumericValue(req.body?.unitPrice, 0);
+    const projectId = typeof req.body?.projectId === 'string' && req.body.projectId.trim()
+      ? req.body.projectId.trim()
+      : null;
+
+    if (!description) {
+      return res.status(400).json({ error: 'description is required' });
+    }
+
+    const item = {
+      type: 'custom',
+      description,
+      quantity,
+      unitPrice,
+      totalPrice: quantity * unitPrice,
+    };
+
+    let quoteRow: any | null = null;
+
+    if (projectId) {
+      const existingDraftResult = await pool.query(
+        `SELECT * FROM quotes
+         WHERE created_by = $1
+           AND project_id = $2
+           AND COALESCE(status, 'draft') = 'draft'
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId, projectId],
+      );
+
+      if (existingDraftResult.rows.length > 0) {
+        const currentQuote = mapPriceAdministrationQuote(existingDraftResult.rows[0]);
+        const nextServices = [...(Array.isArray(currentQuote.services) ? currentQuote.services : []), item];
+        const additionalCosts = Array.isArray(currentQuote.additionalCosts) ? currentQuote.additionalCosts : [];
+        const discounts = Array.isArray(currentQuote.discounts) ? currentQuote.discounts : [];
+        const subtotal = nextServices.reduce((sum: number, service: any) => sum + toNumericValue(service?.totalPrice), 0);
+        const additionalCostsTotal = additionalCosts.reduce((sum: number, cost: any) => sum + toNumericValue(cost?.amount), 0);
+        const discountsTotal = discounts.reduce((sum: number, discount: any) => sum + toNumericValue(discount?.amount), 0);
+        const taxableBase = Math.max(subtotal + additionalCostsTotal - discountsTotal, 0);
+        const mva = taxableBase * 0.25;
+        const totalAmount = taxableBase + mva;
+
+        const updatedResult = await pool.query(
+          `UPDATE quotes
+           SET services = $1::jsonb,
+               base_price = $2,
+               subtotal = $3,
+               mva = $4,
+               total_amount = $5,
+               updated_at = NOW()
+           WHERE id = $6
+           RETURNING *`,
+          [
+            JSON.stringify(nextServices),
+            subtotal,
+            subtotal,
+            mva,
+            totalAmount,
+            currentQuote.id,
+          ],
+        );
+        quoteRow = updatedResult.rows[0] || null;
+      }
+    }
+
+    if (!quoteRow) {
+      quoteRow = await insertSharedQuote(
+        {
+          clientId: req.body?.clientId || projectId || userId,
+          clientName: req.body?.clientName || 'Utkast',
+          clientEmail: req.body?.clientEmail || '',
+          title: req.body?.title || 'Utkast fra notat',
+          description,
+          projectId,
+          profession: req.body?.profession || 'fotograf',
+          status: 'draft',
+          services: [item],
+          subtotal: item.totalPrice,
+          mva: item.totalPrice * 0.25,
+          totalAmount: item.totalPrice * 1.25,
+          clientInfo: {
+            name: req.body?.clientName || 'Utkast',
+            email: req.body?.clientEmail || '',
+          },
+        },
+        userId,
+      );
+    }
+
+    quoteRow = await syncQuoteArtifactToCustomerDrive(quoteRow, userId);
+
+    res.status(201).json({
+      success: true,
+      item,
+      quote: mapQuoteCompatibilityRecord(quoteRow),
+    });
+  } catch (error) {
+    console.error('Quote item create error:', error);
+    res.status(500).json({ error: 'Failed to add quote item' });
+  }
+});
+
+app.post('/api/quotes/create', async (req, res) => {
+  try {
+    const userId = await resolveQuoteUserId(req);
+    const row = await insertSharedQuote(req.body, userId);
+    const syncedRow = await syncQuoteArtifactToCustomerDrive(row, userId);
+    return res.status(201).json(mapQuoteCompatibilityRecord(syncedRow));
   } catch (error) {
     console.error('Quote creation error:', error);
     return res.status(500).json({ error: 'Failed to create quote' });
   }
 });
 
+app.get('/api/quotes/all', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const userId = typeof req.query.userId === 'string' && req.query.userId.trim()
+      ? req.query.userId.trim()
+      : getPricingUserId(req);
+    const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+    const quoteType = typeof req.query.quoteType === 'string' ? req.query.quoteType.trim() : '';
+    const contractAmendmentFor = typeof req.query.contractAmendmentFor === 'string'
+      ? req.query.contractAmendmentFor.trim()
+      : '';
+
+    const { params, whereSql } = buildSharedQuoteWhereClause({
+      userId,
+      status: status || null,
+      quoteType: quoteType || null,
+      contractAmendmentFor: contractAmendmentFor || null,
+    });
+
+    const result = await pool.query(
+      `SELECT * FROM quotes ${whereSql} ORDER BY created_at DESC`,
+      params,
+    );
+
+    res.json({ quotes: result.rows.map(mapQuoteCompatibilityRecord) });
+  } catch (error) {
+    console.error('Quote list error:', error);
+    res.status(500).json({ error: 'Failed to fetch quotes' });
+  }
+});
+
+app.get('/api/quotes/stats/overview', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const userId = typeof req.query.userId === 'string' && req.query.userId.trim()
+      ? req.query.userId.trim()
+      : getPricingUserId(req);
+
+    const { params, whereSql } = buildSharedQuoteWhereClause({ userId });
+    const result = await pool.query(`SELECT * FROM quotes ${whereSql}`, params);
+    const quotes = result.rows.map(mapQuoteCompatibilityRecord);
+
+    const stats = {
+      total: quotes.length,
+      pending: quotes.filter((quote: any) => quote.status === 'pending').length,
+      accepted: quotes.filter((quote: any) => quote.status === 'accepted').length,
+      rejected: quotes.filter((quote: any) => quote.status === 'rejected').length,
+      totalValue: quotes.reduce((sum: number, quote: any) => sum + toNumericValue(quote.totalAmount), 0),
+      acceptedValue: quotes
+        .filter((quote: any) => quote.status === 'accepted')
+        .reduce((sum: number, quote: any) => sum + toNumericValue(quote.totalAmount), 0),
+      conversionRate: quotes.length > 0
+        ? (quotes.filter((quote: any) => quote.status === 'accepted').length / quotes.length) * 100
+        : 0,
+    };
+
+    res.json({ stats });
+  } catch (error) {
+    console.error('Quote stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch quote stats' });
+  }
+});
+
+app.get('/api/quotes', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const userId = typeof req.query.userId === 'string' && req.query.userId.trim()
+      ? req.query.userId.trim()
+      : getPricingUserId(req);
+    const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+    const signatureStatus = typeof req.query.signature_status === 'string'
+      ? req.query.signature_status.trim()
+      : '';
+
+    const { params, whereSql } = buildSharedQuoteWhereClause({
+      userId,
+      status: status || null,
+      signatureStatus: signatureStatus || null,
+    });
+
+    const result = await pool.query(
+      `SELECT * FROM quotes ${whereSql} ORDER BY created_at DESC`,
+      params,
+    );
+
+    const data = result.rows.map((row) => ({
+      ...mapQuoteCompatibilityRecord(row),
+      signature_status: row.signature_status || 'pending',
+      google_doc_url: row.google_doc_url,
+      client_info: normalizeJsonObjectField(row.client_info) || {
+        name: row.client_name || '',
+        email: row.client_email || '',
+      },
+      approvers: normalizeJsonArrayField(row.approvers),
+    }));
+
+    res.json({ data });
+  } catch (error) {
+    console.error('Quote compatibility list error:', error);
+    res.status(500).json({ error: 'Failed to fetch quotes' });
+  }
+});
+
+app.get('/api/quotes/:id/pdf', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const result = await pool.query('SELECT * FROM quotes WHERE id = $1 LIMIT 1', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    const quote = mapQuoteCompatibilityRecord(result.rows[0]);
+    const doc = new PDFDocument({ margin: 48, size: 'A4' });
+    const fileName = `${quote.quoteNumber || quote.id}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename=\"${fileName}\"`);
+    doc.pipe(res);
+
+    doc.fontSize(22).text('Tilbud', { align: 'left' });
+    doc.moveDown(0.5);
+    doc.fontSize(11).fillColor('#444').text(`Tilbudsnummer: ${quote.quoteNumber}`);
+    doc.text(`Kunde: ${quote.clientName || 'Ukjent kunde'}`);
+    if (quote.clientEmail) {
+      doc.text(`E-post: ${quote.clientEmail}`);
+    }
+    doc.text(`Status: ${quote.status}`);
+    if (quote.validUntil) {
+      doc.text(`Gyldig til: ${new Date(quote.validUntil).toLocaleDateString('nb-NO')}`);
+    }
+    doc.moveDown();
+
+    doc.fontSize(16).fillColor('#111').text(quote.title || 'Tilbud');
+    doc.moveDown(0.5);
+    if (quote.description) {
+      doc.fontSize(11).fillColor('#333').text(quote.description);
+      doc.moveDown();
+    }
+
+    doc.fontSize(13).fillColor('#111').text('Tjenester');
+    doc.moveDown(0.5);
+    (Array.isArray(quote.services) ? quote.services : []).forEach((service: any) => {
+      doc.fontSize(11).text(
+        `${service.description || 'Tjeneste'} · ${toNumericValue(service.quantity, 1)} x ${toNumericValue(service.unitPrice, 0).toLocaleString('nb-NO')} NOK = ${toNumericValue(service.totalPrice, 0).toLocaleString('nb-NO')} NOK`
+      );
+    });
+
+    if (Array.isArray(quote.additionalCosts) && quote.additionalCosts.length > 0) {
+      doc.moveDown();
+      doc.fontSize(13).text('Tilleggskostnader');
+      doc.moveDown(0.5);
+      quote.additionalCosts.forEach((cost: any) => {
+        doc.fontSize(11).text(`${cost.description || 'Tillegg'} · ${toNumericValue(cost.amount, 0).toLocaleString('nb-NO')} NOK`);
+      });
+    }
+
+    if (Array.isArray(quote.discounts) && quote.discounts.length > 0) {
+      doc.moveDown();
+      doc.fontSize(13).text('Rabatter');
+      doc.moveDown(0.5);
+      quote.discounts.forEach((discount: any) => {
+        doc.fontSize(11).text(`${discount.description || 'Rabatt'} · -${toNumericValue(discount.amount, 0).toLocaleString('nb-NO')} NOK`);
+      });
+    }
+
+    doc.moveDown();
+    doc.fontSize(12).text(`Subtotal: ${toNumericValue(quote.subtotal, 0).toLocaleString('nb-NO')} NOK`);
+    doc.text(`MVA: ${toNumericValue(quote.mva, 0).toLocaleString('nb-NO')} NOK`);
+    doc.fontSize(14).fillColor('#111').text(`Totalt: ${toNumericValue(quote.totalAmount, 0).toLocaleString('nb-NO')} NOK`);
+
+    if (quote.notes) {
+      doc.moveDown();
+      doc.fontSize(12).text('Notater');
+      doc.moveDown(0.5);
+      doc.fontSize(11).text(quote.notes);
+    }
+
+    doc.end();
+  } catch (error) {
+    console.error('Quote PDF error:', error);
+    res.status(500).json({ error: 'Failed to generate quote PDF' });
+  }
+});
+
+app.get('/api/quotes/:id', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const result = await pool.query('SELECT * FROM quotes WHERE id = $1 LIMIT 1', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    res.json({ data: mapQuoteCompatibilityRecord(result.rows[0]) });
+  } catch (error) {
+    console.error('Quote fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch quote' });
+  }
+});
+
+app.put('/api/quotes/:id/status', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const status = normalizeLegacyQuoteStatus(req.body?.status);
+    const updates = ['status = $1', 'updated_at = NOW()'];
+    const params: any[] = [status];
+
+    if (status === 'accepted') {
+      updates.push('accepted_at = NOW()');
+    } else if (status === 'rejected') {
+      updates.push('responded_at = NOW()');
+    }
+
+    params.push(req.params.id);
+    const result = await pool.query(
+      `UPDATE quotes SET ${updates.join(', ')} WHERE id = $2 RETURNING *`,
+      params,
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    const syncedRow = await syncQuoteArtifactToCustomerDrive(result.rows[0]);
+    let quote = mapQuoteCompatibilityRecord(syncedRow);
+
+    if (status === 'accepted') {
+      const contract = await ensureContractForAcceptedQuote(syncedRow);
+      quote = {
+        ...quote,
+        contractId: contract.id,
+        projectCreationData: {
+          ...((quote.projectCreationData && typeof quote.projectCreationData === 'object')
+            ? quote.projectCreationData as Record<string, unknown>
+            : {}),
+          contractId: contract.id,
+          contractStatus: contract.status,
+        },
+      };
+    }
+
+    res.json({ success: true, quote });
+  } catch (error) {
+    console.error('Quote status update error:', error);
+    res.status(500).json({ error: 'Failed to update quote status' });
+  }
+});
+
+app.put('/api/quotes/:id/link-project', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const projectId = req.body?.projectId ? String(req.body.projectId) : '';
+    if (!projectId) {
+      return res.status(400).json({ error: 'projectId is required' });
+    }
+
+    const result = await pool.query(
+      'UPDATE quotes SET project_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      [projectId, req.params.id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    res.json({ success: true, quote: mapQuoteCompatibilityRecord(result.rows[0]) });
+  } catch (error) {
+    console.error('Quote link-project error:', error);
+    res.status(500).json({ error: 'Failed to link quote to project' });
+  }
+});
+
+app.post('/api/quotes/:id/create-chat', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const result = await pool.query('SELECT * FROM quotes WHERE id = $1 LIMIT 1', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    const quote = mapQuoteCompatibilityRecord(result.rows[0]);
+    const projectCreationData = (quote.projectCreationData && typeof quote.projectCreationData === 'object')
+      ? quote.projectCreationData as Record<string, unknown>
+      : {};
+    const existingChatSpaceId = typeof projectCreationData.chatSpaceId === 'string'
+      ? projectCreationData.chatSpaceId
+      : '';
+
+    if (existingChatSpaceId) {
+      return res.json({
+        success: true,
+        spaceUrl: existingChatSpaceId.startsWith('http')
+          ? existingChatSpaceId
+          : `https://chat.google.com/app/chat/${existingChatSpaceId.replace(/^spaces\//, '')}`,
+      });
+    }
+
+    return res.json({
+      success: true,
+      spaceUrl: `/photographer-dashboard-material?quoteId=${encodeURIComponent(String(quote.id))}&chat=1`,
+      message: 'Quote chat fallback created',
+    });
+  } catch (error) {
+    console.error('Quote create-chat error:', error);
+    res.status(500).json({ error: 'Failed to create quote chat' });
+  }
+});
+
+app.post('/api/quotes/:id/send-email', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const result = await pool.query(
+      `UPDATE quotes
+       SET sent_at = NOW(),
+           status = CASE WHEN COALESCE(status, 'draft') = 'draft' THEN 'pending' ELSE status END,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    console.log('📧 Quote email marked as sent:', {
+      quoteId: req.params.id,
+      to: req.body?.clientEmail,
+      clientName: req.body?.clientName,
+    });
+
+    res.json({
+      success: true,
+      emailId: `quote-email-${Date.now()}`,
+      sentAt: new Date().toISOString(),
+      quote: mapQuoteCompatibilityRecord(result.rows[0]),
+    });
+  } catch (error) {
+    console.error('Quote send-email error:', error);
+    res.status(500).json({ error: 'Failed to send quote email' });
+  }
+});
+
+app.put('/api/quotes/:id', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const allowedScalarFields: Array<[string, string]> = [
+      ['title', 'title'],
+      ['description', 'description'],
+      ['notes', 'notes'],
+      ['internalNotes', 'internal_notes'],
+      ['projectId', 'project_id'],
+      ['profession', 'profession'],
+      ['projectType', 'project_type'],
+      ['quoteType', 'quote_type'],
+      ['contractAmendmentFor', 'contract_amendment_for'],
+      ['googleDocUrl', 'google_doc_url'],
+      ['googleDocId', 'google_doc_id'],
+      ['signatureStatus', 'signature_status'],
+      ['fikenInvoiceId', 'fiken_invoice_id'],
+      ['fikenInvoiceNumber', 'fiken_invoice_number'],
+      ['fikenCustomerId', 'fiken_customer_id'],
+      ['fikenInvoiceStatus', 'fiken_invoice_status'],
+      ['fikenSyncStatus', 'fiken_sync_status'],
+      ['fikenInvoiceUrl', 'fiken_invoice_url'],
+    ];
+
+    const setClauses = ['updated_at = NOW()'];
+    const params: any[] = [];
+    let idx = 1;
+
+    for (const [inputKey, column] of allowedScalarFields) {
+      if (req.body?.[inputKey] !== undefined) {
+        setClauses.push(`${column} = $${idx++}`);
+        params.push(req.body[inputKey]);
+      }
+    }
+
+    if (req.body?.validUntil !== undefined) {
+      setClauses.push(`valid_until = $${idx++}`);
+      params.push(req.body.validUntil ? new Date(req.body.validUntil) : null);
+    }
+
+    if (req.body?.totalAmount !== undefined) {
+      const totalAmount = toNumericValue(req.body.totalAmount);
+      const subtotal = totalAmount / 1.25;
+      const mva = totalAmount - subtotal;
+      setClauses.push(`total_amount = $${idx++}`);
+      params.push(totalAmount);
+      setClauses.push(`subtotal = $${idx++}`);
+      params.push(subtotal);
+      setClauses.push(`mva = $${idx++}`);
+      params.push(mva);
+    }
+
+    if (req.body?.status !== undefined) {
+      setClauses.push(`status = $${idx++}`);
+      params.push(normalizeLegacyQuoteStatus(req.body.status));
+    }
+
+    if (req.body?.clientInfo !== undefined) {
+      setClauses.push(`client_info = $${idx++}::jsonb`);
+      params.push(JSON.stringify(req.body.clientInfo || {}));
+    }
+
+    if (req.body?.approvers !== undefined) {
+      setClauses.push(`approvers = $${idx++}::jsonb`);
+      params.push(JSON.stringify(Array.isArray(req.body.approvers) ? req.body.approvers : []));
+    }
+
+    if (req.body?.projectCreationData !== undefined) {
+      setClauses.push(`project_creation_data = $${idx++}::jsonb`);
+      params.push(JSON.stringify(req.body.projectCreationData || {}));
+    }
+
+    if (req.body?.services !== undefined) {
+      setClauses.push(`services = $${idx++}::jsonb`);
+      params.push(JSON.stringify(Array.isArray(req.body.services) ? req.body.services : []));
+    }
+
+    if (req.body?.additionalCosts !== undefined) {
+      setClauses.push(`additional_costs = $${idx++}::jsonb`);
+      params.push(JSON.stringify(Array.isArray(req.body.additionalCosts) ? req.body.additionalCosts : []));
+    }
+
+    if (req.body?.discounts !== undefined) {
+      setClauses.push(`discounts = $${idx++}::jsonb`);
+      params.push(JSON.stringify(Array.isArray(req.body.discounts) ? req.body.discounts : []));
+    }
+
+    if (setClauses.length === 1) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    params.push(req.params.id);
+    const result = await pool.query(
+      `UPDATE quotes SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
+      params,
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    const syncedRow = await syncQuoteArtifactToCustomerDrive(result.rows[0]);
+    let quote = mapQuoteCompatibilityRecord(syncedRow);
+    if (normalizeLegacyQuoteStatus(req.body?.status) === 'accepted') {
+      const contract = await ensureContractForAcceptedQuote(syncedRow);
+      quote = {
+        ...quote,
+        contractId: contract.id,
+        projectCreationData: {
+          ...((quote.projectCreationData && typeof quote.projectCreationData === 'object')
+            ? quote.projectCreationData
+            : {}),
+          contractId: contract.id,
+          contractStatus: contract.status,
+        },
+      };
+    }
+
+    res.json({ success: true, data: quote });
+  } catch (error) {
+    console.error('Quote update error:', error);
+    res.status(500).json({ error: 'Failed to update quote' });
+  }
+});
+
+app.delete('/api/quotes/:id', async (req, res) => {
+  try {
+    await ensureQuotesCompatibilitySchema();
+
+    const result = await pool.query('DELETE FROM quotes WHERE id = $1 RETURNING id', [req.params.id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Quote delete error:', error);
+    res.status(500).json({ error: 'Failed to delete quote' });
+  }
+});
+
 app.get('/api/quotes/status/:clientId', async (req, res) => {
   try {
-    const { clientId } = req.params;
+    await ensureQuotesCompatibilitySchema();
 
-    // Look up the latest contract/quote for this customer
+    const { clientId } = req.params;
     const result = await pool.query(
-      `SELECT c.id, c.status, c.title, c.content, c.created_at,
-              cust.name as client_name, cust.email as client_email, cust.project_id
-       FROM contracts c
-       JOIN crm_customers cust ON cust.id::text = c.client_id
-       WHERE cust.id = $1
-       ORDER BY c.created_at DESC LIMIT 1`,
+      `SELECT * FROM quotes
+       WHERE client_id = $1 OR client_email = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
       [clientId]
     );
 
@@ -52945,17 +59215,17 @@ app.get('/api/quotes/status/:clientId', async (req, res) => {
       return res.json({ accepted: false, projectId: null, clientInfo: null });
     }
 
-    const row = result.rows[0];
-    const content = typeof row.content === 'string' ? JSON.parse(row.content) : (row.content || {});
+    const row = mapQuoteCompatibilityRecord(result.rows[0]);
     return res.json({
-      accepted: row.status === 'signed' || row.status === 'completed',
-      projectId: row.project_id,
+      accepted: row.status === 'accepted',
+      projectId: row.projectId,
+      contractId: row.contractId || row.projectCreationData?.contractId || null,
       quoteId: row.id,
       status: row.status,
-      totalAmount: content.totalAmount || 0,
+      totalAmount: toNumericValue(row.totalAmount),
       clientInfo: {
-        name: row.client_name,
-        email: row.client_email,
+        name: row.clientName,
+        email: row.clientEmail,
       }
     });
   } catch (error) {
@@ -53060,6 +59330,1337 @@ function getCurrentSeasonalDemand(): 'high' | 'medium' | 'low' {
   if (factor >= 0.7) return 'medium';
   return 'low';
 }
+
+function toBiNumericMetric(value: unknown, fallback = 0): number {
+  const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value ?? ''));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toBiStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : String(entry ?? '').trim()))
+    .filter((entry) => entry.length > 0);
+}
+
+function toBiIsoDateString(value: unknown): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+function parseBiPersonaAge(ageRange: string): number {
+  const matches = ageRange.match(/\d+/g);
+  if (!matches || matches.length === 0) {
+    return 35;
+  }
+
+  const values = matches
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isFinite(value));
+
+  if (values.length === 0) {
+    return 35;
+  }
+
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function normalizeSwotItemRecord(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    type: String(row.type || 'strength') as 'strength' | 'weakness' | 'opportunity' | 'threat',
+    title: String(row.title || 'Uten tittel'),
+    description: String(row.description || ''),
+    impact: String(row.impact || 'medium') as 'low' | 'medium' | 'high' | 'critical',
+    probability: Math.max(0, Math.min(100, Math.round(toBiNumericMetric(row.probability, 50)))),
+    urgency: String(row.urgency || 'medium') as 'low' | 'medium' | 'high',
+    status: String(row.status || 'identified') as 'identified' | 'analyzing' | 'in_progress' | 'resolved' | 'archived',
+    category: String(row.category || 'general'),
+    tags: toBiStringArray(row.tags),
+    relatedPersonas: toBiStringArray(row.related_personas ?? row.relatedPersonas),
+    identifiedDate: toBiIsoDateString(row.created_at) ?? new Date().toISOString(),
+    targetDate: toBiIsoDateString(row.target_date),
+    resolvedDate: toBiIsoDateString(row.resolved_date),
+    confidence: Math.max(0, Math.min(100, Math.round(toBiNumericMetric(row.confidence, 50)))),
+  };
+}
+
+function normalizePersonaRecord(row: Record<string, unknown>) {
+  const age = Math.round(toBiNumericMetric(row.age, 35));
+  const motivations = toBiStringArray(row.preferred_brands).length > 0
+    ? toBiStringArray(row.preferred_brands)
+    : toBiStringArray(row.goals);
+  return {
+    id: String(row.id),
+    name: String(row.name || 'Ukjent persona'),
+    description: String(row.bio || row.occupation || ''),
+    avatarUrl: row.avatar_url ? String(row.avatar_url) : undefined,
+    ageRange: `${Math.max(age - 5, 18)}-${age + 5}`,
+    location: String(row.location || 'Norge'),
+    income: String(row.income || 'standard'),
+    goals: toBiStringArray(row.goals),
+    painPoints: toBiStringArray(row.frustrations),
+    motivations,
+    customerType: String(row.customer_type || 'quality_focused') as 'budget_conscious' | 'quality_focused' | 'time_sensitive' | 'luxury_seeker',
+    budgetTier: String(row.budget_tier || 'standard') as 'economy' | 'standard' | 'premium' | 'luxury',
+    marketSize: Math.round(toBiNumericMetric(row.market_size, 0)),
+    averageValue: toBiNumericMetric(row.average_value, 0),
+    conversionRate: Math.round(toBiNumericMetric(row.conversion_rate, 0)),
+  };
+}
+
+function swotImpactWeight(impact: unknown): number {
+  switch (String(impact || 'medium')) {
+    case 'critical':
+      return 4;
+    case 'high':
+      return 3;
+    case 'low':
+      return 1;
+    default:
+      return 2;
+  }
+}
+
+function buildSwotScores(items: Array<Record<string, unknown>>) {
+  const categoryScore = (categories: string[]) => {
+    const positive = items
+      .filter((item) =>
+        categories.includes(String(item.category || '').toLowerCase()) &&
+        (item.type === 'strength' || item.type === 'opportunity'),
+      )
+      .reduce((sum, item) => sum + swotImpactWeight(item.impact), 0);
+    const negative = items
+      .filter((item) =>
+        categories.includes(String(item.category || '').toLowerCase()) &&
+        (item.type === 'weakness' || item.type === 'threat'),
+      )
+      .reduce((sum, item) => sum + swotImpactWeight(item.impact), 0);
+
+    return Math.max(10, Math.min(100, 50 + (positive - negative) * 8));
+  };
+
+  const brand = categoryScore(['brand', 'branding', 'marketing', 'positioning']);
+  const product = categoryScore(['product', 'service', 'quality', 'portfolio']);
+  const distribution = categoryScore(['distribution', 'sales', 'operations', 'delivery']);
+  const promotion = categoryScore(['promotion', 'marketing', 'social', 'seo', 'content']);
+  const overall = Math.round((brand + product + distribution + promotion) / 4);
+
+  return { brand, product, distribution, promotion, overall };
+}
+
+function buildSwotRecommendations(
+  items: Array<Record<string, unknown>>,
+  personasCount: number,
+  surveyCount: number,
+): string[] {
+  const strengths = items.filter((item) => item.type === 'strength');
+  const opportunities = items.filter((item) => item.type === 'opportunity');
+  const weaknesses = items.filter((item) => item.type === 'weakness');
+  const threats = items.filter((item) => item.type === 'threat');
+
+  const strongestOpportunity = opportunities
+    .slice()
+    .sort((left, right) => swotImpactWeight(right.impact) - swotImpactWeight(left.impact))[0];
+  const mostUrgentWeakness = weaknesses
+    .slice()
+    .sort((left, right) => swotImpactWeight(right.impact) - swotImpactWeight(left.impact))[0];
+  const highestThreat = threats
+    .slice()
+    .sort((left, right) => swotImpactWeight(right.impact) - swotImpactWeight(left.impact))[0];
+
+  const recommendations = [
+    strengths.length > 0
+      ? `Bygg videre på styrken "${String(strengths[0].title || 'sterk leveranse')}" i markedskommunikasjonen.`
+      : 'Dokumenter flere styrker i SWOT for å få tydeligere markedsposisjonering.',
+    strongestOpportunity
+      ? `Prioriter muligheten "${String(strongestOpportunity.title)}" i neste 30-dagers plan.`
+      : 'Identifiser minst én ny vekstmulighet fra kundeinnsikt eller markedstall.',
+    mostUrgentWeakness
+      ? `Lag en konkret tiltaksliste for svakheten "${String(mostUrgentWeakness.title)}".`
+      : 'Bruk SWOT-tavlen aktivt for å avdekke operative flaskehalser.',
+    highestThreat
+      ? `Etabler en motstrategi mot trusselen "${String(highestThreat.title)}".`
+      : 'Følg konkurranse- og sesongendringer ukentlig for å oppdage nye trusler tidligere.',
+  ];
+
+  if (personasCount === 0) {
+    recommendations.push('Opprett minst én persona for å koble SWOT og markedsføring til en tydelig målgruppe.');
+  }
+  if (surveyCount === 0) {
+    recommendations.push('Publiser en kort undersøkelse for å få ferske signaler inn i SWOT-analysen.');
+  }
+
+  return recommendations.slice(0, 5);
+}
+
+function buildSeasonalTrendPayload(profession: string, service: string) {
+  const normalizedService = service.toLowerCase();
+  const normalizedProfession = profession.toLowerCase();
+  const serviceAdjustments = normalizedService.includes('bryllup')
+    ? weddingSeasonalFactors
+    : weddingSeasonalFactors.map((factor) => Number((0.65 + factor * 0.35).toFixed(2)));
+
+  const professionMultiplier =
+    normalizedProfession === 'videographer'
+      ? 1.05
+      : normalizedProfession === 'music_producer'
+        ? 0.9
+        : 1;
+
+  const monthlyFactors = serviceAdjustments.map((factor) => Number((factor * professionMultiplier).toFixed(2)));
+  const highestFactor = Math.max(...monthlyFactors);
+  const peakMonths = monthlyFactors
+    .map((factor, index) => ({ factor, index }))
+    .filter((entry) => entry.factor >= highestFactor - 0.05)
+    .map((entry) => entry.index);
+  const monthLabels = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des'];
+  const peakLabel = peakMonths.map((index) => monthLabels[index]).join(', ');
+
+  return {
+    serviceType: service,
+    monthlyFactors,
+    recommendations: [
+      `Planlegg kampanjer og prisøkning mot høysesongen i ${peakLabel || 'mai-september'}.`,
+      monthlyFactors[new Date().getMonth()] >= 1
+        ? 'Etterspørselen er sterk nå. Prioriter raske svar og premium-pakker.'
+        : 'Bruk roligere perioder til portefølje, SEO og relasjonsbygging.',
+      normalizedService.includes('bryllup')
+        ? 'Bryllupssegmentet topper seg sent vår og sommer. Sikre bookingflyten tidlig i året.'
+        : `Tilpass innholdsplanen til når ${service} faktisk har høyest etterspørsel.`,
+    ],
+  };
+}
+
+function humanizeAudienceSegment(segment: unknown): string {
+  switch (String(segment || 'all')) {
+    case 'active':
+      return 'Aktive kunder';
+    case 'inactive':
+      return 'Inaktive kunder';
+    case 'new':
+      return 'Nye kunder';
+    default:
+      return 'Alle kunder';
+  }
+}
+
+function humanizeNewsletterStatus(status: unknown): string {
+  switch (String(status || 'draft')) {
+    case 'scheduled':
+      return 'Planlagt';
+    case 'sent':
+      return 'Sendt';
+    case 'cancelled':
+      return 'Avlyst';
+    default:
+      return 'Utkast';
+  }
+}
+
+// GET /api/business/surveys/:userId/:profession — List surveys for BI workspace
+app.get('/api/business/surveys/:userId/:profession', async (req, res) => {
+  try {
+    const { userId, profession } = req.params;
+    const result = await pool.query(
+      `SELECT id, user_id, profession, title, description, purpose, questions, status,
+              response_count, completion_rate, shareable_link, expires_at, created_at, updated_at
+       FROM surveys
+       WHERE user_id = $1 AND profession = $2
+       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST`,
+      [userId, profession]
+    );
+
+    const data = result.rows.map((row: any) => ({
+      id: row.id,
+      userId: row.user_id,
+      profession: row.profession,
+      title: row.title,
+      description: row.description,
+      purpose: row.purpose,
+      questions: Array.isArray(row.questions) ? row.questions : [],
+      status: row.status,
+      responseCount: Number(row.response_count || 0),
+      completionRate: Number(row.completion_rate || 0),
+      shareableLink: row.shareable_link,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Business surveys list error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load surveys' });
+  }
+});
+
+// POST /api/business/surveys — Create or update a BI survey
+app.post('/api/business/surveys', async (req, res) => {
+  try {
+    const {
+      id,
+      userId,
+      profession,
+      title,
+      description,
+      purpose,
+      questions,
+      status,
+      shareableLink,
+      expiresAt,
+    } = req.body || {};
+
+    if (typeof userId !== 'string' || !userId.trim() || typeof profession !== 'string' || !profession.trim()) {
+      return res.status(400).json({ success: false, error: 'userId and profession are required' });
+    }
+
+    if (typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ success: false, error: 'title is required' });
+    }
+
+    const surveyId = typeof id === 'string' && id.trim() ? id.trim() : crypto.randomUUID();
+    const safeQuestions = Array.isArray(questions) ? questions : [];
+    const normalizedShareableLink =
+      typeof shareableLink === 'string' && shareableLink.trim().length > 0
+        ? shareableLink.trim()
+        : `/surveys/${surveyId}`;
+
+    const existing = await pool.query(
+      `SELECT id
+       FROM surveys
+       WHERE id = $1 AND user_id = $2 AND profession = $3
+       LIMIT 1`,
+      [surveyId, userId, profession]
+    );
+
+    if ((existing.rowCount ?? 0) > 0) {
+      await pool.query(
+        `UPDATE surveys
+         SET title = $4,
+             description = $5,
+             purpose = $6,
+             questions = $7::jsonb,
+             status = $8,
+             shareable_link = $9,
+             expires_at = $10,
+             updated_at = NOW()
+         WHERE id = $1 AND user_id = $2 AND profession = $3`,
+        [
+          surveyId,
+          userId,
+          profession,
+          title.trim(),
+          typeof description === 'string' ? description.trim() : '',
+          typeof purpose === 'string' ? purpose : 'customer_satisfaction',
+          JSON.stringify(safeQuestions),
+          typeof status === 'string' ? status : 'draft',
+          normalizedShareableLink,
+          expiresAt || null,
+        ]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO surveys (
+          id, user_id, profession, title, description, purpose, questions, status,
+          response_count, completion_rate, shareable_link, expires_at, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7::jsonb, $8,
+          0, 0, $9, $10, NOW(), NOW()
+        )`,
+        [
+          surveyId,
+          userId,
+          profession,
+          title.trim(),
+          typeof description === 'string' ? description.trim() : '',
+          typeof purpose === 'string' ? purpose : 'customer_satisfaction',
+          JSON.stringify(safeQuestions),
+          typeof status === 'string' ? status : 'draft',
+          normalizedShareableLink,
+          expiresAt || null,
+        ]
+      );
+    }
+
+    const saved = await pool.query(
+      `SELECT id, user_id, profession, title, description, purpose, questions, status,
+              response_count, completion_rate, shareable_link, expires_at, created_at, updated_at
+       FROM surveys
+       WHERE id = $1
+       LIMIT 1`,
+      [surveyId]
+    );
+
+    const row = saved.rows[0];
+    res.json({
+      success: true,
+      data: {
+        id: row.id,
+        userId: row.user_id,
+        profession: row.profession,
+        title: row.title,
+        description: row.description,
+        purpose: row.purpose,
+        questions: Array.isArray(row.questions) ? row.questions : [],
+        status: row.status,
+        responseCount: Number(row.response_count || 0),
+        completionRate: Number(row.completion_rate || 0),
+        shareableLink: row.shareable_link,
+        expiresAt: row.expires_at,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+    });
+  } catch (error) {
+    console.error('Business survey save error:', error);
+    res.status(500).json({ success: false, error: 'Failed to save survey' });
+  }
+});
+
+// GET /api/business/surveys/:surveyId/responses — Load survey responses
+app.get('/api/business/surveys/:surveyId/responses', async (req, res) => {
+  try {
+    const { surveyId } = req.params;
+    const result = await pool.query(
+      `SELECT id, survey_id, respondent_email, respondent_name, answers, sentiment, key_insights, completed_at
+       FROM survey_responses
+       WHERE survey_id = $1
+       ORDER BY completed_at DESC NULLS LAST`,
+      [surveyId]
+    );
+
+    const data = result.rows.map((row: any) => ({
+      id: row.id,
+      surveyId: row.survey_id,
+      respondentEmail: row.respondent_email,
+      respondentName: row.respondent_name,
+      answers: row.answers || {},
+      sentiment: row.sentiment || 'neutral',
+      keyInsights: Array.isArray(row.key_insights) ? row.key_insights : [],
+      completedAt: row.completed_at,
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Business survey responses error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load survey responses' });
+  }
+});
+
+// POST /api/business/surveys/:surveyId/responses — Submit survey response
+app.post('/api/business/surveys/:surveyId/responses', async (req, res) => {
+  try {
+    const { surveyId } = req.params;
+    const {
+      answers,
+      respondentInfo,
+    } = req.body || {};
+
+    const normalizedAnswers = typeof answers === 'object' && answers !== null ? answers : {};
+    const surveyResult = await pool.query(
+      `SELECT id, questions, response_count, completion_rate
+       FROM surveys
+       WHERE id = $1
+       LIMIT 1`,
+      [surveyId]
+    );
+
+    if (surveyResult.rowCount === 0) {
+      return res.status(404).json({ success: false, error: 'Survey not found' });
+    }
+
+    const survey = surveyResult.rows[0];
+    const surveyQuestions = Array.isArray(survey.questions) ? survey.questions : [];
+    const answeredCount = Object.values(normalizedAnswers).filter((value) => {
+      if (Array.isArray(value)) return value.length > 0;
+      if (typeof value === 'string') return value.trim().length > 0;
+      return value !== null && value !== undefined;
+    }).length;
+    const responseCompletionRate = surveyQuestions.length > 0
+      ? Math.round((answeredCount / surveyQuestions.length) * 100)
+      : 100;
+
+    const flattenedAnswerText = Object.values(normalizedAnswers)
+      .flatMap((value) => Array.isArray(value) ? value : [value])
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join(' ')
+      .toLowerCase();
+
+    const positiveWords = ['bra', 'god', 'flott', 'fantastisk', 'love', 'great', 'excellent'];
+    const negativeWords = ['darlig', 'dårlig', 'bad', 'poor', 'slow', 'problem', 'issue'];
+    const positiveHits = positiveWords.reduce((count, word) => count + (flattenedAnswerText.includes(word) ? 1 : 0), 0);
+    const negativeHits = negativeWords.reduce((count, word) => count + (flattenedAnswerText.includes(word) ? 1 : 0), 0);
+    const sentiment = positiveHits > negativeHits ? 'positive' : negativeHits > positiveHits ? 'negative' : 'neutral';
+    const keyInsights = Object.entries(normalizedAnswers)
+      .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
+      .slice(0, 3)
+      .map(([key, value]) => `${key}: ${String(value).trim()}`);
+
+    const responseId = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO survey_responses (
+        id, survey_id, respondent_email, respondent_name, answers, sentiment, key_insights, completed_at, ip_address, user_agent
+      ) VALUES (
+        $1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, NOW(), $8, $9
+      )`,
+      [
+        responseId,
+        surveyId,
+        typeof respondentInfo?.email === 'string' ? respondentInfo.email : null,
+        typeof respondentInfo?.name === 'string' ? respondentInfo.name : null,
+        JSON.stringify(normalizedAnswers),
+        sentiment,
+        JSON.stringify(keyInsights),
+        req.ip || null,
+        req.get('user-agent') || null,
+      ]
+    );
+
+    const previousCount = Number(survey.response_count || 0);
+    const previousCompletion = Number(survey.completion_rate || 0);
+    const nextCount = previousCount + 1;
+    const nextCompletion = previousCount > 0
+      ? (((previousCompletion * previousCount) + responseCompletionRate) / nextCount)
+      : responseCompletionRate;
+
+    await pool.query(
+      `UPDATE surveys
+       SET response_count = $2,
+           completion_rate = $3,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [surveyId, nextCount, nextCompletion]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        id: responseId,
+        surveyId,
+        respondentEmail: typeof respondentInfo?.email === 'string' ? respondentInfo.email : null,
+        respondentName: typeof respondentInfo?.name === 'string' ? respondentInfo.name : null,
+        answers: normalizedAnswers,
+        sentiment,
+        keyInsights,
+        completedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('Business survey response save error:', error);
+    res.status(500).json({ success: false, error: 'Failed to submit survey response' });
+  }
+});
+
+// GET /api/business/price-recommendation/:profession/:service — Recommended pricing snapshot
+app.get('/api/business/price-recommendation/:profession/:service', async (req, res) => {
+  try {
+    const { profession, service } = req.params;
+    const region = readString(req.query.region) ?? 'Oslo';
+    const categoryName = professionToCategory(profession);
+
+    const result = await pool.query(
+      `SELECT v.price_range, vp.unit_price
+       FROM vendors v
+       LEFT JOIN vendor_products vp ON vp.vendor_id = v.id AND vp.is_archived = false
+       LEFT JOIN vendor_categories vc ON vc.id = v.category_id
+       WHERE LOWER(vc.name) = LOWER($1) OR v.location ILIKE $2`,
+      [categoryName, `%${region}%`],
+    );
+
+    const prices = result.rows
+      .map((row: Record<string, unknown>) => {
+        if (row.unit_price != null) {
+          return toBiNumericMetric(row.unit_price, 0);
+        }
+        return priceRangeToNumber(typeof row.price_range === 'string' ? row.price_range : null);
+      })
+      .filter((price) => price > 0);
+
+    if (prices.length === 0) {
+      const fallbackPrice =
+        service.toLowerCase().includes('bryllup')
+          ? 35000
+          : profession === 'photographer'
+            ? 9000
+            : 15000;
+      prices.push(Math.round(fallbackPrice * 0.8), fallbackPrice, Math.round(fallbackPrice * 1.25));
+    }
+
+    const averagePrice = Math.round(prices.reduce((sum, value) => sum + value, 0) / prices.length);
+    const suggestedPrice = Math.round(averagePrice * (getCurrentSeasonalDemand() === 'high' ? 1.12 : 1.05));
+    const spread = Math.max(...prices) - Math.min(...prices);
+    const confidence = Math.max(0.55, Math.min(0.96, 0.58 + prices.length * 0.03 - spread / 250000));
+
+    return res.json({
+      data: {
+        suggestedPrice,
+        confidence: Number(confidence.toFixed(2)),
+        reasoning: `Basert på ${prices.length} prisreferanser i ${region} for ${categoryName.toLowerCase()} anbefales et nivå rundt ${suggestedPrice.toLocaleString('no-NO')} kr.`,
+        competitiveAdvantage: [
+          `Markedsintervall: ${Math.min(...prices).toLocaleString('no-NO')}–${Math.max(...prices).toLocaleString('no-NO')} kr`,
+          getCurrentSeasonalDemand() === 'high'
+            ? 'Høy sesong gjør det mulig å prise noe over markedssnittet.'
+            : 'Moderat sesong tilsier tydelig differensiering og sterk verdiargumentasjon.',
+          `Fokuser på tydelig leveransebeskrivelse for ${service.toLowerCase()} når du presenterer pris.`,
+        ],
+      },
+    });
+  } catch (error) {
+    console.error('Business price recommendation error:', error);
+    res.status(500).json({ error: 'Failed to load business price recommendation' });
+  }
+});
+
+// GET /api/business/seasonal-trends/:profession/:service — Seasonal demand model
+app.get('/api/business/seasonal-trends/:profession/:service', async (req, res) => {
+  try {
+    const { profession, service } = req.params;
+    res.json({
+      data: buildSeasonalTrendPayload(profession, service),
+    });
+  } catch (error) {
+    console.error('Business seasonal trends error:', error);
+    res.status(500).json({ error: 'Failed to load seasonal trends' });
+  }
+});
+
+// GET /api/business/swot-items/:userId/:profession — Filtered SWOT board items
+app.get('/api/business/swot-items/:userId/:profession', async (req, res) => {
+  try {
+    const { userId, profession } = req.params;
+    const conditions = ['user_id = $1', 'profession = $2'];
+    const values: Array<string> = [userId, profession];
+
+    const type = readString(req.query.type);
+    const status = readString(req.query.status);
+    const category = readString(req.query.category);
+
+    if (type) {
+      values.push(type);
+      conditions.push(`type = $${values.length}`);
+    }
+    if (status) {
+      values.push(status);
+      conditions.push(`status = $${values.length}`);
+    }
+    if (category) {
+      values.push(category);
+      conditions.push(`category = $${values.length}`);
+    }
+
+    const result = await pool.query(
+      `SELECT id, user_id, profession, type, title, description, impact, probability, urgency, status,
+              category, tags, related_personas, target_date, resolved_date, confidence,
+              created_at, updated_at
+       FROM swot_items
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST`,
+      values,
+    );
+
+    res.json({
+      success: true,
+      data: result.rows.map((row: Record<string, unknown>) => normalizeSwotItemRecord(row)),
+    });
+  } catch (error) {
+    console.error('Business SWOT items list error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load SWOT items' });
+  }
+});
+
+// POST /api/business/swot-items — Create SWOT item
+app.post('/api/business/swot-items', async (req, res) => {
+  try {
+    const userId = readString(req.body?.userId);
+    const profession = readString(req.body?.profession);
+    const type = readString(req.body?.type);
+    const title = readString(req.body?.title);
+
+    if (!userId || !profession || !type || !title) {
+      return res.status(400).json({ success: false, error: 'userId, profession, type and title are required' });
+    }
+
+    const swotId = crypto.randomUUID();
+    const result = await pool.query(
+      `INSERT INTO swot_items (
+        id, user_id, profession, type, title, description, impact, probability, urgency, status,
+        category, tags, related_personas, target_date, resolved_date,
+        data_source, confidence, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12::jsonb, $13::jsonb, $14::timestamp, $15::timestamp,
+        $16, $17, NOW(), NOW()
+      )
+      RETURNING id, user_id, profession, type, title, description, impact, probability, urgency, status,
+                category, tags, related_personas, target_date, resolved_date, confidence,
+                created_at, updated_at`,
+      [
+        swotId,
+        userId,
+        profession,
+        type,
+        title,
+        readString(req.body?.description) ?? '',
+        readString(req.body?.impact) ?? 'medium',
+        Math.max(0, Math.min(100, Math.round(toBiNumericMetric(req.body?.probability, 50)))),
+        readString(req.body?.urgency) ?? 'medium',
+        readString(req.body?.status) ?? 'identified',
+        readString(req.body?.category) ?? 'general',
+        JSON.stringify(toBiStringArray(req.body?.tags)),
+        JSON.stringify(toBiStringArray(req.body?.relatedPersonas)),
+        readString(req.body?.targetDate) ?? null,
+        readString(req.body?.resolvedDate) ?? null,
+        readString(req.body?.source) ?? 'manual',
+        Math.max(0, Math.min(100, Math.round(toBiNumericMetric(req.body?.confidence, 50)))),
+      ],
+    );
+
+    res.status(201).json({
+      success: true,
+      data: normalizeSwotItemRecord(result.rows[0] as Record<string, unknown>),
+    });
+  } catch (error) {
+    console.error('Business SWOT item create error:', error);
+    res.status(500).json({ success: false, error: 'Failed to create SWOT item' });
+  }
+});
+
+// PUT /api/business/swot-items — Update SWOT item
+app.put('/api/business/swot-items', async (req, res) => {
+  try {
+    const swotId = readString(req.body?.id);
+    const requesterId = readString(req.headers['x-user-id']) ?? readString(req.body?.userId);
+
+    if (!swotId) {
+      return res.status(400).json({ success: false, error: 'id is required' });
+    }
+
+    const values: Array<unknown> = [
+      readString(req.body?.type) ?? 'strength',
+      readString(req.body?.title) ?? 'Uten tittel',
+      readString(req.body?.description) ?? '',
+      readString(req.body?.impact) ?? 'medium',
+      Math.max(0, Math.min(100, Math.round(toBiNumericMetric(req.body?.probability, 50)))),
+      readString(req.body?.urgency) ?? 'medium',
+      readString(req.body?.status) ?? 'identified',
+      readString(req.body?.category) ?? 'general',
+      JSON.stringify(toBiStringArray(req.body?.tags)),
+      JSON.stringify(toBiStringArray(req.body?.relatedPersonas)),
+      readString(req.body?.targetDate) ?? null,
+      readString(req.body?.resolvedDate) ?? null,
+      readString(req.body?.source) ?? 'manual',
+      Math.max(0, Math.min(100, Math.round(toBiNumericMetric(req.body?.confidence, 50)))),
+      swotId,
+    ];
+
+    let whereClause = 'id = $15';
+    if (requesterId) {
+      values.push(requesterId);
+      whereClause += ` AND user_id = $${values.length}`;
+    }
+
+    const result = await pool.query(
+      `UPDATE swot_items
+       SET type = $1,
+           title = $2,
+           description = $3,
+           impact = $4,
+           probability = $5,
+           urgency = $6,
+           status = $7,
+           category = $8,
+           tags = $9::jsonb,
+           related_personas = $10::jsonb,
+           target_date = $11::timestamp,
+           resolved_date = $12::timestamp,
+           data_source = COALESCE($13, data_source),
+           confidence = $14,
+           updated_at = NOW()
+       WHERE ${whereClause}
+       RETURNING id, user_id, profession, type, title, description, impact, probability, urgency, status,
+                 category, tags, related_personas, target_date, resolved_date, confidence,
+                 created_at, updated_at`,
+      values,
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'SWOT item not found' });
+    }
+
+    res.json({
+      success: true,
+      data: normalizeSwotItemRecord(result.rows[0] as Record<string, unknown>),
+    });
+  } catch (error) {
+    console.error('Business SWOT item update error:', error);
+    res.status(500).json({ success: false, error: 'Failed to update SWOT item' });
+  }
+});
+
+// DELETE /api/business/swot-items/:itemId — Delete SWOT item
+app.delete('/api/business/swot-items/:itemId', async (req, res) => {
+  try {
+    const itemId = req.params.itemId;
+    const requesterId = readString(req.headers['x-user-id']) ?? readString(req.query.userId);
+    const values: Array<string> = [itemId];
+    let query = 'DELETE FROM swot_items WHERE id = $1';
+
+    if (requesterId) {
+      values.push(requesterId);
+      query += ` AND user_id = $${values.length}`;
+    }
+
+    const result = await pool.query(query, values);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, error: 'SWOT item not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Business SWOT item delete error:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete SWOT item' });
+  }
+});
+
+// GET /api/business/swot-analysis/:userId/:profession — Aggregated SWOT dashboard
+app.get('/api/business/swot-analysis/:userId/:profession', async (req, res) => {
+  try {
+    const { userId, profession } = req.params;
+    const [itemResult, personaResult, surveyResult] = await Promise.all([
+      pool.query(
+        `SELECT id, user_id, profession, type, title, description, impact, probability, urgency, status,
+                category, tags, related_personas, target_date, resolved_date, confidence,
+                created_at, updated_at
+         FROM swot_items
+         WHERE user_id = $1 AND profession = $2
+         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST`,
+        [userId, profession],
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS count
+         FROM customer_personas
+         WHERE user_id = $1 AND profession = $2`,
+        [userId, profession],
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS count
+         FROM surveys
+         WHERE user_id = $1 AND profession = $2`,
+        [userId, profession],
+      ),
+    ]);
+
+    const items = itemResult.rows as Array<Record<string, unknown>>;
+    const formatLine = (row: Record<string, unknown>) => {
+      const title = String(row.title || 'Uten tittel');
+      const description = readString(row.description);
+      return description ? `${title} — ${description}` : title;
+    };
+
+    const strengths = items.filter((item) => item.type === 'strength').map(formatLine);
+    const weaknesses = items.filter((item) => item.type === 'weakness').map(formatLine);
+    const opportunities = items.filter((item) => item.type === 'opportunity').map(formatLine);
+    const threats = items.filter((item) => item.type === 'threat').map(formatLine);
+
+    const lastUpdated = items
+      .map((item) => toBiIsoDateString(item.updated_at ?? item.created_at))
+      .filter((value): value is string => typeof value === 'string')
+      .sort()
+      .at(-1) ?? new Date().toISOString();
+
+    res.json({
+      success: true,
+      data: {
+        strengths,
+        weaknesses,
+        opportunities,
+        threats,
+        recommendations: buildSwotRecommendations(
+          items,
+          Math.round(toBiNumericMetric(personaResult.rows[0]?.count, 0)),
+          Math.round(toBiNumericMetric(surveyResult.rows[0]?.count, 0)),
+        ),
+        scores: buildSwotScores(items),
+        lastUpdated,
+      },
+    });
+  } catch (error) {
+    console.error('Business SWOT analysis error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load SWOT analysis' });
+  }
+});
+
+// GET /api/business/swot-trends/:userId/:profession — SWOT trend series
+app.get('/api/business/swot-trends/:userId/:profession', async (req, res) => {
+  try {
+    const { userId, profession } = req.params;
+    const days = Math.max(7, Math.min(365, Math.round(toBiNumericMetric(req.query.days, 30))));
+
+    const historyResult = await pool
+      .query(
+        `SELECT snapshot_date, strength_score, weakness_score, opportunity_score, threat_score,
+                opportunities_converted, weaknesses_resolved
+         FROM swot_history
+         WHERE user_id = $1 AND profession = $2
+           AND snapshot_date >= NOW() - ($3::int * INTERVAL '1 day')
+         ORDER BY snapshot_date ASC`,
+        [userId, profession, days],
+      )
+      .catch(() => ({ rows: [] }));
+
+    const rows = historyResult.rows.length > 0
+      ? historyResult.rows
+      : (
+        await pool.query(
+          `SELECT DATE(COALESCE(updated_at, created_at, NOW())) AS snapshot_date,
+                  SUM(CASE WHEN type = 'strength' THEN
+                    CASE impact WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END
+                  ELSE 0 END)::int AS strength_score,
+                  SUM(CASE WHEN type = 'weakness' THEN
+                    CASE impact WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END
+                  ELSE 0 END)::int AS weakness_score,
+                  SUM(CASE WHEN type = 'opportunity' THEN
+                    CASE impact WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END
+                  ELSE 0 END)::int AS opportunity_score,
+                  SUM(CASE WHEN type = 'threat' THEN
+                    CASE impact WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END
+                  ELSE 0 END)::int AS threat_score,
+                  COUNT(*) FILTER (WHERE type = 'opportunity' AND status = 'resolved')::int AS opportunities_converted,
+                  COUNT(*) FILTER (WHERE type = 'weakness' AND status = 'resolved')::int AS weaknesses_resolved
+           FROM swot_items
+           WHERE user_id = $1 AND profession = $2
+             AND COALESCE(updated_at, created_at, NOW()) >= NOW() - ($3::int * INTERVAL '1 day')
+           GROUP BY 1
+           ORDER BY 1 ASC`,
+          [userId, profession, days],
+        )
+      ).rows;
+
+    res.json({
+      success: true,
+      data: rows.map((row: Record<string, unknown>) => ({
+        date: toBiIsoDateString(row.snapshot_date) ?? new Date().toISOString(),
+        strengthScore: Math.round(toBiNumericMetric(row.strength_score, 0)),
+        weaknessScore: Math.round(toBiNumericMetric(row.weakness_score, 0)),
+        opportunityScore: Math.round(toBiNumericMetric(row.opportunity_score, 0)),
+        threatScore: Math.round(toBiNumericMetric(row.threat_score, 0)),
+        opportunitiesConverted: Math.round(toBiNumericMetric(row.opportunities_converted, 0)),
+        weaknessesResolved: Math.round(toBiNumericMetric(row.weaknesses_resolved, 0)),
+      })),
+    });
+  } catch (error) {
+    console.error('Business SWOT trends error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load SWOT trends' });
+  }
+});
+
+// GET /api/business/personas/:userId/:profession — Persona library
+app.get('/api/business/personas/:userId/:profession', async (req, res) => {
+  try {
+    const { userId, profession } = req.params;
+    const result = await pool.query(
+      `SELECT id, user_id, profession, name, age, location, occupation, family, income, bio, goals,
+              frustrations, preferred_brands, avatar_color, avatar_url, customer_type, budget_tier,
+              market_size, average_value, conversion_rate, created_at, updated_at
+       FROM customer_personas
+       WHERE user_id = $1 AND profession = $2
+       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST`,
+      [userId, profession],
+    );
+
+    res.json({
+      success: true,
+      data: result.rows.map((row: Record<string, unknown>) => normalizePersonaRecord(row)),
+    });
+  } catch (error) {
+    console.error('Business personas list error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load personas' });
+  }
+});
+
+// POST /api/business/personas — Create persona
+app.post('/api/business/personas', async (req, res) => {
+  try {
+    const userId = readString(req.body?.userId);
+    const profession = readString(req.body?.profession);
+    const name = readString(req.body?.name);
+
+    if (!userId || !profession || !name) {
+      return res.status(400).json({ success: false, error: 'userId, profession and name are required' });
+    }
+
+    const personaId = crypto.randomUUID();
+    const ageRange = readString(req.body?.ageRange) ?? '30-40';
+    const parsedAge = parseBiPersonaAge(ageRange);
+    const result = await pool.query(
+      `INSERT INTO customer_personas (
+        id, user_id, profession, name, age, location, occupation, family, income, bio, goals,
+        frustrations, personality, social, preferred_channels, preferred_brands, avatar_color,
+        avatar_url, customer_type, budget_tier, market_size, average_value, conversion_rate, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17,
+        $18, $19, $20, $21, $22, $23, NOW(), NOW()
+      )
+      RETURNING id, user_id, profession, name, age, location, occupation, family, income, bio, goals,
+                frustrations, preferred_brands, avatar_color, avatar_url, customer_type, budget_tier,
+                market_size, average_value, conversion_rate, created_at, updated_at`,
+      [
+        personaId,
+        userId,
+        profession,
+        name,
+        parsedAge,
+        readString(req.body?.location) ?? 'Norge',
+        readString(req.body?.occupation) ?? readString(req.body?.description) ?? null,
+        readString(req.body?.family) ?? readString(req.body?.customerType) ?? 'quality focused',
+        readString(req.body?.income) ?? 'standard',
+        readString(req.body?.description) ?? '',
+        JSON.stringify(toBiStringArray(req.body?.goals)),
+        JSON.stringify(toBiStringArray(req.body?.painPoints)),
+        JSON.stringify({ introvert: 50, sensing: 50, thinking: 50, judging: 50 }),
+        JSON.stringify({ growth: 50, power: 50, social: 50 }),
+        JSON.stringify({ traditionalAds: 35, socialMedia: 55, referral: 60, email: 45 }),
+        JSON.stringify(toBiStringArray(req.body?.motivations)),
+        readString(req.body?.avatarColor) ?? '#ff6b35',
+        readString(req.body?.avatarUrl) ?? null,
+        readString(req.body?.customerType) ?? 'quality_focused',
+        readString(req.body?.budgetTier) ?? 'standard',
+        Math.round(toBiNumericMetric(req.body?.marketSize, 0)),
+        toBiNumericMetric(req.body?.averageValue, 0),
+        Math.round(toBiNumericMetric(req.body?.conversionRate, 0)),
+      ],
+    );
+
+    res.status(201).json({
+      success: true,
+      data: normalizePersonaRecord(result.rows[0] as Record<string, unknown>),
+    });
+  } catch (error) {
+    console.error('Business persona create error:', error);
+    res.status(500).json({ success: false, error: 'Failed to create persona' });
+  }
+});
+
+// PUT /api/business/personas — Update persona
+app.put('/api/business/personas', async (req, res) => {
+  try {
+    const personaId = readString(req.body?.id);
+    const requesterId = readString(req.headers['x-user-id']) ?? readString(req.body?.userId);
+
+    if (!personaId) {
+      return res.status(400).json({ success: false, error: 'id is required' });
+    }
+
+    const values: Array<unknown> = [
+      readString(req.body?.name) ?? 'Ukjent persona',
+      parseBiPersonaAge(readString(req.body?.ageRange) ?? '30-40'),
+      readString(req.body?.location) ?? 'Norge',
+      readString(req.body?.occupation) ?? readString(req.body?.description) ?? null,
+      readString(req.body?.family) ?? readString(req.body?.customerType) ?? 'quality focused',
+      readString(req.body?.income) ?? 'standard',
+      readString(req.body?.description) ?? '',
+      JSON.stringify(toBiStringArray(req.body?.goals)),
+      JSON.stringify(toBiStringArray(req.body?.painPoints)),
+      JSON.stringify(toBiStringArray(req.body?.motivations)),
+      readString(req.body?.avatarColor) ?? '#ff6b35',
+      readString(req.body?.avatarUrl) ?? null,
+      readString(req.body?.customerType) ?? 'quality_focused',
+      readString(req.body?.budgetTier) ?? 'standard',
+      Math.round(toBiNumericMetric(req.body?.marketSize, 0)),
+      toBiNumericMetric(req.body?.averageValue, 0),
+      Math.round(toBiNumericMetric(req.body?.conversionRate, 0)),
+      personaId,
+    ];
+
+    let whereClause = 'id = $18';
+    if (requesterId) {
+      values.push(requesterId);
+      whereClause += ` AND user_id = $${values.length}`;
+    }
+
+    const result = await pool.query(
+      `UPDATE customer_personas
+       SET name = $1,
+           age = $2,
+           location = $3,
+           occupation = $4,
+           family = $5,
+           income = $6,
+           bio = $7,
+           goals = $8::jsonb,
+           frustrations = $9::jsonb,
+           preferred_brands = $10::jsonb,
+           avatar_color = $11,
+           avatar_url = $12,
+           customer_type = $13,
+           budget_tier = $14,
+           market_size = $15,
+           average_value = $16,
+           conversion_rate = $17,
+           updated_at = NOW()
+       WHERE ${whereClause}
+       RETURNING id, user_id, profession, name, age, location, occupation, family, income, bio, goals,
+                 frustrations, preferred_brands, avatar_color, avatar_url, customer_type, budget_tier,
+                 market_size, average_value, conversion_rate, created_at, updated_at`,
+      values,
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Persona not found' });
+    }
+
+    res.json({
+      success: true,
+      data: normalizePersonaRecord(result.rows[0] as Record<string, unknown>),
+    });
+  } catch (error) {
+    console.error('Business persona update error:', error);
+    res.status(500).json({ success: false, error: 'Failed to update persona' });
+  }
+});
+
+// DELETE /api/business/personas/:personaId — Archive persona
+app.delete('/api/business/personas/:personaId', async (req, res) => {
+  try {
+    const requesterId = readString(req.headers['x-user-id']) ?? readString(req.query.userId);
+    const values: Array<string> = [req.params.personaId];
+    let query = 'DELETE FROM customer_personas WHERE id = $1';
+
+    if (requesterId) {
+      values.push(requesterId);
+      query += ` AND user_id = $${values.length}`;
+    }
+
+    const result = await pool.query(query, values);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, error: 'Persona not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Business persona delete error:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete persona' });
+  }
+});
+
+// GET /api/business/marketing-strategy/:userId/:profession — Marketing recommendations and content cadence
+app.get('/api/business/marketing-strategy/:userId/:profession', async (req, res) => {
+  try {
+    const { userId, profession } = req.params;
+    const [personaResult, newsletterResult] = await Promise.all([
+      pool.query(
+        `SELECT name, customer_type, location
+         FROM customer_personas
+         WHERE user_id = $1 AND profession = $2
+         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+         LIMIT 3`,
+        [userId, profession],
+      ),
+      pool.query(
+        `SELECT subject, audience_segment, status, open_rate, click_rate, scheduled_at
+         FROM newsletter_campaigns
+         WHERE user_id = $1
+         ORDER BY scheduled_at DESC NULLS LAST, created_at DESC NULLS LAST
+         LIMIT 3`,
+        [userId],
+      ),
+    ]);
+
+    const categoryLabel = professionToCategory(profession).toLowerCase();
+    const currentDemand = getCurrentSeasonalDemand();
+    const strongestPersona = personaResult.rows[0] as Record<string, unknown> | undefined;
+    const personaName = strongestPersona?.name ? String(strongestPersona.name) : 'nye leads';
+    const personaLocation = strongestPersona?.location ? String(strongestPersona.location) : 'Oslo';
+    const newsletterCampaigns = newsletterResult.rows as Array<Record<string, unknown>>;
+
+    const campaigns = newsletterCampaigns.length > 0
+      ? newsletterCampaigns.map((campaign) => ({
+          title: String(campaign.subject || 'Ny kampanje'),
+          description: `Målrettet mot ${humanizeAudienceSegment(campaign.audience_segment)} med fokus på ${categoryLabel}.`,
+          duration: campaign.scheduled_at ? new Date(String(campaign.scheduled_at)).toLocaleDateString('no-NO') : 'Løpende',
+          expectedROI: `${Math.max(12, Math.round(toBiNumericMetric(campaign.open_rate, 18) + toBiNumericMetric(campaign.click_rate, 4)))}%`,
+        }))
+      : [
+          {
+            title: 'Portefølje-boost',
+            description: `Løft frem ferske leveranser og sosialt bevis for ${categoryLabel}.`,
+            duration: '2 uker',
+            expectedROI: currentDemand === 'high' ? '28%' : '18%',
+          },
+          {
+            title: 'Referral-flyt',
+            description: 'Belønn henvisninger med tydelig bonus eller prioritet i bookingkalenderen.',
+            duration: 'Løpende',
+            expectedROI: '34%',
+          },
+          {
+            title: 'Lokalt autoritetsinnhold',
+            description: `Bygg synlighet rundt ${personaLocation} med guides, case og anbefalinger.`,
+            duration: '4 uker',
+            expectedROI: '22%',
+          },
+        ];
+
+    res.json({
+      data: {
+        socialMedia: {
+          facebook: `Fremhev kundehistorier og anbefalinger for ${personaName} 3 ganger i uken.`,
+          instagram: `Vis prosess, detaljer og ferdige resultater for ${categoryLabel} i reels og stories nesten daglig.`,
+          linkedin: `Del faglige refleksjoner og case som viser profesjonalitet og pålitelig levering i ${personaLocation}.`,
+          twitter: `Bruk korte faglige observasjoner, bransjenyheter og sesongtips for å holde merkevaren synlig.`,
+        },
+        contentPlan: [
+          { day: 'Mandag', content: 'Vis konkret før/etter-resultat eller leveransecase.' },
+          { day: 'Onsdag', content: `Svar på et vanlig spørsmål fra ${personaName} i kortformat.` },
+          { day: 'Fredag', content: 'Publiser testimonial, referanse eller kvalitetsbevis.' },
+          { day: 'Søndag', content: currentDemand === 'high' ? 'Call-to-action for booking og tilgjengelige datoer.' : 'Bygg relasjon med behind-the-scenes og ekspertise.' },
+        ],
+        seo: {
+          primaryKeywords: [
+            `${categoryLabel} ${personaLocation}`.trim(),
+            `profesjonell ${categoryLabel}`,
+            `${categoryLabel} pris`,
+          ],
+          secondaryKeywords: [
+            `${categoryLabel} tips`,
+            `${categoryLabel} booking`,
+            `${categoryLabel} kundeerfaringer`,
+          ],
+        },
+        campaigns,
+      },
+    });
+  } catch (error) {
+    console.error('Business marketing strategy error:', error);
+    res.status(500).json({ error: 'Failed to load marketing strategy' });
+  }
+});
+
+// GET /api/business/newsletter-campaigns/:userId — Newsletter performance and campaign list
+app.get('/api/business/newsletter-campaigns/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await pool.query(
+      `SELECT id, subject, content, audience_segment, recipient_count, status, scheduled_at, sent_at,
+              open_count, click_count, unsubscribe_count, bounce_count, open_rate, click_rate, created_at
+       FROM newsletter_campaigns
+       WHERE user_id = $1
+       ORDER BY scheduled_at DESC NULLS LAST, created_at DESC NULLS LAST`,
+      [userId],
+    );
+
+    const campaigns = result.rows.map((row: Record<string, unknown>) => ({
+      id: String(row.id),
+      subject: String(row.subject || 'Uten emne'),
+      audience: humanizeAudienceSegment(row.audience_segment),
+      status: humanizeNewsletterStatus(row.status),
+      scheduledDate: row.scheduled_at
+        ? new Date(String(row.scheduled_at)).toLocaleDateString('no-NO')
+        : row.sent_at
+          ? new Date(String(row.sent_at)).toLocaleDateString('no-NO')
+          : '-',
+      openRate: row.open_rate != null ? `${Math.round(toBiNumericMetric(row.open_rate, 0))}%` : '-',
+    }));
+
+    const stats = {
+      totalCampaigns: campaigns.length,
+      totalSubscribers: result.rows.reduce(
+        (highest, row: Record<string, unknown>) => Math.max(highest, Math.round(toBiNumericMetric(row.recipient_count, 0))),
+        0,
+      ),
+      avgOpenRate:
+        campaigns.length > 0
+          ? Math.round(
+              result.rows.reduce(
+                (sum, row: Record<string, unknown>) => sum + toBiNumericMetric(row.open_rate, 0),
+                0,
+              ) / campaigns.length,
+            )
+          : 0,
+      avgClickRate:
+        campaigns.length > 0
+          ? Math.round(
+              result.rows.reduce(
+                (sum, row: Record<string, unknown>) => sum + toBiNumericMetric(row.click_rate, 0),
+                0,
+              ) / campaigns.length,
+            )
+          : 0,
+    };
+
+    res.json({
+      data: {
+        stats,
+        campaigns,
+      },
+    });
+  } catch (error) {
+    console.error('Business newsletter campaigns error:', error);
+    res.status(500).json({ error: 'Failed to load newsletter campaigns' });
+  }
+});
+
+// POST /api/business/newsletter-campaigns — Create newsletter campaign draft or schedule
+app.post('/api/business/newsletter-campaigns', async (req, res) => {
+  try {
+    const userId = readString(req.body?.userId);
+    const subject = readString(req.body?.subject);
+    const content = readString(req.body?.content);
+
+    if (!userId || !subject || !content) {
+      return res.status(400).json({ error: 'userId, subject and content are required' });
+    }
+
+    const campaignId = crypto.randomUUID();
+    const scheduledDate = readString(req.body?.scheduledDate);
+    const result = await pool.query(
+      `INSERT INTO newsletter_campaigns (
+        id, user_id, subject, content, html_content, audience_segment, template_id, recipient_count, status, scheduled_at,
+        open_count, click_count, unsubscribe_count, bounce_count, open_rate, click_rate, metadata, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, 0, $8, $9::timestamp,
+        0, 0, 0, 0, 0, 0, '{}'::jsonb, NOW(), NOW()
+      )
+      RETURNING id, subject, audience_segment, status, scheduled_at, open_rate`,
+      [
+        campaignId,
+        userId,
+        subject,
+        content,
+        content,
+        readString(req.body?.audienceSegment) ?? 'all',
+        readString(req.body?.templateId) ?? null,
+        scheduledDate ? 'scheduled' : 'draft',
+        scheduledDate ?? null,
+      ],
+    );
+
+    const row = result.rows[0] as Record<string, unknown>;
+    res.status(201).json({
+      success: true,
+      data: {
+        id: String(row.id),
+        subject: String(row.subject || subject),
+        audience: humanizeAudienceSegment(row.audience_segment),
+        status: humanizeNewsletterStatus(row.status),
+        scheduledDate: row.scheduled_at ? new Date(String(row.scheduled_at)).toLocaleDateString('no-NO') : '-',
+        openRate: row.open_rate != null ? `${Math.round(toBiNumericMetric(row.open_rate, 0))}%` : '-',
+      },
+    });
+  } catch (error) {
+    console.error('Business newsletter create error:', error);
+    res.status(500).json({ error: 'Failed to create newsletter campaign' });
+  }
+});
 
 // GET /api/business/dashboard/:userId/:profession — Full BI dashboard data
 app.get('/api/business/dashboard/:userId/:profession', async (req, res) => {
@@ -53571,8 +61172,15 @@ app.get('/api/academy/media-assets/:assetId/poster', async (req, res) => {
 });
 
 // Communication / Chat API routes
-const communicationRouter = createCommunicationRouter(db);
+const dashboardCompatRouter = createDashboardCompatRouter();
+app.use(dashboardCompatRouter);
+
+const communicationRouter = createCommunicationRouter(db, pool);
 app.use(communicationRouter);
+
+const lightroomRouter = createLightroomRouter(pool);
+app.use('/api/lightroom', lightroomRouter);
+app.use('/api/lightroom-routes', lightroomRouter);
 
 // Catch-all for unhandled API routes
 app.all('/api/*', (req, res) => {
@@ -53586,6 +61194,7 @@ createWebSocketServer(httpServer, db);
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
   maybeStartRoleRoomGoogleRedirectBridge();
+  maybeStartRoleRoomLinkedInRedirectBridge();
   if (isStoryArcV2Enabled() && STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
     void runStoryArcV2StartupWarmup();
   }

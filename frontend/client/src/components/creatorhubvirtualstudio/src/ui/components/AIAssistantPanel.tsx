@@ -25,6 +25,8 @@ import {
   AccordionDetails,
   Alert,
   CircularProgress,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   ExpandMore as ExpandIcon,
@@ -35,12 +37,20 @@ import {
   AutoAwesome as AIIcon,
   TrendingUp as ImprovementIcon,
 } from '@mui/icons-material';
-import { aiRecommendationService, type AIRecommendation } from '@/core/services/aiRecommendationService';
+import {
+  aiRecommendationService,
+  type AIRecommendation,
+  type AIAssistantResponse,
+} from '@/core/services/aiRecommendationService';
 import type { LightSourceProperties } from '@/core/types';
-import { sceneCompositionService } from '../../core/services/sceneCompositionService';
-import { backgroundAnalysisService } from '../../core/services/backgroundAnalysisService';
-import { sam2Service } from '@/services/SAM2Service';
-import { Tabs, Tab } from '@mui/material';
+import {
+  sceneCompositionService,
+  type CompositionAnalysis,
+} from '../../core/services/sceneCompositionService';
+import {
+  backgroundAnalysisService,
+  type BackgroundAnalysis,
+} from '../../core/services/backgroundAnalysisService';
 
 interface AIAssistantPanelProps {
   lights: LightSourceProperties[];
@@ -49,11 +59,11 @@ interface AIAssistantPanelProps {
 }
 
 export function AIAssistantPanel({ lights, onApplyRecommendation, imageUrl }: AIAssistantPanelProps) {
-  const [analysis, setAnalysis] = useState<any>(null);
+  const [analysis, setAnalysis] = useState<AIAssistantResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(0);
-  const [sceneAnalysis, setSceneAnalysis] = useState<any>(null);
-  const [backgroundAnalysis, setBackgroundAnalysis] = useState<any>(null);
+  const [sceneAnalysis, setSceneAnalysis] = useState<CompositionAnalysis | null>(null);
+  const [backgroundAnalysis, setBackgroundAnalysis] = useState<BackgroundAnalysis | null>(null);
 
   // Fetch recommendations (async for ML support)
   useEffect(() => {
@@ -84,6 +94,7 @@ export function AIAssistantPanel({ lights, onApplyRecommendation, imageUrl }: AI
           grade: 'F',
           summary: 'Unable to analyze lighting setup',
           recommendations: [],
+          suggestedPatterns: [],
         });
       } finally {
         setIsLoading(false);
@@ -327,7 +338,7 @@ export function AIAssistantPanel({ lights, onApplyRecommendation, imageUrl }: AI
             Composition Score: {sceneAnalysis.score.overall}%
           </Alert>
           <Stack spacing={1}>
-            {sceneAnalysis.suggestions.map((suggestion: any, idx: number) => (
+            {sceneAnalysis.suggestions.map((suggestion, idx: number) => (
               <Card key={idx} variant="outlined" sx={{ bgcolor: 'white' }}>
                 <CardContent sx={{ pb: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: 13 }}>
@@ -360,7 +371,7 @@ export function AIAssistantPanel({ lights, onApplyRecommendation, imageUrl }: AI
             )}
           </Alert>
           <Stack spacing={1}>
-            {backgroundAnalysis.suggestions.map((suggestion: any, idx: number) => (
+            {backgroundAnalysis.suggestions.map((suggestion, idx: number) => (
               <Card key={idx} variant="outlined" sx={{ bgcolor: 'white' }}>
                 <CardContent sx={{ pb: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: 13 }}>
@@ -381,7 +392,7 @@ export function AIAssistantPanel({ lights, onApplyRecommendation, imageUrl }: AI
             🎬 Suggested Patterns
           </Typography>
           <Stack spacing={1}>
-            {analysis.suggestedPatterns.map((pattern) => (
+            {analysis.suggestedPatterns.map((pattern: AIAssistantResponse['suggestedPatterns'][number]) => (
               <Box
                 key={pattern.id}
                 sx={{
@@ -390,9 +401,12 @@ export function AIAssistantPanel({ lights, onApplyRecommendation, imageUrl }: AI
                   border: '1px solid #e0e0e0',
                   borderRadius: 1}}
               >
-                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: 11 }}>
-                  {pattern.name}
-                </Typography>
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  {getCategoryIcon(pattern.category)}
+                  <Typography variant="caption" sx={{ fontWeight: 600, fontSize: 11 }}>
+                    {pattern.name}
+                  </Typography>
+                </Stack>
                 <Typography variant="caption" sx={{ display: 'block', fontSize: 9, color: '#666' }}>
                   {pattern.description}
                 </Typography>

@@ -195,9 +195,9 @@ export default function CornerButtons({
             onClick={action.onClick}
             sx={{
               '& .MuiFab-primary': {
-                backgroundColor: 'rgba(25, 255, 255, 0.1)',
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
                 backdropFilter: 'blur(10px)','&:hover': {
-                  backgroundColor: 'rgba(25, 255, 255, 0.2)'
+                  backgroundColor: 'rgba(255, 255, 255, 0.16)'
               }
             }
           }}

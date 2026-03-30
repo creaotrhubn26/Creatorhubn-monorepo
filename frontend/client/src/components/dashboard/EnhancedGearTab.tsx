@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
@@ -10,7 +10,7 @@ import { isProfessionFeatureAvailable, getAllProfessionFeatures } from '../../..
 import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
+import { getProfessionIcon } from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import {
   Box,
@@ -129,57 +129,187 @@ export function EnhancedGearTab({
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
+  const { professionConfigs } = useProfessionConfigs();
+  const professionAdapter = useProfessionAdapter();
   
   // Theming system - use dynamic profession
   const theming = useTheming(profession);
-  const [selectedCategory, setSelectedCategory] = useState('all,');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [expandedAccordion, setExpandedAccordion] = useState<string | false>('database');
   const [selectedArticle, setSelectedArticle] = useState<any>(null);
   const [readMoreOpen, setReadMoreOpen] = useState(false);
   const [currentTab, setCurrentTab] = useState(0);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+  const [firmwareSyncing, setFirmwareSyncing] = useState(false);
+
+  // Get current user ID before any hooks depend on it
+  const { user } = useAuth();
+  const userId = user?.id || 'guest';
   
   // Push notifications
   const { pushEnabled, isSupported } = usePushNotifications(userId);
   
   // Feature Access with Profession Feature Matrix
   const gearDatabaseAccess = useMemo(() => 
-    isProfessionFeatureAvailable(profession, 'equipment-database,'),
-    [profession]
+    isProfessionFeatureAvailable(profession, 'equipment-database') &&
+    features.checkFeatureAccess('equipment-database').hasAccess,
+    [profession, features]
   );
   
   const gearNewsAccess = useMemo(() => 
-    isProfessionFeatureAvailable(profession, 'gear-news'),
-    [profession]
+    isProfessionFeatureAvailable(profession, 'gear-news') &&
+    features.checkFeatureAccess('gear-news').hasAccess,
+    [profession, features]
   );
   
   const toolsAccess = useMemo(() => 
-    isProfessionFeatureAvailable(profession, 'keyboard-shortcuts'),
-    [profession]
+    isProfessionFeatureAvailable(profession, 'keyboard-shortcuts') &&
+    features.checkFeatureAccess('keyboard-shortcuts').hasAccess,
+    [profession, features]
   );
   
   // Get all available features for this profession
   const availableFeatures = useMemo(() => 
-    getAllProfessionFeatures(profession),
-    [profession]
+    getAllProfessionFeatures(profession).filter((feature) => features.checkFeatureAccess(feature).hasAccess),
+    [profession, features]
   );
   
   // Equipment subtabs configuration - EXTENDED WITH ALL DATABASE FEATURES
   // Using custom equipment-specific icons for better visual clarity
-  const equipmentTabs = [
-    { id: 'database', label: 'Utstyr Database', icon: DatabaseIcon },
-    { id: 'inventory', label: 'Mitt Utstyr', icon: EquipmentInventoryIcon },
-    { id: 'maintenance', label: 'Vedlikehold', icon: EquipmentMaintenanceIcon },
-    { id: 'rentals', label: 'Utleie', icon: EquipmentRentalIcon },
-    { id: 'market', label: 'Markedspriser', icon: MarketPricesIcon },
-    { id: 'lenses', label: 'Objektiver', icon: LensDatabaseIcon },
-    { id: 'software', label: 'Programvare', icon: SoftwareDatabaseIcon },
-    { id: 'tools', label: 'Verktøy', icon: EquipmentToolsIcon },
-    { id: 'news', label: 'Nyheter', icon: EquipmentNewsIcon }
-  ];
+  const equipmentTabs = useMemo(
+    () => [
+      { id: 'database', label: 'Utstyr Database', icon: DatabaseIcon },
+      { id: 'inventory', label: 'Mitt Utstyr', icon: EquipmentInventoryIcon },
+      { id: 'maintenance', label: 'Vedlikehold', icon: EquipmentMaintenanceIcon },
+      { id: 'rentals', label: 'Utleie', icon: EquipmentRentalIcon },
+      { id: 'market', label: 'Markedspriser', icon: MarketPricesIcon },
+      { id: 'lenses', label: 'Objektiver', icon: LensDatabaseIcon },
+      { id: 'software', label: 'Programvare', icon: SoftwareDatabaseIcon },
+      { id: 'tools', label: 'Verktøy', icon: EquipmentToolsIcon },
+      { id: 'news', label: 'Nyheter', icon: EquipmentNewsIcon }
+    ],
+    []
+  );
+
+  const dynamicProfessionConfig = professionConfigs[profession];
+  const professionDashboardTitle = professionAdapter.adaptDashboardTitle();
+  const professionProjectTypes = professionAdapter.getProjectTypes();
+  const professionHourlyRate = professionAdapter.getDefaultHourlyRate();
+  const professionKeywords = professionAdapter.getProfessionSpecificKeywords().slice(0, 3);
+  const professionTips = professionAdapter.getProfessionSEOTips().slice(0, 2);
+  const adaptedTabLabels = professionAdapter.adaptTabLabels();
+  const projectLabel = selectedProject?.name || selectedProject?.title || null;
+  const featureSummary = useMemo(
+    () => `${availableFeatures.length} funksjoner aktive`,
+    [availableFeatures.length]
+  );
+  const visibleEquipmentTabs = useMemo(
+    () =>
+      equipmentTabs.filter((tab) => {
+        if (tab.id === 'database') return gearDatabaseAccess;
+        if (tab.id === 'tools') return toolsAccess;
+        if (tab.id === 'news') return gearNewsAccess;
+        return true;
+      }),
+    [gearDatabaseAccess, gearNewsAccess, toolsAccess]
+  );
+  const activeTabId = visibleEquipmentTabs[currentTab]?.id || visibleEquipmentTabs[0]?.id || 'database';
+  const navigateToTab = useCallback(
+    (tabId: string) => {
+      const tabIndex = visibleEquipmentTabs.findIndex((tab) => tab.id === tabId);
+      if (tabIndex >= 0) {
+        setCurrentTab(tabIndex);
+      }
+    },
+    [visibleEquipmentTabs]
+  );
+
+  useEffect(() => {
+    if (currentTab >= visibleEquipmentTabs.length) {
+      setCurrentTab(0);
+    }
+  }, [currentTab, visibleEquipmentTabs.length]);
+
+  useEffect(() => {
+    const activeTab = visibleEquipmentTabs[currentTab];
+    if (!activeTab) {
+      return;
+    }
+
+    const endTiming = performance.startTiming(`gear_tab_${activeTab.id}`);
+    analytics.trackEvent('gear_tab_opened', {
+      profession,
+      tabId: activeTab.id,
+      projectId: selectedProject?.id || null,
+    });
+    features.trackFeatureUsage('enhanced-gear-tab', 'tab_opened', {
+      profession,
+      tabId: activeTab.id,
+      projectId: selectedProject?.id || null,
+    });
+
+    return () => {
+      endTiming();
+    };
+  }, [analytics, currentTab, features, performance, profession, selectedProject?.id, visibleEquipmentTabs]);
+
+  const handleEquipmentFlow = useCallback(
+    (equipmentName: string, source: 'create' | 'selected', payload?: Record<string, unknown>) => {
+      const contextPayload = {
+        name: equipmentName,
+        profession,
+        source,
+        projectId: selectedProject?.id || null,
+        projectName: projectLabel,
+        ...payload,
+      };
+
+      onEquipmentUpdate?.(contextPayload);
+      onProjectUpdate?.({
+        ...(selectedProject || {}),
+        lastEquipmentActionAt: new Date().toISOString(),
+        lastEquipmentName: equipmentName,
+      });
+      analytics.trackEvent('gear_equipment_context_updated', contextPayload);
+      features.trackFeatureUsage('equipment-inventory', source, contextPayload);
+    },
+    [analytics, features, onEquipmentUpdate, onProjectUpdate, profession, projectLabel, selectedProject]
+  );
+
+  const handleProjectFocus = useCallback(() => {
+    if (!selectedProject || !onProjectSelect) {
+      return;
+    }
+
+    onProjectSelect(selectedProject);
+    analytics.trackEvent('gear_project_context_opened', {
+      profession,
+      projectId: selectedProject.id || null,
+    });
+  }, [analytics, onProjectSelect, profession, selectedProject]);
+
+  const focusShortcutWorkspace = useCallback(() => {
+    navigateToTab('tools');
+    requestAnimationFrame(() => {
+      document.getElementById('gear-tools-shortcuts')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+    analytics.trackEvent('gear_shortcut_workspace_focused', { profession });
+    features.trackFeatureUsage('keyboard-shortcuts', 'focused-from-tools', { profession });
+  }, [analytics, features, navigateToTab, profession]);
+
+  const openAccessoryToolkit = useCallback(() => {
+    setSearchQuery('minnekort');
+    setSelectedCategory('Tilbehør');
+    navigateToTab('database');
+    analytics.trackEvent('gear_accessory_toolkit_opened', { profession });
+    features.trackFeatureUsage('equipment-database', 'accessory-toolkit-opened', { profession });
+  }, [analytics, features, navigateToTab, profession]);
 
   // Fetch firmware status
-  const { data: firmwareData, isLoading: firmwareLoading } = useQuery({
+  const { data: firmwareData, isLoading: firmwareLoading, refetch: refetchFirmwareData } = useQuery({
     queryKey: ['/api/gear-news/firmware', profession],
     queryFn: async () => {
       const response = await fetch(`/api/gear-news/${profession}/firmware`);
@@ -216,10 +346,6 @@ export function EnhancedGearTab({
   // DATABASE CONNECTIONS - FULL EQUIPMENT MANAGEMENT SYSTEM
   // ============================================================================
   
-  // Get current user ID
-  const { user } = useAuth();
-  const userId = user?.id || 'guest';
-
   // Fetch user's personal equipment inventory (equipment table)
   const { data: userEquipment = [], isLoading: inventoryLoading } = useQuery({
     queryKey: ['/api/equipment/inventory', userId],
@@ -276,6 +402,63 @@ export function EnhancedGearTab({
     enabled: !!userId && userId !== 'guest'
   });
 
+  const syncFirmwareNow = useCallback(async () => {
+    const endTiming = performance.startTiming('gear_firmware_sync_manual');
+    setFirmwareSyncing(true);
+
+    try {
+      const response = await apiRequest('/api/equipment/sync-firmware', {
+        method: 'POST',
+        body: {
+          userId,
+          profession,
+        },
+      });
+
+      await refetchFirmwareData();
+
+      const updatesCount =
+        typeof response?.updatesCount === 'number'
+          ? response.updatesCount
+          : Array.isArray(response?.updates)
+            ? response.updates.length
+            : firmwareData?.updatesAvailable || 0;
+
+      addToast({
+        message:
+          updatesCount > 0
+            ? `🔄 Firmware synket. ${updatesCount} oppdateringer klare for gjennomgang.`
+            : '🔄 Firmware synket. Ingen nye oppdateringer akkurat nå.',
+        type: updatesCount > 0 ? 'success' : 'info',
+        duration: 4000,
+        actions: updatesCount > 0
+          ? [{ label: 'Åpne firmware', action: () => navigateToTab('news') }]
+          : undefined,
+      });
+
+      analytics.trackEvent('gear_firmware_sync_completed', {
+        profession,
+        updatesCount,
+        userId,
+      });
+      features.trackFeatureUsage('firmware-updates', 'manual-sync', {
+        profession,
+        updatesCount,
+        userId,
+      });
+    } catch (error) {
+      console.error('Manual firmware sync failed:', error);
+      addToast({
+        message: 'Kunne ikke synkronisere firmware akkurat nå. Prøv igjen om litt.',
+        type: 'error',
+        duration: 4000,
+      });
+    } finally {
+      setFirmwareSyncing(false);
+      endTiming();
+    }
+  }, [addToast, analytics, features, firmwareData?.updatesAvailable, navigateToTab, performance, profession, refetchFirmwareData, userId]);
+
   // ============================================================================
   // TOAST NOTIFICATION HELPERS - CreatorHub Brand Kit Aligned
   // ============================================================================
@@ -311,7 +494,7 @@ export function EnhancedGearTab({
   const showMaintenanceToast = useCallback((type: 'scheduled' | 'due' | 'completed', equipmentName: string, date?: string) => {
     const toastConfigs = {
       scheduled: {
-        message: `🔧 Service planlagt for ${equipmentName}${date ? ` - ${date}` : ', '}`,
+        message: `🔧 Service planlagt for ${equipmentName}${date ? ` - ${date}` : ''}`,
         type: 'success' as const,
         duration: 4000,
         actions: [
@@ -345,7 +528,7 @@ export function EnhancedGearTab({
   const showRentalToast = useCallback((type: 'created' | 'overdue' | 'reminder' | 'returned', equipmentName: string, details?: string) => {
     const toastConfigs = {
       created: {
-        message: `📅 Utleie, opprettet: ${equipmentName}${details ? ` ${details}` : ', '}`,
+        message: `📅 Utleie opprettet: ${equipmentName}${details ? ` ${details}` : ''}`,
         type: 'success' as const,
         duration: 4000,
         actions: [
@@ -533,177 +716,461 @@ export function EnhancedGearTab({
   };
 
   const config = getProfessionConfig(profession);
+  const professionDisplayIcon = useMemo(
+    () => React.cloneElement(getProfessionIcon(dynamicProfessionConfig?.displayName || profession), {
+      sx: { fontSize: 20, color: config.color }
+    }),
+    [config.color, dynamicProfessionConfig?.displayName, profession]
+  );
   const actualGearNews = gearNews?.success ? gearNews.data : [];
 
   // Tools functionality
-  const renderToolsTab = () => (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-        <Settings sx={{ color: config.color }} />
-        Verktøy & Utilities
-      </Typography>
-      
-      <Grid container spacing={3}>
-        {/* Google Keep Worklog Integration */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ 
-            height: '100%',
-            background: 'linear-gradient(135deg, #4285f4 0%, #34a853 100%)',
-            color: 'white',
-            transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-2px)' },
-            ...theming.getThemedCardSx()
-          }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Article sx={{ fontSize: 32 }} />
-                <Box>
-                  <Typography variant="h6" fontWeight={600} sx={{ color: theming.colors.primary }}>
-                    Google Keep Arbeidslogg
-                  </Typography>
-                  <Chip 
-                    label="AKTIVT" 
-                    size="small" 
-                    sx={{ 
-                      bgcolor: 'rgba(25,255,255,0.2)', 
-                      color: 'white',
-                      fontSize: '0.7rem' 
-              }}
-                  />
-                </Box>
-              </Box>
-              <Typography variant="body2" sx={{ mb: 2, opacity: 0.9 }}>
-                Automatisk synkronisering av arbeidslogger til Google Keep for sikker lagring.
-              </Typography>
-              <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                Shortcuts: Ctrl+Shift+W for lynnotat, Ctrl+Shift+N for oversikt
-              </Typography>
-            </CardContent>
-          </Card>
+  const renderToolsTab = () => {
+    const firmwareUpdatesCount = firmwareData?.updatesAvailable || 0;
+    const latestSoftwareUpdates = Array.isArray(softwareUpdates)
+      ? softwareUpdates.filter((update: any) => update.isLatest).length
+      : 0;
+    const toolHealthCards = [
+      {
+        label: 'Aktive verktøy',
+        value: `${toolsAccess ? 4 : 3}`,
+        description: 'operativt i arbeidsflaten',
+        accent: config.color,
+      },
+      {
+        label: 'Push-status',
+        value: pushEnabled ? 'På' : 'Av',
+        description: isSupported ? 'kan styres herfra' : 'ikke støttet på denne enheten',
+        accent: pushEnabled ? '#059669' : '#64748b',
+      },
+      {
+        label: 'Bildesynk',
+        value: `${equipmentImages.length}`,
+        description: imagesLoading ? 'oppdaterer inventarbilder' : 'bilder koblet til utstyr',
+        accent: '#0f766e',
+      },
+      {
+        label: 'Oppdateringer',
+        value: `${firmwareUpdatesCount + latestSoftwareUpdates}`,
+        description: 'firmware + programvare klare for review',
+        accent: '#7c3aed',
+      },
+    ];
+
+    const toolModules = [
+      {
+        id: 'worklog',
+        title: 'Google Keep Arbeidslogg',
+        status: 'Integrert',
+        icon: <Article sx={{ fontSize: 24 }} />,
+        accent: '#2563eb',
+        description: 'Arbeidslogger og raske notater holdes i samme flyt som resten av gear-workspace, uten å forlate dashboardet.',
+        bullets: [
+          'Worklog-data kan gjenbrukes når du dokumenterer gear-bruk og vedlikehold.',
+          'Shortcut-flyten er allerede koblet til lynnotater og oppfølging.',
+        ],
+        meta: 'Ctrl+Shift+W for lynnotat · Ctrl+Shift+N for oversikt',
+        primaryAction: {
+          label: 'Åpne shortcuts',
+          onClick: focusShortcutWorkspace,
+        },
+      },
+      {
+        id: 'memory',
+        title: 'Minneskort & Recovery',
+        status: 'Klar',
+        icon: <Memory sx={{ fontSize: 24 }} />,
+        accent: '#ea580c',
+        description: 'Tilbehørsdatabasen brukes som operativ inngang for minnekort, backup-medier og recovery-relatert utstyr.',
+        bullets: [
+          'Åpner databasen direkte filtrert mot tilbehør og minnekort.',
+          'Passer for både feltbackup, redundans og filgjenoppretting.',
+        ],
+        meta: '5-nivå recovery · feltbackup · redundans',
+        primaryAction: {
+          label: 'Åpne tilbehørsdatabase',
+          onClick: openAccessoryToolkit,
+        },
+      },
+      {
+        id: 'drive',
+        title: 'Bilder & Lagring',
+        status: equipmentImages.length > 0 ? 'Synkronisert' : 'Venter på innhold',
+        icon: <Security sx={{ fontSize: 24 }} />,
+        accent: '#059669',
+        description: 'Inventarbilder og filkontekst brukes som grunnlag for lagring, dokumentasjon og videre Drive-flyt i dashboardet.',
+        bullets: [
+          'Utstyrslisten viser hvilke elementer som allerede har koblede bilder.',
+          'Gir et tydeligere grunnlag før du går videre til filer og backup.',
+        ],
+        meta: imagesLoading ? 'Henter bildekontekst akkurat nå' : `${equipmentImages.length} bilder koblet til inventaret`,
+        primaryAction: {
+          label: 'Åpne mitt utstyr',
+          onClick: () => navigateToTab('inventory'),
+        },
+      },
+      {
+        id: 'firmware',
+        title: 'Firmware Operasjoner',
+        status: firmwareUpdatesCount > 0 ? `${firmwareUpdatesCount} nye` : 'Oppdatert',
+        icon: <Update sx={{ fontSize: 24 }} />,
+        accent: '#7c3aed',
+        description: 'Firmware-senteret kan synkroniseres live og leder rett videre til nyhets-/firmware-panelet når noe krever handling.',
+        bullets: [
+          'Manuell synk bruker ekte backend-sync mot firmware-radene.',
+          'Nyheter og firmware er samlet i samme arbeidsflate for gjennomgang.',
+        ],
+        meta: firmwareLoading ? 'Sjekker produsentdata…' : 'Daglig sjekk 06:00 · kritiske modeller oftere',
+        primaryAction: {
+          label: firmwareSyncing ? 'Synker…' : 'Synk firmware nå',
+          onClick: syncFirmwareNow,
+        },
+        secondaryAction: {
+          label: 'Åpne firmware',
+          onClick: () => navigateToTab('news'),
+        },
+      },
+    ];
+
+    return (
+      <Box sx={{ p: { xs: 2, md: 3 } }}>
+        <Paper
+          elevation={0}
+          sx={{
+            mb: 3,
+            p: { xs: 2.5, md: 3.5 },
+            borderRadius: 4,
+            border: `1px solid ${config.color}22`,
+            background: `radial-gradient(circle at top right, ${config.color}18, transparent 38%), linear-gradient(135deg, rgba(255,255,255,0.96), rgba(248,250,252,0.92))`,
+            ...theming.getThemedCardSx(),
+          }}
+        >
+          <Grid container spacing={3} alignItems="center">
+            <Grid item xs={12} lg={7}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={1.25} alignItems="center" useFlexGap flexWrap="wrap">
+                  <Box
+                    sx={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: 2.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: `linear-gradient(135deg, ${config.color}22, ${config.color}10)`,
+                      color: config.color,
+                    }}
+                  >
+                    <Settings />
+                  </Box>
+                  <Box>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+                      Verktøy & Utilities
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Operative verktøy for firmware, lagring, recovery og shortcuts samlet i ett arbeidsområde.
+                    </Typography>
+                  </Box>
+                </Stack>
+
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  <Chip label={pushEnabled ? 'Push-varsler aktive' : 'Push-varsler kan aktiveres'} color={pushEnabled ? 'success' : 'default'} size="small" />
+                  <Chip label={`${equipmentImages.length} inventarbilder`} variant="outlined" size="small" />
+                  <Chip label={`${firmwareUpdatesCount} firmwarefunn`} variant="outlined" size="small" />
+                  <Chip label={`${latestSoftwareUpdates} programvareoppdateringer`} variant="outlined" size="small" />
+                </Stack>
+              </Stack>
+            </Grid>
+
+            <Grid item xs={12} lg={5}>
+              <Stack direction="row" spacing={1.25} useFlexGap flexWrap="wrap" justifyContent={{ xs: 'flex-start', lg: 'flex-end' }}>
+                <Button variant="contained" onClick={syncFirmwareNow} disabled={firmwareSyncing} startIcon={<Update />}>
+                  {firmwareSyncing ? 'Synker firmware…' : 'Synk firmware'}
+                </Button>
+                <Button variant="outlined" onClick={() => setPushSettingsOpen(true)} startIcon={pushEnabled ? <NotificationsActive /> : <Notifications />}>
+                  Varselinnstillinger
+                </Button>
+                <Button variant="outlined" onClick={openAccessoryToolkit} startIcon={<Memory />}>
+                  Åpne tilbehør
+                </Button>
+                <Button variant="outlined" onClick={focusShortcutWorkspace} startIcon={<Settings />}>
+                  Shortcuts
+                </Button>
+              </Stack>
+            </Grid>
+          </Grid>
+        </Paper>
+
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {toolHealthCards.map((card) => (
+            <Grid item xs={6} md={3} key={card.label}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  borderRadius: 3,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  background: `linear-gradient(180deg, ${card.accent}12, rgba(255,255,255,0.95))`,
+                  minHeight: 124,
+                }}
+              >
+                <Typography variant="overline" sx={{ letterSpacing: '0.08em', color: 'text.secondary' }}>
+                  {card.label}
+                </Typography>
+                <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 800, color: theming.colors.primary }}>
+                  {card.value}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  {card.description}
+                </Typography>
+              </Paper>
+            </Grid>
+          ))}
         </Grid>
 
-        {/* Equipment Manager */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ 
-            height: '100%',
-            background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
-            color: 'white',
-            transition: 'transform 0.2s','&:hover': { transform: 'translateY(-2px)' }
-      }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Memory sx={{ fontSize: 32 }} />
-                <Box>
-                  <Typography variant="h6" fontWeight={600} sx={{ color: theming.colors.primary }}>
-                    Minneskortsystem
-                  </Typography>
-                  <Chip 
-                    label="5-NIVÅ" 
-                    size="small" 
-                    sx={{ 
-                      bgcolor: 'rgba(25,255,255,0.2)', 
-                      color: 'white',
-                      fontSize: '0.7rem' 
-              }}
-                  />
-                </Box>
-              </Box>
-              <Typography variant="body2" sx={{ mb: 2, opacity: 0.9 }}>
-                Avansert 5-nivå forensisk filgjenoppretting og backup-automatisering.
-              </Typography>
-              <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                Session management, backup automation, og filgjenoppretting
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+        <Grid container spacing={3}>
+          <Grid item xs={12} xl={8}>
+            <Grid container spacing={2.5}>
+              {toolModules.map((module) => (
+                <Grid item xs={12} md={6} key={module.id}>
+                  <Card
+                    elevation={0}
+                    sx={{
+                      height: '100%',
+                      borderRadius: 4,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      overflow: 'hidden',
+                      background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.92))',
+                      transition: 'transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease',
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                        boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
+                        borderColor: `${module.accent}40`,
+                      },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        px: 2.25,
+                        py: 1.5,
+                        borderBottom: '1px solid',
+                        borderColor: 'divider',
+                        background: `linear-gradient(135deg, ${module.accent}18, transparent 72%)`,
+                      }}
+                    >
+                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+                        <Stack direction="row" spacing={1.5} alignItems="center">
+                          <Box
+                            sx={{
+                              width: 42,
+                              height: 42,
+                              borderRadius: 2.5,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: `${module.accent}18`,
+                              color: module.accent,
+                            }}
+                          >
+                            {module.icon}
+                          </Box>
+                          <Box>
+                            <Typography variant="h6" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+                              {module.title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {module.meta}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                        <Chip
+                          label={module.status}
+                          size="small"
+                          sx={{
+                            bgcolor: `${module.accent}14`,
+                            color: module.accent,
+                            fontWeight: 700,
+                          }}
+                        />
+                      </Stack>
+                    </Box>
 
-        {/* Backup & Sync Tools */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ 
-            height: '100%',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            color: 'white',
-            transition: 'transform 0.2s','&:hover': { transform: 'translateY(-2px)' }
-      }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Security sx={{ fontSize: 32 }} />
-                <Box>
-                  <Typography variant="h6" fontWeight={600} sx={{ color: theming.colors.primary }}>
-                    Google Drive Backup
-                  </Typography>
-                  <Chip 
-                    label="AUTO-SYNC" 
-                    size="small" 
-                    sx={{ 
-                      bgcolor: 'rgba(25,255,255,0.2)', 
-                      color: 'white',
-                      fontSize: '0.7rem' 
-              }}
-                  />
-                </Box>
-              </Box>
-              <Typography variant="body2" sx={{ mb: 2, opacity: 0.9 }}>
-                Automatisk backup til Google Drive med intelligent mappestruktur.
-              </Typography>
-              <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                GDPR-compliant, change tracking, undo/redo funksjonalitet
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+                    <CardContent sx={{ p: 2.25 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, lineHeight: 1.7 }}>
+                        {module.description}
+                      </Typography>
 
-        {/* Firmware Updates */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ 
-            height: '100%',
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-            color: 'white',
-            transition: 'transform 0.2s','&:hover': { transform: 'translateY(-2px)' }
-      }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Update sx={{ fontSize: 32 }} />
-                <Box>
-                  <Typography variant="h6" fontWeight={600} sx={{ color: theming.colors.primary }}>
-                    Firmware Oppdateringer
-                  </Typography>
-                  <Chip 
-                    label={firmwareData?.updatesAvailable > 0 ? `${firmwareData.updatesAvailable} NYE` : 'OPPDATERT'}
-                    size="small" 
-                    sx={{ 
-                      bgcolor: firmwareData?.updatesAvailable > 0 ? 'rgba(25,193,7,0.8)' : 'rgba(255,255,255,0.2)', 
-                      color: 'white',
-                      fontSize: '0.7rem' 
-              }}
-                  />
-                </Box>
-              </Box>
-              <Typography variant="body2" sx={{ mb: 2, opacity: 0.9 }}>
-                Automatisk overvåking av firmware-oppdateringer for ditt utstyr.
-              </Typography>
-              <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                Daglig sjekking 06:  00, kritiske modeller hver 6. time
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+                      <Stack spacing={1.1} sx={{ mb: 2.5 }}>
+                        {module.bullets.map((bullet) => (
+                          <Stack key={bullet} direction="row" spacing={1} alignItems="flex-start">
+                            <CheckCircle sx={{ fontSize: 16, mt: 0.2, color: module.accent }} />
+                            <Typography variant="body2" color="text.secondary">
+                              {bullet}
+                            </Typography>
+                          </Stack>
+                        ))}
+                      </Stack>
 
-        {/* Keyboard Shortcuts Tools - Full Width */}
-        <Grid item xs={12}>
-          <Card sx={{ 
-            background: 'linear-gradient(135deg, #ff8c00 0%, #ff6347 100%)',
-            color: 'white',
-            transition: 'transform 0.2s','&:hover': { transform: 'translateY(-2px)' }
-      }}>
-            <CardContent sx={{ p: 0,...theming.getThemedCardSx() }}>
-              <KeyboardShortcutsTools />
-            </CardContent>
-          </Card>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        {module.primaryAction && (
+                          <Button
+                            variant="contained"
+                            size="small"
+                            onClick={module.primaryAction.onClick}
+                            disabled={module.id === 'firmware' && firmwareSyncing}
+                            sx={{
+                              bgcolor: module.accent,
+                              '&:hover': { bgcolor: module.accent },
+                            }}
+                          >
+                            {module.primaryAction.label}
+                          </Button>
+                        )}
+                        {module.secondaryAction && (
+                          <Button variant="outlined" size="small" onClick={module.secondaryAction.onClick}>
+                            {module.secondaryAction.label}
+                          </Button>
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Grid>
+
+          <Grid item xs={12} xl={4}>
+            <Stack spacing={2.5}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.5,
+                  borderRadius: 4,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  background: 'linear-gradient(180deg, rgba(15,23,42,0.96), rgba(30,41,59,0.96))',
+                  color: 'white',
+                }}
+              >
+                <Typography variant="overline" sx={{ letterSpacing: '0.12em', color: 'rgba(255,255,255,0.72)' }}>
+                  Operativ status
+                </Typography>
+                <Typography variant="h6" sx={{ mt: 0.75, mb: 2, fontWeight: 700 }}>
+                  Gear-verktøyene er koblet til samme arbeidskontekst
+                </Typography>
+                <Stack spacing={1.5}>
+                  <Box>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.76)' }}>
+                      Aktiv profesjon
+                    </Typography>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      {getProfessionDisplayName(profession)}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.76)' }}>
+                      Prosjektkontekst
+                    </Typography>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      {projectLabel || 'Ingen prosjekt valgt'}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.76)' }}>
+                      Neste anbefalte steg
+                    </Typography>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      {firmwareUpdatesCount > 0 ? 'Gå gjennom firmwarefunn' : 'Oppdater tilbehør og bilder'}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.5,
+                  borderRadius: 4,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  backgroundColor: 'rgba(255,255,255,0.92)',
+                }}
+              >
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: theming.colors.primary }}>
+                  Anbefalt flyt
+                </Typography>
+                <Stack spacing={1.5}>
+                  {[
+                    'Start med tilbehørsdatabasen når du trenger kort, backup-medier eller recovery-utstyr.',
+                    'Synk firmware manuelt før viktige opptak når du vil bekrefte at alt er oppdatert.',
+                    'Bruk push-varsler for å samle vedlikehold, firmware og gear-hendelser i ett varslingsspor.',
+                  ].map((item, index) => (
+                    <Stack key={item} direction="row" spacing={1.25} alignItems="flex-start">
+                      <Box
+                        sx={{
+                          minWidth: 24,
+                          height: 24,
+                          borderRadius: '999px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor: `${config.color}18`,
+                          color: config.color,
+                          fontWeight: 800,
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        {index + 1}
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {item}
+                      </Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Paper>
+            </Stack>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Paper
+              id="gear-tools-shortcuts"
+              elevation={0}
+              sx={{
+                borderRadius: 4,
+                border: '1px solid',
+                borderColor: 'divider',
+                overflow: 'hidden',
+                background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(249,250,251,0.96))',
+              }}
+            >
+              <Box
+                sx={{
+                  px: 2.5,
+                  py: 2,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  background: 'linear-gradient(135deg, rgba(255,140,0,0.18), transparent 72%)',
+                }}
+              >
+                <Typography variant="h6" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+                  Keyboard Shortcut Workspace
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Hurtigtaster, mikroverktøy og arbeidsflytforbedringer samlet i én ren surface.
+                </Typography>
+              </Box>
+              <Box sx={{ p: 0 }}>
+                <KeyboardShortcutsTools />
+              </Box>
+            </Paper>
+          </Grid>
         </Grid>
-      </Grid>
-    </Box>
-);
+      </Box>
+    );
+  };
 
   const handleAccordionChange = (panel: string) => (event: React.SyntheticEvent, isExpanded: boolean) => {
     setExpandedAccordion(isExpanded ? panel : false);
@@ -1117,7 +1584,7 @@ export function EnhancedGearTab({
                   </Typography>
                 )}
                 <Typography variant="body2" color="text.secondary">
-                  Sist sjekket: {new Date(item.lastChecked).toLocaleDateString(', ')}
+                  Sist sjekket: {new Date(item.lastChecked).toLocaleDateString('no-NO')}
                 </Typography>
               </Box>
 
@@ -1164,15 +1631,25 @@ export function EnhancedGearTab({
   const renderInventoryTab = () => (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-          <Camera sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Mitt Utstyr
-        </Typography>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+            <Camera sx={{ mr: 1, verticalAlign: 'middle' }} />
+            Mitt Utstyr
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {imagesLoading
+              ? 'Synkroniserer utstyrsbilder fra databasen...'
+              : `${equipmentImages.length} bilder er knyttet til inventaret ditt`}
+          </Typography>
+        </Box>
         <Button 
           variant="contained" 
           startIcon={<Camera />} 
           sx={{ bgcolor: config.color }}
-          onClick={() => showEquipmentToast('added','Canon EOS R5')}
+          onClick={() => {
+            handleEquipmentFlow('Canon EOS R5', 'create', { origin: 'inventory-header-cta' });
+            showEquipmentToast('added', 'Canon EOS R5');
+          }}
         >
           Legg til utstyr
         </Button>
@@ -1195,7 +1672,10 @@ export function EnhancedGearTab({
             variant="contained" 
             startIcon={<Camera />} 
             sx={{ bgcolor: config.color }}
-            onClick={() => showEquipmentToast('added','Nytt utstyr')}
+            onClick={() => {
+              handleEquipmentFlow('Nytt utstyr', 'create', { origin: 'inventory-empty-state' });
+              showEquipmentToast('added', 'Nytt utstyr');
+            }}
           >
             Registrer første utstyr
           </Button>
@@ -1206,8 +1686,17 @@ export function EnhancedGearTab({
             <Grid item xs={12} sm={6} md={4} key={item.id}>
               <Card sx={{ 
                 height: '100%',
+                cursor: 'pointer',
                 transition: 'transform 0.2s, box-shadow 0.2s','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
-              }}>
+              }}
+                onClick={() => {
+                  handleEquipmentFlow(item.name || `${item.brand} ${item.model}`, 'selected', {
+                    equipmentId: item.id,
+                    equipmentStatus: item.status || null,
+                  });
+                  showEquipmentToast('updated', item.name || `${item.brand} ${item.model}`);
+                }}
+              >
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                     {item.imageUrl ? (
@@ -1897,6 +2386,7 @@ export function EnhancedGearTab({
           </Typography>
           <Button 
             size="small" 
+            onClick={() => showMarketToast('market-update', 'Pristrender er oppdatert for valgt profesjon')}
             sx={{ 
               color: config.color,
               fontWeight: 600,
@@ -1921,6 +2411,7 @@ export function EnhancedGearTab({
           </Typography>
           <Button 
             size="small" 
+            onClick={() => showMarketToast('price-alert', 'Markedspriser sammenlignes mot norske forhandlere')}
             sx={{ 
               color: config.color,
               fontWeight: 600,
@@ -1945,6 +2436,7 @@ export function EnhancedGearTab({
           </Typography>
           <Button 
             size="small" 
+            onClick={() => showNewsToast('new-articles', actualGearNews.length || 0)}
             sx={{ 
               color: config.color,
               fontWeight: 600,
@@ -1983,9 +2475,18 @@ export function EnhancedGearTab({
                 {config.title}
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
+                {dynamicProfessionConfig?.displayName || getProfessionDisplayName(profession)} · {professionDashboardTitle}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 {config.description}
               </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Chip 
+                  icon={professionDisplayIcon}
+                  label={featureSummary}
+                  variant="outlined"
+                  size="small"
+                />
                 <Chip 
                   label="Live-oppdateringer" 
                   color="success" 
@@ -1997,17 +2498,81 @@ export function EnhancedGearTab({
                   variant="outlined"
                   size="small"
                 />
-              </Box>
+                <Chip
+                  icon={<Star />}
+                  label={`${professionProjectTypes.length} prosjektmaler`}
+                  variant="outlined"
+                  size="small"
+                />
+                <Chip
+                  icon={<AttachMoney />}
+                  label={`${professionHourlyRate} kr/t standard`}
+                  variant="outlined"
+                  size="small"
+                />
+                {projectLabel && (
+                  <Chip
+                    label={`Prosjekt: ${projectLabel}`}
+                    color="primary"
+                    size="small"
+                    onClick={handleProjectFocus}
+                  />
+                )}
+              </Stack>
             </Box>
           </Box>
-          {isSupported && (
-            <Tooltip title="Push-varsler innstillinger">
-              <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
-                {pushEnabled ? <NotificationsActive /> : <Notifications />}
-              </IconButton>
-            </Tooltip>
-          )}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<Info />}
+              onClick={() => {
+                setCurrentTab(0);
+                showDatabaseToast('synced');
+              }}
+            >
+              Synk database
+            </Button>
+            {projectLabel && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<Business />}
+                onClick={handleProjectFocus}
+              >
+                Åpne prosjekt
+              </Button>
+            )}
+            {isSupported && (
+              <Tooltip title="Push-varsler innstillinger">
+                <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
+                  {pushEnabled ? <NotificationsActive /> : <Notifications />}
+                </IconButton>
+              </Tooltip>
+            )}
+          </Stack>
         </Box>
+        <Grid container spacing={2} sx={{ mt: 0.5 }}>
+          <Grid item xs={12} md={8}>
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+              {professionKeywords.map((keyword) => (
+                <Chip key={keyword} label={keyword} size="small" variant="outlined" />
+              ))}
+              {professionTips.map((tip) => (
+                <Chip key={tip} label={tip} size="small" icon={<Info />} />
+              ))}
+            </Stack>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', md: 'flex-end' }} useFlexGap flexWrap="wrap">
+              <Chip icon={<CameraGearIcon />} label={adaptedTabLabels.equipment} size="small" onClick={() => navigateToTab('inventory')} />
+              <Chip icon={<LensIcon />} label="Objektiver" size="small" onClick={() => navigateToTab('lenses')} />
+              <Chip icon={<LightingIcon />} label="Marked" size="small" onClick={() => navigateToTab('market')} />
+              <Chip icon={<FirmwareUpdateIcon />} label="Firmware" size="small" onClick={() => navigateToTab('news')} />
+              <Chip icon={<CameraSettingsIcon />} label="Programvare" size="small" onClick={() => navigateToTab('software')} />
+            </Stack>
+          </Grid>
+        </Grid>
       </Paper>
 
       {/* Equipment Subtabs */}
@@ -2031,7 +2596,7 @@ export function EnhancedGearTab({
       }
       }}
         >
-          {equipmentTabs.map((tab, index) => {
+          {visibleEquipmentTabs.map((tab) => {
             const TabIcon = tab.icon;
             return (
               <Tab
@@ -2049,35 +2614,35 @@ export function EnhancedGearTab({
       {/* Tab Content - All 9 Equipment Management Tabs */}
       
       {/* Tab 0: Utstyr Database - Comprehensive catalog */}
-      {currentTab === 0 && (
+      {activeTabId === 'database' && (
         <Box>
           <ComprehensiveGearDatabase />
         </Box>
       )}
       
       {/* Tab 1: Mitt Utstyr - Personal inventory (equipment table) */}
-      {currentTab === 1 && renderInventoryTab()}
+      {activeTabId === 'inventory' && renderInventoryTab()}
       
       {/* Tab 2: Vedlikehold - Maintenance schedule (equipment_maintenance table) */}
-      {currentTab === 2 && renderMaintenanceTab()}
+      {activeTabId === 'maintenance' && renderMaintenanceTab()}
       
       {/* Tab 3: Utleie - Equipment rentals (equipment_rentals table) */}
-      {currentTab === 3 && renderRentalsTab()}
+      {activeTabId === 'rentals' && renderRentalsTab()}
       
       {/* Tab 4: Markedspriser - Market comparison (market_equipment table) */}
-      {currentTab === 4 && renderMarketTab()}
+      {activeTabId === 'market' && renderMarketTab()}
       
       {/* Tab 5: Objektiver - Lens database (lens_database table) */}
-      {currentTab === 5 && renderLensesTab()}
+      {activeTabId === 'lenses' && renderLensesTab()}
       
       {/* Tab 6: Programvare - Software database (software_database + software_updates tables) */}
-      {currentTab === 6 && renderSoftwareTab()}
+      {activeTabId === 'software' && renderSoftwareTab()}
       
       {/* Tab 7: Verktøy - Tools and utilities */}
-      {currentTab === 7 && renderToolsTab()}
+      {activeTabId === 'tools' && renderToolsTab()}
       
       {/* Tab 8: Nyheter - Equipment news and firmware updates */}
-      {currentTab === 8 && (
+      {activeTabId === 'news' && (
         <Stack spacing={3}>
         {/* Professional Equipment Database Section */}
         <Accordion 

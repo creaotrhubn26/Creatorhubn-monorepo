@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   Alert,
   Avatar,
   Box,
   Button,
   Chip,
-  Divider,
+  Collapse,
   IconButton,
   Menu,
   MenuItem,
   Stack,
+  Slider,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -18,14 +19,19 @@ import {
 } from '@mui/material';
 import {
   AddOutlined as AddOutlinedIcon,
+  AdminPanelSettingsOutlined as AdminPanelSettingsOutlinedIcon,
   ArticleOutlined as ArticleOutlinedIcon,
-  DeleteOutline as DeleteOutlineIcon,
+  AutoFixHigh as AutoFixHighIcon,
+  CheckCircleOutline as CheckCircleOutlineIcon,
+  CloudDoneOutlined as CloudDoneOutlinedIcon,
+  CloudSyncOutlined as CloudSyncOutlinedIcon,
   DragIndicator as DragIndicatorIcon,
   EditOutlined as EditOutlinedIcon,
   FactCheckOutlined as FactCheckOutlinedIcon,
   FiberManualRecord as FiberManualRecordIcon,
   GridViewOutlined as GridViewOutlinedIcon,
-  OpenInNew as OpenInNewIcon,
+  HubOutlined as HubOutlinedIcon,
+  ImageOutlined as ImageOutlinedIcon,
   PaletteOutlined as PaletteOutlinedIcon,
   PermMedia as PermMediaIcon,
   PushPin as PushPinIcon,
@@ -37,12 +43,15 @@ import {
   UploadFile as UploadFileIcon,
   VerticalSplitOutlined as VerticalSplitOutlinedIcon,
   MoreHoriz as MoreHorizIcon,
-  ArrowForwardOutlined as ArrowForwardOutlinedIcon,
-  AutoAwesomeOutlined as AutoAwesomeOutlinedIcon,
+  VideoCallOutlined as VideoCallOutlinedIcon,
 } from '@mui/icons-material';
 import type {
   CastingProject,
+  ProducerAccountAccessPlatform,
   ProducerBrandGuideColor,
+  ProducerBrandLogoDetection,
+  ProducerBrandLogoVariant,
+  ProducerBrandLogoVariantType,
   ProducerClientIntake,
   ProducerClientMaterial,
   ProducerClientMaterialType,
@@ -58,26 +67,46 @@ import type {
   ShotList,
 } from '../../models/casting';
 import { castingService } from '../../services/castingService';
-import { producerWorkflowService } from '../../services/producerWorkflowService';
+import settingsService from '../../services/settingsService';
+import {
+  producerWorkflowService,
+  type ProducerClientReview,
+  type ProducerTimelineItem,
+} from '../../services/producerWorkflowService';
 import { onProducerWorkflowEvent } from '../../services/producerWorkflowEvents';
 import { onProjectAgreementEvent } from '../../services/projectAgreementEvents';
 import { useProject } from '@/contexts/ProjectContext';
 import {
   googleWorkspaceApi,
+  linkedInWorkspaceApi,
   projectAgreementsApi,
   type ProjectAgreement,
 } from '../../services/castingApiService';
 import {
+  applyProducerDeliveryWorkflowPreset,
   createProducerWorkspacePage,
   createProducerWorkspaceSection,
   flattenProducerWorkspacePages,
   getDefaultProducerWorkspaceNavigation,
+  getProducerAccountAccessPlatformFromMomentId,
+  PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS,
+  getProducerDeliveryWorkflowPreset,
   getProducerClientContributionTasks,
+  PRODUCER_CONTENT_CALENDAR_STATUS_LABELS,
+  getProducerOverlayFormatProfile,
+  resolveProducerBrandLogoVariant,
   getProducerStrategySnapshot,
   normalizeProducerProjectPlanning,
   normalizeProducerWorkspaceNavigation,
+  PRODUCER_BRAND_LOGO_PLACEMENT_LABELS,
+  PRODUCER_BRAND_LOGO_TIMING_LABELS,
+  PRODUCER_BRAND_LOGO_TREATMENT_LABELS,
   PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS,
   PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS,
+  PRODUCER_DELIVERY_WORKFLOW_PRESETS,
+  PRODUCER_MEETING_WORKSPACE_STATUS_LABELS,
   PRODUCER_PLANNING_PHASE_LABELS,
   PRODUCER_WORKSPACE_LAYOUT_LABELS,
   PRODUCER_WORKSPACE_PAGE_PLACEMENT_LABELS,
@@ -86,7 +115,9 @@ import {
   PRODUCER_WORKSPACE_TAB_PLACEMENT_LABELS,
 } from '../../utils/producerProjectPlanning';
 import {
+  getAgreementClientFacingStatusSummary,
   getAgreementSignatureLabel,
+  getAgreementSignatureProgress,
   getAgreementSignatureTone,
   PROJECT_AGREEMENT_STATUS_LABELS,
 } from '../../utils/projectAgreements';
@@ -97,13 +128,14 @@ import {
   type ProjectFileRecord,
 } from '../../utils/projectFiles';
 import { buildClientPortalUrl } from '../../utils/clientPortal';
+import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
+import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 
 interface ProducerMediaPanelProps {
   project: CastingProject;
   projectId: string;
   projectName: string;
-  mediaCount?: number;
   storyboardCount?: number;
   shotCount?: number;
   shotLists: ShotList[];
@@ -166,6 +198,65 @@ interface WorkspaceContextMenuState {
   surfaceValue?: ProducerWorkspaceSurfaceKey;
 }
 
+interface WorkspaceSupportAction {
+  id: string;
+  label: string;
+  variant?: 'contained' | 'outlined' | 'text';
+  onClick?: () => void;
+  href?: string;
+}
+
+interface WorkspaceSupportItem {
+  id: string;
+  title: string;
+  detail?: string;
+  eyebrow?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}
+
+interface WorkspaceSupportSection {
+  id: string;
+  title: string;
+  description: string;
+  items: WorkspaceSupportItem[];
+  actions?: WorkspaceSupportAction[];
+}
+
+type WorkspaceSupportPriority = 'critical' | 'warning' | 'info' | 'ready';
+
+interface WorkspaceSupportPanelState {
+  title: string;
+  intro: string;
+  chipLabel: string;
+  priority: WorkspaceSupportPriority;
+  sections: WorkspaceSupportSection[];
+}
+
+interface ClientDashboardItem {
+  id: string;
+  title: string;
+  detail: string;
+  eyebrow?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  href?: string;
+}
+
+interface ClientDashboardCard {
+  id: string;
+  title: string;
+  summary: string;
+  chipLabel: string;
+  priority: WorkspaceSupportPriority;
+  items: ClientDashboardItem[];
+  action?: WorkspaceSupportAction;
+}
+
+type BriefStepKey = 'goal' | 'foundation' | 'contact';
+type MaterialWizardStepKey = 'source' | 'details' | 'linking' | 'review';
+type MaterialsMode = 'capture' | 'library';
+
 const EMPTY_INTAKE: ProducerClientIntake = {
   projectGoal: '',
   deliverables: '',
@@ -217,16 +308,137 @@ const MATERIAL_STATUS_LABELS: Record<string, string> = {
   outdated: 'Trenger oppdatering',
 };
 
+const formatVideoSecond = (value: number): string => {
+  const safeValue = Math.max(0, Math.floor(value));
+  const minutes = Math.floor(safeValue / 60);
+  const seconds = safeValue % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
+const getLogoTimingPreview = (
+  brandGuide: ProducerProjectPlanning['brandGuide'],
+): { start: number; end: number; total: number; label: string; detail: string } => {
+  const customStart = Math.max(0, Math.floor(brandGuide.logoStartSecond ?? 0));
+  const customEnd = Math.max(customStart + 1, Math.floor(brandGuide.logoEndSecond ?? customStart + 3));
+
+  switch (brandGuide.logoTiming ?? 'outro') {
+    case 'intro':
+      return {
+        start: 0,
+        end: 3,
+        total: 15,
+        label: 'Intro',
+        detail: 'Logoen vises i introen og tar de første 3 sekundene av videoen.',
+      };
+    case 'throughout':
+      return {
+        start: 0,
+        end: 15,
+        total: 15,
+        label: 'Hele videoen',
+        detail: 'Logoen ligger synlig gjennom hele videoen.',
+      };
+    case 'custom': {
+      const total = Math.max(15, customEnd + 3);
+      return {
+        start: customStart,
+        end: customEnd,
+        total,
+        label: `${formatVideoSecond(customStart)}-${formatVideoSecond(customEnd)}`,
+        detail: `Logoen vises fra ${formatVideoSecond(customStart)} til ${formatVideoSecond(customEnd)} i videoen.`,
+      };
+    }
+    case 'none':
+      return {
+        start: 0,
+        end: 0,
+        total: 15,
+        label: 'Skjult',
+        detail: 'Logoen vises ikke i denne videoen.',
+      };
+    case 'outro':
+    default:
+      return {
+        start: 12,
+        end: 15,
+        total: 15,
+        label: 'Outro',
+        detail: 'Logoen vises i outroen og følger de siste 3 sekundene av videoen.',
+      };
+  }
+};
+
+const WORKSPACE_SUPPORT_PRIORITY_THEME: Record<WorkspaceSupportPriority, {
+  label: string;
+  border: string;
+  panelBackground: string;
+  glow: string;
+  chipBackground: string;
+  chipColor: string;
+  itemBorder: string;
+  itemBackground: string;
+  actionBackground: string;
+  actionColor: string;
+  actionHover: string;
+}> = {
+  critical: {
+    label: 'Haster',
+    border: 'rgba(248,113,113,0.28)',
+    panelBackground: 'linear-gradient(180deg, rgba(69,10,10,0.3) 0%, rgba(9,17,32,0.94) 100%)',
+    glow: 'rgba(248,113,113,0.14)',
+    chipBackground: 'rgba(248,113,113,0.18)',
+    chipColor: '#fecaca',
+    itemBorder: 'rgba(248,113,113,0.16)',
+    itemBackground: 'rgba(69,10,10,0.16)',
+    actionBackground: '#f97316',
+    actionColor: '#111827',
+    actionHover: '#ea580c',
+  },
+  warning: {
+    label: 'Prioritet',
+    border: 'rgba(251,191,36,0.24)',
+    panelBackground: 'linear-gradient(180deg, rgba(68,41,8,0.28) 0%, rgba(9,17,32,0.94) 100%)',
+    glow: 'rgba(251,191,36,0.12)',
+    chipBackground: 'rgba(251,191,36,0.16)',
+    chipColor: '#fde68a',
+    itemBorder: 'rgba(251,191,36,0.14)',
+    itemBackground: 'rgba(68,41,8,0.14)',
+    actionBackground: '#fbbf24',
+    actionColor: '#111827',
+    actionHover: '#f59e0b',
+  },
+  info: {
+    label: 'Neste',
+    border: 'rgba(96,165,250,0.2)',
+    panelBackground: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(9,17,32,0.94) 100%)',
+    glow: 'rgba(96,165,250,0.1)',
+    chipBackground: 'rgba(59,130,246,0.16)',
+    chipColor: '#bfdbfe',
+    itemBorder: 'rgba(96,165,250,0.12)',
+    itemBackground: 'rgba(15,23,42,0.46)',
+    actionBackground: '#38bdf8',
+    actionColor: '#082f49',
+    actionHover: '#0ea5e9',
+  },
+  ready: {
+    label: 'Klar',
+    border: 'rgba(74,222,128,0.2)',
+    panelBackground: 'linear-gradient(180deg, rgba(6,46,31,0.24) 0%, rgba(9,17,32,0.94) 100%)',
+    glow: 'rgba(74,222,128,0.1)',
+    chipBackground: 'rgba(34,197,94,0.16)',
+    chipColor: '#bbf7d0',
+    itemBorder: 'rgba(74,222,128,0.12)',
+    itemBackground: 'rgba(6,46,31,0.14)',
+    actionBackground: '#22c55e',
+    actionColor: '#052e16',
+    actionHover: '#16a34a',
+  },
+};
+
 const MATERIAL_PRIORITY_LABELS: Record<ClientMaterialDraft['priority'], string> = {
   critical: 'Kritisk',
   important: 'Viktig',
   reference: 'Referanse',
-};
-
-const MATERIAL_PRIORITY_COLORS: Record<ClientMaterialDraft['priority'], { background: string; color: string }> = {
-  critical: { background: 'rgba(248,113,113,0.16)', color: '#fecaca' },
-  important: { background: 'rgba(251,191,36,0.14)', color: '#fde68a' },
-  reference: { background: 'rgba(148,163,184,0.14)', color: '#cbd5e1' },
 };
 
 const CLIENT_MATERIAL_TEMPLATES: ClientMaterialTemplate[] = [
@@ -335,6 +547,7 @@ const CLIENT_MATERIAL_TEMPLATES: ClientMaterialTemplate[] = [
 ];
 
 const WORKSPACE_COLOR_OPTIONS = ['#38bdf8', '#fbbf24', '#a855f7', '#22c55e', '#fb7185', '#f97316', '#14b8a6', '#94a3b8'];
+const ACCOUNT_ACCESS_PLATFORM_ORDER: ProducerAccountAccessPlatform[] = ['google', 'meta', 'linkedin', 'youtube', 'tiktok'];
 
 const getWorkspaceSurfaceIcon = (surface: ProducerWorkspaceSurfaceKey) => {
   if (surface === 'materials') {
@@ -343,8 +556,14 @@ const getWorkspaceSurfaceIcon = (surface: ProducerWorkspaceSurfaceKey) => {
   if (surface === 'brand') {
     return <PaletteOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
   }
+  if (surface === 'accounts') {
+    return <HubOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
+  }
   if (surface === 'delivery') {
     return <FactCheckOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
+  }
+  if (surface === 'meetings') {
+    return <VideoCallOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
   }
   return <ArticleOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
 };
@@ -363,10 +582,20 @@ const getWorkspaceSurfaceDescription = (
       ? 'Logo, farger, fonter og uttrykk som skal styre leveransene.'
       : 'Logo, farger, fonter og visuell retning.';
   }
+  if (surface === 'accounts') {
+    return isClientReviewerMode
+      ? 'Trygg tilgangsstyring med OAuth, invite og klientstyrte bekreftelser.'
+      : 'Vedvarende konto- og publiseringstilgang uten delte passord.';
+  }
   if (surface === 'delivery') {
     return isClientReviewerMode
       ? 'Hvordan dere vil motta filer, mapper, versjoner og finaler.'
       : 'Filnavn, versjoner, mapper, final/draft og backup.';
+  }
+  if (surface === 'meetings') {
+    return isClientReviewerMode
+      ? 'Agenda, klientsync, beslutninger og oppfølging i samme flate.'
+      : 'Møteagenda, live-notater, beslutninger og oppfølging.';
   }
   return isClientReviewerMode
     ? 'Mål, leveranser, målgruppe og timing for produsenten.'
@@ -388,6 +617,113 @@ const readFirstNonEmptyString = (...values: unknown[]): string => {
     }
   }
   return '';
+};
+
+const EMAIL_ADDRESS_PATTERN = /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i;
+
+const readEmailAddress = (value: unknown): string => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const match = trimmed.match(EMAIL_ADDRESS_PATTERN);
+  return match?.[1]?.trim() ?? '';
+};
+
+interface AccountAccessPlatformFlowConfig {
+  primaryLabel: string;
+  primaryHref: string;
+  primaryDescription: string;
+  secondaryLabel?: string;
+  secondaryHref?: string;
+}
+
+const ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG: Record<ProducerAccountAccessPlatform, AccountAccessPlatformFlowConfig> = {
+  google: {
+    primaryLabel: 'Aktiver Google',
+    primaryHref: '',
+    primaryDescription: 'En Google-godkjenning gir vedvarende tilgang til Drive, Kalender og Meet for denne brukeren.',
+  },
+  meta: {
+    primaryLabel: 'Åpne Meta Business',
+    primaryHref: 'https://business.facebook.com/latest/settings/people',
+    primaryDescription: 'Kontoeier gir tilgang fra Meta Business Settings, ikke med delt passord.',
+    secondaryLabel: 'Meta Business-hjelp',
+    secondaryHref: 'https://www.facebook.com/business/help',
+  },
+  linkedin: {
+    primaryLabel: 'Åpne LinkedIn-hjelp',
+    primaryHref: 'https://www.linkedin.com/help/linkedin',
+    primaryDescription: 'Sideeier må gi admin- eller super admin-tilgang i LinkedIn Page admin.',
+  },
+  youtube: {
+    primaryLabel: 'Åpne YouTube Studio',
+    primaryHref: 'https://studio.youtube.com',
+    primaryDescription: 'Kanalrettigheter eller Brand Account-roller gis i YouTube Studio, ikke via delt Google-login.',
+    secondaryLabel: 'YouTube-hjelp',
+    secondaryHref: 'https://support.google.com/youtube/',
+  },
+  tiktok: {
+    primaryLabel: 'Åpne TikTok Business Center',
+    primaryHref: 'https://business.tiktok.com',
+    primaryDescription: 'Inviter bruker eller partner fra TikTok Business Center i stedet for å dele konto.',
+    secondaryLabel: 'TikTok-hjelp',
+    secondaryHref: 'https://business.tiktok.com/help',
+  },
+};
+
+const readPlanningMomentIdFromReview = (review: ProducerClientReview): string | null => {
+  const metadata = asRecord(review.metadata);
+  return readFirstNonEmptyString(metadata.planningMomentId, review.target_entity_id) || null;
+};
+
+const normalizeAccountAccessPlatform = (value: unknown): ProducerAccountAccessPlatform | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized in PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS) {
+    return normalized as ProducerAccountAccessPlatform;
+  }
+  return null;
+};
+
+const readAccountAccessPlatformsFromReview = (review: ProducerClientReview): ProducerAccountAccessPlatform[] => {
+  const metadata = asRecord(review.metadata);
+  const platforms = new Set<ProducerAccountAccessPlatform>();
+  const candidates = [
+    metadata.accountAccessPlatforms,
+    metadata.account_access_platforms,
+  ];
+
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) {
+      continue;
+    }
+    candidate.forEach((value) => {
+      const platform = normalizeAccountAccessPlatform(value);
+      if (platform) {
+        platforms.add(platform);
+      }
+    });
+  }
+
+  const directPlatform = normalizeAccountAccessPlatform(
+    readFirstNonEmptyString(metadata.accountAccessPlatform, metadata.account_access_platform),
+  );
+  if (directPlatform) {
+    platforms.add(directPlatform);
+  }
+
+  const platformFromMomentId = getProducerAccountAccessPlatformFromMomentId(readPlanningMomentIdFromReview(review));
+  if (platformFromMomentId) {
+    platforms.add(platformFromMomentId);
+  }
+
+  return Array.from(platforms);
 };
 
 const parseLineSeparatedValues = (value: string): string[] => (
@@ -439,7 +775,7 @@ const parseBrandColors = (value: string): ProducerBrandGuideColor[] => (
         return null;
       }
       return {
-        id: globalThis.crypto?.randomUUID?.() ?? `brand-color-${Date.now()}-${index}`,
+        id: `brand-color-${index + 1}`,
         label,
         hex,
         usage: usagePart || undefined,
@@ -447,6 +783,244 @@ const parseBrandColors = (value: string): ProducerBrandGuideColor[] => (
     })
     .filter((entry): entry is ProducerBrandGuideColor => entry !== null)
 );
+
+const rgbToHex = (red: number, green: number, blue: number): string => `#${[red, green, blue]
+  .map((value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0'))
+  .join('')}`;
+
+const getColorLuminance = (hex: string): number => {
+  const normalized = normalizeColorHex(hex).replace('#', '');
+  if (normalized.length !== 6) {
+    return 0;
+  }
+  const red = parseInt(normalized.slice(0, 2), 16);
+  const green = parseInt(normalized.slice(2, 4), 16);
+  const blue = parseInt(normalized.slice(4, 6), 16);
+  return ((0.2126 * red) + (0.7152 * green) + (0.0722 * blue)) / 255;
+};
+
+const getColorDistance = (leftHex: string, rightHex: string): number => {
+  const parseHex = (hex: string): [number, number, number] => {
+    const normalized = normalizeColorHex(hex).replace('#', '');
+    return [
+      parseInt(normalized.slice(0, 2), 16),
+      parseInt(normalized.slice(2, 4), 16),
+      parseInt(normalized.slice(4, 6), 16),
+    ];
+  };
+  const [leftRed, leftGreen, leftBlue] = parseHex(leftHex);
+  const [rightRed, rightGreen, rightBlue] = parseHex(rightHex);
+  const redDistance = leftRed - rightRed;
+  const greenDistance = leftGreen - rightGreen;
+  const blueDistance = leftBlue - rightBlue;
+  return Math.sqrt((redDistance ** 2) + (greenDistance ** 2) + (blueDistance ** 2));
+};
+
+const getBrandLogoMarkTypeLabel = (value?: ProducerBrandLogoDetection['markType']): string => {
+  if (value === 'wordmark') {
+    return 'Ordmerke';
+  }
+  if (value === 'symbol') {
+    return 'Symbol';
+  }
+  if (value === 'combination') {
+    return 'Kombinasjonslogo';
+  }
+  return 'Ukjent';
+};
+
+const BRAND_LOGO_VARIANT_ORDER: ProducerBrandLogoVariantType[] = ['primary', 'light', 'dark', 'icon'];
+
+const BRAND_LOGO_VARIANT_LABELS: Record<ProducerBrandLogoVariantType, string> = {
+  primary: 'Primær',
+  light: 'Lys',
+  dark: 'Mørk',
+  icon: 'Ikon',
+};
+
+const BRAND_LOGO_VARIANT_HELPERS: Record<ProducerBrandLogoVariantType, string> = {
+  primary: 'Hovedlogoen som normalt brukes i preview, overlevering og produksjon.',
+  light: 'Brukes når logoen må stå lyst mot mørkere flater eller videobakgrunner.',
+  dark: 'Brukes når logoen må stå mørkt mot lyse flater eller videobakgrunner.',
+  icon: 'Brukes når formatet trenger et kompakt symbol i stedet for full logo.',
+};
+
+const syncBrandGuideWithLogoVariant = (
+  brandGuide: ProducerProjectPlanning['brandGuide'],
+  variant: Pick<ProducerBrandLogoVariant, 'type' | 'logoUrl' | 'detection'>,
+): ProducerProjectPlanning['brandGuide'] => ({
+  ...brandGuide,
+  activeLogoVariantType: variant.type,
+  logoUrl: variant.logoUrl ?? brandGuide.logoUrl,
+  logoDetection: variant.detection ?? brandGuide.logoDetection,
+});
+
+const getBrandPreviewPlacementFromPointer = (
+  xRatio: number,
+  yRatio: number,
+): NonNullable<ProducerProjectPlanning['brandGuide']['logoPlacement']> => {
+  const clampedX = Math.max(0, Math.min(1, xRatio));
+  const clampedY = Math.max(0, Math.min(1, yRatio));
+  if (clampedX >= 0.34 && clampedX <= 0.66 && clampedY >= 0.3 && clampedY <= 0.7) {
+    return 'center';
+  }
+  if (clampedX < 0.5 && clampedY < 0.5) {
+    return 'top_left';
+  }
+  if (clampedX >= 0.5 && clampedY < 0.5) {
+    return 'top_right';
+  }
+  if (clampedX < 0.5 && clampedY >= 0.5) {
+    return 'bottom_left';
+  }
+  return 'bottom_right';
+};
+
+const loadImageFromObjectUrl = (objectUrl: string): Promise<HTMLImageElement> => (
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Kunne ikke lese logofilen som bilde.'));
+    image.src = objectUrl;
+  })
+);
+
+const analyzeBrandLogoFile = async (file: File): Promise<ProducerBrandLogoDetection> => {
+  if (typeof document === 'undefined') {
+    return {
+      sourceFileName: file.name,
+      note: 'Logoanalysen er bare tilgjengelig i nettleseren.',
+      detectedAt: new Date().toISOString(),
+    };
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImageFromObjectUrl(objectUrl);
+    const canvas = document.createElement('canvas');
+    const maxDimension = 240;
+    const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight, 1));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+      throw new Error('Canvas er ikke tilgjengelig for logoanalyse.');
+    }
+
+    context.clearRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    const imageData = context.getImageData(0, 0, width, height);
+    const buckets = new Map<string, { count: number; red: number; green: number; blue: number }>();
+
+    let minX = width;
+    let minY = height;
+    let maxX = 0;
+    let maxY = 0;
+    let opaquePixelCount = 0;
+    let translucentPixelCount = 0;
+
+    for (let index = 0; index < imageData.data.length; index += 4) {
+      const red = imageData.data[index];
+      const green = imageData.data[index + 1];
+      const blue = imageData.data[index + 2];
+      const alpha = imageData.data[index + 3];
+      if (alpha < 18) {
+        continue;
+      }
+
+      const pixelIndex = index / 4;
+      const x = pixelIndex % width;
+      const y = Math.floor(pixelIndex / width);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+      opaquePixelCount += 1;
+      if (alpha < 250) {
+        translucentPixelCount += 1;
+      }
+
+      const quantizedRed = Math.floor(red / 24) * 24;
+      const quantizedGreen = Math.floor(green / 24) * 24;
+      const quantizedBlue = Math.floor(blue / 24) * 24;
+      const bucketKey = `${quantizedRed}-${quantizedGreen}-${quantizedBlue}`;
+      const bucket = buckets.get(bucketKey) ?? { count: 0, red: 0, green: 0, blue: 0 };
+      bucket.count += 1;
+      bucket.red += red;
+      bucket.green += green;
+      bucket.blue += blue;
+      buckets.set(bucketKey, bucket);
+    }
+
+    const boundsWidth = opaquePixelCount > 0 ? Math.max(1, maxX - minX + 1) : width;
+    const boundsHeight = opaquePixelCount > 0 ? Math.max(1, maxY - minY + 1) : height;
+    const aspectRatio = boundsWidth / Math.max(1, boundsHeight);
+    const markType: ProducerBrandLogoDetection['markType'] = aspectRatio >= 2.35
+      ? 'wordmark'
+      : aspectRatio <= 1.15
+        ? 'symbol'
+        : 'combination';
+    const hasTransparency = translucentPixelCount > 0 || opaquePixelCount < (width * height * 0.92);
+    const dominantColors = Array.from(buckets.values())
+      .sort((left, right) => right.count - left.count)
+      .map((bucket) => rgbToHex(bucket.red / bucket.count, bucket.green / bucket.count, bucket.blue / bucket.count))
+      .filter((hex, colorIndex, colors) => colors.findIndex((candidate) => getColorDistance(candidate, hex) < 18) === colorIndex)
+      .slice(0, 3)
+      .map((hex, colorIndex) => ({
+        id: `detected-brand-color-${colorIndex + 1}`,
+        label: colorIndex === 0 ? 'Primærfarge' : colorIndex === 1 ? 'Sekundærfarge' : 'Accent',
+        hex,
+        usage: colorIndex === 0 ? 'Brukes i logo og hovedmarkeringer.' : colorIndex === 1 ? 'Brukes i sekundære flater og bakplater.' : 'Brukes i små detaljer eller CTA-er.',
+      }));
+    const primaryLuminance = dominantColors[0] ? getColorLuminance(dominantColors[0].hex) : 0.5;
+    const suggestedTreatment = !hasTransparency
+      ? 'badge'
+      : primaryLuminance > 0.82
+        ? 'badge'
+        : 'clean';
+    const suggestedPlacement = markType === 'symbol' ? 'top_right' : 'bottom_right';
+    const suggestedTiming = suggestedTreatment === 'badge' ? 'outro' : markType === 'symbol' ? 'throughout' : 'outro';
+    const suggestedOpacityPercent = suggestedTreatment === 'badge'
+      ? 100
+      : suggestedTiming === 'throughout'
+        ? 38
+        : 86;
+    const suggestedSafeZoneHorizontalPercent = markType === 'wordmark' ? 9 : markType === 'combination' ? 8 : 7;
+    const suggestedSafeZoneVerticalPercent = markType === 'wordmark' ? 7 : 8;
+    const suggestedMarginPixelsAt1080 = markType === 'wordmark' ? 88 : 72;
+    const note = [
+      hasTransparency ? 'Transparent logo gjør ren overlay mulig.' : 'Logoen trenger bakplate eller badge for trygg kontrast.',
+      markType === 'wordmark'
+        ? 'Bred logo får mest luft nederst i rammen.'
+        : markType === 'symbol'
+          ? 'Kompakt logo tåler mindre footprint og kan ligge høyere i formatet.'
+          : 'Kombinasjonslogo trenger litt ekstra safe zone og ro rundt seg.',
+    ].join(' ');
+
+    return {
+      sourceFileName: file.name,
+      imageWidth: image.naturalWidth,
+      imageHeight: image.naturalHeight,
+      aspectRatioLabel: `${boundsWidth}:${boundsHeight}`,
+      markType,
+      hasTransparency,
+      dominantColors,
+      suggestedPlacement,
+      suggestedTiming,
+      suggestedTreatment,
+      suggestedOpacityPercent,
+      suggestedSafeZoneHorizontalPercent,
+      suggestedSafeZoneVerticalPercent,
+      suggestedMarginPixelsAt1080,
+      note,
+      detectedAt: new Date().toISOString(),
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+};
 
 const formatTimestamp = (value?: string): string => {
   if (!value) {
@@ -461,6 +1035,33 @@ const formatTimestamp = (value?: string): string => {
     timeStyle: 'short',
   }).format(parsed);
 };
+
+const extractWorkspacePhrases = (...values: Array<string | null | undefined>): string[] => {
+  const unique = new Set<string>();
+  for (const value of values) {
+    if (!hasText(value)) {
+      continue;
+    }
+    for (const rawPart of value.split(/[\n,.;•]+/u)) {
+      const part = rawPart.trim();
+      if (!part || part.length > 56) {
+        continue;
+      }
+      unique.add(part);
+      if (unique.size >= 8) {
+        return Array.from(unique);
+      }
+    }
+  }
+  return Array.from(unique);
+};
+
+interface WorkspaceShowcaseTile {
+  id: string;
+  eyebrow: string;
+  title: string;
+  meta: string;
+}
 
 const getShotListLabel = (shotList: ShotList): string => (
   shotList.sceneName?.trim() || shotList.sceneId || shotList.id
@@ -485,6 +1086,8 @@ interface DeliveryWorkspaceAssetSummary {
   legalAgreements: ProjectAgreement[];
   googleArtifacts: RoleRoomGoogleArtifactRef[];
 }
+
+const LOCAL_PROJECT_AGREEMENTS_NAMESPACE = 'role-room-project-agreements';
 
 interface WorkspaceArtifactFocus {
   artifactId: string;
@@ -522,6 +1125,9 @@ const getSurfaceForProjectFile = (file: ProjectFileRecord): ProducerWorkspaceSur
   if (source === 'role_room_client_material') {
     return entryType === 'brand_asset' ? 'brand' : 'materials';
   }
+  if (source === 'role_room_meeting_workspace') {
+    return 'meetings';
+  }
   if (source === 'role_room_client_handoff_package' || source === 'role_room_delivery_workspace' || source.startsWith('role_room_delivery')) {
     return 'delivery';
   }
@@ -540,6 +1146,7 @@ const findAgreementArtifact = (
 
 const resolveWorkspaceFocusArtifact = (
   artifactId: string,
+  planning: ProducerProjectPlanning,
   materials: ProducerClientMaterial[],
   projectFiles: ProjectFileRecord[],
   agreements: ProjectAgreement[],
@@ -669,6 +1276,43 @@ const resolveWorkspaceFocusArtifact = (
       title: normalizedArtifactId === 'delivery-manifest' ? 'Leveringsmanifest' : 'Godkjenningskø',
       subtitle: 'Fokusert fra delt arbeidsflate.',
     };
+  }
+
+  if (normalizedArtifactId === 'meeting-workspace') {
+    return {
+      artifactId: normalizedArtifactId,
+      surface: 'meetings',
+      title: 'Møteworkspace',
+      subtitle: 'Agenda, beslutninger og oppfølging for klientsyncen.',
+    };
+  }
+
+  if (normalizedArtifactId.startsWith('meeting-decision:')) {
+    const meetingDecisionId = normalizedArtifactId.slice('meeting-decision:'.length).trim();
+    const meetingDecision = planning.meetingWorkspace.decisions.find((item) => item.id === meetingDecisionId);
+    if (meetingDecision) {
+      return {
+        artifactId: normalizedArtifactId,
+        surface: 'meetings',
+        title: meetingDecision.title,
+        subtitle: meetingDecision.clientVisible
+          ? 'Klientsynlig møtebeslutning.'
+          : 'Intern møtebeslutning.',
+      };
+    }
+  }
+
+  if (normalizedArtifactId.startsWith('meeting-follow-up:')) {
+    const followUpId = normalizedArtifactId.slice('meeting-follow-up:'.length).trim();
+    const followUp = planning.meetingWorkspace.followUps.find((item) => item.id === followUpId);
+    if (followUp) {
+      return {
+        artifactId: normalizedArtifactId,
+        surface: 'meetings',
+        title: followUp.title,
+        subtitle: followUp.notes?.trim() || 'Oppfølgingspunkt fra møteworkspace.',
+      };
+    }
   }
 
   return null;
@@ -849,7 +1493,6 @@ export default function ProducerMediaPanel({
   project,
   projectId,
   projectName,
-  mediaCount = 0,
   storyboardCount = 0,
   shotCount = 0,
   shotLists,
@@ -863,22 +1506,32 @@ export default function ProducerMediaPanel({
   onOpenStoryboard,
   onOpenManuscript,
   onOpenShotList,
-  onOpenSceneNotes,
+  onOpenSceneNotes: _onOpenSceneNotes,
   onPrepareStoryboardReview,
-  onPrepareManuscriptReview,
+  onPrepareManuscriptReview: _onPrepareManuscriptReview,
   onPrepareShotListReview,
   onProjectUpdated,
 }: ProducerMediaPanelProps) {
   const { uploadProjectFile, deleteProjectFile, getProjectFiles } = useProject();
+  const useLocalAgreementFallback = shouldUseRoleRoomLocalFallback();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [intakeDraft, setIntakeDraft] = useState<ProducerClientIntake>(EMPTY_INTAKE);
   const [materials, setMaterials] = useState<ProducerClientMaterial[]>([]);
+  const [reviews, setReviews] = useState<ProducerClientReview[]>([]);
+  const [timelineItems, setTimelineItems] = useState<ProducerTimelineItem[]>([]);
   const [planningDraft, setPlanningDraft] = useState<ProducerProjectPlanning>(() => normalizeProducerProjectPlanning(project));
   const [brandFontsDraft, setBrandFontsDraft] = useState(() => stringifyLineSeparatedValues(normalizeProducerProjectPlanning(project).brandGuide.fonts));
   const [brandColorsDraft, setBrandColorsDraft] = useState(() => stringifyBrandColors(normalizeProducerProjectPlanning(project).brandGuide.colors));
   const [brandDosDraft, setBrandDosDraft] = useState(() => stringifyLineSeparatedValues(normalizeProducerProjectPlanning(project).brandGuide.dos));
   const [brandDontsDraft, setBrandDontsDraft] = useState(() => stringifyLineSeparatedValues(normalizeProducerProjectPlanning(project).brandGuide.donts));
+  const [brandPreviewFormat, setBrandPreviewFormat] = useState<'16:9' | '4:5' | '9:16' | '1:1'>('16:9');
+  const [brandPreviewDeliveryId, setBrandPreviewDeliveryId] = useState<string | null>(null);
+  const [uploadingBrandLogo, setUploadingBrandLogo] = useState(false);
+  const [brandLogoUploadVariantType, setBrandLogoUploadVariantType] = useState<ProducerBrandLogoVariantType>('primary');
+  const [brandLogoVariantBusyKey, setBrandLogoVariantBusyKey] = useState<string | null>(null);
+  const [brandLogoVariantDeleteConfirmType, setBrandLogoVariantDeleteConfirmType] = useState<ProducerBrandLogoVariantType | null>(null);
+  const [draggingBrandLogo, setDraggingBrandLogo] = useState(false);
   const [savingIntake, setSavingIntake] = useState(false);
   const [savingPlanning, setSavingPlanning] = useState(false);
   const [savingMaterial, setSavingMaterial] = useState(false);
@@ -890,17 +1543,35 @@ export default function ProducerMediaPanel({
   const [activePageId, setActivePageId] = useState(() => normalizeProducerProjectPlanning(project).workspaceNavigation?.activePageId ?? getDefaultProducerWorkspaceNavigation().activePageId ?? '');
   const [workspaceContextMenu, setWorkspaceContextMenu] = useState<WorkspaceContextMenuState | null>(null);
   const [workspaceToolsAnchorEl, setWorkspaceToolsAnchorEl] = useState<HTMLElement | null>(null);
+  const [showWorkspaceOperations, setShowWorkspaceOperations] = useState(false);
   const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
   const [draggedPageRef, setDraggedPageRef] = useState<{ sectionId: string; pageId: string } | null>(null);
+  const [activeBriefStep, setActiveBriefStep] = useState<BriefStepKey>('goal');
+  const [briefWizardEnabled, setBriefWizardEnabled] = useState(true);
+  const [materialsMode, setMaterialsMode] = useState<MaterialsMode>('capture');
+  const [materialWizardEnabled, setMaterialWizardEnabled] = useState(true);
+  const [activeMaterialWizardStep, setActiveMaterialWizardStep] = useState<MaterialWizardStepKey>('source');
+  const [showAllMaterials, setShowAllMaterials] = useState(false);
   const [deliveryWorkspaceAssets, setDeliveryWorkspaceAssets] = useState<DeliveryWorkspaceAssetSummary>({
     latestPackage: null,
     workspaceFiles: [],
     legalAgreements: [],
     googleArtifacts: [],
   });
+  const [googleAccessStatus, setGoogleAccessStatus] = useState<Awaited<ReturnType<typeof googleWorkspaceApi.getStatus>> | null>(null);
+  const [loadingGoogleAccessStatus, setLoadingGoogleAccessStatus] = useState(false);
+  const [googleAccessActionKey, setGoogleAccessActionKey] = useState<string | null>(null);
+  const [linkedInAccessStatus, setLinkedInAccessStatus] = useState<Awaited<ReturnType<typeof linkedInWorkspaceApi.getStatus>> | null>(null);
+  const [loadingLinkedInAccessStatus, setLoadingLinkedInAccessStatus] = useState(false);
+  const [linkedInAccessActionKey, setLinkedInAccessActionKey] = useState<string | null>(null);
+  const [accountAccessActionKey, setAccountAccessActionKey] = useState<string | null>(null);
   const [projectFiles, setProjectFiles] = useState<ProjectFileRecord[]>([]);
   const [focusedArtifactId, setFocusedArtifactId] = useState<string | null>(initialArtifactId ?? null);
+  const brandLogoFileInputRef = useRef<HTMLInputElement | null>(null);
+  const brandPreviewFrameRef = useRef<HTMLDivElement | null>(null);
   const materialFileInputRef = useRef<HTMLInputElement | null>(null);
+  const googleAccessRequestRef = useRef(0);
+  const linkedInAccessRequestRef = useRef(0);
 
   const canEditClientInput = canContributeClientInput && !readOnly;
   const workspaceNavigation = useMemo(
@@ -937,6 +1608,16 @@ export default function ProducerMediaPanel({
     () => getProducerStrategySnapshot(planningDraft),
     [planningDraft],
   );
+  const contentLogicDraft = useMemo(() => ({
+    objective: planningDraft.contentLogic?.objective ?? planningDraft.activationPlan.businessGoal ?? '',
+    audience: planningDraft.contentLogic?.audience ?? planningDraft.activationPlan.targetAudience ?? '',
+    hook: planningDraft.contentLogic?.hook ?? planningDraft.activationPlan.idea ?? '',
+    coreMessage: planningDraft.contentLogic?.coreMessage ?? planningDraft.activationPlan.coreMessage ?? '',
+    proofPoints: planningDraft.contentLogic?.proofPoints ?? [],
+    callToAction: planningDraft.contentLogic?.callToAction ?? '',
+    distributionPlan: planningDraft.contentLogic?.distributionPlan ?? planningDraft.activationPlan.activation ?? '',
+    successSignals: planningDraft.contentLogic?.successSignals ?? planningDraft.activationPlan.successSignals ?? [],
+  }), [planningDraft]);
 
   const shotListOptions = useMemo(
     () => shotLists.map((shotList) => ({
@@ -959,6 +1640,7 @@ export default function ProducerMediaPanel({
       focusedArtifactId
         ? resolveWorkspaceFocusArtifact(
             focusedArtifactId,
+            planningDraft,
             materials,
             projectFiles,
             deliveryWorkspaceAssets.legalAgreements,
@@ -966,7 +1648,7 @@ export default function ProducerMediaPanel({
           )
         : null
     ),
-    [deliveryWorkspaceAssets.googleArtifacts, deliveryWorkspaceAssets.legalAgreements, focusedArtifactId, materials, projectFiles],
+    [deliveryWorkspaceAssets.googleArtifacts, deliveryWorkspaceAssets.legalAgreements, focusedArtifactId, materials, planningDraft, projectFiles],
   );
 
   useEffect(() => {
@@ -985,17 +1667,27 @@ export default function ProducerMediaPanel({
     setLoading(true);
     setError(null);
     try {
-      const [nextIntake, nextMaterials] = await Promise.all([
+      const [nextIntake, nextMaterials, nextReviews, nextTimelineItems] = await Promise.all([
         producerWorkflowService.getClientIntake(projectId),
         producerWorkflowService.getClientMaterials(projectId),
+        producerWorkflowService.getReviews(projectId),
+        producerWorkflowService.getTimeline(projectId),
       ]);
       setIntakeDraft({
         ...EMPTY_INTAKE,
         ...nextIntake,
       });
       setMaterials(nextMaterials);
+      setReviews(nextReviews);
+      setTimelineItems(nextTimelineItems);
       await producerWorkflowService.ensureClientGroundingTimeline(projectId);
       await producerWorkflowService.ensureClientGroundingReviews(projectId);
+      const meetingWorkflow = await producerWorkflowService.ensureMeetingWorkspaceWorkflow(
+        projectId,
+        normalizeProducerProjectPlanning(project),
+      );
+      setReviews(meetingWorkflow.reviews);
+      setTimelineItems(meetingWorkflow.timelineItems);
     } catch (loadError) {
       console.error('[ProducerMediaPanel] Failed to load client workspace', loadError);
       setError('Kunne ikke hente klientbrief og materiale.');
@@ -1007,6 +1699,61 @@ export default function ProducerMediaPanel({
   useEffect(() => {
     void loadClientWorkspace();
   }, [loadClientWorkspace]);
+
+  const loadGoogleAccessStatus = useCallback(async () => {
+    const requestId = ++googleAccessRequestRef.current;
+    setLoadingGoogleAccessStatus(true);
+    try {
+      const nextStatus = await googleWorkspaceApi.getStatus(projectId);
+      if (requestId !== googleAccessRequestRef.current) {
+        return;
+      }
+      setGoogleAccessStatus(nextStatus);
+    } catch (statusError) {
+      if (requestId !== googleAccessRequestRef.current) {
+        return;
+      }
+      console.error('[ProducerMediaPanel] Failed to load Google access status', statusError);
+    } finally {
+      if (requestId === googleAccessRequestRef.current) {
+        setLoadingGoogleAccessStatus(false);
+      }
+    }
+  }, [projectId]);
+
+  const loadLinkedInAccessStatus = useCallback(async () => {
+    const requestId = ++linkedInAccessRequestRef.current;
+    setLoadingLinkedInAccessStatus(true);
+    try {
+      const nextStatus = await linkedInWorkspaceApi.getStatus();
+      if (requestId !== linkedInAccessRequestRef.current) {
+        return;
+      }
+      setLinkedInAccessStatus(nextStatus);
+    } catch (statusError) {
+      if (requestId !== linkedInAccessRequestRef.current) {
+        return;
+      }
+      console.error('[ProducerMediaPanel] Failed to load LinkedIn access status', statusError);
+    } finally {
+      if (requestId === linkedInAccessRequestRef.current) {
+        setLoadingLinkedInAccessStatus(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!showWorkspaceOperations && activeWorkspace !== 'accounts' && !(isClientPortalView || isClientReviewerMode)) {
+      return;
+    }
+    void loadGoogleAccessStatus();
+    void loadLinkedInAccessStatus();
+  }, [activeWorkspace, isClientPortalView, isClientReviewerMode, loadGoogleAccessStatus, loadLinkedInAccessStatus, showWorkspaceOperations]);
+
+  useEffect(() => () => {
+    googleAccessRequestRef.current += 1;
+    linkedInAccessRequestRef.current += 1;
+  }, []);
 
   useEffect(() => {
     setFocusedArtifactId(initialArtifactId ?? null);
@@ -1062,11 +1809,20 @@ export default function ProducerMediaPanel({
     window.history.replaceState({}, '', nextUrl);
   }, [activePage, activeSection, activeWorkspace, focusedArtifactId, isClientPortalView, projectId]);
 
+  const readLocalAgreements = useCallback(async (): Promise<ProjectAgreement[]> => {
+    const stored = await settingsService.getSetting<ProjectAgreement[]>(LOCAL_PROJECT_AGREEMENTS_NAMESPACE, {
+      projectId,
+    });
+    return Array.isArray(stored) ? stored : [];
+  }, [projectId]);
+
   const loadDeliveryWorkspaceAssets = useCallback(async () => {
     try {
       const [projectFiles, legalAgreements, googleStatus] = await Promise.all([
         getProjectFiles(projectId),
-        projectAgreementsApi.getAll(projectId),
+        useLocalAgreementFallback
+          ? readLocalAgreements()
+          : projectAgreementsApi.getAll(projectId),
         googleWorkspaceApi.getStatus(projectId).catch(() => null),
       ]);
       const normalizedProjectFiles = normalizeProjectFileRecords(projectFiles);
@@ -1094,7 +1850,7 @@ export default function ProducerMediaPanel({
     } catch (loadError) {
       console.warn('[ProducerMediaPanel] Failed to load delivery workspace assets', loadError);
     }
-  }, [getProjectFiles, projectId]);
+  }, [getProjectFiles, projectId, readLocalAgreements, useLocalAgreementFallback]);
 
   useEffect(() => {
     void loadDeliveryWorkspaceAssets();
@@ -1130,7 +1886,10 @@ export default function ProducerMediaPanel({
     };
     await castingService.saveProject(nextProject);
     await producerWorkflowService.syncPlanningClientReviews(projectId, stampedPlanning);
+    const meetingWorkflow = await producerWorkflowService.syncMeetingWorkspaceWorkflow(projectId, stampedPlanning);
     await onProjectUpdated?.(nextProject);
+    setReviews(meetingWorkflow.reviews);
+    setTimelineItems(meetingWorkflow.timelineItems);
     setPlanningDraft(stampedPlanning);
     const navigation = normalizeProducerWorkspaceNavigation(stampedPlanning.workspaceNavigation);
     setActiveSectionId(navigation.activeSectionId ?? navigation.sections[0]?.id ?? '');
@@ -1176,17 +1935,18 @@ export default function ProducerMediaPanel({
     setError(null);
     try {
       const saved = await producerWorkflowService.updateClientIntake(projectId, intakeDraft);
+      await persistPlanningDraft(planningDraft);
       setIntakeDraft({
         ...EMPTY_INTAKE,
         ...saved,
       });
     } catch (saveError) {
       console.error('[ProducerMediaPanel] Failed to save client intake', saveError);
-      setError('Kunne ikke lagre klientbrief.');
+      setError('Kunne ikke lagre klientbrief og content logic.');
     } finally {
       setSavingIntake(false);
     }
-  }, [intakeDraft, projectId]);
+  }, [intakeDraft, persistPlanningDraft, planningDraft, projectId]);
 
   const handleImportGoogleContact = useCallback(async (contact: {
     name?: string | null;
@@ -1261,6 +2021,7 @@ export default function ProducerMediaPanel({
 
       setMaterialDraft(EMPTY_MATERIAL_DRAFT);
       setSelectedMaterialFile(null);
+      setMaterialsMode('library');
       if (materialFileInputRef.current) {
         materialFileInputRef.current.value = '';
       }
@@ -1288,12 +2049,183 @@ export default function ProducerMediaPanel({
       };
       await persistPlanningDraft(nextPlanning);
     } catch (saveError) {
-      console.error('[ProducerMediaPanel] Failed to save brand and delivery context', saveError);
-      setError('Kunne ikke lagre merkevareguide og leveringsrutine.');
+      console.error('[ProducerMediaPanel] Failed to save planning context', saveError);
+      setError('Kunne ikke lagre arbeidsflateoppsettet.');
     } finally {
       setSavingPlanning(false);
     }
   }, [brandColorsDraft, brandDontsDraft, brandDosDraft, brandFontsDraft, persistPlanningDraft, planningDraft]);
+
+  const updateAccountAccessEntry = useCallback((
+    platform: ProducerAccountAccessPlatform,
+    updater: (entry: ProducerProjectPlanning['accountAccess']['entries'][number]) => ProducerProjectPlanning['accountAccess']['entries'][number],
+  ) => {
+    setPlanningDraft((previous) => ({
+      ...previous,
+      accountAccess: {
+        ...previous.accountAccess,
+        entries: previous.accountAccess.entries.map((entry) => (
+          entry.platform === platform
+            ? {
+              ...updater(entry),
+              lastUpdatedAt: new Date().toISOString(),
+            }
+            : entry
+        )),
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  }, []);
+
+  const handleStartGoogleAccountLink = useCallback(async () => {
+    try {
+      setGoogleAccessActionKey('connect');
+      const response = await googleWorkspaceApi.startOauth({
+        mode: 'link',
+        projectId,
+        returnPath: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        browserOrigin: window.location.origin,
+        email: project.clientEmail ?? intakeDraft.contactEmail ?? undefined,
+      });
+      if (!hasText(response.authorizationUrl)) {
+        throw new Error('Mangler autorisasjonslenke fra Google Workspace.');
+      }
+      window.location.assign(response.authorizationUrl);
+    } catch (linkError) {
+      console.error('[ProducerMediaPanel] Failed to start Google account link', linkError);
+      setError(linkError instanceof Error ? linkError.message : 'Kunne ikke starte Google Workspace-koblingen.');
+    } finally {
+      setGoogleAccessActionKey(null);
+    }
+  }, [intakeDraft.contactEmail, project.clientEmail, projectId]);
+
+  const handleStartLinkedInAccountLink = useCallback(async () => {
+    try {
+      setLinkedInAccessActionKey('connect');
+      const response = await linkedInWorkspaceApi.startOauth({
+        mode: 'link',
+        projectId,
+        returnPath: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        browserOrigin: window.location.origin,
+        email: project.clientEmail ?? intakeDraft.contactEmail ?? undefined,
+      });
+      if (!hasText(response.authorizationUrl)) {
+        throw new Error('Mangler autorisasjonslenke fra LinkedIn.');
+      }
+      window.location.assign(response.authorizationUrl);
+    } catch (linkError) {
+      console.error('[ProducerMediaPanel] Failed to start LinkedIn account link', linkError);
+      setError(linkError instanceof Error ? linkError.message : 'Kunne ikke starte LinkedIn-koblingen.');
+    } finally {
+      setLinkedInAccessActionKey(null);
+    }
+  }, [intakeDraft.contactEmail, project.clientEmail, projectId]);
+
+  const persistAccountAccessEntry = useCallback(async (
+    platform: ProducerAccountAccessPlatform,
+    updater: (entry: ProducerProjectPlanning['accountAccess']['entries'][number]) => ProducerProjectPlanning['accountAccess']['entries'][number],
+  ) => {
+    setAccountAccessActionKey(`${platform}:persist`);
+    setError(null);
+    try {
+      const nextPlanning: ProducerProjectPlanning = {
+        ...planningDraft,
+        accountAccess: {
+          ...planningDraft.accountAccess,
+          entries: planningDraft.accountAccess.entries.map((entry) => (
+            entry.platform === platform
+              ? {
+                ...updater(entry),
+                lastUpdatedAt: new Date().toISOString(),
+              }
+              : entry
+          )),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      await persistPlanningDraft(nextPlanning);
+    } catch (persistError) {
+      console.error('[ProducerMediaPanel] Failed to persist account access entry', persistError);
+      setError('Kunne ikke lagre kontotilgangen.');
+    } finally {
+      setAccountAccessActionKey(null);
+    }
+  }, [persistPlanningDraft, planningDraft]);
+
+  const handleConfirmAccountAccessConnected = useCallback(async (platform: ProducerAccountAccessPlatform) => {
+    await persistAccountAccessEntry(platform, (entry) => ({
+      ...entry,
+      status: 'connected',
+    }));
+  }, [persistAccountAccessEntry]);
+
+  const buildAccountAccessReviewUrl = useCallback((reviewId?: string | null) => (
+    reviewId
+      ? buildClientPortalUrl(projectId, {
+        tab: 'reviews',
+        workspace: 'accounts',
+        reviewId,
+      })
+      : ''
+  ), [projectId]);
+
+  const buildAccountAccessInviteText = useCallback((
+    entry: ProducerProjectPlanning['accountAccess']['entries'][number],
+    review?: ProducerClientReview | null,
+  ): string => {
+    const platformFlow = ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG[entry.platform];
+    const reviewUrl = review ? buildAccountAccessReviewUrl(review.id) : '';
+    return [
+      `[Kontotilgang · ${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}]`,
+      '',
+      'Dette må avklares for å fullføre publisering og overlevering:',
+      `Plattform: ${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}`,
+      `Metode: ${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]}`,
+      `Status: ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`,
+      `Konto / side: ${readFirstNonEmptyString(entry.accountLabel, 'Ikke satt')}`,
+      `Invite / kontakt: ${readFirstNonEmptyString(entry.inviteTarget, intakeDraft.contactEmail, project.clientEmail, 'Ikke satt')}`,
+      `Scope / rolle: ${readFirstNonEmptyString(entry.accessScope, 'Ikke satt')}`,
+      `Kontoeier: ${readFirstNonEmptyString(entry.ownerName, 'Ikke satt')}`,
+      `2-faktor hos kontoeier: ${entry.twoFactorRequired ? 'Ja' : 'Nei'}`,
+      `Offisiell flyt: ${platformFlow.primaryDescription}`,
+      entry.platform !== 'google' && hasText(platformFlow.primaryHref) ? `Åpne plattformen: ${platformFlow.primaryHref}` : '',
+      entry.platform !== 'google' && hasText(platformFlow.secondaryHref) ? `Offisiell veiledning: ${platformFlow.secondaryHref}` : '',
+      entry.notes ? `Notat: ${entry.notes}` : '',
+      reviewUrl ? '' : '',
+      reviewUrl ? `Åpne review og bekreft saken her: ${reviewUrl}` : '',
+    ].filter((value) => value !== '').join('\n');
+  }, [buildAccountAccessReviewUrl, intakeDraft.contactEmail, project.clientEmail]);
+
+  const handleCopyAccountAccessInviteText = useCallback(async (
+    entry: ProducerProjectPlanning['accountAccess']['entries'][number],
+    review?: ProducerClientReview | null,
+  ) => {
+    const text = buildAccountAccessInviteText(entry, review);
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      window.prompt('Kopier invite-instruksen manuelt:', text);
+    }
+  }, [buildAccountAccessInviteText]);
+
+  const handleOpenAccountAccessInviteMail = useCallback((
+    entry: ProducerProjectPlanning['accountAccess']['entries'][number],
+    review?: ProducerClientReview | null,
+  ) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const recipient = readFirstNonEmptyString(
+      readEmailAddress(entry.inviteTarget),
+      project.clientEmail,
+      intakeDraft.contactEmail,
+    );
+    const subject = `${projectName} · Kontotilgang · ${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}`;
+    const body = buildAccountAccessInviteText(entry, review);
+    window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }, [buildAccountAccessInviteText, intakeDraft.contactEmail, project.clientEmail, projectName]);
 
   const selectSection = useCallback((sectionId: string) => {
     const targetSection = workspaceSections.find((section) => section.id === sectionId);
@@ -1685,14 +2617,6 @@ export default function ProducerMediaPanel({
     }
   }, [deleteProjectFile, loadDeliveryWorkspaceAssets, materials, projectId]);
 
-  const materialSummary = useMemo(() => {
-    return materials.reduce<Record<string, number>>((summary, item) => {
-      const key = item.entry_type;
-      summary[key] = (summary[key] ?? 0) + 1;
-      return summary;
-    }, {});
-  }, [materials]);
-
   const sortedMaterials = useMemo(() => {
     const priorityWeight: Record<ClientMaterialDraft['priority'], number> = {
       critical: 0,
@@ -1714,19 +2638,6 @@ export default function ProducerMediaPanel({
     });
   }, [materials]);
 
-  const helperCopy = isClientReviewerMode
-    ? 'Legg inn brief, referanser, merkevarefiler og materiale slik at produsenten kan jobbe ut fra samme grunnlag som kunden.'
-    : 'Samler kundens brief, referanser og materiale, og holder leveranser og godkjenninger koblet til samme produksjonsgrunnlag.';
-  const panelTitle = isClientReviewerMode ? 'Klientflate' : 'Klientbrief og materiale';
-  const panelDescription = isClientReviewerMode
-    ? 'Del mål, materiale, merkevaregrunnlag og leveringspreferanser i fire tydelige arbeidsflater. Dette blir produksjonsgrunnlaget videre i prosjektet.'
-    : helperCopy;
-  const materialChipLabel = isClientReviewerMode ? `Dine innspill ${materials.length}` : `Klientmateriale ${materials.length}`;
-  const workspaceSummaryTitle = isClientReviewerMode ? 'Aktiv klientflate' : 'Aktiv arbeidsflate';
-  const workflowConnectionsTitle = isClientReviewerMode ? 'Slik brukes dette videre' : 'Produksjonskilder';
-  const workflowConnectionsDescription = isClientReviewerMode
-    ? 'Når du fyller ut disse arbeidsflatene, bruker produsenten grunnlaget videre i storyboard, manus, shotlist og scene-notater.'
-    : 'Åpne storyboard, manus, shotlist og scene-notater fra samme arbeidsflate.';
   const workflowOpenLabels = isClientReviewerMode
     ? {
       storyboard: 'Se storyboard',
@@ -1749,13 +2660,6 @@ export default function ProducerMediaPanel({
     return `${formatTimestamp(intakeDraft.updatedAt)}${roleLabel}`;
   }, [intakeDraft.updatedAt, intakeDraft.updatedByRole]);
 
-  const planningUpdatedLabel = useMemo(() => {
-    if (!planningDraft.updatedAt) {
-      return 'Ikke lagret ennå.';
-    }
-    return formatTimestamp(planningDraft.updatedAt);
-  }, [planningDraft.updatedAt]);
-
   const brandGuideReadyCount = useMemo(
     () => [
       planningDraft.brandGuide.logoUrl,
@@ -1777,6 +2681,122 @@ export default function ProducerMediaPanel({
       planningDraft.deliveryWorkflow.deliveryCadence,
     ].filter((value) => hasText(value ?? '')).length,
     [planningDraft.deliveryWorkflow],
+  );
+  const deliveryWorkflowMissingItems = useMemo(() => {
+    const items: Array<{ id: string; label: string }> = [];
+    if (!hasText(planningDraft.deliveryWorkflow.fileNamingConvention)) {
+      items.push({ id: 'delivery-file-naming', label: 'Filnavnregel mangler' });
+    }
+    if (!hasText(planningDraft.deliveryWorkflow.versioningRule)) {
+      items.push({ id: 'delivery-versioning', label: 'Versjoneringsregel mangler' });
+    }
+    if (!hasText(planningDraft.deliveryWorkflow.folderStructure)) {
+      items.push({ id: 'delivery-folders', label: 'Mappestruktur mangler' });
+    }
+    if (!hasText(planningDraft.deliveryWorkflow.draftVsFinalRule)) {
+      items.push({ id: 'delivery-draft-final', label: 'Draft vs final mangler' });
+    }
+    if (!hasText(planningDraft.deliveryWorkflow.backupRoutine)) {
+      items.push({ id: 'delivery-backup', label: 'Backuprutine mangler' });
+    }
+    if (!hasText(planningDraft.deliveryWorkflow.deliveryCadence)) {
+      items.push({ id: 'delivery-cadence', label: 'Leveringsrytme mangler' });
+    }
+    return items;
+  }, [planningDraft.deliveryWorkflow]);
+  const deliveryWorkflowSummary = useMemo(() => {
+    if (deliveryWorkflowMissingItems.length > 0) {
+      return '';
+    }
+    return readFirstNonEmptyString(
+      [
+        planningDraft.deliveryWorkflow.fileNamingConvention,
+        planningDraft.deliveryWorkflow.versioningRule,
+        planningDraft.deliveryWorkflow.folderStructure,
+      ].filter((value) => hasText(value ?? '')).join(' · '),
+      'Leveringsrutinen er klar for team og overlevering.',
+    );
+  }, [
+    deliveryWorkflowMissingItems.length,
+    planningDraft.deliveryWorkflow.fileNamingConvention,
+    planningDraft.deliveryWorkflow.folderStructure,
+    planningDraft.deliveryWorkflow.versioningRule,
+  ]);
+  const selectedDeliveryPreset = useMemo(
+    () => getProducerDeliveryWorkflowPreset(planningDraft.deliveryWorkflow.presetId),
+    [planningDraft.deliveryWorkflow.presetId],
+  );
+  const accountAccessEntries = useMemo(
+    () => [...planningDraft.accountAccess.entries].sort(
+      (left, right) => ACCOUNT_ACCESS_PLATFORM_ORDER.indexOf(left.platform) - ACCOUNT_ACCESS_PLATFORM_ORDER.indexOf(right.platform),
+    ),
+    [planningDraft.accountAccess.entries],
+  );
+  const requiredAccountPlatforms = useMemo(() => {
+    const signature = planningDraft.contentCalendar
+      .map((item) => `${item.channel ?? ''} ${item.format ?? ''}`)
+      .join(' ')
+      .toLowerCase();
+    const required = new Set<ProducerAccountAccessPlatform>(['google']);
+    if (signature.includes('meta') || signature.includes('reels') || signature.includes('stories') || signature.includes('instagram') || signature.includes('facebook')) {
+      required.add('meta');
+    }
+    if (signature.includes('linkedin')) {
+      required.add('linkedin');
+    }
+    if (signature.includes('youtube') || signature.includes('webinar')) {
+      required.add('youtube');
+    }
+    if (signature.includes('tiktok')) {
+      required.add('tiktok');
+    }
+    return required;
+  }, [planningDraft.contentCalendar]);
+  const effectiveGoogleAccountStatus = googleAccessStatus?.state === 'connected'
+    ? 'connected'
+    : googleAccessStatus?.state === 'expired' || googleAccessStatus?.state === 'error'
+      ? 'client_action'
+      : accountAccessEntries.find((entry) => entry.platform === 'google')?.status ?? 'not_started';
+  const effectiveAccountEntries = useMemo(
+    () => accountAccessEntries.map((entry) => (
+      entry.platform === 'google'
+        ? { ...entry, status: effectiveGoogleAccountStatus }
+        : entry
+    )),
+    [accountAccessEntries, effectiveGoogleAccountStatus],
+  );
+  const requiredAccountEntries = useMemo(
+    () => effectiveAccountEntries.filter((entry) => requiredAccountPlatforms.has(entry.platform)),
+    [effectiveAccountEntries, requiredAccountPlatforms],
+  );
+  const connectedRequiredAccountCount = useMemo(
+    () => requiredAccountEntries.filter((entry) => entry.status === 'connected').length,
+    [requiredAccountEntries],
+  );
+  const pendingRequiredAccountCount = useMemo(
+    () => requiredAccountEntries.filter((entry) => entry.status !== 'connected').length,
+    [requiredAccountEntries],
+  );
+  const accountAccessSummary = useMemo(() => {
+    if (requiredAccountEntries.length === 0) {
+      return 'Ingen kontoer er markert som nødvendige ennå.';
+    }
+    return readFirstNonEmptyString(
+      requiredAccountEntries
+        .map((entry) => `${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}: ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`)
+        .slice(0, 3)
+        .join(' · '),
+      'Konto- og publiseringstilgang er ikke avklart ennå.',
+    );
+  }, [requiredAccountEntries]);
+  const accountAccessMissingItems = useMemo(
+    () => requiredAccountEntries
+      .filter((entry) => entry.status !== 'connected')
+      .map((entry) => ({
+        id: `account-${entry.platform}`,
+        label: `${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]} venter på sikker tilgang`,
+      })),
+    [requiredAccountEntries],
   );
 
   const briefReadyCount = useMemo(
@@ -1801,6 +2821,16 @@ export default function ProducerMediaPanel({
   const linkedCalendarMaterialCount = useMemo(
     () => materials.filter((material) => hasText(parseMaterialMetadata(material).linkedCalendarItemId)).length,
     [materials],
+  );
+
+  const openMeetingFollowUpCount = useMemo(
+    () => planningDraft.meetingWorkspace.followUps.filter((item) => item.status !== 'done').length,
+    [planningDraft.meetingWorkspace.followUps],
+  );
+
+  const meetingAgendaCoverageCount = useMemo(
+    () => planningDraft.meetingWorkspace.agenda.filter((item) => hasText(item.title)).length,
+    [planningDraft.meetingWorkspace.agenda],
   );
 
   const clientGroundingRequests = useMemo(() => {
@@ -1852,6 +2882,420 @@ export default function ProducerMediaPanel({
       .slice(0, 6),
     [intakeDraft, materials, planningDraft],
   );
+  const missingGoalFields = useMemo(() => {
+    const items: Array<{ id: string; label: string }> = [];
+    if (!hasText(intakeDraft.projectGoal)) {
+      items.push({ id: 'project-goal', label: 'Prosjektmål mangler' });
+    }
+    if (!hasText(intakeDraft.deliverables)) {
+      items.push({ id: 'deliverables', label: 'Leveranser mangler' });
+    }
+    if (!hasText(intakeDraft.targetAudience)) {
+      items.push({ id: 'target-audience', label: 'Målgruppe mangler' });
+    }
+    if (!hasText(intakeDraft.keyMessage)) {
+      items.push({ id: 'key-message', label: 'Kjernebudskap mangler' });
+    }
+    return items;
+  }, [
+    intakeDraft.deliverables,
+    intakeDraft.keyMessage,
+    intakeDraft.projectGoal,
+    intakeDraft.targetAudience,
+  ]);
+  const missingFoundationFields = useMemo(() => {
+    const items: Array<{ id: string; label: string }> = [];
+    if (!hasText(intakeDraft.timingConstraints)) {
+      items.push({ id: 'timing-constraints', label: 'Tidsrammer og avhengigheter mangler' });
+    }
+    if (!hasText(intakeDraft.brandNotes)) {
+      items.push({ id: 'brand-notes', label: 'Merkevarenotater mangler' });
+    }
+    if (!hasText(intakeDraft.materialOverview)) {
+      items.push({ id: 'material-overview', label: 'Eksisterende materiale er ikke beskrevet' });
+    }
+    if (!hasText(intakeDraft.referenceLinks) && !materials.some((item) => item.entry_type === 'reference')) {
+      items.push({ id: 'reference-links', label: 'Referanser mangler' });
+    }
+    return items;
+  }, [
+    intakeDraft.brandNotes,
+    intakeDraft.materialOverview,
+    intakeDraft.referenceLinks,
+    intakeDraft.timingConstraints,
+    materials,
+  ]);
+  const missingContactFields = useMemo(() => {
+    const items: Array<{ id: string; label: string }> = [];
+    if (!hasText(intakeDraft.contactName)) {
+      items.push({ id: 'contact-name', label: 'Kontaktperson mangler' });
+    }
+    if (!hasText(intakeDraft.contactEmail)) {
+      items.push({ id: 'contact-email', label: 'Kontakt-e-post mangler' });
+    }
+    return items;
+  }, [
+    intakeDraft.contactEmail,
+    intakeDraft.contactName,
+  ]);
+  const briefMissingItems = useMemo(() => {
+    return [...missingGoalFields, ...missingContactFields];
+  }, [missingContactFields, missingGoalFields]);
+  const foundationBlockingItems = useMemo(
+    () => [...briefMissingItems, ...missingFoundationFields],
+    [briefMissingItems, missingFoundationFields],
+  );
+  const recommendedBriefStep = useMemo<BriefStepKey>(() => {
+    if (missingGoalFields.length > 0) {
+      return 'goal';
+    }
+    if (missingFoundationFields.length > 0) {
+      return 'foundation';
+    }
+    if (missingContactFields.length > 0) {
+      return 'contact';
+    }
+    return 'goal';
+  }, [missingContactFields.length, missingFoundationFields.length, missingGoalFields.length]);
+  const briefStepProgress = useMemo(() => ({
+    goal: {
+      ready: 4 - missingGoalFields.length,
+      total: 4,
+    },
+    foundation: {
+      ready: 4 - missingFoundationFields.length,
+      total: 4,
+    },
+    contact: {
+      ready: 2 - missingContactFields.length,
+      total: 2,
+    },
+  }), [missingContactFields.length, missingFoundationFields.length, missingGoalFields.length]);
+  const briefStepDescriptors = useMemo(() => ([
+    {
+      key: 'goal' as const,
+      label: 'Mål',
+      description: 'Mål, leveranse, målgruppe og budskap.',
+      status: briefStepProgress.goal.ready === briefStepProgress.goal.total
+        ? 'Klar'
+        : `${briefStepProgress.goal.ready}/${briefStepProgress.goal.total} fylt`,
+      missing: missingGoalFields,
+    },
+    {
+      key: 'foundation' as const,
+      label: 'Grunnlag',
+      description: 'Tidsrammer, materiale og referanser.',
+      status: briefStepProgress.foundation.ready === briefStepProgress.foundation.total
+        ? 'Klar'
+        : `${briefStepProgress.foundation.ready}/${briefStepProgress.foundation.total} fylt`,
+      missing: missingFoundationFields,
+    },
+    {
+      key: 'contact' as const,
+      label: 'Kontakt',
+      description: 'Kontaktpunkt og siste avklaringer.',
+      status: briefStepProgress.contact.ready === briefStepProgress.contact.total
+        ? 'Klar'
+        : `${briefStepProgress.contact.ready}/${briefStepProgress.contact.total} fylt`,
+      missing: missingContactFields,
+    },
+  ]), [briefStepProgress, missingContactFields, missingFoundationFields, missingGoalFields]);
+  const activeBriefStepDescriptor = useMemo(
+    () => briefStepDescriptors.find((step) => step.key === activeBriefStep) ?? briefStepDescriptors[0],
+    [activeBriefStep, briefStepDescriptors],
+  );
+  const activeBriefStepIndex = useMemo(
+    () => Math.max(briefStepDescriptors.findIndex((step) => step.key === activeBriefStep), 0),
+    [activeBriefStep, briefStepDescriptors],
+  );
+  const completedBriefStepCount = useMemo(
+    () => briefStepDescriptors.filter((step) => step.missing.length === 0).length,
+    [briefStepDescriptors],
+  );
+  const previousBriefStepDescriptor = useMemo(
+    () => briefStepDescriptors[Math.max(activeBriefStepIndex - 1, 0)] ?? null,
+    [activeBriefStepIndex, briefStepDescriptors],
+  );
+  const nextBriefStepDescriptor = useMemo(
+    () => briefStepDescriptors[Math.min(activeBriefStepIndex + 1, briefStepDescriptors.length - 1)] ?? null,
+    [activeBriefStepIndex, briefStepDescriptors],
+  );
+  const visibleLibraryMaterials = useMemo(
+    () => (showAllMaterials ? sortedMaterials : sortedMaterials.slice(0, 4)),
+    [showAllMaterials, sortedMaterials],
+  );
+  const activeBriefStepSummary = useMemo(() => {
+    if (activeBriefStep === 'goal') {
+      return readFirstNonEmptyString(
+        intakeDraft.projectGoal,
+        intakeDraft.deliverables,
+        'Mål og leveranse er ikke skrevet inn ennå.',
+      );
+    }
+    if (activeBriefStep === 'foundation') {
+      return readFirstNonEmptyString(
+        intakeDraft.timingConstraints,
+        intakeDraft.materialOverview,
+        intakeDraft.referenceLinks,
+        'Avhengigheter, eksisterende materiale og referanser er ikke beskrevet ennå.',
+      );
+    }
+    return readFirstNonEmptyString(
+      intakeDraft.contactName,
+      intakeDraft.contactEmail,
+      intakeDraft.contactPhone,
+      'Kontaktpunkt og siste avklaringer er ikke lagt inn ennå.',
+    );
+  }, [
+    activeBriefStep,
+    intakeDraft.contactEmail,
+    intakeDraft.contactName,
+    intakeDraft.contactPhone,
+    intakeDraft.deliverables,
+    intakeDraft.materialOverview,
+    intakeDraft.projectGoal,
+    intakeDraft.referenceLinks,
+    intakeDraft.timingConstraints,
+  ]);
+  const materialSourceMissingItems = useMemo(() => {
+    const items: Array<{ id: string; label: string }> = [];
+    if (!hasText(materialDraft.title)) {
+      items.push({ id: 'material-title', label: 'Materialet må ha en tittel før du går videre.' });
+    }
+    return items;
+  }, [materialDraft.title]);
+  const materialWizardDescriptors = useMemo(() => ([
+    {
+      key: 'source' as const,
+      label: 'Start',
+      description: 'Velg mal, fil eller lenke og gi materialet et tydelig navn.',
+      missing: materialSourceMissingItems,
+    },
+    {
+      key: 'details' as const,
+      label: 'Detaljer',
+      description: 'Beskriv hva materialet er, hvor viktig det er, og hvilken fase det tilhører.',
+      missing: !hasText(materialDraft.description) && !hasText(materialDraft.usageNotes)
+        ? [{ id: 'material-description', label: 'Legg gjerne inn en kort beskrivelse eller brukskontekst.' }]
+        : [],
+    },
+    {
+      key: 'linking' as const,
+      label: 'Kobling',
+      description: 'Knytt materialet til plan, shotlist eller leveringsstruktur når det er relevant.',
+      missing: !hasText(materialDraft.linkedCalendarItemId)
+        && !hasText(materialDraft.linkedShotListId)
+        && !hasText(materialDraft.folderPath)
+        && !hasText(materialDraft.packageName)
+        ? [{ id: 'material-linking', label: 'Vurder å koble materialet til plan eller leveranse før du lagrer.' }]
+        : [],
+    },
+    {
+      key: 'review' as const,
+      label: 'Kontroll',
+      description: 'Se over oppsettet og lagre materialet når det er klart.',
+      missing: [],
+    },
+  ]), [
+    materialDraft.description,
+    materialDraft.folderPath,
+    materialDraft.linkedCalendarItemId,
+    materialDraft.linkedShotListId,
+    materialDraft.packageName,
+    materialDraft.usageNotes,
+    materialSourceMissingItems,
+  ]);
+  const activeMaterialWizardDescriptor = useMemo(
+    () => materialWizardDescriptors.find((step) => step.key === activeMaterialWizardStep) ?? materialWizardDescriptors[0],
+    [activeMaterialWizardStep, materialWizardDescriptors],
+  );
+  const activeMaterialWizardIndex = useMemo(
+    () => Math.max(materialWizardDescriptors.findIndex((step) => step.key === activeMaterialWizardStep), 0),
+    [activeMaterialWizardStep, materialWizardDescriptors],
+  );
+  const previousMaterialWizardDescriptor = useMemo(
+    () => materialWizardDescriptors[Math.max(activeMaterialWizardIndex - 1, 0)] ?? null,
+    [activeMaterialWizardIndex, materialWizardDescriptors],
+  );
+  const nextMaterialWizardDescriptor = useMemo(
+    () => materialWizardDescriptors[Math.min(activeMaterialWizardIndex + 1, materialWizardDescriptors.length - 1)] ?? null,
+    [activeMaterialWizardIndex, materialWizardDescriptors],
+  );
+  const isMaterialWizardActive = materialWizardEnabled && materialsMode === 'capture';
+  const completedMaterialStepCount = useMemo(
+    () => materialWizardDescriptors.filter((step) => step.missing.length === 0).length,
+    [materialWizardDescriptors],
+  );
+  const activeMaterialStepStatusLabel = activeMaterialWizardDescriptor.missing.length === 0
+    ? 'Fylt ut'
+    : activeMaterialWizardStep === 'source'
+      ? 'Mangler'
+      : 'Anbefalt';
+  const canAdvanceMaterialWizard = activeMaterialWizardStep !== 'source' || materialSourceMissingItems.length === 0;
+  const materialWizardReviewRows = useMemo(() => ([
+    {
+      label: 'Type',
+      value: MATERIAL_TYPE_LABELS[materialDraft.entryType],
+    },
+    {
+      label: 'Tittel',
+      value: readFirstNonEmptyString(materialDraft.title, 'Ikke satt'),
+    },
+    {
+      label: 'Beskrivelse',
+      value: readFirstNonEmptyString(materialDraft.description, materialDraft.usageNotes, 'Ikke beskrevet'),
+    },
+    {
+      label: 'Fase',
+      value: materialDraft.phase ? PRODUCER_PLANNING_PHASE_LABELS[materialDraft.phase] : 'Ikke koblet til fase',
+    },
+    {
+      label: 'Kobling',
+      value: readFirstNonEmptyString(
+        contentCalendarOptions.find((option) => option.id === materialDraft.linkedCalendarItemId)?.label,
+        shotListOptions.find((option) => option.id === materialDraft.linkedShotListId)?.label,
+        'Ingen kobling valgt',
+      ),
+    },
+    {
+      label: 'Leveranse',
+      value: readFirstNonEmptyString(
+        materialDraft.folderPath,
+        materialDraft.packageName,
+        materialDraft.fileName,
+        'Ikke plassert i leveranseflyten',
+      ),
+    },
+  ]), [
+    contentCalendarOptions,
+    materialDraft.description,
+    materialDraft.entryType,
+    materialDraft.fileName,
+    materialDraft.folderPath,
+    materialDraft.linkedCalendarItemId,
+    materialDraft.linkedShotListId,
+    materialDraft.packageName,
+    materialDraft.phase,
+    materialDraft.title,
+    materialDraft.usageNotes,
+    shotListOptions,
+  ]);
+  const activeMaterialStepSummary = useMemo(() => {
+    if (activeMaterialWizardDescriptor.missing.length > 0) {
+      return '';
+    }
+    const linkedCalendarLabel = contentCalendarOptions.find((option) => option.id === materialDraft.linkedCalendarItemId)?.label ?? '';
+    const linkedShotListLabel = shotListOptions.find((option) => option.id === materialDraft.linkedShotListId)?.label ?? '';
+    if (activeMaterialWizardStep === 'source') {
+      return readFirstNonEmptyString(
+        hasText(materialDraft.title) ? `${MATERIAL_TYPE_LABELS[materialDraft.entryType]}: ${materialDraft.title}` : '',
+        materialDraft.projectFileId ? `Prosjektfil er koblet til materialet.` : '',
+        hasText(materialDraft.externalUrl) ? 'Ekstern lenke er lagt inn.' : '',
+        'Start er klart for neste steg.',
+      );
+    }
+    if (activeMaterialWizardStep === 'details') {
+      return readFirstNonEmptyString(
+        materialDraft.description,
+        materialDraft.usageNotes,
+        materialDraft.phase ? `Knyttet til ${PRODUCER_PLANNING_PHASE_LABELS[materialDraft.phase]}.` : '',
+        'Detaljene er klare for neste steg.',
+      );
+    }
+    if (activeMaterialWizardStep === 'linking') {
+      return readFirstNonEmptyString(
+        linkedCalendarLabel ? `Koblet til ${linkedCalendarLabel}.` : '',
+        linkedShotListLabel ? `Koblet til shotlist: ${linkedShotListLabel}.` : '',
+        hasText(materialDraft.folderPath) || hasText(materialDraft.packageName)
+          ? readFirstNonEmptyString(
+            materialDraft.folderPath ? `Leveringsmappe: ${materialDraft.folderPath}.` : '',
+            materialDraft.packageName ? `Pakke: ${materialDraft.packageName}.` : '',
+          )
+          : '',
+        'Koblingene er klare for lagring.',
+      );
+    }
+    return 'Materialet er klart til å lagres.';
+  }, [
+    activeMaterialWizardDescriptor.missing.length,
+    activeMaterialWizardStep,
+    contentCalendarOptions,
+    materialDraft.description,
+    materialDraft.entryType,
+    materialDraft.externalUrl,
+    materialDraft.folderPath,
+    materialDraft.linkedCalendarItemId,
+    materialDraft.linkedShotListId,
+    materialDraft.packageName,
+    materialDraft.phase,
+    materialDraft.projectFileId,
+    materialDraft.title,
+    materialDraft.usageNotes,
+    shotListOptions,
+  ]);
+  useEffect(() => {
+    if (activeWorkspace === 'brief') {
+      setActiveBriefStep((previous) => (briefWizardEnabled ? recommendedBriefStep : previous));
+      return;
+    }
+    if (activeWorkspace === 'materials') {
+      setMaterialsMode(
+        materialWizardEnabled
+          ? 'capture'
+          : materialDraft.id || selectedMaterialFile || materials.length === 0
+            ? 'capture'
+            : 'library',
+      );
+    }
+  }, [activeWorkspace, briefWizardEnabled, materialDraft.id, materialWizardEnabled, materials.length, recommendedBriefStep, selectedMaterialFile]);
+  useEffect(() => {
+    if (briefWizardEnabled) {
+      setActiveBriefStep(recommendedBriefStep);
+    }
+  }, [briefWizardEnabled, recommendedBriefStep]);
+  useEffect(() => {
+    if (activeWorkspace === 'materials' && isMaterialWizardActive) {
+      setActiveMaterialWizardStep(materialDraft.id ? 'details' : 'source');
+    }
+  }, [activeWorkspace, isMaterialWizardActive, materialDraft.id]);
+  useEffect(() => {
+    if (materialsMode !== 'library') {
+      setShowAllMaterials(false);
+    }
+  }, [materialsMode]);
+  const pendingReviewCount = useMemo(
+    () => reviews.filter((review) => review.status === 'pending' || review.status === 'changes_requested').length,
+    [reviews],
+  );
+  const workflowReadinessCards = useMemo(() => ([
+    {
+      key: 'foundation',
+      label: 'Produksjonsgrunnlag',
+      value: `${briefReadyCount}/6 brief · ${materials.length} materialer`,
+      tone: briefMissingItems.length > 0 ? '#fde68a' : '#86efac',
+    },
+    {
+      key: 'production',
+      label: 'Produksjon',
+      value: foundationBlockingItems.length > 0 ? 'Venter på produksjonsgrunnlag' : `${storyboardCount} storyboard · ${shotCount} shots`,
+      tone: foundationBlockingItems.length > 0 ? '#94a3b8' : (storyboardCount > 0 || shotCount > 0 ? '#bfdbfe' : '#cbd5e1'),
+    },
+    {
+      key: 'decision',
+      label: 'Beslutning',
+      value: foundationBlockingItems.length > 0 ? 'Låst til grunnlaget er klart' : `${pendingReviewCount} åpne reviews · ${openMeetingFollowUpCount} oppfølging`,
+      tone: foundationBlockingItems.length > 0 ? '#94a3b8' : (pendingReviewCount > 0 || openMeetingFollowUpCount > 0 ? '#fcd34d' : '#86efac'),
+    },
+  ]), [
+    foundationBlockingItems.length,
+    briefReadyCount,
+    materials.length,
+    openMeetingFollowUpCount,
+    pendingReviewCount,
+    shotCount,
+    storyboardCount,
+  ]);
+  const briefBlocksForwardFlow = foundationBlockingItems.length > 0;
 
   const openSurfaceWorkspace = useCallback((
     surface: ProducerWorkspaceSurfaceKey,
@@ -1878,6 +3322,7 @@ export default function ProducerMediaPanel({
 
   const applyMaterialTemplate = useCallback((template: ClientMaterialTemplate) => {
     openSurfaceWorkspace('materials');
+    setMaterialsMode('capture');
     setSelectedMaterialFile(null);
     if (materialFileInputRef.current) {
       materialFileInputRef.current.value = '';
@@ -1891,6 +3336,7 @@ export default function ProducerMediaPanel({
   const handleMaterialFileSelected = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0] ?? null;
     setSelectedMaterialFile(nextFile);
+    setMaterialsMode('capture');
     if (!nextFile) {
       return;
     }
@@ -1971,13 +3417,93 @@ export default function ProducerMediaPanel({
     }
   }, [isClientReviewerMode, loadDeliveryWorkspaceAssets, materialDraft.entryType, materialDraft.linkedCalendarItemId, materialDraft.linkedShotListId, materialDraft.phase, materialDraft.priority, materialDraft.sourceLabel, materialDraft.usageNotes, materialDraft.versionLabel, projectId, projectName, selectedMaterialFile, uploadProjectFile]);
 
+  const handleOpenBrandLogoFilePicker = useCallback((variantType: ProducerBrandLogoVariantType = 'primary') => {
+    setBrandLogoUploadVariantType(variantType);
+    brandLogoFileInputRef.current?.click();
+  }, []);
+
+  const handleBrandLogoFileSelected = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null;
+    if (!nextFile) {
+      return;
+    }
+
+    setUploadingBrandLogo(true);
+    setError(null);
+    try {
+      const folderPath = 'brand-assets/logo';
+      const packageName = `${projectName.trim() || 'prosjekt'}-brand-guide`;
+      const uploadedFile = await uploadProjectFile(projectId, nextFile, {
+        source: 'role_room_brand_logo',
+        folderPath,
+        packageName,
+        versionLabel: 'v1',
+        sourceLabel: isClientReviewerMode ? 'Klient' : 'Produsent',
+        usageNotes: 'Brukes som prosjektlogo i merkevareguide, preview og overlay-spec.',
+      });
+      const projectFileId = readFirstNonEmptyString((uploadedFile as Record<string, unknown>).id);
+      const downloadUrl = readFirstNonEmptyString((uploadedFile as Record<string, unknown>).downloadUrl);
+      const detection = await analyzeBrandLogoFile(nextFile);
+      const nextVariant: ProducerBrandLogoVariant = {
+        id: `brand-logo-variant-${brandLogoUploadVariantType}`,
+        type: brandLogoUploadVariantType,
+        label: BRAND_LOGO_VARIANT_LABELS[brandLogoUploadVariantType],
+        fileName: nextFile.name,
+        logoUrl: downloadUrl || undefined,
+        projectFileId: projectFileId || undefined,
+        projectFileUrl: downloadUrl || undefined,
+        detection: {
+          ...detection,
+          sourceProjectFileId: projectFileId || detection.sourceProjectFileId,
+          sourceProjectFileUrl: downloadUrl || detection.sourceProjectFileUrl,
+        },
+        uploadedAt: new Date().toISOString(),
+      };
+      const nextLogoVariants = [
+        ...(planningDraft.brandGuide.logoVariants ?? []).filter((item) => item.type !== brandLogoUploadVariantType),
+        nextVariant,
+      ].sort((left, right) => (
+        BRAND_LOGO_VARIANT_ORDER.indexOf(left.type) - BRAND_LOGO_VARIANT_ORDER.indexOf(right.type)
+      ));
+      const shouldActivateVariant = brandLogoUploadVariantType === 'primary'
+        || !planningDraft.brandGuide.logoUrl
+        || planningDraft.brandGuide.activeLogoVariantType === brandLogoUploadVariantType
+        || (planningDraft.brandGuide.logoVariants?.length ?? 0) === 0;
+      const nextBrandGuideBase = {
+        ...planningDraft.brandGuide,
+        logoVariants: nextLogoVariants,
+      };
+      const nextBrandGuide = shouldActivateVariant
+        ? syncBrandGuideWithLogoVariant(nextBrandGuideBase, nextVariant)
+        : nextBrandGuideBase;
+      const nextPlanning: ProducerProjectPlanning = {
+        ...planningDraft,
+        brandGuide: nextBrandGuide,
+      };
+      await persistPlanningDraft(nextPlanning);
+    } catch (brandLogoError) {
+      console.error('[ProducerMediaPanel] Failed to upload or analyze brand logo', brandLogoError);
+      setError('Kunne ikke laste opp og analysere logoen.');
+    } finally {
+      setUploadingBrandLogo(false);
+      if (brandLogoFileInputRef.current) {
+        brandLogoFileInputRef.current.value = '';
+      }
+    }
+  }, [brandLogoUploadVariantType, isClientReviewerMode, persistPlanningDraft, planningDraft, projectId, projectName, uploadProjectFile]);
+
   const applyContributionTask = useCallback((task: ReturnType<typeof getProducerClientContributionTasks>[number]) => {
     if (task.sourceType === 'framework') {
       openSurfaceWorkspace('brief');
+      setActiveBriefStep(recommendedBriefStep);
       return;
     }
     if (task.sourceType === 'brand') {
       openSurfaceWorkspace('brand');
+      return;
+    }
+    if (task.sourceType === 'accounts') {
+      openSurfaceWorkspace('accounts');
       return;
     }
     if (task.sourceType === 'delivery') {
@@ -1986,6 +3512,7 @@ export default function ProducerMediaPanel({
     }
 
     openSurfaceWorkspace('materials');
+    setMaterialsMode('capture');
     setSelectedMaterialFile(null);
     if (materialFileInputRef.current) {
       materialFileInputRef.current.value = '';
@@ -2003,7 +3530,7 @@ export default function ProducerMediaPanel({
       sourceLabel: 'Klient',
       priority: task.status === 'missing' ? 'critical' : 'important',
     });
-  }, [openSurfaceWorkspace]);
+  }, [openSurfaceWorkspace, recommendedBriefStep]);
 
   const buildPageTree = useCallback((
     section: ProducerWorkspaceSection,
@@ -2012,19 +3539,19 @@ export default function ProducerMediaPanel({
     return sortPagesByParent(section.pages, parentPageId);
   }, []);
 
-  const pinnedWorkspaceLinks = useMemo(() => {
-    return workspaceSections.flatMap((section) => flattenProducerWorkspacePages(section)
-      .filter((page) => section.pinned || page.pinned)
-      .map((page) => ({
-        sectionId: section.id,
-        page,
-        sectionTitle: section.title,
-      })));
-  }, [workspaceSections]);
-
   const activeSectionRootPages = useMemo(
     () => (activeSection ? buildPageTree(activeSection, null) : []),
     [activeSection, buildPageTree],
+  );
+  const workspaceRootNavigationEntries = useMemo(
+    () => workspaceSections.flatMap((section) => (
+      buildPageTree(section, null).map((page) => ({
+        sectionId: section.id,
+        sectionTitle: section.title,
+        page,
+      }))
+    )),
+    [buildPageTree, workspaceSections],
   );
 
   const workspaceCards = useMemo(() => ([
@@ -2069,6 +3596,20 @@ export default function ProducerMediaPanel({
       icon: <PaletteOutlinedIcon sx={{ color: '#c4b5fd' }} />,
     },
     {
+      key: 'accounts' as const,
+      title: 'Kontotilgang',
+      subtitle: isClientReviewerMode
+        ? 'Trygg tilgang med invite, OAuth og klientstyrt 2-faktor.'
+        : 'Vedvarende konto- og publiseringstilgang uten delte passord.',
+      progressLabel: requiredAccountEntries.length > 0
+        ? `${connectedRequiredAccountCount}/${requiredAccountEntries.length} koblet`
+        : 'Ingen krav ennå',
+      detail: accountAccessSummary,
+      accent: 'rgba(20,184,166,0.16)',
+      textColor: '#99f6e4',
+      icon: <HubOutlinedIcon sx={{ color: '#5eead4' }} />,
+    },
+    {
       key: 'delivery' as const,
       title: 'Leveringsrutine',
       subtitle: isClientReviewerMode
@@ -2082,19 +3623,60 @@ export default function ProducerMediaPanel({
       textColor: '#bbf7d0',
       icon: <FactCheckOutlinedIcon sx={{ color: '#86efac' }} />,
     },
+    {
+      key: 'meetings' as const,
+      title: 'Møte',
+      subtitle: isClientReviewerMode
+        ? 'Hold agenda, klientsync og oppfølging samlet rundt møtene.'
+        : 'Koble Meet, agenda, beslutninger og oppfølging til samme prosjektflate.',
+      progressLabel: `${meetingAgendaCoverageCount} agenda · ${openMeetingFollowUpCount} åpne`,
+      detail: hasText(planningDraft.meetingWorkspace.liveNotes)
+        ? planningDraft.meetingWorkspace.liveNotes ?? ''
+        : 'Bruk møteflaten til agenda, live-notater, beslutninger og oppfølging.',
+      accent: 'rgba(249,115,22,0.16)',
+      textColor: '#fdba74',
+      icon: <VideoCallOutlinedIcon sx={{ color: '#fdba74' }} />,
+    },
   ]), [
+    accountAccessSummary,
     briefReadyCount,
     brandGuideReadyCount,
+    connectedRequiredAccountCount,
     deliveryWorkflowReadyCount,
     intakeDraft.projectGoal,
     isClientReviewerMode,
     linkedCalendarMaterialCount,
+    meetingAgendaCoverageCount,
     materials.length,
     planningDraft.brandGuide.visualStyle,
     planningDraft.deliveryWorkflow.fileNamingConvention,
+    planningDraft.meetingWorkspace.liveNotes,
+    openMeetingFollowUpCount,
+    requiredAccountEntries.length,
   ]);
 
   const activeWorkspaceCard = workspaceCards.find((card) => card.key === activeWorkspace) ?? workspaceCards[0];
+  const mediaHeaderDescription = useMemo(() => {
+    if (briefBlocksForwardFlow) {
+      return 'Fullfør produksjonsgrunnlaget først. Brief og materiale skal være tydelige før storyboard, levering og beslutning får ta plass.';
+    }
+    return isClientReviewerMode
+      ? 'Del mål, materiale, merkevaregrunnlag, leveringspreferanser og møtepunkter i én samlet workspace-shell.'
+      : `${activeWorkspaceCard.title} er nå hovedflaten. Hold retning, materiale og neste handling koblet til samme produksjonsgrunnlag.`;
+  }, [activeWorkspaceCard.title, briefBlocksForwardFlow, isClientReviewerMode]);
+  const displayWorkspaceNavigation = useMemo(
+    () => (showWorkspaceOperations ? workspaceNavigation : {
+      ...workspaceNavigation,
+      sectionTabPlacement: 'left' as ProducerWorkspaceTabPlacement,
+      pageTabPlacement: 'left' as ProducerWorkspacePagePlacement,
+      navigationPinned: true,
+    }),
+    [showWorkspaceOperations, workspaceNavigation],
+  );
+  const useReferenceWorkspaceShell = displayWorkspaceNavigation.sectionTabPlacement === 'left'
+    && displayWorkspaceNavigation.pageTabPlacement === 'left'
+    && displayWorkspaceNavigation.navigationPinned
+    && activeLayout !== 'grid';
   const brandPackTemplate = CLIENT_MATERIAL_TEMPLATES.find((template) => template.id === 'brand-pack') ?? null;
   const clientDisplayName = readFirstNonEmptyString(
     intakeDraft.contactName,
@@ -2109,18 +3691,1453 @@ export default function ProducerMediaPanel({
     'Deler brief, materiale og godkjenninger',
   );
   const producerDisplayName = isClientReviewerMode ? 'Produsent' : 'Innholdsprodusent';
-  const producerMetaLabel = isClientReviewerMode
-    ? 'Tolker retning, idé og aktivering'
-    : 'Samler brief, plan og leveranser';
   const workspaceFocusLabel = activeSection
     ? `${activeSection.title} · ${activePage?.title ?? PRODUCER_WORKSPACE_SURFACE_LABELS[activeWorkspace]}`
     : PRODUCER_WORKSPACE_SURFACE_LABELS[activeWorkspace];
+  const mediaHeaderMeta = useMemo(
+    () => [clientDisplayName, projectName, workspaceFocusLabel].filter(Boolean).join(' · '),
+    [clientDisplayName, projectName, workspaceFocusLabel],
+  );
+  const creativeDirectionTitle = readFirstNonEmptyString(
+    planningDraft.activationPlan.direction,
+    planningDraft.activationPlan.idea,
+    intakeDraft.projectGoal,
+    'Kreativ retning er ikke tydelig formulert ennå.',
+  );
+  const creativeDirectionTags = useMemo(
+    () => extractWorkspacePhrases(
+      planningDraft.activationPlan.direction,
+      planningDraft.activationPlan.idea,
+      planningDraft.activationPlan.targetAudience,
+      planningDraft.brandGuide.toneOfVoice,
+      planningDraft.brandGuide.visualStyle,
+      intakeDraft.brandNotes,
+      intakeDraft.deliverables,
+    ).slice(0, 4),
+    [
+      intakeDraft.brandNotes,
+      intakeDraft.deliverables,
+      planningDraft.activationPlan.direction,
+      planningDraft.activationPlan.idea,
+      planningDraft.activationPlan.targetAudience,
+      planningDraft.brandGuide.toneOfVoice,
+      planningDraft.brandGuide.visualStyle,
+    ],
+  );
+  const storyboardPreviewTiles = useMemo<WorkspaceShowcaseTile[]>(() => {
+    if (shotLists.length > 0) {
+      return shotLists.slice(0, 3).map((shotList, index) => ({
+        id: shotList.id,
+        eyebrow: index === 0 ? 'Shot list' : 'Sceneplan',
+        title: getShotListLabel(shotList),
+        meta: `${shotList.shots.length} shots`,
+      }));
+    }
+    if (planningDraft.contentCalendar.length > 0) {
+      return planningDraft.contentCalendar.slice(0, 3).map((item) => ({
+        id: item.id,
+        eyebrow: 'Publiseringspunkt',
+        title: item.title,
+        meta: readFirstNonEmptyString(item.channel, item.format, PRODUCER_PLANNING_PHASE_LABELS[item.phase]),
+      }));
+    }
+    return [
+      {
+        id: 'storyboard-placeholder-1',
+        eyebrow: 'Storyboard',
+        title: 'Første scene er ikke planlagt ennå',
+        meta: 'Koble brief, retning og shotlist for å fylle denne raden.',
+      },
+      {
+        id: 'storyboard-placeholder-2',
+        eyebrow: 'Opptaksplan',
+        title: 'Neste opptaksøyeblikk kommer fra shotlist og kalender',
+        meta: 'Åpne storyboard eller shotlist for å fylle planverket.',
+      },
+    ];
+  }, [planningDraft.contentCalendar, shotLists]);
+  const workspaceSummaryRows = useMemo(() => {
+    if (activeWorkspace === 'materials') {
+      return [
+        { label: 'Registrert', value: `${materials.length} materialer` },
+        { label: 'Koblet til plan', value: linkedCalendarMaterialCount > 0 ? `${linkedCalendarMaterialCount} kalenderpunkter` : 'Ingen koblinger ennå' },
+        { label: 'Shotlist', value: materials.some((item) => hasText(item.linked_shot_list_id)) ? 'Koblet til scener' : 'Ikke koblet til shotlist' },
+      ];
+    }
+    if (activeWorkspace === 'brand') {
+      return [
+        { label: 'Tone', value: readFirstNonEmptyString(planningDraft.brandGuide.toneOfVoice, 'Ikke definert') },
+        { label: 'Visuell stil', value: readFirstNonEmptyString(planningDraft.brandGuide.visualStyle, 'Ikke definert') },
+        { label: 'Farger', value: parseBrandColors(brandColorsDraft).length > 0 ? `${parseBrandColors(brandColorsDraft).length} valgt` : 'Ingen farger registrert' },
+      ];
+    }
+    if (activeWorkspace === 'delivery') {
+      return [
+        { label: 'Filnavn', value: readFirstNonEmptyString(planningDraft.deliveryWorkflow.fileNamingConvention, 'Ikke satt') },
+        { label: 'Versjon', value: readFirstNonEmptyString(planningDraft.deliveryWorkflow.versioningRule, 'Ikke satt') },
+        { label: 'Mappe', value: readFirstNonEmptyString(planningDraft.deliveryWorkflow.folderStructure, 'Ikke satt') },
+      ];
+    }
+    if (activeWorkspace === 'meetings') {
+      return [
+        { label: 'Møte', value: readFirstNonEmptyString(planningDraft.meetingWorkspace.sessionLabel, 'Klientsync') },
+        { label: 'Status', value: planningDraft.meetingWorkspace.status ? PRODUCER_MEETING_WORKSPACE_STATUS_LABELS[planningDraft.meetingWorkspace.status] : 'Planlagt' },
+        { label: 'Oppfølging', value: openMeetingFollowUpCount > 0 ? `${openMeetingFollowUpCount} åpne punkter` : 'Ingen åpne punkter' },
+      ];
+    }
+    return [
+      { label: 'Mål', value: readFirstNonEmptyString(intakeDraft.projectGoal, planningDraft.activationPlan.businessGoal, 'Ikke satt') },
+      { label: 'Leveranse', value: readFirstNonEmptyString(intakeDraft.deliverables, planningDraft.activationPlan.activation, 'Ikke satt') },
+      { label: 'Målgruppe', value: readFirstNonEmptyString(intakeDraft.targetAudience, planningDraft.activationPlan.targetAudience, 'Ikke satt') },
+    ];
+  }, [
+    activeWorkspace,
+    brandColorsDraft,
+    intakeDraft.deliverables,
+    intakeDraft.projectGoal,
+    intakeDraft.targetAudience,
+    linkedCalendarMaterialCount,
+    materials,
+    openMeetingFollowUpCount,
+    planningDraft.activationPlan.activation,
+    planningDraft.activationPlan.businessGoal,
+    planningDraft.activationPlan.targetAudience,
+    planningDraft.brandGuide.toneOfVoice,
+    planningDraft.brandGuide.visualStyle,
+    planningDraft.deliveryWorkflow.fileNamingConvention,
+    planningDraft.deliveryWorkflow.folderStructure,
+    planningDraft.deliveryWorkflow.versioningRule,
+    planningDraft.meetingWorkspace.sessionLabel,
+    planningDraft.meetingWorkspace.status,
+  ]);
+  const nextSignalList = useMemo(
+    () => clientContributionTasks.slice(0, 3),
+    [clientContributionTasks],
+  );
+  const readinessSummaryText = useMemo(
+    () => workflowReadinessCards.map((node) => `${node.label}: ${node.value}`).join(' · '),
+    [workflowReadinessCards],
+  );
+  const directionSupportText = useMemo(() => {
+    const strategyLine = strategySnapshot
+      .slice(0, 2)
+      .map((item) => `${item.label}: ${item.value}`)
+      .join(' · ');
+    if (strategyLine) {
+      return strategyLine;
+    }
+    if (creativeDirectionTags.length > 0) {
+      return creativeDirectionTags.slice(0, 3).join(' · ');
+    }
+    return readinessSummaryText;
+  }, [creativeDirectionTags, readinessSummaryText, strategySnapshot]);
+  const parsedBrandColors = useMemo(
+    () => parseBrandColors(brandColorsDraft),
+    [brandColorsDraft],
+  );
+  const logoTimingPreview = useMemo(
+    () => getLogoTimingPreview(planningDraft.brandGuide),
+    [
+      planningDraft.brandGuide.logoEndSecond,
+      planningDraft.brandGuide.logoStartSecond,
+      planningDraft.brandGuide.logoTiming,
+    ],
+  );
+  const availableBrandPreviewFormats = useMemo<Array<'16:9' | '4:5' | '9:16' | '1:1'>>(() => {
+    const formats = Array.from(
+      new Set(
+        planningDraft.contentCalendar
+          .map((item) => item.format?.trim())
+          .filter((value): value is '16:9' | '4:5' | '9:16' | '1:1' => (
+            value === '16:9' || value === '4:5' || value === '9:16' || value === '1:1'
+          )),
+      ),
+    );
+    return formats.length > 0 ? formats : ['16:9', '4:5', '9:16'];
+  }, [planningDraft.contentCalendar]);
+  useEffect(() => {
+    if (!availableBrandPreviewFormats.includes(brandPreviewFormat)) {
+      setBrandPreviewFormat(availableBrandPreviewFormats[0] ?? '16:9');
+    }
+  }, [availableBrandPreviewFormats, brandPreviewFormat]);
+  const brandPreviewDeliveries = useMemo(() => (
+    planningDraft.contentCalendar.map((item) => {
+      const normalizedFormat = item.format?.trim();
+      const formatValue = normalizedFormat === '16:9'
+        || normalizedFormat === '4:5'
+        || normalizedFormat === '9:16'
+        || normalizedFormat === '1:1'
+        ? normalizedFormat
+        : null;
+      return {
+        id: item.id,
+        title: readFirstNonEmptyString(item.title, 'Uten tittel'),
+        channel: readFirstNonEmptyString(item.channel, 'Kanal ikke satt'),
+        formatLabel: readFirstNonEmptyString(item.format, 'Format ikke satt'),
+        formatValue,
+        logoVariantSelection: item.logoVariantSelection ?? 'auto',
+        phaseLabel: PRODUCER_PLANNING_PHASE_LABELS[item.phase],
+        publishLabel: item.publishAt ? formatTimestamp(item.publishAt) : 'Publisering ikke satt',
+        statusLabel: PRODUCER_CONTENT_CALENDAR_STATUS_LABELS[item.status ?? 'planned'],
+      };
+    })
+  ), [planningDraft.contentCalendar]);
+  useEffect(() => {
+    if (brandPreviewDeliveries.length === 0) {
+      if (brandPreviewDeliveryId !== null) {
+        setBrandPreviewDeliveryId(null);
+      }
+      return;
+    }
+    if (!brandPreviewDeliveries.some((item) => item.id === brandPreviewDeliveryId)) {
+      setBrandPreviewDeliveryId(brandPreviewDeliveries[0]?.id ?? null);
+    }
+  }, [brandPreviewDeliveries, brandPreviewDeliveryId]);
+  const selectedBrandPreviewDelivery = useMemo(
+    () => brandPreviewDeliveries.find((item) => item.id === brandPreviewDeliveryId) ?? null,
+    [brandPreviewDeliveries, brandPreviewDeliveryId],
+  );
+  const activeBrandPreviewFormat = selectedBrandPreviewDelivery?.formatValue ?? brandPreviewFormat;
+  const selectedBrandOverlayProfile = useMemo(
+    () => getProducerOverlayFormatProfile(planningDraft.brandGuide, activeBrandPreviewFormat),
+    [activeBrandPreviewFormat, planningDraft.brandGuide],
+  );
+  const brandPreviewAspectRatio = useMemo(() => (
+    activeBrandPreviewFormat === '16:9'
+      ? '16 / 9'
+      : activeBrandPreviewFormat === '4:5'
+        ? '4 / 5'
+        : activeBrandPreviewFormat === '9:16'
+          ? '9 / 16'
+          : '1 / 1'
+  ), [activeBrandPreviewFormat]);
+  const brandPreviewFrameMargin = useMemo(
+    () => selectedBrandOverlayProfile.recommendedMargin.pixelsAt1080 > 0
+      ? Math.max(14, Math.round(selectedBrandOverlayProfile.recommendedMargin.pixelsAt1080 / 6))
+      : 0,
+    [selectedBrandOverlayProfile.recommendedMargin.pixelsAt1080],
+  );
+  const brandLogoVariants = useMemo(
+    () => planningDraft.brandGuide.logoVariants ?? [],
+    [planningDraft.brandGuide.logoVariants],
+  );
+  const activeBrandLogoVariantType = planningDraft.brandGuide.activeLogoVariantType ?? 'primary';
+  const activeBrandLogoVariant = useMemo(() => (
+    brandLogoVariants.find((item) => item.type === activeBrandLogoVariantType)
+    ?? brandLogoVariants.find((item) => item.type === 'primary')
+    ?? brandLogoVariants[0]
+    ?? null
+  ), [activeBrandLogoVariantType, brandLogoVariants]);
+  const brandPreviewVariantSelection = selectedBrandPreviewDelivery?.logoVariantSelection
+    ?? (activeBrandLogoVariantType === 'primary' ? 'auto' : activeBrandLogoVariantType);
+  const brandPreviewVariantResolution = useMemo(
+    () => resolveProducerBrandLogoVariant(planningDraft.brandGuide, activeBrandPreviewFormat, brandPreviewVariantSelection),
+    [activeBrandPreviewFormat, brandPreviewVariantSelection, planningDraft.brandGuide],
+  );
+  const autoBrandPreviewVariant = useMemo(() => (
+    brandLogoVariants.find((item) => item.type === brandPreviewVariantResolution.resolvedType)
+    ?? activeBrandLogoVariant
+  ), [activeBrandLogoVariant, brandLogoVariants, brandPreviewVariantResolution.resolvedType]);
+  const resolvedBrandLogoUrl = useMemo(
+    () => {
+      const candidate = activeBrandLogoVariant?.logoUrl ?? planningDraft.brandGuide.logoUrl;
+      return getAbsoluteProjectFileUrl(candidate) || candidate || '';
+    },
+    [activeBrandLogoVariant?.logoUrl, planningDraft.brandGuide.logoUrl],
+  );
+  const resolvedBrandPreviewLogoUrl = useMemo(() => {
+    const candidate = autoBrandPreviewVariant?.logoUrl ?? activeBrandLogoVariant?.logoUrl ?? planningDraft.brandGuide.logoUrl;
+    return getAbsoluteProjectFileUrl(candidate) || candidate || '';
+  }, [activeBrandLogoVariant?.logoUrl, autoBrandPreviewVariant?.logoUrl, planningDraft.brandGuide.logoUrl]);
+  const brandPreviewVariantLabel = brandPreviewVariantResolution.resolvedLabel;
+  const brandPreviewVariantDetail = useMemo(() => {
+    if (!autoBrandPreviewVariant) {
+      return 'Ingen aktiv logovariant valgt ennå.';
+    }
+    if (brandPreviewVariantSelection === 'auto') {
+      return `Anbefalt variant for ${activeBrandPreviewFormat}: ${brandPreviewVariantResolution.recommendedLabel}. Previewen bruker ${brandPreviewVariantResolution.resolvedLabel.toLowerCase()}.`;
+    }
+    return `${brandPreviewVariantResolution.resolvedLabel} er låst manuelt for denne leveransen i ${activeBrandPreviewFormat}.`;
+  }, [activeBrandPreviewFormat, autoBrandPreviewVariant, brandPreviewVariantResolution.recommendedLabel, brandPreviewVariantResolution.resolvedLabel, brandPreviewVariantSelection]);
+  const brandLogoDetection = activeBrandLogoVariant?.detection ?? planningDraft.brandGuide.logoDetection;
+  const brandLogoDetectionColors = brandLogoDetection?.dominantColors ?? [];
+  const brandLogoDetectionSummary = useMemo(() => {
+    if (!brandLogoDetection) {
+      return null;
+    }
+    return {
+      markTypeLabel: getBrandLogoMarkTypeLabel(brandLogoDetection.markType),
+      transparencyLabel: brandLogoDetection.hasTransparency ? 'Transparent bakgrunn' : 'Bakplate trengs',
+      placementLabel: brandLogoDetection.suggestedPlacement
+        ? PRODUCER_BRAND_LOGO_PLACEMENT_LABELS[brandLogoDetection.suggestedPlacement]
+        : 'Ikke foreslått',
+      timingLabel: brandLogoDetection.suggestedTiming
+        ? PRODUCER_BRAND_LOGO_TIMING_LABELS[brandLogoDetection.suggestedTiming]
+        : 'Ikke foreslått',
+      treatmentLabel: brandLogoDetection.suggestedTreatment
+        ? PRODUCER_BRAND_LOGO_TREATMENT_LABELS[brandLogoDetection.suggestedTreatment]
+        : 'Ikke foreslått',
+    };
+  }, [brandLogoDetection]);
+  const setBrandColorsFromEntries = useCallback((colors: ProducerBrandGuideColor[]) => {
+    setBrandColorsDraft(stringifyBrandColors(colors));
+  }, []);
+  const applyBrandLogoDetectionSuggestions = useCallback(async () => {
+    if (!brandLogoDetection) {
+      return;
+    }
+    const nextColors = brandLogoDetectionColors.length > 0
+      ? brandLogoDetectionColors
+      : parseBrandColors(brandColorsDraft);
+    const nextPlanning: ProducerProjectPlanning = {
+      ...planningDraft,
+      brandGuide: {
+        ...planningDraft.brandGuide,
+        logoPlacement: brandLogoDetection.suggestedPlacement ?? planningDraft.brandGuide.logoPlacement,
+        logoTiming: brandLogoDetection.suggestedTiming ?? planningDraft.brandGuide.logoTiming,
+        logoTreatment: brandLogoDetection.suggestedTreatment ?? planningDraft.brandGuide.logoTreatment,
+        colors: nextColors,
+      },
+    };
+    if (brandLogoDetectionColors.length > 0) {
+      setBrandColorsFromEntries(brandLogoDetectionColors);
+    }
+    setSavingPlanning(true);
+    setError(null);
+    try {
+      await persistPlanningDraft(nextPlanning);
+    } catch (brandSuggestionError) {
+      console.error('[ProducerMediaPanel] Failed to apply brand logo suggestions', brandSuggestionError);
+      setError('Kunne ikke bruke logoforslagene.');
+    } finally {
+      setSavingPlanning(false);
+    }
+  }, [brandColorsDraft, brandLogoDetection, brandLogoDetectionColors, persistPlanningDraft, planningDraft, setBrandColorsFromEntries]);
+  const handleSelectActiveBrandLogoVariant = useCallback(async (variantType: ProducerBrandLogoVariantType) => {
+    const targetVariant = brandLogoVariants.find((item) => item.type === variantType);
+    if (!targetVariant) {
+      return;
+    }
+    if ((planningDraft.brandGuide.activeLogoVariantType ?? 'primary') === variantType) {
+      return;
+    }
+    const nextPlanning: ProducerProjectPlanning = {
+      ...planningDraft,
+      brandGuide: syncBrandGuideWithLogoVariant(planningDraft.brandGuide, targetVariant),
+    };
+    setBrandLogoVariantBusyKey(`activate:${variantType}`);
+    setSavingPlanning(true);
+    setError(null);
+    try {
+      await persistPlanningDraft(nextPlanning);
+    } catch (brandVariantError) {
+      console.error('[ProducerMediaPanel] Failed to persist active brand logo variant', brandVariantError);
+      setError('Kunne ikke bytte aktiv logovariant.');
+    } finally {
+      setSavingPlanning(false);
+      setBrandLogoVariantBusyKey(null);
+    }
+  }, [brandLogoVariants, persistPlanningDraft, planningDraft]);
+  const handleDeleteBrandLogoVariant = useCallback(async (variantType: ProducerBrandLogoVariantType) => {
+    const targetVariant = brandLogoVariants.find((item) => item.type === variantType);
+    if (!targetVariant) {
+      return;
+    }
+    const nextLogoVariants = brandLogoVariants.filter((item) => item.type !== variantType);
+    const fallbackVariant = nextLogoVariants.find((item) => item.type === 'primary')
+      ?? nextLogoVariants[0]
+      ?? null;
+    const nextBrandGuideBase: ProducerProjectPlanning['brandGuide'] = {
+      ...planningDraft.brandGuide,
+      logoVariants: nextLogoVariants,
+    };
+    const nextBrandGuide = (planningDraft.brandGuide.activeLogoVariantType ?? 'primary') === variantType
+      ? (fallbackVariant
+        ? syncBrandGuideWithLogoVariant(nextBrandGuideBase, fallbackVariant)
+        : {
+          ...nextBrandGuideBase,
+          activeLogoVariantType: 'primary',
+          logoUrl: undefined,
+          logoDetection: undefined,
+        })
+      : nextBrandGuideBase;
+    const nextPlanning: ProducerProjectPlanning = {
+      ...planningDraft,
+      brandGuide: nextBrandGuide,
+    };
+    setBrandLogoVariantBusyKey(`delete:${variantType}`);
+    setBrandLogoVariantDeleteConfirmType(null);
+    setSavingPlanning(true);
+    setError(null);
+    try {
+      if (targetVariant.projectFileId) {
+        await deleteProjectFile(projectId, targetVariant.projectFileId);
+      }
+      await persistPlanningDraft(nextPlanning);
+      void loadDeliveryWorkspaceAssets();
+    } catch (deleteVariantError) {
+      console.error('[ProducerMediaPanel] Failed to delete brand logo variant', deleteVariantError);
+      setError('Kunne ikke slette logovarianten.');
+    } finally {
+      setSavingPlanning(false);
+      setBrandLogoVariantBusyKey(null);
+    }
+  }, [brandLogoVariants, deleteProjectFile, loadDeliveryWorkspaceAssets, persistPlanningDraft, planningDraft, projectId]);
+  const handleBrandTimingRangeChange = useCallback((_: Event, nextValue: number | number[]) => {
+    if (!Array.isArray(nextValue) || nextValue.length < 2) {
+      return;
+    }
+    const nextStart = Math.max(0, Math.floor(Math.min(nextValue[0], nextValue[1] - 1)));
+    const nextEnd = Math.max(nextStart + 1, Math.floor(Math.max(nextValue[0] + 1, nextValue[1])));
+    setPlanningDraft((previous) => ({
+      ...previous,
+      brandGuide: {
+        ...previous.brandGuide,
+        logoTiming: 'custom',
+        logoStartSecond: nextStart,
+        logoEndSecond: nextEnd,
+      },
+    }));
+  }, []);
+  const handleSelectedBrandPreviewDeliveryVariantSelection = useCallback((selection: 'auto' | ProducerBrandLogoVariantType) => {
+    if (!selectedBrandPreviewDelivery) {
+      return;
+    }
+    setPlanningDraft((previous) => ({
+      ...previous,
+      contentCalendar: previous.contentCalendar.map((item) => (
+        item.id === selectedBrandPreviewDelivery.id
+          ? { ...item, logoVariantSelection: selection }
+          : item
+      )),
+    }));
+  }, [selectedBrandPreviewDelivery]);
+  const handleBrandLogoPreviewPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!canEditClientInput || !draggingBrandLogo || !brandPreviewFrameRef.current) {
+      return;
+    }
+    const bounds = brandPreviewFrameRef.current.getBoundingClientRect();
+    const nextPlacement = getBrandPreviewPlacementFromPointer(
+      (event.clientX - bounds.left) / Math.max(1, bounds.width),
+      (event.clientY - bounds.top) / Math.max(1, bounds.height),
+    );
+    setPlanningDraft((previous) => (
+      previous.brandGuide.logoPlacement === nextPlacement
+        ? previous
+        : {
+          ...previous,
+          brandGuide: {
+            ...previous.brandGuide,
+            logoPlacement: nextPlacement,
+          },
+        }
+    ));
+  }, [canEditClientInput, draggingBrandLogo]);
+  const handleBrandLogoPreviewPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!canEditClientInput) {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setDraggingBrandLogo(true);
+    handleBrandLogoPreviewPointerMove(event);
+  }, [canEditClientInput, handleBrandLogoPreviewPointerMove]);
+  const handleBrandLogoPreviewPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDraggingBrandLogo(false);
+  }, []);
+  const handleBrandColorChange = useCallback((
+    index: number,
+    patch: Partial<ProducerBrandGuideColor>,
+  ) => {
+    setBrandColorsFromEntries(
+      parsedBrandColors.map((entry, entryIndex) => (
+        entryIndex === index ? { ...entry, ...patch } : entry
+      )),
+    );
+  }, [parsedBrandColors, setBrandColorsFromEntries]);
+  const handleAddBrandColor = useCallback(() => {
+    setBrandColorsFromEntries([
+      ...parsedBrandColors,
+      {
+        id: `brand-color-${parsedBrandColors.length + 1}`,
+        label: '',
+        hex: '#ffffff',
+        usage: '',
+      },
+    ]);
+  }, [parsedBrandColors, setBrandColorsFromEntries]);
+  const handleRemoveBrandColor = useCallback((index: number) => {
+    setBrandColorsFromEntries(parsedBrandColors.filter((_, entryIndex) => entryIndex !== index));
+  }, [parsedBrandColors, setBrandColorsFromEntries]);
+  const parsedBrandFonts = useMemo(
+    () => parseLineSeparatedValues(brandFontsDraft),
+    [brandFontsDraft],
+  );
+  const parsedBrandDos = useMemo(
+    () => parseLineSeparatedValues(brandDosDraft),
+    [brandDosDraft],
+  );
+  const parsedBrandDonts = useMemo(
+    () => parseLineSeparatedValues(brandDontsDraft),
+    [brandDontsDraft],
+  );
+  const brandGuideMissingItems = useMemo(() => {
+    const items: Array<{ id: string; label: string }> = [];
+    if (!hasText(planningDraft.brandGuide.logoUrl)) {
+      items.push({ id: 'brand-logo', label: 'Logo mangler' });
+    }
+    if (parsedBrandColors.length === 0) {
+      items.push({ id: 'brand-colors', label: 'Merkevarefarger mangler' });
+    }
+    if (parsedBrandFonts.length === 0) {
+      items.push({ id: 'brand-fonts', label: 'Fonter mangler' });
+    }
+    if (!hasText(planningDraft.brandGuide.toneOfVoice)) {
+      items.push({ id: 'brand-tone', label: 'Tone of voice mangler' });
+    }
+    if (!hasText(planningDraft.brandGuide.visualStyle)) {
+      items.push({ id: 'brand-style', label: 'Visuell stil mangler' });
+    }
+    return items;
+  }, [
+    parsedBrandColors.length,
+    parsedBrandFonts.length,
+    planningDraft.brandGuide.logoUrl,
+    planningDraft.brandGuide.toneOfVoice,
+    planningDraft.brandGuide.visualStyle,
+  ]);
+  const brandGuideSummary = useMemo(() => {
+    if (brandGuideMissingItems.length > 0) {
+      return '';
+    }
+    return readFirstNonEmptyString(
+      [
+        parsedBrandColors.length > 0 ? `${parsedBrandColors.length} farger` : '',
+        parsedBrandFonts.length > 0 ? `${parsedBrandFonts.length} fonter` : '',
+        hasText(planningDraft.brandGuide.toneOfVoice) ? planningDraft.brandGuide.toneOfVoice : '',
+        hasText(planningDraft.brandGuide.visualStyle) ? planningDraft.brandGuide.visualStyle : '',
+      ].filter(Boolean).join(' · '),
+      'Merkevareguiden er klar for produksjon.',
+    );
+  }, [
+    brandGuideMissingItems.length,
+    parsedBrandColors.length,
+    parsedBrandFonts.length,
+    planningDraft.brandGuide.toneOfVoice,
+    planningDraft.brandGuide.visualStyle,
+  ]);
+  const linkedShotListMaterialCount = useMemo(
+    () => materials.filter((material) => hasText(material.linked_shot_list_id)).length,
+    [materials],
+  );
+  const referenceMaterialCount = useMemo(
+    () => materials.filter((material) => material.entry_type === 'reference').length,
+    [materials],
+  );
+  const legalAgreementPendingCount = useMemo(
+    () => deliveryWorkspaceAssets.legalAgreements.filter((agreement) => agreement.google_signature?.status !== 'signed' && agreement.status !== 'signed').length,
+    [deliveryWorkspaceAssets.legalAgreements],
+  );
+  const showWorkspaceSupportColumn = activeLayout === 'split' && activeWorkspace !== 'meetings';
+  const primaryLegalAgreement = useMemo(
+    () => deliveryWorkspaceAssets.legalAgreements.find((agreement) => agreement.google_signature?.status !== 'signed' && agreement.status !== 'signed')
+      ?? deliveryWorkspaceAssets.legalAgreements[0]
+      ?? null,
+    [deliveryWorkspaceAssets.legalAgreements],
+  );
+  const primaryLegalAgreementUrl = useMemo(() => {
+    if (!primaryLegalAgreement) {
+      return '';
+    }
+    const signedPdfArtifact = deliveryWorkspaceAssets.googleArtifacts.find((artifact) => artifact.id === primaryLegalAgreement.google_signature?.signedPdfArtifactId);
+    const pdfSnapshotArtifact = deliveryWorkspaceAssets.googleArtifacts.find((artifact) => artifact.id === primaryLegalAgreement.google_signature?.pdfSnapshotArtifactId);
+
+    return signedPdfArtifact?.webViewUrl
+      ?? pdfSnapshotArtifact?.webViewUrl
+      ?? primaryLegalAgreement.google_signature?.requestUrl
+      ?? primaryLegalAgreement.google_signature?.webViewUrl
+      ?? '';
+  }, [deliveryWorkspaceAssets.googleArtifacts, primaryLegalAgreement]);
+  const workspaceSupportPanel = useMemo<WorkspaceSupportPanelState>(() => {
+    if (briefBlocksForwardFlow) {
+      const foundationItems = foundationBlockingItems.slice(0, 4).map((item, index) => ({
+        id: item.id,
+        title: item.label,
+        detail: clientGroundingRequests[index] ?? 'Dette må fylles ut før resten av planen gir mening.',
+      }));
+      const sections: WorkspaceSupportSection[] = [
+        {
+          id: 'foundation',
+          title: 'Produksjonsgrunnlag',
+          description: 'Fullfør dette først. Storyboard, leveranser og beslutninger skal ikke konkurrere med et uferdig grunnlag.',
+          items: foundationItems,
+          actions: [
+            {
+              id: 'open-brief',
+              label: activeWorkspace === 'brief' ? 'Fortsett i briefen' : 'Åpne brief',
+              variant: 'contained',
+              onClick: () => {
+                setActiveBriefStep(recommendedBriefStep);
+                openSurfaceWorkspace('brief');
+              },
+            },
+          ],
+        },
+      ];
+
+      if (clientGroundingRequests.length > 0) {
+        sections.push({
+          id: 'grounding',
+          title: 'Klientinnspill',
+          description: 'Disse innspillene blokkerer videre arbeid akkurat nå.',
+          items: clientGroundingRequests.slice(0, 2).map((request, index) => ({
+            id: `grounding-${index}`,
+            title: request,
+          })),
+          actions: canEditClientInput ? [
+            {
+              id: 'open-materials',
+              label: 'Åpne materiale',
+              variant: 'outlined',
+              onClick: () => {
+                setMaterialsMode('capture');
+                openSurfaceWorkspace('materials');
+              },
+            },
+          ] : [],
+        });
+      }
+
+      return {
+        title: 'Neste steg',
+        intro: activeWorkspace === 'brief'
+          ? 'Fullfør briefen før produksjon og godkjenning åpnes opp som parallelle spor.'
+          : 'Hold fokus på produksjonsgrunnlaget først. Resten av flyten skal vente til briefen er tydelig.',
+        chipLabel: `${foundationBlockingItems.length} mangler`,
+        priority: foundationBlockingItems.length >= 3 ? 'critical' : 'warning',
+        sections,
+      };
+    }
+
+    if (activeWorkspace === 'brief') {
+      return {
+        title: 'Neste steg',
+        intro: 'Briefen er klar nok til å drive produksjonen videre. Bruk sidekolonnen til å velge hva som faktisk skjer etter grunnlaget.',
+        chipLabel: `${pendingReviewCount} åpne beslutninger`,
+        priority: pendingReviewCount > 0 ? 'info' : 'ready',
+        sections: [
+          {
+            id: 'production',
+            title: 'Produksjon',
+            description: 'Oversett briefen til storyboard, shotlist og manus.',
+            items: storyboardPreviewTiles.slice(0, 2).map((tile) => ({
+              id: tile.id,
+              eyebrow: tile.eyebrow,
+              title: tile.title,
+              detail: tile.meta,
+            })),
+            actions: [
+              {
+                id: 'open-storyboard',
+                label: workflowOpenLabels.storyboard,
+                variant: 'contained',
+                onClick: onOpenStoryboard,
+              },
+              {
+                id: 'open-shotlist',
+                label: workflowOpenLabels.shotList,
+                variant: 'outlined',
+                onClick: onOpenShotList,
+              },
+              {
+                id: 'open-manus',
+                label: workflowOpenLabels.manuscript,
+                variant: 'text',
+                onClick: onOpenManuscript,
+              },
+            ],
+          },
+          {
+            id: 'decision',
+            title: 'Beslutning',
+            description: isClientReviewerMode
+              ? 'Dette er det som kommer tilbake som godkjenning og neste handling.'
+              : 'Forbered det som skal videre til klient, økonomi eller review.',
+            items: (nextSignalList.length > 0
+              ? nextSignalList.slice(0, 2).map((task) => ({
+                id: task.id,
+                eyebrow: PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType],
+                title: task.title,
+                detail: task.detail,
+                actionLabel: canEditClientInput ? 'Åpne' : undefined,
+                onAction: canEditClientInput ? () => applyContributionTask(task) : undefined,
+              }))
+              : [
+                {
+                  id: 'decision-ready',
+                  title: pendingReviewCount > 0 ? `${pendingReviewCount} reviewpunkter venter` : 'Ingen åpne reviewpunkter',
+                  detail: pendingReviewCount > 0
+                    ? 'Klargjør de viktigste beslutningene og send dem videre i riktig rekkefølge.'
+                    : 'Når produksjonsgrunnlaget er klart, kan du sende storyboard, manus eller shotlist videre.',
+                },
+              ]),
+            actions: !isClientReviewerMode ? [
+              {
+                id: 'prepare-storyboard',
+                label: 'Klargjør storyboard',
+                variant: 'outlined',
+                onClick: onPrepareStoryboardReview,
+              },
+              {
+                id: 'prepare-shotlist',
+                label: 'Klargjør shotlist',
+                variant: 'text',
+                onClick: onPrepareShotListReview,
+              },
+            ] : [],
+          },
+        ],
+      };
+    }
+
+    if (activeWorkspace === 'brand') {
+      return {
+        title: 'Neste steg',
+        intro: 'Merkevaren skal støtte det som faktisk skal produseres, ikke leve som et separat spor.',
+        chipLabel: `${brandGuideReadyCount}/5 klare`,
+        priority: brandGuideReadyCount < 3 ? 'warning' : 'info',
+        sections: [
+          {
+            id: 'brand-signals',
+            title: 'Merkevaresignaler',
+            description: 'Hold uttrykket stramt nok til at storyboard og leveranser blir konsistente.',
+            items: [
+              {
+                id: 'brand-colors',
+                title: parsedBrandColors.length > 0 ? `${parsedBrandColors.length} farger registrert` : 'Farger mangler',
+                detail: parsedBrandColors.length > 0 ? parsedBrandColors.slice(0, 3).map((color) => color.label).join(', ') : 'Definer primærfarger som faktisk skal brukes.',
+              },
+              {
+                id: 'brand-fonts',
+                title: parsedBrandFonts.length > 0 ? `${parsedBrandFonts.length} fonter definert` : 'Fonter mangler',
+                detail: parsedBrandFonts.length > 0 ? parsedBrandFonts.slice(0, 3).join(', ') : 'Legg inn fontvalg som styrer grafikk og tekst.',
+              },
+              {
+                id: 'brand-rules',
+                title: `${parsedBrandDos.length} do's · ${parsedBrandDonts.length} don'ts`,
+                detail: parsedBrandDos.length > 0 || parsedBrandDonts.length > 0
+                  ? [...parsedBrandDos.slice(0, 1), ...parsedBrandDonts.slice(0, 1)].join(' · ')
+                  : 'Tydelige do’s og don’ts gjør uttrykket enklere å holde konsekvent.',
+              },
+            ],
+            actions: !materials.some((item) => item.entry_type === 'brand_asset') && brandPackTemplate && canEditClientInput ? [
+              {
+                id: 'add-brand-pack',
+                label: 'Legg til merkevarefil',
+                variant: 'contained',
+                onClick: () => applyMaterialTemplate(brandPackTemplate),
+              },
+            ] : [],
+          },
+          {
+            id: 'brand-production',
+            title: 'Neste i produksjon',
+            description: 'Knytt uttrykket til konkrete planer og produksjonselementer.',
+            items: storyboardPreviewTiles.slice(0, 2).map((tile) => ({
+              id: `brand-${tile.id}`,
+              eyebrow: tile.eyebrow,
+              title: tile.title,
+              detail: tile.meta,
+            })),
+            actions: [
+              {
+                id: 'brand-open-storyboard',
+                label: workflowOpenLabels.storyboard,
+                variant: 'outlined',
+                onClick: onOpenStoryboard,
+              },
+              {
+                id: 'brand-open-shotlist',
+                label: workflowOpenLabels.shotList,
+                variant: 'text',
+                onClick: onOpenShotList,
+              },
+            ],
+          },
+        ],
+      };
+    }
+
+    if (activeWorkspace === 'accounts') {
+      const primaryPendingAccount = requiredAccountEntries.find((entry) => entry.status !== 'connected') ?? null;
+      return {
+        title: 'Neste steg',
+        intro: 'Kontotilgang holdes samlet i ett sikkert spor. Første godkjenning skjer eksplisitt, deretter brukes samme tilgang videre uten delte passord.',
+        chipLabel: requiredAccountEntries.length > 0
+          ? `${connectedRequiredAccountCount}/${requiredAccountEntries.length} koblet`
+          : 'Ingen krav ennå',
+        priority: pendingRequiredAccountCount > 0 ? 'warning' : 'ready',
+        sections: [
+          {
+            id: 'accounts-status',
+            title: 'Kontoer i dette prosjektet',
+            description: 'Dette er tilgangene som faktisk må avklares før publisering og overlevering.',
+            items: (requiredAccountEntries.length > 0
+              ? requiredAccountEntries.slice(0, 3).map((entry) => ({
+                id: `account-status-${entry.platform}`,
+                eyebrow: `${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]} · ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`,
+                title: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform],
+                detail: readFirstNonEmptyString(
+                  entry.accountLabel || '',
+                  entry.accessScope || '',
+                  entry.notes || '',
+                  'Tilgangen er ikke avklart ennå.',
+                ),
+              }))
+              : [
+                {
+                  id: 'account-status-empty',
+                  title: 'Ingen kontoer er markert som nødvendige ennå',
+                  detail: 'Så snart kanalvalg og publiseringsløp er tydeligere, vil riktige kontoer dukke opp her.',
+                },
+              ]),
+            actions: primaryPendingAccount ? [
+              {
+                id: 'open-account-track',
+                label: 'Fortsett i kontotilgang',
+                variant: 'contained',
+                onClick: () => openSurfaceWorkspace('accounts'),
+              },
+            ] : [],
+          },
+          {
+            id: 'accounts-security',
+            title: 'Sikker praksis',
+            description: 'Dette er et vedvarende tilgangsspor, ikke et manuelt passordarkiv.',
+            items: [
+              {
+                id: 'security-oauth',
+                title: 'Godkjenn én gang, bruk videre',
+                detail: 'Google aktiveres med OAuth. Meta, LinkedIn og YouTube bør bruke invite eller rollebasert tilgang som kan beholdes gjennom prosjektet.',
+              },
+              {
+                id: 'security-two-factor',
+                title: '2-faktor blir hos kontoeier',
+                detail: 'Klienten beholder 2-faktor. Produsenten får bare nødvendig rolle eller kobling.',
+              },
+              {
+                id: 'security-revoke',
+                title: 'Planlegg når tilgangen fjernes',
+                detail: readFirstNonEmptyString(
+                  planningDraft.accountAccess.revokePlan ?? '',
+                  'Avklar når kontoer eller koblinger skal ryddes bort etter publisering.',
+                ),
+              },
+            ],
+            actions: googleAccessStatus?.state !== 'connected' && canEditClientInput ? [
+              {
+                id: 'connect-google-account',
+                label: googleAccessActionKey === 'connect' ? 'Starter Google...' : 'Aktiver Google',
+                variant: 'outlined',
+                onClick: () => {
+                  void handleStartGoogleAccountLink();
+                },
+              },
+            ] : [],
+          },
+        ],
+      };
+    }
+
+    if (activeWorkspace === 'materials') {
+      return {
+        title: 'Neste steg',
+        intro: 'Materialet skal ikke bare samles. Det skal kobles til plan, shotlist og leveranse.',
+        chipLabel: `${clientContributionTasks.length} åpne innspill`,
+        priority: clientContributionTasks.length > 0 ? 'warning' : 'info',
+        sections: [
+          {
+            id: 'materials-missing',
+            title: 'Dette mangler fortsatt',
+            description: 'Velg de materialene som faktisk blocker videre produksjon.',
+            items: (nextSignalList.length > 0
+              ? nextSignalList.slice(0, 3).map((task) => ({
+                id: task.id,
+                eyebrow: PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType],
+                title: task.title,
+                detail: task.detail,
+                actionLabel: canEditClientInput ? 'Åpne' : undefined,
+                onAction: canEditClientInput ? () => applyContributionTask(task) : undefined,
+              }))
+              : [
+                {
+                  id: 'materials-ready',
+                  title: 'Ingen åpne materialforespørsler akkurat nå',
+                  detail: 'Neste steg er å koble materialet til shotlist, kalender eller leveringspunkt.',
+                },
+              ]),
+            actions: canEditClientInput ? [
+              {
+                id: 'open-materials',
+                label: 'Registrer materiale',
+                variant: 'contained',
+                onClick: () => openSurfaceWorkspace('materials'),
+              },
+            ] : [],
+          },
+          {
+            id: 'materials-production',
+            title: 'Kobling til produksjon',
+            description: 'Materialet må leve sammen med planen, ikke ved siden av den.',
+            items: [
+              {
+                id: 'materials-calendar',
+                title: `${linkedCalendarMaterialCount} koblet til kalender`,
+                detail: linkedCalendarMaterialCount > 0 ? 'Materiale er allerede koblet til publiseringspunkter eller opptaksplan.' : 'Koble materiale til kalenderen når det påvirker timing eller publisering.',
+              },
+              {
+                id: 'materials-shotlist',
+                title: `${linkedShotListMaterialCount} koblet til shotlist`,
+                detail: linkedShotListMaterialCount > 0 ? 'Shotlist har materiale knyttet til seg.' : 'Knytt materiale til shotlist der scener eller leveranser har avhengigheter.',
+              },
+              {
+                id: 'materials-reference',
+                title: `${referenceMaterialCount} referanser registrert`,
+                detail: referenceMaterialCount > 0 ? 'Referanser gir produksjonen et faktisk visuelt utgangspunkt.' : 'Legg inn minst én referanse som peker ut retning og uttrykk.',
+              },
+            ],
+            actions: [
+              {
+                id: 'materials-open-shotlist',
+                label: workflowOpenLabels.shotList,
+                variant: 'outlined',
+                onClick: onOpenShotList,
+              },
+              {
+                id: 'materials-open-storyboard',
+                label: workflowOpenLabels.storyboard,
+                variant: 'text',
+                onClick: onOpenStoryboard,
+              },
+            ],
+          },
+        ],
+      };
+    }
+
+    const latestPackageLabel = deliveryWorkspaceAssets.latestPackage
+      ? `${deliveryWorkspaceAssets.latestPackage.name} · ${formatTimestamp(deliveryWorkspaceAssets.latestPackage.uploadedAt)}`
+      : 'Ingen klientpakke er skrevet ennå.';
+
+    return {
+      title: 'Neste steg',
+      intro: 'Overlevering skal oppleves som ett ryddig spor: pakke, juridikk og siste kontroll.',
+      chipLabel: `${legalAgreementPendingCount} venter`,
+      priority: legalAgreementPendingCount > 0 ? 'warning' : 'ready',
+      sections: [
+        {
+          id: 'delivery-readiness',
+          title: 'Levering',
+          description: 'Sørg for at klientpakken og arbeidsområdet faktisk er klare.',
+          items: [
+            {
+              id: 'delivery-package',
+              title: deliveryWorkspaceAssets.latestPackage ? 'Klientpakke klar' : 'Klientpakke mangler',
+              detail: latestPackageLabel,
+            },
+            {
+              id: 'delivery-workspace',
+              title: `${deliveryWorkspaceAssets.workspaceFiles.length} arbeidsfiler skrevet`,
+              detail: deliveryWorkspaceAssets.workspaceFiles.length > 0
+                ? 'Eksportfanen har skrevet konkrete arbeidsfiler med mappe, pakke og versjon.'
+                : 'Arbeidsområdet opprettes når leveransen pakkes fra eksport.',
+            },
+          ],
+          actions: [
+            ...(deliveryWorkspaceAssets.latestPackage?.downloadUrl ? [{
+              id: 'open-delivery-package',
+              label: 'Åpne klientpakke',
+              variant: 'contained' as const,
+              href: deliveryWorkspaceAssets.latestPackage.downloadUrl,
+            }] : []),
+            {
+              id: 'open-delivery-workspace',
+              label: 'Åpne leveringsrutine',
+              variant: deliveryWorkspaceAssets.latestPackage?.downloadUrl ? 'text' : 'outlined',
+              onClick: () => openSurfaceWorkspace('delivery'),
+            },
+          ],
+        },
+        {
+          id: 'delivery-legal',
+          title: 'Juridisk status',
+          description: 'Dette kan fortsatt blokkere overlevering eller sign-off.',
+          items: (deliveryWorkspaceAssets.legalAgreements.length > 0
+            ? deliveryWorkspaceAssets.legalAgreements.slice(0, 2).map((agreement) => ({
+              id: agreement.id,
+              eyebrow: PROJECT_AGREEMENT_STATUS_LABELS[agreement.status],
+              title: agreement.title,
+              detail: `${getAgreementClientFacingStatusSummary(agreement)} · ${getAgreementSignatureProgress(agreement).label}`,
+            }))
+            : [
+              {
+                id: 'delivery-legal-empty',
+                title: 'Ingen juridiske dokumenter registrert',
+                detail: 'Avtaler og signering vil dukke opp her når de kobles til prosjektet.',
+              },
+            ]),
+          actions: [
+            ...(primaryLegalAgreement ? [{
+              id: 'open-primary-legal',
+              label: 'Åpne juridisk spor',
+              variant: 'outlined' as const,
+              onClick: () => openSurfaceWorkspace('delivery', { artifactId: `agreement:${primaryLegalAgreement.id}` }),
+            }] : []),
+            ...(primaryLegalAgreementUrl ? [{
+              id: 'open-primary-legal-doc',
+              label: 'Åpne dokument',
+              variant: 'text' as const,
+              href: primaryLegalAgreementUrl,
+            }] : []),
+          ],
+        },
+      ],
+    };
+  }, [
+    activeWorkspace,
+    applyContributionTask,
+    brandGuideReadyCount,
+    brandPackTemplate,
+    briefBlocksForwardFlow,
+    connectedRequiredAccountCount,
+    foundationBlockingItems,
+    briefMissingItems,
+    canEditClientInput,
+    clientGroundingRequests,
+    clientContributionTasks.length,
+    deliveryWorkspaceAssets.googleArtifacts,
+    deliveryWorkspaceAssets.latestPackage,
+    deliveryWorkspaceAssets.legalAgreements,
+    deliveryWorkspaceAssets.workspaceFiles.length,
+    googleAccessActionKey,
+    googleAccessStatus?.state,
+    handleStartGoogleAccountLink,
+    isClientReviewerMode,
+    legalAgreementPendingCount,
+    linkedCalendarMaterialCount,
+    linkedShotListMaterialCount,
+    nextSignalList,
+    onOpenManuscript,
+    onOpenShotList,
+    onOpenStoryboard,
+    onPrepareShotListReview,
+    onPrepareStoryboardReview,
+    openSurfaceWorkspace,
+    parsedBrandColors,
+    parsedBrandDos,
+    parsedBrandDonts,
+    parsedBrandFonts,
+    planningDraft.accountAccess.revokePlan,
+    pendingReviewCount,
+    pendingRequiredAccountCount,
+    primaryLegalAgreement,
+    primaryLegalAgreementUrl,
+    referenceMaterialCount,
+    requiredAccountEntries,
+    storyboardPreviewTiles,
+    workflowOpenLabels.manuscript,
+    workflowOpenLabels.shotList,
+    workflowOpenLabels.storyboard,
+  ]);
   const canManageWorkspaceShell = canEditClientInput && !isClientReviewerMode;
-  const progressNodes = [
-    { label: 'Idé', value: planningDraft.activationPlan.idea },
-    { label: 'Retning', value: planningDraft.activationPlan.direction },
-    { label: 'Storyboard', value: storyboardCount > 0 ? `${storyboardCount} klare` : '' },
-  ];
+  const showClientDashboard = isClientPortalView || isClientReviewerMode;
+  const pendingClientReviews = useMemo(
+    () => reviews
+      .filter((review) => review.status === 'pending' || review.status === 'changes_requested')
+      .sort((left, right) => {
+        const leftDate = left.due_at ?? left.requested_at ?? left.created_at;
+        const rightDate = right.due_at ?? right.requested_at ?? right.created_at;
+        return leftDate.localeCompare(rightDate, 'nb-NO');
+      }),
+    [reviews],
+  );
+  const pendingAccountAccessReviews = useMemo(
+    () => pendingClientReviews.filter((review) => readAccountAccessPlatformsFromReview(review).length > 0),
+    [pendingClientReviews],
+  );
+  const accountAccessReviewByPlatform = useMemo(() => {
+    const lookup = new Map<ProducerAccountAccessPlatform, ProducerClientReview>();
+    pendingAccountAccessReviews.forEach((review) => {
+      readAccountAccessPlatformsFromReview(review).forEach((platform) => {
+        if (!lookup.has(platform)) {
+          lookup.set(platform, review);
+        }
+      });
+    });
+    return lookup;
+  }, [pendingAccountAccessReviews]);
+  const readyDeliveryItems = useMemo(
+    () => planningDraft.contentCalendar
+      .filter((item) => item.status === 'scheduled' || item.status === 'published')
+      .sort((left, right) => {
+        const leftDate = left.publishAt ?? '9999-12-31T23:59:59.999Z';
+        const rightDate = right.publishAt ?? '9999-12-31T23:59:59.999Z';
+        return leftDate.localeCompare(rightDate, 'nb-NO');
+      })
+      .map((item) => ({
+        id: item.id,
+        title: readFirstNonEmptyString(item.title, 'Leveranse uten tittel'),
+        eyebrow: PRODUCER_CONTENT_CALENDAR_STATUS_LABELS[item.status ?? 'planned'],
+        detail: [
+          readFirstNonEmptyString(item.channel, 'Kanal ikke satt'),
+          readFirstNonEmptyString(item.format, 'Format ikke satt'),
+          item.publishAt ? formatTimestamp(item.publishAt) : '',
+        ].filter(hasText).join(' · '),
+      })),
+    [planningDraft.contentCalendar],
+  );
+  const clientPortalReviewUrl = useMemo(
+    () => buildClientPortalUrl(projectId, {
+      tab: 'reviews',
+      workspace: 'brief',
+      reviewId: pendingClientReviews[0]?.id,
+    }),
+    [pendingClientReviews, projectId],
+  );
+  const clientPortalAccountAccessReviewUrl = useMemo(
+    () => buildAccountAccessReviewUrl(pendingAccountAccessReviews[0]?.id),
+    [buildAccountAccessReviewUrl, pendingAccountAccessReviews],
+  );
+  const clientPortalExportUrl = useMemo(
+    () => buildClientPortalUrl(projectId, {
+      tab: 'export',
+      workspace: 'delivery',
+    }),
+    [projectId],
+  );
+  const clientDashboardCards = useMemo<ClientDashboardCard[]>(() => {
+    const leadCard: ClientDashboardCard = foundationBlockingItems.length > 0
+      ? {
+        id: 'now',
+        title: 'Dette må du gjøre nå',
+        summary: 'Produksjonsgrunnlaget må være tydelig før godkjenninger, leveranser og publisering gir mening.',
+        chipLabel: `${foundationBlockingItems.length} blokkerer`,
+        priority: foundationBlockingItems.length >= 3 ? 'critical' : 'warning',
+        items: foundationBlockingItems.slice(0, 3).map((item, index) => ({
+          id: item.id,
+          eyebrow: index === 0 ? 'Grunnlag' : undefined,
+          title: item.label,
+          detail: clientGroundingRequests[index] ?? 'Dette må fylles ut før videre beslutninger blir presise.',
+        })),
+        action: {
+          id: 'open-brief-dashboard',
+          label: activeWorkspace === 'brief' ? 'Fortsett i briefen' : 'Åpne briefen',
+          variant: 'contained',
+          onClick: () => {
+            setActiveBriefStep(recommendedBriefStep);
+            openSurfaceWorkspace('brief');
+          },
+        },
+      }
+      : pendingAccountAccessReviews.length > 0
+        ? {
+          id: 'now',
+          title: 'Dette må du gjøre nå',
+          summary: 'Kontotilgang må avklares før publisering, handoff og overlevering kan kjøres trygt.',
+          chipLabel: `${pendingAccountAccessReviews.length} åpne`,
+          priority: pendingAccountAccessReviews.some((review) => review.status === 'changes_requested') ? 'warning' : 'info',
+          items: pendingAccountAccessReviews.slice(0, 3).map((review) => {
+            const platformLabels = readAccountAccessPlatformsFromReview(review)
+              .map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform])
+              .join(', ');
+            return {
+              id: review.id,
+              eyebrow: `Kontotilgang${hasText(platformLabels) ? ` · ${platformLabels}` : ''}`,
+              title: review.title,
+              detail: readFirstNonEmptyString(
+                review.description ?? '',
+                review.due_at ? `Svar innen ${formatTimestamp(review.due_at)}` : '',
+                `Bedt om ${formatTimestamp(review.requested_at)}`,
+              ),
+              actionLabel: 'Åpne review',
+              href: buildAccountAccessReviewUrl(review.id),
+            };
+          }),
+          action: clientPortalAccountAccessReviewUrl
+            ? {
+              id: 'open-account-access-reviews-dashboard',
+              label: 'Åpne kontotilgang',
+              variant: 'contained',
+              href: clientPortalAccountAccessReviewUrl,
+            }
+            : undefined,
+        }
+        : pendingClientReviews.length > 0
+        ? {
+          id: 'now',
+          title: 'Dette må du gjøre nå',
+          summary: 'Det ligger åpne godkjenninger som stopper neste del av flyten.',
+          chipLabel: `${pendingClientReviews.length} åpne`,
+          priority: pendingClientReviews.some((review) => review.status === 'changes_requested') ? 'warning' : 'info',
+          items: pendingClientReviews.slice(0, 3).map((review) => ({
+            id: review.id,
+            eyebrow: review.status === 'changes_requested' ? 'Endringer ønsket' : 'Venter på svar',
+            title: review.title,
+            detail: readFirstNonEmptyString(
+              review.description ?? '',
+              review.due_at ? `Svar innen ${formatTimestamp(review.due_at)}` : '',
+              `Bedt om ${formatTimestamp(review.requested_at)}`,
+            ),
+          })),
+          action: clientPortalReviewUrl
+            ? {
+              id: 'open-reviews-dashboard',
+              label: 'Åpne godkjenninger',
+              variant: 'contained',
+              href: clientPortalReviewUrl,
+            }
+            : undefined,
+        }
+        : clientContributionTasks.length > 0
+          ? {
+            id: 'now',
+            title: 'Dette må du gjøre nå',
+            summary: 'Neste beslutning ligger i brief, merkevare, materialer eller leveringsrutine.',
+            chipLabel: `${clientContributionTasks.length} åpne`,
+            priority: 'info',
+            items: clientContributionTasks.slice(0, 3).map((task) => ({
+              id: task.id,
+              eyebrow: PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType],
+              title: task.title,
+              detail: task.detail,
+              actionLabel: 'Åpne',
+              onAction: () => applyContributionTask(task),
+            })),
+            action: {
+              id: 'open-next-choice-dashboard',
+              label: 'Fortsett i arbeidsflaten',
+              variant: 'contained',
+              onClick: () => applyContributionTask(clientContributionTasks[0]!),
+            },
+          }
+          : readyDeliveryItems.length > 0
+            ? {
+              id: 'now',
+              title: 'Dette må du gjøre nå',
+              summary: 'Leveranser er klare til overlevering eller publisering.',
+              chipLabel: `${readyDeliveryItems.length} klare`,
+              priority: 'ready',
+              items: readyDeliveryItems.slice(0, 3),
+              action: clientPortalExportUrl
+                ? {
+                  id: 'open-export-dashboard',
+                  label: 'Åpne leveranser',
+                  variant: 'contained',
+                  href: clientPortalExportUrl,
+                }
+                : undefined,
+            }
+            : {
+              id: 'now',
+              title: 'Dette må du gjøre nå',
+              summary: 'Ingen akutte blokkere akkurat nå. Neste steg er å holde godkjenninger og leveranser stramme.',
+              chipLabel: 'Rolig spor',
+              priority: 'ready',
+              items: [
+                {
+                  id: 'now-clear',
+                  title: 'Grunnlaget er på plass',
+                  detail: 'Fortsett med merkevare, godkjenning eller leveranse når dere er klare.',
+                },
+              ],
+            };
+
+    return [
+      leadCard,
+      {
+        id: 'choices',
+        title: 'Ventende valg',
+        summary: clientContributionTasks.length > 0
+          ? 'Dette er valgene som fortsatt trenger klientinnspill eller bekreftelse.'
+          : 'Ingen åpne valg akkurat nå.',
+        chipLabel: `${clientContributionTasks.length} valg`,
+        priority: clientContributionTasks.length > 0 ? 'warning' : 'ready',
+        items: clientContributionTasks.length > 0
+          ? clientContributionTasks.slice(0, 3).map((task) => ({
+            id: `choice-${task.id}`,
+            eyebrow: `${PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType]} · ${PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS[task.status]}`,
+            title: task.title,
+            detail: task.detail,
+            actionLabel: 'Åpne',
+            onAction: () => applyContributionTask(task),
+          }))
+          : [{
+            id: 'choice-clear',
+            title: 'Alle valg er avklart',
+            detail: 'Brief, materiale, merkevare og leveringsrutine er i en tilstand som ikke krever nye klientvalg akkurat nå.',
+          }],
+        action: clientContributionTasks.length > 0
+          ? {
+            id: 'open-choices-dashboard',
+            label: 'Åpne valg',
+            variant: 'outlined',
+            onClick: () => applyContributionTask(clientContributionTasks[0]!),
+          }
+          : undefined,
+      },
+      {
+        id: 'approvals',
+        title: 'Ventende godkjenninger',
+        summary: pendingClientReviews.length > 0
+          ? 'Disse sakene må godkjennes eller få endringsønsker før flyten går videre.'
+          : 'Ingen åpne godkjenninger akkurat nå.',
+        chipLabel: `${pendingClientReviews.length} reviews`,
+        priority: pendingClientReviews.length > 0 ? 'info' : 'ready',
+        items: pendingClientReviews.length > 0
+          ? pendingClientReviews.slice(0, 3).map((review) => {
+            const platformLabels = readAccountAccessPlatformsFromReview(review)
+              .map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform])
+              .join(', ');
+            const isAccountAccessReview = platformLabels.length > 0;
+            return {
+              id: `approval-${review.id}`,
+              eyebrow: isAccountAccessReview
+                ? `Kontotilgang · ${platformLabels}`
+                : review.status === 'changes_requested'
+                  ? 'Endringer ønsket'
+                  : 'Venter på godkjenning',
+              title: review.title,
+              detail: readFirstNonEmptyString(
+                review.description ?? '',
+                review.due_at ? `Svar innen ${formatTimestamp(review.due_at)}` : '',
+                `Bedt om ${formatTimestamp(review.requested_at)}`,
+              ),
+              actionLabel: isAccountAccessReview ? 'Åpne review' : undefined,
+              href: isAccountAccessReview ? buildAccountAccessReviewUrl(review.id) : undefined,
+            };
+          })
+          : [{
+            id: 'approval-clear',
+            title: 'Ingen åpne reviews',
+            detail: 'Når noe sendes til godkjenning, dukker det opp her med direkte vei til reviewsporet.',
+          }],
+        action: pendingClientReviews.length > 0 && clientPortalReviewUrl
+          ? {
+            id: 'open-approvals-dashboard',
+            label: 'Åpne godkjenninger',
+            variant: 'outlined',
+            href: clientPortalReviewUrl,
+          }
+          : undefined,
+      },
+      {
+        id: 'deliveries',
+        title: 'Klare leveranser',
+        summary: readyDeliveryItems.length > 0
+          ? 'Dette er leveranser som allerede er klare for overlevering, eksport eller publisering.'
+          : planningDraft.contentCalendar.length > 0
+            ? 'Ingen leveranser er markert klare ennå.'
+            : 'Ingen leveranser er planlagt ennå.',
+        chipLabel: `${readyDeliveryItems.length} klare`,
+        priority: readyDeliveryItems.length > 0 ? 'ready' : 'info',
+        items: readyDeliveryItems.length > 0
+          ? readyDeliveryItems.slice(0, 3)
+          : [{
+            id: 'delivery-clear',
+            title: planningDraft.contentCalendar.length > 0 ? 'Leveranser bygges fortsatt' : 'Ingen leveranser planlagt',
+            detail: planningDraft.contentCalendar.length > 0
+              ? 'Når et punkt er planlagt publisert eller publisert, vises det her som klart spor.'
+              : 'Legg inn leveranser i content-kalenderen for å få et konkret publiserings- og eksportløp.',
+          }],
+        action: readyDeliveryItems.length > 0 && clientPortalExportUrl
+          ? {
+            id: 'open-deliveries-dashboard',
+            label: 'Åpne leveranser',
+            variant: 'outlined',
+            href: clientPortalExportUrl,
+          }
+          : {
+            id: 'open-delivery-workspace-dashboard',
+            label: 'Åpne leveringsrutine',
+            variant: 'outlined',
+            onClick: () => openSurfaceWorkspace('delivery'),
+          },
+      },
+    ];
+  }, [
+    activeWorkspace,
+    applyContributionTask,
+    buildAccountAccessReviewUrl,
+    clientContributionTasks,
+    clientGroundingRequests,
+    clientPortalAccountAccessReviewUrl,
+    clientPortalExportUrl,
+    clientPortalReviewUrl,
+    foundationBlockingItems,
+    openSurfaceWorkspace,
+    pendingAccountAccessReviews,
+    pendingClientReviews,
+    planningDraft.contentCalendar.length,
+    readyDeliveryItems,
+    recommendedBriefStep,
+  ]);
+  const primaryWorkspaceSupportSection = workspaceSupportPanel.sections[0] ?? null;
+  const primaryWorkspaceSupportAction = primaryWorkspaceSupportSection?.actions?.[0] ?? null;
+  const primaryWorkspaceSupportItem = primaryWorkspaceSupportSection?.items?.[0] ?? null;
+  const workspaceSupportPriorityTheme = WORKSPACE_SUPPORT_PRIORITY_THEME[workspaceSupportPanel.priority];
+  const renderFieldLead = (description: string, status: 'filled' | 'missing' | 'optional' = 'missing') => {
+    const statusStyles = status === 'filled'
+      ? {
+        border: '1px solid rgba(34,197,94,0.18)',
+        background: 'rgba(34,197,94,0.1)',
+        color: '#86efac',
+        label: 'Fylt ut',
+      }
+      : status === 'optional'
+        ? {
+          border: '1px solid rgba(148,163,184,0.14)',
+          background: 'rgba(148,163,184,0.08)',
+          color: 'rgba(203,213,225,0.78)',
+          label: 'Valgfritt',
+        }
+        : {
+          border: '1px solid rgba(96,165,250,0.14)',
+          background: 'rgba(59,130,246,0.1)',
+          color: '#bfdbfe',
+          label: 'Mangler',
+        };
+
+    return (
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        spacing={0.45}
+        sx={{ mb: 0.45, px: 0.15 }}
+      >
+        <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.72rem', lineHeight: 1.55, minWidth: 0 }}>
+          {description}
+        </Typography>
+        <Box
+          sx={{
+            flexShrink: 0,
+            px: 0.62,
+            py: 0.22,
+            borderRadius: 999,
+            border: statusStyles.border,
+            bgcolor: statusStyles.background,
+          }}
+        >
+          <Typography sx={{ color: statusStyles.color, fontSize: '0.64rem', fontWeight: 700, lineHeight: 1.1 }}>
+            {statusStyles.label}
+          </Typography>
+        </Box>
+      </Stack>
+    );
+  };
   const handleOpenWorkspaceTools = useCallback((event: MouseEvent<HTMLElement>) => {
     setWorkspaceToolsAnchorEl(event.currentTarget);
   }, []);
@@ -2142,7 +5159,7 @@ export default function ProducerMediaPanel({
           sx={{
             height: 8,
             borderTop: draggedPageRef && draggedPageRef.pageId !== page.id
-              ? '1px dashed rgba(56,189,248,0.32)'
+              ? '1px dashed rgba(96,165,250,0.32)'
               : '1px solid transparent',
             borderRadius: 999,
           }}
@@ -2176,11 +5193,18 @@ export default function ProducerMediaPanel({
             selectPage(activeSection.id, page.id);
           }}
           sx={{
-            p: 0.95,
-            borderRadius: 1.45,
-            border: isActive ? `1px solid ${page.color ?? '#38bdf8'}` : '1px solid rgba(148,163,184,0.14)',
-            bgcolor: isActive ? 'rgba(15,23,42,0.9)' : 'rgba(2,6,23,0.42)',
+            p: 1,
+            borderRadius: 2,
+            border: isActive ? `1px solid ${page.color ?? '#38bdf8'}` : '1px solid rgba(96,165,250,0.14)',
+            bgcolor: isActive ? 'rgba(15,23,42,0.88)' : 'rgba(15,23,42,0.56)',
+            boxShadow: isActive ? '0 14px 32px rgba(0,0,0,0.28)' : 'none',
             cursor: 'pointer',
+            transition: 'transform 120ms ease, border-color 120ms ease, background-color 120ms ease',
+            '&:hover': {
+              transform: 'translateY(-1px)',
+              borderColor: page.color ?? '#38bdf8',
+              bgcolor: isActive ? 'rgba(15,23,42,0.9)' : 'rgba(15,23,42,0.62)',
+            },
           }}
         >
           <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="space-between">
@@ -2189,7 +5213,7 @@ export default function ProducerMediaPanel({
               {depth > 0 ? <SubdirectoryArrowRightIcon sx={{ color: 'rgba(148,163,184,0.66)', fontSize: 16 }} /> : null}
               {getWorkspaceSurfaceIcon(page.surface)}
               <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.88rem' }} noWrap>
+                <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.89rem' }} noWrap>
                   {page.title}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.62)', fontSize: '0.76rem' }} noWrap>
@@ -2215,12 +5239,14 @@ export default function ProducerMediaPanel({
   const pageNavigationRail = activeSection ? (
     <Box
       sx={{
-        width: { xs: '100%', xl: 300 },
+        width: { xs: '100%', xl: 224 },
         p: 1,
         borderRadius: 1.7,
         border: '1px solid rgba(148,163,184,0.18)',
         bgcolor: 'rgba(15,23,42,0.55)',
         alignSelf: 'flex-start',
+        '@media (min-width: 3840px)': { width: 256 },
+        '@media (min-width: 5120px)': { width: 280 },
       }}
     >
       <Stack direction={{ xs: 'column', sm: 'row', xl: 'column' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
@@ -2271,64 +5297,192 @@ export default function ProducerMediaPanel({
       </Stack>
     </Box>
   ) : null;
+  const referenceWorkspaceRail = useReferenceWorkspaceShell ? (
+    <Box
+      sx={{
+        width: { xs: '100%', lg: 196 },
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0.55,
+        p: 0.72,
+        borderRadius: 2.6,
+        border: '1px solid rgba(96,165,250,0.12)',
+        bgcolor: 'rgba(7,16,34,0.84)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+        alignSelf: 'flex-start',
+        position: { lg: 'sticky' },
+        top: { lg: 18 },
+        '@media (min-width: 3840px)': { width: 220 },
+        '@media (min-width: 5120px)': { width: 236 },
+      }}
+    >
+      <Box sx={{ px: 0.45, pb: 0.2 }}>
+        <Typography sx={{ color: 'rgba(191,219,254,0.6)', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+          Arbeidsflate
+        </Typography>
+        <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', mt: 0.15 }}>
+          {activeSection?.title ?? 'Workspace'}
+        </Typography>
+      </Box>
+
+      <Stack spacing={0.55}>
+        {workspaceRootNavigationEntries.map(({ sectionId, page }) => {
+          const isActive = activeSection?.id === sectionId && activePage?.id === page.id;
+          return (
+            <Box
+              key={page.id}
+              onClick={() => selectPage(sectionId, page.id)}
+              onContextMenu={(event) => {
+                if (!canManageWorkspaceShell) {
+                  return;
+                }
+                const parentSection = workspaceSections.find((section) => section.id === sectionId);
+                if (!parentSection) {
+                  return;
+                }
+                openWorkspaceContextMenu(event, 'page', parentSection, page);
+              }}
+              sx={{
+                px: 0.9,
+                py: 0.78,
+                borderRadius: 1.7,
+                border: isActive ? `1px solid ${page.color ?? '#38bdf8'}` : '1px solid rgba(96,165,250,0.08)',
+                bgcolor: isActive ? 'rgba(23,37,66,0.96)' : 'rgba(10,18,34,0.48)',
+                cursor: 'pointer',
+                transition: 'transform 120ms ease, border-color 120ms ease, background-color 120ms ease',
+                '&:hover': {
+                  transform: 'translateY(-1px)',
+                  borderColor: page.color ?? '#38bdf8',
+                  bgcolor: isActive ? 'rgba(23,37,66,0.98)' : 'rgba(15,23,42,0.76)',
+                },
+              }}
+            >
+                <Stack direction="row" spacing={0.8} alignItems="center">
+                  {getWorkspaceSurfaceIcon(page.surface)}
+                  <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 0.55 }}>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem' }} noWrap>
+                      {page.title}
+                    </Typography>
+                    {isActive ? <FiberManualRecordIcon sx={{ color: page.color ?? '#38bdf8', fontSize: 8 }} /> : null}
+                  </Box>
+                </Stack>
+              </Box>
+          );
+        })}
+      </Stack>
+    </Box>
+  ) : null;
 
   return (
     <Box
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 2,
-        p: { xs: 1.5, md: 2 },
-        borderRadius: 2,
-        border: '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.82) 100%)',
+        gap: 1.25,
+        p: { xs: 1.2, md: 1.45 },
+        borderRadius: 4,
+        border: '1px solid rgba(96,165,250,0.14)',
+        background: 'radial-gradient(circle at top left, rgba(59,130,246,0.22) 0%, rgba(15,23,42,0.96) 36%, rgba(2,6,23,0.98) 100%)',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.05)',
       }}
     >
-      <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.25} justifyContent="space-between" alignItems={{ xl: 'flex-start' }}>
-        <Box sx={{ minWidth: 0 }}>
+      <Stack
+        direction={{ xs: 'column', lg: 'row' }}
+        spacing={0.7}
+        justifyContent="space-between"
+        alignItems={{ lg: 'center' }}
+        sx={{
+          p: { xs: 0.75, md: 0.9 },
+          borderRadius: 2.4,
+          border: '1px solid rgba(96,165,250,0.12)',
+          bgcolor: 'rgba(8,15,30,0.5)',
+        }}
+      >
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.65} alignItems={{ xs: 'flex-start', sm: 'center' }} sx={{ mb: 0.18 }}>
+            <Typography
+              sx={{
+                color: '#f8fafc',
+                fontWeight: 650,
+                fontSize: { xs: '1.12rem', md: '1.28rem' },
+                lineHeight: 1.05,
+                letterSpacing: '-0.04em',
+                fontFamily: '"Manrope","Avenir Next","Segoe UI",sans-serif',
+              }}
+            >
+              {isClientReviewerMode ? 'Klientflate' : 'Creative Sync Workspace'}
+            </Typography>
+            <Box
+              sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                px: 1,
+                py: 0.36,
+                borderRadius: 999,
+                bgcolor: activeWorkspaceCard.accent,
+              }}
+            >
+              <Typography sx={{ color: activeWorkspaceCard.textColor, fontSize: '0.72rem', fontWeight: 700 }}>
+                {activeWorkspaceCard.progressLabel}
+              </Typography>
+            </Box>
+          </Stack>
           <Typography
             sx={{
-              color: 'rgba(125,211,252,0.92)',
-              fontSize: '0.78rem',
-              fontWeight: 800,
-              letterSpacing: '0.16em',
-              textTransform: 'uppercase',
-              mb: 0.55,
+              color: 'rgba(226,232,240,0.88)',
+              maxWidth: 860,
+              fontSize: '0.76rem',
+              lineHeight: 1.45,
+              display: { xs: 'none', sm: 'block' },
+              '@media (min-width: 3840px)': { maxWidth: 1320, fontSize: '0.84rem' },
+              '@media (min-width: 5120px)': { maxWidth: 1520, fontSize: '0.9rem' },
             }}
           >
-            Creative Sync Workspace
-          </Typography>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-            <PermMediaIcon sx={{ color: '#60a5fa' }} />
-            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700 }}>
-              {panelTitle}
-            </Typography>
-          </Stack>
-          <Typography sx={{ color: 'rgba(203,213,225,0.88)', maxWidth: 960 }}>
-            {panelDescription}
+            {mediaHeaderDescription}
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent={{ xl: 'flex-end' }}>
-          <Chip size="small" label={`Media ${mediaCount}`} />
-          <Chip size="small" label={`Storyboards ${storyboardCount}`} />
-          <Chip size="small" label={`Shots ${shotCount}`} />
-          <Chip size="small" label={materialChipLabel} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
-          {canManageWorkspaceShell ? (
-            <Tooltip title="Workspace-oppsett">
-              <IconButton
-                size="small"
-                onClick={handleOpenWorkspaceTools}
-                sx={{
-                  borderRadius: 1.2,
-                  border: '1px solid rgba(148,163,184,0.18)',
-                  color: '#e2e8f0',
-                  bgcolor: 'rgba(15,23,42,0.52)',
-                }}
-              >
-                <MoreHorizIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          ) : null}
+        <Stack spacing={0.45} alignItems={{ lg: 'flex-end' }}>
+          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap justifyContent={{ lg: 'flex-end' }}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<EditOutlinedIcon />}
+              onClick={() => setShowWorkspaceOperations((previous) => !previous)}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                minHeight: 44,
+                borderRadius: 999,
+                px: 0.95,
+                color: showWorkspaceOperations ? '#bfdbfe' : '#e2e8f0',
+                bgcolor: showWorkspaceOperations ? 'rgba(59,130,246,0.12)' : 'transparent',
+                borderColor: 'rgba(96,165,250,0.22)',
+                '&:hover': {
+                  bgcolor: 'rgba(248,250,252,0.06)',
+                  borderColor: 'rgba(96,165,250,0.32)',
+                },
+              }}
+            >
+              {showWorkspaceOperations ? 'Skjul oppsett' : 'Workspace-oppsett'}
+            </Button>
+            {canManageWorkspaceShell ? (
+              <Tooltip title="Flere workspace-valg">
+                <IconButton
+                  onClick={handleOpenWorkspaceTools}
+                  sx={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 999,
+                    border: '1px solid rgba(96,165,250,0.18)',
+                    color: '#e2e8f0',
+                    bgcolor: 'rgba(15,23,42,0.72)',
+                  }}
+                >
+                  <MoreHorizIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+          </Stack>
         </Stack>
       </Stack>
 
@@ -2337,335 +5491,492 @@ export default function ProducerMediaPanel({
 
       <Box
         sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.15fr) minmax(0, 0.95fr)' },
-          gap: 1.25,
+          px: { xs: 0.95, md: 1.1 },
+          py: { xs: 0.85, md: 0.95 },
+          borderRadius: 2.4,
+          border: '1px solid rgba(96,165,250,0.14)',
+          background: 'linear-gradient(145deg, rgba(15,23,42,0.94) 0%, rgba(30,41,59,0.74) 100%)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
         }}
       >
-        <Box
-          sx={{
-            p: { xs: 1.25, md: 1.5 },
-            borderRadius: 2,
-            border: '1px solid rgba(148,163,184,0.16)',
-            background: 'linear-gradient(145deg, rgba(15,23,42,0.9) 0%, rgba(30,41,59,0.58) 100%)',
-          }}
-        >
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.25} justifyContent="space-between">
-            <Stack direction="row" spacing={1.1} alignItems="center" sx={{ minWidth: 0 }}>
-              <Avatar sx={{ width: 52, height: 52, bgcolor: 'rgba(56,189,248,0.18)', color: '#e0f2fe', fontWeight: 800 }}>
-                {getInitials(clientDisplayName, 'K')}
-              </Avatar>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.76rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                  Klient
-                </Typography>
-                <Typography sx={{ color: '#fff', fontWeight: 700 }} noWrap>
-                  {clientDisplayName}
-                </Typography>
-                <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.84rem' }} noWrap>
-                  {clientMetaLabel}
-                </Typography>
-              </Box>
-            </Stack>
-            <Stack direction="row" spacing={1.1} alignItems="center" sx={{ minWidth: 0 }}>
-              <Avatar sx={{ width: 52, height: 52, bgcolor: 'rgba(168,85,247,0.18)', color: '#f3e8ff', fontWeight: 800 }}>
-                {getInitials(producerDisplayName, 'P')}
-              </Avatar>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.76rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                  {producerDisplayName}
-                </Typography>
-                <Typography sx={{ color: '#fff', fontWeight: 700 }} noWrap>
-                  {projectName}
-                </Typography>
-                <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.84rem' }} noWrap>
-                  {producerMetaLabel}
-                </Typography>
-              </Box>
-            </Stack>
+        <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xl: 'center' }}>
+          <Stack spacing={0.32} sx={{ minWidth: 0 }}>
+            <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
+              {mediaHeaderMeta}
+            </Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontSize: '0.74rem', lineHeight: 1.4 }}>
+              {focusedArtifact ? `Fokus: ${focusedArtifact.title}` : clientMetaLabel}
+            </Typography>
           </Stack>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.85} sx={{ mt: 1.25 }} flexWrap="wrap" useFlexGap>
-            <Chip
-              size="small"
-              label={workspaceFocusLabel}
-              sx={{ bgcolor: `${activeWorkspaceCard.accent}`, color: activeWorkspaceCard.textColor }}
-            />
-            {pinnedWorkspaceLinks.slice(0, 4).map(({ sectionId, page }) => (
-              <Chip
-                key={page.id}
-                icon={getWorkspaceSurfaceIcon(page.surface)}
-                label={page.title}
-                onClick={() => selectPage(sectionId, page.id)}
-                sx={{
-                  bgcolor: page.id === activePage?.id ? 'rgba(59,130,246,0.16)' : 'rgba(148,163,184,0.12)',
-                  color: page.id === activePage?.id ? '#bfdbfe' : '#e2e8f0',
-                  border: `1px solid ${page.color ?? '#38bdf8'}`,
-                }}
-              />
-            ))}
-          </Stack>
-        </Box>
-
-        <Box
-          sx={{
-            p: { xs: 1.25, md: 1.5 },
-            borderRadius: 2,
-            border: '1px solid rgba(148,163,184,0.16)',
-            background: 'linear-gradient(145deg, rgba(30,41,59,0.72) 0%, rgba(15,23,42,0.82) 100%)',
-          }}
-        >
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.15} justifyContent="space-between" sx={{ mb: 1 }}>
-            <Box>
-              <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Retning og progresjon
-              </Typography>
-              <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.25 }}>
-                Idé, retning og storyboard holdes i samme sannhet for klient og produsent.
-              </Typography>
-            </Box>
-            <Chip
-              size="small"
-              icon={<AutoAwesomeOutlinedIcon sx={{ fontSize: 16 }} />}
-              label={activeWorkspaceCard.progressLabel}
-              sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(250,204,21,0.14)', color: '#fde68a' }}
-            />
-          </Stack>
-          <Box
+          <Stack
+            spacing={0.28}
             sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
-              gap: 0.9,
+              minWidth: 0,
+              maxWidth: { xl: 620 },
+              '@media (min-width: 3840px)': { maxWidth: 920 },
+              '@media (min-width: 5120px)': { maxWidth: 1120 },
             }}
           >
-            {progressNodes.map((node, index) => (
-              <Box
-                key={node.label}
-                sx={{
-                  p: 1,
-                  borderRadius: 1.5,
-                  border: '1px solid rgba(148,163,184,0.14)',
-                  bgcolor: 'rgba(15,23,42,0.46)',
-                }}
-              >
-                <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                  {node.label}
-                </Typography>
-                <Typography sx={{ color: '#fff', fontWeight: 600, mt: 0.35 }}>
-                  {hasText(node.value) ? node.value : 'Ikke satt'}
-                </Typography>
-                {index < progressNodes.length - 1 ? (
-                  <ArrowForwardOutlinedIcon sx={{ color: 'rgba(148,163,184,0.54)', fontSize: 16, mt: 0.8 }} />
-                ) : null}
-              </Box>
-            ))}
-          </Box>
-          {strategySnapshot.length > 0 ? (
-            <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-              {strategySnapshot.map((item) => (
-                <Chip
-                  key={item.label}
-                  size="small"
-                  label={`${item.label}: ${item.value}`}
-                  sx={{ bgcolor: 'rgba(248,250,252,0.08)', color: '#e2e8f0' }}
-                />
-              ))}
-            </Stack>
-          ) : null}
-        </Box>
+            <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.88rem' }}>
+              Retning · {creativeDirectionTitle}
+            </Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.75rem', lineHeight: 1.42 }}>
+              {directionSupportText}
+            </Typography>
+            <Typography sx={{ color: 'rgba(191,219,254,0.92)', fontSize: '0.73rem', lineHeight: 1.4 }}>
+              {readinessSummaryText}
+            </Typography>
+          </Stack>
+        </Stack>
       </Box>
 
-      <ProducerGoogleWorkspacePanel
-        project={project}
-        projectId={projectId}
-        projectName={projectName}
-        planning={planningDraft}
-        intake={intakeDraft}
-        materials={materials}
-        shotLists={shotLists}
-        projectFiles={projectFiles}
-        readOnly={readOnly}
-        isClientReviewerMode={isClientReviewerMode}
-        onOpenWorkspace={openSurfaceWorkspace}
-        onGoogleContactImported={handleImportGoogleContact}
-      />
-
-      {focusedArtifact ? (
-        <Alert
-          severity="info"
-          sx={{ mb: 1.25 }}
-          action={(
-            <Stack direction="row" spacing={0.75}>
-              {focusedArtifact.actionUrl ? (
-                <Button
-                  color="inherit"
-                  size="small"
-                  component="a"
-                  href={focusedArtifact.actionUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  startIcon={<OpenInNewIcon />}
-                  sx={{ textTransform: 'none', fontWeight: 700 }}
-                >
-                  {focusedArtifact.actionLabel ?? 'Åpne'}
-                </Button>
-              ) : null}
-              <Button
-                color="inherit"
-                size="small"
-                onClick={() => setFocusedArtifactId(null)}
-                sx={{ textTransform: 'none', fontWeight: 700 }}
-              >
-                Fjern fokus
-              </Button>
-            </Stack>
-          )}
+      {showClientDashboard ? (
+        <Box
+          sx={{
+            p: { xs: 0.95, md: 1.1 },
+            borderRadius: 2.8,
+            border: '1px solid rgba(96,165,250,0.14)',
+            background: 'linear-gradient(145deg, rgba(9,17,34,0.94) 0%, rgba(15,23,42,0.82) 100%)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+          }}
         >
-          <Typography sx={{ fontWeight: 700, mb: 0.25 }}>
-            Fokusert arbeidsflate: {focusedArtifact.title}
-          </Typography>
-          <Typography sx={{ fontSize: '0.84rem' }}>
-            {focusedArtifact.subtitle}
-          </Typography>
-        </Alert>
+          <Stack spacing={0.9}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ md: 'center' }}>
+              <Box>
+                <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.96rem' }}>
+                  Dette må klienten holde styr på
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.22 }}>
+                  Ett sted for valg, godkjenninger og leveranser. Ingen skjult arbeidsflyt bak flere paneler.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
+                <Chip
+                  size="small"
+                  label={`${clientContributionTasks.length} valg`}
+                  sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                />
+                <Chip
+                  size="small"
+                  label={`${pendingClientReviews.length} godkjenninger`}
+                  sx={{ bgcolor: 'rgba(248,250,252,0.08)', color: '#e2e8f0' }}
+                />
+                <Chip
+                  size="small"
+                  label={`${readyDeliveryItems.length} klare leveranser`}
+                  sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0' }}
+                />
+              </Stack>
+            </Stack>
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  md: 'repeat(2, minmax(0, 1fr))',
+                  xl: 'repeat(4, minmax(0, 1fr))',
+                },
+                gap: 0.9,
+              }}
+            >
+              {clientDashboardCards.map((card) => {
+                const priorityTheme = WORKSPACE_SUPPORT_PRIORITY_THEME[card.priority];
+                return (
+                  <Box
+                    key={card.id}
+                    sx={{
+                      p: 0.95,
+                      borderRadius: 2.3,
+                      border: `1px solid ${priorityTheme.border}`,
+                      background: priorityTheme.panelBackground,
+                      boxShadow: `0 0 0 1px ${priorityTheme.glow}, inset 0 1px 0 rgba(255,255,255,0.04)`,
+                    }}
+                  >
+                    <Stack spacing={0.8}>
+                      <Stack direction="row" spacing={0.55} justifyContent="space-between" alignItems="flex-start">
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem', lineHeight: 1.25 }}>
+                            {card.title}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.73rem', lineHeight: 1.4, mt: 0.2 }}>
+                            {card.summary}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          size="small"
+                          label={card.chipLabel}
+                          sx={{
+                            bgcolor: priorityTheme.chipBackground,
+                            color: priorityTheme.chipColor,
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}
+                        />
+                      </Stack>
+
+                      <Stack spacing={0.55}>
+                        {card.items.map((item) => (
+                          <Box
+                            key={item.id}
+                            sx={{
+                              p: 0.72,
+                              borderRadius: 1.8,
+                              border: `1px solid ${priorityTheme.itemBorder}`,
+                              background: priorityTheme.itemBackground,
+                            }}
+                          >
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.7} justifyContent="space-between" alignItems={{ sm: 'flex-start' }}>
+                              <Box sx={{ minWidth: 0 }}>
+                                {item.eyebrow ? (
+                                  <Typography sx={{ color: priorityTheme.chipColor, fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', mb: 0.22 }}>
+                                    {item.eyebrow}
+                                  </Typography>
+                                ) : null}
+                                <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.77rem', lineHeight: 1.35 }}>
+                                  {item.title}
+                                </Typography>
+                                <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.71rem', lineHeight: 1.42, mt: 0.12 }}>
+                                  {item.detail}
+                                </Typography>
+                              </Box>
+                              {item.actionLabel ? (
+                                item.href ? (
+                                  <Button
+                                    size="small"
+                                    component="a"
+                                    href={item.href}
+                                    sx={{
+                                      textTransform: 'none',
+                                      fontWeight: 700,
+                                      minHeight: 34,
+                                      borderRadius: 999,
+                                      px: 1,
+                                      color: priorityTheme.actionColor,
+                                      bgcolor: priorityTheme.actionBackground,
+                                      '&:hover': {
+                                        bgcolor: priorityTheme.actionHover,
+                                      },
+                                    }}
+                                  >
+                                    {item.actionLabel}
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="small"
+                                    onClick={item.onAction}
+                                    sx={{
+                                      textTransform: 'none',
+                                      fontWeight: 700,
+                                      minHeight: 34,
+                                      borderRadius: 999,
+                                      px: 1,
+                                      color: priorityTheme.actionColor,
+                                      bgcolor: priorityTheme.actionBackground,
+                                      '&:hover': {
+                                        bgcolor: priorityTheme.actionHover,
+                                      },
+                                    }}
+                                  >
+                                    {item.actionLabel}
+                                  </Button>
+                                )
+                              ) : null}
+                            </Stack>
+                          </Box>
+                        ))}
+                      </Stack>
+
+                      {card.action ? (
+                        card.action.href ? (
+                          <Button
+                            fullWidth
+                            size="small"
+                            component="a"
+                            href={card.action.href}
+                            variant={card.action.variant ?? 'contained'}
+                            sx={{
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              minHeight: 38,
+                              borderRadius: 999,
+                            }}
+                          >
+                            {card.action.label}
+                          </Button>
+                        ) : (
+                          <Button
+                            fullWidth
+                            size="small"
+                            variant={card.action.variant ?? 'contained'}
+                            onClick={card.action.onClick}
+                            sx={{
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              minHeight: 38,
+                              borderRadius: 999,
+                            }}
+                          >
+                            {card.action.label}
+                          </Button>
+                        )
+                      ) : null}
+                    </Stack>
+                  </Box>
+                );
+              })}
+            </Box>
+          </Stack>
+        </Box>
       ) : null}
 
       <Box
         sx={{
           display: 'flex',
-          flexDirection: workspaceNavigation.sectionTabPlacement === 'left' ? 'row' : 'column',
+          flexDirection: displayWorkspaceNavigation.sectionTabPlacement === 'left' ? 'row' : 'column',
           gap: 1.25,
         }}
       >
-        {workspaceNavigation.sectionTabPlacement === 'left' ? (
+        {displayWorkspaceNavigation.sectionTabPlacement === 'left' && !useReferenceWorkspaceShell ? (
           <Box
             sx={{
-              width: { xs: '100%', lg: 260 },
+              width: { xs: '100%', lg: useReferenceWorkspaceShell ? 186 : 196 },
               display: 'flex',
               flexDirection: 'column',
-              gap: 0.85,
+              gap: useReferenceWorkspaceShell ? 0.7 : 0.9,
+              p: useReferenceWorkspaceShell ? 0.9 : 1,
+              borderRadius: useReferenceWorkspaceShell ? 3.4 : 3,
+              border: '1px solid rgba(96,165,250,0.12)',
+              bgcolor: useReferenceWorkspaceShell ? 'rgba(7,16,34,0.84)' : 'rgba(15,23,42,0.7)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+              alignSelf: 'flex-start',
+              position: { lg: 'sticky' },
+              top: { lg: 18 },
             }}
           >
-            {workspaceSections.map((section) => {
-              const isActive = section.id === activeSection?.id;
-              return (
+            {useReferenceWorkspaceShell ? (
+              <>
                 <Box
-                  key={section.id}
-                  draggable={canManageWorkspaceShell}
-                  onDragStart={() => {
-                    if (!canManageWorkspaceShell) {
-                      return;
-                    }
-                    handleSectionDragStart(section.id);
-                  }}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={() => {
-                    if (!canManageWorkspaceShell) {
-                      return;
-                    }
-                    void handleSectionDrop(section.id);
-                  }}
-                  onContextMenu={(event) => {
-                    if (!canManageWorkspaceShell) {
-                      return;
-                    }
-                    openWorkspaceContextMenu(event, 'section', section);
-                  }}
                   sx={{
-                    p: 1.05,
-                    borderRadius: 1.65,
-                    border: isActive ? `1px solid ${section.color ?? '#38bdf8'}` : '1px solid rgba(148,163,184,0.16)',
-                    bgcolor: isActive ? 'rgba(15,23,42,0.9)' : 'rgba(15,23,42,0.46)',
-                    cursor: 'pointer',
+                    p: 1.2,
+                    borderRadius: 2.7,
+                    border: '1px solid rgba(96,165,250,0.12)',
+                    bgcolor: 'rgba(19,33,58,0.92)',
                   }}
-                  onClick={() => selectSection(section.id)}
                 >
-                  <Stack direction="row" spacing={0.85} alignItems="center" justifyContent="space-between">
-                    <Stack direction="row" spacing={0.85} alignItems="center" sx={{ minWidth: 0 }}>
-                      {canManageWorkspaceShell ? <DragIndicatorIcon sx={{ color: 'rgba(148,163,184,0.76)', fontSize: 18 }} /> : null}
-                      <FiberManualRecordIcon sx={{ color: section.color ?? '#38bdf8', fontSize: 12 }} />
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography sx={{ color: '#fff', fontWeight: 700 }} noWrap>
-                          {section.title}
-                        </Typography>
-                        <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.78rem' }}>
-                          {`${flattenProducerWorkspacePages(section).length} sider · ${PRODUCER_WORKSPACE_LAYOUT_LABELS[section.layout ?? 'split']}`}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                    {canManageWorkspaceShell ? (
-                      <Tooltip title={section.pinned ? 'Løsne seksjon' : 'Fest seksjon'}>
-                        <IconButton
-                          size="small"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleToggleSectionPinned(section.id);
-                          }}
-                        >
-                          {section.pinned ? <PushPinIcon sx={{ color: '#f8fafc', fontSize: 18 }} /> : <PushPinOutlinedIcon sx={{ color: 'rgba(148,163,184,0.82)', fontSize: 18 }} />}
-                        </IconButton>
-                      </Tooltip>
-                    ) : null}
+                  <Stack spacing={0.9} alignItems="center">
+                    <Avatar sx={{ width: 64, height: 64, bgcolor: 'rgba(96,165,250,0.1)', color: '#f8fafc', fontWeight: 800 }}>
+                      {getInitials(producerDisplayName, 'P')}
+                    </Avatar>
+                    <Box sx={{ textAlign: 'center' }}>
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
+                        {producerDisplayName}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.58)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.14em' }}>
+                        {activeSection?.title ?? 'Workspace'}
+                      </Typography>
+                    </Box>
                   </Stack>
                 </Box>
-              );
-            })}
-            {workspaceNavigation.navigationPinned && workspaceNavigation.pageTabPlacement === 'left' && activeSection ? (
-              <Box
-                sx={{
-                  mt: 0.45,
-                  pt: 0.9,
-                  borderTop: '1px solid rgba(148,163,184,0.14)',
-                }}
-              >
-                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.84rem', mb: 0.25 }}>
-                  Sider i {activeSection.title}
-                </Typography>
-                <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', mb: 0.75 }}>
-                  {canManageWorkspaceShell
-                    ? 'Drag sider for rekkefølge, eller legg dem som undersider.'
-                    : 'Velg siden som skal være aktiv akkurat nå.'}
-                </Typography>
+
+                <Stack spacing={0.55}>
+                  {workspaceRootNavigationEntries.map(({ sectionId, sectionTitle, page }) => {
+                    const isActive = activeSection?.id === sectionId && activePage?.id === page.id;
+                    return (
+                      <Box
+                        key={page.id}
+                        onClick={() => selectPage(sectionId, page.id)}
+                        onContextMenu={(event) => {
+                          if (!canManageWorkspaceShell) {
+                            return;
+                          }
+                          const parentSection = workspaceSections.find((section) => section.id === sectionId);
+                          if (!parentSection) {
+                            return;
+                          }
+                          openWorkspaceContextMenu(event, 'page', parentSection, page);
+                        }}
+                        sx={{
+                          px: 1.05,
+                          py: 0.95,
+                          borderRadius: 2.1,
+                          border: isActive ? `1px solid ${page.color ?? '#38bdf8'}` : '1px solid rgba(96,165,250,0.08)',
+                          bgcolor: isActive ? 'rgba(23,37,66,0.96)' : 'rgba(10,18,34,0.48)',
+                          cursor: 'pointer',
+                          transition: 'transform 120ms ease, border-color 120ms ease, background-color 120ms ease',
+                          '&:hover': {
+                            transform: 'translateY(-1px)',
+                            borderColor: page.color ?? '#38bdf8',
+                            bgcolor: isActive ? 'rgba(23,37,66,0.98)' : 'rgba(15,23,42,0.76)',
+                          },
+                        }}
+                      >
+                        <Stack direction="row" spacing={0.8} alignItems="center">
+                          {getWorkspaceSurfaceIcon(page.surface)}
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }} noWrap>
+                              {page.title}
+                            </Typography>
+                            <Typography sx={{ color: 'rgba(203,213,225,0.54)', fontSize: '0.73rem' }} noWrap>
+                              {sectionTitle}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+
                 {canManageWorkspaceShell ? (
                   <Button
                     variant="outlined"
                     size="small"
-                    startIcon={<AddOutlinedIcon />}
-                    onClick={() => {
-                      void handleCreatePage();
+                    startIcon={<EditOutlinedIcon />}
+                    onClick={() => setShowWorkspaceOperations(true)}
+                    sx={{
+                      mt: 0.35,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 999,
+                      color: '#bfdbfe',
+                      borderColor: 'rgba(96,165,250,0.18)',
                     }}
-                    sx={{ textTransform: 'none', fontWeight: 700, mb: 0.85, alignSelf: 'flex-start' }}
                   >
-                    Ny side
+                    Organiser workspace
                   </Button>
                 ) : null}
-                {canManageWorkspaceShell ? (
+              </>
+            ) : (
+              <>
+                {workspaceSections.map((section) => {
+                  const isActive = section.id === activeSection?.id;
+                  return (
+                    <Box
+                      key={section.id}
+                      draggable={canManageWorkspaceShell}
+                      onDragStart={() => {
+                        if (!canManageWorkspaceShell) {
+                          return;
+                        }
+                        handleSectionDragStart(section.id);
+                      }}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={() => {
+                        if (!canManageWorkspaceShell) {
+                          return;
+                        }
+                        void handleSectionDrop(section.id);
+                      }}
+                      onContextMenu={(event) => {
+                        if (!canManageWorkspaceShell) {
+                          return;
+                        }
+                        openWorkspaceContextMenu(event, 'section', section);
+                      }}
+                      sx={{
+                        p: 1.05,
+                        borderRadius: 2.2,
+                        border: isActive ? `1px solid ${section.color ?? '#38bdf8'}` : '1px solid rgba(96,165,250,0.12)',
+                        bgcolor: isActive ? 'rgba(15,23,42,0.92)' : 'rgba(15,23,42,0.46)',
+                        cursor: 'pointer',
+                        transition: 'transform 120ms ease, border-color 120ms ease, background-color 120ms ease',
+                        '&:hover': {
+                          transform: 'translateY(-1px)',
+                          borderColor: section.color ?? '#38bdf8',
+                          bgcolor: isActive ? 'rgba(15,23,42,0.95)' : 'rgba(15,23,42,0.74)',
+                        },
+                      }}
+                      onClick={() => selectSection(section.id)}
+                    >
+                      <Stack direction="row" spacing={0.85} alignItems="center" justifyContent="space-between">
+                        <Stack direction="row" spacing={0.85} alignItems="center" sx={{ minWidth: 0 }}>
+                          {canManageWorkspaceShell ? <DragIndicatorIcon sx={{ color: 'rgba(148,163,184,0.76)', fontSize: 18 }} /> : null}
+                          <FiberManualRecordIcon sx={{ color: section.color ?? '#38bdf8', fontSize: 11 }} />
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ color: '#f8fafc', fontWeight: 700 }} noWrap>
+                              {section.title}
+                            </Typography>
+                            <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.78rem' }}>
+                              {`${flattenProducerWorkspacePages(section).length} sider · ${PRODUCER_WORKSPACE_LAYOUT_LABELS[section.layout ?? 'split']}`}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                        {canManageWorkspaceShell ? (
+                          <Tooltip title={section.pinned ? 'Løsne seksjon' : 'Fest seksjon'}>
+                            <IconButton
+                              size="small"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleToggleSectionPinned(section.id);
+                              }}
+                            >
+                              {section.pinned ? <PushPinIcon sx={{ color: '#f8fafc', fontSize: 18 }} /> : <PushPinOutlinedIcon sx={{ color: 'rgba(203,213,225,0.56)', fontSize: 18 }} />}
+                            </IconButton>
+                          </Tooltip>
+                        ) : null}
+                      </Stack>
+                    </Box>
+                  );
+                })}
+                {displayWorkspaceNavigation.navigationPinned && displayWorkspaceNavigation.pageTabPlacement === 'left' && activeSection ? (
                   <Box
-                    onDragOver={(event: DragEvent<HTMLDivElement>) => event.preventDefault()}
-                    onDrop={() => {
-                      void handlePageDropToRoot(activeSection.id);
-                    }}
                     sx={{
-                      mb: 0.85,
-                      p: 0.8,
-                      borderRadius: 1.25,
-                      border: '1px dashed rgba(56,189,248,0.32)',
-                      color: '#bfdbfe',
-                      fontSize: '0.78rem',
+                      mt: 0.45,
+                      pt: 0.9,
+                      borderTop: '1px solid rgba(96,165,250,0.12)',
                     }}
                   >
-                    Slipp her for å gjøre siden til toppnivå
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem', mb: 0.25 }}>
+                      Sider i {activeSection.title}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.58)', fontSize: '0.76rem', mb: 0.75 }}>
+                      {canManageWorkspaceShell
+                        ? 'Drag sider for rekkefølge, eller legg dem som undersider.'
+                        : 'Velg siden som skal være aktiv akkurat nå.'}
+                    </Typography>
+                    {canManageWorkspaceShell ? (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<AddOutlinedIcon />}
+                        onClick={() => {
+                          void handleCreatePage();
+                        }}
+                        sx={{ textTransform: 'none', fontWeight: 700, mb: 0.85, alignSelf: 'flex-start' }}
+                      >
+                        Ny side
+                      </Button>
+                    ) : null}
+                    {canManageWorkspaceShell ? (
+                      <Box
+                        onDragOver={(event: DragEvent<HTMLDivElement>) => event.preventDefault()}
+                        onDrop={() => {
+                          void handlePageDropToRoot(activeSection.id);
+                        }}
+                        sx={{
+                          mb: 0.85,
+                          p: 0.8,
+                          borderRadius: 1.25,
+                          border: '1px dashed rgba(56,189,248,0.32)',
+                          color: '#bfdbfe',
+                          fontSize: '0.78rem',
+                        }}
+                      >
+                        Slipp her for å gjøre siden til toppnivå
+                      </Box>
+                    ) : null}
+                    <Stack spacing={0.55}>
+                      {activeSectionRootPages.map((page) => renderWorkspacePageNode(page))}
+                    </Stack>
                   </Box>
                 ) : null}
-                <Stack spacing={0.55}>
-                  {activeSectionRootPages.map((page) => renderWorkspacePageNode(page))}
-                </Stack>
-              </Box>
-            ) : null}
+              </>
+            )}
           </Box>
         ) : null}
 
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1.1, minWidth: 0 }}>
-          {workspaceNavigation.sectionTabPlacement === 'top' ? (
+          {displayWorkspaceNavigation.sectionTabPlacement === 'top' ? (
             <Stack direction={{ xs: 'column', lg: 'row' }} spacing={0.9} justifyContent="space-between">
               <Stack direction="row" spacing={0.85} flexWrap="wrap" useFlexGap>
                 {workspaceSections.map((section) => {
@@ -2731,59 +6042,61 @@ export default function ProducerMediaPanel({
             </Stack>
           ) : null}
 
-          <Box
-            sx={{
-              p: 1,
-              borderRadius: 1.7,
-              border: '1px solid rgba(148,163,184,0.16)',
-              bgcolor: 'rgba(15,23,42,0.42)',
-            }}
-          >
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
-              <Box>
-                <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Workspace
-                </Typography>
-                <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mt: 0.25 }}>
-                  {activeSection
-                    ? `${activeSection.title} er aktiv seksjon. ${activeSectionPages.length} sider tilgjengelig.`
-                    : 'Velg en seksjon for å åpne brief, materiale, merkevareguide eller leveringsrutine.'}
-                </Typography>
-              </Box>
-              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
-                <Chip
-                  size="small"
-                  label={PRODUCER_WORKSPACE_LAYOUT_LABELS[activeLayout]}
-                  sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#e2e8f0' }}
-                />
-                <Chip
-                  size="small"
-                  label={workspaceNavigation.navigationPinned ? 'Navigasjon festet' : 'Navigasjon flytende'}
-                  sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                />
-                {!workspaceNavigation.navigationPinned && activeSectionPages.length > 0 ? (
-                  activeSectionPages.slice(0, 4).map((page) => (
-                    <Chip
-                      key={page.id}
-                      icon={getWorkspaceSurfaceIcon(page.surface)}
-                      label={page.title}
-                      onClick={() => {
-                        if (!activeSection) {
-                          return;
-                        }
-                        selectPage(activeSection.id, page.id);
-                      }}
-                      sx={{
-                        bgcolor: page.id === activePage?.id ? `${page.color ?? '#38bdf8'}22` : 'rgba(148,163,184,0.12)',
-                        color: page.id === activePage?.id ? '#f8fafc' : '#cbd5e1',
-                        border: `1px solid ${page.color ?? '#38bdf8'}`,
-                      }}
-                    />
-                  ))
-                ) : null}
+          {useReferenceWorkspaceShell ? null : (
+            <Box
+              sx={{
+                p: 1,
+                borderRadius: 1.7,
+                border: '1px solid rgba(148,163,184,0.16)',
+                bgcolor: 'rgba(15,23,42,0.42)',
+              }}
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
+                <Box>
+                  <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                    Workspace
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mt: 0.25 }}>
+                    {activeSection
+                      ? `${activeSection.title} er aktiv seksjon. ${activeSectionPages.length} sider tilgjengelig.`
+                      : 'Velg en seksjon for å åpne brief, materiale, merkevareguide eller leveringsrutine.'}
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
+                  <Chip
+                    size="small"
+                    label={PRODUCER_WORKSPACE_LAYOUT_LABELS[activeLayout]}
+                    sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#e2e8f0' }}
+                  />
+                  <Chip
+                    size="small"
+                    label={displayWorkspaceNavigation.navigationPinned ? 'Navigasjon festet' : 'Navigasjon flytende'}
+                    sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                  />
+                  {!displayWorkspaceNavigation.navigationPinned && activeSectionPages.length > 0 ? (
+                    activeSectionPages.slice(0, 4).map((page) => (
+                      <Chip
+                        key={page.id}
+                        icon={getWorkspaceSurfaceIcon(page.surface)}
+                        label={page.title}
+                        onClick={() => {
+                          if (!activeSection) {
+                            return;
+                          }
+                          selectPage(activeSection.id, page.id);
+                        }}
+                        sx={{
+                          bgcolor: page.id === activePage?.id ? `${page.color ?? '#38bdf8'}22` : 'rgba(148,163,184,0.12)',
+                          color: page.id === activePage?.id ? '#f8fafc' : '#cbd5e1',
+                          border: `1px solid ${page.color ?? '#38bdf8'}`,
+                        }}
+                      />
+                    ))
+                  ) : null}
+                </Stack>
               </Stack>
-            </Stack>
-          </Box>
+            </Box>
+          )}
 
           {activeLayout === 'grid' && activeSection ? (
             <Box
@@ -2847,109 +6160,24 @@ export default function ProducerMediaPanel({
         </Box>
       </Box>
 
-      {clientContributionTasks.length > 0 ? (
-        <Box
-          sx={{
-            p: { xs: 1.15, md: 1.35 },
-            borderRadius: 2,
-            border: '1px solid rgba(148,163,184,0.18)',
-            bgcolor: 'rgba(15,23,42,0.55)',
-          }}
-        >
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1} justifyContent="space-between" sx={{ mb: 1.15 }}>
-            <Box>
-              <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Klientoppgaver akkurat nå
-              </Typography>
-              <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.86rem', mt: 0.35 }}>
-                Disse punktene er beregnet fra brief, content-kalender, merkevareguide og leveringsrutine.
-              </Typography>
-            </Box>
-            <Chip
-              size="small"
-              label={`${clientContributionTasks.length} åpne innspill`}
-              sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', alignSelf: { lg: 'flex-start' } }}
-            />
-          </Stack>
-          <Stack spacing={0.9}>
-            {clientContributionTasks.map((task) => (
-              <Box
-                key={task.id}
-                sx={{
-                  p: 1,
-                  borderRadius: 1.4,
-                  border: '1px solid rgba(148,163,184,0.14)',
-                  background: 'rgba(2,6,23,0.46)',
-                }}
-              >
-                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between">
-                  <Box sx={{ minWidth: 0 }}>
-                    <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
-                      <Chip
-                        size="small"
-                        label={PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType]}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                      />
-                      <Chip
-                        size="small"
-                        label={PRODUCER_PLANNING_PHASE_LABELS[task.phase]}
-                        sx={{ bgcolor: 'rgba(16,185,129,0.14)', color: '#a7f3d0' }}
-                      />
-                      <Chip
-                        size="small"
-                        label={PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS[task.status]}
-                        sx={{
-                          bgcolor: task.status === 'missing'
-                            ? 'rgba(248,113,113,0.16)'
-                            : 'rgba(251,191,36,0.14)',
-                          color: task.status === 'missing' ? '#fecaca' : '#fde68a',
-                        }}
-                      />
-                    </Stack>
-                    <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                      {task.title}
-                    </Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.84rem', mt: 0.3 }}>
-                      {task.detail}
-                    </Typography>
-                  </Box>
-                  {canEditClientInput ? (
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => applyContributionTask(task)}
-                      sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { lg: 'flex-start' } }}
-                    >
-                      {task.sourceType === 'framework'
-                        ? 'Åpne brief'
-                        : task.sourceType === 'brand'
-                          ? 'Åpne merkevareguide'
-                          : task.sourceType === 'delivery'
-                            ? 'Åpne leveringsrutine'
-                            : 'Åpne materiale'}
-                    </Button>
-                  ) : null}
-                </Stack>
-              </Box>
-            ))}
-          </Stack>
-        </Box>
-      ) : null}
-
       <Stack
-        direction={{ xs: 'column', xl: 'row' }}
-        spacing={2}
+        direction={{ xs: 'column', lg: 'row' }}
+        spacing={1.35}
         alignItems="flex-start"
       >
-        {workspaceNavigation.navigationPinned
-        && workspaceNavigation.pageTabPlacement === 'left'
-        && workspaceNavigation.sectionTabPlacement !== 'left'
-          ? pageNavigationRail
-          : null}
+        {useReferenceWorkspaceShell
+          ? referenceWorkspaceRail
+          : (
+            displayWorkspaceNavigation.navigationPinned
+            && displayWorkspaceNavigation.pageTabPlacement === 'left'
+            && displayWorkspaceNavigation.sectionTabPlacement !== 'left'
+              ? pageNavigationRail
+              : null
+          )}
 
         <Box
           sx={{
-            flex: activeLayout === 'split' ? 1 : 1.25,
+            flex: activeLayout === 'split' ? 1.22 : 1.3,
             display: 'flex',
             flexDirection: 'column',
             gap: 2,
@@ -2959,146 +6187,731 @@ export default function ProducerMediaPanel({
           {activeWorkspace === 'brief' ? (
             <Box
               sx={{
-                borderRadius: 2,
-                border: '1px solid rgba(148,163,184,0.18)',
-                bgcolor: 'rgba(15,23,42,0.55)',
+                borderRadius: 3,
+                border: '1px solid rgba(96,165,250,0.14)',
+                bgcolor: 'rgba(15,23,42,0.62)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                 p: { xs: 1.25, md: 1.5 },
+                '& .MuiInputBase-root': {
+                  borderRadius: 2,
+                  bgcolor: 'rgba(248,250,252,0.04)',
+                  color: '#f8fafc',
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(203,213,225,0.62)',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(96,165,250,0.14)',
+                },
+                '& .MuiFormHelperText-root': {
+                  color: 'rgba(203,213,225,0.48)',
+                },
               }}
             >
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
-                  <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    Brief
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.62rem', lineHeight: 1.05 }}>
+                    Fullfør briefen
                   </Typography>
-                  <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.88rem', mt: 0.35 }}>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.86rem', lineHeight: 1.55, mt: 0.3, maxWidth: 620 }}>
                     {isClientReviewerMode
-                      ? 'Beskriv mål, leveranser, målgruppe, budskap og kontaktpunkt slik at produsenten kan planlegge riktig.'
-                      : 'Samle mål, målgruppe, budskap, timing og kontaktpunkt i ett tydelig grensesnitt før resten av planen bygges.'}
+                      ? 'Fyll inn grunnlaget produsenten trenger for å planlegge riktig.'
+                      : 'Fyll inn prosjektgrunnlaget før du går videre til produksjon og godkjenning.'}
                   </Typography>
                 </Box>
-                <Chip
-                  size="small"
-                  label={intakeUpdatedLabel}
-                  sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(148,163,184,0.12)', color: '#cbd5e1' }}
-                />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.55} alignItems={{ md: 'flex-start' }}>
+                  <Stack direction="row" spacing={0.45} flexWrap="wrap" useFlexGap>
+                    <Box
+                      sx={{
+                        alignSelf: 'flex-start',
+                        px: 0.7,
+                        py: 0.28,
+                        borderRadius: 999,
+                        border: '1px solid rgba(96,165,250,0.12)',
+                        bgcolor: briefWizardEnabled ? 'rgba(56,189,248,0.08)' : 'rgba(148,163,184,0.08)',
+                      }}
+                    >
+                      <Typography
+                        sx={{
+                          color: briefWizardEnabled ? 'rgba(191,219,254,0.9)' : 'rgba(203,213,225,0.84)',
+                          fontSize: '0.64rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                          lineHeight: 1.1,
+                        }}
+                      >
+                        {briefWizardEnabled ? 'Wizard' : 'Fri flyt'}
+                      </Typography>
+                    </Box>
+                    <Box
+                      sx={{
+                        alignSelf: 'flex-start',
+                        px: 0.7,
+                        py: 0.28,
+                        borderRadius: 999,
+                        border: '1px solid rgba(96,165,250,0.08)',
+                        bgcolor: 'rgba(15,23,42,0.24)',
+                      }}
+                    >
+                      <Typography
+                        sx={{
+                          color: 'rgba(191,219,254,0.76)',
+                          fontSize: '0.64rem',
+                          fontWeight: 600,
+                          lineHeight: 1.1,
+                        }}
+                      >
+                        {intakeUpdatedLabel}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  {canEditClientInput ? (
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => setBriefWizardEnabled((previous) => !previous)}
+                      sx={{
+                        px: 0.35,
+                        py: 0.1,
+                        minWidth: 0,
+                        color: 'rgba(191,219,254,0.82)',
+                        fontSize: '0.74rem',
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        alignSelf: 'flex-start',
+                      }}
+                    >
+                      {briefWizardEnabled ? 'Gå fritt' : 'Start wizard'}
+                    </Button>
+                  ) : null}
+                </Stack>
               </Stack>
+
+              {!briefWizardEnabled ? (
+                <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mb: 1.05 }}>
+                  {briefStepDescriptors.map((step) => (
+                    <Button
+                      key={step.key}
+                      size="small"
+                      variant={step.key === activeBriefStep ? 'contained' : 'outlined'}
+                      onClick={() => setActiveBriefStep(step.key)}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        ...(step.key === activeBriefStep
+                          ? {
+                            bgcolor: '#38bdf8',
+                            color: '#082f49',
+                            '&:hover': { bgcolor: '#0ea5e9' },
+                          }
+                          : {}),
+                      }}
+                    >
+                      {step.label}
+                    </Button>
+                  ))}
+                </Stack>
+              ) : null}
+
+              <Stack
+                direction={{ xs: 'column', lg: 'row' }}
+                spacing={0.8}
+                justifyContent="space-between"
+                sx={{ mb: 1.05 }}
+              >
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ color: 'rgba(191,219,254,0.62)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    {`Steg ${activeBriefStepIndex + 1} av ${briefStepDescriptors.length}`}
+                  </Typography>
+                  <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.15 }}>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.96rem' }}>
+                      {activeBriefStepDescriptor.label}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={activeBriefStepDescriptor.status}
+                      sx={{
+                        height: 22,
+                        bgcolor: activeBriefStepDescriptor.missing.length === 0 ? 'rgba(34,197,94,0.14)' : 'rgba(59,130,246,0.18)',
+                        color: activeBriefStepDescriptor.missing.length === 0 ? '#86efac' : '#bfdbfe',
+                      }}
+                    />
+                  </Stack>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.28, maxWidth: 500 }}>
+                    {activeBriefStepDescriptor.description}
+                  </Typography>
+                </Box>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={0.65}
+                  alignItems={{ xs: 'flex-start', sm: 'center' }}
+                  sx={{
+                    minWidth: { lg: 320 },
+                    px: 0.8,
+                    py: 0.7,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.08)',
+                    bgcolor: 'rgba(15,23,42,0.28)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    Fremdrift
+                  </Typography>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                    {`${completedBriefStepCount}/${briefStepDescriptors.length} klare`}
+                  </Typography>
+                  <Box
+                    sx={{
+                      width: { xs: '100%', sm: 108 },
+                      height: 5,
+                      borderRadius: 999,
+                      bgcolor: 'rgba(148,163,184,0.18)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: `${(completedBriefStepCount / briefStepDescriptors.length) * 100}%`,
+                        height: '100%',
+                        borderRadius: 999,
+                        bgcolor: '#38bdf8',
+                      }}
+                    />
+                  </Box>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
+                    {nextBriefStepDescriptor && nextBriefStepDescriptor.key !== activeBriefStep
+                      ? `Deretter: ${nextBriefStepDescriptor.label}`
+                      : activeBriefStepDescriptor.missing.length > 0
+                        ? `Fyll ut ${activeBriefStepDescriptor.label.toLowerCase()} før du går videre.`
+                        : 'Briefen er klar for neste arbeidsfase.'}
+                  </Typography>
+                </Stack>
+              </Stack>
+
+              {activeBriefStepDescriptor.missing.length > 0 ? (
+                <Box
+                  sx={{
+                    mb: 1.05,
+                    px: 0.8,
+                    py: activeBriefStepDescriptor.missing.length <= 2 ? 0.58 : 0.72,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.1)',
+                    bgcolor: 'rgba(15,23,42,0.22)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
+                    {`Dette mangler i ${activeBriefStepDescriptor.label.toLowerCase()}`}
+                  </Typography>
+                  <Stack spacing={0.18}>
+                    {activeBriefStepDescriptor.missing.map((item) => (
+                      <Typography key={item.id} sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.4 }}>
+                        • {item.label}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : null}
 
               <Box
                 sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
-                  gap: 1.25,
+                  p: 1,
+                  borderRadius: 2,
+                  border: '1px solid rgba(96,165,250,0.14)',
+                  bgcolor: 'rgba(2,6,23,0.38)',
                 }}
               >
-                <TextField
-                  label="Hva skal prosjektet oppnå?"
-                  value={intakeDraft.projectGoal ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, projectGoal: event.target.value }))}
-                  fullWidth
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Hva skal leveres?"
-                  value={intakeDraft.deliverables ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, deliverables: event.target.value }))}
-                  fullWidth
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Målgruppe"
-                  value={intakeDraft.targetAudience ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, targetAudience: event.target.value }))}
-                  fullWidth
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Kjernebudskap"
-                  value={intakeDraft.keyMessage ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, keyMessage: event.target.value }))}
-                  fullWidth
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Tidsrammer og avhengigheter"
-                  value={intakeDraft.timingConstraints ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, timingConstraints: event.target.value }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Merkevare- og kommunikasjonsnotater"
-                  value={intakeDraft.brandNotes ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, brandNotes: event.target.value }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Hva slags materiale finnes allerede?"
-                  value={intakeDraft.materialOverview ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, materialOverview: event.target.value }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Referanselenker"
-                  value={intakeDraft.referenceLinks ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, referenceLinks: event.target.value }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Kontaktperson"
-                  value={intakeDraft.contactName ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactName: event.target.value }))}
-                  fullWidth
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Kontakt-e-post"
-                  value={intakeDraft.contactEmail ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactEmail: event.target.value }))}
-                  fullWidth
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Kontakttelefon"
-                  value={intakeDraft.contactPhone ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactPhone: event.target.value }))}
-                  fullWidth
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Tilleggsnotater"
-                  value={intakeDraft.additionalNotes ?? ''}
-                  onChange={(event) => setIntakeDraft((previous) => ({ ...previous, additionalNotes: event.target.value }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
+                <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.18, fontSize: '1rem' }}>
+                  {activeBriefStepDescriptor.label}
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.78rem', lineHeight: 1.5, mb: 0.95 }}>
+                  {activeBriefStepDescriptor.description}
+                </Typography>
+
+                {activeBriefStep === 'goal' ? (
+                  <Stack spacing={1.35}>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv målet for prosjektet.',
+                        hasText(intakeDraft.projectGoal) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Hva skal prosjektet oppnå?"
+                        value={intakeDraft.projectGoal ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, projectGoal: event.target.value }))}
+                        fullWidth
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hva som skal leveres.',
+                        hasText(intakeDraft.deliverables) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Hva skal leveres?"
+                        value={intakeDraft.deliverables ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, deliverables: event.target.value }))}
+                        fullWidth
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hvem innholdet er for.',
+                        hasText(intakeDraft.targetAudience) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Målgruppe"
+                        value={intakeDraft.targetAudience ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, targetAudience: event.target.value }))}
+                        fullWidth
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hva publikum skal sitte igjen med.',
+                        hasText(intakeDraft.keyMessage) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Kjernebudskap"
+                        value={intakeDraft.keyMessage ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, keyMessage: event.target.value }))}
+                        fullWidth
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box
+                      sx={{
+                        p: 1,
+                        borderRadius: 1.6,
+                        border: '1px solid rgba(56,189,248,0.12)',
+                        bgcolor: 'rgba(8,47,73,0.16)',
+                      }}
+                    >
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
+                        Content Logic
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5, mb: 1 }}>
+                        Samme struktur som produsenten bruker videre i planlegging og levering. Klienten beskriver målet, kroken og handlingen direkte her.
+                      </Typography>
+                      <Stack spacing={1.2}>
+                        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2}>
+                          <Box sx={{ flex: 1 }}>
+                            {renderFieldLead(
+                              'Skriv hva innholdet faktisk skal oppnå.',
+                              hasText(contentLogicDraft.objective) ? 'filled' : 'missing',
+                            )}
+                            <TextField
+                              label="Content Logic mål"
+                              value={contentLogicDraft.objective}
+                              onChange={(event) => setPlanningDraft((previous) => ({
+                                ...previous,
+                                contentLogic: {
+                                  ...(previous.contentLogic ?? {}),
+                                  mode: previous.contentLogic?.mode ?? 'content_logic',
+                                  objective: event.target.value,
+                                },
+                                activationPlan: {
+                                  ...previous.activationPlan,
+                                  businessGoal: event.target.value,
+                                },
+                              }))}
+                              fullWidth
+                              disabled={!canEditClientInput}
+                            />
+                          </Box>
+                          <Box sx={{ flex: 1 }}>
+                            {renderFieldLead(
+                              'Skriv hvem innholdet skal treffe.',
+                              hasText(contentLogicDraft.audience) ? 'filled' : 'missing',
+                            )}
+                            <TextField
+                              label="Content Logic målgruppe"
+                              value={contentLogicDraft.audience}
+                              onChange={(event) => setPlanningDraft((previous) => ({
+                                ...previous,
+                                contentLogic: {
+                                  ...(previous.contentLogic ?? {}),
+                                  mode: previous.contentLogic?.mode ?? 'content_logic',
+                                  audience: event.target.value,
+                                },
+                                activationPlan: {
+                                  ...previous.activationPlan,
+                                  targetAudience: event.target.value,
+                                },
+                              }))}
+                              fullWidth
+                              disabled={!canEditClientInput}
+                            />
+                          </Box>
+                        </Stack>
+                        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2}>
+                          <Box sx={{ flex: 1 }}>
+                            {renderFieldLead(
+                              'Skriv første vinkling som skal få folk til å stoppe opp.',
+                              hasText(contentLogicDraft.hook) ? 'filled' : 'missing',
+                            )}
+                            <TextField
+                              label="Hook"
+                              value={contentLogicDraft.hook}
+                              onChange={(event) => setPlanningDraft((previous) => ({
+                                ...previous,
+                                contentLogic: {
+                                  ...(previous.contentLogic ?? {}),
+                                  mode: previous.contentLogic?.mode ?? 'content_logic',
+                                  hook: event.target.value,
+                                },
+                                activationPlan: {
+                                  ...previous.activationPlan,
+                                  idea: event.target.value,
+                                },
+                              }))}
+                              fullWidth
+                              disabled={!canEditClientInput}
+                            />
+                          </Box>
+                          <Box sx={{ flex: 1 }}>
+                            {renderFieldLead(
+                              'Skriv hva publikum skal gjøre etter å ha sett innholdet.',
+                              hasText(contentLogicDraft.callToAction) ? 'filled' : 'missing',
+                            )}
+                            <TextField
+                              label="CTA"
+                              value={contentLogicDraft.callToAction}
+                              onChange={(event) => setPlanningDraft((previous) => ({
+                                ...previous,
+                                contentLogic: {
+                                  ...(previous.contentLogic ?? {}),
+                                  mode: previous.contentLogic?.mode ?? 'content_logic',
+                                  callToAction: event.target.value,
+                                },
+                              }))}
+                              fullWidth
+                              disabled={!canEditClientInput}
+                            />
+                          </Box>
+                        </Stack>
+                      </Stack>
+                    </Box>
+                  </Stack>
+                ) : null}
+
+                {activeBriefStep === 'foundation' ? (
+                  <Stack spacing={1.35}>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv tidsrammer og avhengigheter.',
+                        hasText(intakeDraft.timingConstraints) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Tidsrammer og avhengigheter"
+                        value={intakeDraft.timingConstraints ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, timingConstraints: event.target.value }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv brand- eller kommunikasjonsnotater.',
+                        hasText(intakeDraft.brandNotes) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Merkevare- og kommunikasjonsnotater"
+                        value={intakeDraft.brandNotes ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, brandNotes: event.target.value }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hva slags materiale som allerede finnes.',
+                        hasText(intakeDraft.materialOverview) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Hva slags materiale finnes allerede?"
+                        value={intakeDraft.materialOverview ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, materialOverview: event.target.value }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Legg inn referanser som skal påvirke retningen.',
+                        hasText(intakeDraft.referenceLinks) || materials.some((item) => item.entry_type === 'reference') ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Referanselenker"
+                        value={intakeDraft.referenceLinks ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, referenceLinks: event.target.value }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box
+                      sx={{
+                        p: 1,
+                        borderRadius: 1.6,
+                        border: '1px solid rgba(56,189,248,0.12)',
+                        bgcolor: 'rgba(8,47,73,0.16)',
+                      }}
+                    >
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
+                        Content Logic videreføring
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5, mb: 1 }}>
+                        Her konkretiseres hva som beviser budskapet og hvordan innholdet skal fordeles på flater.
+                      </Typography>
+                      <Stack spacing={1.2}>
+                        <Box>
+                          {renderFieldLead(
+                            'Skriv konkrete proof points eller bevis, ett per linje.',
+                            contentLogicDraft.proofPoints.length > 0 ? 'filled' : 'missing',
+                          )}
+                          <TextField
+                            label="Bevis / proof points"
+                            value={stringifyLineSeparatedValues(contentLogicDraft.proofPoints)}
+                            onChange={(event) => setPlanningDraft((previous) => ({
+                              ...previous,
+                              contentLogic: {
+                                ...(previous.contentLogic ?? {}),
+                                mode: previous.contentLogic?.mode ?? 'content_logic',
+                                proofPoints: parseLineSeparatedValues(event.target.value),
+                              },
+                            }))}
+                            fullWidth
+                            multiline
+                            minRows={3}
+                            disabled={!canEditClientInput}
+                          />
+                        </Box>
+                        <Box>
+                          {renderFieldLead(
+                            'Skriv hvordan innholdet skal fordeles mellom nettside, feed, reels eller andre flater.',
+                            hasText(contentLogicDraft.distributionPlan) ? 'filled' : 'missing',
+                          )}
+                          <TextField
+                            label="Distribusjon og kanalbruk"
+                            value={contentLogicDraft.distributionPlan}
+                            onChange={(event) => setPlanningDraft((previous) => ({
+                              ...previous,
+                              contentLogic: {
+                                ...(previous.contentLogic ?? {}),
+                                mode: previous.contentLogic?.mode ?? 'content_logic',
+                                distributionPlan: event.target.value,
+                              },
+                              activationPlan: {
+                                ...previous.activationPlan,
+                                activation: event.target.value,
+                              },
+                            }))}
+                            fullWidth
+                            multiline
+                            minRows={3}
+                            disabled={!canEditClientInput}
+                          />
+                        </Box>
+                      </Stack>
+                    </Box>
+                  </Stack>
+                ) : null}
+
+                {activeBriefStep === 'contact' ? (
+                  <Stack spacing={1.35}>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hvem produsenten skal forholde seg til.',
+                        hasText(intakeDraft.contactName) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Kontaktperson"
+                        value={intakeDraft.contactName ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactName: event.target.value }))}
+                        fullWidth
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv e-posten som brukes til godkjenning og oppfølging.',
+                        hasText(intakeDraft.contactEmail) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Kontakt-e-post"
+                        value={intakeDraft.contactEmail ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactEmail: event.target.value }))}
+                        fullWidth
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Legg inn telefonnummer hvis det trengs i raske avklaringer.',
+                        hasText(intakeDraft.contactPhone) ? 'filled' : 'optional',
+                      )}
+                      <TextField
+                        label="Kontakttelefon"
+                        value={intakeDraft.contactPhone ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactPhone: event.target.value }))}
+                        fullWidth
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Legg inn ekstra notater hvis noe viktig mangler over.',
+                        hasText(intakeDraft.additionalNotes) ? 'filled' : 'optional',
+                      )}
+                      <TextField
+                        label="Tilleggsnotater"
+                        value={intakeDraft.additionalNotes ?? ''}
+                        onChange={(event) => setIntakeDraft((previous) => ({ ...previous, additionalNotes: event.target.value }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                  </Stack>
+                ) : null}
               </Box>
 
-              {canEditClientInput ? (
-                <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.25 }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<SaveOutlinedIcon />}
-                    onClick={() => {
-                      void handleSaveIntake();
+              {activeBriefStepDescriptor.missing.length === 0 ? (
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={0.55}
+                  sx={{
+                    px: 0.8,
+                    py: 0.68,
+                    mt: 0.9,
+                    mb: 0.95,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.08)',
+                    bgcolor: 'rgba(15,23,42,0.26)',
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      color: 'rgba(191,219,254,0.56)',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.07em',
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.3,
                     }}
-                    disabled={savingIntake}
-                    sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
                   >
-                    {savingIntake ? 'Lagrer brief...' : 'Lagre brief'}
-                  </Button>
+                    Kort oppsummering
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
+                    {activeBriefStepSummary}
+                  </Typography>
+                </Stack>
+              ) : null}
+
+              {canEditClientInput ? (
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  justifyContent="space-between"
+                  spacing={0.9}
+                  sx={{
+                    mt: 1.05,
+                    pt: 0.95,
+                    borderTop: '1px solid rgba(96,165,250,0.12)',
+                  }}
+                >
+                  {briefWizardEnabled ? (
+                    <>
+                      <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => setActiveBriefStep(previousBriefStepDescriptor?.key ?? 'goal')}
+                          disabled={activeBriefStepIndex === 0}
+                          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
+                        >
+                          Tilbake
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<SaveOutlinedIcon />}
+                          onClick={() => {
+                            void handleSaveIntake();
+                          }}
+                          disabled={savingIntake}
+                          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
+                        >
+                          {savingIntake ? 'Lagrer...' : 'Lagre'}
+                        </Button>
+                      </Stack>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => {
+                          if (nextBriefStepDescriptor && activeBriefStepIndex < briefStepDescriptors.length - 1) {
+                            setActiveBriefStep(nextBriefStepDescriptor.key);
+                            return;
+                          }
+                          setMaterialsMode('capture');
+                          openSurfaceWorkspace('materials');
+                        }}
+                        disabled={activeBriefStepDescriptor.missing.length > 0}
+                        sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
+                      >
+                        {nextBriefStepDescriptor && activeBriefStepIndex < briefStepDescriptors.length - 1
+                          ? `Fortsett til ${nextBriefStepDescriptor.label}`
+                          : 'Fortsett til Materiale'}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Stack direction="row" spacing={0.75}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => setActiveBriefStep(previousBriefStepDescriptor?.key ?? 'goal')}
+                          disabled={activeBriefStepIndex === 0}
+                          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
+                        >
+                          {previousBriefStepDescriptor && activeBriefStepIndex > 0 ? `Til ${previousBriefStepDescriptor.label}` : 'Forrige steg'}
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => setActiveBriefStep(nextBriefStepDescriptor?.key ?? 'contact')}
+                          disabled={activeBriefStepIndex === briefStepDescriptors.length - 1}
+                          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
+                        >
+                          {nextBriefStepDescriptor && activeBriefStepIndex < briefStepDescriptors.length - 1 ? `Til ${nextBriefStepDescriptor.label}` : 'Neste steg'}
+                        </Button>
+                      </Stack>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<SaveOutlinedIcon />}
+                        onClick={() => {
+                          void handleSaveIntake();
+                        }}
+                        disabled={savingIntake}
+                        sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
+                      >
+                        {savingIntake ? 'Lagrer brief...' : 'Lagre brief'}
+                      </Button>
+                    </>
+                  )}
                 </Stack>
               ) : null}
             </Box>
@@ -3107,157 +6920,2250 @@ export default function ProducerMediaPanel({
           {activeWorkspace === 'brand' ? (
             <Box
               sx={{
-                borderRadius: 2,
-                border: '1px solid rgba(148,163,184,0.18)',
-                bgcolor: 'rgba(15,23,42,0.55)',
+                borderRadius: 3,
+                border: '1px solid rgba(96,165,250,0.14)',
+                bgcolor: 'rgba(15,23,42,0.62)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                 p: { xs: 1.25, md: 1.5 },
+                '& .MuiInputBase-root': {
+                  borderRadius: 2,
+                  bgcolor: 'rgba(248,250,252,0.04)',
+                  color: '#f8fafc',
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(203,213,225,0.62)',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(96,165,250,0.14)',
+                },
+                '& .MuiFormHelperText-root': {
+                  color: 'rgba(203,213,225,0.48)',
+                },
               }}
             >
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
-                  <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    Merkevareguide
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
+                    Fullfør merkevareguiden
                   </Typography>
-                  <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.88rem', mt: 0.35 }}>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 620 }}>
                     {isClientReviewerMode
-                      ? 'Del logo, farger, fonter, tone of voice, visuell stil og tydelige do’s and don’ts for prosjektet.'
-                      : 'Definer logo, farger, fonter, tone of voice, visuell stil og tydelige do’s and don’ts.'}
+                      ? 'Legg inn det som faktisk skal styre uttrykket i produksjonen.'
+                      : 'Fyll inn det teamet faktisk skal bruke for å holde uttrykket konsistent.'}
                   </Typography>
                 </Box>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  <Chip
-                    size="small"
-                    label={`Merkevare ${brandGuideReadyCount}/5`}
-                    sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#e9d5ff' }}
-                  />
-                  <Chip
-                    size="small"
-                    label={planningUpdatedLabel}
-                    sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#cbd5e1' }}
-                  />
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={0.65}
+                  alignItems={{ xs: 'flex-start', sm: 'center' }}
+                  sx={{
+                    minWidth: { lg: 320 },
+                    px: 0.8,
+                    py: 0.7,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.08)',
+                    bgcolor: 'rgba(15,23,42,0.28)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    Fremdrift
+                  </Typography>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                    {`${brandGuideReadyCount}/5 klare`}
+                  </Typography>
+                  <Box
+                    sx={{
+                      width: { xs: '100%', sm: 108 },
+                      height: 5,
+                      borderRadius: 999,
+                      bgcolor: 'rgba(148,163,184,0.18)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: `${(brandGuideReadyCount / 5) * 100}%`,
+                        height: '100%',
+                        borderRadius: 999,
+                        bgcolor: '#38bdf8',
+                      }}
+                    />
+                  </Box>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
+                    {brandGuideMissingItems.length > 0
+                      ? `Fyll ut ${brandGuideMissingItems[0]?.label.toLowerCase()} før du går videre.`
+                      : 'Merkevareguiden er klar for produksjon.'}
+                  </Typography>
                 </Stack>
               </Stack>
 
-              {!materials.some((item) => item.entry_type === 'brand_asset') && brandPackTemplate ? (
-                <Alert
-                  severity="info"
-                  sx={{ mb: 1.25 }}
-                  action={canEditClientInput ? (
-                    <Button
-                      color="inherit"
-                      size="small"
-                      onClick={() => applyMaterialTemplate(brandPackTemplate)}
-                      sx={{ textTransform: 'none', fontWeight: 700 }}
-                    >
-                      Legg til merkevarefil
-                    </Button>
-                  ) : undefined}
+              {brandGuideMissingItems.length > 0 ? (
+                <Box
+                  sx={{
+                    mb: 1.05,
+                    px: 0.8,
+                    py: brandGuideMissingItems.length <= 2 ? 0.58 : 0.72,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.1)',
+                    bgcolor: 'rgba(15,23,42,0.22)',
+                  }}
                 >
-                  Det ligger ennå ingen merkevarefiler i materialbanken. Legg gjerne inn logo og profilfiler i materialflaten også.
-                </Alert>
+                  <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
+                    Dette mangler i merkevareguiden
+                  </Typography>
+                  <Stack spacing={0.18}>
+                    {brandGuideMissingItems.map((item) => (
+                      <Typography key={item.id} sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.4 }}>
+                        • {item.label}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : (
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={0.55}
+                  sx={{
+                    px: 0.8,
+                    py: 0.68,
+                    mb: 1.05,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(34,197,94,0.12)',
+                    bgcolor: 'rgba(15,23,42,0.22)',
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      color: '#86efac',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.07em',
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    Klart
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
+                    Merkevareguiden er klar for produksjon.
+                  </Typography>
+                </Stack>
+              )}
+
+              {!materials.some((item) => item.entry_type === 'brand_asset') && brandPackTemplate ? (
+                <Box
+                  sx={{
+                    mb: 1.05,
+                    px: 0.8,
+                    py: 0.72,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.1)',
+                    bgcolor: 'rgba(15,23,42,0.22)',
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                    <Box>
+                      <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.2 }}>
+                        Dette bør du legge inn i materialet
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.4 }}>
+                        Legg inn logo og profilfiler i materialbanken, så teamet bruker samme filer i produksjon og levering.
+                      </Typography>
+                    </Box>
+                    {canEditClientInput ? (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => applyMaterialTemplate(brandPackTemplate)}
+                        sx={{ textTransform: 'none', fontWeight: 700, flexShrink: 0 }}
+                      >
+                        Legg til merkevarefil
+                      </Button>
+                    ) : null}
+                  </Stack>
+                </Box>
               ) : null}
 
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', xl: 'repeat(2, minmax(0, 1fr))' },
-                  gap: 1.25,
+                  gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
+                  gap: 0.95,
                 }}
               >
-                <TextField
-                  label="Logo-lenke"
-                  value={planningDraft.brandGuide.logoUrl ?? ''}
-                  onChange={(event) => setPlanningDraft((previous) => ({
-                    ...previous,
-                    brandGuide: {
-                      ...previous.brandGuide,
-                      logoUrl: event.target.value,
-                    },
-                  }))}
-                  fullWidth
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Fonter (én per linje)"
-                  value={brandFontsDraft}
-                  onChange={(event) => setBrandFontsDraft(event.target.value)}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Merkevarefarger (Label | #HEX | Bruk)"
-                  value={brandColorsDraft}
-                  onChange={(event) => setBrandColorsDraft(event.target.value)}
-                  helperText="Én farge per linje. Eksempel: Primær | #0F172A | Bakgrunn og overskrifter"
-                  fullWidth
-                  multiline
-                  minRows={4}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Tone of voice"
-                  value={planningDraft.brandGuide.toneOfVoice ?? ''}
-                  onChange={(event) => setPlanningDraft((previous) => ({
-                    ...previous,
-                    brandGuide: {
-                      ...previous.brandGuide,
-                      toneOfVoice: event.target.value,
-                    },
-                  }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Visuell stil"
-                  value={planningDraft.brandGuide.visualStyle ?? ''}
-                  onChange={(event) => setPlanningDraft((previous) => ({
-                    ...previous,
-                    brandGuide: {
-                      ...previous.brandGuide,
-                      visualStyle: event.target.value,
-                    },
-                  }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Do's (én per linje)"
-                  value={brandDosDraft}
-                  onChange={(event) => setBrandDosDraft(event.target.value)}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Don'ts (én per linje)"
-                  value={brandDontsDraft}
-                  onChange={(event) => setBrandDontsDraft(event.target.value)}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
+                <Box
+                  sx={{
+                    p: 1.05,
+                    borderRadius: 2,
+                    border: '1px solid rgba(96,165,250,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.38)',
+                  }}
+                >
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.18, fontSize: '0.98rem' }}>
+                    Legg inn visuell profil
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
+                    Fyll inn det som faktisk skal styre logo, farger og fonter i produksjonen.
+                  </Typography>
+                  <Stack spacing={1.35}>
+                    <Box>
+                      {renderFieldLead(
+                        'Legg inn logoen teamet faktisk skal bruke videre i produksjon og levering.',
+                        hasText(planningDraft.brandGuide.logoUrl) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Logo-lenke"
+                        value={planningDraft.brandGuide.logoUrl ?? ''}
+                        onChange={(event) => setPlanningDraft((previous) => ({
+                          ...previous,
+                          brandGuide: {
+                            ...previous.brandGuide,
+                            logoUrl: event.target.value,
+                          },
+                        }))}
+                        fullWidth
+                        disabled={!canEditClientInput}
+                      />
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.85} sx={{ mt: 0.8 }}>
+                        <input
+                          ref={brandLogoFileInputRef}
+                          type="file"
+                          hidden
+                          accept=".png,.jpg,.jpeg,.webp,.svg"
+                          onChange={(event) => {
+                            void handleBrandLogoFileSelected(event);
+                          }}
+                        />
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ImageOutlinedIcon />}
+                          onClick={() => handleOpenBrandLogoFilePicker('primary')}
+                          disabled={!canEditClientInput || uploadingBrandLogo}
+                          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
+                        >
+                          {uploadingBrandLogo && brandLogoUploadVariantType === 'primary'
+                            ? 'Laster opp og analyserer...'
+                            : 'Last opp primærlogo'}
+                        </Button>
+                        {resolvedBrandLogoUrl ? (
+                          <Button
+                            size="small"
+                            variant="text"
+                            component="a"
+                            href={resolvedBrandLogoUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
+                          >
+                            Åpne logofil
+                          </Button>
+                        ) : null}
+                      </Stack>
+                      <Box
+                        sx={{
+                          mt: 0.95,
+                          display: 'grid',
+                          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+                          gap: 0.75,
+                        }}
+                      >
+                        {BRAND_LOGO_VARIANT_ORDER.map((variantType) => {
+                          const variant = brandLogoVariants.find((item) => item.type === variantType) ?? null;
+                          const isActiveVariant = activeBrandLogoVariant?.type === variantType;
+                          const isAutoPreviewVariant = autoBrandPreviewVariant?.type === variantType;
+                          const isDeleteConfirmOpen = brandLogoVariantDeleteConfirmType === variantType;
+                          const variantLabel = BRAND_LOGO_VARIANT_LABELS[variantType];
+                          const variantDetection = variant?.detection;
+                          return (
+                            <Box
+                              key={variantType}
+                              sx={{
+                                p: 0.9,
+                                borderRadius: 1.4,
+                                border: isActiveVariant
+                                  ? '1px solid rgba(56,189,248,0.34)'
+                                  : '1px solid rgba(148,163,184,0.16)',
+                                bgcolor: isActiveVariant
+                                  ? 'rgba(14,165,233,0.1)'
+                                  : 'rgba(2,6,23,0.36)',
+                              }}
+                            >
+                              <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ color: '#fff', fontSize: '0.82rem', fontWeight: 700 }}>
+                                    {variantLabel}
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.72rem', mt: 0.2, lineHeight: 1.45 }}>
+                                    {BRAND_LOGO_VARIANT_HELPERS[variantType]}
+                                  </Typography>
+                                </Box>
+                                <Chip
+                                  size="small"
+                                  label={isActiveVariant ? 'Aktiv' : variant ? 'Klar' : 'Mangler'}
+                                  sx={{
+                                    bgcolor: isActiveVariant
+                                      ? 'rgba(56,189,248,0.16)'
+                                      : variant
+                                        ? 'rgba(34,197,94,0.14)'
+                                        : 'rgba(148,163,184,0.14)',
+                                    color: isActiveVariant
+                                      ? '#dbeafe'
+                                      : variant
+                                        ? '#dcfce7'
+                                        : '#cbd5e1',
+                                    fontWeight: 700,
+                                  }}
+                                />
+                              </Stack>
+                              {variant ? (
+                                <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mt: 0.55 }}>
+                                  {variantType === 'primary' ? (
+                                    <Chip
+                                      size="small"
+                                      label="Auto i 16:9 / 4:5"
+                                      sx={{ bgcolor: 'rgba(56,189,248,0.12)', color: '#dbeafe', fontWeight: 700 }}
+                                    />
+                                  ) : null}
+                                  {variantType === 'icon' ? (
+                                    <Chip
+                                      size="small"
+                                      label="Auto i 9:16 / 1:1"
+                                      sx={{ bgcolor: 'rgba(168,85,247,0.12)', color: '#f5d0fe', fontWeight: 700 }}
+                                    />
+                                  ) : null}
+                                  {isAutoPreviewVariant ? (
+                                    <Chip
+                                      size="small"
+                                      label={`Brukes nå i ${activeBrandPreviewFormat}`}
+                                      sx={{ bgcolor: 'rgba(34,197,94,0.12)', color: '#dcfce7', fontWeight: 700 }}
+                                    />
+                                  ) : null}
+                                </Stack>
+                              ) : null}
+                              <Typography sx={{ color: 'rgba(191,219,254,0.76)', fontSize: '0.73rem', mt: 0.55 }} noWrap>
+                                {readFirstNonEmptyString(
+                                  variant?.fileName,
+                                  variantDetection?.sourceFileName,
+                                  'Ingen variant lastet opp ennå.',
+                                )}
+                              </Typography>
+                              {variantDetection ? (
+                                <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.7rem', mt: 0.2 }} noWrap>
+                                  {[
+                                    getBrandLogoMarkTypeLabel(variantDetection.markType),
+                                    variantDetection.hasTransparency ? 'transparent' : 'bakplate',
+                                  ].join(' · ')}
+                                </Typography>
+                              ) : null}
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.7} sx={{ mt: 0.8 }}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleOpenBrandLogoFilePicker(variantType)}
+                                  disabled={!canEditClientInput || uploadingBrandLogo || savingPlanning}
+                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                                >
+                                  {uploadingBrandLogo && brandLogoUploadVariantType === variantType
+                                    ? 'Laster opp...'
+                                    : variant
+                                      ? 'Bytt fil'
+                                      : 'Last opp'}
+                                </Button>
+                                {variant ? (
+                                  <Button
+                                    size="small"
+                                    variant={isActiveVariant ? 'contained' : 'text'}
+                                    onClick={() => {
+                                      void handleSelectActiveBrandLogoVariant(variantType);
+                                    }}
+                                    disabled={!canEditClientInput || isActiveVariant || uploadingBrandLogo || savingPlanning}
+                                    sx={{
+                                      textTransform: 'none',
+                                      fontWeight: 700,
+                                      minHeight: 38,
+                                      ...(isActiveVariant
+                                        ? { bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }
+                                        : {}),
+                                    }}
+                                  >
+                                    {brandLogoVariantBusyKey === `activate:${variantType}`
+                                      ? 'Lagrer...'
+                                      : isActiveVariant
+                                        ? 'I preview nå'
+                                        : 'Bruk i preview'}
+                                  </Button>
+                                ) : null}
+                                {variant ? (
+                                  <Button
+                                    size="small"
+                                    variant="text"
+                                    color="error"
+                                    onClick={() => {
+                                      setBrandLogoVariantDeleteConfirmType((previous) => (
+                                        previous === variantType ? null : variantType
+                                      ));
+                                    }}
+                                    disabled={!canEditClientInput || uploadingBrandLogo || savingPlanning}
+                                    sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                                  >
+                                    {brandLogoVariantBusyKey === `delete:${variantType}`
+                                      ? 'Sletter...'
+                                      : isDeleteConfirmOpen
+                                        ? 'Lukk'
+                                        : 'Slett'}
+                                  </Button>
+                                ) : null}
+                              </Stack>
+                              {variant ? (
+                                <Collapse in={isDeleteConfirmOpen}>
+                                  <Alert
+                                    severity="warning"
+                                    sx={{
+                                      mt: 0.85,
+                                      borderRadius: 1.2,
+                                      bgcolor: 'rgba(120,53,15,0.2)',
+                                      border: '1px solid rgba(251,191,36,0.18)',
+                                      '& .MuiAlert-message': { width: '100%' },
+                                    }}
+                                  >
+                                    <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', color: '#fef3c7', mb: 0.3 }}>
+                                      Slette {variantLabel.toLowerCase()}?
+                                    </Typography>
+                                    <Typography sx={{ fontSize: '0.74rem', color: 'rgba(254,243,199,0.86)', lineHeight: 1.45 }}>
+                                      Varianten fjernes fra prosjektet og filen slettes også hvis den er lastet opp her.
+                                    </Typography>
+                                    <Stack direction="row" spacing={0.7} sx={{ mt: 0.8 }}>
+                                      <Button
+                                        size="small"
+                                        variant="contained"
+                                        color="error"
+                                        onClick={() => {
+                                          void handleDeleteBrandLogoVariant(variantType);
+                                        }}
+                                        disabled={!canEditClientInput || uploadingBrandLogo || savingPlanning}
+                                        sx={{ textTransform: 'none', fontWeight: 700 }}
+                                      >
+                                        {brandLogoVariantBusyKey === `delete:${variantType}` ? 'Sletter...' : 'Bekreft sletting'}
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        variant="text"
+                                        onClick={() => setBrandLogoVariantDeleteConfirmType(null)}
+                                        disabled={brandLogoVariantBusyKey === `delete:${variantType}`}
+                                        sx={{ textTransform: 'none', fontWeight: 700, color: '#fde68a' }}
+                                      >
+                                        Avbryt
+                                      </Button>
+                                    </Stack>
+                                  </Alert>
+                                </Collapse>
+                              ) : null}
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                      {brandLogoDetection ? (
+                        <Box
+                          sx={{
+                            mt: 0.9,
+                            p: 0.95,
+                            borderRadius: 1.5,
+                            border: '1px solid rgba(56,189,248,0.18)',
+                            bgcolor: 'rgba(8,47,73,0.16)',
+                          }}
+                        >
+                          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
+                            <Stack direction="row" spacing={1} sx={{ minWidth: 0 }}>
+                              <Box
+                                sx={{
+                                  width: 72,
+                                  height: 72,
+                                  flexShrink: 0,
+                                  borderRadius: 1.4,
+                                  border: '1px solid rgba(148,163,184,0.18)',
+                                  bgcolor: 'rgba(15,23,42,0.72)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                {resolvedBrandLogoUrl ? (
+                                  <Box
+                                    component="img"
+                                    src={resolvedBrandLogoUrl}
+                                    alt="Opplastet logo"
+                                    sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                                  />
+                                ) : (
+                                  <ImageOutlinedIcon sx={{ color: 'rgba(191,219,254,0.72)' }} />
+                                )}
+                              </Box>
+                              <Box sx={{ minWidth: 0 }}>
+                                <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ mb: 0.35 }}>
+                                  <Chip
+                                    size="small"
+                                    icon={<AutoFixHighIcon />}
+                                    label="Brand Intake Assistant"
+                                    sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#e0f2fe' }}
+                                  />
+                                  <Chip
+                                    size="small"
+                                    label={`Aktiv variant · ${BRAND_LOGO_VARIANT_LABELS[activeBrandLogoVariant?.type ?? 'primary']}`}
+                                    sx={{ bgcolor: 'rgba(14,165,233,0.14)', color: '#dbeafe' }}
+                                  />
+                                  <Chip
+                                    size="small"
+                                    label={brandLogoDetectionSummary?.markTypeLabel ?? 'Ukjent'}
+                                    sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#f5d0fe' }}
+                                  />
+                                  <Chip
+                                    size="small"
+                                    label={brandLogoDetectionSummary?.transparencyLabel ?? 'Ingen analyse'}
+                                    sx={{ bgcolor: 'rgba(15,118,110,0.16)', color: '#99f6e4' }}
+                                  />
+                                </Stack>
+                                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>
+                                  {readFirstNonEmptyString(brandLogoDetection.sourceFileName, 'Opplastet logo')}
+                                </Typography>
+                                <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.78rem', mt: 0.22, lineHeight: 1.45 }}>
+                                  {readFirstNonEmptyString(
+                                    brandLogoDetection.note,
+                                    'Vi har lest logoen og laget forslag til farger, plassering og treatment.',
+                                  )}
+                                </Typography>
+                                <Typography sx={{ color: 'rgba(191,219,254,0.78)', fontSize: '0.74rem', mt: 0.28 }}>
+                                  {[
+                                    brandLogoDetection.aspectRatioLabel ? `Forhold: ${brandLogoDetection.aspectRatioLabel}` : '',
+                                    brandLogoDetection.imageWidth && brandLogoDetection.imageHeight ? `${brandLogoDetection.imageWidth}×${brandLogoDetection.imageHeight}` : '',
+                                    brandLogoDetectionSummary?.placementLabel ? `Plassering: ${brandLogoDetectionSummary.placementLabel}` : '',
+                                    brandLogoDetectionSummary?.treatmentLabel ? `Treatment: ${brandLogoDetectionSummary.treatmentLabel}` : '',
+                                  ].filter(Boolean).join(' · ')}
+                                </Typography>
+                              </Box>
+                            </Stack>
+                            <Stack spacing={0.7} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
+                              {canEditClientInput ? (
+                                <>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    startIcon={<CheckCircleOutlineIcon />}
+                                    onClick={() => {
+                                      void applyBrandLogoDetectionSuggestions();
+                                    }}
+                                    sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
+                                  >
+                                    Bruk forslag
+                                  </Button>
+                                  {brandLogoDetectionColors.length > 0 ? (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={() => setBrandColorsFromEntries(brandLogoDetectionColors)}
+                                      sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40 }}
+                                    >
+                                      Bruk bare farger
+                                    </Button>
+                                  ) : null}
+                                </>
+                              ) : null}
+                              <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.72rem', maxWidth: 250, textAlign: { md: 'right' } }}>
+                                Forslagene fyller ut merkevareguiden, men klienten kan fortsatt justere alt manuelt etterpå.
+                              </Typography>
+                            </Stack>
+                          </Stack>
+                          {brandLogoDetectionColors.length > 0 ? (
+                            <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap sx={{ mt: 0.95 }}>
+                              {brandLogoDetectionColors.map((color) => (
+                                <Stack
+                                  key={color.id}
+                                  direction="row"
+                                  spacing={0.55}
+                                  alignItems="center"
+                                  sx={{
+                                    px: 0.75,
+                                    py: 0.45,
+                                    borderRadius: 999,
+                                    border: '1px solid rgba(148,163,184,0.16)',
+                                    bgcolor: 'rgba(15,23,42,0.56)',
+                                  }}
+                                >
+                                  <Box sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: color.hex, border: '1px solid rgba(255,255,255,0.2)' }} />
+                                  <Typography sx={{ color: '#e2e8f0', fontSize: '0.75rem', fontWeight: 700 }}>
+                                    {color.label}
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.74rem' }}>
+                                    {color.hex}
+                                  </Typography>
+                                </Stack>
+                              ))}
+                            </Stack>
+                          ) : null}
+                        </Box>
+                      ) : null}
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Velg hvor logoen skal ligge, når den skal vises, og hvordan den skal behandles i videoen.',
+                        hasText(planningDraft.brandGuide.logoUrl) ? 'filled' : 'optional',
+                      )}
+                      <Stack spacing={0.85}>
+                        <ToggleButtonGroup
+                          size="small"
+                          exclusive
+                          value={planningDraft.brandGuide.logoPlacement ?? 'bottom_right'}
+                          onChange={(_, nextValue: string | null) => {
+                            if (!nextValue) {
+                              return;
+                            }
+                            setPlanningDraft((previous) => ({
+                              ...previous,
+                              brandGuide: {
+                                ...previous.brandGuide,
+                                logoPlacement: nextValue as typeof previous.brandGuide.logoPlacement,
+                              },
+                            }));
+                          }}
+                          sx={{
+                            flexWrap: 'wrap',
+                            gap: 0.55,
+                            '& .MuiToggleButton-root': {
+                              borderRadius: '999px !important',
+                              px: 0.9,
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              borderColor: 'rgba(148,163,184,0.2)',
+                              color: 'rgba(226,232,240,0.82)',
+                            },
+                            '& .Mui-selected': {
+                              bgcolor: 'rgba(168,85,247,0.16) !important',
+                              borderColor: 'rgba(168,85,247,0.32) !important',
+                              color: '#f5d0fe !important',
+                            },
+                          }}
+                        >
+                          {Object.entries(PRODUCER_BRAND_LOGO_PLACEMENT_LABELS).map(([value, label]) => (
+                            <ToggleButton key={value} value={value} disabled={!canEditClientInput}>
+                              {label}
+                            </ToggleButton>
+                          ))}
+                        </ToggleButtonGroup>
+                        <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.72rem', lineHeight: 1.45 }}>
+                          Dra logoen i previewen for å snappe den til nærmeste plassering. Valget under oppdateres automatisk.
+                        </Typography>
+                        <ToggleButtonGroup
+                          size="small"
+                          exclusive
+                          value={planningDraft.brandGuide.logoTiming ?? 'outro'}
+                          onChange={(_, nextValue: string | null) => {
+                            if (!nextValue) {
+                              return;
+                            }
+                            setPlanningDraft((previous) => ({
+                              ...previous,
+                              brandGuide: {
+                                ...previous.brandGuide,
+                                logoTiming: nextValue as typeof previous.brandGuide.logoTiming,
+                                logoStartSecond: nextValue === 'custom'
+                                  ? Math.max(0, previous.brandGuide.logoStartSecond ?? 0)
+                                  : previous.brandGuide.logoStartSecond,
+                                logoEndSecond: nextValue === 'custom'
+                                  ? Math.max(
+                                    (previous.brandGuide.logoStartSecond ?? 0) + 1,
+                                    previous.brandGuide.logoEndSecond ?? 3,
+                                  )
+                                  : previous.brandGuide.logoEndSecond,
+                              },
+                            }));
+                          }}
+                          sx={{
+                            flexWrap: 'wrap',
+                            gap: 0.55,
+                            '& .MuiToggleButton-root': {
+                              borderRadius: '999px !important',
+                              px: 0.9,
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              borderColor: 'rgba(148,163,184,0.2)',
+                              color: 'rgba(226,232,240,0.82)',
+                            },
+                            '& .Mui-selected': {
+                              bgcolor: 'rgba(56,189,248,0.16) !important',
+                              borderColor: 'rgba(56,189,248,0.32) !important',
+                              color: '#dbeafe !important',
+                            },
+                          }}
+                        >
+                          {Object.entries(PRODUCER_BRAND_LOGO_TIMING_LABELS).map(([value, label]) => (
+                            <ToggleButton key={value} value={value} disabled={!canEditClientInput}>
+                              {label}
+                            </ToggleButton>
+                          ))}
+                        </ToggleButtonGroup>
+                        {planningDraft.brandGuide.logoTiming === 'custom' ? (
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.85}>
+                            <TextField
+                              size="small"
+                              type="number"
+                              label="Fra sekund"
+                              value={planningDraft.brandGuide.logoStartSecond ?? 0}
+                              disabled={!canEditClientInput}
+                              inputProps={{ min: 0, step: 1 }}
+                              onChange={(event) => {
+                                const nextStart = Math.max(0, Number(event.target.value || 0));
+                                setPlanningDraft((previous) => ({
+                                  ...previous,
+                                  brandGuide: {
+                                    ...previous.brandGuide,
+                                    logoStartSecond: nextStart,
+                                    logoEndSecond: Math.max(nextStart + 1, previous.brandGuide.logoEndSecond ?? nextStart + 3),
+                                  },
+                                }));
+                              }}
+                              helperText="Velg når overlayet skal starte i videoen."
+                            />
+                            <TextField
+                              size="small"
+                              type="number"
+                              label="Til sekund"
+                              value={planningDraft.brandGuide.logoEndSecond ?? 3}
+                              disabled={!canEditClientInput}
+                              inputProps={{ min: (planningDraft.brandGuide.logoStartSecond ?? 0) + 1, step: 1 }}
+                              onChange={(event) => {
+                                const nextEnd = Number(event.target.value || 0);
+                                setPlanningDraft((previous) => ({
+                                  ...previous,
+                                  brandGuide: {
+                                    ...previous.brandGuide,
+                                    logoEndSecond: Math.max((previous.brandGuide.logoStartSecond ?? 0) + 1, nextEnd),
+                                  },
+                                }));
+                              }}
+                              helperText="Velg når overlayet skal forsvinne igjen."
+                            />
+                          </Stack>
+                        ) : null}
+                        {planningDraft.brandGuide.logoTiming !== 'none' ? (
+                          <Box
+                            sx={{
+                              px: 0.2,
+                              pt: 0.3,
+                            }}
+                          >
+                            <Stack direction="row" justifyContent="space-between" spacing={1} sx={{ mb: 0.25 }}>
+                              <Typography sx={{ color: '#e2e8f0', fontSize: '0.75rem', fontWeight: 700 }}>
+                                Finjuster logo-timing
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(125,211,252,0.9)', fontSize: '0.73rem', fontWeight: 700 }}>
+                                {planningDraft.brandGuide.logoTiming === 'custom' ? 'Tilpasset' : 'Dra for å gjøre tilpasset'}
+                              </Typography>
+                            </Stack>
+                            <Slider
+                              value={[logoTimingPreview.start, logoTimingPreview.end]}
+                              onChange={handleBrandTimingRangeChange}
+                              min={0}
+                              max={logoTimingPreview.total}
+                              step={1}
+                              disabled={!canEditClientInput}
+                              valueLabelDisplay="auto"
+                              valueLabelFormat={(value) => formatVideoSecond(value)}
+                              sx={{
+                                color: '#38bdf8',
+                                px: 0.5,
+                                '& .MuiSlider-thumb': {
+                                  width: 16,
+                                  height: 16,
+                                },
+                                '& .MuiSlider-rail': {
+                                  opacity: 0.24,
+                                  bgcolor: 'rgba(148,163,184,0.32)',
+                                },
+                                '& .MuiSlider-track': {
+                                  border: 'none',
+                                  boxShadow: '0 0 18px rgba(56,189,248,0.24)',
+                                },
+                              }}
+                            />
+                            <Stack direction="row" justifyContent="space-between">
+                              <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.72rem' }}>
+                                Start {formatVideoSecond(logoTimingPreview.start)}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.72rem' }}>
+                                Slutt {formatVideoSecond(logoTimingPreview.end)}
+                              </Typography>
+                            </Stack>
+                          </Box>
+                        ) : null}
+                        <Box
+                          sx={{
+                            p: 1,
+                            borderRadius: 1.4,
+                            border: '1px solid rgba(148,163,184,0.16)',
+                            background: 'rgba(2,6,23,0.48)',
+                          }}
+                        >
+                          <Stack direction="row" justifyContent="space-between" spacing={1}>
+                            <Typography sx={{ color: '#fff', fontSize: '0.8rem', fontWeight: 700 }}>
+                              Logo i videoen
+                            </Typography>
+                            <Typography sx={{ color: '#93c5fd', fontSize: '0.78rem', fontWeight: 700 }}>
+                              {logoTimingPreview.label}
+                            </Typography>
+                          </Stack>
+                          <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem', mt: 0.35 }}>
+                            {logoTimingPreview.detail}
+                          </Typography>
+                          <Box
+                            sx={{
+                              position: 'relative',
+                              mt: 1,
+                              height: 10,
+                              borderRadius: 999,
+                              bgcolor: 'rgba(148,163,184,0.18)',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {planningDraft.brandGuide.logoTiming !== 'none' ? (
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  bottom: 0,
+                                  left: `${(logoTimingPreview.start / Math.max(1, logoTimingPreview.total)) * 100}%`,
+                                  width: `${Math.max(
+                                    8,
+                                    ((logoTimingPreview.end - logoTimingPreview.start) / Math.max(1, logoTimingPreview.total)) * 100,
+                                  )}%`,
+                                  borderRadius: 999,
+                                  bgcolor: 'rgba(56,189,248,0.92)',
+                                  boxShadow: '0 0 18px rgba(56,189,248,0.35)',
+                                }}
+                              />
+                            ) : null}
+                          </Box>
+                          <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
+                            <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.72rem' }}>
+                              0:00
+                            </Typography>
+                            <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.72rem' }}>
+                              {formatVideoSecond(logoTimingPreview.total)}
+                            </Typography>
+                          </Stack>
+                        </Box>
+                        <ToggleButtonGroup
+                          size="small"
+                          exclusive
+                          value={planningDraft.brandGuide.logoTreatment ?? 'clean'}
+                          onChange={(_, nextValue: string | null) => {
+                            if (!nextValue) {
+                              return;
+                            }
+                            setPlanningDraft((previous) => ({
+                              ...previous,
+                              brandGuide: {
+                                ...previous.brandGuide,
+                                logoTreatment: nextValue as typeof previous.brandGuide.logoTreatment,
+                              },
+                            }));
+                          }}
+                          sx={{
+                            flexWrap: 'wrap',
+                            gap: 0.55,
+                            '& .MuiToggleButton-root': {
+                              borderRadius: '999px !important',
+                              px: 0.9,
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              borderColor: 'rgba(148,163,184,0.2)',
+                              color: 'rgba(226,232,240,0.82)',
+                            },
+                            '& .Mui-selected': {
+                              bgcolor: 'rgba(34,197,94,0.16) !important',
+                              borderColor: 'rgba(34,197,94,0.32) !important',
+                              color: '#dcfce7 !important',
+                            },
+                          }}
+                        >
+                          {Object.entries(PRODUCER_BRAND_LOGO_TREATMENT_LABELS).map(([value, label]) => (
+                            <ToggleButton key={value} value={value} disabled={!canEditClientInput}>
+                              {label}
+                            </ToggleButton>
+                          ))}
+                        </ToggleButtonGroup>
+                        <Box
+                          sx={{
+                            position: 'relative',
+                            minHeight: 152,
+                            borderRadius: 2,
+                            border: '1px solid rgba(148,163,184,0.16)',
+                            background: 'linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.82))',
+                            overflow: 'hidden',
+                            px: 1.1,
+                            py: 0.95,
+                          }}
+                        >
+                          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} flexWrap="wrap">
+                            <Typography sx={{ color: 'rgba(191,219,254,0.64)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                              Preview
+                            </Typography>
+                            <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                              <Chip
+                                size="small"
+                                label={selectedBrandPreviewDelivery ? activeBrandPreviewFormat : `${activeBrandPreviewFormat} preview`}
+                                sx={{
+                                  bgcolor: 'rgba(56,189,248,0.16)',
+                                  color: '#e0f2fe',
+                                  border: '1px solid rgba(56,189,248,0.28)',
+                                  fontWeight: 700,
+                                }}
+                              />
+                              <Chip
+                                size="small"
+                                label={`Previewvariant · ${brandPreviewVariantLabel}`}
+                                sx={{
+                                  bgcolor: 'rgba(14,165,233,0.12)',
+                                  color: '#dbeafe',
+                                  border: '1px solid rgba(125,211,252,0.22)',
+                                  fontWeight: 700,
+                                }}
+                              />
+                            </Stack>
+                          </Stack>
+                          <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.74rem', mt: 0.25, maxWidth: 320 }}>
+                            {readFirstNonEmptyString(
+                              selectedBrandPreviewDelivery
+                                ? `${selectedBrandPreviewDelivery.title} · ${selectedBrandPreviewDelivery.channel} · ${selectedBrandPreviewDelivery.formatLabel}`
+                                : '',
+                              hasText(planningDraft.brandGuide.logoUrl) ? 'Logoen er koblet til prosjektet.' : '',
+                              logoTimingPreview.detail,
+                              'Slik ser logo- og overlay-retningen ut i videorammen.',
+                            )}
+                          </Typography>
+                          {isClientPortalView || isClientReviewerMode ? (
+                            <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.74rem', mt: 0.55, lineHeight: 1.45 }}>
+                              Velg leveransen du faktisk skal vurdere. Previewen oppdaterer safe zone, margin og logo-oppførsel mot riktig format for klientvisningen.
+                            </Typography>
+                          ) : null}
+                          <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.72rem', mt: 0.45, lineHeight: 1.45 }}>
+                            {brandPreviewVariantDetail}
+                          </Typography>
+                          {brandPreviewDeliveries.length > 0 ? (
+                            <Box
+                              sx={{
+                                mt: 0.95,
+                                display: 'grid',
+                                gridTemplateColumns: {
+                                  xs: '1fr',
+                                  xl: 'repeat(2, minmax(0, 1fr))',
+                                },
+                                gap: 0.75,
+                                maxHeight: 196,
+                                overflowY: 'auto',
+                                pr: 0.2,
+                              }}
+                            >
+                              {brandPreviewDeliveries.map((item) => {
+                                const isSelected = item.id === selectedBrandPreviewDelivery?.id;
+                                return (
+                                  <Box
+                                    key={item.id}
+                                    component="button"
+                                    type="button"
+                                    onClick={() => {
+                                      setBrandPreviewDeliveryId(item.id);
+                                      if (item.formatValue) {
+                                        setBrandPreviewFormat(item.formatValue);
+                                      }
+                                    }}
+                                    sx={{
+                                      appearance: 'none',
+                                      width: '100%',
+                                      p: 0.9,
+                                      textAlign: 'left',
+                                      borderRadius: 1.3,
+                                      border: isSelected
+                                        ? '1px solid rgba(56,189,248,0.34)'
+                                        : '1px solid rgba(148,163,184,0.18)',
+                                      background: isSelected
+                                        ? 'rgba(14,165,233,0.12)'
+                                        : 'rgba(2,6,23,0.42)',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
+                                      <Box sx={{ minWidth: 0 }}>
+                                        <Typography sx={{ color: '#fff', fontSize: '0.8rem', fontWeight: 700 }} noWrap>
+                                          {item.title}
+                                        </Typography>
+                                        <Typography sx={{ color: 'rgba(191,219,254,0.78)', fontSize: '0.72rem', mt: 0.2 }} noWrap>
+                                          {`${item.channel} · ${item.phaseLabel}`}
+                                        </Typography>
+                                      </Box>
+                                      <Chip
+                                        size="small"
+                                        label={item.formatLabel}
+                                        sx={{
+                                          bgcolor: isSelected ? 'rgba(56,189,248,0.18)' : 'rgba(15,23,42,0.72)',
+                                          color: isSelected ? '#e0f2fe' : '#cbd5e1',
+                                          border: '1px solid rgba(148,163,184,0.22)',
+                                          fontWeight: 700,
+                                        }}
+                                      />
+                                    </Stack>
+                                    <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.7rem', mt: 0.45 }} noWrap>
+                                      {`${item.publishLabel} · ${item.statusLabel}`}
+                                    </Typography>
+                                  </Box>
+                                );
+                              })}
+                            </Box>
+                          ) : (
+                            <ToggleButtonGroup
+                              size="small"
+                              exclusive
+                              value={brandPreviewFormat}
+                              onChange={(_, nextValue: '16:9' | '4:5' | '9:16' | '1:1' | null) => {
+                                if (!nextValue) {
+                                  return;
+                                }
+                                setBrandPreviewFormat(nextValue);
+                              }}
+                              sx={{
+                                mt: 0.95,
+                                gap: 0.45,
+                                flexWrap: 'wrap',
+                                '& .MuiToggleButton-root': {
+                                  borderRadius: '999px !important',
+                                  px: 0.75,
+                                  py: 0.1,
+                                  textTransform: 'none',
+                                  fontWeight: 700,
+                                  borderColor: 'rgba(148,163,184,0.18)',
+                                  color: 'rgba(226,232,240,0.78)',
+                                },
+                                '& .Mui-selected': {
+                                  bgcolor: 'rgba(56,189,248,0.16) !important',
+                                  borderColor: 'rgba(56,189,248,0.28) !important',
+                                  color: '#e0f2fe !important',
+                                },
+                              }}
+                            >
+                              {availableBrandPreviewFormats.map((format) => (
+                                <ToggleButton key={format} value={format}>
+                                  {format}
+                                </ToggleButton>
+                              ))}
+                            </ToggleButtonGroup>
+                          )}
+                          {selectedBrandPreviewDelivery ? (
+                            <Box
+                              sx={{
+                                mt: 0.95,
+                                p: 0.85,
+                                borderRadius: 1.3,
+                                border: '1px solid rgba(148,163,184,0.16)',
+                                bgcolor: 'rgba(2,6,23,0.36)',
+                              }}
+                            >
+                              <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
+                                Logovariant for denne leveransen
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', mt: 0.2, lineHeight: 1.45 }}>
+                                {`${selectedBrandPreviewDelivery.title} bruker nå ${brandPreviewVariantResolution.resolvedLabel.toLowerCase()}. Anbefalt for ${activeBrandPreviewFormat} er ${brandPreviewVariantResolution.recommendedLabel.toLowerCase()}.`}
+                              </Typography>
+                              <ToggleButtonGroup
+                                size="small"
+                                exclusive
+                                value={brandPreviewVariantSelection}
+                                onChange={(_, nextValue: 'auto' | ProducerBrandLogoVariantType | null) => {
+                                  if (!nextValue) {
+                                    return;
+                                  }
+                                  handleSelectedBrandPreviewDeliveryVariantSelection(nextValue);
+                                }}
+                                sx={{
+                                  mt: 0.8,
+                                  gap: 0.45,
+                                  flexWrap: 'wrap',
+                                  '& .MuiToggleButton-root': {
+                                    borderRadius: '999px !important',
+                                    px: 0.75,
+                                    py: 0.12,
+                                    textTransform: 'none',
+                                    fontWeight: 700,
+                                    borderColor: 'rgba(148,163,184,0.18)',
+                                    color: 'rgba(226,232,240,0.78)',
+                                  },
+                                  '& .Mui-selected': {
+                                    bgcolor: 'rgba(56,189,248,0.16) !important',
+                                    borderColor: 'rgba(56,189,248,0.28) !important',
+                                    color: '#e0f2fe !important',
+                                  },
+                                }}
+                              >
+                                <ToggleButton value="auto" disabled={!canEditClientInput}>
+                                  Bruk anbefalt variant
+                                </ToggleButton>
+                                {brandLogoVariants.map((variant) => (
+                                  <ToggleButton key={variant.id} value={variant.type} disabled={!canEditClientInput}>
+                                    {`Tving ${BRAND_LOGO_VARIANT_LABELS[variant.type]}`}
+                                  </ToggleButton>
+                                ))}
+                              </ToggleButtonGroup>
+                            </Box>
+                          ) : null}
+                          <Box
+                            ref={brandPreviewFrameRef}
+                            sx={{
+                              mt: 1,
+                              width: '100%',
+                              maxWidth: activeBrandPreviewFormat === '9:16' ? 214 : 360,
+                              mx: 'auto',
+                              position: 'relative',
+                              aspectRatio: brandPreviewAspectRatio,
+                              borderRadius: 1.6,
+                              border: '1px solid rgba(191,219,254,0.14)',
+                              boxShadow: 'inset 0 0 0 1px rgba(15,23,42,0.68)',
+                              overflow: 'hidden',
+                              background: 'linear-gradient(135deg, rgba(15,23,42,0.82), rgba(30,41,59,0.72))',
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                inset: `${selectedBrandOverlayProfile.safeZone.verticalPercent}% ${selectedBrandOverlayProfile.safeZone.horizontalPercent}%`,
+                                borderRadius: 1.2,
+                                border: '1px dashed rgba(125,211,252,0.5)',
+                                boxShadow: 'inset 0 0 0 1px rgba(14,165,233,0.08)',
+                              }}
+                            />
+                            <Typography
+                              sx={{
+                                position: 'absolute',
+                                top: 10,
+                                left: 12,
+                                color: 'rgba(191,219,254,0.72)',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              {`Safe zone · ${selectedBrandOverlayProfile.safeZone.label}`}
+                            </Typography>
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                ...(planningDraft.brandGuide.logoPlacement === 'top_left' ? { top: brandPreviewFrameMargin, left: brandPreviewFrameMargin } : {}),
+                                ...(planningDraft.brandGuide.logoPlacement === 'top_right' ? { top: brandPreviewFrameMargin, right: brandPreviewFrameMargin } : {}),
+                                ...(planningDraft.brandGuide.logoPlacement === 'bottom_left' ? { bottom: brandPreviewFrameMargin, left: brandPreviewFrameMargin } : {}),
+                                ...(planningDraft.brandGuide.logoPlacement === 'bottom_right' ? { bottom: brandPreviewFrameMargin, right: brandPreviewFrameMargin } : {}),
+                                ...(planningDraft.brandGuide.logoPlacement === 'center' ? { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' } : {}),
+                                px: planningDraft.brandGuide.logoTreatment === 'badge' ? 0.95 : 0.72,
+                                py: planningDraft.brandGuide.logoTreatment === 'badge' ? 0.58 : 0.42,
+                                borderRadius: planningDraft.brandGuide.logoTreatment === 'badge' ? 999 : 1.1,
+                                bgcolor: planningDraft.brandGuide.logoTreatment === 'watermark'
+                                  ? 'rgba(255,255,255,0.08)'
+                                  : planningDraft.brandGuide.logoTreatment === 'badge'
+                                    ? 'rgba(15,23,42,0.86)'
+                                    : 'rgba(15,23,42,0.48)',
+                                border: '1px solid rgba(226,232,240,0.18)',
+                                color: '#f8fafc',
+                                fontSize: '0.74rem',
+                                fontWeight: 700,
+                                letterSpacing: '0.04em',
+                                opacity: planningDraft.brandGuide.logoTiming === 'none'
+                                  ? 0.32
+                                  : selectedBrandOverlayProfile.opacity.percent / 100,
+                                cursor: canEditClientInput
+                                  ? (draggingBrandLogo ? 'grabbing' : 'grab')
+                                  : 'default',
+                                touchAction: 'none',
+                              }}
+                              onPointerDown={handleBrandLogoPreviewPointerDown}
+                              onPointerMove={handleBrandLogoPreviewPointerMove}
+                              onPointerUp={handleBrandLogoPreviewPointerUp}
+                              onPointerCancel={handleBrandLogoPreviewPointerUp}
+                            >
+                              {resolvedBrandPreviewLogoUrl ? (
+                                <Box
+                                  component="img"
+                                  src={resolvedBrandPreviewLogoUrl}
+                                  alt={`Logo preview · ${brandPreviewVariantLabel}`}
+                                  sx={{
+                                    display: 'block',
+                                    maxWidth: planningDraft.brandGuide.logoTreatment === 'badge' ? 110 : 118,
+                                    maxHeight: 42,
+                                    objectFit: 'contain',
+                                  }}
+                                />
+                              ) : (
+                                getInitials(projectName, 'LG')
+                              )}
+                            </Box>
+                          </Box>
+                          <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.72rem', mt: 0.55 }}>
+                            Dra logoen i rammen for å velge plassering. Previewen bruker nå aktiv logovariant og riktig safe zone for valgt leveranse.
+                          </Typography>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} useFlexGap sx={{ mt: 0.9 }}>
+                            <Chip
+                              size="small"
+                              label={`Opacity ${selectedBrandOverlayProfile.opacity.label}`}
+                              sx={{ bgcolor: 'rgba(34,197,94,0.12)', color: '#dcfce7' }}
+                            />
+                            <Chip
+                              size="small"
+                              label={`Margin ${selectedBrandOverlayProfile.recommendedMargin.label}`}
+                              sx={{ bgcolor: 'rgba(56,189,248,0.12)', color: '#dbeafe' }}
+                            />
+                          </Stack>
+                          <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.74rem', mt: 0.55 }}>
+                            {selectedBrandOverlayProfile.note}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Legg inn fargene som faktisk skal brukes i design og grafikk.',
+                        parsedBrandColors.length > 0 ? 'filled' : 'missing',
+                      )}
+                      <Stack spacing={0.8}>
+                        {parsedBrandColors.length > 0 ? parsedBrandColors.map((color, index) => (
+                          <Box
+                            key={color.id}
+                            sx={{
+                              display: 'grid',
+                              gridTemplateColumns: { xs: '1fr', md: '48px minmax(120px, 0.7fr) minmax(180px, 1fr) auto' },
+                              gap: 0.75,
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Box
+                              component="input"
+                              type="color"
+                              value={normalizeColorHex(color.hex) || '#ffffff'}
+                              disabled={!canEditClientInput}
+                              onChange={(event) => handleBrandColorChange(index, { hex: event.target.value })}
+                              sx={{
+                                width: 44,
+                                height: 44,
+                                p: 0,
+                                border: '1px solid rgba(148,163,184,0.2)',
+                                borderRadius: 1.2,
+                                background: 'transparent',
+                              }}
+                            />
+                            <TextField
+                              size="small"
+                              label="Fargenavn"
+                              value={color.label}
+                              disabled={!canEditClientInput}
+                              onChange={(event) => handleBrandColorChange(index, { label: event.target.value })}
+                            />
+                            <TextField
+                              size="small"
+                              label="Bruk"
+                              value={color.usage ?? ''}
+                              disabled={!canEditClientInput}
+                              onChange={(event) => handleBrandColorChange(index, { usage: event.target.value })}
+                            />
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant="text"
+                                color="inherit"
+                                onClick={() => handleRemoveBrandColor(index)}
+                                sx={{ textTransform: 'none', fontWeight: 700, justifySelf: 'flex-start' }}
+                              >
+                                Fjern
+                              </Button>
+                            ) : null}
+                          </Box>
+                        )) : (
+                          <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem', lineHeight: 1.45 }}>
+                            Ingen farger er valgt ennå. Legg inn minst hovedfarge og aksentfarge.
+                          </Typography>
+                        )}
+                        {canEditClientInput ? (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<AddOutlinedIcon />}
+                            onClick={handleAddBrandColor}
+                            sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
+                          >
+                            Legg til farge
+                          </Button>
+                        ) : null}
+                      </Stack>
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Legg inn fontene som skal brukes i grafikk, teksting og overlays.',
+                        parsedBrandFonts.length > 0 ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Fonter (én per linje)"
+                        value={brandFontsDraft}
+                        onChange={(event) => setBrandFontsDraft(event.target.value)}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                  </Stack>
+                </Box>
+
+                <Box
+                  sx={{
+                    p: 1.05,
+                    borderRadius: 2,
+                    border: '1px solid rgba(96,165,250,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.38)',
+                  }}
+                >
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.18, fontSize: '0.98rem' }}>
+                    Definer språk og regler
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
+                    Fyll inn hvordan merkevaren skal høres ut, se ut og holdes konsekvent.
+                  </Typography>
+                  <Stack spacing={1.35}>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hvordan merkevaren skal høres ut i tekst, voice-over, dialog og kundehenvendelser.',
+                        hasText(planningDraft.brandGuide.toneOfVoice) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Tone of voice"
+                        value={planningDraft.brandGuide.toneOfVoice ?? ''}
+                        onChange={(event) => setPlanningDraft((previous) => ({
+                          ...previous,
+                          brandGuide: {
+                            ...previous.brandGuide,
+                            toneOfVoice: event.target.value,
+                          },
+                        }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv looken som skal styre foto, lys, farger, komposisjon og tempo.',
+                        hasText(planningDraft.brandGuide.visualStyle) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Visuell stil"
+                        value={planningDraft.brandGuide.visualStyle ?? ''}
+                        onChange={(event) => setPlanningDraft((previous) => ({
+                          ...previous,
+                          brandGuide: {
+                            ...previous.brandGuide,
+                            visualStyle: event.target.value,
+                          },
+                        }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv konkrete ting produksjonen alltid bør gjøre.',
+                        parsedBrandDos.length > 0 ? 'filled' : 'optional',
+                      )}
+                      <TextField
+                        label="Do&apos;s (én per linje)"
+                        value={brandDosDraft}
+                        onChange={(event) => setBrandDosDraft(event.target.value)}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv tydelige ting teamet skal unngå.',
+                        parsedBrandDonts.length > 0 ? 'filled' : 'optional',
+                      )}
+                      <TextField
+                        label="Don&apos;ts (én per linje)"
+                        value={brandDontsDraft}
+                        onChange={(event) => setBrandDontsDraft(event.target.value)}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                  </Stack>
+                </Box>
               </Box>
 
+              {brandGuideMissingItems.length === 0 ? (
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={0.55}
+                  sx={{
+                    px: 0.8,
+                    py: 0.68,
+                    mt: 0.9,
+                    mb: 0.95,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.08)',
+                    bgcolor: 'rgba(15,23,42,0.26)',
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      color: 'rgba(191,219,254,0.56)',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.07em',
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    Kort oppsummering
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
+                    {brandGuideSummary}
+                  </Typography>
+                </Stack>
+              ) : null}
+
               {canEditClientInput ? (
-                <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.25 }}>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', sm: 'center' }}
+                  spacing={0.6}
+                  sx={{
+                    mt: 0.95,
+                    pt: 0.75,
+                    borderTop: '1px solid rgba(96,165,250,0.12)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                    Lagre når uttrykket faktisk kan brukes av produksjonsteamet.
+                  </Typography>
                   <Button
+                    size="small"
                     variant="contained"
                     startIcon={<SaveOutlinedIcon />}
                     onClick={() => {
                       void handleSavePlanningContext();
                     }}
                     disabled={savingPlanning}
-                    sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#a855f7', color: '#f5f3ff', '&:hover': { bgcolor: '#9333ea' } }}
+                    sx={{
+                      alignSelf: { xs: 'flex-start', sm: 'center' },
+                      minHeight: 32,
+                      px: 1.2,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      bgcolor: '#a855f7',
+                      color: '#f5f3ff',
+                      '&:hover': { bgcolor: '#9333ea' },
+                    }}
                   >
-                    {savingPlanning ? 'Lagrer merkevareguide...' : 'Lagre merkevareguide'}
+                    {savingPlanning ? 'Lagrer merkevareguide...' : 'Lagre og bruk i produksjon'}
+                  </Button>
+                </Stack>
+              ) : null}
+            </Box>
+          ) : null}
+
+          {activeWorkspace === 'accounts' ? (
+            <Box
+              sx={{
+                borderRadius: 3,
+                border: '1px solid rgba(96,165,250,0.14)',
+                bgcolor: 'rgba(15,23,42,0.62)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                p: { xs: 1.25, md: 1.5 },
+                '& .MuiInputBase-root': {
+                  borderRadius: 2,
+                  bgcolor: 'rgba(248,250,252,0.04)',
+                  color: '#f8fafc',
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(203,213,225,0.62)',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(96,165,250,0.14)',
+                },
+              }}
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
+                <Box>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
+                    Avklar kontotilgang
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 660 }}>
+                    Hold kontoarbeidet som et sikkert spor. Bruk OAuth, business invite eller klientstyrt handling. Ikke lagre passord eller 2-faktor-koder i prosjektet.
+                  </Typography>
+                </Box>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={0.65}
+                  alignItems={{ xs: 'flex-start', sm: 'center' }}
+                  sx={{
+                    minWidth: { lg: 340 },
+                    px: 0.8,
+                    py: 0.7,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.08)',
+                    bgcolor: 'rgba(15,23,42,0.28)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    Fremdrift
+                  </Typography>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                    {requiredAccountEntries.length > 0
+                      ? `${connectedRequiredAccountCount}/${requiredAccountEntries.length} koblet`
+                      : 'Ingen krav ennå'}
+                  </Typography>
+                  <Box
+                    sx={{
+                      width: { xs: '100%', sm: 108 },
+                      height: 5,
+                      borderRadius: 999,
+                      bgcolor: 'rgba(148,163,184,0.18)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: `${requiredAccountEntries.length > 0 ? (connectedRequiredAccountCount / requiredAccountEntries.length) * 100 : 0}%`,
+                        height: '100%',
+                        borderRadius: 999,
+                        bgcolor: '#14b8a6',
+                      }}
+                    />
+                  </Box>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
+                    {pendingRequiredAccountCount > 0
+                      ? `${pendingRequiredAccountCount} nødvendige kontoer venter fortsatt på sikker tilgang.`
+                      : 'Nødvendige kontoer er koblet eller klarert.'}
+                  </Typography>
+                </Stack>
+              </Stack>
+
+              {accountAccessMissingItems.length > 0 ? (
+                <Box
+                  sx={{
+                    mb: 1.05,
+                    px: 0.8,
+                    py: 0.72,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.1)',
+                    bgcolor: 'rgba(15,23,42,0.22)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
+                    Dette mangler i kontotilgang
+                  </Typography>
+                  <Stack spacing={0.18}>
+                    {accountAccessMissingItems.map((item) => (
+                      <Typography key={item.id} sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.4 }}>
+                        • {item.label}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : (
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={0.55}
+                  sx={{
+                    px: 0.8,
+                    py: 0.68,
+                    mb: 1.05,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(34,197,94,0.12)',
+                    bgcolor: 'rgba(15,23,42,0.22)',
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      color: '#86efac',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.07em',
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    Klart
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
+                    Kontotilgangen er avklart for de plattformene dette prosjektet faktisk bruker.
+                  </Typography>
+                </Stack>
+              )}
+
+              {pendingAccountAccessReviews.length > 0 ? (
+                <Box
+                  sx={{
+                    mb: 1.05,
+                    px: 0.85,
+                    py: 0.8,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(56,189,248,0.14)',
+                    bgcolor: 'rgba(2,132,199,0.12)',
+                  }}
+                >
+                  <Stack
+                    direction={{ xs: 'column', lg: 'row' }}
+                    spacing={0.8}
+                    justifyContent="space-between"
+                    alignItems={{ lg: 'center' }}
+                    sx={{ mb: 0.7 }}
+                  >
+                    <Box>
+                      <Typography sx={{ color: '#e0f2fe', fontWeight: 700, fontSize: '0.84rem' }}>
+                        Åpne kontotilgangsreviews
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(224,242,254,0.82)', fontSize: '0.75rem', lineHeight: 1.45, mt: 0.15 }}>
+                        Disse sakene trenger klientbekreftelse eller handling i samme sikre spor.
+                      </Typography>
+                    </Box>
+                    {clientPortalAccountAccessReviewUrl ? (
+                      <Button
+                        size="small"
+                        component="a"
+                        href={clientPortalAccountAccessReviewUrl}
+                        variant="outlined"
+                        sx={{
+                          alignSelf: { xs: 'flex-start', lg: 'center' },
+                          minHeight: 34,
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          borderColor: 'rgba(125,211,252,0.28)',
+                          color: '#e0f2fe',
+                        }}
+                      >
+                        Åpne første review
+                      </Button>
+                    ) : null}
+                  </Stack>
+                  <Stack spacing={0.55}>
+                    {pendingAccountAccessReviews.slice(0, 3).map((review) => {
+                      const platformLabels = readAccountAccessPlatformsFromReview(review)
+                        .map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform])
+                        .join(', ');
+                      return (
+                        <Box
+                          key={review.id}
+                          sx={{
+                            px: 0.72,
+                            py: 0.68,
+                            borderRadius: 1.4,
+                            border: '1px solid rgba(125,211,252,0.14)',
+                            bgcolor: 'rgba(15,23,42,0.28)',
+                          }}
+                        >
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.6} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ color: '#bae6fd', fontSize: '0.63rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', mb: 0.16 }}>
+                                {`Kontotilgang${hasText(platformLabels) ? ` · ${platformLabels}` : ''}`}
+                              </Typography>
+                              <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.77rem', lineHeight: 1.35 }}>
+                                {review.title}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.72rem', lineHeight: 1.4, mt: 0.12 }}>
+                                {readFirstNonEmptyString(
+                                  review.description ?? '',
+                                  review.due_at ? `Svar innen ${formatTimestamp(review.due_at)}` : '',
+                                  `Bedt om ${formatTimestamp(review.requested_at)}`,
+                                )}
+                              </Typography>
+                            </Box>
+                            <Button
+                              size="small"
+                              component="a"
+                              href={buildAccountAccessReviewUrl(review.id)}
+                              sx={{
+                                textTransform: 'none',
+                                fontWeight: 700,
+                                minHeight: 34,
+                                borderRadius: 999,
+                                px: 1,
+                                color: '#e0f2fe',
+                                bgcolor: 'rgba(59,130,246,0.18)',
+                                '&:hover': {
+                                  bgcolor: 'rgba(59,130,246,0.24)',
+                                },
+                              }}
+                            >
+                              Åpne review
+                            </Button>
+                          </Stack>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+              ) : null}
+
+              <Box
+                sx={{
+                  mb: 1.05,
+                  px: 0.9,
+                  py: 0.85,
+                  borderRadius: 1.5,
+                  border: '1px solid rgba(20,184,166,0.14)',
+                  bgcolor: 'rgba(6,78,59,0.14)',
+                }}
+              >
+                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={0.85} justifyContent="space-between">
+                  <Box>
+                    <Typography sx={{ color: '#f0fdfa', fontWeight: 700, fontSize: '0.9rem' }}>
+                      Sikkerhetsmodell
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(204,251,241,0.84)', fontSize: '0.76rem', lineHeight: 1.5, mt: 0.25 }}>
+                      {readFirstNonEmptyString(
+                        planningDraft.accountAccess.securityNotes ?? '',
+                        'Bruk OAuth, invite eller klientstyrt handling. Role Room skal ikke være et lager for passord eller 2-faktor-koder.',
+                      )}
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems={{ lg: 'flex-start' }}>
+                    <Chip size="small" icon={<AdminPanelSettingsOutlinedIcon />} label="Ingen passord" sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
+                    <Chip size="small" icon={<HubOutlinedIcon />} label="Invite / OAuth" sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
+                    <Chip size="small" icon={<CloudDoneOutlinedIcon />} label="2-faktor hos kontoeier" sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
+                  </Stack>
+                </Stack>
+              </Box>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', xl: 'repeat(2, minmax(0, 1fr))' },
+                  gap: 0.95,
+                  mb: 1.25,
+                }}
+              >
+                {effectiveAccountEntries.map((entry) => {
+                  const isRequired = requiredAccountPlatforms.has(entry.platform);
+                  const isGoogleEntry = entry.platform === 'google';
+                  const isLinkedInEntry = entry.platform === 'linkedin';
+                  const linkedAccountReview = accountAccessReviewByPlatform.get(entry.platform) ?? null;
+                  const platformFlow = ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG[entry.platform];
+                  const googleConnectionDetail = isGoogleEntry
+                    ? readFirstNonEmptyString(
+                      googleAccessStatus?.projectBinding?.driveRootFolderId ? 'Drive er koblet til prosjektet.' : '',
+                      googleAccessStatus?.projectBinding?.calendarId ? 'Kalender er koblet til prosjektet.' : '',
+                      googleAccessStatus?.missing?.length ? `Mangler: ${googleAccessStatus.missing.join(', ')}` : '',
+                      'Google er ikke aktivert på denne brukeren ennå.',
+                    )
+                    : '';
+                  const linkedInConnectionDetail = isLinkedInEntry
+                    ? readFirstNonEmptyString(
+                      linkedInAccessStatus?.connection?.linkedInName && linkedInAccessStatus?.connection?.linkedInEmail
+                        ? `Medlemskonto koblet: ${linkedInAccessStatus.connection.linkedInName} (${linkedInAccessStatus.connection.linkedInEmail})`
+                        : '',
+                      linkedInAccessStatus?.connection?.linkedInName
+                        ? `Medlemskonto koblet: ${linkedInAccessStatus.connection.linkedInName}`
+                        : '',
+                      linkedInAccessStatus?.state === 'expired'
+                        ? 'LinkedIn-koblingen er utløpt. Koble på nytt før publisering.'
+                        : '',
+                      linkedInAccessStatus?.connection?.lastError ?? '',
+                      linkedInAccessStatus && !linkedInAccessStatus.configured && linkedInAccessStatus.missing.length > 0
+                        ? `Mangler: ${linkedInAccessStatus.missing.join(', ')}`
+                        : '',
+                    )
+                    : '';
+
+                  return (
+                    <Box
+                      key={entry.platform}
+                      sx={{
+                        p: 1,
+                        borderRadius: 1.6,
+                        border: isRequired
+                          ? '1px solid rgba(20,184,166,0.24)'
+                          : '1px solid rgba(148,163,184,0.16)',
+                        background: isRequired
+                          ? 'rgba(15,118,110,0.12)'
+                          : 'rgba(2,6,23,0.38)',
+                      }}
+                    >
+                      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={0.8} sx={{ mb: 0.85 }}>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mb: 0.35 }}>
+                            <Chip
+                              size="small"
+                              label={PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]}
+                              sx={{ bgcolor: 'rgba(248,250,252,0.08)', color: '#e2e8f0' }}
+                            />
+                            <Chip
+                              size="small"
+                              label={PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}
+                              sx={{
+                                bgcolor: entry.status === 'connected'
+                                  ? 'rgba(34,197,94,0.16)'
+                                  : entry.status === 'invite_sent'
+                                    ? 'rgba(56,189,248,0.16)'
+                                    : entry.status === 'client_action'
+                                      ? 'rgba(245,158,11,0.18)'
+                                      : 'rgba(148,163,184,0.16)',
+                                color: entry.status === 'connected'
+                                  ? '#bbf7d0'
+                                  : entry.status === 'invite_sent'
+                                    ? '#dbeafe'
+                                    : entry.status === 'client_action'
+                                      ? '#fde68a'
+                                      : '#e2e8f0',
+                              }}
+                            />
+                            <Chip
+                              size="small"
+                              label={isRequired ? 'Nødvendig i dette prosjektet' : 'Valgfri plattform'}
+                              sx={{ bgcolor: isRequired ? 'rgba(20,184,166,0.16)' : 'rgba(148,163,184,0.1)', color: isRequired ? '#ccfbf1' : '#cbd5e1' }}
+                            />
+                            {isLinkedInEntry && linkedInAccessStatus?.state === 'connected' ? (
+                              <Chip
+                                size="small"
+                                label="Medlemskonto koblet"
+                                sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#dbeafe' }}
+                              />
+                            ) : null}
+                          </Stack>
+                          <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>
+                            {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.22 }}>
+                            {readFirstNonEmptyString(
+                              entry.accessScope || '',
+                              googleConnectionDetail,
+                              linkedInConnectionDetail,
+                              platformFlow.primaryDescription,
+                              entry.notes || '',
+                              'Ingen sikker tilgang definert ennå.',
+                            )}
+                          </Typography>
+                        </Box>
+                        {isGoogleEntry ? (
+                          <Stack direction="row" spacing={0.55}>
+                            <Tooltip title="Oppdater Google-status">
+                              <span>
+                                <IconButton
+                                  onClick={() => {
+                                    void loadGoogleAccessStatus();
+                                  }}
+                                  disabled={loadingGoogleAccessStatus}
+                                  sx={{
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: 999,
+                                    border: '1px solid rgba(96,165,250,0.16)',
+                                    color: '#bfdbfe',
+                                  }}
+                                >
+                                  <CloudSyncOutlinedIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={entry.status === 'connected' ? 'outlined' : 'contained'}
+                                onClick={() => {
+                                  if (entry.status !== 'connected') {
+                                    void handleStartGoogleAccountLink();
+                                  }
+                                }}
+                                disabled={googleAccessActionKey === 'connect' || entry.status === 'connected'}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {entry.status === 'connected'
+                                  ? 'Google aktivert'
+                                  : googleAccessActionKey === 'connect'
+                                    ? 'Starter...'
+                                    : 'Aktiver Google'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        ) : isLinkedInEntry ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
+                            <Tooltip title="Oppdater LinkedIn-status">
+                              <span>
+                                <IconButton
+                                  onClick={() => {
+                                    void loadLinkedInAccessStatus();
+                                  }}
+                                  disabled={loadingLinkedInAccessStatus}
+                                  sx={{
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: 999,
+                                    border: '1px solid rgba(96,165,250,0.16)',
+                                    color: '#bfdbfe',
+                                  }}
+                                >
+                                  <CloudSyncOutlinedIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={linkedInAccessStatus?.state === 'connected' ? 'outlined' : 'contained'}
+                                onClick={() => {
+                                  if (linkedInAccessStatus?.state !== 'connected') {
+                                    void handleStartLinkedInAccountLink();
+                                  }
+                                }}
+                                disabled={linkedInAccessActionKey === 'connect' || linkedInAccessStatus?.configured === false}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {linkedInAccessStatus?.configured === false
+                                  ? 'LinkedIn ikke konfigurert'
+                                  : linkedInAccessStatus?.state === 'connected'
+                                    ? 'LinkedIn aktivert'
+                                    : linkedInAccessActionKey === 'connect'
+                                      ? 'Starter...'
+                                      : 'Aktiver LinkedIn'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        ) : linkedAccountReview ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
+                            <Button
+                              size="small"
+                              component="a"
+                              href={buildAccountAccessReviewUrl(linkedAccountReview.id)}
+                              variant="outlined"
+                              sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                            >
+                              Åpne review
+                            </Button>
+                          </Stack>
+                        ) : null}
+                      </Stack>
+
+                      {!isGoogleEntry ? (
+                        <>
+                          <ToggleButtonGroup
+                            size="small"
+                            exclusive
+                            value={entry.status}
+                            onChange={(_, nextValue: typeof entry.status | null) => {
+                              if (!nextValue) {
+                                return;
+                              }
+                              updateAccountAccessEntry(entry.platform, (current) => ({
+                                ...current,
+                                status: nextValue,
+                              }));
+                            }}
+                            sx={{
+                              mb: 0.72,
+                              gap: 0.45,
+                              flexWrap: 'wrap',
+                              '& .MuiToggleButton-root': {
+                                borderRadius: '999px !important',
+                                px: 0.7,
+                                py: 0.08,
+                                textTransform: 'none',
+                                fontWeight: 700,
+                                borderColor: 'rgba(148,163,184,0.18)',
+                                color: 'rgba(226,232,240,0.78)',
+                              },
+                              '& .Mui-selected': {
+                                bgcolor: 'rgba(20,184,166,0.16) !important',
+                                borderColor: 'rgba(20,184,166,0.28) !important',
+                                color: '#ccfbf1 !important',
+                              },
+                            }}
+                          >
+                            <ToggleButton value="not_started" disabled={!canEditClientInput}>Ikke startet</ToggleButton>
+                            <ToggleButton value="client_action" disabled={!canEditClientInput}>Venter på klient</ToggleButton>
+                            <ToggleButton value="invite_sent" disabled={!canEditClientInput}>Invite sendt</ToggleButton>
+                            <ToggleButton value="connected" disabled={!canEditClientInput}>Koblet</ToggleButton>
+                            <ToggleButton value="revoked" disabled={!canEditClientInput}>Avsluttet</ToggleButton>
+                          </ToggleButtonGroup>
+
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mb: 0.9 }}>
+                            <Button
+                              size="small"
+                              component="a"
+                              href={platformFlow.primaryHref}
+                              target="_blank"
+                              rel="noreferrer"
+                              variant="contained"
+                              sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
+                            >
+                              {platformFlow.primaryLabel}
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => {
+                                handleOpenAccountAccessInviteMail(entry, linkedAccountReview);
+                              }}
+                              sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
+                            >
+                              Åpne invite-utkast
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => {
+                                void handleCopyAccountAccessInviteText(entry, linkedAccountReview);
+                              }}
+                              sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
+                            >
+                              Kopier invite-instruks
+                            </Button>
+                            {platformFlow.secondaryHref ? (
+                              <Button
+                                size="small"
+                                component="a"
+                                href={platformFlow.secondaryHref}
+                                target="_blank"
+                                rel="noreferrer"
+                                variant="text"
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
+                              >
+                                {platformFlow.secondaryLabel ?? 'Åpne veiledning'}
+                              </Button>
+                            ) : null}
+                            {canEditClientInput && entry.status !== 'connected' ? (
+                              <Button
+                                size="small"
+                                variant="text"
+                                onClick={() => {
+                                  void handleConfirmAccountAccessConnected(entry.platform);
+                                }}
+                                disabled={accountAccessActionKey === `${entry.platform}:persist`}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
+                              >
+                                {accountAccessActionKey === `${entry.platform}:persist` ? 'Lagrer...' : 'Bekreft koblet'}
+                              </Button>
+                            ) : null}
+                            {linkedAccountReview ? (
+                              <Button
+                                size="small"
+                                component="a"
+                                href={buildAccountAccessReviewUrl(linkedAccountReview.id)}
+                                variant="text"
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
+                              >
+                                Åpne review
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        </>
+                      ) : null}
+
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                          gap: 0.85,
+                        }}
+                      >
+                        <TextField
+                          label="Konto / side / kanal"
+                          value={entry.accountLabel ?? ''}
+                          onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                            ...current,
+                            accountLabel: event.target.value,
+                          }))}
+                          fullWidth
+                          disabled={!canEditClientInput}
+                        />
+                        <TextField
+                          label="Invite til / kontakt"
+                          value={entry.inviteTarget ?? ''}
+                          onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                            ...current,
+                            inviteTarget: event.target.value,
+                          }))}
+                          fullWidth
+                          disabled={!canEditClientInput}
+                        />
+                        <TextField
+                          label="Scope / rolle"
+                          value={entry.accessScope ?? ''}
+                          onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                            ...current,
+                            accessScope: event.target.value,
+                          }))}
+                          fullWidth
+                          disabled={!canEditClientInput}
+                        />
+                        <TextField
+                          label="Ansvarlig hos klient"
+                          value={entry.ownerName ?? ''}
+                          onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                            ...current,
+                            ownerName: event.target.value,
+                          }))}
+                          fullWidth
+                          disabled={!canEditClientInput}
+                        />
+                      </Box>
+
+                      <TextField
+                        label="Notater"
+                        value={entry.notes ?? ''}
+                        onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))}
+                        fullWidth
+                        multiline
+                        minRows={2}
+                        disabled={!canEditClientInput}
+                        sx={{ mt: 0.85 }}
+                      />
+
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.6} justifyContent="space-between" alignItems={{ sm: 'center' }} sx={{ mt: 0.85 }}>
+                        <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.74rem', lineHeight: 1.4 }}>
+                          {entry.lastUpdatedAt ? `Sist oppdatert ${formatTimestamp(entry.lastUpdatedAt)}` : 'Ikke loggført ennå.'}
+                        </Typography>
+                        <ToggleButtonGroup
+                          size="small"
+                          exclusive
+                          value={entry.twoFactorRequired ? 'required' : 'not-required'}
+                          onChange={(_, nextValue: 'required' | 'not-required' | null) => {
+                            if (!nextValue) {
+                              return;
+                            }
+                            updateAccountAccessEntry(entry.platform, (current) => ({
+                              ...current,
+                              twoFactorRequired: nextValue === 'required',
+                            }));
+                          }}
+                          sx={{
+                            gap: 0.45,
+                            flexWrap: 'wrap',
+                            '& .MuiToggleButton-root': {
+                              borderRadius: '999px !important',
+                              px: 0.65,
+                              py: 0.08,
+                              textTransform: 'none',
+                              fontWeight: 700,
+                              borderColor: 'rgba(148,163,184,0.18)',
+                              color: 'rgba(226,232,240,0.78)',
+                            },
+                            '& .Mui-selected': {
+                              bgcolor: 'rgba(56,189,248,0.16) !important',
+                              borderColor: 'rgba(56,189,248,0.28) !important',
+                              color: '#dbeafe !important',
+                            },
+                          }}
+                        >
+                          <ToggleButton value="required" disabled={!canEditClientInput}>2-faktor hos kontoeier</ToggleButton>
+                          <ToggleButton value="not-required" disabled={!canEditClientInput}>Ingen ekstra markering</ToggleButton>
+                        </ToggleButtonGroup>
+                      </Stack>
+                    </Box>
+                  );
+                })}
+              </Box>
+
+              <Box
+                sx={{
+                  p: 0.95,
+                  borderRadius: 1.5,
+                  border: '1px solid rgba(148,163,184,0.16)',
+                  background: 'rgba(2,6,23,0.42)',
+                  mb: 1.1,
+                }}
+              >
+                <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                  Sikkerhetsnotat og tilbakekalling
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.84rem', mt: 0.35, lineHeight: 1.5, mb: 0.8 }}>
+                  Skriv kort hvordan dere håndterer sikkerhet og når tilgang skal fjernes igjen etter publisering eller prosjektavslutning.
+                </Typography>
+                <Stack spacing={0.85}>
+                  <TextField
+                    label="Sikkerhetsnotat"
+                    value={planningDraft.accountAccess.securityNotes ?? ''}
+                    onChange={(event) => setPlanningDraft((previous) => ({
+                      ...previous,
+                      accountAccess: {
+                        ...previous.accountAccess,
+                        securityNotes: event.target.value,
+                        updatedAt: new Date().toISOString(),
+                      },
+                    }))}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    disabled={!canEditClientInput}
+                  />
+                  <TextField
+                    label="Plan for tilbakekalling av tilgang"
+                    value={planningDraft.accountAccess.revokePlan ?? ''}
+                    onChange={(event) => setPlanningDraft((previous) => ({
+                      ...previous,
+                      accountAccess: {
+                        ...previous.accountAccess,
+                        revokePlan: event.target.value,
+                        updatedAt: new Date().toISOString(),
+                      },
+                    }))}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    disabled={!canEditClientInput}
+                  />
+                </Stack>
+              </Box>
+
+              {canEditClientInput ? (
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', sm: 'center' }}
+                  spacing={0.6}
+                  sx={{
+                    mt: 0.95,
+                    pt: 0.75,
+                    borderTop: '1px solid rgba(96,165,250,0.12)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                    Lagre når kontoer, eierskap og sikkerhetsnotater faktisk er avklart for prosjektet.
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<SaveOutlinedIcon />}
+                    onClick={() => {
+                      void handleSavePlanningContext();
+                    }}
+                    disabled={savingPlanning}
+                    sx={{
+                      alignSelf: { xs: 'flex-start', sm: 'center' },
+                      minHeight: 32,
+                      px: 1.2,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      bgcolor: '#14b8a6',
+                      color: '#f0fdfa',
+                      '&:hover': { bgcolor: '#0f766e' },
+                    }}
+                  >
+                    {savingPlanning ? 'Lagrer kontotilgang...' : 'Lagre kontotilgang'}
                   </Button>
                 </Stack>
               ) : null}
@@ -3267,53 +9173,226 @@ export default function ProducerMediaPanel({
           {activeWorkspace === 'delivery' ? (
             <Box
               sx={{
-                borderRadius: 2,
-                border: '1px solid rgba(148,163,184,0.18)',
-                bgcolor: 'rgba(15,23,42,0.55)',
+                borderRadius: 3,
+                border: '1px solid rgba(96,165,250,0.14)',
+                bgcolor: 'rgba(15,23,42,0.62)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                 p: { xs: 1.25, md: 1.5 },
+                '& .MuiInputBase-root': {
+                  borderRadius: 2,
+                  bgcolor: 'rgba(248,250,252,0.04)',
+                  color: '#f8fafc',
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(203,213,225,0.62)',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(96,165,250,0.14)',
+                },
               }}
             >
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
-                  <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    Leveringsrutine
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
+                    Fullfør leveringsrutinen
                   </Typography>
-                  <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.88rem', mt: 0.35 }}>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 620 }}>
                     {isClientReviewerMode
-                      ? 'Avklar hvordan dere vil ha filer navngitt, versjonert, pakket i mapper og skilt mellom draft og final.'
-                      : 'Definer hvordan filer skal navngis, versjoneres, mappes, skilles mellom draft/final og sikres i backup.'}
+                      ? 'Legg inn det teamet trenger for å levere riktig fil på riktig sted.'
+                      : 'Fyll inn reglene teamet faktisk skal bruke når prosjektet pakkes, deles og leveres.'}
                   </Typography>
                 </Box>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  <Chip
-                    size="small"
-                    label={`Levering ${deliveryWorkflowReadyCount}/6`}
-                    sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0' }}
-                  />
-                  <Chip
-                    size="small"
-                    label={planningUpdatedLabel}
-                    sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#cbd5e1' }}
-                  />
-                  <Chip
-                    size="small"
-                    label={`${deliveryWorkspaceAssets.workspaceFiles.length} arbeidsfiler`}
-                    sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                  />
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={0.65}
+                  alignItems={{ xs: 'flex-start', sm: 'center' }}
+                  sx={{
+                    minWidth: { lg: 320 },
+                    px: 0.8,
+                    py: 0.7,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.08)',
+                    bgcolor: 'rgba(15,23,42,0.28)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    Fremdrift
+                  </Typography>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                    {`${deliveryWorkflowReadyCount}/6 klare`}
+                  </Typography>
+                  <Box
+                    sx={{
+                      width: { xs: '100%', sm: 108 },
+                      height: 5,
+                      borderRadius: 999,
+                      bgcolor: 'rgba(148,163,184,0.18)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: `${(deliveryWorkflowReadyCount / 6) * 100}%`,
+                        height: '100%',
+                        borderRadius: 999,
+                        bgcolor: '#38bdf8',
+                      }}
+                    />
+                  </Box>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
+                    {deliveryWorkflowMissingItems.length > 0
+                      ? `Fyll ut ${deliveryWorkflowMissingItems[0]?.label.toLowerCase()} før du går videre.`
+                      : 'Leveringsrutinen er klar for prosjektet.'}
+                  </Typography>
                 </Stack>
               </Stack>
+
+              {deliveryWorkflowMissingItems.length > 0 ? (
+                <Box
+                  sx={{
+                    mb: 1.05,
+                    px: 0.8,
+                    py: deliveryWorkflowMissingItems.length <= 2 ? 0.58 : 0.72,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.1)',
+                    bgcolor: 'rgba(15,23,42,0.22)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
+                    Dette mangler i leveringsrutinen
+                  </Typography>
+                  <Stack spacing={0.18}>
+                    {deliveryWorkflowMissingItems.map((item) => (
+                      <Typography key={item.id} sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.4 }}>
+                        • {item.label}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : (
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={0.55}
+                  sx={{
+                    px: 0.8,
+                    py: 0.68,
+                    mb: 1.05,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(34,197,94,0.12)',
+                    bgcolor: 'rgba(15,23,42,0.22)',
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      color: '#86efac',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.07em',
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    Klart
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
+                    Leveringsrutinen er klar for team og overlevering.
+                  </Typography>
+                </Stack>
+              )}
+
+              <Box
+                sx={{
+                  mb: 1.05,
+                  p: 0.95,
+                  borderRadius: 1.5,
+                  border: '1px solid rgba(96,165,250,0.1)',
+                  bgcolor: 'rgba(15,23,42,0.22)',
+                }}
+              >
+                <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={0.9} sx={{ mb: 0.9 }}>
+                  <Box>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
+                      Velg leveringsmal
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.2 }}>
+                      Start med en mal og juster bare det som faktisk avviker for prosjektet.
+                    </Typography>
+                  </Box>
+                  {selectedDeliveryPreset ? (
+                    <Chip
+                      size="small"
+                      label={`Aktiv: ${selectedDeliveryPreset.label}`}
+                      sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#dbeafe', alignSelf: { md: 'flex-start' } }}
+                    />
+                  ) : (
+                    <Chip
+                      size="small"
+                      label="Tilpasset"
+                      sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#e2e8f0', alignSelf: { md: 'flex-start' } }}
+                    />
+                  )}
+                </Stack>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
+                    gap: 0.8,
+                  }}
+                >
+                  {PRODUCER_DELIVERY_WORKFLOW_PRESETS.map((preset) => (
+                    <Box
+                      key={preset.id}
+                      sx={{
+                        p: 0.9,
+                        borderRadius: 1.35,
+                        border: preset.id === planningDraft.deliveryWorkflow.presetId
+                          ? '1px solid rgba(56,189,248,0.34)'
+                          : '1px solid rgba(148,163,184,0.16)',
+                        bgcolor: preset.id === planningDraft.deliveryWorkflow.presetId
+                          ? 'rgba(59,130,246,0.12)'
+                          : 'rgba(2,6,23,0.4)',
+                      }}
+                    >
+                      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={0.7}>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem' }}>
+                            {preset.label}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.18 }}>
+                            {preset.helper}
+                          </Typography>
+                        </Box>
+                        {canEditClientInput ? (
+                          <Button
+                            size="small"
+                            variant={preset.id === planningDraft.deliveryWorkflow.presetId ? 'contained' : 'outlined'}
+                            onClick={() => setPlanningDraft((previous) => ({
+                              ...previous,
+                              deliveryWorkflow: applyProducerDeliveryWorkflowPreset(preset.id, previous.deliveryWorkflow),
+                            }))}
+                            sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { sm: 'flex-start' } }}
+                          >
+                            {preset.id === planningDraft.deliveryWorkflow.presetId ? 'Aktiv' : 'Bruk mal'}
+                          </Button>
+                        ) : null}
+                      </Stack>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
 
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', xl: 'repeat(2, minmax(0, 1fr))' },
-                  gap: 1.1,
+                  gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
+                  gap: 0.95,
                   mb: 1.25,
                 }}
               >
                 <Box
                   sx={{
-                    p: 1,
+                    p: 0.95,
                     borderRadius: 1.5,
                     border: '1px solid rgba(148,163,184,0.16)',
                     background: 'rgba(2,6,23,0.42)',
@@ -3343,7 +9422,7 @@ export default function ProducerMediaPanel({
 
                 <Box
                   sx={{
-                    p: 1,
+                    p: 0.95,
                     borderRadius: 1.5,
                     border: '1px solid rgba(148,163,184,0.16)',
                     background: 'rgba(2,6,23,0.42)',
@@ -3369,12 +9448,12 @@ export default function ProducerMediaPanel({
                 </Box>
               </Box>
 
-              <Box
-                sx={{
-                  p: 1,
-                  borderRadius: 1.5,
-                  border: '1px solid rgba(148,163,184,0.16)',
-                  background: 'rgba(2,6,23,0.42)',
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(148,163,184,0.16)',
+                    background: 'rgba(2,6,23,0.42)',
                   mb: 1.25,
                 }}
               >
@@ -3397,6 +9476,8 @@ export default function ProducerMediaPanel({
                   <Stack spacing={0.8}>
                     {deliveryWorkspaceAssets.legalAgreements.slice(0, 4).map((agreement) => {
                       const signatureTone = getAgreementSignatureTone(agreement.google_signature);
+                      const signatureProgress = getAgreementSignatureProgress(agreement);
+                      const clientFacingSummary = getAgreementClientFacingStatusSummary(agreement);
                       const signedPdfArtifact = deliveryWorkspaceAssets.googleArtifacts.find((artifact) => artifact.id === agreement.google_signature?.signedPdfArtifactId);
                       const pdfSnapshotArtifact = deliveryWorkspaceAssets.googleArtifacts.find((artifact) => artifact.id === agreement.google_signature?.pdfSnapshotArtifactId);
                       const auditArtifact = deliveryWorkspaceAssets.googleArtifacts.find((artifact) => artifact.id === agreement.google_signature?.auditArtifactId);
@@ -3436,6 +9517,63 @@ export default function ProducerMediaPanel({
                               <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.82rem', mt: 0.25 }}>
                                 {`${agreement.counterparty_name}${agreement.counterparty_company_name ? ` · ${agreement.counterparty_company_name}` : ''}`}
                               </Typography>
+                              <Typography sx={{ color: signatureTone.color, fontSize: '0.8rem', mt: 0.55 }}>
+                                {clientFacingSummary}
+                              </Typography>
+                              <Box
+                                sx={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+                                  gap: 0.45,
+                                  mt: 0.8,
+                                  maxWidth: 440,
+                                }}
+                              >
+                                {signatureProgress.steps.map((step) => (
+                                  <Box
+                                    key={step.key}
+                                    sx={{
+                                      px: 0.55,
+                                      py: 0.45,
+                                      borderRadius: 1,
+                                      border: step.state === 'current'
+                                        ? '1px solid rgba(250,204,21,0.36)'
+                                        : '1px solid rgba(148,163,184,0.16)',
+                                      bgcolor: step.state === 'complete'
+                                        ? 'rgba(16,185,129,0.14)'
+                                        : step.state === 'current'
+                                          ? 'rgba(250,204,21,0.12)'
+                                          : 'rgba(15,23,42,0.46)',
+                                    }}
+                                  >
+                                    <Typography
+                                      sx={{
+                                        color: step.state === 'complete'
+                                          ? '#86efac'
+                                          : step.state === 'current'
+                                            ? '#fde68a'
+                                            : 'rgba(148,163,184,0.84)',
+                                        fontSize: '0.7rem',
+                                        fontWeight: 700,
+                                        textAlign: 'center',
+                                      }}
+                                    >
+                                      {step.label}
+                                    </Typography>
+                                  </Box>
+                                ))}
+                              </Box>
+                              {signatureProgress.issueLabel ? (
+                                <Chip
+                                  size="small"
+                                  label={signatureProgress.issueLabel}
+                                  sx={{
+                                    mt: 0.75,
+                                    bgcolor: signatureProgress.issueTone?.background ?? 'rgba(148,163,184,0.16)',
+                                    color: signatureProgress.issueTone?.color ?? '#cbd5e1',
+                                  }}
+                                />
+                              ) : null}
                             </Box>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.75}>
                               <Button
@@ -3444,7 +9582,7 @@ export default function ProducerMediaPanel({
                                 onClick={() => openSurfaceWorkspace('delivery', { artifactId: `agreement:${agreement.id}` })}
                                 sx={{ textTransform: 'none', fontWeight: 700 }}
                               >
-                                Åpne i workspace
+                                {isClientReviewerMode ? 'Åpne avtalen' : 'Åpne i workspace'}
                               </Button>
                               {primaryUrl ? (
                                 <Button
@@ -3456,7 +9594,7 @@ export default function ProducerMediaPanel({
                                   rel="noreferrer"
                                   sx={{ textTransform: 'none', fontWeight: 700 }}
                                 >
-                                  Åpne dokument
+                                  {agreement.google_signature?.status === 'signed' ? 'Åpne signert avtale' : 'Åpne dokument'}
                                 </Button>
                               ) : null}
                               {auditArtifact?.webViewUrl ? (
@@ -3488,469 +9626,1411 @@ export default function ProducerMediaPanel({
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', xl: 'repeat(2, minmax(0, 1fr))' },
-                  gap: 1.25,
+                  gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
+                  gap: 0.95,
                 }}
               >
-                <TextField
-                  label="Filnavnregel"
-                  value={planningDraft.deliveryWorkflow.fileNamingConvention ?? ''}
-                  onChange={(event) => setPlanningDraft((previous) => ({
-                    ...previous,
-                    deliveryWorkflow: {
-                      ...previous.deliveryWorkflow,
-                      fileNamingConvention: event.target.value,
-                    },
-                  }))}
-                  fullWidth
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Versjoneringsregel"
-                  value={planningDraft.deliveryWorkflow.versioningRule ?? ''}
-                  onChange={(event) => setPlanningDraft((previous) => ({
-                    ...previous,
-                    deliveryWorkflow: {
-                      ...previous.deliveryWorkflow,
-                      versioningRule: event.target.value,
-                    },
-                  }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Mappestruktur"
-                  value={planningDraft.deliveryWorkflow.folderStructure ?? ''}
-                  onChange={(event) => setPlanningDraft((previous) => ({
-                    ...previous,
-                    deliveryWorkflow: {
-                      ...previous.deliveryWorkflow,
-                      folderStructure: event.target.value,
-                    },
-                  }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Draft vs final"
-                  value={planningDraft.deliveryWorkflow.draftVsFinalRule ?? ''}
-                  onChange={(event) => setPlanningDraft((previous) => ({
-                    ...previous,
-                    deliveryWorkflow: {
-                      ...previous.deliveryWorkflow,
-                      draftVsFinalRule: event.target.value,
-                    },
-                  }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Backuprutine"
-                  value={planningDraft.deliveryWorkflow.backupRoutine ?? ''}
-                  onChange={(event) => setPlanningDraft((previous) => ({
-                    ...previous,
-                    deliveryWorkflow: {
-                      ...previous.deliveryWorkflow,
-                      backupRoutine: event.target.value,
-                    },
-                  }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
-                <TextField
-                  label="Leveringsrytme"
-                  value={planningDraft.deliveryWorkflow.deliveryCadence ?? ''}
-                  onChange={(event) => setPlanningDraft((previous) => ({
-                    ...previous,
-                    deliveryWorkflow: {
-                      ...previous.deliveryWorkflow,
-                      deliveryCadence: event.target.value,
-                    },
-                  }))}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  disabled={!canEditClientInput}
-                />
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 2,
+                    border: '1px solid rgba(96,165,250,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.38)',
+                  }}
+                >
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.18, fontSize: '0.98rem' }}>
+                    Definer struktur
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
+                    Fyll inn reglene som styrer navn, versjoner og mapper.
+                  </Typography>
+                  <Stack spacing={1.35}>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv mønsteret alle filer skal følge.',
+                        hasText(planningDraft.deliveryWorkflow.fileNamingConvention) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Filnavnregel"
+                        value={planningDraft.deliveryWorkflow.fileNamingConvention ?? ''}
+                        onChange={(event) => setPlanningDraft((previous) => ({
+                          ...previous,
+                          deliveryWorkflow: {
+                            ...previous.deliveryWorkflow,
+                            presetId: undefined,
+                            fileNamingConvention: event.target.value,
+                          },
+                        }))}
+                        fullWidth
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hvordan versjoner skal navngis og gå fra intern til klientklar.',
+                        hasText(planningDraft.deliveryWorkflow.versioningRule) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Versjoneringsregel"
+                        value={planningDraft.deliveryWorkflow.versioningRule ?? ''}
+                        onChange={(event) => setPlanningDraft((previous) => ({
+                          ...previous,
+                          deliveryWorkflow: {
+                            ...previous.deliveryWorkflow,
+                            presetId: undefined,
+                            versioningRule: event.target.value,
+                          },
+                        }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hvordan mapper skal bygges opp i leveranseflyten.',
+                        hasText(planningDraft.deliveryWorkflow.folderStructure) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Mappestruktur"
+                        value={planningDraft.deliveryWorkflow.folderStructure ?? ''}
+                        onChange={(event) => setPlanningDraft((previous) => ({
+                          ...previous,
+                          deliveryWorkflow: {
+                            ...previous.deliveryWorkflow,
+                            presetId: undefined,
+                            folderStructure: event.target.value,
+                          },
+                        }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                  </Stack>
+                </Box>
+
+                <Box
+                  sx={{
+                    p: 1.05,
+                    borderRadius: 2,
+                    border: '1px solid rgba(96,165,250,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.38)',
+                  }}
+                >
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.18, fontSize: '0.98rem' }}>
+                    Avklar rutiner
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
+                    Fyll inn reglene som styrer draft, backup og deling.
+                  </Typography>
+                  <Stack spacing={1.35}>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hva som er intern arbeidsfil og hva som er klientklar leveranse.',
+                        hasText(planningDraft.deliveryWorkflow.draftVsFinalRule) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Draft vs final"
+                        value={planningDraft.deliveryWorkflow.draftVsFinalRule ?? ''}
+                        onChange={(event) => setPlanningDraft((previous) => ({
+                          ...previous,
+                          deliveryWorkflow: {
+                            ...previous.deliveryWorkflow,
+                            presetId: undefined,
+                            draftVsFinalRule: event.target.value,
+                          },
+                        }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hvor backup ligger og når den tas.',
+                        hasText(planningDraft.deliveryWorkflow.backupRoutine) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Backuprutine"
+                        value={planningDraft.deliveryWorkflow.backupRoutine ?? ''}
+                        onChange={(event) => setPlanningDraft((previous) => ({
+                          ...previous,
+                          deliveryWorkflow: {
+                            ...previous.deliveryWorkflow,
+                            presetId: undefined,
+                            backupRoutine: event.target.value,
+                          },
+                        }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                    <Box>
+                      {renderFieldLead(
+                        'Skriv hvor ofte og i hvilke steg filer skal deles.',
+                        hasText(planningDraft.deliveryWorkflow.deliveryCadence) ? 'filled' : 'missing',
+                      )}
+                      <TextField
+                        label="Leveringsrytme"
+                        value={planningDraft.deliveryWorkflow.deliveryCadence ?? ''}
+                        onChange={(event) => setPlanningDraft((previous) => ({
+                          ...previous,
+                          deliveryWorkflow: {
+                            ...previous.deliveryWorkflow,
+                            presetId: undefined,
+                            deliveryCadence: event.target.value,
+                          },
+                        }))}
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        disabled={!canEditClientInput}
+                      />
+                    </Box>
+                  </Stack>
+                </Box>
               </Box>
 
+              {deliveryWorkflowMissingItems.length === 0 ? (
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={0.55}
+                  sx={{
+                    px: 0.8,
+                    py: 0.68,
+                    mt: 0.9,
+                    mb: 0.95,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(96,165,250,0.08)',
+                    bgcolor: 'rgba(15,23,42,0.26)',
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      color: 'rgba(191,219,254,0.56)',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.07em',
+                      textTransform: 'uppercase',
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    Kort oppsummering
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
+                    {deliveryWorkflowSummary}
+                  </Typography>
+                </Stack>
+              ) : null}
+
               {canEditClientInput ? (
-                <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.25 }}>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  justifyContent="space-between"
+                  spacing={0.85}
+                  sx={{
+                    mt: 1.1,
+                    pt: 0.95,
+                    borderTop: '1px solid rgba(96,165,250,0.12)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.76rem', lineHeight: 1.45 }}>
+                    Lagre når rutinen faktisk kan brukes av teamet i eksport og overlevering.
+                  </Typography>
                   <Button
+                    size="small"
                     variant="contained"
                     startIcon={<SaveOutlinedIcon />}
                     onClick={() => {
                       void handleSavePlanningContext();
                     }}
                     disabled={savingPlanning}
-                    sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#22c55e', color: '#052e16', '&:hover': { bgcolor: '#16a34a' } }}
+                    sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, textTransform: 'none', fontWeight: 700, bgcolor: '#22c55e', color: '#052e16', '&:hover': { bgcolor: '#16a34a' } }}
                   >
-                    {savingPlanning ? 'Lagrer leveringsrutine...' : 'Lagre leveringsrutine'}
+                    {savingPlanning ? 'Lagrer leveringsrutine...' : 'Lagre og bruk i levering'}
                   </Button>
                 </Stack>
               ) : null}
             </Box>
           ) : null}
 
+          {activeWorkspace === 'meetings' ? (
+            <>
+              <ProducerMeetingWorkspace
+                project={project}
+                projectId={projectId}
+                planning={planningDraft}
+                intake={intakeDraft}
+                reviews={reviews}
+                timelineItems={timelineItems}
+                googleArtifacts={deliveryWorkspaceAssets.googleArtifacts}
+                focusedArtifactId={focusedArtifactId}
+                readOnly={readOnly}
+                isClientReviewerMode={isClientReviewerMode}
+                saving={savingPlanning}
+                onPlanningChange={setPlanningDraft}
+                onSavePlanning={handleSavePlanningContext}
+                onRefreshGoogleAssets={loadDeliveryWorkspaceAssets}
+              />
+            </>
+          ) : null}
+
           {activeWorkspace === 'materials' ? (
             <>
               <Box
                 sx={{
-                  borderRadius: 2,
-                  border: '1px solid rgba(148,163,184,0.18)',
-                  bgcolor: 'rgba(15,23,42,0.55)',
+                  borderRadius: 3,
+                  border: '1px solid rgba(96,165,250,0.14)',
+                  bgcolor: 'rgba(15,23,42,0.62)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                   p: { xs: 1.25, md: 1.5 },
+                  '& .MuiInputBase-root': {
+                    borderRadius: 2,
+                    bgcolor: 'rgba(248,250,252,0.04)',
+                    color: '#f8fafc',
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: 'rgba(203,213,225,0.62)',
+                  },
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'rgba(96,165,250,0.14)',
+                  },
                 }}
               >
                 <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                   <Box>
-                  <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    Materiale
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.3rem', lineHeight: 1.05 }}>
+                    {materialsMode === 'capture' ? 'Legg inn neste materiale' : 'Gå gjennom materialet'}
                   </Typography>
-                  <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.88rem', mt: 0.35 }}>
-                    {isClientReviewerMode
-                      ? 'Legg inn referanser, dokumenter, merkevarefiler og eksisterende materiale som produsenten trenger før planlegging og produksjon.'
-                      : 'Samle referanser, dokumenter, brand assets og tilbakemeldinger på ett sted, og knytt dem til content-kalender og shotlist.'}
-                  </Typography>
-                </Box>
-                  <Chip
-                    size="small"
-                    label={materialDraft.id ? 'Redigerer eksisterende innslag' : `Prosjekt: ${projectName}`}
-                    sx={{ bgcolor: 'rgba(16,185,129,0.14)', color: '#a7f3d0', alignSelf: 'flex-start' }}
-                  />
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem', lineHeight: 1.5, mt: 0.25, maxWidth: 620 }}>
+                    {materialsMode === 'capture'
+                      ? 'Legg inn ett materiale om gangen og koble det til plan eller levering.'
+                      : 'Se hva som er registrert, og rediger bare det som faktisk må endres.'}
+                    </Typography>
+                  </Box>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ md: 'flex-start' }}>
+                    {isMaterialWizardActive ? (
+                      <>
+                        <Chip
+                          size="small"
+                          label="Wizard på"
+                          sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#bfdbfe', alignSelf: 'flex-start' }}
+                        />
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => setMaterialsMode('library')}
+                          sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
+                        >
+                          Bibliotek
+                        </Button>
+                        {canEditClientInput ? (
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => setMaterialWizardEnabled(false)}
+                            sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
+                          >
+                            Gå fritt
+                          </Button>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        <ToggleButtonGroup
+                          size="small"
+                          exclusive
+                          value={materialsMode}
+                          onChange={(_, value: MaterialsMode | null) => {
+                            if (value) {
+                              setMaterialsMode(value);
+                            }
+                          }}
+                          sx={{ alignSelf: { md: 'flex-start' } }}
+                        >
+                          <ToggleButton value="capture">Legg inn</ToggleButton>
+                          <ToggleButton value="library">Bibliotek</ToggleButton>
+                        </ToggleButtonGroup>
+                        {canEditClientInput && materialsMode === 'capture' ? (
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => {
+                              setMaterialWizardEnabled(true);
+                              setActiveMaterialWizardStep(materialDraft.id ? 'details' : 'source');
+                            }}
+                            sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
+                          >
+                            Start wizard
+                          </Button>
+                        ) : null}
+                      </>
+                    )}
+                    <Chip
+                      size="small"
+                      label={materialDraft.id ? 'Redigerer' : `${materials.length} registrert`}
+                      sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe', alignSelf: 'flex-start' }}
+                    />
+                  </Stack>
                 </Stack>
 
+                <Typography sx={{ color: 'rgba(191,219,254,0.74)', fontSize: '0.76rem', lineHeight: 1.45, mb: 1.05 }}>
+                  {workspaceSummaryRows.map((row) => `${row.label}: ${row.value}`).join(' · ')}
+                </Typography>
+
                 {clientGroundingRequests.length > 0 ? (
-                  <Alert severity="info" sx={{ mb: 1.25 }}>
-                    <Typography sx={{ fontWeight: 700, mb: 0.45 }}>Dette trenger produsenten fortsatt fra klienten</Typography>
-                    <Stack spacing={0.35}>
-                      {clientGroundingRequests.map((request) => (
-                        <Typography key={request} sx={{ fontSize: '0.85rem' }}>
+                  <Box
+                    sx={{
+                      mb: 1.05,
+                      px: 0.8,
+                      py: clientGroundingRequests.length <= 2 ? 0.58 : 0.72,
+                      borderRadius: 1.5,
+                      border: '1px solid rgba(96,165,250,0.1)',
+                      bgcolor: 'rgba(15,23,42,0.22)',
+                    }}
+                  >
+                    <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
+                      Dette mangler i materialgrunnlaget
+                    </Typography>
+                    <Stack spacing={0.18}>
+                      {clientGroundingRequests.slice(0, 4).map((request) => (
+                        <Typography key={request} sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.4 }}>
                           • {request}
                         </Typography>
                       ))}
                     </Stack>
-                  </Alert>
+                  </Box>
                 ) : (
-                  <Alert severity="success" sx={{ mb: 1.25 }}>
-                    Klientgrunnlaget dekker de viktigste behovene for videre planlegging og produksjon.
-                  </Alert>
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={0.55}
+                    sx={{
+                      px: 0.8,
+                      py: 0.68,
+                      mb: 1.05,
+                      borderRadius: 1.5,
+                      border: '1px solid rgba(34,197,94,0.12)',
+                      bgcolor: 'rgba(15,23,42,0.22)',
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        color: '#86efac',
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.07em',
+                        textTransform: 'uppercase',
+                        whiteSpace: 'nowrap',
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      Klart
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
+                      Materialgrunnlaget er klart for neste steg.
+                    </Typography>
+                  </Stack>
                 )}
-
-                {canEditClientInput ? (
-                  <Box
-                    sx={{
-                      mb: 1.25,
-                      p: 1,
-                      borderRadius: 1.5,
-                      border: '1px solid rgba(148,163,184,0.16)',
-                      background: 'rgba(2,6,23,0.42)',
-                    }}
-                  >
-                    <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.75 }}>
-                      {isClientReviewerMode ? 'Start med det du vil sende inn' : 'Start med en ferdig mal'}
-                    </Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.84rem', mb: 0.9 }}>
-                      {isClientReviewerMode
-                        ? 'Velg en mal for å legge inn de vanligste klientleveransene raskt og konsekvent.'
-                        : 'Velg en mal for å fylle inn vanlige klientleveranser raskt og konsekvent.'}
-                    </Typography>
-                    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                      {CLIENT_MATERIAL_TEMPLATES.map((template) => (
-                        <Button
-                          key={template.id}
-                          size="small"
-                          variant="outlined"
-                          onClick={() => applyMaterialTemplate(template)}
-                          sx={{ textTransform: 'none', fontWeight: 700 }}
-                        >
-                          {template.label}
-                        </Button>
-                      ))}
-                    </Stack>
-                  </Box>
-                ) : null}
-
-                {canEditClientInput ? (
-                  <Box
-                    sx={{
-                      mb: 1.25,
-                      p: 1,
-                      borderRadius: 1.5,
-                      border: '1px solid rgba(148,163,184,0.16)',
-                      background: 'rgba(2,6,23,0.42)',
-                    }}
-                  >
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.1} justifyContent="space-between">
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.35 }}>
-                          Last opp fil til prosjektet
-                        </Typography>
-                        <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.84rem' }}>
-                          Filer lagres i prosjektet og kobles deretter til materialkortet med mappe, pakke og versjon.
-                        </Typography>
-                        {selectedMaterialFile ? (
-                          <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.82rem', mt: 0.55 }}>
-                            Valgt fil: {selectedMaterialFile.name}
-                          </Typography>
-                        ) : materialDraft.projectFileId ? (
-                          <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.82rem', mt: 0.55 }}>
-                            Koblet prosjektfil: {materialDraft.fileName || materialDraft.projectFileId}
-                          </Typography>
-                        ) : null}
-                      </Box>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ md: 'flex-start' }}>
-                        <input
-                          ref={materialFileInputRef}
-                          type="file"
-                          hidden
-                          onChange={handleMaterialFileSelected}
-                        />
-                        <Button
-                          variant="outlined"
-                          startIcon={<UploadFileIcon />}
-                          onClick={handleOpenMaterialFilePicker}
-                          sx={{ textTransform: 'none', fontWeight: 700 }}
-                        >
-                          Velg fil
-                        </Button>
-                        <Button
-                          variant="contained"
-                          startIcon={<CloudUploadIcon />}
-                          onClick={() => {
-                            void handleUploadMaterialFile();
-                          }}
-                          disabled={uploadingMaterialFile || !selectedMaterialFile}
-                          sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
-                        >
-                          {uploadingMaterialFile ? 'Laster opp...' : 'Last opp til prosjekt'}
-                        </Button>
-                      </Stack>
-                    </Stack>
-                  </Box>
-                ) : null}
 
                 <Box
                   sx={{
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
-                    gap: 1.25,
+                    p: 0.85,
+                    mb: 1.05,
+                    borderRadius: 1.8,
+                    border: '1px solid rgba(96,165,250,0.14)',
+                    bgcolor: 'rgba(15,23,42,0.44)',
                   }}
                 >
-                  <TextField
-                    select
-                    label="Type"
-                    value={materialDraft.entryType}
-                    onChange={(event) => setMaterialDraft((previous) => ({
-                      ...previous,
-                      entryType: event.target.value as ProducerClientMaterialType,
-                    }))}
-                    disabled={!canEditClientInput}
-                  >
-                    {Object.entries(MATERIAL_TYPE_LABELS).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    label="Tittel"
-                    value={materialDraft.title}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, title: event.target.value }))}
-                    disabled={!canEditClientInput}
-                  />
-                  <TextField
-                    label="Ekstern lenke"
-                    value={materialDraft.externalUrl}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, externalUrl: event.target.value }))}
-                    disabled={!canEditClientInput}
-                    placeholder="https://..."
-                  />
-                  <TextField
-                    select
-                    label="Fase"
-                    value={materialDraft.phase}
-                    onChange={(event) => setMaterialDraft((previous) => ({
-                      ...previous,
-                      phase: event.target.value as ProducerPlanningPhase | '',
-                    }))}
-                    disabled={!canEditClientInput}
-                  >
-                    <MenuItem value="">Ikke knyttet til fase</MenuItem>
-                    {Object.entries(PRODUCER_PLANNING_PHASE_LABELS).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    select
-                    label="Knytt til content-kalender"
-                    value={materialDraft.linkedCalendarItemId}
-                    onChange={(event) => {
-                      const nextValue = event.target.value;
-                      const linkedCalendarItem = contentCalendarOptions.find((option) => option.id === nextValue);
-                      setMaterialDraft((previous) => ({
-                        ...previous,
-                        linkedCalendarItemId: nextValue,
-                        phase: linkedCalendarItem?.phase ?? previous.phase,
-                        linkedShotListId: linkedCalendarItem?.linkedShotListId
-                          ? linkedCalendarItem.linkedShotListId
-                          : previous.linkedShotListId,
-                      }));
-                    }}
-                    disabled={!canEditClientInput}
-                  >
-                    <MenuItem value="">Ingen kobling</MenuItem>
-                    {contentCalendarOptions.map((option) => (
-                      <MenuItem key={option.id} value={option.id}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    select
-                    label="Knytt til shotlist"
-                    value={materialDraft.linkedShotListId}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, linkedShotListId: event.target.value }))}
-                    disabled={!canEditClientInput}
-                  >
-                    <MenuItem value="">Ingen kobling</MenuItem>
-                    {shotListOptions.map((option) => (
-                      <MenuItem key={option.id} value={option.id}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    select
-                    label="Status"
-                    value={materialDraft.status}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, status: event.target.value }))}
-                    disabled={!canEditClientInput}
-                  >
-                    {Object.entries(MATERIAL_STATUS_LABELS).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    label="Filnavn / assetnavn"
-                    value={materialDraft.fileName}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, fileName: event.target.value }))}
-                    disabled={!canEditClientInput}
-                  />
-                  <TextField
-                    label="Versjon"
-                    value={materialDraft.versionLabel}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, versionLabel: event.target.value }))}
-                    disabled={!canEditClientInput}
-                  />
-                  <TextField
-                    label="Brukes til"
-                    value={materialDraft.usageNotes}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, usageNotes: event.target.value }))}
-                    disabled={!canEditClientInput}
-                  />
-                  <TextField
-                    label="Kilde / avsender"
-                    value={materialDraft.sourceLabel}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, sourceLabel: event.target.value }))}
-                    disabled={!canEditClientInput}
-                  />
-                  <TextField
-                    label="Mappe i leveranseflyt"
-                    value={materialDraft.folderPath}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, folderPath: event.target.value }))}
-                    disabled={!canEditClientInput}
-                  />
-                  <TextField
-                    label="Pakke"
-                    value={materialDraft.packageName}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, packageName: event.target.value }))}
-                    disabled={!canEditClientInput}
-                  />
-                  <TextField
-                    select
-                    label="Prioritet"
-                    value={materialDraft.priority}
-                    onChange={(event) => setMaterialDraft((previous) => ({
-                      ...previous,
-                      priority: event.target.value as ClientMaterialDraft['priority'],
-                    }))}
-                    disabled={!canEditClientInput}
-                  >
-                    {Object.entries(MATERIAL_PRIORITY_LABELS).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    label="Beskrivelse"
-                    value={materialDraft.description}
-                    onChange={(event) => setMaterialDraft((previous) => ({ ...previous, description: event.target.value }))}
-                    multiline
-                    minRows={3}
-                    disabled={!canEditClientInput}
-                    sx={{ gridColumn: { xs: '1 / -1', lg: '1 / -1' } }}
-                  />
+                  <Stack direction={{ xs: 'column', lg: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ xs: 'flex-start', lg: 'center' }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ color: 'rgba(191,219,254,0.62)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                        {isMaterialWizardActive ? `Steg ${activeMaterialWizardIndex + 1} av ${materialWizardDescriptors.length}` : 'Gjør dette nå'}
+                      </Typography>
+                      <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.15 }}>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
+                          {isMaterialWizardActive
+                            ? activeMaterialWizardDescriptor.label
+                            : materialsMode === 'capture'
+                              ? 'Legg inn neste materiale'
+                              : 'Gå gjennom registrert materiale'}
+                        </Typography>
+                        {isMaterialWizardActive ? (
+                          <Chip
+                            size="small"
+                            label={activeMaterialStepStatusLabel}
+                            sx={{
+                              height: 22,
+                              bgcolor: activeMaterialWizardDescriptor.missing.length === 0 ? 'rgba(34,197,94,0.14)' : 'rgba(59,130,246,0.18)',
+                              color: activeMaterialWizardDescriptor.missing.length === 0 ? '#86efac' : '#bfdbfe',
+                            }}
+                          />
+                        ) : null}
+                      </Stack>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.18 }}>
+                        {isMaterialWizardActive
+                          ? activeMaterialWizardDescriptor.description
+                          : materialsMode === 'capture'
+                            ? 'Velg mal eller fil, fyll inn det viktigste og lagre.'
+                            : 'Bruk biblioteket til kontroll og raske endringer.'}
+                      </Typography>
+                    </Box>
+                    {isMaterialWizardActive ? (
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={0.65}
+                        alignItems={{ xs: 'flex-start', sm: 'center' }}
+                        sx={{
+                          minWidth: { lg: 320 },
+                          px: 0.8,
+                          py: 0.7,
+                          borderRadius: 1.5,
+                          border: '1px solid rgba(96,165,250,0.08)',
+                          bgcolor: 'rgba(15,23,42,0.28)',
+                        }}
+                      >
+                        <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                          Fremdrift
+                        </Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                          {`${completedMaterialStepCount}/${materialWizardDescriptors.length} klare`}
+                        </Typography>
+                        <Box
+                          sx={{
+                            width: { xs: '100%', sm: 108 },
+                            height: 5,
+                            borderRadius: 999,
+                            bgcolor: 'rgba(148,163,184,0.18)',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: `${(completedMaterialStepCount / materialWizardDescriptors.length) * 100}%`,
+                              height: '100%',
+                              borderRadius: 999,
+                              bgcolor: '#38bdf8',
+                            }}
+                          />
+                        </Box>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
+                          {nextMaterialWizardDescriptor && nextMaterialWizardDescriptor.key !== activeMaterialWizardStep
+                            ? `Deretter: ${nextMaterialWizardDescriptor.label}`
+                            : activeMaterialWizardDescriptor.missing.length > 0
+                              ? `Fyll ut ${activeMaterialWizardDescriptor.label.toLowerCase()} før du går videre.`
+                              : 'Materialet er klart for neste steg.'}
+                        </Typography>
+                      </Stack>
+                    ) : null}
+                  </Stack>
                 </Box>
 
-                {canEditClientInput ? (
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="flex-end" sx={{ mt: 1.25 }}>
-                    {materialDraft.id ? (
-                      <Button
-                        variant="outlined"
-                        onClick={() => setMaterialDraft(EMPTY_MATERIAL_DRAFT)}
-                        sx={{ textTransform: 'none', fontWeight: 700 }}
+                {canEditClientInput && materialsMode === 'capture' ? (
+                  isMaterialWizardActive && activeMaterialWizardStep === 'source' ? (
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
+                        gap: 0.95,
+                        mb: 1.25,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          p: 0.95,
+                          borderRadius: 1.5,
+                          border: '1px solid rgba(148,163,184,0.16)',
+                          background: 'rgba(2,6,23,0.42)',
+                        }}
                       >
-                        Avbryt redigering
+                        <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.65, fontSize: '0.94rem' }}>
+                          {isClientReviewerMode ? 'Start med det du vil sende inn' : 'Start med en ferdig mal'}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.8rem', lineHeight: 1.5, mb: 0.8 }}>
+                          {isClientReviewerMode
+                            ? 'Velg en mal og fyll inn det viktigste raskt.'
+                            : 'Velg en mal og fyll inn vanlige leveranser raskt.'}
+                        </Typography>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                          {CLIENT_MATERIAL_TEMPLATES.map((template) => (
+                            <Button
+                              key={template.id}
+                              size="small"
+                              variant="outlined"
+                              onClick={() => applyMaterialTemplate(template)}
+                              sx={{ textTransform: 'none', fontWeight: 700 }}
+                            >
+                              {template.label}
+                            </Button>
+                          ))}
+                        </Stack>
+                      </Box>
+
+                      <Box
+                        sx={{
+                          p: 0.95,
+                          borderRadius: 1.5,
+                          border: '1px solid rgba(148,163,184,0.16)',
+                          background: 'rgba(2,6,23,0.42)',
+                        }}
+                      >
+                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.1} justifyContent="space-between">
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.3, fontSize: '0.94rem' }}>
+                              Last opp fil til prosjektet
+                            </Typography>
+                            <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.8rem', lineHeight: 1.5 }}>
+                              Last opp filen først, og koble den deretter til materialet.
+                            </Typography>
+                            {selectedMaterialFile ? (
+                              <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.82rem', mt: 0.55 }}>
+                                Valgt fil: {selectedMaterialFile.name}
+                              </Typography>
+                            ) : materialDraft.projectFileId ? (
+                              <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.82rem', mt: 0.55 }}>
+                                Koblet prosjektfil: {materialDraft.fileName || materialDraft.projectFileId}
+                              </Typography>
+                            ) : null}
+                          </Box>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ md: 'flex-start' }}>
+                            <input
+                              ref={materialFileInputRef}
+                              type="file"
+                              hidden
+                              onChange={handleMaterialFileSelected}
+                            />
+                            <Button
+                              variant="outlined"
+                              startIcon={<UploadFileIcon />}
+                              onClick={handleOpenMaterialFilePicker}
+                              sx={{ textTransform: 'none', fontWeight: 700 }}
+                            >
+                              Velg fil
+                            </Button>
+                            <Button
+                              variant="contained"
+                              startIcon={<CloudUploadIcon />}
+                              onClick={() => {
+                                void handleUploadMaterialFile();
+                              }}
+                              disabled={uploadingMaterialFile || !selectedMaterialFile}
+                              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
+                            >
+                              {uploadingMaterialFile ? 'Laster opp...' : 'Last opp til prosjekt'}
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      </Box>
+                    </Box>
+                  ) : !isMaterialWizardActive ? (
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
+                        gap: 0.95,
+                        mb: 1.25,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          p: 0.95,
+                          borderRadius: 1.5,
+                          border: '1px solid rgba(148,163,184,0.16)',
+                          background: 'rgba(2,6,23,0.42)',
+                        }}
+                      >
+                        <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.65, fontSize: '0.94rem' }}>
+                          {isClientReviewerMode ? 'Start med det du vil sende inn' : 'Start med en ferdig mal'}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.8rem', lineHeight: 1.5, mb: 0.8 }}>
+                          {isClientReviewerMode
+                            ? 'Velg en mal og fyll inn det viktigste raskt.'
+                            : 'Velg en mal og fyll inn vanlige leveranser raskt.'}
+                        </Typography>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                          {CLIENT_MATERIAL_TEMPLATES.map((template) => (
+                            <Button
+                              key={template.id}
+                              size="small"
+                              variant="outlined"
+                              onClick={() => applyMaterialTemplate(template)}
+                              sx={{ textTransform: 'none', fontWeight: 700 }}
+                            >
+                              {template.label}
+                            </Button>
+                          ))}
+                        </Stack>
+                      </Box>
+
+                      <Box
+                        sx={{
+                          p: 0.95,
+                          borderRadius: 1.5,
+                          border: '1px solid rgba(148,163,184,0.16)',
+                          background: 'rgba(2,6,23,0.42)',
+                        }}
+                      >
+                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.1} justifyContent="space-between">
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.3, fontSize: '0.94rem' }}>
+                              Last opp fil til prosjektet
+                            </Typography>
+                            <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.8rem', lineHeight: 1.5 }}>
+                              Last opp filen først, og koble den deretter til materialet.
+                            </Typography>
+                            {selectedMaterialFile ? (
+                              <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.82rem', mt: 0.55 }}>
+                                Valgt fil: {selectedMaterialFile.name}
+                              </Typography>
+                            ) : materialDraft.projectFileId ? (
+                              <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.82rem', mt: 0.55 }}>
+                                Koblet prosjektfil: {materialDraft.fileName || materialDraft.projectFileId}
+                              </Typography>
+                            ) : null}
+                          </Box>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ md: 'flex-start' }}>
+                            <input
+                              ref={materialFileInputRef}
+                              type="file"
+                              hidden
+                              onChange={handleMaterialFileSelected}
+                            />
+                            <Button
+                              variant="outlined"
+                              startIcon={<UploadFileIcon />}
+                              onClick={handleOpenMaterialFilePicker}
+                              sx={{ textTransform: 'none', fontWeight: 700 }}
+                            >
+                              Velg fil
+                            </Button>
+                            <Button
+                              variant="contained"
+                              startIcon={<CloudUploadIcon />}
+                              onClick={() => {
+                                void handleUploadMaterialFile();
+                              }}
+                              disabled={uploadingMaterialFile || !selectedMaterialFile}
+                              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
+                            >
+                              {uploadingMaterialFile ? 'Laster opp...' : 'Last opp til prosjekt'}
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      </Box>
+                    </Box>
+                  ) : null
+                ) : null}
+
+                {materialsMode === 'capture' ? (
+                  isMaterialWizardActive ? (
+                    <>
+                      {activeMaterialWizardDescriptor.missing.length > 0 ? (
+                        <Box
+                          sx={{
+                            mb: 1.05,
+                            px: 0.8,
+                            py: activeMaterialWizardDescriptor.missing.length <= 2 ? 0.58 : 0.72,
+                            borderRadius: 1.5,
+                            border: '1px solid rgba(96,165,250,0.1)',
+                            bgcolor: 'rgba(15,23,42,0.22)',
+                          }}
+                        >
+                          <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
+                            {`Dette mangler i ${activeMaterialWizardDescriptor.label.toLowerCase()}`}
+                          </Typography>
+                          <Stack spacing={0.18}>
+                            {activeMaterialWizardDescriptor.missing.map((item) => (
+                              <Typography key={item.id} sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.4 }}>
+                                • {item.label}
+                              </Typography>
+                            ))}
+                          </Stack>
+                        </Box>
+                      ) : null}
+
+                      <Box
+                        sx={{
+                          p: 0.95,
+                          borderRadius: 2,
+                          border: '1px solid rgba(148,163,184,0.16)',
+                          background: 'rgba(2,6,23,0.42)',
+                        }}
+                      >
+                        <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18, fontSize: '0.94rem' }}>
+                          {activeMaterialWizardDescriptor.label}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
+                          {activeMaterialWizardDescriptor.description}
+                        </Typography>
+
+                        {activeMaterialWizardStep === 'source' ? (
+                          <Stack spacing={1}>
+                            <TextField
+                              select
+                              label="Type"
+                              value={materialDraft.entryType}
+                              onChange={(event) => setMaterialDraft((previous) => ({
+                                ...previous,
+                                entryType: event.target.value as ProducerClientMaterialType,
+                              }))}
+                              disabled={!canEditClientInput}
+                            >
+                              {Object.entries(MATERIAL_TYPE_LABELS).map(([value, label]) => (
+                                <MenuItem key={value} value={value}>
+                                  {label}
+                                </MenuItem>
+                                ))}
+                              </TextField>
+                            <Box>
+                              {renderFieldLead(
+                                'Gi materialet et tydelig navn som gjør det lett å bruke videre.',
+                                hasText(materialDraft.title) ? 'filled' : 'missing',
+                              )}
+                            <TextField
+                              label="Tittel"
+                              value={materialDraft.title}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, title: event.target.value }))}
+                              disabled={!canEditClientInput}
+                            />
+                            </Box>
+                            <Box>
+                              {renderFieldLead(
+                                'Legg inn en lenke hvis materialet ligger eksternt.',
+                                hasText(materialDraft.externalUrl) ? 'filled' : 'optional',
+                              )}
+                            <TextField
+                              label="Ekstern lenke"
+                              value={materialDraft.externalUrl}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, externalUrl: event.target.value }))}
+                              disabled={!canEditClientInput}
+                              placeholder="https://..."
+                            />
+                            </Box>
+                          </Stack>
+                        ) : null}
+
+                        {activeMaterialWizardStep === 'details' ? (
+                          <Stack spacing={1}>
+                            <TextField
+                              select
+                              label="Fase"
+                              value={materialDraft.phase}
+                              onChange={(event) => setMaterialDraft((previous) => ({
+                                ...previous,
+                                phase: event.target.value as ProducerPlanningPhase | '',
+                              }))}
+                              disabled={!canEditClientInput}
+                            >
+                              <MenuItem value="">Ikke knyttet til fase</MenuItem>
+                              {Object.entries(PRODUCER_PLANNING_PHASE_LABELS).map(([value, label]) => (
+                                <MenuItem key={value} value={value}>
+                                  {label}
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                            <TextField
+                              select
+                              label="Status"
+                              value={materialDraft.status}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, status: event.target.value }))}
+                              disabled={!canEditClientInput}
+                            >
+                              {Object.entries(MATERIAL_STATUS_LABELS).map(([value, label]) => (
+                                <MenuItem key={value} value={value}>
+                                  {label}
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                            <TextField
+                              select
+                              label="Prioritet"
+                              value={materialDraft.priority}
+                              onChange={(event) => setMaterialDraft((previous) => ({
+                                ...previous,
+                                priority: event.target.value as ClientMaterialDraft['priority'],
+                              }))}
+                              disabled={!canEditClientInput}
+                            >
+                              {Object.entries(MATERIAL_PRIORITY_LABELS).map(([value, label]) => (
+                                <MenuItem key={value} value={value}>
+                                  {label}
+                                </MenuItem>
+                                ))}
+                              </TextField>
+                            <Box>
+                              {renderFieldLead(
+                                'Beskriv hva materialet faktisk er.',
+                                hasText(materialDraft.description)
+                                  ? 'filled'
+                                  : hasText(materialDraft.usageNotes)
+                                    ? 'optional'
+                                    : 'missing',
+                              )}
+                            <TextField
+                              label="Beskrivelse"
+                              value={materialDraft.description}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, description: event.target.value }))}
+                              multiline
+                              minRows={3}
+                              disabled={!canEditClientInput}
+                            />
+                            </Box>
+                            <Box>
+                              {renderFieldLead(
+                                'Skriv hvordan materialet skal brukes i produksjonen.',
+                                hasText(materialDraft.usageNotes)
+                                  ? 'filled'
+                                  : hasText(materialDraft.description)
+                                    ? 'optional'
+                                    : 'missing',
+                              )}
+                            <TextField
+                              label="Brukes til"
+                              value={materialDraft.usageNotes}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, usageNotes: event.target.value }))}
+                              disabled={!canEditClientInput}
+                            />
+                            </Box>
+                          </Stack>
+                        ) : null}
+
+                        {activeMaterialWizardStep === 'linking' ? (
+                          <Stack spacing={1}>
+                            <Box>
+                              {renderFieldLead(
+                                'Koble materialet til plan eller publisering hvis timing betyr noe.',
+                                hasText(materialDraft.linkedCalendarItemId) ? 'filled' : 'optional',
+                              )}
+                            <TextField
+                              select
+                              label="Knytt til content-kalender"
+                              value={materialDraft.linkedCalendarItemId}
+                              onChange={(event) => {
+                                const nextValue = event.target.value;
+                                const linkedCalendarItem = contentCalendarOptions.find((option) => option.id === nextValue);
+                                setMaterialDraft((previous) => ({
+                                  ...previous,
+                                  linkedCalendarItemId: nextValue,
+                                  phase: linkedCalendarItem?.phase ?? previous.phase,
+                                  linkedShotListId: linkedCalendarItem?.linkedShotListId
+                                    ? linkedCalendarItem.linkedShotListId
+                                    : previous.linkedShotListId,
+                                }));
+                              }}
+                              disabled={!canEditClientInput}
+                            >
+                              <MenuItem value="">Ingen kobling</MenuItem>
+                              {contentCalendarOptions.map((option) => (
+                                <MenuItem key={option.id} value={option.id}>
+                                  {option.label}
+                                </MenuItem>
+                                ))}
+                              </TextField>
+                            </Box>
+                            <Box>
+                              {renderFieldLead(
+                                'Koble til shotlist hvis materialet styrer opptak eller klipp.',
+                                hasText(materialDraft.linkedShotListId) ? 'filled' : 'optional',
+                              )}
+                            <TextField
+                              select
+                              label="Knytt til shotlist"
+                              value={materialDraft.linkedShotListId}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, linkedShotListId: event.target.value }))}
+                              disabled={!canEditClientInput}
+                            >
+                              <MenuItem value="">Ingen kobling</MenuItem>
+                              {shotListOptions.map((option) => (
+                                <MenuItem key={option.id} value={option.id}>
+                                  {option.label}
+                                </MenuItem>
+                                ))}
+                              </TextField>
+                            </Box>
+                            <Box>
+                              {renderFieldLead(
+                                'Legg inn mappe eller pakke hvis materialet skal inn i leveranseflyten.',
+                                hasText(materialDraft.folderPath) || hasText(materialDraft.packageName) ? 'filled' : 'optional',
+                              )}
+                            <TextField
+                              label="Filnavn / assetnavn"
+                              value={materialDraft.fileName}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, fileName: event.target.value }))}
+                              disabled={!canEditClientInput}
+                            />
+                            <TextField
+                              label="Versjon"
+                              value={materialDraft.versionLabel}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, versionLabel: event.target.value }))}
+                              disabled={!canEditClientInput}
+                            />
+                            <TextField
+                              label="Kilde / avsender"
+                              value={materialDraft.sourceLabel}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, sourceLabel: event.target.value }))}
+                              disabled={!canEditClientInput}
+                            />
+                            <TextField
+                              label="Mappe i leveranseflyt"
+                              value={materialDraft.folderPath}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, folderPath: event.target.value }))}
+                              disabled={!canEditClientInput}
+                            />
+                            <TextField
+                              label="Pakke"
+                              value={materialDraft.packageName}
+                              onChange={(event) => setMaterialDraft((previous) => ({ ...previous, packageName: event.target.value }))}
+                              disabled={!canEditClientInput}
+                            />
+                            </Box>
+                          </Stack>
+                        ) : null}
+
+                        {activeMaterialWizardStep === 'review' ? (
+                          <Stack spacing={0.8}>
+                            {materialWizardReviewRows.map((row) => (
+                              <Box
+                                key={row.label}
+                                sx={{
+                                  p: 0.8,
+                                  borderRadius: 1.6,
+                                  border: '1px solid rgba(96,165,250,0.12)',
+                                  bgcolor: 'rgba(15,23,42,0.36)',
+                                }}
+                              >
+                                <Typography sx={{ color: 'rgba(191,219,254,0.62)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                                  {row.label}
+                                </Typography>
+                                <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.86rem', mt: 0.15 }}>
+                                  {row.value}
+                                </Typography>
+                              </Box>
+                            ))}
+                          </Stack>
+                        ) : null}
+                      </Box>
+
+                      {activeMaterialWizardDescriptor.missing.length === 0 ? (
+                        <Stack
+                          direction={{ xs: 'column', md: 'row' }}
+                          spacing={0.55}
+                          sx={{
+                            px: 0.8,
+                            py: 0.68,
+                            mt: 0.9,
+                            mb: 0.95,
+                            borderRadius: 1.5,
+                            border: '1px solid rgba(96,165,250,0.08)',
+                            bgcolor: 'rgba(15,23,42,0.26)',
+                          }}
+                        >
+                          <Typography
+                            sx={{
+                              color: 'rgba(191,219,254,0.56)',
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.07em',
+                              textTransform: 'uppercase',
+                              whiteSpace: 'nowrap',
+                              lineHeight: 1.3,
+                            }}
+                          >
+                            Kort oppsummering
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
+                            {activeMaterialStepSummary}
+                          </Typography>
+                        </Stack>
+                      ) : null}
+
+                      {canEditClientInput ? (
+                        <Stack
+                          direction={{ xs: 'column', sm: 'row' }}
+                          spacing={0.7}
+                          justifyContent="space-between"
+                          alignItems={{ xs: 'flex-start', sm: 'center' }}
+                          sx={{ mt: 1.05, pt: 0.78, borderTop: '1px solid rgba(96,165,250,0.12)' }}
+                        >
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.65}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => {
+                                if (activeMaterialWizardIndex === 0) {
+                                  setMaterialWizardEnabled(false);
+                                  return;
+                                }
+                                setActiveMaterialWizardStep(previousMaterialWizardDescriptor?.key ?? 'source');
+                              }}
+                              sx={{ textTransform: 'none', fontWeight: 700 }}
+                            >
+                              {activeMaterialWizardIndex === 0 ? 'Gå fritt' : 'Tilbake'}
+                            </Button>
+                            {materialDraft.id ? (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => {
+                                  setMaterialDraft(EMPTY_MATERIAL_DRAFT);
+                                  setSelectedMaterialFile(null);
+                                  setMaterialsMode('library');
+                                  if (materialFileInputRef.current) {
+                                    materialFileInputRef.current.value = '';
+                                  }
+                                }}
+                                sx={{ textTransform: 'none', fontWeight: 700 }}
+                              >
+                                Avbryt redigering
+                              </Button>
+                            ) : null}
+                          </Stack>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.65} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                            <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                              {activeMaterialWizardStep === 'review'
+                                ? 'Kontroller koblinger og metadata før du lagrer.'
+                                : nextMaterialWizardDescriptor
+                                  ? `Neste: ${nextMaterialWizardDescriptor.label}`
+                                  : 'Fortsett ett steg om gangen.'}
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              startIcon={activeMaterialWizardStep === 'review' ? <UploadFileIcon /> : undefined}
+                              onClick={() => {
+                                if (activeMaterialWizardStep === 'review') {
+                                  void handleSubmitMaterial();
+                                  return;
+                                }
+                                if (nextMaterialWizardDescriptor) {
+                                  setActiveMaterialWizardStep(nextMaterialWizardDescriptor.key);
+                                }
+                              }}
+                              disabled={activeMaterialWizardStep === 'source' ? !canAdvanceMaterialWizard : savingMaterial}
+                              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#fbbf24', color: '#111827', '&:hover': { bgcolor: '#f59e0b' } }}
+                            >
+                              {activeMaterialWizardStep === 'review'
+                                ? (savingMaterial ? 'Lagrer materiale...' : materialDraft.id ? 'Oppdater materiale' : 'Lagre materiale')
+                                : nextMaterialWizardDescriptor
+                                  ? `Fortsett til ${nextMaterialWizardDescriptor.label}`
+                                  : 'Fortsett'}
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <Box
+                        sx={{
+                          p: 0.95,
+                          borderRadius: 2,
+                          border: '1px solid rgba(148,163,184,0.16)',
+                          background: 'rgba(2,6,23,0.42)',
+                        }}
+                      >
+                        <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18, fontSize: '0.94rem' }}>
+                          Registrer materiale
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
+                          Fyll inn det som trengs for å bruke materialet videre.
+                        </Typography>
+
+                        <Box
+                          sx={{
+                            display: 'grid',
+                            gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
+                            gap: 0.95,
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              p: 0.95,
+                              borderRadius: 1.6,
+                              border: '1px solid rgba(96,165,250,0.12)',
+                              bgcolor: 'rgba(15,23,42,0.36)',
+                            }}
+                          >
+                            <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.65, fontSize: '0.98rem' }}>
+                              Innhold og status
+                            </Typography>
+                            <Stack spacing={1}>
+                              <TextField
+                                select
+                                label="Type"
+                                value={materialDraft.entryType}
+                                onChange={(event) => setMaterialDraft((previous) => ({
+                                  ...previous,
+                                  entryType: event.target.value as ProducerClientMaterialType,
+                                }))}
+                                disabled={!canEditClientInput}
+                              >
+                                {Object.entries(MATERIAL_TYPE_LABELS).map(([value, label]) => (
+                                  <MenuItem key={value} value={value}>
+                                    {label}
+                                  </MenuItem>
+                                ))}
+                              </TextField>
+                              <TextField
+                                label="Tittel"
+                                value={materialDraft.title}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, title: event.target.value }))}
+                                disabled={!canEditClientInput}
+                              />
+                              <TextField
+                                label="Ekstern lenke"
+                                value={materialDraft.externalUrl}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, externalUrl: event.target.value }))}
+                                disabled={!canEditClientInput}
+                                placeholder="https://..."
+                              />
+                              <TextField
+                                select
+                                label="Fase"
+                                value={materialDraft.phase}
+                                onChange={(event) => setMaterialDraft((previous) => ({
+                                  ...previous,
+                                  phase: event.target.value as ProducerPlanningPhase | '',
+                                }))}
+                                disabled={!canEditClientInput}
+                              >
+                                <MenuItem value="">Ikke knyttet til fase</MenuItem>
+                                {Object.entries(PRODUCER_PLANNING_PHASE_LABELS).map(([value, label]) => (
+                                  <MenuItem key={value} value={value}>
+                                    {label}
+                                  </MenuItem>
+                                ))}
+                              </TextField>
+                              <TextField
+                                select
+                                label="Status"
+                                value={materialDraft.status}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, status: event.target.value }))}
+                                disabled={!canEditClientInput}
+                              >
+                                {Object.entries(MATERIAL_STATUS_LABELS).map(([value, label]) => (
+                                  <MenuItem key={value} value={value}>
+                                    {label}
+                                  </MenuItem>
+                                ))}
+                              </TextField>
+                              <TextField
+                                select
+                                label="Prioritet"
+                                value={materialDraft.priority}
+                                onChange={(event) => setMaterialDraft((previous) => ({
+                                  ...previous,
+                                  priority: event.target.value as ClientMaterialDraft['priority'],
+                                }))}
+                                disabled={!canEditClientInput}
+                              >
+                                {Object.entries(MATERIAL_PRIORITY_LABELS).map(([value, label]) => (
+                                  <MenuItem key={value} value={value}>
+                                    {label}
+                                  </MenuItem>
+                                ))}
+                              </TextField>
+                              <TextField
+                                label="Beskrivelse"
+                                value={materialDraft.description}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, description: event.target.value }))}
+                                multiline
+                                minRows={3}
+                                disabled={!canEditClientInput}
+                              />
+                            </Stack>
+                          </Box>
+
+                          <Box
+                            sx={{
+                              p: 0.95,
+                              borderRadius: 1.6,
+                              border: '1px solid rgba(96,165,250,0.12)',
+                              bgcolor: 'rgba(15,23,42,0.36)',
+                            }}
+                          >
+                            <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.65, fontSize: '0.98rem' }}>
+                              Koblinger og levering
+                            </Typography>
+                            <Stack spacing={1}>
+                              <TextField
+                                select
+                                label="Knytt til content-kalender"
+                                value={materialDraft.linkedCalendarItemId}
+                                onChange={(event) => {
+                                  const nextValue = event.target.value;
+                                  const linkedCalendarItem = contentCalendarOptions.find((option) => option.id === nextValue);
+                                  setMaterialDraft((previous) => ({
+                                    ...previous,
+                                    linkedCalendarItemId: nextValue,
+                                    phase: linkedCalendarItem?.phase ?? previous.phase,
+                                    linkedShotListId: linkedCalendarItem?.linkedShotListId
+                                      ? linkedCalendarItem.linkedShotListId
+                                      : previous.linkedShotListId,
+                                  }));
+                                }}
+                                disabled={!canEditClientInput}
+                              >
+                                <MenuItem value="">Ingen kobling</MenuItem>
+                                {contentCalendarOptions.map((option) => (
+                                  <MenuItem key={option.id} value={option.id}>
+                                    {option.label}
+                                  </MenuItem>
+                                ))}
+                              </TextField>
+                              <TextField
+                                select
+                                label="Knytt til shotlist"
+                                value={materialDraft.linkedShotListId}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, linkedShotListId: event.target.value }))}
+                                disabled={!canEditClientInput}
+                              >
+                                <MenuItem value="">Ingen kobling</MenuItem>
+                                {shotListOptions.map((option) => (
+                                  <MenuItem key={option.id} value={option.id}>
+                                    {option.label}
+                                  </MenuItem>
+                                ))}
+                              </TextField>
+                              <TextField
+                                label="Filnavn / assetnavn"
+                                value={materialDraft.fileName}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, fileName: event.target.value }))}
+                                disabled={!canEditClientInput}
+                              />
+                              <TextField
+                                label="Versjon"
+                                value={materialDraft.versionLabel}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, versionLabel: event.target.value }))}
+                                disabled={!canEditClientInput}
+                              />
+                              <TextField
+                                label="Brukes til"
+                                value={materialDraft.usageNotes}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, usageNotes: event.target.value }))}
+                                disabled={!canEditClientInput}
+                              />
+                              <TextField
+                                label="Kilde / avsender"
+                                value={materialDraft.sourceLabel}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, sourceLabel: event.target.value }))}
+                                disabled={!canEditClientInput}
+                              />
+                              <TextField
+                                label="Mappe i leveranseflyt"
+                                value={materialDraft.folderPath}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, folderPath: event.target.value }))}
+                                disabled={!canEditClientInput}
+                              />
+                              <TextField
+                                label="Pakke"
+                                value={materialDraft.packageName}
+                                onChange={(event) => setMaterialDraft((previous) => ({ ...previous, packageName: event.target.value }))}
+                                disabled={!canEditClientInput}
+                              />
+                            </Stack>
+                          </Box>
+                        </Box>
+                      </Box>
+
+                      {canEditClientInput ? (
+                        <Stack
+                          direction={{ xs: 'column', sm: 'row' }}
+                          spacing={0.7}
+                          justifyContent="space-between"
+                          alignItems={{ xs: 'flex-start', sm: 'center' }}
+                          sx={{ mt: 1.05, pt: 0.78, borderTop: '1px solid rgba(96,165,250,0.12)' }}
+                        >
+                          <Box>
+                            {materialDraft.id ? (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => {
+                                  setMaterialDraft(EMPTY_MATERIAL_DRAFT);
+                                  setSelectedMaterialFile(null);
+                                  setMaterialsMode('library');
+                                  if (materialFileInputRef.current) {
+                                    materialFileInputRef.current.value = '';
+                                  }
+                                }}
+                                sx={{ textTransform: 'none', fontWeight: 700 }}
+                              >
+                                Avbryt redigering
+                              </Button>
+                            ) : null}
+                          </Box>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.65} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                            <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                              Lagre når metadata, koblinger og leveranseplassering er klare.
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              startIcon={<UploadFileIcon />}
+                              onClick={() => {
+                                void handleSubmitMaterial();
+                              }}
+                              disabled={savingMaterial}
+                              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#fbbf24', color: '#111827', '&:hover': { bgcolor: '#f59e0b' } }}
+                            >
+                              {savingMaterial ? 'Lagrer materiale...' : materialDraft.id ? 'Oppdater materiale' : 'Legg til materiale'}
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      ) : null}
+                    </>
+                  )
+                ) : null}
+
+              {materialsMode === 'library' ? (
+                <Box
+                  sx={{
+                    borderRadius: 2,
+                    border: '1px solid rgba(148,163,184,0.18)',
+                    bgcolor: 'rgba(15,23,42,0.55)',
+                    p: { xs: 1.25, md: 1.5 },
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
+                    <Box>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.94rem' }}>
+                        Registrert materiale
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.8rem', mt: 0.2 }}>
+                        Se det som allerede er registrert, uten å blande det med nye innsendinger.
+                      </Typography>
+                  </Box>
+                  {canEditClientInput ? (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => {
+                          setMaterialDraft(EMPTY_MATERIAL_DRAFT);
+                          setSelectedMaterialFile(null);
+                          if (materialFileInputRef.current) {
+                            materialFileInputRef.current.value = '';
+                          }
+                          setMaterialsMode('capture');
+                        }}
+                        sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' } }}
+                      >
+                        Nytt materiale
                       </Button>
                     ) : null}
-                    <Button
-                      variant="contained"
-                      startIcon={<UploadFileIcon />}
-                      onClick={() => {
-                        void handleSubmitMaterial();
-                      }}
-                      disabled={savingMaterial}
-                      sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#fbbf24', color: '#111827', '&:hover': { bgcolor: '#f59e0b' } }}
-                    >
-                      {savingMaterial ? 'Lagrer materiale...' : materialDraft.id ? 'Oppdater materiale' : 'Legg til materiale'}
-                    </Button>
                   </Stack>
-                ) : null}
-              </Box>
-
-              <Box
-                sx={{
-                  borderRadius: 2,
-                  border: '1px solid rgba(148,163,184,0.18)',
-                  bgcolor: 'rgba(15,23,42,0.55)',
-                  p: { xs: 1.25, md: 1.5 },
-                }}
-              >
-                <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-                  Registrert materiale
-                </Typography>
                 <Stack spacing={1}>
                   {materials.length === 0 ? (
                     <Alert severity="info">
                       Ingen klientmaterialer er registrert ennå.
                     </Alert>
-                  ) : sortedMaterials.map((material) => {
+                  ) : visibleLibraryMaterials.map((material) => {
                     const metadata = parseMaterialMetadata(material);
-                    const priorityColors = MATERIAL_PRIORITY_COLORS[metadata.priority];
                     const detailRows = [
                       metadata.fileName ? `Filnavn: ${metadata.fileName}` : '',
                       metadata.versionLabel ? `Versjon: ${metadata.versionLabel}` : '',
@@ -3967,6 +11047,15 @@ export default function ProducerMediaPanel({
                       ? metadata.projectFileDownloadUrl
                       : material.external_url;
 
+                    const libraryMetaParts = [
+                      material.phase ? PRODUCER_PLANNING_PHASE_LABELS[material.phase] : '',
+                      MATERIAL_PRIORITY_LABELS[metadata.priority],
+                      MATERIAL_STATUS_LABELS[material.status ?? 'provided'] ?? (material.status ?? 'Levert'),
+                      metadata.linkedCalendarItemId
+                        ? contentCalendarOptions.find((option) => option.id === metadata.linkedCalendarItemId)?.label ?? 'Koblet til kalender'
+                        : '',
+                    ].filter(hasText);
+
                     return (
                       <Box
                         key={material.id}
@@ -3974,40 +11063,16 @@ export default function ProducerMediaPanel({
                           borderRadius: 1.75,
                           border: '1px solid rgba(148,163,184,0.16)',
                           bgcolor: 'rgba(2,6,23,0.45)',
-                          p: 1.25,
+                          p: 1.1,
                         }}
                       >
                         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
                           <Box sx={{ minWidth: 0 }}>
-                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 0.65 }}>
+                            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.48 }}>
                               <Chip
                                 size="small"
                                 label={MATERIAL_TYPE_LABELS[material.entry_type] ?? material.entry_type}
                                 sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                              />
-                              {material.phase ? (
-                                <Chip
-                                  size="small"
-                                  label={PRODUCER_PLANNING_PHASE_LABELS[material.phase]}
-                                  sx={{ bgcolor: 'rgba(16,185,129,0.14)', color: '#a7f3d0' }}
-                                />
-                              ) : null}
-                              {metadata.linkedCalendarItemId ? (
-                                <Chip
-                                  size="small"
-                                  label={contentCalendarOptions.find((option) => option.id === metadata.linkedCalendarItemId)?.label ?? 'Koblet til kalender'}
-                                  sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#e9d5ff' }}
-                                />
-                              ) : null}
-                              <Chip
-                                size="small"
-                                label={MATERIAL_PRIORITY_LABELS[metadata.priority]}
-                                sx={{ bgcolor: priorityColors.background, color: priorityColors.color }}
-                              />
-                              <Chip
-                                size="small"
-                                label={MATERIAL_STATUS_LABELS[material.status ?? 'provided'] ?? (material.status ?? 'Levert')}
-                                sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a' }}
                               />
                             </Stack>
                             <Typography sx={{ color: '#fff', fontWeight: 700 }}>
@@ -4018,10 +11083,15 @@ export default function ProducerMediaPanel({
                                 {material.description}
                               </Typography>
                             ) : null}
+                            {libraryMetaParts.length > 0 ? (
+                              <Typography sx={{ color: 'rgba(191,219,254,0.74)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.38 }}>
+                                {libraryMetaParts.join(' · ')}
+                              </Typography>
+                            ) : null}
                             {detailRows.length > 0 ? (
-                              <Stack spacing={0.3} sx={{ mt: 0.65 }}>
+                              <Stack spacing={0.24} sx={{ mt: 0.55 }}>
                                 {detailRows.map((detail) => (
-                                  <Typography key={detail} sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.8rem' }}>
+                                  <Typography key={detail} sx={{ color: 'rgba(191,219,254,0.74)', fontSize: '0.78rem', lineHeight: 1.4 }}>
                                     {detail}
                                   </Typography>
                                 ))}
@@ -4034,48 +11104,70 @@ export default function ProducerMediaPanel({
                               {material.created_by_role ? ` · ${material.created_by_role}` : ''}
                             </Typography>
                           </Box>
-                          <Stack direction={{ xs: 'row', md: 'column' }} spacing={1}>
+                          <Stack
+                            direction="row"
+                            spacing={0.2}
+                            flexWrap="wrap"
+                            useFlexGap
+                            sx={{ alignSelf: { md: 'flex-start' } }}
+                          >
                             {hasText(materialLink) ? (
                               <Button
-                                variant="outlined"
+                                variant="text"
                                 size="small"
-                                endIcon={<OpenInNewIcon />}
                                 href={materialLink}
                                 target="_blank"
                                 rel="noreferrer"
-                                sx={{ textTransform: 'none', fontWeight: 700 }}
+                                sx={{
+                                  minWidth: 0,
+                                  px: 0.35,
+                                  textTransform: 'none',
+                                  fontWeight: 700,
+                                  color: 'rgba(191,219,254,0.82)',
+                                }}
                               >
                                 Åpne
                               </Button>
                             ) : null}
                             {canEditClientInput ? (
                               <Button
-                                variant="outlined"
+                                variant="text"
                                 size="small"
-                                startIcon={<EditOutlinedIcon />}
                                 onClick={() => {
                                   openSurfaceWorkspace('materials');
+                                  setMaterialsMode('capture');
                                   setSelectedMaterialFile(null);
                                   if (materialFileInputRef.current) {
                                     materialFileInputRef.current.value = '';
                                   }
                                   setMaterialDraft(toMaterialDraft(material));
                                 }}
-                                sx={{ textTransform: 'none', fontWeight: 700 }}
+                                sx={{
+                                  minWidth: 0,
+                                  px: 0.35,
+                                  textTransform: 'none',
+                                  fontWeight: 700,
+                                  color: 'rgba(226,232,240,0.84)',
+                                }}
                               >
                                 Rediger
                               </Button>
                             ) : null}
                             {canEditClientInput ? (
                               <Button
-                                variant="outlined"
+                                variant="text"
                                 size="small"
-                                startIcon={<DeleteOutlineIcon />}
                                 onClick={() => {
                                   void handleDeleteMaterial(material.id);
                                 }}
                                 disabled={deletingMaterialId === material.id}
-                                sx={{ textTransform: 'none', fontWeight: 700, color: '#fca5a5', borderColor: 'rgba(248,113,113,0.4)' }}
+                                sx={{
+                                  minWidth: 0,
+                                  px: 0.35,
+                                  textTransform: 'none',
+                                  fontWeight: 700,
+                                  color: 'rgba(252,165,165,0.9)',
+                                }}
                               >
                                 Fjern
                               </Button>
@@ -4085,118 +11177,260 @@ export default function ProducerMediaPanel({
                       </Box>
                     );
                   })}
+                  {sortedMaterials.length > 4 ? (
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => setShowAllMaterials((previous) => !previous)}
+                      sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start', minHeight: 44 }}
+                    >
+                      {showAllMaterials ? 'Vis færre' : `Vis alle (${sortedMaterials.length})`}
+                    </Button>
+                  ) : null}
                 </Stack>
+                </Box>
+                ) : null}
               </Box>
             </>
           ) : null}
         </Box>
 
-        <Box
-          sx={{
-            flex: activeLayout === 'split' ? 1 : 0.82,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            minWidth: 0,
-          }}
-        >
+        {showWorkspaceSupportColumn ? (
           <Box
             sx={{
-              borderRadius: 2,
-              border: '1px solid rgba(148,163,184,0.18)',
-              bgcolor: 'rgba(15,23,42,0.55)',
-              p: { xs: 1.25, md: 1.5 },
+              flex: { lg: '0 0 272px' },
+              maxWidth: { lg: 272 },
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 0.8,
+              minWidth: 0,
+              '@media (min-width: 3840px)': {
+                flex: '0 0 320px',
+                maxWidth: 320,
+              },
+              '@media (min-width: 5120px)': {
+                flex: '0 0 360px',
+                maxWidth: 360,
+              },
             }}
           >
-            <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.75 }}>
-              {workspaceSummaryTitle}
-            </Typography>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.65 }}>
-              {activeWorkspaceCard.icon}
-              <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                {activeWorkspaceCard.title}
-              </Typography>
-            </Stack>
-            <Typography sx={{ color: 'rgba(203,213,225,0.82)', fontSize: '0.9rem', mb: 1 }}>
-              {activeWorkspaceCard.subtitle}
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 0.9 }}>
-              <Chip size="small" label={activeWorkspaceCard.progressLabel} sx={{ bgcolor: activeWorkspaceCard.accent, color: activeWorkspaceCard.textColor }} />
-              <Chip size="small" label={`${clientContributionTasks.length} åpne innspill`} sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a' }} />
-            </Stack>
-            <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.84rem' }}>
-              {activeWorkspaceCard.detail}
-            </Typography>
-          </Box>
+            <Box
+              sx={{
+                borderRadius: 3,
+                border: `1px solid ${workspaceSupportPriorityTheme.border}`,
+                background: workspaceSupportPriorityTheme.panelBackground,
+                boxShadow: `0 0 0 1px ${workspaceSupportPriorityTheme.glow}, inset 0 1px 0 rgba(255,255,255,0.04)`,
+                p: { xs: 0.95, md: 1 },
+                position: { lg: 'sticky' },
+                top: { lg: 18 },
+              }}
+            >
+              <Stack spacing={0.75}>
+                <Stack direction="row" spacing={0.55} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Typography sx={{ color: workspaceSupportPriorityTheme.chipColor, fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    {workspaceSupportPriorityTheme.label}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.62)', fontSize: '0.7rem', lineHeight: 1.35 }}>
+                    {workspaceSupportPanel.chipLabel}
+                  </Typography>
+                </Stack>
 
-          <Box
-            sx={{
-              borderRadius: 2,
-              border: '1px solid rgba(148,163,184,0.18)',
-              bgcolor: 'rgba(15,23,42,0.55)',
-              p: { xs: 1.25, md: 1.5 },
-            }}
-          >
-            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
-              <Box>
-                <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  {workflowConnectionsTitle}
-                </Typography>
-                <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.88rem', mt: 0.35 }}>
-                  {workflowConnectionsDescription}
-                </Typography>
-              </Box>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                {Object.entries(materialSummary).slice(0, 3).map(([type, count]) => (
-                  <Chip
-                    key={type}
-                    size="small"
-                    label={`${MATERIAL_TYPE_LABELS[type as ProducerClientMaterialType] ?? type} ${count}`}
-                    sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                  />
+                <Box>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', lineHeight: 1.25 }}>
+                    {workspaceSupportPanel.title}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.18 }}>
+                    {workspaceSupportPanel.intro}
+                  </Typography>
+                </Box>
+
+                {primaryWorkspaceSupportSection ? (
+                  <Box>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.8rem', lineHeight: 1.35 }}>
+                      {primaryWorkspaceSupportItem?.title ?? primaryWorkspaceSupportSection.title}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.18 }}>
+                      {primaryWorkspaceSupportItem?.detail ?? primaryWorkspaceSupportSection.description}
+                    </Typography>
+
+                    {primaryWorkspaceSupportAction ? (
+                      primaryWorkspaceSupportAction.href ? (
+                        <Button
+                          fullWidth
+                          size="small"
+                          variant={primaryWorkspaceSupportAction.variant ?? 'contained'}
+                          component="a"
+                          href={primaryWorkspaceSupportAction.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          sx={{
+                            mt: 0.7,
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            ...(primaryWorkspaceSupportAction.variant === 'contained'
+                              ? {
+                                bgcolor: workspaceSupportPriorityTheme.actionBackground,
+                                color: workspaceSupportPriorityTheme.actionColor,
+                                '&:hover': { bgcolor: workspaceSupportPriorityTheme.actionHover },
+                              }
+                              : {
+                                borderColor: workspaceSupportPriorityTheme.border,
+                                color: workspaceSupportPriorityTheme.chipColor,
+                              }),
+                          }}
+                        >
+                          {primaryWorkspaceSupportAction.label}
+                        </Button>
+                      ) : (
+                        <Button
+                          fullWidth
+                          size="small"
+                          variant={primaryWorkspaceSupportAction.variant ?? 'contained'}
+                          onClick={primaryWorkspaceSupportAction.onClick}
+                          sx={{
+                            mt: 0.7,
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            ...(primaryWorkspaceSupportAction.variant === 'contained'
+                              ? {
+                                bgcolor: workspaceSupportPriorityTheme.actionBackground,
+                                color: workspaceSupportPriorityTheme.actionColor,
+                                '&:hover': { bgcolor: workspaceSupportPriorityTheme.actionHover },
+                              }
+                              : {
+                                borderColor: workspaceSupportPriorityTheme.border,
+                                color: workspaceSupportPriorityTheme.chipColor,
+                              }),
+                          }}
+                        >
+                          {primaryWorkspaceSupportAction.label}
+                        </Button>
+                      )
+                    ) : null}
+                  </Box>
+                ) : null}
+              </Stack>
+            </Box>
+          </Box>
+        ) : null}
+
+        {displayWorkspaceNavigation.navigationPinned && displayWorkspaceNavigation.pageTabPlacement === 'right' ? pageNavigationRail : null}
+      </Stack>
+
+      <Collapse in={showWorkspaceOperations} unmountOnExit>
+        <Stack spacing={1.5}>
+          <ProducerGoogleWorkspacePanel
+            project={project}
+            projectId={projectId}
+            projectName={projectName}
+            planning={planningDraft}
+            intake={intakeDraft}
+            materials={materials}
+            shotLists={shotLists}
+            projectFiles={projectFiles}
+            readOnly={readOnly}
+            isClientReviewerMode={isClientReviewerMode}
+            onOpenWorkspace={openSurfaceWorkspace}
+            onGoogleContactImported={handleImportGoogleContact}
+          />
+
+          {clientContributionTasks.length > 0 ? (
+            <Box
+              sx={{
+                p: { xs: 1.15, md: 1.35 },
+                borderRadius: 3,
+                border: '1px solid rgba(96,165,250,0.14)',
+                bgcolor: 'rgba(15,23,42,0.62)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+              }}
+            >
+              <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1} justifyContent="space-between" sx={{ mb: 1.15 }}>
+                <Box>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
+                    Klientoppgaver akkurat nå
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.86rem', mt: 0.35 }}>
+                    Disse punktene er beregnet fra brief, content-kalender, merkevareguide og leveringsrutine.
+                  </Typography>
+                </Box>
+                <Chip
+                  size="small"
+                  label={`${clientContributionTasks.length} åpne innspill`}
+                  sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe', alignSelf: { lg: 'flex-start' } }}
+                />
+              </Stack>
+              <Stack spacing={0.9}>
+                {clientContributionTasks.map((task) => (
+                  <Box
+                    key={task.id}
+                    sx={{
+                      p: 1,
+                      borderRadius: 1.8,
+                      border: '1px solid rgba(96,165,250,0.12)',
+                      background: 'rgba(15,23,42,0.52)',
+                    }}
+                  >
+                    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between">
+                      <Box sx={{ minWidth: 0 }}>
+                        <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
+                          <Chip
+                            size="small"
+                            label={PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType]}
+                            sx={{ bgcolor: 'rgba(248,250,252,0.08)', color: '#e2e8f0' }}
+                          />
+                          <Chip
+                            size="small"
+                            label={PRODUCER_PLANNING_PHASE_LABELS[task.phase]}
+                            sx={{ bgcolor: 'rgba(248,250,252,0.08)', color: '#e2e8f0' }}
+                          />
+                          <Chip
+                            size="small"
+                            label={PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS[task.status]}
+                            sx={{
+                              bgcolor: task.status === 'missing'
+                                ? 'rgba(159,67,54,0.28)'
+                                : 'rgba(59,130,246,0.18)',
+                              color: task.status === 'missing' ? '#f7c7bf' : '#bfdbfe',
+                            }}
+                          />
+                        </Stack>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
+                          {task.title}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.84rem', mt: 0.3 }}>
+                          {task.detail}
+                        </Typography>
+                      </Box>
+                      {canEditClientInput ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => applyContributionTask(task)}
+                          sx={{
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            alignSelf: { lg: 'flex-start' },
+                            color: '#e2e8f0',
+                            borderColor: 'rgba(96,165,250,0.24)',
+                          }}
+                        >
+                          {task.sourceType === 'framework'
+                            ? 'Åpne brief'
+                            : task.sourceType === 'brand'
+                              ? 'Åpne merkevareguide'
+                              : task.sourceType === 'delivery'
+                                ? 'Åpne leveringsrutine'
+                                : 'Åpne materiale'}
+                        </Button>
+                      ) : null}
+                    </Stack>
+                  </Box>
                 ))}
               </Stack>
-            </Stack>
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
-              <Button variant="outlined" endIcon={<OpenInNewIcon />} onClick={onOpenStoryboard} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                {workflowOpenLabels.storyboard}
-              </Button>
-              <Button variant="outlined" endIcon={<OpenInNewIcon />} onClick={onOpenManuscript} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                {workflowOpenLabels.manuscript}
-              </Button>
-              <Button variant="outlined" endIcon={<OpenInNewIcon />} onClick={onOpenShotList} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                {workflowOpenLabels.shotList}
-              </Button>
-              <Button variant="outlined" endIcon={<OpenInNewIcon />} onClick={onOpenSceneNotes} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                {workflowOpenLabels.sceneNotes}
-              </Button>
-            </Stack>
-
-            {!isClientReviewerMode ? (
-              <>
-                <Divider sx={{ my: 1.5, borderColor: 'rgba(148,163,184,0.18)' }} />
-                <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.75 }}>
-                  Send videre til godkjenning
-                </Typography>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
-                  <Button variant="outlined" endIcon={<OpenInNewIcon />} onClick={onPrepareStoryboardReview} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                    Klargjør storyboard i økonomi
-                  </Button>
-                  <Button variant="outlined" endIcon={<OpenInNewIcon />} onClick={onPrepareManuscriptReview} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                    Klargjør manus i økonomi
-                  </Button>
-                  <Button variant="outlined" endIcon={<OpenInNewIcon />} onClick={onPrepareShotListReview} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                    Klargjør shotlist i økonomi
-                  </Button>
-                </Stack>
-              </>
-            ) : null}
-          </Box>
-        </Box>
-
-        {workspaceNavigation.navigationPinned && workspaceNavigation.pageTabPlacement === 'right' ? pageNavigationRail : null}
-      </Stack>
+            </Box>
+          ) : null}
+        </Stack>
+      </Collapse>
 
       <Menu
         anchorEl={workspaceToolsAnchorEl}

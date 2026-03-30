@@ -3,16 +3,14 @@
 // allowing components to access AI suggestions, manage conversations, and generate code.
 
 import { useState, useEffect, useCallback } from 'react';
-import type { 
-  AISuggestion, 
-  AIConversation, 
-  AIMessage, 
-  AIWorkflow, 
-  AICodeGeneration, 
-  AIDesignSuggestion 
-} from '../utils/aiAssistant';
-import { 
-  aiAssistant 
+import {
+  aiAssistant,
+  type AISuggestion,
+  type AIConversation,
+  type AIMessage,
+  type AIWorkflow,
+  type AICodeGeneration,
+  type AIDesignSuggestion,
 } from '../utils/aiAssistant';
 
 export interface UseAIAssistantReturn {
@@ -26,20 +24,26 @@ export interface UseAIAssistantReturn {
   conversations: AIConversation[];
   createConversation: (title: string, context: AIConversation['context']) => AIConversation;
   getConversation: (id: string) => AIConversation | undefined;
+  renameConversation: (id: string, title: string) => AIConversation | null;
+  deleteConversation: (id: string) => boolean;
   addMessage: (conversationId: string, role: 'user' | 'assistant', content: string, metadata?: AIMessage['metadata']) => AIMessage | null;
   generateAIResponse: (conversationId: string, userMessage: string) => AIMessage | null;
 
   // Code generation
   codeGenerations: AICodeGeneration[];
   generateCode: (prompt: string, context: AICodeGeneration['context']) => AICodeGeneration;
+  deleteCodeGeneration: (id: string) => boolean;
 
   // Design suggestions
   designSuggestions: AIDesignSuggestion[];
   generateDesignSuggestions: (elementId: string, currentDesign: Record<string, any>) => AIDesignSuggestion;
+  applyDesignSuggestion: (id: string) => AIDesignSuggestion | null;
 
   // Workflows
   workflows: AIWorkflow[];
   createWorkflow: (data: Omit<AIWorkflow, 'id' | 'createdAt' | 'updatedAt'>) => AIWorkflow;
+  updateWorkflow: (id: string, updates: Partial<Pick<AIWorkflow, 'name' | 'description' | 'triggers' | 'isActive' | 'status' | 'metadata'>>) => AIWorkflow | null;
+  deleteWorkflow: (id: string) => boolean;
 
   // Data management
   refreshData: () => void;
@@ -65,6 +69,8 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
 }, []);
 
   const refreshData = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
     try {
       setSuggestions(aiAssistant.getSuggestions());
       setConversations(aiAssistant.getConversations());
@@ -73,11 +79,14 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
       setWorkflows(aiAssistant.getWorkflows());
   } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh data');
+  } finally {
+      setIsLoading(false);
   }
 }, []);
 
   // Suggestion methods
   const generateSuggestions = useCallback((context: Record<string, any>): AISuggestion[] => {
+    setError(null);
     try {
       const newSuggestions = aiAssistant.generateSuggestions(context);
       setSuggestions(prev => [...newSuggestions, ...prev]);
@@ -93,6 +102,7 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
 }, []);
 
   const updateSuggestionStatus = useCallback((id: string, status: AISuggestion['status']): AISuggestion | null => {
+    setError(null);
     try {
       const suggestion = aiAssistant.updateSuggestionStatus(id, status);
       if (suggestion) {
@@ -109,6 +119,7 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
 
   // Conversation methods
   const createConversation = useCallback((title: string, context: AIConversation['context']): AIConversation => {
+    setError(null);
     try {
       const conversation = aiAssistant.createConversation(title, context);
       setConversations(prev => [...prev, conversation]);
@@ -123,7 +134,36 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
     return aiAssistant.getConversation(id);
 }, []);
 
+  const renameConversation = useCallback((id: string, title: string): AIConversation | null => {
+    setError(null);
+    try {
+      const conversation = aiAssistant.renameConversation(id, title);
+      if (conversation) {
+        setConversations(aiAssistant.getConversations());
+      }
+      return conversation;
+  } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to rename conversation');
+      throw err;
+  }
+}, []);
+
+  const deleteConversation = useCallback((id: string): boolean => {
+    setError(null);
+    try {
+      const deleted = aiAssistant.deleteConversation(id);
+      if (deleted) {
+        setConversations(aiAssistant.getConversations());
+      }
+      return deleted;
+  } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete conversation');
+      throw err;
+  }
+}, []);
+
   const addMessage = useCallback((conversationId: string, role: 'user' | 'assistant', content: string, metadata?: AIMessage['metadata']): AIMessage | null => {
+    setError(null);
     try {
       const message = aiAssistant.addMessage(conversationId, role, content, metadata);
       if (message) {
@@ -143,6 +183,7 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
 }, []);
 
   const generateAIResponse = useCallback((conversationId: string, userMessage: string): AIMessage | null => {
+    setError(null);
     try {
       const response = aiAssistant.generateAIResponse(conversationId, userMessage);
       if (response) {
@@ -163,6 +204,7 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
 
   // Code generation methods
   const generateCode = useCallback((prompt: string, context: AICodeGeneration['context']): AICodeGeneration => {
+    setError(null);
     try {
       const codeGeneration = aiAssistant.generateCode(prompt, context);
       setCodeGenerations(prev => [codeGeneration, ...prev]);
@@ -171,10 +213,25 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
       setError(err instanceof Error ? err.message : 'Failed to generate code');
       throw err;
   }
+  }, []);
+
+  const deleteCodeGeneration = useCallback((id: string): boolean => {
+    setError(null);
+    try {
+      const deleted = aiAssistant.deleteCodeGeneration(id);
+      if (deleted) {
+        setCodeGenerations(aiAssistant.getCodeGenerations());
+      }
+      return deleted;
+  } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete generated code');
+      throw err;
+  }
 }, []);
 
   // Design suggestion methods
   const generateDesignSuggestions = useCallback((elementId: string, currentDesign: Record<string, any>): AIDesignSuggestion => {
+    setError(null);
     try {
       const suggestion = aiAssistant.generateDesignSuggestions(elementId, currentDesign);
       setDesignSuggestions(prev => [suggestion, ...prev]);
@@ -183,16 +240,62 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
       setError(err instanceof Error ? err.message : 'Failed to generate design suggestions');
       throw err;
   }
+  }, []);
+
+  const applyDesignSuggestion = useCallback((id: string): AIDesignSuggestion | null => {
+    setError(null);
+    try {
+      const suggestion = aiAssistant.applyDesignSuggestion(id);
+      if (suggestion) {
+        setDesignSuggestions(aiAssistant.getDesignSuggestions());
+      }
+      return suggestion;
+  } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to apply design suggestion');
+      throw err;
+  }
 }, []);
 
   // Workflow methods
   const createWorkflow = useCallback((data: Omit<AIWorkflow, 'id' | 'createdAt' | 'updatedAt'>): AIWorkflow => {
+    setError(null);
     try {
       const workflow = aiAssistant.createWorkflow(data);
       setWorkflows(prev => [...prev, workflow]);
       return workflow;
   } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create workflow');
+      throw err;
+  }
+}, []);
+
+  const updateWorkflow = useCallback((
+    id: string,
+    updates: Partial<Pick<AIWorkflow, 'name' | 'description' | 'triggers' | 'isActive' | 'status' | 'metadata'>>
+  ): AIWorkflow | null => {
+    setError(null);
+    try {
+      const workflow = aiAssistant.updateWorkflow(id, updates);
+      if (workflow) {
+        setWorkflows(aiAssistant.getWorkflows());
+      }
+      return workflow;
+  } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update workflow');
+      throw err;
+  }
+}, []);
+
+  const deleteWorkflow = useCallback((id: string): boolean => {
+    setError(null);
+    try {
+      const deleted = aiAssistant.deleteWorkflow(id);
+      if (deleted) {
+        setWorkflows(aiAssistant.getWorkflows());
+      }
+      return deleted;
+  } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete workflow');
       throw err;
   }
 }, []);
@@ -219,14 +322,20 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
     conversations,
     createConversation,
     getConversation,
+    renameConversation,
+    deleteConversation,
     addMessage,
     generateAIResponse,
     codeGenerations,
     generateCode,
+    deleteCodeGeneration,
     designSuggestions,
     generateDesignSuggestions,
+    applyDesignSuggestion,
     workflows,
     createWorkflow,
+    updateWorkflow,
+    deleteWorkflow,
     refreshData,
     exportData,
     importData,
@@ -234,6 +343,4 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
     error
 };
 };
-
-
 

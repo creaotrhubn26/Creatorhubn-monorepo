@@ -3,7 +3,7 @@
  * Integrates SmartEmailComposer, SmartMeetingPreparation, Notes, and UniversalChatWidget
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Paper,
@@ -28,10 +28,18 @@ import {
   Menu,
   MenuItem,
   Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Alert,
   Stack,
   Tooltip,
+  FormControl,
+  InputLabel,
+  ListItemButton,
+  Select,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   Email as EmailIcon,
   Event as MeetingIcon,
@@ -148,6 +156,29 @@ interface Note {
   };
 }
 
+type MeetingPreparationProfession =
+  | 'photographer'
+  | 'videographer'
+  | 'music_producer'
+  | 'vendor'
+  | 'enterprise';
+
+const isNoteCategory = (value: string): value is Note['category'] =>
+  ['meeting', 'email', 'project', 'personal'].includes(value);
+
+function normalizeMeetingPreparationProfession(profession: string): MeetingPreparationProfession {
+  switch (profession) {
+    case 'photographer':
+    case 'videographer':
+    case 'music_producer':
+    case 'vendor':
+    case 'enterprise':
+      return profession;
+    default:
+      return 'vendor';
+  }
+}
+
 const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession }) => {
   const theming = useTheming(profession);
   const queryClient = useQueryClient();
@@ -186,6 +217,7 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
   // Email action menu state
   const [emailMenuAnchor, setEmailMenuAnchor] = useState<null | HTMLElement>(null);
   const [emailMenuTarget, setEmailMenuTarget] = useState<Email | null>(null);
+  const meetingPreparationProfession = normalizeMeetingPreparationProfession(profession);
 
   // Fetch inboxes
   const { data: inboxes = [] } = useQuery<EmailInbox[]>({
@@ -286,10 +318,14 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
   };
 
   const handleNoteCategoryChange = (value: string) => {
-    if (noteCategories.includes(value as Note['category'])) {
-      setNoteCategory(value as Note['category']);
+    if (isNoteCategory(value)) {
+      setNoteCategory(value);
     }
   };
+
+  useEffect(() => {
+    setChatOpen(tabValue === 3);
+  }, [tabValue]);
 
   const handleEmailMenuOpen = (event: React.MouseEvent<HTMLElement>, email: Email) => {
     setEmailMenuAnchor(event.currentTarget);
@@ -442,34 +478,35 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
                     Inboxes
                   </Typography>
                   <List dense>
-                    <ListItem
-                      button
-                      selected={selectedInbox === 'all'}
-                      onClick={() => setSelectedInbox('all')}
-                    >
-                      <ListItemIcon><InboxIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="All Inboxes" />
-                      <Chip size="small" label={totalUnreadEmails} />
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        selected={selectedInbox === 'all'}
+                        onClick={() => setSelectedInbox('all')}
+                      >
+                        <ListItemIcon><InboxIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="All Inboxes" />
+                        <Chip size="small" label={totalUnreadEmails} />
+                      </ListItemButton>
                     </ListItem>
                     {inboxes.map((inbox) => (
-                      <ListItem
-                        key={inbox.id}
-                        button
-                        selected={selectedInbox === inbox.id}
-                        onClick={() => setSelectedInbox(inbox.id)}
-                      >
-                        <ListItemIcon>
-                          <Avatar sx={{ width: 24, height: 24, fontSize: 12 }}>
-                            {inbox.name[0]}
-                          </Avatar>
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={inbox.name}
-                          secondary={inbox.email}
-                        />
-                        {inbox.unreadCount > 0 && (
-                          <Chip size="small" label={inbox.unreadCount} color="error" />
-                        )}
+                      <ListItem key={inbox.id} disablePadding>
+                        <ListItemButton
+                          selected={selectedInbox === inbox.id}
+                          onClick={() => setSelectedInbox(inbox.id)}
+                        >
+                          <ListItemIcon>
+                            <Avatar sx={{ width: 24, height: 24, fontSize: 12 }}>
+                              {inbox.name[0]}
+                            </Avatar>
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={inbox.name}
+                            secondary={inbox.email}
+                          />
+                          {inbox.unreadCount > 0 && (
+                            <Chip size="small" label={inbox.unreadCount} color="error" />
+                          )}
+                        </ListItemButton>
                       </ListItem>
                     ))}
                   </List>
@@ -478,48 +515,56 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
                 {/* Filters */}
                 <Paper elevation={1} sx={{ p: 2 }}>
                   <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
-                    Filters
+                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+                      <FilterIcon fontSize="small" />
+                      Filters
+                    </Box>
                   </Typography>
                   <List dense>
-                    <ListItem
-                      button
-                      selected={emailFilter === 'all'}
-                      onClick={() => setEmailFilter('all')}
-                    >
-                      <ListItemIcon><InboxIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="All Mail" />
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        selected={emailFilter === 'all'}
+                        onClick={() => setEmailFilter('all')}
+                      >
+                        <ListItemIcon><InboxIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="All Mail" />
+                      </ListItemButton>
                     </ListItem>
-                    <ListItem
-                      button
-                      selected={emailFilter === 'unread'}
-                      onClick={() => setEmailFilter('unread')}
-                    >
-                      <ListItemIcon><EmailIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="Unread" />
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        selected={emailFilter === 'unread'}
+                        onClick={() => setEmailFilter('unread')}
+                      >
+                        <ListItemIcon><EmailIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="Unread" />
+                      </ListItemButton>
                     </ListItem>
-                    <ListItem
-                      button
-                      selected={emailFilter === 'starred'}
-                      onClick={() => setEmailFilter('starred')}
-                    >
-                      <ListItemIcon><StarIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="Starred" />
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        selected={emailFilter === 'starred'}
+                        onClick={() => setEmailFilter('starred')}
+                      >
+                        <ListItemIcon><StarIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="Starred" />
+                      </ListItemButton>
                     </ListItem>
-                    <ListItem
-                      button
-                      selected={emailFilter === 'sent'}
-                      onClick={() => setEmailFilter('sent')}
-                    >
-                      <ListItemIcon><SendIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="Sent" />
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        selected={emailFilter === 'sent'}
+                        onClick={() => setEmailFilter('sent')}
+                      >
+                        <ListItemIcon><SendIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="Sent" />
+                      </ListItemButton>
                     </ListItem>
-                    <ListItem
-                      button
-                      selected={emailFilter === 'drafts'}
-                      onClick={() => setEmailFilter('drafts')}
-                    >
-                      <ListItemIcon><DraftsIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="Drafts" />
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        selected={emailFilter === 'drafts'}
+                        onClick={() => setEmailFilter('drafts')}
+                      >
+                        <ListItemIcon><DraftsIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="Drafts" />
+                      </ListItemButton>
                     </ListItem>
                   </List>
                 </Paper>
@@ -552,62 +597,64 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
                   ) : (
                     filteredEmails.map((email) => (
                       <React.Fragment key={email.id}>
-                        <ListItem
-                          button
-                          selected={selectedEmail?.id === email.id}
-                          onClick={() => handleEmailClick(email)}
-                          sx={{
-                            bgcolor: email.isRead ? 'transparent' : 'action.hover',
-                            borderRadius: 1,
-                            mb: 1}}
-                        >
-                          <ListItemIcon>
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleStarMutation.mutate(email.id);
-                              }}
-                            >
-                              <StarIcon
-                                fontSize="small"
-                                color={email.isStarred ? 'warning' : 'disabled'}
-                              />
-                            </IconButton>
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Typography
-                                  variant="body2"
-                                  sx={{ fontWeight: email.isRead ? 'normal' : 'bold' }}
-                                >
-                                  {email.from}
-                                </Typography>
-                                {email.hasAttachments && (
-                                  <Chip size="small" label="📎" />
-                                )}
-                                {email.labels?.length > 0 && (
-                                  <Chip
-                                    size="small"
-                                    label={`${email.labels.length} etiketter`}
-                                    icon={<LabelIcon />}
-                                    variant="outlined"
-                                  />
-                                )}
-                              </Box>
-                            }
-                            secondary={
-                              <>
-                                <Typography variant="body2" sx={{ fontWeight: email.isRead ? 'normal' : 'bold' }}>
-                                  {email.subject}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  {new Date(email.date).toLocaleString()}
-                                </Typography>
-                              </>
-                            }
-                          />
+                        <ListItem disablePadding>
+                          <ListItemButton
+                            selected={selectedEmail?.id === email.id}
+                            onClick={() => handleEmailClick(email)}
+                            sx={{
+                              bgcolor: email.isRead ? 'transparent' : 'action.hover',
+                              borderRadius: 1,
+                              mb: 1,
+                            }}
+                          >
+                            <ListItemIcon>
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleStarMutation.mutate(email.id);
+                                }}
+                              >
+                                <StarIcon
+                                  fontSize="small"
+                                  color={email.isStarred ? 'warning' : 'disabled'}
+                                />
+                              </IconButton>
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Typography
+                                    variant="body2"
+                                    sx={{ fontWeight: email.isRead ? 'normal' : 'bold' }}
+                                  >
+                                    {email.from}
+                                  </Typography>
+                                  {email.hasAttachments && (
+                                    <Chip size="small" label="📎" />
+                                  )}
+                                  {email.labels?.length > 0 && (
+                                    <Chip
+                                      size="small"
+                                      label={`${email.labels.length} etiketter`}
+                                      icon={<LabelIcon />}
+                                      variant="outlined"
+                                    />
+                                  )}
+                                </Box>
+                              }
+                              secondary={
+                                <>
+                                  <Typography variant="body2" sx={{ fontWeight: email.isRead ? 'normal' : 'bold' }}>
+                                    {email.subject}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {new Date(email.date).toLocaleString()}
+                                  </Typography>
+                                </>
+                              }
+                            />
+                          </ListItemButton>
                           <ListItemSecondaryAction>
                             <IconButton
                               size="small"
@@ -722,33 +769,39 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
                 {/* Filters */}
                 <Paper elevation={1} sx={{ p: 2 }}>
                   <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
-                    Filters
+                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+                      <FilterIcon fontSize="small" />
+                      Filters
+                    </Box>
                   </Typography>
                   <List dense>
-                    <ListItem
-                      button
-                      selected={meetingFilter === 'upcoming'}
-                      onClick={() => setMeetingFilter('upcoming')}
-                    >
-                      <ListItemIcon><ScheduleIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="Upcoming" />
-                      <Chip size="small" label={upcomingMeetingsCount} />
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        selected={meetingFilter === 'upcoming'}
+                        onClick={() => setMeetingFilter('upcoming')}
+                      >
+                        <ListItemIcon><ScheduleIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="Upcoming" />
+                        <Chip size="small" label={upcomingMeetingsCount} />
+                      </ListItemButton>
                     </ListItem>
-                    <ListItem
-                      button
-                      selected={meetingFilter === 'all'}
-                      onClick={() => setMeetingFilter('all')}
-                    >
-                      <ListItemIcon><CalendarIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="All Meetings" />
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        selected={meetingFilter === 'all'}
+                        onClick={() => setMeetingFilter('all')}
+                      >
+                        <ListItemIcon><CalendarIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="All Meetings" />
+                      </ListItemButton>
                     </ListItem>
-                    <ListItem
-                      button
-                      selected={meetingFilter === 'completed'}
-                      onClick={() => setMeetingFilter('completed')}
-                    >
-                      <ListItemIcon><CheckIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="Completed" />
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        selected={meetingFilter === 'completed'}
+                        onClick={() => setMeetingFilter('completed')}
+                      >
+                        <ListItemIcon><CheckIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="Completed" />
+                      </ListItemButton>
                     </ListItem>
                   </List>
                 </Paper>
@@ -898,25 +951,33 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
                     Categories
                   </Typography>
                   <List dense>
-                    <ListItem button>
-                      <ListItemIcon><NotesIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="All Notes" />
-                      <Chip size="small" label={notes.length} />
+                    <ListItem disablePadding>
+                      <ListItemButton>
+                        <ListItemIcon><NotesIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="All Notes" />
+                        <Chip size="small" label={notes.length} />
+                      </ListItemButton>
                     </ListItem>
-                    <ListItem button>
-                      <ListItemIcon><MeetingIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="Meeting Notes" />
-                      <Chip size="small" label={notes.filter(n => n.category === 'meeting').length} />
+                    <ListItem disablePadding>
+                      <ListItemButton>
+                        <ListItemIcon><MeetingIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="Meeting Notes" />
+                        <Chip size="small" label={notes.filter(n => n.category === 'meeting').length} />
+                      </ListItemButton>
                     </ListItem>
-                    <ListItem button>
-                      <ListItemIcon><EmailIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="Email Notes" />
-                      <Chip size="small" label={notes.filter(n => n.category === 'email').length} />
+                    <ListItem disablePadding>
+                      <ListItemButton>
+                        <ListItemIcon><EmailIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="Email Notes" />
+                        <Chip size="small" label={notes.filter(n => n.category === 'email').length} />
+                      </ListItemButton>
                     </ListItem>
-                    <ListItem button>
-                      <ListItemIcon><FolderIcon fontSize="small" /></ListItemIcon>
-                      <ListItemText primary="Project Notes" />
-                      <Chip size="small" label={notes.filter(n => n.category === 'project').length} />
+                    <ListItem disablePadding>
+                      <ListItemButton>
+                        <ListItemIcon><FolderIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText primary="Project Notes" />
+                        <Chip size="small" label={notes.filter(n => n.category === 'project').length} />
+                      </ListItemButton>
                     </ListItem>
                   </List>
                 </Paper>
@@ -990,9 +1051,11 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
 
         {/* Chat Tab */}
         <TabPanel value={tabValue} index={3}>
-          <Paper elevation={1} sx={{ height: '70vh', ...theming.getThemedCardSx() }}>
-            <UniversalChatWidget />
-          </Paper>
+          {chatOpen && (
+            <Paper elevation={1} sx={{ height: '70vh', ...theming.getThemedCardSx() }}>
+              <UniversalChatWidget />
+            </Paper>
+          )}
         </TabPanel>
       </Paper>
 
@@ -1032,9 +1095,8 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
           {selectedMeeting && (
             <SmartMeetingPreparation
               meetingId={selectedMeeting.id}
-              meetingTitle={selectedMeeting.title}
-              clientName={selectedMeeting.attendees[0] || 'Client'}
-              profession={profession}
+              profession={meetingPreparationProfession}
+              userId={userId}
             />
           )}
         </DialogContent>
@@ -1069,13 +1131,14 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
               <InputLabel>Category</InputLabel>
               <Select
                 value={noteCategory}
-                onChange={(e) => handleNoteCategoryChange(String(e.target.value))}
+                onChange={(event: SelectChangeEvent<string>) => handleNoteCategoryChange(event.target.value)}
                 label="Category"
               >
-                <MenuItem value="meeting">Meeting</MenuItem>
-                <MenuItem value="email">Email</MenuItem>
-                <MenuItem value="project">Project</MenuItem>
-                <MenuItem value="personal">Personal</MenuItem>
+                {noteCategories.map((category) => (
+                  <MenuItem key={category} value={category}>
+                    {category.charAt(0).toUpperCase() + category.slice(1)}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
             <Box sx={{ height: 400 }}>
@@ -1155,4 +1218,3 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
 };
 
 export default CommunicationHub;
-

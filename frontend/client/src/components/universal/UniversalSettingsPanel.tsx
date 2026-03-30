@@ -5,9 +5,7 @@
 
 import React, { useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
-import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
 import { useTheming } from '../../utils/theming-helper';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
@@ -64,11 +62,13 @@ import {
   Add as AddIcon,
   AccountBalance,
   Language,
+  Science,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 
 // Import existing components
-import PriceAdministration from '../PriceAdministration';
 import BusinessBrandingSettings from '../BusinessBrandingSettings';
+import PriceAdministration from '../PriceAdministration';
 import GoogleDriveManager from '../google-drive/GoogleDriveManager';
 import GoogleDriveProjectSync from '../google-drive/GoogleDriveProjectSync';
 import { TutorialFAQIntegration } from '../tutorial/TutorialFAQIntegration';
@@ -76,7 +76,7 @@ import { LightroomInteractiveDemo } from './misc/LightroomInteractiveDemo';
 import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
 import CreatorHubMarketplace from '../resume/ResumeBuilderMarketplace';
 import { usePlatformPricing, platformPricingService } from '../../services/PlatformPricingService';
-import { useQueryClient } from '@tanstack/react-query';
+import { lightroomIntegrationService } from '../../services/lightroomIntegrationService';
 import { getAllProfessionFeatures } from '@shared/profession-feature-matrix';
 import PlanFeaturePreview from '../subscription/PlanFeaturePreview';
 import { EnterpriseInquiryForm } from '../enterprise/EnterpriseInquiryForm';
@@ -85,8 +85,7 @@ import EnterpriseTeamManagement from '../enterprise/EnterpriseTeamManagement';
 // Import dynamic profession system
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import type { UserSettings } from '@/contexts/SettingsContext';
-import { useSettings } from '@/contexts/SettingsContext';
+import { useSettings, type UserSettings } from '@/contexts/SettingsContext';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -120,7 +119,9 @@ interface UniversalSettingsPanelProps {
   onSettingsUpdate?: (settings: any) => void;
   onProjectUpdate?: (project: any) => void;
   selectedProject?: any;
-  onProjectSelect?: (project: any) => void
+  onProjectSelect?: (project: any) => void;
+  activeTabValue?: number;
+  onTabChange?: (value: number) => void;
 }
 
 export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
@@ -130,9 +131,11 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
   onSettingsUpdate,
   onProjectUpdate,
   selectedProject,
-  onProjectSelect
+  onProjectSelect,
+  activeTabValue,
+  onTabChange,
 }) => {
-  const [settingsTabValue, setSettingsTabValue] = useState(0);
+  const [internalSettingsTabValue, setInternalSettingsTabValue] = useState(0);
   const [showFAQDialog, setShowFAQDialog] = useState(false);
   const [autoRedirectToDashboard, setAutoRedirectToDashboard] = useState(false);
   const [savingPreferences, setSavingPreferences] = useState(false);
@@ -155,6 +158,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
     provider: 'norwedfilm' as 'norwedfilm' | 'custom',
     defaultStorage: 'google_drive' as 'google_drive' | 'youtube' | 'custom',
   });
+  const [lightroomAction, setLightroomAction] = useState<null | 'download' | 'test' | 'reconnect'>(null);
   const theme = useTheme();
   
   // Push notifications
@@ -240,6 +244,63 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
   // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(profession);
   const { subscriptionPlans, isLoading: plansLoading } = usePlatformPricing();
+  const lightroomStatusQuery = useQuery({
+    queryKey: ['universal-settings-lightroom-status', userId],
+    queryFn: () => lightroomIntegrationService.getStatus(),
+    enabled: profession === 'photographer',
+  });
+
+  const handleLightroomDownload = async () => {
+    try {
+      setLightroomAction('download');
+      await lightroomIntegrationService.downloadPluginPackage(false);
+      setSnackbar({
+        open: true,
+        message: 'CreatorHub Lightroom-installasjonspakken lastes ned.',
+        severity: 'success',
+      });
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Kunne ikke laste ned Lightroom-pluginen.',
+        severity: 'error',
+      });
+    } finally {
+      setLightroomAction(null);
+    }
+  };
+
+  const handleLightroomSmokeTest = async () => {
+    try {
+      setLightroomAction('test');
+      await lightroomIntegrationService.runSmokeExport();
+      await lightroomStatusQuery.refetch();
+      setSnackbar({
+        open: true,
+        message: 'Lightroom smoke-test fullført. Filen er lagret i Google Drive og publisert til showcase.',
+        severity: 'success',
+      });
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Lightroom smoke-test feilet.',
+        severity: 'error',
+      });
+    } finally {
+      setLightroomAction(null);
+    }
+  };
+
+  const handleLightroomReconnect = async () => {
+    setLightroomAction('reconnect');
+    try {
+      await lightroomIntegrationService.startGoogleWorkspaceReconnect();
+    } catch (error) {
+      console.error('Lightroom Google reconnect failed:', error);
+    } finally {
+      setLightroomAction(null);
+    }
+  };
 
   // Get profession-specific premium features from feature matrix
   const premiumFeatures = React.useMemo(() => {
@@ -387,10 +448,9 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 };
 
   // UNIVERSAL SETTINGS TABS - Fungerer for ALLE profesjoner
-  const universalSettingsTabs = [
+  const universalSettingsTabs = React.useMemo(() => [
     { id: 'business', label: 'Bedriftsprofil', icon: <Business /> },
     { id: 'my-features', label: 'Mine Funksjoner', icon: <Extension /> },
-    { id: 'pricing', label: 'Prisadministrasjon', icon: <AttachMoney /> },
     { id: 'storage', label: 'Google Workspace Lagring', icon: <Storage /> },
     { id: 'backup', label: 'Backup & Sync', icon: <CloudDone /> },
     { id: 'profession-suites', label: 'Profesjons Suiter', icon: <SmartToy /> },
@@ -398,7 +458,17 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
     { id: 'marketplace', label: 'Marketplace', icon: <Store /> },
     { id: 'faq', label: 'FAQ Veiledninger', icon: <Quiz /> },
     { id: 'preferences', label: 'Brukerpreferanser', icon: <Settings /> }
-  ];
+  ], [profession]);
+  const settingsTabValue = Math.min(
+    Math.max(activeTabValue ?? internalSettingsTabValue, 0),
+    Math.max(universalSettingsTabs.length - 1, 0)
+  );
+  const setSettingsTabValue = onTabChange ?? setInternalSettingsTabValue;
+  const getSettingsTabIndex = React.useCallback(
+    (tabId: string) => universalSettingsTabs.findIndex((tab) => tab.id === tabId),
+    [universalSettingsTabs]
+  );
+  const showLegacyPricingSettings = false;
 
   // Register component with MasterIntegrationProvider
   React.useEffect(() => {
@@ -481,7 +551,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
             }
           }}
         >
-          {universalSettingsTabs.map((tab, index) => (
+          {universalSettingsTabs.map((tab) => (
             <Tab 
               key={tab.id}
               icon={tab.icon}
@@ -513,7 +583,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       </Box>
 
       {/* Tab 0: Bedriftsprofil */}
-      <TabPanel value={settingsTabValue} index={0}>
+      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('business')}>
         <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
@@ -526,7 +596,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       </TabPanel>
 
       {/* Tab 1: Mine Funksjoner - Feature Access Overview */}
-      <TabPanel value={settingsTabValue} index={1}>
+      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('my-features')}>
         <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
@@ -666,7 +736,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       <Button
                         variant="outlined"
                         size="small"
-                        onClick={() => setSettingsTabValue(profession === 'photographer' ? 7 : 6)}
+                        onClick={() => setSettingsTabValue(getSettingsTabIndex('marketplace'))}
                         sx={{ borderColor: '#ff9800', color: '#ff9800' }}
                       >
                         Utforsk Marketplace
@@ -682,6 +752,8 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
         </MuiCard>
       </TabPanel>
 
+      {showLegacyPricingSettings && (
+        <>
       {/* Tab 2: Prisadministrasjon */}
       <TabPanel value={settingsTabValue} index={2}>
         <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
@@ -1216,9 +1288,11 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
           </MuiCardContent>
         </MuiCard>
       </TabPanel>
+        </>
+      )}
 
-      {/* Tab 3: Google Workspace Lagring */}
-      <TabPanel value={settingsTabValue} index={3}>
+      {/* Tab 2: Google Workspace Lagring */}
+      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('storage')}>
         <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
@@ -1328,8 +1402,8 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
         </MuiCard>
       </TabPanel>
 
-      {/* Tab 4: Backup & Sync */}
-      <TabPanel value={settingsTabValue} index={4}>
+      {/* Tab 3: Backup & Sync */}
+      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('backup')}>
         <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
@@ -1994,8 +2068,8 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
         </MuiCard>
       </TabPanel>
 
-      {/* Tab 5: Profession Suites */}
-      <TabPanel value={settingsTabValue} index={5}>
+      {/* Tab 4: Profession Suites */}
+      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('profession-suites')}>
         <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
@@ -2256,7 +2330,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab 5: Foto integrasjoner - ONLY for photographers */}
       {profession === 'photographer' && (
-        <TabPanel value={settingsTabValue} index={6}>
+        <TabPanel value={settingsTabValue} index={getSettingsTabIndex('photo-integrations')}>
           <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
             <MuiCardContent>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
@@ -2264,7 +2338,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                 Foto integrasjoner
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Last ned og installer CreatorHub Norge Lightroom plugin for sømløs integrering med plattformen.
+                Installer Lightroom-pluginen, verifiser Google Workspace-tilkoblingen og test den faktiske eksportløypa til Google Drive og showcase.
               </Typography>
 
               {/* Lightroom Plugin Download Section */}
@@ -2273,34 +2347,109 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                   Adobe Lightroom Plugin
                 </Typography>
                 <Typography variant="body2" sx={{ mb: 3 }}>
-                  CreatorHub Norge Lightroom plugin gjør det mulig å synkronisere bilder, metadata og collections direkte med plattformen.
+                  Pluginen eksporterer Lightroom-bilder til CreatorHub, lagrer originalfilene i Google Drive og oppretter showcase-elementer i samme flyt.
                 </Typography>
+
+                {lightroomStatusQuery.data ? (
+                  <>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.2, mb: 2.5 }}>
+                      <Chip
+                        icon={<CheckCircle />}
+                        label={lightroomStatusQuery.data.workspaceConnected
+                          ? `Google Drive: ${lightroomStatusQuery.data.googleEmail || 'koblet'}`
+                          : 'Google Workspace mangler'}
+                        color={lightroomStatusQuery.data.workspaceConnected ? 'success' : 'warning'}
+                        variant="outlined"
+                      />
+                      <Chip
+                        label={`Kilde: ${lightroomStatusQuery.data.workspaceSource || 'ukjent'}`}
+                        color={lightroomStatusQuery.data.workspaceConnected ? 'info' : 'default'}
+                        variant="outlined"
+                      />
+                      <Chip
+                        label={`Plugin: ${lightroomStatusQuery.data.tokenPreview || 'ikke generert'}`}
+                        color={lightroomStatusQuery.data.connected ? 'info' : 'default'}
+                        variant="outlined"
+                      />
+                      <Chip
+                        label={`Siste synk: ${lightroomStatusQuery.data.lastSyncAt ? new Date(lightroomStatusQuery.data.lastSyncAt).toLocaleString('no-NO') : 'ikke kjørt'}`}
+                        color="default"
+                        variant="outlined"
+                      />
+                      {lightroomStatusQuery.data.driveRootFolderName ? (
+                        <Chip
+                          icon={<Storage />}
+                          label={`Drive-rot: ${lightroomStatusQuery.data.driveRootFolderName}`}
+                          color="default"
+                          variant="outlined"
+                        />
+                      ) : null}
+                    </Box>
+                    {lightroomStatusQuery.data.workspaceWarning ? (
+                      <Alert severity="info" sx={{ mb: 2.5 }}>
+                        {lightroomStatusQuery.data.workspaceWarning}
+                      </Alert>
+                    ) : null}
+                  </>
+                ) : null}
                 
-                <Button 
-                  variant="contained"
-                  startIcon={<CloudDownload />}
-                  sx={{
-                    background: `linear-gradient(135deg, ${customBranding.color} 0%, ${theme.palette.primary.dark} 100%)`,
-                    color: 'white',
-                    fontWeight: 600,
-                    mb: 2, '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: `0 8px 25px ${customBranding.color}40`
-                    }
-                  }}
-                  onClick={() => {
-                    // Create download link for Lightroom plugin
-                    const link = document.createElement('a');
-                    link.href = '/api/lightroom/download-plugin';
-                    link.download = 'CreatorHub-Norge-Lightroom-Plugin.lrplugin';
-                    link.click();
-                }}
-                >
-                  Last ned Lightroom Plugin
-                </Button>
+                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+                  <Button 
+                    variant="contained"
+                    startIcon={<CloudDownload />}
+                    sx={{
+                      background: `linear-gradient(135deg, ${customBranding.color} 0%, ${theme.palette.primary.dark} 100%)`,
+                      color: 'white',
+                      fontWeight: 600,
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: `0 8px 25px ${customBranding.color}40`
+                      }
+                    }}
+                    disabled={lightroomAction === 'download'}
+                    onClick={() => { void handleLightroomDownload(); }}
+                  >
+                    {lightroomAction === 'download' ? 'Forbereder pakke…' : 'Last ned installasjonspakke'}
+                  </Button>
+
+                  <Button
+                    variant="outlined"
+                    startIcon={<Science />}
+                    disabled={lightroomAction === 'test' || !lightroomStatusQuery.data?.workspaceConnected}
+                    onClick={() => { void handleLightroomSmokeTest(); }}
+                    sx={{ borderColor: customBranding.color, color: customBranding.color }}
+                  >
+                    {lightroomAction === 'test' ? 'Tester…' : 'Kjør Drive/showcase-test'}
+                  </Button>
+
+                  {!lightroomStatusQuery.data?.workspaceConnected ? (
+                    <Button
+                      variant="outlined"
+                      startIcon={<LinkIcon />}
+                      disabled={lightroomAction === 'reconnect'}
+                      onClick={() => { void handleLightroomReconnect(); }}
+                      sx={{ borderColor: theme.palette.warning.main, color: theme.palette.warning.main }}
+                    >
+                      {lightroomAction === 'reconnect' ? 'Starter…' : 'Koble Google Workspace'}
+                    </Button>
+                  ) : null}
+
+                  {lightroomStatusQuery.data?.driveRootFolderUrl ? (
+                    <Button
+                      component="a"
+                      href={lightroomStatusQuery.data.driveRootFolderUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      variant="text"
+                      startIcon={<Storage />}
+                    >
+                      Åpne Drive-rot
+                    </Button>
+                  ) : null}
+                </Box>
 
                 <Typography variant="body2" color="text.secondary">
-                  Kompatibel med Adobe Lightroom CC 2019 og nyere versjoner
+                  Nedlastingen er en zip-pakke som inneholder mappen <strong>CreatorHubNorge.lrplugin</strong>. Pakk den ut før du legger den til i Lightroom.
                 </Typography>
               </Box>
 
@@ -2326,7 +2475,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       justifyContent: 'center',
                       fontSize: '12px', 
                       fontWeight: 600}}>1</Box>
-                    <Typography variant="body2">Last ned plugin → Åpne Lightroom → Plugin Manager → Add</Typography>
+                    <Typography variant="body2">Last ned zip-pakken → Pakk ut → Åpne Lightroom → Plug-in Manager → Add</Typography>
                   </Box>
                   
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -2341,7 +2490,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       justifyContent: 'center',
                       fontSize: '12px', 
                       fontWeight: 600}}>2</Box>
-                    <Typography variant="body2">Enable plugin → File → Plug-in Extras → CreatorHub Norge</Typography>
+                    <Typography variant="body2">Velg mappen <strong>CreatorHubNorge.lrplugin</strong> → eksporter via File → Export → CreatorHub Norge</Typography>
                   </Box>
                   
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -2356,7 +2505,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       justifyContent: 'center',
                       fontSize: '12px', 
                       fontWeight: 600}}>3</Box>
-                    <Typography variant="body2">🎉 Klar! Collections synkroniseres automatisk til showcase</Typography>
+                    <Typography variant="body2">🎉 Klar! Eksportene lagres i Google Drive og publiseres til showcase i samme løype</Typography>
                   </Box>
                 </Box>
               </Box>
@@ -2366,7 +2515,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       )}
 
       {/* Tab Marketplace: Marketplace - UNIVERSAL FOR ALLE PROFESJONER */}
-      <TabPanel value={settingsTabValue} index={profession === 'photographer' ? 7 : 6}>
+      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('marketplace')}>
         <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
@@ -2405,7 +2554,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       </TabPanel>
 
       {/* Tab FAQ: FAQ Veiledninger - UNIVERSAL FOR ALLE PROFESJONER */}
-      <TabPanel value={settingsTabValue} index={profession === 'photographer' ? 8 : 7}>
+      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('faq')}>
         <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
@@ -2431,7 +2580,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       </TabPanel>
 
       {/* Tab Preferences: Brukerpreferanser */}
-      <TabPanel value={settingsTabValue} index={profession === 'photographer' ? 9 : 8}>
+      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('preferences')}>
         <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>

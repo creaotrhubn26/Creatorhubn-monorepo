@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -114,6 +114,8 @@ const sortArtifacts = (artifacts: RoleRoomGoogleArtifactRef[]): RoleRoomGoogleAr
   })
 );
 
+const EMPTY_PRODUCTION_DAYS: NonNullable<CastingProject['productionDays']> = [];
+
 export default function ProducerGoogleWorkspacePanel({
   project,
   projectId,
@@ -133,9 +135,13 @@ export default function ProducerGoogleWorkspacePanel({
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [autoBootstrapFailed, setAutoBootstrapFailed] = useState(false);
   const [peopleQuery, setPeopleQuery] = useState('');
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [peopleResults, setPeopleResults] = useState<RoleRoomGooglePersonContact[]>([]);
+  const autoBindingRequestKeyRef = useRef<string | null>(null);
+  const statusRequestRef = useRef(0);
+  const peopleRequestRef = useRef(0);
 
   const canManageGoogleWorkspace = !readOnly && !isClientReviewerMode;
   const { items: reviewItems } = useProducerReviews(projectId);
@@ -143,20 +149,29 @@ export default function ProducerGoogleWorkspacePanel({
     projectId,
     initialProject: project,
     initialShotLists: shotLists,
-    initialProductionDays: project.productionDays ?? [],
+    initialProductionDays: project.productionDays ?? EMPTY_PRODUCTION_DAYS,
   });
 
   const loadGoogleStatus = useCallback(async () => {
+    const requestId = ++statusRequestRef.current;
     setLoadingStatus(true);
     setLocalError(null);
     try {
       const status = await googleWorkspaceApi.getStatus(projectId);
+      if (requestId !== statusRequestRef.current) {
+        return;
+      }
       setGoogleStatus(status);
     } catch (statusError) {
+      if (requestId !== statusRequestRef.current) {
+        return;
+      }
       console.error('[ProducerGoogleWorkspacePanel] Failed to load Google Workspace status', statusError);
       setLocalError(statusError instanceof Error ? statusError.message : 'Kunne ikke hente Google Workspace-status.');
     } finally {
-      setLoadingStatus(false);
+      if (requestId === statusRequestRef.current) {
+        setLoadingStatus(false);
+      }
     }
   }, [projectId]);
 
@@ -164,9 +179,17 @@ export default function ProducerGoogleWorkspacePanel({
     void loadGoogleStatus();
   }, [loadGoogleStatus]);
 
+  useEffect(() => () => {
+    statusRequestRef.current += 1;
+    peopleRequestRef.current += 1;
+  }, []);
+
   const connection: RoleRoomGoogleConnection | null = googleStatus?.connection ?? null;
   const binding: RoleRoomGoogleProjectBinding | null = googleStatus?.projectBinding ?? null;
   const artifacts = googleStatus?.artifacts ?? [];
+  const driveIsReady = hasText(binding?.driveRootFolderId);
+  const calendarIsReady = hasText(binding?.calendarId);
+  const projectWorkspaceReady = driveIsReady && calendarIsReady;
 
   const recentArtifacts = useMemo(
     () => sortArtifacts(artifacts).slice(0, 6),
@@ -215,6 +238,71 @@ export default function ProducerGoogleWorkspacePanel({
     [binding?.folderLayout],
   );
 
+  useEffect(() => {
+    if (!canManageGoogleWorkspace || !googleStatus?.configured || connection?.state !== 'connected' || projectWorkspaceReady) {
+      return;
+    }
+
+    if (actionKey && actionKey !== 'binding') {
+      return;
+    }
+
+    const requestKey = `${projectId}:${connection?.googleSubject ?? connection?.googleEmail ?? connection?.state ?? 'connected'}:${driveIsReady ? 'drive' : 'no-drive'}:${calendarIsReady ? 'calendar' : 'no-calendar'}`;
+    if (autoBindingRequestKeyRef.current === requestKey) {
+      return;
+    }
+    autoBindingRequestKeyRef.current = requestKey;
+
+    let cancelled = false;
+    setActionKey('binding');
+
+    void googleWorkspaceApi.ensureProjectBindingReady(projectId, binding)
+      .then((response) => {
+        if (cancelled || !response) {
+          return;
+        }
+        setGoogleStatus((previous) => (
+          previous
+            ? {
+                ...previous,
+                projectBinding: response.binding,
+                artifacts: response.artifacts,
+              }
+            : previous
+        ));
+        setAutoBootstrapFailed(false);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        console.warn('[ProducerGoogleWorkspacePanel] Automatic Google Workspace bootstrap failed', error);
+        setAutoBootstrapFailed(true);
+        setLocalError('Google Workspace er aktivert, men prosjektet kunne ikke fullføre automatisk oppsett ennå.');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setActionKey((current) => (current === 'binding' ? null : current));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    actionKey,
+    binding,
+    calendarIsReady,
+    canManageGoogleWorkspace,
+    connection?.googleEmail,
+    connection?.googleSubject,
+    connection?.state,
+    driveIsReady,
+    googleStatus?.configured,
+    projectId,
+    projectWorkspaceReady,
+  ]);
+
   const runAction = useCallback(async (
     nextActionKey: string,
     action: () => Promise<void>,
@@ -251,7 +339,7 @@ export default function ProducerGoogleWorkspacePanel({
       window.location.assign(response.authorizationUrl);
     } catch (linkError) {
       console.error('[ProducerGoogleWorkspacePanel] Failed to start Google Workspace link', linkError);
-      const message = linkError instanceof Error ? linkError.message : 'Kunne ikke starte Google Workspace-koblingen.';
+      const message = linkError instanceof Error ? linkError.message : 'Kunne ikke starte Google-aktiveringen.';
       setLocalError(message);
       enqueueSnackbar(message, { variant: 'error' });
       setActionKey(null);
@@ -262,17 +350,11 @@ export default function ProducerGoogleWorkspacePanel({
     await runAction(
       'binding',
       async () => {
-        await googleWorkspaceApi.saveProjectBinding(projectId, {
-          contactsContext: binding?.contactsContext ?? {},
-          meetCreationEnabled: binding?.meetCreationEnabled ?? true,
-          auditSignatureStorageEnabled: binding?.auditSignatureStorageEnabled ?? true,
-          createDriveLayout: true,
-          createCalendar: true,
-        });
+        await googleWorkspaceApi.ensureProjectBindingReady(projectId, binding);
       },
-      'Google Workspace er klargjort for prosjektet.',
+      'Google Workspace er klart for prosjektet.',
     );
-  }, [binding?.auditSignatureStorageEnabled, binding?.contactsContext, binding?.meetCreationEnabled, projectId, runAction]);
+  }, [binding, projectId, runAction]);
 
   const handleDisconnect = useCallback(async () => {
     await runAction(
@@ -280,7 +362,7 @@ export default function ProducerGoogleWorkspacePanel({
       async () => {
         await googleWorkspaceApi.unlink();
       },
-      'Google Workspace-koblingen er fjernet fra brukeren.',
+      'Google Workspace er koblet fra brukeren.',
     );
   }, [runAction]);
 
@@ -332,14 +414,20 @@ export default function ProducerGoogleWorkspacePanel({
 
   const handleSearchPeople = useCallback(async () => {
     if (!peopleQuery.trim()) {
+      peopleRequestRef.current += 1;
       setPeopleResults([]);
+      setPeopleLoading(false);
       return;
     }
 
+    const requestId = ++peopleRequestRef.current;
     setPeopleLoading(true);
     setLocalError(null);
     try {
       const response = await googleWorkspaceApi.searchPeople(projectId, peopleQuery.trim());
+      if (requestId !== peopleRequestRef.current) {
+        return;
+      }
       setPeopleResults(response.contacts);
       if (canManageGoogleWorkspace) {
         await googleWorkspaceApi.saveProjectBinding(projectId, {
@@ -352,12 +440,17 @@ export default function ProducerGoogleWorkspacePanel({
         });
       }
     } catch (searchError) {
+      if (requestId !== peopleRequestRef.current) {
+        return;
+      }
       console.error('[ProducerGoogleWorkspacePanel] Failed to search Google contacts', searchError);
       const message = searchError instanceof Error ? searchError.message : 'Kunne ikke søke i Google-kontakter.';
       setLocalError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
-      setPeopleLoading(false);
+      if (requestId === peopleRequestRef.current) {
+        setPeopleLoading(false);
+      }
     }
   }, [binding?.contactsContext, canManageGoogleWorkspace, enqueueSnackbar, peopleQuery, projectId]);
 
@@ -456,8 +549,12 @@ export default function ProducerGoogleWorkspacePanel({
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.35 }}>
                   {connection?.googleEmail
-                    ? `Koblet som ${connection.googleEmail}.`
-                    : 'Koble Google Workspace for å bruke Drive, kalender og kontaktoppslag i samme prosjektflyt.'}
+                    ? projectWorkspaceReady
+                      ? `Koblet som ${connection.googleEmail}.`
+                      : autoBootstrapFailed
+                        ? `Aktivert som ${connection.googleEmail}. Automatisk prosjektoppsett feilet, så du kan prøve igjen manuelt.`
+                        : `Aktivert som ${connection.googleEmail}. Drive og kalender settes opp automatisk for prosjektet.`
+                    : 'Aktiver Google Workspace én gang for å bruke Drive, kalender og kontaktoppslag videre i samme prosjektflyt.'}
                 </Typography>
               </Box>
 
@@ -470,21 +567,23 @@ export default function ProducerGoogleWorkspacePanel({
                     }}
                     disabled={!googleStatus?.configured || actionKey === 'connect'}
                   >
-                    {actionKey === 'connect' ? 'Kobler...' : 'Koble Google Workspace'}
+                    {actionKey === 'connect' ? 'Aktiverer...' : 'Aktiver Google Workspace'}
                   </Button>
                 ) : null}
                 {canManageGoogleWorkspace && connection ? (
                   <>
-                    <Button
-                      variant="outlined"
-                      startIcon={<CloudDoneOutlinedIcon />}
-                      onClick={() => {
-                        void handleCreateBinding();
-                      }}
-                      disabled={actionKey === 'binding'}
-                    >
-                      {actionKey === 'binding' ? 'Klargjør...' : 'Klargjør Drive og kalender'}
-                    </Button>
+                    {!projectWorkspaceReady && autoBootstrapFailed ? (
+                      <Button
+                        variant="outlined"
+                        startIcon={<CloudDoneOutlinedIcon />}
+                        onClick={() => {
+                          void handleCreateBinding();
+                        }}
+                        disabled={actionKey === 'binding'}
+                      >
+                        {actionKey === 'binding' ? 'Setter opp...' : 'Prøv oppsett igjen'}
+                      </Button>
+                    ) : null}
                     <Button
                       variant="outlined"
                       startIcon={<CloudSyncOutlinedIcon />}

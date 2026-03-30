@@ -78,6 +78,8 @@ export interface QuickMessageTemplatesProps {
   storageKey?: string;
   /** Compact mode - smaller chips, no header text */
   compact?: boolean;
+  /** Optional overlay base so child dialogs sit above parent chat shells */
+  overlayZIndexBase?: number;
 }
 
 // ---------------------------------------------------------------
@@ -415,6 +417,7 @@ export default function QuickMessageTemplates({
   extraTemplates = [],
   storageKey = 'quick-msg-templates-custom',
   compact = false,
+  overlayZIndexBase,
 }: QuickMessageTemplatesProps) {
   const theming = useTheming(profession);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -565,6 +568,20 @@ export default function QuickMessageTemplates({
   const allTemplates = [...getTemplatesForProfession(profession), ...extraTemplates, ...customTemplates];
   const filteredTemplates =
     selectedCategory === 'all' ? allTemplates : allTemplates.filter((t) => t.category === selectedCategory);
+  const dialogZIndex = overlayZIndexBase;
+  const selectMenuZIndex = typeof overlayZIndexBase === 'number' ? overlayZIndexBase + 20 : undefined;
+  const snackbarZIndex = typeof overlayZIndexBase === 'number' ? overlayZIndexBase + 40 : undefined;
+  const selectMenuProps = selectMenuZIndex
+    ? {
+        sx: { zIndex: selectMenuZIndex },
+        PaperProps: {
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 18px 38px rgba(15, 23, 42, 0.18)',
+          },
+        },
+      }
+    : undefined;
 
   // ---- Render -------------------------------------------------------
 
@@ -684,7 +701,13 @@ export default function QuickMessageTemplates({
       </Paper>
 
       {/* Create / Edit Dialog */}
-      <Dialog open={createDialogOpen} onClose={() => { setCreateDialogOpen(false); resetForm(); }} maxWidth="sm" fullWidth>
+      <Dialog
+        open={createDialogOpen}
+        onClose={() => { setCreateDialogOpen(false); resetForm(); }}
+        maxWidth="sm"
+        fullWidth
+        sx={dialogZIndex ? { zIndex: dialogZIndex } : undefined}
+      >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: theming.colors.primary, color: 'white' }}>
           {editingTemplate ? <Edit /> : <Bookmark />}
           {editingTemplate ? 'Rediger hurtigmelding' : 'Opprett ny hurtigmelding'}
@@ -717,6 +740,7 @@ export default function QuickMessageTemplates({
                 value={formCategory}
                 onChange={(e) => setFormCategory(e.target.value as StoredCustomTemplate['category'])}
                 label="Kategori"
+                MenuProps={selectMenuProps}
               >
                 <MenuItem value="status">Status</MenuItem>
                 <MenuItem value="timing">Tid</MenuItem>
@@ -731,6 +755,7 @@ export default function QuickMessageTemplates({
                 value={formColor}
                 onChange={(e) => setFormColor(e.target.value)}
                 label="Farge"
+                MenuProps={selectMenuProps}
               >
                 {Object.entries(CATEGORY_COLORS).map(([key, col]) => (
                   <MenuItem key={key} value={col}>
@@ -798,6 +823,7 @@ export default function QuickMessageTemplates({
         autoHideDuration={3000}
         onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        sx={snackbarZIndex ? { zIndex: snackbarZIndex } : undefined}
       >
         <Alert severity={snackbar.severity} onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}>
           {snackbar.message}
@@ -806,4 +832,3 @@ export default function QuickMessageTemplates({
     </>
   );
 }
-

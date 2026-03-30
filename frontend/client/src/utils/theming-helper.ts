@@ -17,9 +17,41 @@ import {
 
 export interface ThemingConfig {
   profession?: string;
-  variant?: 'primary' | 'secondary' | 'accent' | 'light' | 'dark';
+  variant?:
+    | 'primary'
+    | 'secondary'
+    | 'accent'
+    | 'light'
+    | 'dark'
+    | 'info'
+    | 'success'
+    | 'warning'
+    | 'error'
+    | 'border'
+    | 'cardBackground'
+    | 'textSecondary'
+    | 'primaryDark'
+    | 'successDark';
   size?: 'small' | 'medium' | 'large';
   opacity?: number;
+  sx?: Record<string, unknown>;
+}
+
+export interface ProfessionColors {
+  primary: string;
+  secondary: string;
+  accent: string;
+  light: string;
+  dark: string;
+  info: string;
+  success: string;
+  warning: string;
+  error: string;
+  border: string;
+  cardBackground: string;
+  textSecondary: string;
+  primaryDark: string;
+  successDark: string;
 }
 
 export interface ProfessionBranding {
@@ -32,26 +64,39 @@ export interface ProfessionBranding {
 }
 
 export interface ThemingReturn {
-  colors: {
-    primary: string;
-    secondary: string;
-    accent: string;
-    light: string;
-    dark: string;
-};
-  getThemedIcon: (iconName: string, config?: ThemingConfig) => React.ReactNode;
+  colors: ProfessionColors;
+  getThemedIcon: (iconName: string, config?: ThemingConfig) => React.ReactElement | null;
   getThemedSx: (config?: ThemingConfig) => any;
   getThemedButtonSx: (config?: ThemingConfig) => any;
   getThemedCardSx: (config?: ThemingConfig) => any;
-  getProfessionColors: (prof: string) => {
-    primary: string;
-    secondary: string;
-    accent: string;
-    light: string;
-    dark: string;
-};
+  getProfessionColors: (prof: string) => ProfessionColors;
   getProfessionBranding: (prof: string) => ProfessionBranding;
   professionConfig: Record<string, ProfessionBranding>;
+}
+
+function buildProfessionColors(
+  primary: string,
+  secondary: string,
+  accent: string,
+  light: string,
+  dark: string,
+): ProfessionColors {
+  return {
+    primary,
+    secondary,
+    accent,
+    light,
+    dark,
+    info: '#0288d1',
+    success: '#2e7d32',
+    warning: '#ed6c02',
+    error: '#d32f2f',
+    border: accent,
+    cardBackground: secondary,
+    textSecondary: dark,
+    primaryDark: dark,
+    successDark: '#1b5e20',
+  };
 }
 
 /**
@@ -191,56 +236,21 @@ export function useTheming(profession?: string): ThemingReturn {
   const getProfessionColors = (prof: string) => {
     switch (prof) {
       case 'photographer':
-        return {
-          primary: '#2e7d32',
-          secondary: '#E8F5E8',
-          accent: '#1B5E20',
-          light: '#C8E6C9',
-          dark: '#2E7D32'
-    };
+        return buildProfessionColors('#2e7d32', '#E8F5E8', '#1B5E20', '#C8E6C9', '#2E7D32');
       case 'videographer':
-        return {
-          primary: '#1565c0',
-          secondary: '#E3F2FD',
-          accent: '#0D47A1',
-          light: '#BBDEFB',
-          dark: '#1565C0'
-    };
+        return buildProfessionColors('#1565c0', '#E3F2FD', '#0D47A1', '#BBDEFB', '#1565C0');
       case 'music_producer':
-        return {
-          primary: '#7b1fa2',
-          secondary: '#F3E5F5',
-          accent: '#4A148C',
-          light: '#E1BEE7',
-          dark: '#7B1FA2'
-    };
+        return buildProfessionColors('#7b1fa2', '#F3E5F5', '#4A148C', '#E1BEE7', '#7B1FA2');
       case 'vendor':
-        return {
-          primary: '#ff8c00',
-          secondary: '#FFF3E0',
-          accent: '#E65100',
-          light: '#FFE0B2',
-          dark: '#FF8C00'
-    };
+        return buildProfessionColors('#ff8c00', '#FFF3E0', '#E65100', '#FFE0B2', '#FF8C00');
       case 'prototype_tester':
-        return {
-          primary: '#e65100',
-          secondary: '#FFF3E0',
-          accent: '#BF360C',
-          light: '#FFCCBC',
-          dark: '#E65100'
-    };
-      default: return {
-          primary: '#4CAF50',
-          secondary: '#E8F5E8',
-          accent: '#388E3C',
-          light: '#C8E6C9',
-          dark: '#4CAF50'
-    };
+        return buildProfessionColors('#e65100', '#FFF3E0', '#BF360C', '#FFCCBC', '#E65100');
+      default:
+        return buildProfessionColors('#4CAF50', '#E8F5E8', '#388E3C', '#C8E6C9', '#4CAF50');
   }
 };
 
-  const getThemedIcon = (iconName: keyof typeof icons.CREATOR_HUB_ICONS, config?: ThemingConfig) => {
+  const getThemedIcon = (iconName: string, config?: ThemingConfig) => {
     const IconComponent = icons.CREATOR_HUB_ICONS[iconName];
     if (!IconComponent) return null;
 
@@ -253,10 +263,11 @@ export function useTheming(profession?: string): ThemingReturn {
       sx: {
         color: colors[variant],
         opacity,
-        fontSize: config?.size === 'small' ? '1rem' : config?.size === 'large' ? '2rem' : '1.5rem'
-    }
-  });
-};
+        fontSize: config?.size === 'small' ? '1rem' : config?.size === 'large' ? '2rem' : '1.5rem',
+        ...config?.sx,
+      }
+    });
+  };
 
   const getThemedSx = (config?: ThemingConfig) => {
     const prof = config?.profession || profession || 'photographer';

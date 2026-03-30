@@ -275,7 +275,7 @@ const FrameMarker = styled(Box)({
   width: 2,
   height: '100%',
   backgroundColor: 'rgba(255,255,255,0.2)','&::after': {
-    content: ', ""',
+    content: '""',
     position: 'absolute',
     top: '100%',
     left: '50%',

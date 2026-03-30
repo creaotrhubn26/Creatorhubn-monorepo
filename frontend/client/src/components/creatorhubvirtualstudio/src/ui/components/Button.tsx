@@ -50,8 +50,8 @@ export const Button: React.FC<ButtonProps> = ({
   fullWidth,
   ...props
 }) => {
-  const getVariantStyles = (): React.CSSProperties => {
-    const baseStyles: React.CSSProperties = {
+  const getVariantStyles = (): Record<string, unknown> => {
+    const baseStyles: Record<string, string | number> = {
       borderRadius: borderRadius.md,
       textTransform: 'none',
       fontWeight: 500,
@@ -139,16 +139,8 @@ export const Button: React.FC<ButtonProps> = ({
       fullWidth={fullWidth}
       sx={{
         ...getVariantStyles(),
+        ...interactiveStyles.button,
         ...(fullWidth && { width: '100%' }),
-        '&:focus-visible': {
-          outline: `2px solid ${colors.border.focus}`,
-          outlineOffset: '2px',
-        },
-        '&:disabled': {
-          opacity: 0.5,
-          cursor: 'not-allowed',
-          pointerEvents: 'none',
-        },
         ...sx,
       }}
     >
@@ -163,4 +155,3 @@ export const Button: React.FC<ButtonProps> = ({
     </MuiButton>
   );
 };
-

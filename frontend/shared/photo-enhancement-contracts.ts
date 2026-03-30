@@ -1,5 +1,20 @@
-import { initContract } from '@ts-rest/core';
 import { z } from 'zod';
+
+interface ContractRouteDefinition {
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  path: string;
+  headers?: z.ZodTypeAny;
+  body?: z.ZodTypeAny;
+  query?: z.ZodTypeAny;
+  pathParams?: z.ZodTypeAny;
+  responses: Record<number, z.ZodTypeAny>;
+}
+
+type ContractRouterDefinition = Record<string, ContractRouteDefinition>;
+
+const initContract = () => ({
+  router: <T extends ContractRouterDefinition>(routes: T) => routes,
+});
 
 // Enhanced schemas with discriminated unions and better validation
 const EnhancementTypeSchema = z.enum(['upscale', 'face_restore', 'denoise', 'colorize', 'batch']);
@@ -87,7 +102,7 @@ const ErrorResponseSchema = z.object({
   error: z.object({
     code: z.string(),
     message: z.string(),
-    details: z.record(z.unknown()).optional(),
+    details: z.record(z.string(), z.unknown()).optional(),
     requestId: z.string().uuid(),
     timestamp: z.string().datetime(),
   }),
@@ -278,4 +293,5 @@ export {
   EnhancementTypeSchema,
   JobStatusSchema,
   ErrorResponseSchema,
+  StartEnhancementRequestSchema,
 };

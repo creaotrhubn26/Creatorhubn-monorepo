@@ -1,161 +1,181 @@
-import { useTheming } from '../utils/theming-helper';
 import React from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { Button } from "@/components/material-ui";
-import { Card as ViewModule, CardContent } from '@mui/material';
-import { Button } from '@mui/material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Stack,
+  Typography,
+} from '@mui/material';
+import {
+  CheckCircle,
+  Headset,
   PhotoCamera,
   Videocam,
-  Headset,
-  CheckCircle,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTheming } from '../utils/theming-helper';
 import { apiRequest } from '@/lib/queryClient';
 
-interface CreatorNavigationProps { onNavigate: (path: string) => void }
+interface CreatorNavigationProps {
+  onNavigate: (path: string) => void;
+}
+
+interface CreatorRoleCard {
+  id: 'photographer' | 'videographer' | 'music_producer';
+  title: string;
+  description: string;
+  path: string;
+  icon: React.ReactElement;
+  features: string[];
+}
+
+interface NavigationAnalyticsResponse {
+  lastVisitedRole?: string;
+}
+
+const ROLE_CARDS: CreatorRoleCard[] = [
+  {
+    id: 'photographer',
+    title: 'Photographers',
+    description: 'Manage photo delivery, client galleries, and booking workflows for weddings and events.',
+    path: '/photographer-dashboard',
+    icon: <PhotoCamera sx={{ fontSize: 32, color: '#2563eb' }} />,
+    features: ['Share photo galleries', 'Book appointments', 'Show your best work'],
+  },
+  {
+    id: 'videographer',
+    title: 'Videographers',
+    description: 'Plan shoots, deliver edits, and collaborate with couples and vendors from one workspace.',
+    path: '/videographer-dashboard',
+    icon: <Videocam sx={{ fontSize: 32, color: '#7c3aed' }} />,
+    features: ['Video editing workflows', 'Live event delivery', 'Client review links'],
+  },
+  {
+    id: 'music_producer',
+    title: 'Music Producers',
+    description: 'Produce, review, and share wedding music with couples and creative collaborators.',
+    path: '/music-producer-dashboard',
+    icon: <Headset sx={{ fontSize: 32, color: '#ea580c' }} />,
+    features: ['Music creation tools', 'Artist collaboration', 'Share mixes with couples'],
+  },
+];
 
 export default function CreatorNavigation({ onNavigate }: CreatorNavigationProps) {
   const queryClient = useQueryClient();
-  
-  // Theming system
   const theming = useTheming('photographer');
-  
-  // Database connection for CreatorNavigation
-  const { data: componentData = [], isLoading } = useQuery({
-    queryKey: ['/api/component', 'user-data'],
-    queryFn: () => apiRequest('/api/component/user-data', ),
-    retry: false,
-});
 
-  // Mutation for updating component data
-  const updateCreatorNavigation = useMutation({
-    mutationFn: async (data: any) => {
-      return apiRequest('/api/component/update', {
-        headers: {
-          "Content-Type, " : "application/json"
+  const { data, isLoading } = useQuery<NavigationAnalyticsResponse>({
+    queryKey: ['/api/component/user-data'],
+    queryFn: async () => {
+      const response = (await apiRequest('/api/component/user-data')) as Partial<NavigationAnalyticsResponse>;
+      return {
+        lastVisitedRole:
+          response.lastVisitedRole === 'photographer' ||
+          response.lastVisitedRole === 'videographer' ||
+          response.lastVisitedRole === 'music_producer'
+            ? response.lastVisitedRole
+            : undefined,
+      };
     },
-        method: 'POST',
-        body: JSON.stringify(data)
+    retry: false,
   });
-  },
+
+  const updateCreatorNavigation = useMutation({
+    mutationFn: async (payload: { lastVisitedRole: CreatorRoleCard['id'] }) =>
+      apiRequest('/api/component/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/component', ],});
-  }
-});
+      void queryClient.invalidateQueries({ queryKey: ['/api/component/user-data'] });
+    },
+  });
+
   return (
-    <section className="py-16 bg-gradient-to-br from-slate-50 to-white">
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center justify-center min-h-screen">
-          <h2 className="text-4xl font-playfair font-bold text-norwegian-dark mb-4">
+    <Box
+      component="section"
+      sx={{
+        py: 10,
+        px: { xs: 2, md: 4 },
+        background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)',
+      }}
+    >
+      <Box sx={{ maxWidth: 1180, mx: 'auto' }}>
+        <Stack spacing={2} sx={{ textAlign: 'center', mb: 5 }}>
+          <Typography variant="h3" sx={{ fontWeight: 700, color: theming.colors.primary }}>
             For Wedding Professionals
-          </h2>
-          <p className="text-lg text-norwegian-medium max-w-2xl mx-auto">
-            Easy-to-use tools for, photographers, videographers, and music artists who help create amazing weddings
-          </p>
-        </div>
+          </Typography>
+          <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 760, mx: 'auto' }}>
+            Easy-to-use tools for photographers, videographers, and music producers who help create memorable weddings.
+          </Typography>
+          {data?.lastVisitedRole && (
+            <Box>
+              <Chip label={`Sist åpnet: ${data.lastVisitedRole}`} color="primary" variant="outlined" />
+            </Box>
+          )}
+        </Stack>
 
-        <div className="flex flex-col items-center justify-center min-h-screen">
-          {/* Photographers Card */}
-          <ViewModule className="relative bg-gradient-to-br from-blue-50 to-white border-amber-200/50">
-            <CardContent className="p-8" sx={theming.getThemedCardSx()}>
-              <div className="flex flex-col items-center justify-center min-h-screen">
-                <PhotoCamera className="w-8 h-8 text-blue-600" />
-              </div>
-              <h3 className="text-2xl font-playfair font-bold text-center mb-4">Photographers</h3>
-              <p className="text-gray-700 text-center mb-6">
-                Manage your, photos, share with, clients, and book more weddings
-              </p>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center text-sm">
-                  <Box className="w-5 h-5 text-green-500 mr-2" />
-                  Share Photo with Couples
-                </li>
-                <li className="flex items-center text-sm">
-                  <Box className="w-5 h-5 text-green-500 mr-2" />
-                  Schedule Appointments
-                </li>
-                <li className="flex items-center text-sm">
-                  <Box className="w-5 h-5 text-green-500 mr-2" />
-                  Visibility Your Best Work
-                </li>
-              </ul>
-              <Button 
-                className="w-full bg-norwegian-dark text-gray-800 dark: text-white, hover:bg-norwegian-medium"
-                onClick={() => onNavigate("/photographer-dashboard")}
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
+              gap: 3,
+            }}
+          >
+            {ROLE_CARDS.map((role) => (
+              <Card
+                key={role.id}
+                sx={{
+                  height: '100%',
+                  borderRadius: 3,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  ...theming.getThemedCardSx(),
+                }}
               >
-                Join as Photographer
-              </Button>
-            </CardContent>
-          </ViewModule>
+                <CardContent sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'center' }}>{role.icon}</Box>
+                  <Typography variant="h5" align="center" sx={{ fontWeight: 700 }}>
+                    {role.title}
+                  </Typography>
+                  <Typography variant="body1" color="text.secondary" align="center">
+                    {role.description}
+                  </Typography>
 
-          {/* Videocamgraphers Card */}
-          <ViewModule className="relative bg-gradient-to-br from-purple-50 to-white border-amber-200">
-            <CardContent className="p-8" sx={theming.getThemedCardSx()}>
-              <div className="flex flex-col items-center justify-center min-h-screen">
-                <Videocam className="w-8 h-8 text-amber-600" />
-              </div>
-              <h3 className="text-2xl font-playfair font-bold text-center mb-4">Videocamgraphers</h3>
-              <p className="text-gray-700 text-center mb-6">
-                Create amazing wedding videos and share them easily with couples
-              </p>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center text-sm">
-                  <Box className="w-5 h-5 text-green-500 mr-2" />
-                  Videocam Editing Tools
-                </li>
-                <li className="flex items-center text-sm">
-                  <Box className="w-5 h-5 text-green-500 mr-2" />
-                  Live Wedding Streaming  
-                </li>
-                <li className="flex items-center text-sm">
-                  <Box className="w-5 h-5 text-green-500 mr-2" />
-                  Easy Videocam Sharing
-                </li>
-              </ul>
-              <Button 
-                className="w-full bg-norwegian-dark text-gray-800 dark: text-white, hover:bg-norwegian-medium"
-                onClick={() => onNavigate("/videographer-dashboard")}
-              >
-                Join as Videocamgrapher
-              </Button>
-            </CardContent>
-          </ViewModule>
+                  <Stack spacing={1.25} sx={{ flex: 1 }}>
+                    {role.features.map((feature) => (
+                      <Box key={feature} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CheckCircle sx={{ fontSize: 18, color: 'success.main' }} />
+                        <Typography variant="body2">{feature}</Typography>
+                      </Box>
+                    ))}
+                  </Stack>
 
-          {/* Music Producers Card */}
-          <ViewModule className="relative bg-gradient-to-br from-orange-50 to-white border-orange-200">
-            <CardContent className="p-8" sx={theming.getThemedCardSx()}>
-              <div className="flex flex-col items-center justify-center min-h-screen">
-                <Headset className="w-8 h-8 text-orange-600" />
-              </div>
-              <h3 className="text-2xl font-playfair font-bold text-center mb-4">Music Producers</h3>
-              <p className="text-gray-700 text-center mb-6">
-                Create perfect wedding music and work together with other professionals
-              </p>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center text-sm">
-                  <Box className="w-5 h-5 text-green-500 mr-2" />
-                  Music Creation Tools
-                </li>
-                <li className="flex items-center text-sm">
-                  <Box className="w-5 h-5 text-green-500 mr-2" />
-                  Work with Other Artists
-                </li>
-                <li className="flex items-center text-sm">
-                  <Box className="w-5 h-5 text-green-500 mr-2" />
-                  Share Music with Couples
-                </li>
-              </ul>
-              <Button 
-                className="w-full bg-norwegian-dark text-gray-800 dark: text-white, hover:bg-norwegian-medium"
-                onClick={() => onNavigate("/music-producer-dashboard")}
-              >
-                Join as Music Producer
-              </Button>
-            </CardContent>
-          </ViewModule>
-        </div>
-      </div>
-    </section>
+                  <Button
+                    variant="contained"
+                    onClick={() => {
+                      updateCreatorNavigation.mutate({ lastVisitedRole: role.id });
+                      onNavigate(role.path);
+                    }}
+                    disabled={updateCreatorNavigation.isPending}
+                  >
+                    Join as {role.title.slice(0, -1)}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </Box>
+        )}
+      </Box>
+    </Box>
   );
 }

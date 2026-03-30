@@ -56,8 +56,7 @@ import {
   Phone as PhoneIcon,
   Business as BusinessIcon,
 } from '@mui/icons-material';
-import type { DropResult } from '@hello-pangea/dnd';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 
 type EmailComponentType =
   | 'header'
@@ -343,14 +342,33 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
   const [previewMode, setPreviewMode] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [testRecipient, setTestRecipient] = useState('');
 
   const queryClient = useQueryClient();
   
   // Theming system
   const theming = useTheming('photographer');
+  const activeProjectId = selectedProject?.id || projectId || '';
+  const activeProjectName =
+    selectedProject?.name ||
+    selectedProject?.title ||
+    (activeProjectId ? `Prosjekt ${activeProjectId}` : '');
+  const activeProfessionLabel = profession || context;
+  const hasFooterComponent = template.components.some((component) => component.type === 'footer');
+  const usesBrandAccent = template.globalStyles.linkColor === theming.colors.primary;
+  const currentTemplateKey = selectedTemplate || template.id;
+
+  useEffect(() => {
+    const nextRecipient =
+      invitationData?.recipientEmail ||
+      selectedProject?.clientEmail ||
+      selectedProject?.email ||
+      '';
+    setTestRecipient((prev) => (prev.trim().length > 0 ? prev : nextRecipient));
+  }, [invitationData?.recipientEmail, selectedProject?.clientEmail, selectedProject?.email]);
   
   // Auto-load invitation template when context is 'invitation'
-  React.useEffect(() => {
+  useEffect(() => {
     if (context === 'invitation' && invitationData) {
             const registrationUrl = invitationData.token 
               ? `https://creatorhubn.com/register?invitation=${invitationData.token}`
@@ -408,6 +426,33 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
     }
   }, [context, invitationData]);
 
+  useEffect(() => {
+    if (!activeProjectName && !activeProfessionLabel) {
+      return;
+    }
+
+    setTemplate((prev) => {
+      const nextSubject =
+        activeProjectName && prev.subject === 'CreatorHub Norge - Viktig melding'
+          ? `Oppdatering om ${activeProjectName}`
+          : prev.subject;
+      const nextPreheader =
+        activeProjectName && prev.preheader === 'Se de siste oppdateringene fra CreatorHub Norge'
+          ? `Oppfølging for ${activeProjectName}`
+          : prev.preheader;
+
+      if (nextSubject === prev.subject && nextPreheader === prev.preheader) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        subject: nextSubject,
+        preheader: nextPreheader,
+      };
+    });
+  }, [activeProjectName, activeProfessionLabel]);
+
   // Load email templates from backend
   const { data: emailTemplates, isLoading: templatesLoading } = useQuery({
     queryKey: ['/api/email/templates'],
@@ -420,11 +465,76 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
     mutationFn: async (templateData: EmailTemplate) => {
       return apiRequest('/api/email/templates', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(templateData),
       });
     },
-    onSuccess: () => {
+    onSuccess: (savedTemplate) => {
       queryClient.invalidateQueries({ queryKey: ['/api/email/templates'] });
+      const normalizedTemplateId =
+        (savedTemplate && typeof savedTemplate === 'object' && 'id' in savedTemplate && typeof savedTemplate.id === 'string'
+          ? savedTemplate.id
+          : template.id);
+      setSelectedTemplate(normalizedTemplateId);
+      onSave?.(template);
+
+      if (activeProjectId && onProjectUpdate) {
+        onProjectUpdate({
+          ...(selectedProject || {}),
+          id: activeProjectId,
+          emailTemplateId: normalizedTemplateId,
+          emailTemplateName: template.name,
+          emailTemplateSubject: template.subject,
+          emailTemplateContext: context,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      onWorklogCreate?.({
+        title: `E-postmal lagret: ${template.name}`,
+        description: `Lagret e-postmalen "${template.name}"${activeProjectName ? ` for ${activeProjectName}` : ''}.`,
+        category: 'email',
+        timeSpent: 15,
+        projectId: activeProjectId || undefined,
+        userId,
+        source: 'email-designer',
+      });
+    },
+  });
+
+  const sendTestMutation = useMutation({
+    mutationFn: async () => {
+      const recipient = testRecipient.trim();
+      if (!recipient) {
+        throw new Error('Legg inn en testmottaker før du sender.');
+      }
+
+      return apiRequest('/api/emails/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conversationId: activeProjectId || `email-designer-${userId || 'general'}`,
+          to: recipient,
+          subject: `[Test] ${template.subject}`,
+          message: generateHTML(),
+          content: generateHTML(),
+        }),
+      });
+    },
+    onSuccess: () => {
+      onWorklogCreate?.({
+        title: `Test-e-post sendt: ${template.name}`,
+        description: `Sendte en test-e-post til ${testRecipient.trim()} fra malen "${template.name}".`,
+        category: 'email',
+        timeSpent: 5,
+        projectId: activeProjectId || undefined,
+        userId,
+        source: 'email-designer',
+      });
     },
   });
 
@@ -551,6 +661,7 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
 };
     
     setTemplate(loadedTemplate);
+    setSelectedTemplate(templateData.id || templateData.name || 'loaded-template');
     setActiveTab(0); // Switch to components tab
 };
 
@@ -591,6 +702,111 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
   const saveTemplate = () => {
     saveTemplateMutation.mutate(template);
 };
+
+  const resetTemplate = () => {
+    setTemplate({
+      id: `new-template-${Date.now()}`,
+      name: 'Ny E-postmal',
+      category: context,
+      subject: activeProjectName ? `Oppdatering om ${activeProjectName}` : 'CreatorHub Norge - Viktig melding',
+      preheader: activeProjectName ? `Oppfølging for ${activeProjectName}` : 'Se de siste oppdateringene fra CreatorHub Norge',
+      context,
+      components: [],
+      globalStyles: defaultGlobalStyles,
+    });
+    setSelectedTemplate('');
+    setActiveTab(0);
+  };
+
+  const copyTemplateHtml = async () => {
+    await navigator.clipboard.writeText(generateHTML());
+  };
+
+  const duplicateCurrentTemplate = () => {
+    setTemplate((prev) => ({
+      ...prev,
+      id: `${prev.id}-copy-${Date.now()}`,
+      name: `${prev.name} kopi`,
+    }));
+    setSelectedTemplate('');
+  };
+
+  const syncProjectContext = () => {
+    if (!onProjectSelect) {
+      return;
+    }
+
+    if (selectedProject) {
+      onProjectSelect(selectedProject);
+      return;
+    }
+
+    if (activeProjectId) {
+      onProjectSelect({
+        id: activeProjectId,
+        name: activeProjectName || template.name,
+        profession: activeProfessionLabel,
+      });
+    }
+  };
+
+  const createMeetingFromTemplate = () => {
+    if (!onMeetingCreate) {
+      return;
+    }
+
+    onMeetingCreate({
+      title: `Oppfølging: ${template.subject}`,
+      description: template.preheader || `Gjennomgang av e-postmalen "${template.name}".`,
+      projectId: activeProjectId || undefined,
+      projectContext: selectedProject || undefined,
+      recipient: testRecipient.trim() || undefined,
+      source: 'email-designer',
+    });
+  };
+
+  const toggleFooterComponent = (checked: boolean) => {
+    setTemplate((prev) => {
+      if (checked && !prev.components.some((component) => component.type === 'footer')) {
+        return {
+          ...prev,
+          components: [
+            ...prev.components,
+            {
+              id: `footer-${Date.now()}`,
+              type: 'footer',
+              content: {
+                text: activeProjectName
+                  ? `${activeProjectName} · CreatorHub Norge`
+                  : 'CreatorHub Norge',
+              },
+              styles: getDefaultStyles('footer'),
+            },
+          ],
+        };
+      }
+
+      if (!checked) {
+        return {
+          ...prev,
+          components: prev.components.filter((component) => component.type !== 'footer'),
+        };
+      }
+
+      return prev;
+    });
+  };
+
+  const toggleBrandAccent = (checked: boolean) => {
+    setTemplate((prev) => ({
+      ...prev,
+      globalStyles: {
+        ...prev.globalStyles,
+        backgroundColor: checked ? '#fff8f2' : defaultGlobalStyles.backgroundColor,
+        linkColor: checked ? theming.colors.primary : defaultGlobalStyles.linkColor,
+      },
+    }));
+  };
 
   const generateHTML = () => {
     const componentsHTML = template.components.map(component => {
@@ -736,16 +952,78 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column'}}>
       {/* Top Toolbar */}
       <Paper elevation={1} sx={{ p: 2, borderRadius: 0, ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Typography variant="h5" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-            <EmailIcon sx={{ color: 'primary.main'}} />
-            E-postdesigner
-          </Typography>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', lg: 'center' }} justifyContent="space-between">
+          <Stack spacing={1}>
+            <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <EmailIcon sx={{ color: 'primary.main'}} />
+              E-postdesigner
+            </Typography>
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+              <Chip size="small" color="primary" label={`Kontekst: ${context}`} />
+              {activeProfessionLabel && <Chip size="small" variant="outlined" label={`Profesjon: ${activeProfessionLabel}`} />}
+              {activeProjectName && <Chip size="small" variant="outlined" label={activeProjectName} />}
+              {currentTemplateKey && <Chip size="small" variant="outlined" label={`Mal: ${template.name}`} />}
+              {userId && <Chip size="small" variant="outlined" label={`Bruker: ${userId.slice(0, 8)}…`} />}
+            </Stack>
+          </Stack>
           
-          <Stack direction="row" spacing={1}>
-            <IconButton><UndoIcon /></IconButton>
-            <IconButton><RedoIcon /></IconButton>
+          <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+            <Tooltip title="Start en ny mal">
+              <span>
+                <Button startIcon={<AddIcon />} variant="outlined" onClick={resetTemplate}>
+                  Ny mal
+                </Button>
+              </span>
+            </Tooltip>
+            <Tooltip title="Kopier HTML til utklippstavlen">
+              <span>
+                <IconButton onClick={copyTemplateHtml}>
+                  <CopyIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Lag en kopi av gjeldende mal">
+              <span>
+                <IconButton onClick={duplicateCurrentTemplate}>
+                  <CopyIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Historikk kommer når malversjonering er på plass">
+              <span>
+                <IconButton disabled><UndoIcon /></IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Historikk kommer når malversjonering er på plass">
+              <span>
+                <IconButton disabled><RedoIcon /></IconButton>
+              </span>
+            </Tooltip>
             <Divider orientation="vertical" flexItem />
+            <Tooltip title="Synk e-postmalen med valgt prosjektkontekst">
+              <span>
+                <Button
+                  startIcon={<BusinessIcon />}
+                  variant="outlined"
+                  onClick={syncProjectContext}
+                  disabled={!onProjectSelect || (!selectedProject && !activeProjectId)}
+                >
+                  Prosjektsynk
+                </Button>
+              </span>
+            </Tooltip>
+            <Tooltip title="Planlegg et oppfølgingsmøte fra denne e-postmalen">
+              <span>
+                <Button
+                  startIcon={<PhoneIcon />}
+                  variant="outlined"
+                  onClick={createMeetingFromTemplate}
+                  disabled={!onMeetingCreate}
+                >
+                  Oppfølgingsmøte
+                </Button>
+              </span>
+            </Tooltip>
             <Button
               startIcon={<PreviewIcon />}
               variant="outlined"
@@ -766,8 +1044,10 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
               startIcon={<SendIcon />}
               variant="contained"
               color="success"
+              disabled={sendTestMutation.isPending || testRecipient.trim().length === 0}
+              onClick={() => sendTestMutation.mutate()}
             >
-              Send test
+              {sendTestMutation.isPending ? 'Sender...' : 'Send test'}
             </Button>
           </Stack>
         </Stack>
@@ -852,10 +1132,31 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
 
               <Accordion>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography>Design</Typography>
+                  <Typography sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <PaletteIcon fontSize="small" />
+                    Design
+                  </Typography>
                 </AccordionSummary>
                 <AccordionDetails>
                   <Stack spacing={2}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={usesBrandAccent}
+                          onChange={(_, checked) => toggleBrandAccent(checked)}
+                        />
+                      }
+                      label="Bruk CreatorHub-farger"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={hasFooterComponent}
+                          onChange={(_, checked) => toggleFooterComponent(checked)}
+                        />
+                      }
+                      label="Vis bunntekst"
+                    />
                     <TextField
                       fullWidth
                       label="Bakgrunnsfarge"
@@ -928,6 +1229,14 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
                         step={20}
                       />
                     </Box>
+                    <TextField
+                      fullWidth
+                      label="Testmottaker"
+                      type="email"
+                      value={testRecipient}
+                      onChange={(e) => setTestRecipient(e.target.value)}
+                      helperText="Brukes når du sender en test fra designeren."
+                    />
                   </Stack>
                 </AccordionDetails>
               </Accordion>
@@ -950,12 +1259,18 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
                 </Box>
               ) : emailTemplates && emailTemplates.length > 0 ? (
                 <Stack spacing={2}>
-                  {emailTemplates.slice(0, 10).map((template: any, index: number) => (
+                  {emailTemplates.slice(0, 10).map((template: any, index: number) => {
+                    const templateKey = template.id || template.name || `template-${index}`;
+                    const isSelectedTemplate = selectedTemplate === templateKey;
+
+                    return (
                     <MuiCard 
-                      key={template.id || index}
+                      key={templateKey}
                       sx={{ 
                         cursor: 'pointer',
-                        transition: 'all 0.2', '&:hover': {
+                        transition: 'all 0.2',
+                        border: isSelectedTemplate ? `1px solid ${theming.colors.primary}` : '1px solid transparent',
+                        '&:hover': {
                           transform: 'translateY(-1px)',
                           boxShadow: 2 }
                     }}
@@ -972,8 +1287,35 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
                           Type: {template.template_type || 'general'}
                         </Typography>
                       </CardContent>
+                      <CardActions sx={{ px: 2, pb: 2, pt: 0 }}>
+                        <Button size="small" onClick={() => loadTemplate(template)}>
+                          Bruk
+                        </Button>
+                        <Button
+                          size="small"
+                          startIcon={<CopyIcon />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setTemplate({
+                              id: `${template.id || `template-${index}`}-copy-${Date.now()}`,
+                              name: `${template.name || `Template ${index + 1}`} kopi`,
+                              category: template.template_type || 'general',
+                              subject: template.subject || 'Emnelinje',
+                              preheader: template.preheader || 'Preheader',
+                              context,
+                              components: parseHTMLToComponents(template.html_content || ''),
+                              globalStyles: defaultGlobalStyles,
+                            });
+                            setSelectedTemplate('');
+                            setActiveTab(0);
+                          }}
+                        >
+                          Kopier
+                        </Button>
+                      </CardActions>
                     </MuiCard>
-                  ))}
+                    );
+                  })}
                 </Stack>
               ) : (
                 <Typography variant="body2" color="text.secondary">

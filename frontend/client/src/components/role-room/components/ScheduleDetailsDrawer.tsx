@@ -45,7 +45,7 @@ const focusStyle = {
 
 // ── Status helpers ──
 
-export type ScheduleStatus = Schedule['status'];
+export type ScheduleStatus = NonNullable<Schedule['status']>;
 
 const STATUS_META: Record<
   ScheduleStatus,
@@ -56,6 +56,7 @@ const STATUS_META: Record<
   awaiting_callback: { label: 'Venter tilbakemelding', color: '#a855f7', bg: 'rgba(168,85,247,0.15)' },
   completed:         { label: 'Fullført',           color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
   cancelled:         { label: 'Kansellert',         color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+  pool:              { label: 'Pool',               color: '#94a3b8', bg: 'rgba(148,163,184,0.15)' },
 };
 
 // Build timeline: all statuses in lifecycle order
@@ -65,13 +66,24 @@ const STATUS_TIMELINE: ScheduleStatus[] = [
   'awaiting_callback',
   'completed',
   'cancelled',
+  'pool',
 ];
 
 // ── Component ──
 
 export interface ScheduleDetailsDrawerProps {
   open: boolean;
-  schedule: (Schedule & { candidateName?: string; roleName?: string; isFavorite?: boolean }) | null;
+  schedule: (Schedule & {
+    candidateId: string;
+    roleId: string;
+    date: string;
+    time: string;
+    location: string;
+    status: ScheduleStatus;
+    candidateName?: string;
+    roleName?: string;
+    isFavorite?: boolean;
+  }) | null;
   isFavorite: boolean;
   onClose: () => void;
   onEdit: (schedule: Schedule) => void;

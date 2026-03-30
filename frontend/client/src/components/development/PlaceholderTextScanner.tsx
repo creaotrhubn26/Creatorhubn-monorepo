@@ -228,7 +228,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
 
           <Grid container spacing={3}>
             <Grid item xs={12} md={3}>
-              <Card sx={{ bgcolor: 'rgba(25,255,255,0.9)', ...theming.getThemedCardSx() }}>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.96)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Typography variant="h3" sx={{ color: theming.colors.primary, mb: 1 }}>
                     {scanData.totalMatches}
@@ -242,7 +242,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
             </Grid>
 
             <Grid item xs={12} md={3}>
-              <Card sx={{ bgcolor: 'rgba(25,255,255,0.9)', ...theming.getThemedCardSx() }}>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.96)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Badge badgeContent={scanData.matchesBySeverity?.high || 0} color="error">
                     <Error sx={{ fontSize: 40, color: '#f44336' }} />
@@ -256,7 +256,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
             </Grid>
 
             <Grid item xs={12} md={3}>
-              <Card sx={{ bgcolor: 'rgba(25,255,255,0.9)', ...theming.getThemedCardSx() }}>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.96)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Badge badgeContent={scanData.matchesByType?.kommer_snart || 0} color="warning">
                     <Schedule sx={{ fontSize: 40, color: '#ff9800' }} />
@@ -270,7 +270,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
             </Grid>
 
             <Grid item xs={12} md={3}>
-              <Card sx={{ bgcolor: 'rgba(25,255,255,0.9)', ...theming.getThemedCardSx() }}>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.96)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     Sist skannet

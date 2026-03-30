@@ -41,6 +41,7 @@
     "test-integration": "tsx scripts/test-complete-integration.ts",
     "oauth:check": "node scripts/check-oauth-scopes.js",
     "oauth:update": "./scripts/update-oauth-scopes.sh",
+    "oauth:chat": "node regenerate-google-chat-token.js",
     "db:psql": "node -e \"require('dotenv').config({path: '.env.local'}); require('dotenv').config(); require('child_process').spawn('psql', [process.env.DATABASE_URL], {stdio: 'inherit'});\"",
     "db:health": "tsx server/scripts/database-health-check.ts",
     "db:check-missing": "tsx server/scripts/check-and-create-missing-tables.ts",

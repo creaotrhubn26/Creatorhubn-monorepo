@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { getEvendiBookings, getEvendiAnalyticsSummary, evendiQueryKeys } from '@/lib/evendi-api';
-import type { EvendiBooking, EvendiAnalyticsSummary } from '@/lib/evendi-api';
+import { getEvendiBookings, getEvendiAnalyticsSummary, evendiQueryKeys, type EvendiBooking, type EvendiAnalyticsSummary } from '@/lib/evendi-api';
 import { useAuth } from '@/hooks/useAuth';
 import type { 
   ShowcaseCategory, 
@@ -18,6 +17,7 @@ import type {
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
 import { useClientServicePricing } from '../../services/ClientServicePricingService';
+import { lightroomIntegrationService } from '../../services/lightroomIntegrationService';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import _getProfessionIcon from '@/utils/profession-icons';
@@ -42,11 +42,9 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 // New context imports
 import { useProject } from '../../contexts/ProjectContext';
-import type { UserSettings } from '../../contexts/SettingsContext';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings, type UserSettings } from '../../contexts/SettingsContext';
 import { useTheme as useCustomTheme } from '../../contexts/ThemeContext';
-import type { CollaborationParticipant } from '../../contexts/RealTimeContext';
-import { useRealTime } from '../../contexts/RealTimeContext';
+import { useRealTime, type CollaborationParticipant } from '../../contexts/RealTimeContext';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import {
@@ -1997,7 +1995,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           items: showcaseItems,
           profession,
           userId: effectiveUserId,
-          projectId: currentProject?.d,
+          projectId: currentProject?.id,
           projectName: currentProject?.title || currentProject?.name,
           clientName: currentProject?.clientName,
                // Comprehensive 180+ folder structure covering all CreatorHub Norge components
@@ -2101,7 +2099,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           items: showcaseItems,
           profession,
           userId: effectiveUserId,
-          projectId: currentProject?.d,
+          projectId: currentProject?.id,
           projectName: currentProject?.title || currentProject?.name,
           clientName: currentProject?.clientName,
           contactTypes: [
@@ -2128,7 +2126,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           to: 'all',
           priority: 'medium',
           data: {
-            projectId: currentProject?.d,
+            projectId: currentProject?.id,
             contactsCount: result.contacts?.length || 0,
             profession
           }
@@ -3384,6 +3382,100 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const openPricingModal = () => {
     setShowPricing(true);
 };
+
+  const primeSelectionForBatchWorkflow = useCallback(() => {
+    const explicitSelection = selectedBatchItems.size > 0
+      ? Array.from(selectedBatchItems)
+      : Array.from(selectedImages);
+    const fallbackSelection = selectedItem?.id ? [selectedItem.id] : [];
+    const targetIds = explicitSelection.length > 0 ? explicitSelection : fallbackSelection;
+
+    if (targetIds.length === 0) {
+      addNotification({ message: 'Velg minst ett element først.', type: 'warning' });
+      return [];
+    }
+
+    const nextSelection = new Set(targetIds);
+    setSelectedBatchItems(nextSelection);
+    setSelectedImages(nextSelection);
+    setBatchMode(true);
+    return targetIds;
+  }, [addNotification, selectedBatchItems, selectedImages, selectedItem]);
+
+  const handleExtractStems = useCallback(() => {
+    const targetIds = primeSelectionForBatchWorkflow();
+    if (targetIds.length === 0) return;
+
+    setSelectedAudioFormat('stems');
+    setShowExportDialog(true);
+    addNotification({
+      message: `Stem-eksport er klargjort for ${targetIds.length} spor. Fullfør eksportinnstillingene for å fortsette.`,
+      type: 'info',
+    });
+  }, [addNotification, primeSelectionForBatchWorkflow]);
+
+  const handleOpenAudioWatermarkDialog = useCallback(() => {
+    const targetIds = primeSelectionForBatchWorkflow();
+    if (targetIds.length === 0) return;
+
+    setShowVideoWatermarkDialog(true);
+    addNotification({
+      message: `Vannmerkeoppsettet er åpnet for ${targetIds.length} valgte filer.`,
+      type: 'info',
+    });
+  }, [addNotification, primeSelectionForBatchWorkflow]);
+
+  const handleOpenCollectionWorkflow = useCallback((mode: 'sample-pack' | 'bundle') => {
+    const targetIds = primeSelectionForBatchWorkflow();
+    if (targetIds.length === 0) return;
+
+    setShowCreateCollection(true);
+    addNotification({
+      message: mode === 'sample-pack'
+        ? `Opprett en samling for sample pack med ${targetIds.length} valgte filer.`
+        : `Opprett en bundle-samling med ${targetIds.length} valgte filer.`,
+      type: 'info',
+    });
+  }, [addNotification, primeSelectionForBatchWorkflow]);
+
+  const handleOpenVariantsWorkspace = useCallback(() => {
+    const targetIds = primeSelectionForBatchWorkflow();
+    if (targetIds.length === 0) return;
+
+    setShowVersionComparison(true);
+    addNotification({
+      message: `Variantvisningen er åpnet for ${targetIds.length} valgte filer.`,
+      type: 'info',
+    });
+  }, [addNotification, primeSelectionForBatchWorkflow]);
+
+  const handleOpenInventoryWorkspace = useCallback(() => {
+    const targetIds = primeSelectionForBatchWorkflow();
+    if (targetIds.length === 0) return;
+
+    setShowAnalytics(true);
+    addNotification({
+      message: `Analyse- og lageroversikten er åpnet for ${targetIds.length} valgte produkter.`,
+      type: 'info',
+    });
+  }, [addNotification, primeSelectionForBatchWorkflow]);
+
+  const handleReviewDuplicates = useCallback(() => {
+    const duplicateIds = Array.from(new Set(Array.from(duplicates.values()).flat()));
+    if (duplicateIds.length === 0) {
+      addNotification({ message: 'Ingen dubletter å gjennomgå akkurat nå.', type: 'info' });
+      return;
+    }
+
+    const nextSelection = new Set(duplicateIds);
+    setSelectedBatchItems(nextSelection);
+    setSelectedImages(nextSelection);
+    setBatchMode(true);
+    addNotification({
+      message: `${duplicates.size} dublettgrupper er valgt. Bruk batchhandlingslinjen for å rydde dem opp.`,
+      type: 'warning',
+    });
+  }, [addNotification, duplicates]);
 
   // Handle purchase/checkout
   const handleCheckout = async () => {
@@ -4917,6 +5009,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       music_producer: 'Link audio project files'
     };
     const [isDownloading, setIsDownloading] = useState(false);
+    const lightroomStatusQuery = useQuery({
+      queryKey: ['showcase-lightroom-plugin-status'],
+      queryFn: () => lightroomIntegrationService.getStatus(),
+      enabled: open,
+    });
 
     const professionConfig = getProfessionConfig();
     const professionCategories = getProfessionCategories();
@@ -4924,23 +5021,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     const handleDownloadPlugin = async () => {
       setIsDownloading(true);
       try {
-        const response = await fetch('/api/lightroom-routes/download-plugin');
-        if (response.ok) {
-          const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'CreatorHubNorge.lrplugin';
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
-          
-          setInstallStep(1); // Move to installation step
-    } else {
-          console.error('Failed to download plugin');
-    }
-  } catch (error) {
+        await lightroomIntegrationService.downloadPluginPackage(false);
+        setInstallStep(1);
+      } catch (error) {
         console.error('Download error:', error);
   } finally {
         setIsDownloading(false);
@@ -4957,8 +5040,36 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               📸 CreatorHub Norge Lightroom Plugin v2.0
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Direkte integrasjon mellom Lightroom og CreatorHub Norge showcase system
+              Direkte integrasjon mellom Lightroom, Google Drive og CreatorHub showcase
             </Typography>
+            {lightroomStatusQuery.data ? (
+              <>
+              <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                <Chip
+                  label={lightroomStatusQuery.data.workspaceConnected
+                    ? `Google Drive: ${lightroomStatusQuery.data.googleEmail || 'koblet'}`
+                    : 'Google Workspace mangler'}
+                  color={lightroomStatusQuery.data.workspaceConnected ? 'success' : 'warning'}
+                  variant="outlined"
+                />
+                <Chip
+                  label={`Kilde: ${lightroomStatusQuery.data.workspaceSource || 'ukjent'}`}
+                  color={lightroomStatusQuery.data.workspaceConnected ? 'info' : 'default'}
+                  variant="outlined"
+                />
+                <Chip
+                  label={`Token: ${lightroomStatusQuery.data.tokenPreview || 'ikke generert'}`}
+                  color={lightroomStatusQuery.data.connected ? 'info' : 'default'}
+                  variant="outlined"
+                />
+              </Box>
+              {lightroomStatusQuery.data.workspaceWarning ? (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  {lightroomStatusQuery.data.workspaceWarning}
+                </Alert>
+              ) : null}
+              </>
+            ) : null}
             {/* Display profession-specific instructions */}
             <Typography variant="body2" color="primary" sx={{ mb: 3, fontStyle: 'italic' }}>
               {professionInstructions[profession as keyof typeof professionInstructions] || 'Import your creative workflow'}
@@ -4999,7 +5110,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </li>
               <li>
                 <Typography variant="body2" sx={{ mb: 2 }}>
-                  Velg den nedlastede <strong>CreatorHubNorge.lrplugin</strong> filen
+                  Pakk ut zip-filen og velg mappen <strong>CreatorHubNorge.lrplugin</strong>
                 </Typography>
               </li>
               <li>
@@ -5022,7 +5133,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             <Box component="ol" sx={{ pl: 2 }}>
               <li>
                 <Typography variant="body2" sx={{ mb: 2 }}>
-                  I Library modulen, se etter <strong>"CreatorHub Norge"</strong> i Publish Services panel
+                  Bruk <strong>File → Export → CreatorHub Norge</strong> for å sende rendrede filer til Google Drive og showcase
                 </Typography>
               </li>
               <li>
@@ -5977,6 +6088,79 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     ]
   );
 
+  const workspaceProjectTitle = selectedProject?.title || currentProject?.title || currentProject?.name || 'Showcase oppfølging';
+  const workspaceClientEmail =
+    clientEmail
+    || (typeof currentProject?.clientEmail === 'string' ? currentProject.clientEmail : null);
+  const workspaceContactQuery =
+    workspaceClientEmail
+    || currentProject?.clientName
+    || selectedProject?.title
+    || null;
+  const workspaceDriveUrl = selectedProject?.driveUrl || currentProject?.driveUrl || null;
+
+  const handleOpenWorkspaceCalendar = useCallback(() => {
+    const title = encodeURIComponent(`${workspaceProjectTitle} · Showcase`);
+    const details = encodeURIComponent(
+      [
+        `Oppfølging for ${workspaceProjectTitle}.`,
+        workspaceClientEmail ? `Kunde: ${workspaceClientEmail}` : null,
+      ].filter(Boolean).join('\n')
+    );
+    window.open(
+      `https://calendar.google.com/calendar/u/0/r/eventedit?text=${title}&details=${details}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+    addNotification({ message: 'Google Calendar åpnet for showcase-oppfølging.', type: 'success' });
+  }, [addNotification, workspaceClientEmail, workspaceProjectTitle]);
+
+  const handleOpenWorkspaceContact = useCallback(() => {
+    if (!workspaceContactQuery) {
+      addNotification({ message: 'Velg et prosjekt eller legg til kunde-e-post først.', type: 'warning' });
+      return;
+    }
+
+    window.open(
+      `https://contacts.google.com/search/${encodeURIComponent(workspaceContactQuery)}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+    addNotification({ message: 'Google Contacts åpnet for denne showcase-konteksten.', type: 'success' });
+  }, [addNotification, workspaceContactQuery]);
+
+  const handleOpenWorkspaceEmail = useCallback(() => {
+    if (!workspaceClientEmail) {
+      addNotification({ message: 'Mangler kunde-e-post for å åpne e-postflyten.', type: 'warning' });
+      return;
+    }
+
+    const subject = encodeURIComponent(`Showcase · ${workspaceProjectTitle}`);
+    window.open(
+      `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(workspaceClientEmail)}&su=${subject}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+    addNotification({ message: 'Gmail compose åpnet for valgt kunde.', type: 'success' });
+  }, [addNotification, workspaceClientEmail, workspaceProjectTitle]);
+
+  const handleOpenWorkspaceDrive = useCallback(() => {
+    if (workspaceDriveUrl) {
+      window.open(workspaceDriveUrl, '_blank', 'noopener,noreferrer');
+      addNotification({ message: 'Google Drive-mappen er åpnet.', type: 'success' });
+      return;
+    }
+
+    if (selectedProject) {
+      setShowUploadComponent(true);
+      addNotification({ message: 'Drive er ikke koblet ennå. Opplasting åpnet for valgt prosjekt.', type: 'info' });
+      return;
+    }
+
+    setProjectSelectorOpen(true);
+    addNotification({ message: 'Velg et prosjekt for å åpne riktig kundemappe i Drive.', type: 'info' });
+  }, [addNotification, selectedProject, setProjectSelectorOpen, workspaceDriveUrl]);
+
   const handleQuickAction = useCallback((actionId: string) => {
     switch (actionId) {
       case 'toggle-demo':
@@ -6021,12 +6205,50 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       case 'open-analytics':
         setShowAnalytics(true);
         break;
+      case 'open-chat':
+        setShowDashboard(true);
+        addNotification({ message: 'Dashboard åpnet. Universal Chat Widget er tilgjengelig der.', type: 'info' });
+        break;
+      case 'open-calendar':
+        handleOpenWorkspaceCalendar();
+        break;
+      case 'open-contact':
+        handleOpenWorkspaceContact();
+        break;
+      case 'open-email':
+        handleOpenWorkspaceEmail();
+        break;
+      case 'open-drive':
+        handleOpenWorkspaceDrive();
+        break;
+      case 'open-pricing':
+        setShowDashboard(true);
+        addNotification({ message: 'Dashboard åpnet for prisadministrasjon og tilbud.', type: 'info' });
+        break;
+      case 'open-payment':
+        setShowDashboard(true);
+        addNotification({ message: 'Dashboard åpnet for betaling, tilbud og kontrakter.', type: 'info' });
+        break;
+      case 'open-store':
+        window.open('/marketplace', '_blank', 'noopener,noreferrer');
+        addNotification({ message: 'Marketplace åpnet i ny fane.', type: 'success' });
+        break;
       default:
         addNotification({ message: `Handling: ${actionId}`, type: 'info' });
         break;
     }
   }, [
     addNotification,
+    clientEmail,
+    currentProject?.clientEmail,
+    currentProject?.clientName,
+    currentProject?.driveUrl,
+    currentProject?.name,
+    currentProject?.title,
+    handleOpenWorkspaceCalendar,
+    handleOpenWorkspaceContact,
+    handleOpenWorkspaceDrive,
+    handleOpenWorkspaceEmail,
     isDemoMode,
     setBatchMode,
     setCommandPaletteOpen,
@@ -6038,6 +6260,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     setShowUploadComponent,
     setSidebarOpen,
     setShowComments,
+    selectedProject,
+    selectedProject?.title,
     toggleDemoMode,
     visualEditor
   ]);
@@ -6354,15 +6578,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           onExportSocial={() => setShowExportDialog(true)}
           onRenderPresets={() => setShowRenderPresets(true)}
           // Music producer actions
-          onExtractStems={() => console.log('Extract stems')}
-          onAudioWatermark={() => console.log('Audio watermark')}
+          onExtractStems={handleExtractStems}
+          onAudioWatermark={handleOpenAudioWatermarkDialog}
           onAnalyzeAudio={() => selectedItem && analyzeAudioContent(selectedItem)}
-          onAddToSamplePack={() => console.log('Add to sample pack')}
+          onAddToSamplePack={() => handleOpenCollectionWorkflow('sample-pack')}
           // Vendor actions
-          onAddToBundle={() => console.log('Add to bundle')}
-          onEditPricing={() => console.log('Edit pricing')}
-          onAddVariants={() => console.log('Add variants')}
-          onUpdateInventory={() => console.log('Update inventory')}
+          onAddToBundle={() => handleOpenCollectionWorkflow('bundle')}
+          onEditPricing={openPricingModal}
+          onAddVariants={handleOpenVariantsWorkspace}
+          onUpdateInventory={handleOpenInventoryWorkspace}
         />
       )}
 
@@ -6716,10 +6940,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   <Button 
                     color="inherit" 
                     size="small"
-                    onClick={() => {
-                      console.log('Duplicates found:', Array.from(duplicates.entries()));
-                      addNotification({ message: `${duplicates.size} duplicate groups found`, type: 'warning' });
-                    }}
+                    onClick={handleReviewDuplicates}
                   >
                     VIEW
                   </Button>
@@ -9533,7 +9754,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               fontWeight: 600,
               textTransform: 'none',
               border: '1px solid rgba(255,255,255,0.3)','&:hover': {
-                bgcolor: 'rgba(25,255,255,0.3)',
+                bgcolor: 'rgba(255,255,255,0.22)',
                 transform: 'translateY(-2px)',
           },
               transition: 'all 0.3s ease',
@@ -9574,7 +9795,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   textTransform: 'none',
                   fontWeight: 500,
                   color: 'white',
-                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+                  borderColor: 'rgba(255,255,255,0.24)','&:hover': { borderColor: 'white',}
             }}
               >
                 Render
@@ -9591,7 +9812,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   textTransform: 'none',
                   fontWeight: 500,
                   color: 'white',
-                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+                  borderColor: 'rgba(255,255,255,0.24)','&:hover': { borderColor: 'white',}
             }}
               >
                 Vannmerke
@@ -9608,7 +9829,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   textTransform: 'none',
                   fontWeight: 500,
                   color: 'white',
-                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+                  borderColor: 'rgba(255,255,255,0.24)','&:hover': { borderColor: 'white',}
             }}
               >
                 Proxy
@@ -9625,7 +9846,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   textTransform: 'none',
                   fontWeight: 500,
                   color: 'white',
-                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+                  borderColor: 'rgba(255,255,255,0.24)','&:hover': { borderColor: 'white',}
             }}
               >
                 Multicam
@@ -9642,7 +9863,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   textTransform: 'none',
                   fontWeight: 500,
                   color: 'white',
-                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+                  borderColor: 'rgba(255,255,255,0.24)','&:hover': { borderColor: 'white',}
             }}
               >
                 Kapitler
@@ -9659,7 +9880,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   textTransform: 'none',
                   fontWeight: 500,
                   color: 'white',
-                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+                  borderColor: 'rgba(255,255,255,0.24)','&:hover': { borderColor: 'white',}
             }}
               >
                 Sammenlign
@@ -9682,7 +9903,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   textTransform: 'none',
                   fontWeight: 500,
                   color: 'white',
-                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+                  borderColor: 'rgba(255,255,255,0.24)','&:hover': { borderColor: 'white',}
             }}
               >
                 Bryllup
@@ -9699,7 +9920,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   textTransform: 'none',
                   fontWeight: 500,
                   color: 'white',
-                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+                  borderColor: 'rgba(255,255,255,0.24)','&:hover': { borderColor: 'white',}
             }}
               >
                 Streaming
@@ -9716,7 +9937,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   textTransform: 'none',
                   fontWeight: 500,
                   color: 'white',
-                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+                  borderColor: 'rgba(255,255,255,0.24)','&:hover': { borderColor: 'white',}
             }}
               >
                 Analyse & Rapporter
@@ -9759,6 +9980,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               }}
             >
               <MenuItem value="master">Master</MenuItem>
+              <MenuItem value="stems">Stems</MenuItem>
               <MenuItem value="multicam">Multicam Sync</MenuItem>
               <MenuItem value="ambient">Ambient</MenuItem>
               <MenuItem value="music">Musikk</MenuItem>
@@ -9785,7 +10007,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               textTransform: 'none',
               fontWeight: 500,
               mb: 1,
-              borderColor: 'rgba(25,255,255,0.5)',
+              borderColor: 'rgba(255,255,255,0.24)',
               color: 'white','&:hover': { borderColor: '#', backgroundColor: 'rgba(25,205,210,0.1)' }
         }}
           >
@@ -9797,7 +10019,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             variant="text"
             onClick={() => setSelectedImages(new Set())}
             sx={{
-              color: 'rgba(25,255,255,0.8)',
+              color: 'rgba(255,255,255,0.82)',
               textTransform: 'none',
               fontWeight: 500}}
           >

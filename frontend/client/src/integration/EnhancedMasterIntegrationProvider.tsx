@@ -15,6 +15,7 @@ import { useGA4Tracking } from '../hooks/useGA4Tracking';
 import { PROFESSION_FEATURE_MATRIX } from '../../../shared/profession-feature-matrix';
 import { FEATURE_COMPONENT_MAP } from './feature-component-map';
 import { getFeatureMetadata } from './feature-metadata';
+import { isRoleRoomStandaloneRuntime } from '../components/role-room/utils/runtime';
 
 /**
  * Get impersonated access token via backend proxy
@@ -430,26 +431,30 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
 	      }
 
 	      // 2) Enrich from the backend professions API (dynamic / database-driven)
-	      try {
-	        const response = await fetch('/api/professions/all');
-	        if (response.ok) {
-	          const data = await response.json();
+        if (!isRoleRoomStandaloneRuntime()) {
+	        try {
+	          const response = await fetch('/api/professions/all');
+	          if (response.ok) {
+	            const data = await response.json();
 
-	          data.professions?.forEach((profession: any) => {
-	            if (profession.features && Array.isArray(profession.features)) {
-	              profession.features.forEach((featureId: string) => {
-	                allFeatures.add(featureId);
-	              });
-	            }
-	          });
+	            data.professions?.forEach((profession: any) => {
+	              if (profession.features && Array.isArray(profession.features)) {
+	                profession.features.forEach((featureId: string) => {
+	                  allFeatures.add(featureId);
+	                });
+	              }
+	            });
 
-	          console.log(
-	            `✅ Loaded ${allFeatures.size} features from profession-feature-matrix + ${data.professions?.length || 0} professions`
-	          );
+	            console.log(
+	              `✅ Loaded ${allFeatures.size} features from profession-feature-matrix + ${data.professions?.length || 0} professions`
+	            );
+	          }
+	        } catch (error) {
+	          console.warn('Could not fetch dynamic features from /api/professions/all, using matrix + base set:', error);
 	        }
-	      } catch (error) {
-	        console.warn('Could not fetch dynamic features from /api/professions/all, using matrix + base set:', error);
-	      }
+        } else {
+          console.log(`✅ Loaded ${allFeatures.size} features from profession-feature-matrix (standalone Role Room)`);
+        }
 
 	      // Update available features with the combined set
 	      setAvailableFeatures(allFeatures);

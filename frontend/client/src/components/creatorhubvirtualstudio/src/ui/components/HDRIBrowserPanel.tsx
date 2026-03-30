@@ -76,7 +76,7 @@ export function HDRIBrowserPanel({
     ? hdriEnvironmentService.getEnvironment(currentEnvironmentId)
     : null;
 
-  const getCategoryIcon = (category: string) => {
+  const getCategoryIcon = (category: string): React.ReactElement | undefined => {
     switch (category) {
       case 'studio':
         return <BusinessIcon fontSize="small" />;
@@ -87,7 +87,7 @@ export function HDRIBrowserPanel({
       case 'creative':
         return <PaletteIcon fontSize="small" />;
       default:
-        return null;
+        return undefined;
     }
   };
 
@@ -185,6 +185,12 @@ export function HDRIBrowserPanel({
               sx={{
                 border: currentEnvironmentId === env.id ? '2px solid #1976d2' : 'none'}}
             >
+              <CardMedia
+                component="img"
+                height="96"
+                image={env.thumbnailUrl}
+                alt={env.name}
+              />
               <CardContent sx={{ p: 1.5, pb: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
                   <Typography variant="body2" sx={{ fontWeight: 600}}>
@@ -228,4 +234,3 @@ export function HDRIBrowserPanel({
     </Box>
   );
 }
-

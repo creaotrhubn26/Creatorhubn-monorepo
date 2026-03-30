@@ -21,12 +21,14 @@ import {
   DialogActions,
   TextField,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
   MenuItem,
   Alert,
   Stack,
   IconButton,
+  Checkbox,
   useMediaQuery,
   useTheme,
   Grow,
@@ -47,12 +49,15 @@ import {
   Search as SearchIcon,
   InfoOutlined as InfoIcon,
   CheckCircle as CheckCircleIcon,
+  ContentCopy as ContentCopyIcon,
   CloudDone as CloudDoneIcon,
   CloudOff as CloudOffIcon,
   CloudQueue as CloudQueueIcon,
+  MailOutline as MailOutlineIcon,
   AttachMoney as AttachMoneyIcon,
   MovieFilter as MovieFilterIcon,
   PlayCircleOutline as PlayCircleIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 
 // Custom SVG icons for consistent visual language
@@ -96,6 +101,7 @@ import {
 } from '../../constants/producerDemo';
 import { useExternalData } from '@/services/ExternalDataService';
 import { useBrandingSettings } from '../../hooks/useBrandingSettings';
+import { buildClientPortalUrl } from '../../utils/clientPortal';
 import RoleRoomBrandMark from '../shared/RoleRoomBrandMark';
 
 // TROLL area configuration matching CastingPlannerPanel navigation colors/icons
@@ -243,6 +249,7 @@ export default function NewProjectCreationModal({
   const [draftKey, setDraftKey] = useState<string | null>(null);
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftKeyRef = useRef<string | null>(null);
+  const autoLoadedDraftKeyRef = useRef<string | null>(null);
   const [availableDrafts, setAvailableDrafts] = useState<Array<{ key: string; data: any; savedAt: number }>>([]);
   const [availableProjects, setAvailableProjects] = useState<Array<{ id: string; name: string; updatedAt: string }>>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
@@ -445,10 +452,14 @@ export default function NewProjectCreationModal({
   // This runs after draftKey is set
   useEffect(() => {
     if (!initialData && draftKey && !selectedDraftKey && !selectedProjectId) {
+      if (autoLoadedDraftKeyRef.current === draftKey) {
+        return;
+      }
       const loadDraft = async () => {
         try {
           const resolvedUserId = userId || getCurrentUserId();
           const draftData = await settingsService.getSetting<any>('casting-project-draft', { userId: resolvedUserId, projectId: draftKey });
+          autoLoadedDraftKeyRef.current = draftKey;
           if (draftData) {
             const draftAge = Date.now() - (draftData.savedAt || 0);
             const sevenDays = 7 * 24 * 60 * 60 * 1000;
@@ -469,6 +480,7 @@ export default function NewProjectCreationModal({
             }
           }
         } catch (error) {
+          autoLoadedDraftKeyRef.current = null;
           console.error('Error loading draft:', error);
         }
       };
@@ -658,6 +670,9 @@ export default function NewProjectCreationModal({
   const [addCollaboratorDialogOpen, setAddCollaboratorDialogOpen] = useState(false);
   const [editingCollaborator, setEditingCollaborator] = useState<{ id: string; name: string; email: string; role: ContributorRole; availabilityStart?: string; availabilityEnd?: string } | null>(null);
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+  const [clientInviteDialogOpen, setClientInviteDialogOpen] = useState(false);
+  const [showClientInviteAfterSave, setShowClientInviteAfterSave] = useState(true);
+  const [savedProjectIdForInvite, setSavedProjectIdForInvite] = useState<string | null>(null);
   const [newCollaboratorEmail, setNewCollaboratorEmail] = useState('');
   const [newCollaboratorName, setNewCollaboratorName] = useState('');
   const [newCollaboratorOrgNumber, setNewCollaboratorOrgNumber] = useState('');
@@ -775,6 +790,8 @@ export default function NewProjectCreationModal({
     const mappedData = mapInitialData();
     setProjectData(mappedData);
     setActiveStep(0);
+    setClientInviteDialogOpen(false);
+    setSavedProjectIdForInvite(null);
     
     // Set timestamp for new projects (to ensure consistent ID generation)
     if (!initialData || !initialData.id) {
@@ -843,6 +860,53 @@ export default function NewProjectCreationModal({
     );
   }, [isCastingPlanner, projectData.clientEmail, projectData.clientName, projectData.clientPhone, projectData.projectName]);
 
+  const inviteProjectId = savedProjectIdForInvite || projectData.projectId || initialData?.id || '';
+  const clientPortalInviteUrl = useMemo(() => (
+    inviteProjectId
+      ? buildClientPortalUrl(inviteProjectId, { tab: 'media', workspace: 'brief' })
+      : ''
+  ), [inviteProjectId]);
+
+  const canPrepareClientInvite = useMemo(() => (
+    isCastingPlanner &&
+    Boolean(inviteProjectId) &&
+    validateEmail(projectData.clientEmail || '')
+  ), [inviteProjectId, isCastingPlanner, projectData.clientEmail]);
+
+  const clientInviteSubject = useMemo(() => (
+    `Invitasjon til ${projectData.projectName || 'prosjektet ditt'} i Role Room`
+  ), [projectData.projectName]);
+
+  const clientInviteBody = useMemo(() => {
+    const greetingName = projectData.clientName?.trim() || 'hei';
+    const projectName = projectData.projectName?.trim() || 'prosjektet';
+    const projectLead = projectData.clientName?.trim() || 'prosjektansvarlig';
+    const projectLeadEmail = projectData.clientEmail?.trim();
+
+    return [
+      `Hei ${greetingName},`,
+      '',
+      `Du er invitert inn i Role Room for prosjektet "${projectName}".`,
+      '',
+      'I klientflaten kan du:',
+      '- fylle ut brief',
+      '- laste opp materiale og referanser',
+      '- se godkjenninger og neste steg',
+      '',
+      `Åpne klientflaten her: ${clientPortalInviteUrl || '[portal-lenke mangler]'}`,
+      '',
+      `Kontaktperson i prosjektet: ${projectLead}${projectLeadEmail ? ` (${projectLeadEmail})` : ''}`,
+      '',
+      'Hilsen',
+      'Role Room',
+    ].join('\n');
+  }, [
+    clientPortalInviteUrl,
+    projectData.clientEmail,
+    projectData.clientName,
+    projectData.projectName,
+  ]);
+
   const resetToFreshProjectDraft = () => {
     const freshData = mapInitialData();
     setProjectData(freshData);
@@ -859,10 +923,10 @@ export default function NewProjectCreationModal({
     toast.showInfo('Startet med nytt prosjektutkast.');
   };
 
-  const handleOrgNumberSearch = async () => {
-    const cleaned = newCollaboratorOrgNumber.replace(/[\s-]/g, '');
-    
-    if (!validateOrgNumber(newCollaboratorOrgNumber)) {
+  const lookupCollaboratorOrgNumber = useCallback(async (rawOrgNumber?: string) => {
+    const cleaned = (rawOrgNumber ?? newCollaboratorOrgNumber ?? '').replace(/[\s-]/g, '');
+
+    if (!validateOrgNumber(cleaned)) {
       setBrregError('Organisasjonsnummer må være 9 siffer');
       return;
     }
@@ -894,21 +958,26 @@ export default function NewProjectCreationModal({
     } finally {
       setBrregLoading(false);
     }
-  };
+  }, [getBRREGCompanyData, newCollaboratorEmail, newCollaboratorOrgNumber]);
 
-  const handleOrgNumberChange = (value: string) => {
+  const handleOrgNumberSearch = useCallback(async () => {
+    await lookupCollaboratorOrgNumber(newCollaboratorOrgNumber || '');
+  }, [lookupCollaboratorOrgNumber, newCollaboratorOrgNumber]);
+
+  const handleOrgNumberChange = useCallback((value: string) => {
     // Only allow digits, spaces, and dashes, max 11 characters (XXX XXX XXX format)
     const cleaned = value.replace(/[^\d\s-]/g, '');
     if (cleaned.replace(/[\s-]/g, '').length <= 9) {
-      setNewCollaboratorOrgNumber(formatOrgNumber(cleaned));
+      const formatted = formatOrgNumber(cleaned);
+      setNewCollaboratorOrgNumber(formatted);
       setBrregError(null);
       
       // Auto-search when 9 digits are entered
       if (cleaned.replace(/[\s-]/g, '').length === 9) {
-        handleOrgNumberSearch();
+        void lookupCollaboratorOrgNumber(formatted);
       }
     }
-  };
+  }, [lookupCollaboratorOrgNumber]);
 
   // Handle company name search with debounce
   useEffect(() => {
@@ -996,8 +1065,8 @@ export default function NewProjectCreationModal({
     setClientBrregError(null);
   }, []);
 
-  const handleClientOrgNumberSearch = useCallback(async () => {
-    const cleaned = (projectData.clientOrganizationNumber || '').replace(/[\s-]/g, '');
+  const lookupClientOrgNumber = useCallback(async (rawOrgNumber?: string) => {
+    const cleaned = (rawOrgNumber ?? projectData.clientOrganizationNumber ?? '').replace(/[\s-]/g, '');
     if (!validateOrgNumber(cleaned)) {
       setClientBrregError('Organisasjonsnummer må være 9 siffer');
       return;
@@ -1019,16 +1088,25 @@ export default function NewProjectCreationModal({
     }
   }, [applyClientCompanyFromBrreg, getBRREGCompanyData, projectData.clientOrganizationNumber]);
 
+  const handleClientOrgNumberSearch = useCallback(async () => {
+    await lookupClientOrgNumber(projectData.clientOrganizationNumber || '');
+  }, [lookupClientOrgNumber, projectData.clientOrganizationNumber]);
+
   const handleClientOrgNumberChange = useCallback((value: string) => {
     const cleaned = value.replace(/[^\d\s-]/g, '');
     if (cleaned.replace(/[\s-]/g, '').length <= 9) {
+      const formatted = formatOrgNumber(cleaned);
       setProjectData((prev) => ({
         ...prev,
-        clientOrganizationNumber: formatOrgNumber(cleaned),
+        clientOrganizationNumber: formatted,
       }));
       setClientBrregError(null);
+
+      if (cleaned.replace(/[\s-]/g, '').length === 9) {
+        void lookupClientOrgNumber(formatted);
+      }
     }
-  }, []);
+  }, [lookupClientOrgNumber]);
 
   const handleClientCompanySelect = useCallback(async (company: { organizationNumber: string; name: string } | null) => {
     if (!company) return;
@@ -1382,7 +1460,47 @@ export default function NewProjectCreationModal({
     toast,
   ]);
 
-  const handleSave = async () => {
+  const handleCopyClientPortalUrl = useCallback(async () => {
+    if (!clientPortalInviteUrl) {
+      toast.showError('Klientportal-lenken kunne ikke bygges for dette prosjektet.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(clientPortalInviteUrl);
+      toast.showSuccess('Klientportal-lenke kopiert.');
+    } catch (error) {
+      console.error('Failed to copy client portal url:', error);
+      toast.showError('Kunne ikke kopiere klientportal-lenken.');
+    }
+  }, [clientPortalInviteUrl, toast]);
+
+  const handleCopyClientInvite = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(`Emne: ${clientInviteSubject}\n\n${clientInviteBody}`);
+      toast.showSuccess('Klientinvitasjon kopiert.');
+    } catch (error) {
+      console.error('Failed to copy client invite:', error);
+      toast.showError('Kunne ikke kopiere klientinvitasjonen.');
+    }
+  }, [clientInviteBody, clientInviteSubject, toast]);
+
+  const handleOpenClientInviteEmail = useCallback(() => {
+    if (!validateEmail(projectData.clientEmail || '')) {
+      toast.showWarning('Legg inn en gyldig klient-epost før du sender invitasjonen.');
+      return;
+    }
+
+    const mailtoUrl = `mailto:${encodeURIComponent(projectData.clientEmail)}?subject=${encodeURIComponent(clientInviteSubject)}&body=${encodeURIComponent(clientInviteBody)}`;
+    window.location.href = mailtoUrl;
+  }, [clientInviteBody, clientInviteSubject, projectData.clientEmail, toast]);
+
+  const completeProjectCreatedFlow = useCallback(() => {
+    setClientInviteDialogOpen(false);
+    onClose?.();
+  }, [onClose]);
+
+  const handleSave = async (): Promise<boolean> => {
     setLoading(true);
     
     // Reset validation errors
@@ -1395,7 +1513,7 @@ export default function NewProjectCreationModal({
       if (!projectData.projectName || projectData.projectName.trim() === '') {
         toast.showWarning('Prosjektnavn er påkrevd');
         setLoading(false);
-        return;
+        return false;
       }
 
       // Validate prosjektansvarlig fields for The Role Room
@@ -1420,7 +1538,7 @@ export default function NewProjectCreationModal({
         if (hasErrors) {
           toast.showWarning('Vennligst fyll ut alle påkrevde felt');
           setLoading(false);
-          return;
+          return false;
         }
       }
 
@@ -1433,7 +1551,7 @@ export default function NewProjectCreationModal({
       if (!projectId) {
         toast.showError('Prosjekt-ID mangler. Vennligst last siden på nytt.');
         setLoading(false);
-        return;
+        return false;
       }
       
       // Map collaborators to crew for CastingPlanner compatibility
@@ -1528,7 +1646,7 @@ export default function NewProjectCreationModal({
           console.error('Failed to verify project in database after', maxRetries, 'attempts');
           toast.showError(`Prosjektet kunne ikke verifiseres i databasen etter ${maxRetries} forsøk. Teamavtalen ble ikke opprettet. Vennligst prøv å lagre prosjektet på nytt.`);
           setLoading(false);
-          return;
+          return false;
         }
       }
 
@@ -1579,23 +1697,36 @@ export default function NewProjectCreationModal({
 
       // Show success message
       setSuccessMessage(`Prosjektet "${projectData.projectName}" ble opprettet!`);
-      
+      setSavedProjectIdForInvite(finalProjectId || null);
+
+      const projectResponse = (typedResponse?.data || response) as Record<string, unknown>;
+      const normalizedProjectResponse = isCastingPlanner && finalProjectId
+        ? {
+            ...projectResponse,
+            id: finalProjectId,
+          }
+        : projectResponse;
+      const shouldOpenInvitePreview = (
+        showClientInviteAfterSave &&
+        isCastingPlanner &&
+        validateEmail(projectData.clientEmail || '') &&
+        Boolean(finalProjectId)
+      );
+
       // Clear draft after successful save
       clearDraft();
 
-      // Ensure the response includes the project ID for The Role Room
       if (onProjectCreated) {
-        const projectResponse = (typedResponse?.data || response) as Record<string, unknown>;
-        // For The Role Room, ensure ID is always set (use the one we sent if backend didn't return it)
-        if (isCastingPlanner && finalProjectId) {
-          onProjectCreated({
-            ...projectResponse,
-            id: finalProjectId, // Always use the ID we generated/sent
-          });
-        } else {
-          onProjectCreated(projectResponse);
-        }
+        onProjectCreated({
+          ...normalizedProjectResponse,
+          __deferCloseForInvite: shouldOpenInvitePreview,
+        });
       }
+
+      if (shouldOpenInvitePreview) {
+        setClientInviteDialogOpen(true);
+      }
+      return true;
     } catch (error: unknown) {
       console.error('Error creating project:', error);
       if (error instanceof Error) {
@@ -1615,6 +1746,7 @@ export default function NewProjectCreationModal({
         errorMessage = String(error);
       }
       toast.showError(`Feil ved opprettelse av prosjekt: ${errorMessage}`);
+      return false;
     } finally {
       setLoading(false);
     }
@@ -2049,29 +2181,80 @@ export default function NewProjectCreationModal({
                   Valgfritt: søk opp klientbedrift i Brønnøysundregistrene.
                 </Typography>
                 <Autocomplete
+                  freeSolo
                   fullWidth
                   options={clientCompanySearchOptions}
-                  getOptionLabel={(option) => `${option.name} (${formatOrgNumber(option.organizationNumber)})`}
-                  inputValue={clientCompanySearchQuery}
+                  filterOptions={(options) => options}
+                  getOptionLabel={(option) => typeof option === 'string'
+                    ? option
+                    : `${option.name} (${formatOrgNumber(option.organizationNumber)})`}
+                  inputValue={projectData.clientCompanyName || ''}
                   onInputChange={(_, newValue, reason) => {
-                    if (reason !== 'reset') {
-                      setClientCompanySearchQuery(newValue);
+                    if (reason === 'reset') {
+                      return;
+                    }
+                    setProjectData((prev) => ({
+                      ...prev,
+                      clientCompanyName: newValue,
+                    }));
+                    setClientCompanySearchQuery(newValue);
+                    if (clientBrregError) {
+                      setClientBrregError(null);
                     }
                   }}
                   onChange={(_, newValue) => {
+                    if (typeof newValue === 'string') {
+                      setProjectData((prev) => ({
+                        ...prev,
+                        clientCompanyName: newValue,
+                      }));
+                      setClientCompanySearchQuery(newValue);
+                      return;
+                    }
                     void handleClientCompanySelect(newValue);
                   }}
                   loading={clientCompanySearchLoading}
                   value={null}
-                  noOptionsText={clientCompanySearchQuery.length >= 3 ? 'Ingen bedrifter funnet' : 'Skriv minst 3 tegn for å søke'}
+                  noOptionsText={(projectData.clientCompanyName || '').trim().length >= 3 ? 'Ingen bedrifter funnet' : 'Skriv minst 3 tegn for å søke'}
+                  loadingText="Søker i BRREG..."
                   renderInput={(params) => (
                     <TextField
                       {...params}
                       fullWidth
-                      label="Søk klientbedrift"
-                      placeholder="Søk på bedriftsnavn"
+                      label="Klientbedrift"
+                      placeholder="Skriv bedriftsnavn for å søke i BRREG"
                     />
                   )}
+                  slotProps={{
+                    popper: {
+                      placement: 'bottom-start',
+                      modifiers: [
+                        {
+                          name: 'offset',
+                          options: {
+                            offset: [0, 4],
+                          },
+                        },
+                      ],
+                      sx: {
+                        zIndex: 100015,
+                        '& .MuiAutocomplete-paper': {
+                          bgcolor: '#1c2128',
+                          color: '#fff',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                        },
+                        '& .MuiAutocomplete-option': {
+                          '&:hover': {
+                            bgcolor: 'rgba(255,255,255,0.1)',
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'rgba(0,212,255,0.2)',
+                          },
+                        },
+                      },
+                    },
+                  }}
                 />
                 <TextField
                   label="Organisasjonsnummer (klient)"
@@ -2113,15 +2296,6 @@ export default function NewProjectCreationModal({
                         </IconButton>
                       </InputAdornment>
                     ) : null,
-                  }}
-                />
-                <TextField
-                  label="Klientbedrift"
-                  fullWidth
-                  value={projectData.clientCompanyName || ''}
-                  onChange={(e) => {
-                    setProjectData((prev) => ({ ...prev, clientCompanyName: e.target.value }));
-                    if (clientBrregError) setClientBrregError(null);
                   }}
                 />
                 <TextField
@@ -2985,17 +3159,30 @@ export default function NewProjectCreationModal({
               </Typography>
               <Stack spacing={2}>
                 <Autocomplete
+                  freeSolo
                   fullWidth
                   key={addCollaboratorDialogOpen ? 'open' : 'closed'}
                   options={companySearchOptions}
-                  getOptionLabel={(option) => `${option.name} (${formatOrgNumber(option.organizationNumber)})`}
+                  getOptionLabel={(option) => typeof option === 'string'
+                    ? option
+                    : `${option.name} (${formatOrgNumber(option.organizationNumber)})`}
                   inputValue={companySearchQuery}
                   onInputChange={(_, newValue, reason) => {
-                    if (reason !== 'reset') {
-                      setCompanySearchQuery(newValue);
+                    if (reason === 'reset') {
+                      return;
+                    }
+                    setCompanySearchQuery(newValue);
+                    if (brregError) {
+                      setBrregError(null);
                     }
                   }}
-                  onChange={(_, newValue) => handleCompanySelect(newValue)}
+                  onChange={(_, newValue) => {
+                    if (typeof newValue === 'string') {
+                      setCompanySearchQuery(newValue);
+                      return;
+                    }
+                    handleCompanySelect(newValue);
+                  }}
                   loading={companySearchLoading}
                   value={null}
                   noOptionsText={companySearchQuery.length >= 3 ? 'Ingen bedrifter funnet' : 'Skriv minst 3 tegn for å søke'}
@@ -3746,6 +3933,47 @@ export default function NewProjectCreationModal({
               </CardContent>
             </Card>
           </Stack>
+
+          {isCastingPlanner ? (
+            <Card sx={{ mt: 2.5, borderRadius: 3, bgcolor: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.22)' }}>
+              <CardContent sx={{ p: 2.25 }}>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.98rem', mb: 0.5 }}>
+                  Send klientinvitasjon etter opprettelse
+                </Typography>
+                <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.84rem', lineHeight: 1.55, mb: 1.1 }}>
+                  Når prosjektet er lagret, kan du åpne en invitasjonsvisning med portal-lenke og e-postpreview før du sender videre til klienten.
+                </Typography>
+                <FormControlLabel
+                  control={(
+                    <Checkbox
+                      checked={showClientInviteAfterSave}
+                      onChange={(event) => setShowClientInviteAfterSave(event.target.checked)}
+                      sx={{
+                        color: 'rgba(0,212,255,0.7)',
+                        '&.Mui-checked': { color: '#00d4ff' },
+                      }}
+                    />
+                  )}
+                  label={validateEmail(projectData.clientEmail || '')
+                    ? `Forhåndsvis og send invitasjon til ${projectData.clientEmail}`
+                    : 'Forhåndsvis klientinvitasjon etter lagring'}
+                  sx={{
+                    m: 0,
+                    alignItems: 'flex-start',
+                    '& .MuiFormControlLabel-label': {
+                      color: '#fff',
+                      fontSize: '0.9rem',
+                    },
+                  }}
+                />
+                {!validateEmail(projectData.clientEmail || '') ? (
+                  <Typography sx={{ color: 'rgba(255,255,255,0.66)', fontSize: '0.76rem', mt: 0.6 }}>
+                    Legg inn gyldig klient-e-post for å åpne e-postpreview automatisk.
+                  </Typography>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
         </DialogContent>
         <DialogActions
           sx={{
@@ -3774,11 +4002,11 @@ export default function NewProjectCreationModal({
           <Button
             variant="contained"
             onClick={async () => {
-              await handleSave();
-              // Delay closing to let user see success message
-              setTimeout(() => {
-                setSummaryModalOpen(false);
-              }, 1500);
+              const saved = await handleSave();
+              if (!saved) {
+                return;
+              }
+              setSummaryModalOpen(false);
             }}
             disabled={loading}
             startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
@@ -3799,6 +4027,174 @@ export default function NewProjectCreationModal({
           >
             {loading ? (initialData?.id ? 'Oppdaterer...' : 'Oppretter...') : (initialData?.id ? 'Bekreft og oppdater' : 'Bekreft og opprett')}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+
+      <Dialog
+        open={clientInviteDialogOpen}
+        onClose={completeProjectCreatedFlow}
+        maxWidth="md"
+        fullWidth
+        fullScreen={isMobile}
+        container={() => document.body}
+        TransitionComponent={Grow}
+        slotProps={{
+          paper: {
+            sx: {
+              bgcolor: '#1c2128',
+              color: '#fff',
+              zIndex: 100021,
+              m: { xs: 0, sm: 2, md: 3 },
+              borderRadius: { xs: 0, sm: 2 },
+            },
+          },
+        }}
+        sx={{
+          zIndex: 100020,
+          '& .MuiBackdrop-root': {
+            zIndex: 100019,
+            bgcolor: 'rgba(0,0,0,0.8)',
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            color: '#fff',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          Forhåndsvis klientinvitasjon
+          <IconButton onClick={completeProjectCreatedFlow} aria-label="Lukk invitasjonsvisning" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5 }}>
+          <Stack spacing={2}>
+            <Alert
+              severity="info"
+              icon={<VisibilityIcon />}
+              sx={{
+                bgcolor: 'rgba(0,212,255,0.08)',
+                border: '1px solid rgba(0,212,255,0.22)',
+                color: '#fff',
+                '& .MuiAlert-icon': { color: '#00d4ff' },
+              }}
+            >
+              Prosjektet er opprettet. Her kan du se invitasjonen før den sendes. I denne versjonen sendes den via ferdig utfylt e-post eller ved å kopiere teksten.
+            </Alert>
+
+            <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <CardContent>
+                <Stack spacing={1.25}>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>
+                      Til
+                    </Typography>
+                    <Typography sx={{ color: '#fff', fontWeight: 600 }}>
+                      {projectData.clientEmail || 'Mangler klient-e-post'}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>
+                      Emne
+                    </Typography>
+                    <Typography sx={{ color: '#fff', fontWeight: 600 }}>
+                      {clientInviteSubject}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>
+                      Klientportal
+                    </Typography>
+                    <Typography sx={{ color: '#93c5fd', wordBreak: 'break-all', fontSize: '0.86rem' }}>
+                      {clientPortalInviteUrl || 'Portal-lenke kunne ikke bygges ennå'}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+
+            <TextField
+              label="Invitasjonstekst"
+              value={clientInviteBody}
+              multiline
+              minRows={12}
+              fullWidth
+              InputProps={{ readOnly: true }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: '#fff',
+                  alignItems: 'flex-start',
+                  fontFamily: 'inherit',
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.25)' },
+                  '&.Mui-focused fieldset': { borderColor: '#00d4ff' },
+                },
+                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
+              }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions
+          sx={{
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+            p: { xs: 2, sm: 2.5 },
+            gap: 1,
+            flexDirection: { xs: 'column-reverse', sm: 'row' },
+            justifyContent: { xs: 'stretch', sm: 'space-between' },
+          }}
+        >
+          <Button
+            onClick={completeProjectCreatedFlow}
+            fullWidth={isMobile}
+            sx={{ color: 'rgba(255,255,255,0.87)', minHeight: TOUCH_TARGET_SIZE }}
+          >
+            Fortsett uten å sende
+          </Button>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
+            <Button
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() => { void handleCopyClientPortalUrl(); }}
+              fullWidth={isMobile}
+              sx={{ minHeight: TOUCH_TARGET_SIZE, textTransform: 'none', fontWeight: 700 }}
+            >
+              Kopier lenke
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() => { void handleCopyClientInvite(); }}
+              fullWidth={isMobile}
+              sx={{ minHeight: TOUCH_TARGET_SIZE, textTransform: 'none', fontWeight: 700 }}
+            >
+              Kopier invitasjon
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<MailOutlineIcon />}
+              onClick={() => {
+                handleOpenClientInviteEmail();
+                completeProjectCreatedFlow();
+              }}
+              disabled={!canPrepareClientInvite}
+              fullWidth={isMobile}
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                textTransform: 'none',
+                fontWeight: 700,
+                bgcolor: '#00d4ff',
+                color: '#000',
+                '&:hover': { bgcolor: '#00b8e6' },
+              }}
+            >
+              Send invite
+            </Button>
+          </Stack>
         </DialogActions>
       </Dialog>
 

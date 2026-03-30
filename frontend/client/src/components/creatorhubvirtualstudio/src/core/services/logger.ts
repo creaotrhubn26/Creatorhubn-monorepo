@@ -1,11 +1,10 @@
 /**
  * Virtual Studio Logger
- * 
- * Centralized logging with levels for production/development.
- * Replaces raw console.log calls across the codebase.
+ *
+ * Centralized logging with runtime-configurable levels.
  */
 
-export type LogLevel = 'debug, ' | 'info' | 'warn' | 'error' | 'none';
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'none';
 
 interface LoggerConfig {
   level: LogLevel;
@@ -24,6 +23,17 @@ interface LogEntry {
   data?: unknown;
 }
 
+declare global {
+  interface Window {
+    __VS_LOGGER__?: {
+      logger: VirtualStudioLogger;
+      setLevel: (level: LogLevel) => void;
+      getLogs: () => LogEntry[];
+      exportLogs: () => string;
+    };
+  }
+}
+
 const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
@@ -32,18 +42,24 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   none: 4,
 };
 
-const LOG_COLORS: Record<LogLevel, string> = {
+const LOG_COLORS: Record<Exclude<LogLevel, 'none'>, string> = {
   debug: '#888888',
   info: '#4CAF50',
   warn: '#FF9800',
   error: '#F44336',
-  none: '#000000',
 };
 
-class VirtualStudioLogger {
+const CONSOLE_METHODS: Record<Exclude<LogLevel, 'none'>, 'log' | 'info' | 'warn' | 'error'> = {
+  debug: 'log',
+  info: 'info',
+  warn: 'warn',
+  error: 'error',
+};
+
+export class VirtualStudioLogger {
   private config: LoggerConfig;
   private storedLogs: LogEntry[] = [];
-  private modules: Map<string, VirtualStudioLogger> = new Map();
+  private modules = new Map<string, VirtualStudioLogger>();
 
   constructor(config: Partial<LoggerConfig> = {}) {
     this.config = {
@@ -58,131 +74,92 @@ class VirtualStudioLogger {
   }
 
   private getDefaultLevel(): LogLevel {
-    // Production: only errors
-    // Development: all logs
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname;
       if (hostname === 'localhost' || hostname === '127.0.0.1') {
         return 'debug';
       }
     }
-    return 'warn'; // Production default
+
+    return 'warn';
   }
 
-  /**
-   * Set log level at runtime
-   */
   setLevel(level: LogLevel): void {
     this.config.level = level;
-    this.modules.forEach((module) => module.setLevel(level));
+    for (const moduleLogger of this.modules.values()) {
+      moduleLogger.setLevel(level);
+    }
   }
 
-  /**
-   * Create a scoped logger for a specific module
-   */
   module(name: string): VirtualStudioLogger {
-    if (this.modules.has(name)) {
-      return this.modules.get(name)!;
+    const existingLogger = this.modules.get(name);
+    if (existingLogger) {
+      return existingLogger;
     }
 
     const moduleLogger = new VirtualStudioLogger({
       ...this.config,
       prefix: `${this.config.prefix}:${name}`,
     });
+
     this.modules.set(name, moduleLogger);
     return moduleLogger;
   }
 
-  /**
-   * Debug level - verbose development info
-   */
   debug(message: string, data?: unknown): void {
-    this.log('debug, ', message, data);
+    this.log('debug', message, data);
   }
 
-  /**
-   * Info level - general information
-   */
   info(message: string, data?: unknown): void {
-    this.log('info,', message, data);
+    this.log('info', message, data);
   }
 
-  /**
-   * Warn level - potential issues
-   */
   warn(message: string, data?: unknown): void {
     this.log('warn', message, data);
   }
 
-  /**
-   * Error level - errors and failures
-   */
   error(message: string, data?: unknown): void {
     this.log('error', message, data);
   }
 
-  /**
-   * Group related logs
-   */
   group(label: string): void {
     if (this.shouldLog('debug')) {
       console.group(`[${this.config.prefix}] ${label}`);
     }
   }
 
-  /**
-   * End log group
-   */
   groupEnd(): void {
     if (this.shouldLog('debug')) {
       console.groupEnd();
     }
   }
 
-  /**
-   * Time an operation
-   */
   time(label: string): void {
     if (this.shouldLog('debug')) {
       console.time(`[${this.config.prefix}] ${label}`);
     }
   }
 
-  /**
-   * End timing
-   */
   timeEnd(label: string): void {
     if (this.shouldLog('debug')) {
       console.timeEnd(`[${this.config.prefix}] ${label}`);
     }
   }
 
-  /**
-   * Table display for data
-   */
   table(data: unknown): void {
     if (this.shouldLog('debug')) {
       console.table(data);
     }
   }
 
-  /**
-   * Get stored logs (for debugging/export)
-   */
   getLogs(): LogEntry[] {
     return [...this.storedLogs];
   }
 
-  /**
-   * Clear stored logs
-   */
   clearLogs(): void {
     this.storedLogs = [];
   }
 
-  /**
-   * Export logs as JSON
-   */
   exportLogs(): string {
     return JSON.stringify(this.storedLogs, null, 2);
   }
@@ -192,7 +169,7 @@ class VirtualStudioLogger {
   }
 
   private log(level: LogLevel, message: string, data?: unknown): void {
-    if (!this.shouldLog(level)) {
+    if (level === 'none' || !this.shouldLog(level)) {
       return;
     }
 
@@ -204,7 +181,6 @@ class VirtualStudioLogger {
       data,
     };
 
-    // Store log if persistence is enabled
     if (this.config.persistLogs) {
       this.storedLogs.push(entry);
       if (this.storedLogs.length > this.config.maxStoredLogs) {
@@ -212,37 +188,33 @@ class VirtualStudioLogger {
       }
     }
 
-    // Format message
     const timestamp = this.config.enableTimestamp
-      ? `[${entry.timestamp.toISOString().split('T')[1].slice(0, 8)}]`
-      : ', ';
+      ? `[${entry.timestamp.toISOString().split('T')[1]?.slice(0, 8) ?? '00:00:00'}]`
+      : '';
     const prefix = `[${this.config.prefix}]`;
-    const fullMessage = `${timestamp} ${prefix} ${message}`;
+    const formattedMessage = [timestamp, prefix, message].filter(Boolean).join(' ');
+    const consoleMethod = CONSOLE_METHODS[level];
 
-    // Output to console
-    const consoleMethod = level === 'debug' ? 'log' : level;
-    
     if (this.config.enableColors && typeof window !== 'undefined') {
       const color = LOG_COLORS[level];
       if (data !== undefined) {
-        console[consoleMethod](`%c${fullMessage}`, `color: ${color}`, data);
+        console[consoleMethod](`%c${formattedMessage}`, `color: ${color}`, data);
       } else {
-        console[consoleMethod](`%c${fullMessage}`, `color: ${color}`);
+        console[consoleMethod](`%c${formattedMessage}`, `color: ${color}`);
       }
+      return;
+    }
+
+    if (data !== undefined) {
+      console[consoleMethod](formattedMessage, data);
     } else {
-      if (data !== undefined) {
-        console[consoleMethod](fullMessage, data);
-      } else {
-        console[consoleMethod](fullMessage);
-      }
+      console[consoleMethod](formattedMessage);
     }
   }
 }
 
-// Create singleton instance
 export const logger = new VirtualStudioLogger();
 
-// Create module-specific loggers
 export const loggers = {
   scene: logger.module('Scene'),
   animation: logger.module('Animation'),
@@ -257,9 +229,8 @@ export const loggers = {
   error: logger.module('Error'),
 };
 
-// Development helper - expose to window
-if (typeof window !=='undefined') {
-  (window as any).__VS_LOGGER__ = {
+if (typeof window !== 'undefined') {
+  window.__VS_LOGGER__ = {
     logger,
     setLevel: (level: LogLevel) => logger.setLevel(level),
     getLogs: () => logger.getLogs(),
@@ -268,4 +239,3 @@ if (typeof window !=='undefined') {
 }
 
 export default logger;
-

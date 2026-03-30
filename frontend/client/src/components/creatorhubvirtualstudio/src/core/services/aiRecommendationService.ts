@@ -10,17 +10,27 @@
  * References:
  * - ASC Manual, 10th Edition
  * - "Film Lighting" by Kris Malkiewicz
- * -"Set Lighting Technician, 's Handbook" by Harry C. Box
+ * - "Set Lighting Technician's Handbook" by Harry C. Box
  */
 
 import type { LightSourceProperties } from '../types';
 import { logger } from './logger';
-import { sceneAnalysisService } from './sceneAnalysisService';
+import {
+  sceneAnalysisService,
+  type SceneAnalysisResult,
+  type SceneIssue,
+  type SceneOpportunity,
+} from './sceneAnalysisService';
+import {
+  lightingQualityScoreService,
+  type QualityScoreBreakdown,
+} from './lightingQualityScoreService';
 
-const log = logger.module('AIRecommendation, ');
-import { lightingQualityScoreService } from './lightingQualityScoreService';
+const log = logger.module('AIRecommendation');
 import { cinematographyPatternsService, type CinematographyPattern } from './cinematographyPatternsService';
 import { lightingMLService, type SceneFeatures, type MLRecommendation } from './lightingMLService';
+
+type RecommendationActionData = Record<string, string | number | boolean | undefined>;
 
 export interface AIRecommendation {
   id: string;
@@ -31,7 +41,7 @@ export interface AIRecommendation {
   reasoning: string;
   action: {
     type: 'apply-pattern' | 'adjust-light' | 'add-light' | 'remove-light' | 'learn-more';
-    data?: any;
+    data?: RecommendationActionData;
   };
   expectedImprovement: string;
   difficulty: 'easy' | 'medium' | 'hard';
@@ -55,9 +65,9 @@ class AIRecommendationService {
     try {
       await lightingMLService.initialize();
       this.useML = lightingMLService.isLoaded();
-      log.info(`AI Recommendations: ${this.useML ? 'ML-powered, ' : 'Heuristic-based'}`);
+      log.info(`AI Recommendations: ${this.useML ? 'ML-powered' : 'Heuristic-based'}`);
     } catch (error) {
-      log.warn('ML model failed to load, using heuristic recommendations');
+      log.warn('ML model failed to load, using heuristic recommendations', error);
       this.useML = false;
     }
   }
@@ -125,7 +135,7 @@ class AIRecommendationService {
    * Add ML-powered recommendations
    */
   private async addMLRecommendations(
-    analysis: any,
+    analysis: SceneAnalysisResult,
     lights: LightSourceProperties[],
     recommendations: AIRecommendation[]
   ): Promise<void> {
@@ -135,15 +145,15 @@ class AIRecommendationService {
       environment: this.inferEnvironment(analysis),
       mood: this.inferMood(analysis),
       lightCount: lights.length,
-      hasKeyLight: analysis.hasKeyLight,
-      hasFillLight: analysis.hasFillLight,
-      hasBackLight: analysis.hasBackLight,
+      hasKeyLight: analysis.summary.keyLights > 0,
+      hasFillLight: analysis.summary.fillLights > 0,
+      hasBackLight: analysis.summary.rimLights > 0,
       avgLightPower: this.calculateAvgPower(lights),
       avgColorTemp: this.calculateAvgColorTemp(lights),
     };
 
     // Get ML prediction
-    const mlRecommendation = await lightingMLService.predict(features);
+    const mlRecommendation: MLRecommendation = await lightingMLService.predict(features);
 
     // Add ML recommendation
     recommendations.push({
@@ -167,8 +177,8 @@ class AIRecommendationService {
         id: 'ml-add-lights',
         priority: 'medium',
         category: 'enhancement',
-        title: `Add ${mlRecommendation.adjustments.addLights} More Light${mlRecommendation.adjustments.addLights > 1 ? 's' : ', '}`,
-        description: `The ML model suggests adding ${mlRecommendation.adjustments.addLights} additional light source${mlRecommendation.adjustments.addLights > 1 ? 's' : ', '} to improve your setup.`,
+        title: `Add ${mlRecommendation.adjustments.addLights} More Light${mlRecommendation.adjustments.addLights > 1 ? 's' : ''}`,
+        description: `The ML model suggests adding ${mlRecommendation.adjustments.addLights} additional light source${mlRecommendation.adjustments.addLights > 1 ? 's' : ''} to improve your setup.`,
         reasoning: 'Current light count is below optimal for this scene type.',
         action: {
           type: 'add-light',
@@ -181,20 +191,20 @@ class AIRecommendationService {
   }
 
   // Helper methods for ML feature extraction
-  private inferSubjectType(analysis: any): 'portrait' | 'product' | 'commercial' {
+  private inferSubjectType(analysis: SceneAnalysisResult): 'portrait' | 'product' | 'commercial' {
     // Simple heuristic - can be improved with actual scene detection
-    if (analysis.lightCount <= 3) return 'portrait';
-    if (analysis.lightCount >= 6) return 'commercial';
+    if (analysis.summary.totalLights <= 3) return 'portrait';
+    if (analysis.summary.totalLights >= 6) return 'commercial';
     return 'product';
   }
 
-  private inferEnvironment(analysis: any): 'studio' | 'outdoor' | 'indoor' {
+  private inferEnvironment(_analysis: SceneAnalysisResult): 'studio' | 'outdoor' | 'indoor' {
     // Default to studio for now - can be improved with scene detection
     return 'studio';
   }
 
-  private inferMood(analysis: any): 'neutral' | 'dramatic' | 'soft' {
-    const keyFillRatio = analysis.keyFillRatio || 2;
+  private inferMood(analysis: SceneAnalysisResult): 'neutral' | 'dramatic' | 'soft' {
+    const keyFillRatio = analysis.summary.contrastRatio || 2;
     if (keyFillRatio > 4) return 'dramatic';
     if (keyFillRatio < 2) return 'soft';
     return 'neutral';
@@ -216,16 +226,19 @@ class AIRecommendationService {
     return patternId
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(', ');
+      .join(' ');
   }
 
   /**
    * Add recommendations for critical issues
    */
-  private addCriticalIssueRecommendations(analysis: any, recommendations: AIRecommendation[]) {
+  private addCriticalIssueRecommendations(
+    analysis: SceneAnalysisResult,
+    recommendations: AIRecommendation[],
+  ) {
     analysis.issues
-      .filter((issue: any) => issue.severity === 'critical')
-      .forEach((issue: any) => {
+      .filter((issue: SceneIssue) => issue.severity === 'critical')
+      .forEach((issue: SceneIssue) => {
         recommendations.push({
           id: `critical-${issue.id}`,
           priority: 'high',
@@ -246,11 +259,17 @@ class AIRecommendationService {
   /**
    * Add pattern recommendations
    */
-  private addPatternRecommendations(analysis: any, lights: LightSourceProperties[], recommendations: AIRecommendation[]) {
+  private addPatternRecommendations(
+    analysis: SceneAnalysisResult,
+    lights: LightSourceProperties[],
+    recommendations: AIRecommendation[],
+  ) {
     analysis.opportunities
-      .filter((opp: any) => opp.category === 'pattern' && opp.suggestedPattern)
-      .forEach((opp: any) => {
-        const pattern = cinematographyPatternsService.getPatternById(opp.suggestedPattern);
+      .filter((opp: SceneOpportunity) => opp.category === 'pattern' && Boolean(opp.suggestedPattern))
+      .forEach((opp: SceneOpportunity) => {
+        const pattern = opp.suggestedPattern
+          ? cinematographyPatternsService.getPatternById(opp.suggestedPattern)
+          : null;
         if (pattern) {
           recommendations.push({
             id: `pattern-${pattern.id}`,
@@ -273,10 +292,13 @@ class AIRecommendationService {
   /**
    * Add enhancement recommendations
    */
-  private addEnhancementRecommendations(analysis: any, recommendations: AIRecommendation[]) {
+  private addEnhancementRecommendations(
+    analysis: SceneAnalysisResult,
+    recommendations: AIRecommendation[],
+  ) {
     analysis.opportunities
-      .filter((opp: any) => opp.category === 'enhancement')
-      .forEach((opp: any) => {
+      .filter((opp: SceneOpportunity) => opp.category === 'enhancement')
+      .forEach((opp: SceneOpportunity) => {
         recommendations.push({
           id: `enhancement-${opp.id}`,
           priority: 'medium',
@@ -297,13 +319,16 @@ class AIRecommendationService {
   /**
    * Add learning recommendations
    */
-  private addLearningRecommendations(qualityScore: any, recommendations: AIRecommendation[]) {
+  private addLearningRecommendations(
+    qualityScore: QualityScoreBreakdown,
+    recommendations: AIRecommendation[],
+  ) {
     // Suggest learning based on weak areas
     const weakCategories = Object.entries(qualityScore.categories)
-      .filter(([_, data]: [string, any]) => data.score < 80)
-      .sort((a: any, b: any) => a[1].score - b[1].score);
+      .filter(([, data]) => data.score < 80)
+      .sort((a, b) => a[1].score - b[1].score);
 
-    weakCategories.slice(0, 2).forEach(([category, data]: [string, any]) => {
+    weakCategories.slice(0, 2).forEach(([category, data]) => {
       recommendations.push({
         id: `learn-${category}`,
         priority: 'low',
@@ -324,14 +349,19 @@ class AIRecommendationService {
   /**
    * Get suggested patterns based on analysis
    */
-  private getSuggestedPatterns(analysis: any, lights: LightSourceProperties[]): CinematographyPattern[] {
+  private getSuggestedPatterns(
+    analysis: SceneAnalysisResult,
+    lights: LightSourceProperties[],
+  ): CinematographyPattern[] {
     const patterns: CinematographyPattern[] = [];
 
     // Get patterns from opportunities
     analysis.opportunities
-      .filter((opp: any) => opp.suggestedPattern)
-      .forEach((opp: any) => {
-        const pattern = cinematographyPatternsService.getPatternById(opp.suggestedPattern);
+      .filter((opp: SceneOpportunity) => Boolean(opp.suggestedPattern))
+      .forEach((opp: SceneOpportunity) => {
+        const pattern = opp.suggestedPattern
+          ? cinematographyPatternsService.getPatternById(opp.suggestedPattern)
+          : null;
         if (pattern) patterns.push(pattern);
       });
 
@@ -356,11 +386,15 @@ class AIRecommendationService {
   /**
    * Generate summary text
    */
-  private generateSummary(qualityScore: any, analysis: any, recommendations: AIRecommendation[]): string {
+  private generateSummary(
+    qualityScore: QualityScoreBreakdown,
+    analysis: SceneAnalysisResult,
+    recommendations: AIRecommendation[],
+  ): string {
     const score = qualityScore.overall;
     const grade = qualityScore.grade;
-    const criticalIssues = analysis.issues.filter((i: any) => i.severity === 'critical').length;
-    const warnings = analysis.issues.filter((i: any) => i.severity === 'warning').length;
+    const criticalIssues = analysis.issues.filter((issue) => issue.severity === 'critical').length;
+    const warnings = analysis.issues.filter((issue) => issue.severity === 'warning').length;
 
     if (score >= 90) {
       return `Excellent work! Your lighting setup scores ${score}/100 (Grade ${grade}). ${recommendations.length > 0 ? 'A few minor tweaks could make it even better.' : 'Keep up the great work!'}`;
@@ -375,4 +409,3 @@ class AIRecommendationService {
 }
 
 export const aiRecommendationService = new AIRecommendationService();
-

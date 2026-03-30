@@ -12,7 +12,7 @@
  * - Social Proof: Rating stars, testimonial badges
  */
 
-import DOMPurify from 'isomorphic-dompurify';
+import DOMPurify from 'dompurify';
 
 // ============================================================================
 // HERO SECTION UTILITIES

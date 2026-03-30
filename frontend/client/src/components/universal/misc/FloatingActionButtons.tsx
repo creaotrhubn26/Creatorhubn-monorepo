@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
-import UniversalPrototypeFeedback from '../../prototype-testing/UniversalPrototypeFeedback';
 
 import {
   Fab,
@@ -27,10 +26,8 @@ import {
   CloudDone,
   NotificationAdd,
   SdCard,
-  Feedback,
   EventNote,
   Email,
-  Lightbulb,
   Tune,
   Chat,
   CalendarMonth,
@@ -46,11 +43,9 @@ interface FloatingActionButtonsProps {
   onAnalyticsOpen?: () => void;
   onDriveOpen?: () => void;
   onNotificationCenterOpen?: () => void;
-  onFeedbackOpen?: () => void;
   onEmailDesignerOpen?: () => void;
   onProjectWizardOpen?: () => void;
   onMemoryCardRecoveryOpen?: () => void;
-  onPhotographyTipsOpen?: () => void;
   // Integration props for universal workflow connectivity
   onMeetingCreate?: (meeting: any) => void;
   onProjectUpdate?: (project: any) => void;
@@ -83,11 +78,9 @@ export default function FloatingActionButtons({
   onAnalyticsOpen,
   onDriveOpen,
   onNotificationCenterOpen,
-  onFeedbackOpen,
   onEmailDesignerOpen,
   onProjectWizardOpen,
   onMemoryCardRecoveryOpen,
-  onPhotographyTipsOpen,
   onChatOpen,
   onCalendarOpen,
   onClientManagementOpen,
@@ -100,7 +93,6 @@ export default function FloatingActionButtons({
 }: FloatingActionButtonsProps) {
   const [open, setOpen] = useState(false);
   const [showInfoMessage, setShowInfoMessage] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [clickedAction, setClickedAction] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [organizerDialogOpen, setOrganizerDialogOpen] = useState(false);
@@ -256,7 +248,6 @@ export default function FloatingActionButtons({
       { name: 'analytics', icon: <Analytics />, action: () => onAnalyticsOpen?.() },
       { name: 'drive-backup', icon: <CloudDone />, action: () => onDriveOpen?.() },
       { name: 'varslingssenter', icon: <NotificationAdd />, action: () => onNotificationCenterOpen?.() },
-      { name: 'tilbakemeldinger', icon: <Feedback />, action: () => onFeedbackOpen?.() ?? setFeedbackOpen(true) },
       { name: 'e-post-designer', icon: <Email />, action: () => onEmailDesignerOpen?.() },
       { name: 'klient-management', icon: <Group />, action: () => onClientManagementOpen?.() },
       { name: 'google-photos', icon: <PhotoLibrary />, action: () => onGooglePhotosOpen?.() }
@@ -268,8 +259,7 @@ export default function FloatingActionButtons({
 
     if (profession === 'photographer') {
       professionActions.push(
-        { name: 'minnekort-gjenoppretting', icon: <SdCard />, action: () => onMemoryCardRecoveryOpen?.() },
-        { name: 'fotograferingstips', icon: <Lightbulb />, action: () => onPhotographyTipsOpen?.() }
+        { name: 'minnekort-gjenoppretting', icon: <SdCard />, action: () => onMemoryCardRecoveryOpen?.() }
       );
     } else if (profession === 'videographer') {
       professionActions.push(
@@ -652,15 +642,6 @@ export default function FloatingActionButtons({
           `}
         </style>
       </Box>
-
-      {/* Universal Prototype Feedback */}
-      <UniversalPrototypeFeedback
-        profession={profession}
-        component="FloatingActionButtons"
-        isFloating={false}
-        open={feedbackOpen}
-        onClose={() => setFeedbackOpen(false)}
-      />
     </Box>
   );
 }

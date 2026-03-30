@@ -15,17 +15,18 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  ContentCopy as ContentCopyIcon,
-  Launch as LaunchIcon,
   RateReview as RateReviewIcon,
   Send as SendIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import type {
   CastingProject,
+  ProducerAccountAccessPlatform,
+  ProducerBrandLogoVariantSelection,
   ProducerClientIntake,
   ProducerClientMaterial,
   ProducerClientMaterialType,
+  ProducerProjectPlanning,
   RoleRoomGoogleAgreementSignatureStatus,
   ProducerWorkflowProjectMeta,
   ProducerWorkflowProjectStatus,
@@ -42,6 +43,7 @@ import {
   projectAgreementsApi,
   type ProjectAgreement,
 } from '../../services/castingApiService';
+import castingService from '../../services/castingService';
 import {
   emitProjectAgreementEvent,
   onProjectAgreementEvent,
@@ -69,7 +71,6 @@ import {
   type ProducerWorkflowEntityOption,
 } from '../../utils/producerWorkflow';
 import {
-  buildClientPortalUrl,
   getAgreementSignatureLabel,
   getAgreementSignatureTone,
   getAgreementTypeLabel,
@@ -78,17 +79,25 @@ import {
   PROJECT_AGREEMENT_STATUS_LABELS,
 } from '../../utils/projectAgreements';
 import {
+  getProducerAccountAccessPlatformFromMomentId,
+  getProducerContentLogicMomentKind,
   getProducerClientContributionTasks,
+  PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS,
+  PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS,
+  PRODUCER_BRAND_LOGO_VARIANT_LABELS,
   getProducerWorkspaceLocationForSurface,
   getProducerWorkspaceSurfaceForContributionSource,
+  resolveProducerBrandLogoVariant,
   getProducerStrategySnapshot,
   mergeProducerPlanningClientMomentsWithReviews,
+  PRODUCER_CONTENT_LOGIC_MOMENT_LABELS,
   PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS,
   PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS,
   PRODUCER_PLANNING_CLIENT_MOMENT_LABELS,
   normalizeProducerProjectPlanning,
 } from '../../utils/producerProjectPlanning';
-import type { ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
+import { buildClientPortalUrl, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
 
 interface ProducerClientReviewPanelProps {
   projectId: string;
@@ -183,6 +192,13 @@ const PROJECT_WORKFLOW_STATUS_COLORS: Record<ProducerWorkflowProjectStatus, { co
     border: 'rgba(52,211,153,0.45)',
   },
 };
+const DELIVERY_LOGO_SELECTION_OPTIONS: Array<{ value: ProducerBrandLogoVariantSelection; label: string }> = [
+  { value: 'auto', label: 'Bruk anbefalt variant' },
+  { value: 'primary', label: `Tving ${PRODUCER_BRAND_LOGO_VARIANT_LABELS.primary}` },
+  { value: 'light', label: `Tving ${PRODUCER_BRAND_LOGO_VARIANT_LABELS.light}` },
+  { value: 'dark', label: `Tving ${PRODUCER_BRAND_LOGO_VARIANT_LABELS.dark}` },
+  { value: 'icon', label: `Tving ${PRODUCER_BRAND_LOGO_VARIANT_LABELS.icon}` },
+];
 
 const asRecord = (value: unknown): Record<string, unknown> => (
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -217,6 +233,79 @@ function getDefaultTargetEntityType(reviewType: string): string {
   return PRODUCER_REVIEW_TYPE_OPTIONS.find((option) => option.value === reviewType)?.defaultTargetEntityType ?? '';
 }
 
+function readPlanningMomentIdFromReview(review: ProducerClientReview): string | null {
+  const metadata = asRecord(review.metadata);
+  const planningMomentId = readFirstNonEmptyString(metadata.planningMomentId, review.target_entity_id);
+  return planningMomentId || null;
+}
+
+function readLinkedDeliveryIdsFromReview(review: ProducerClientReview): string[] {
+  const metadata = asRecord(review.metadata);
+  const candidateArrays = [
+    metadata.deliveryItemIds,
+    metadata.contentCalendarItemIds,
+    metadata.linkedDeliveryIds,
+  ];
+  for (const candidate of candidateArrays) {
+    if (Array.isArray(candidate)) {
+      return candidate
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .map((value) => value.trim());
+    }
+  }
+  const planningMomentId = readPlanningMomentIdFromReview(review);
+  if (planningMomentId?.startsWith('content:')) {
+    return [planningMomentId.replace(/^content:/, '').trim()].filter((value) => value.length > 0);
+  }
+  return [];
+}
+
+function normalizeAccountAccessPlatform(value: unknown): ProducerAccountAccessPlatform | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized in PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS) {
+    return normalized as ProducerAccountAccessPlatform;
+  }
+  return null;
+}
+
+function readAccountAccessPlatformsFromReview(review: ProducerClientReview): ProducerAccountAccessPlatform[] {
+  const metadata = asRecord(review.metadata);
+  const platforms = new Set<ProducerAccountAccessPlatform>();
+  const candidateArrays = [
+    metadata.accountAccessPlatforms,
+    metadata.account_access_platforms,
+  ];
+
+  for (const candidate of candidateArrays) {
+    if (!Array.isArray(candidate)) {
+      continue;
+    }
+    candidate.forEach((value) => {
+      const platform = normalizeAccountAccessPlatform(value);
+      if (platform) {
+        platforms.add(platform);
+      }
+    });
+  }
+
+  const directPlatform = normalizeAccountAccessPlatform(
+    readFirstNonEmptyString(metadata.accountAccessPlatform, metadata.account_access_platform),
+  );
+  if (directPlatform) {
+    platforms.add(directPlatform);
+  }
+
+  const fromMomentId = getProducerAccountAccessPlatformFromMomentId(readPlanningMomentIdFromReview(review));
+  if (fromMomentId) {
+    platforms.add(fromMomentId);
+  }
+
+  return Array.from(platforms);
+}
+
 function normalizeApprovalTemplate(reviewType?: string | null): ProducerWorkflowApprovalTemplate | undefined {
   if (reviewType === 'storyboard' || reviewType === 'manuscript' || reviewType === 'shotlist') {
     return reviewType;
@@ -238,6 +327,111 @@ function getGoogleSignatureStatusFromDecision(
     return 'changes_requested';
   }
   return 'rejected';
+}
+
+function getContentLogicMomentKindForReview(review: ProducerClientReview): ReturnType<typeof getProducerContentLogicMomentKind> {
+  const metadata = asRecord(review.metadata);
+  const planningMomentId = readFirstNonEmptyString(metadata.planningMomentId, review.target_entity_id);
+  return getProducerContentLogicMomentKind(planningMomentId);
+}
+
+function getAccountAccessPlatformsForReview(review: ProducerClientReview): ProducerAccountAccessPlatform[] {
+  return readAccountAccessPlatformsFromReview(review);
+}
+
+function getDecisionCopyForReview(review: ProducerClientReview): {
+  labels: Record<ProducerReviewDecision, string>;
+  placeholder: string;
+  helper: string | null;
+} {
+  if (getAccountAccessPlatformsForReview(review).length > 0) {
+    return {
+      labels: {
+        approved: 'Bekreft kontotilgang',
+        changes_requested: 'Be om ny tilgang',
+        rejected: 'Avvis tilgangsoppsett',
+      },
+      placeholder: 'Hva mangler for at tilgang eller invitasjon kan fullføres? (valgfritt)',
+      helper: 'Denne beslutningen gjelder sikker tilgang til publiseringskontoer uten delte passord eller 2-faktor-koder.',
+    };
+  }
+  const contentLogicMomentKind = getContentLogicMomentKindForReview(review);
+  if (contentLogicMomentKind === 'hook') {
+    return {
+      labels: {
+        approved: 'Godkjenn hook',
+        changes_requested: 'Be om ny hook',
+        rejected: 'Avvis hook',
+      },
+      placeholder: 'Hva må endres i hooken? (valgfritt)',
+      helper: 'Denne beslutningen gjelder åpningsgrepet og hvordan innholdet skal fange oppmerksomheten.',
+    };
+  }
+  if (contentLogicMomentKind === 'cta') {
+    return {
+      labels: {
+        approved: 'Godkjenn CTA',
+        changes_requested: 'Be om ny CTA',
+        rejected: 'Avvis CTA',
+      },
+      placeholder: 'Hva må endres i CTA eller distribusjon? (valgfritt)',
+      helper: 'Denne beslutningen gjelder hva publikum skal gjøre videre og hvordan innholdet leder dit.',
+    };
+  }
+  if (contentLogicMomentKind === 'proof') {
+    return {
+      labels: {
+        approved: 'Godkjenn bevis',
+        changes_requested: 'Be om nye bevis',
+        rejected: 'Avvis bevis',
+      },
+      placeholder: 'Hva mangler i bevisene eller argumentasjonen? (valgfritt)',
+      helper: 'Denne beslutningen gjelder hvilke argumenter, fakta eller eksempler som må støtte budskapet.',
+    };
+  }
+  return {
+    labels: {
+      approved: 'Godkjenn',
+      changes_requested: 'Be om endringer',
+      rejected: 'Avslå',
+    },
+    placeholder: 'Beslutningsnotat (valgfritt)',
+    helper: null,
+  };
+}
+
+function getReviewClientInviteActionLabel(
+  contentLogicMomentKind: ReturnType<typeof getProducerContentLogicMomentKind>,
+  review?: ProducerClientReview,
+): string {
+  if (review && getAccountAccessPlatformsForReview(review).length > 0) {
+    return 'Bekreft kontotilgang';
+  }
+  if (contentLogicMomentKind === 'hook') {
+    return 'Ta stilling til hooken';
+  }
+  if (contentLogicMomentKind === 'cta') {
+    return 'Ta stilling til CTA og neste handling';
+  }
+  if (contentLogicMomentKind === 'proof') {
+    return 'Ta stilling til bevis og argumentasjon';
+  }
+  return 'Gå gjennom saken';
+}
+
+function buildReviewClientInviteEmailSubject(
+  projectName: string,
+  review: ProducerClientReview,
+): string {
+  const accountAccessPlatforms = getAccountAccessPlatformsForReview(review);
+  if (accountAccessPlatforms.length > 0) {
+    return `${projectName} · Kontotilgang · ${accountAccessPlatforms.map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]).join(' / ')}`;
+  }
+  const contentLogicMomentKind = getContentLogicMomentKindForReview(review);
+  if (contentLogicMomentKind) {
+    return `${projectName} · Content Logic · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}`;
+  }
+  return `${projectName} · Klientreview · ${review.title}`;
 }
 
 export default function ProducerClientReviewPanel({
@@ -274,13 +468,17 @@ export default function ProducerClientReviewPanel({
   const [newTargetEntityId, setNewTargetEntityId] = useState('');
   const [commentDraftByReview, setCommentDraftByReview] = useState<Record<string, string>>({});
   const [commentTimestampByReview, setCommentTimestampByReview] = useState<Record<string, string>>({});
+  const [expandedCommentsByReview, setExpandedCommentsByReview] = useState<Record<string, boolean>>({});
   const [decisionReasonByReview, setDecisionReasonByReview] = useState<Record<string, string>>({});
   const [decisionTimestampByReview, setDecisionTimestampByReview] = useState<Record<string, string>>({});
+  const [deliveryLogoSelectionByDeliveryId, setDeliveryLogoSelectionByDeliveryId] = useState<Record<string, ProducerBrandLogoVariantSelection>>({});
+  const [savingDeliveryLogoById, setSavingDeliveryLogoById] = useState<Record<string, boolean>>({});
   const [pendingFocus, setPendingFocus] = useState<ProducerWorkflowFocusPayload | null>(null);
   const [highlightedReviewId, setHighlightedReviewId] = useState<string | null>(null);
   const useLocalFallback = shouldUseRoleRoomLocalFallback();
   const isEconomyManagedDraftType = ECONOMY_MANAGED_REVIEW_TYPES.has(newType);
   const selectedApprovalTemplate = normalizeApprovalTemplate(newType);
+  const canAdjustDeliveryLogoSelection = canEdit || canDecide;
 
   const distinctEntityTypes = useMemo(() => {
     const seen = new Set<string>();
@@ -314,6 +512,61 @@ export default function ProducerClientReviewPanel({
     () => (project ? normalizeProducerProjectPlanning(project) : null),
     [project],
   );
+  useEffect(() => {
+    if (!producerPlanning) {
+      setDeliveryLogoSelectionByDeliveryId({});
+      return;
+    }
+    setDeliveryLogoSelectionByDeliveryId(
+      producerPlanning.contentCalendar.reduce<Record<string, ProducerBrandLogoVariantSelection>>((accumulator, item) => {
+        accumulator[item.id] = item.logoVariantSelection ?? 'auto';
+        return accumulator;
+      }, {}),
+    );
+  }, [producerPlanning]);
+  const producerPlanningWithLocalLogoSelections = useMemo<ProducerProjectPlanning | null>(() => {
+    if (!producerPlanning) {
+      return null;
+    }
+    return {
+      ...producerPlanning,
+      contentCalendar: producerPlanning.contentCalendar.map((item) => ({
+        ...item,
+        logoVariantSelection: deliveryLogoSelectionByDeliveryId[item.id] ?? item.logoVariantSelection ?? 'auto',
+      })),
+    };
+  }, [deliveryLogoSelectionByDeliveryId, producerPlanning]);
+  const deliveryItemsByPlanningMomentId = useMemo(() => {
+    const lookup = new Map<string, ProducerProjectPlanning['contentCalendar'][number]>();
+    if (!producerPlanningWithLocalLogoSelections) {
+      return lookup;
+    }
+    producerPlanningWithLocalLogoSelections.contentCalendar.forEach((item) => {
+      lookup.set(`content:${item.id}`, item);
+    });
+    return lookup;
+  }, [producerPlanningWithLocalLogoSelections]);
+  const deliveryItemsById = useMemo(() => {
+    const lookup = new Map<string, ProducerProjectPlanning['contentCalendar'][number]>();
+    if (!producerPlanningWithLocalLogoSelections) {
+      return lookup;
+    }
+    producerPlanningWithLocalLogoSelections.contentCalendar.forEach((item) => {
+      lookup.set(item.id, item);
+    });
+    return lookup;
+  }, [producerPlanningWithLocalLogoSelections]);
+  const availableLogoVariantTypes = useMemo(
+    () => new Set((producerPlanningWithLocalLogoSelections?.brandGuide.logoVariants ?? []).map((item) => item.type)),
+    [producerPlanningWithLocalLogoSelections?.brandGuide.logoVariants],
+  );
+  const accountAccessEntriesByPlatform = useMemo(() => {
+    const lookup = new Map<ProducerAccountAccessPlatform, ProducerProjectPlanning['accountAccess']['entries'][number]>();
+    producerPlanning?.accountAccess.entries.forEach((entry) => {
+      lookup.set(entry.platform, entry);
+    });
+    return lookup;
+  }, [producerPlanning?.accountAccess.entries]);
   const clientBriefReadyCount = useMemo(
     () => [
       clientIntake.projectGoal,
@@ -348,6 +601,19 @@ export default function ProducerClientReviewPanel({
       : [],
     [clientIntake, clientMaterials, producerPlanning],
   );
+  const clientInviteEmailStatus = useMemo(() => {
+    const email = readFirstNonEmptyString(clientIntake.contactEmail);
+    if (email) {
+      return {
+        tone: 'ready' as const,
+        text: `E-postutkast går til ${email}.`,
+      };
+    }
+    return {
+      tone: 'warning' as const,
+      text: 'Kontakt-e-post mangler i briefen. E-postutkast åpnes uten mottaker.',
+    };
+  }, [clientIntake.contactEmail]);
   const getWorkspaceFocusForReview = useCallback((review: ProducerClientReview): ClientPortalWorkspaceFocus => {
     const metadata = asRecord(review.metadata);
     const targetEntityType = readFirstNonEmptyString(
@@ -358,8 +624,19 @@ export default function ProducerClientReviewPanel({
     const linkedAgreement = review.target_entity_type === 'project_agreement' && review.target_entity_id
       ? agreementsById[review.target_entity_id]
       : undefined;
+    const meetingItemId = readFirstNonEmptyString(
+      metadata.meetingItemId,
+      metadata.meeting_item_id,
+      review.target_entity_type === 'meeting_decision' ? review.target_entity_id : undefined,
+    );
     const workspace = targetEntityType === 'client_material'
       ? 'materials'
+      : targetEntityType === 'account_access' || review.review_type === 'account_access'
+        ? 'accounts'
+      : targetEntityType === 'content_calendar'
+        ? 'brand'
+      : targetEntityType === 'meeting_decision'
+        ? 'meetings'
       : targetEntityType === 'project_agreement'
           || review.review_type === 'budget_package'
           || review.review_type === 'client_approval'
@@ -376,6 +653,8 @@ export default function ProducerClientReviewPanel({
       pageId: location?.pageId,
       artifactId: targetEntityType === 'project_agreement'
         ? getAgreementWorkspaceArtifactId(linkedAgreement)
+        : targetEntityType === 'meeting_decision'
+          ? (meetingItemId ? `meeting-decision:${meetingItemId}` : undefined)
         : targetEntityType === 'client_material'
           ? review.target_entity_id ?? undefined
           : undefined,
@@ -463,6 +742,14 @@ export default function ProducerClientReviewPanel({
     const location = getProducerWorkspaceLocationForSurface(producerPlanning?.workspaceNavigation, 'brief');
     return {
       workspace: 'brief',
+      sectionId: location?.sectionId,
+      pageId: location?.pageId,
+    };
+  }, [producerPlanning?.workspaceNavigation]);
+  const accountWorkspaceFocus = useMemo<ClientPortalWorkspaceFocus>(() => {
+    const location = getProducerWorkspaceLocationForSurface(producerPlanning?.workspaceNavigation, 'accounts');
+    return {
+      workspace: 'accounts',
       sectionId: location?.sectionId,
       pageId: location?.pageId,
     };
@@ -608,6 +895,46 @@ export default function ProducerClientReviewPanel({
     const seconds = Number.parseInt(match[2], 10);
     return Math.max(0, (minutes * 60) + seconds);
   };
+
+  const handleDeliveryLogoVariantSelection = useCallback(async (
+    deliveryId: string,
+    selection: ProducerBrandLogoVariantSelection,
+  ) => {
+    if (!project || !producerPlanningWithLocalLogoSelections) {
+      return;
+    }
+
+    const previousSelection = deliveryLogoSelectionByDeliveryId[deliveryId] ?? 'auto';
+    setDeliveryLogoSelectionByDeliveryId((prev) => ({ ...prev, [deliveryId]: selection }));
+    setSavingDeliveryLogoById((prev) => ({ ...prev, [deliveryId]: true }));
+
+    try {
+      const nextPlanning: ProducerProjectPlanning = {
+        ...producerPlanningWithLocalLogoSelections,
+        contentCalendar: producerPlanningWithLocalLogoSelections.contentCalendar.map((item) => (
+          item.id === deliveryId
+            ? { ...item, logoVariantSelection: selection }
+            : item
+        )),
+      };
+      await castingService.saveProject({
+        ...project,
+        producerPlanning: nextPlanning,
+      });
+      enqueueSnackbar('Logovalg oppdatert for leveransen.', { variant: 'success' });
+    } catch (error) {
+      console.error('[ProducerClientReviewPanel] Failed to persist delivery logo selection', error);
+      setDeliveryLogoSelectionByDeliveryId((prev) => ({ ...prev, [deliveryId]: previousSelection }));
+      enqueueSnackbar('Kunne ikke lagre logovalg.', { variant: 'error' });
+    } finally {
+      setSavingDeliveryLogoById((prev) => ({ ...prev, [deliveryId]: false }));
+    }
+  }, [
+    deliveryLogoSelectionByDeliveryId,
+    enqueueSnackbar,
+    producerPlanningWithLocalLogoSelections,
+    project,
+  ]);
 
   const handleReviewTypeChange = (nextType: string) => {
     const nextTargetEntityType = getDefaultTargetEntityType(nextType);
@@ -812,6 +1139,9 @@ export default function ProducerClientReviewPanel({
     void producerWorkflowService.ensurePlanningClientReviews(projectId, producerPlanning).catch((syncError) => {
       console.error('[ProducerClientReviewPanel] Failed to ensure planning reviews', syncError);
     });
+    void producerWorkflowService.ensureMeetingWorkspaceWorkflow(projectId, producerPlanning).catch((syncError) => {
+      console.error('[ProducerClientReviewPanel] Failed to ensure meeting workflow', syncError);
+    });
     void producerWorkflowService.ensureClientGroundingReviews(projectId).catch((syncError) => {
       console.error('[ProducerClientReviewPanel] Failed to ensure client grounding reviews', syncError);
     });
@@ -929,6 +1259,55 @@ export default function ProducerClientReviewPanel({
     }
     enqueueSnackbar('Clipboard er ikke tilgjengelig for denne saken.', { variant: 'info' });
   }, [buildReviewPortalUrl, enqueueSnackbar]);
+
+  const buildReviewClientInviteText = useCallback((review: ProducerClientReview): string => {
+    const reviewPortalUrl = buildReviewPortalUrl(review);
+    const contentLogicMomentKind = getContentLogicMomentKindForReview(review);
+    const accountAccessPlatforms = getAccountAccessPlatformsForReview(review);
+    const eyebrow = accountAccessPlatforms.length > 0
+      ? `[Kontotilgang · ${accountAccessPlatforms.map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]).join(' / ')}]`
+      : contentLogicMomentKind
+      ? `[Content Logic · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}]`
+      : `[${getProducerReviewTypeLabel(review.review_type)}]`;
+    const actionLabel = getReviewClientInviteActionLabel(contentLogicMomentKind, review);
+    return [
+      eyebrow,
+      '',
+      `Hei,`,
+      '',
+      `Du har en sak klar i klientportalen for ${projectName}.`,
+      `${actionLabel}: ${review.title}`,
+      review.description || 'Ingen ekstra beskrivelse er lagt inn for denne saken.',
+      review.due_at ? `Frist: ${new Date(review.due_at).toLocaleString('nb-NO')}` : '',
+      '',
+      `Åpne saken her: ${reviewPortalUrl}`,
+    ].filter(Boolean).join('\n');
+  }, [buildReviewPortalUrl, projectName]);
+
+  const handleCopyReviewClientInviteText = useCallback(async (review: ProducerClientReview) => {
+    const content = buildReviewClientInviteText(review);
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(content);
+      enqueueSnackbar('Klienttekst kopiert.', { variant: 'success' });
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      window.prompt('Kopier klientteksten manuelt:', content);
+      return;
+    }
+    enqueueSnackbar('Clipboard er ikke tilgjengelig for denne saken.', { variant: 'info' });
+  }, [buildReviewClientInviteText, enqueueSnackbar]);
+
+  const handleOpenReviewClientInviteMail = useCallback((review: ProducerClientReview) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const recipient = readFirstNonEmptyString(clientIntake.contactEmail);
+    const subject = buildReviewClientInviteEmailSubject(projectName, review);
+    const body = buildReviewClientInviteText(review);
+    const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailtoUrl;
+  }, [buildReviewClientInviteText, clientIntake.contactEmail, projectName]);
 
   const handleOpenReviewPortal = useCallback((review: ProducerClientReview) => {
     const reviewPortalUrl = buildReviewPortalUrl(review);
@@ -1114,47 +1493,36 @@ export default function ProducerClientReviewPanel({
         background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.82) 100%)',
       }}
     >
-      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap">
-        <Stack direction="row" spacing={1} alignItems="center">
-          <RateReviewIcon sx={{ color: '#c084fc' }} />
-          <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-            Klientgodkjenning
-          </Typography>
-        </Stack>
-        <Stack direction="row" spacing={1} flexWrap="wrap">
-          <Chip
-            size="small"
-            label={`${projectName} · ${projectStatusLabel}`}
-            sx={{
-              color: projectStatusColors.color,
-              bgcolor: projectStatusColors.background,
-              border: `1px solid ${projectStatusColors.border}`,
-              fontWeight: 700,
-            }}
-          />
-          <Chip size="small" label={`Venter ${summary.pending}`} />
-          <Chip size="small" label={`Godkjent ${summary.approved}`} sx={{ color: '#34d399' }} />
-          <Chip size="small" label={`Endringer ${summary.changesRequested}`} sx={{ color: '#fbbf24' }} />
-        </Stack>
-      </Stack>
-
-      <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)', color: '#dbeafe' }}>
-        Prosjektstatus følger klientbeslutningene: {projectStatusDetail}
-      </Alert>
-
-      {statusDriverReview && statusDriverCopy ? (
-        <Alert
-          severity={projectWorkflowStatus === 'changes_requested' ? 'warning' : projectWorkflowStatus === 'approved' ? 'success' : 'info'}
-          sx={{
-            bgcolor: projectWorkflowStatus === 'changes_requested'
-              ? 'rgba(251,191,36,0.12)'
-              : projectWorkflowStatus === 'approved'
-                ? 'rgba(16,185,129,0.12)'
-                : 'rgba(59,130,246,0.08)',
-            color: '#e2e8f0',
-          }}
-          action={(
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+      <Stack spacing={1}>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ lg: 'center' }}>
+          <Stack spacing={0.35}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <RateReviewIcon sx={{ color: '#c084fc' }} />
+              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
+                Klientgodkjenning
+              </Typography>
+              <Box
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  px: 1,
+                  py: 0.35,
+                  borderRadius: 999,
+                  border: `1px solid ${projectStatusColors.border}`,
+                  bgcolor: projectStatusColors.background,
+                }}
+              >
+                <Typography sx={{ color: projectStatusColors.color, fontSize: '0.73rem', fontWeight: 700 }}>
+                  {projectStatusLabel}
+                </Typography>
+              </Box>
+            </Stack>
+            <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem' }}>
+              {projectName} · Venter {summary.pending} · Godkjent {summary.approved} · Endringer {summary.changesRequested}
+            </Typography>
+          </Stack>
+          {(statusDriverEconomyFocus && onOpenEconomy) || (statusDriverTimelineFocus && onOpenTimeline) ? (
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8}>
               {statusDriverEconomyFocus && onOpenEconomy ? (
                 <Button
                   size="small"
@@ -1176,11 +1544,31 @@ export default function ProducerClientReviewPanel({
                 </Button>
               ) : null}
             </Stack>
-          )}
+          ) : null}
+        </Stack>
+
+        <Box
+          sx={{
+            px: 1.2,
+            py: 0.95,
+            borderRadius: 1.5,
+            border: projectWorkflowStatus === 'changes_requested'
+              ? '1px solid rgba(251,191,36,0.22)'
+              : projectWorkflowStatus === 'approved'
+                ? '1px solid rgba(16,185,129,0.2)'
+                : '1px solid rgba(96,165,250,0.16)',
+            background: projectWorkflowStatus === 'changes_requested'
+              ? 'rgba(251,191,36,0.08)'
+              : projectWorkflowStatus === 'approved'
+                ? 'rgba(16,185,129,0.08)'
+                : 'rgba(59,130,246,0.08)',
+          }}
         >
-          {statusDriverCopy}
-        </Alert>
-      ) : null}
+          <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
+            {statusDriverReview && statusDriverCopy ? statusDriverCopy : `Prosjektstatus styres av klientbeslutningene: ${projectStatusDetail}`}
+          </Typography>
+        </Box>
+      </Stack>
 
       <Box
         sx={{
@@ -1193,10 +1581,10 @@ export default function ProducerClientReviewPanel({
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} justifyContent="space-between">
           <Box sx={{ minWidth: 0 }}>
             <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-              Klientbrief og materiale
+              Prosjektgrunnlag
             </Typography>
-            <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.84rem', mt: 0.35 }}>
-              Holder kundens mål, leveranser, kontaktpunkter og innsendinger synlige i samme beslutningsflyt.
+            <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.84rem', mt: 0.35 }}>
+              Se hva klienten faktisk har fylt inn og levert.
             </Typography>
           </Box>
           {onOpenMedia ? (
@@ -1204,9 +1592,9 @@ export default function ProducerClientReviewPanel({
               size="small"
               variant="outlined"
               onClick={() => onOpenMedia(primaryClientWorkspaceFocus)}
-              sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' } }}
+              sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' }, minHeight: 44 }}
             >
-              Åpne brief og materiale
+              Åpne grunnlag
             </Button>
           ) : null}
         </Stack>
@@ -1222,22 +1610,22 @@ export default function ProducerClientReviewPanel({
         ) : (
           <Stack spacing={1.1} sx={{ mt: 1.1 }}>
             <Stack direction="row" spacing={0.75} flexWrap="wrap">
-              <Chip size="small" label={`Brieffelter ${clientBriefReadyCount}/6`} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
-              <Chip size="small" label={`Materiale ${clientMaterials.length}`} sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }} />
+              <Chip size="small" label={`Brieffelter ${clientBriefReadyCount}/6`} sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#dbeafe' }} />
+              <Chip size="small" label={`Materiale ${clientMaterials.length}`} sx={{ bgcolor: 'rgba(192,132,252,0.18)', color: '#f5d0fe' }} />
               {Object.entries(clientMaterialsByType).slice(0, 3).map(([type, count]) => (
                 <Chip
                   key={type}
                   size="small"
                   label={`${CLIENT_MATERIAL_TYPE_LABELS[type as ProducerClientMaterialType] ?? type}: ${count}`}
-                  sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#e2e8f0' }}
+                  sx={{ bgcolor: 'rgba(148,163,184,0.18)', color: '#f1f5f9' }}
                 />
               ))}
             </Stack>
-            <Typography sx={{ color: 'rgba(203,213,225,0.82)', fontSize: '0.82rem' }}>
+            <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.82rem' }}>
               Kontakt: {[clientIntake.contactName, clientIntake.contactEmail, clientIntake.contactPhone].filter(Boolean).join(' · ') || 'Ikke fylt ut ennå'}
             </Typography>
             {readFirstNonEmptyString(clientIntake.projectGoal, clientIntake.deliverables, clientIntake.keyMessage) ? (
-              <Typography sx={{ color: 'rgba(148,163,184,0.84)', fontSize: '0.82rem' }}>
+              <Typography sx={{ color: 'rgba(203,213,225,0.88)', fontSize: '0.82rem' }}>
                 {[
                   readFirstNonEmptyString(clientIntake.projectGoal) ? `Mål: ${clientIntake.projectGoal}` : null,
                   readFirstNonEmptyString(clientIntake.deliverables) ? `Leveranser: ${clientIntake.deliverables}` : null,
@@ -1260,10 +1648,10 @@ export default function ProducerClientReviewPanel({
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} justifyContent="space-between">
           <Box sx={{ minWidth: 0 }}>
             <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-              Det klienten må levere nå
+              Åpne blokkeringer
             </Typography>
-            <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.84rem', mt: 0.35 }}>
-              Disse punktene oppdateres automatisk når klienten fyller inn briefen eller laster opp materiale.
+            <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.84rem', mt: 0.35 }}>
+              Dette stopper videre arbeid akkurat nå.
             </Typography>
           </Box>
           {onOpenMedia ? (
@@ -1271,9 +1659,9 @@ export default function ProducerClientReviewPanel({
               size="small"
               variant="outlined"
               onClick={() => onOpenMedia(primaryClientWorkspaceFocus)}
-              sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' } }}
+              sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' }, minHeight: 44 }}
             >
-              Åpne brief og materiale
+              Åpne grunnlag
             </Button>
           ) : null}
         </Stack>
@@ -1291,23 +1679,14 @@ export default function ProducerClientReviewPanel({
               >
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
                   <Box sx={{ minWidth: 0 }}>
-                    <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mb: 0.45 }}>
-                      <Chip
-                        size="small"
-                        label={getProducerReviewTypeLabel(review.review_type)}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                      />
-                      <Chip
-                        size="small"
-                        label={getProducerReviewStatusLabel(review.status)}
-                        sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a' }}
-                      />
-                    </Stack>
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                       {review.title}
                     </Typography>
+                    <Typography sx={{ color: 'rgba(191,219,254,0.9)', fontSize: '0.78rem', mt: 0.2, lineHeight: 1.4 }}>
+                      {`${getProducerReviewTypeLabel(review.review_type)} · ${getProducerReviewStatusLabel(review.status)}`}
+                    </Typography>
                     {review.description ? (
-                      <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.82rem', mt: 0.3 }}>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.82rem', mt: 0.3 }}>
                         {review.description}
                       </Typography>
                     ) : null}
@@ -1317,7 +1696,7 @@ export default function ProducerClientReviewPanel({
                       size="small"
                       variant="outlined"
                       onClick={() => onOpenMedia(getWorkspaceFocusForReview(review))}
-                      sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' } }}
+                      sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' }, minHeight: 44 }}
                     >
                       Løs i brief og materiale
                     </Button>
@@ -1345,42 +1724,27 @@ export default function ProducerClientReviewPanel({
               >
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
                   <Box sx={{ minWidth: 0 }}>
-                    <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mb: 0.45 }}>
-                      <Chip
-                        size="small"
-                        label={PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType]}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                      />
-                      <Chip
-                        size="small"
-                        label={PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS[task.status]}
-                        sx={{
-                          bgcolor: task.status === 'missing'
-                            ? 'rgba(248,113,113,0.16)'
-                            : 'rgba(251,191,36,0.14)',
-                          color: task.status === 'missing' ? '#fecaca' : '#fde68a',
-                        }}
-                      />
-                    </Stack>
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                       {task.title}
                     </Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.82rem', mt: 0.3 }}>
+                    <Typography sx={{ color: 'rgba(191,219,254,0.9)', fontSize: '0.78rem', mt: 0.2, lineHeight: 1.4 }}>
+                      {[
+                        PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType],
+                        PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS[task.status],
+                        task.phase === 'preproduction' ? 'Pre-produksjon' : task.phase === 'production' ? 'Produksjon' : 'Post-produksjon',
+                      ].join(' · ')}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.82rem', mt: 0.3 }}>
                       {task.detail}
                     </Typography>
                   </Box>
                   <Stack spacing={0.45} alignItems={{ md: 'flex-end' }}>
-                    <Chip
-                      size="small"
-                      label={task.phase === 'preproduction' ? 'Pre-produksjon' : task.phase === 'production' ? 'Produksjon' : 'Post-produksjon'}
-                      sx={{ bgcolor: 'rgba(16,185,129,0.14)', color: '#a7f3d0' }}
-                    />
                     {onOpenMedia ? (
                       <Button
                         size="small"
                         variant="outlined"
                         onClick={() => onOpenMedia(getMediaFocusForContributionTask(task))}
-                        sx={{ textTransform: 'none', fontWeight: 700 }}
+                        sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                       >
                         Løs i brief og materiale
                       </Button>
@@ -1420,76 +1784,150 @@ export default function ProducerClientReviewPanel({
             ) : null}
             {clientMoments.length > 0 ? (
               <Stack spacing={0.75}>
-                {clientMoments.map((moment) => (
-                  <Box
-                    key={moment.id}
-                    sx={{
-                      p: 0.95,
-                      borderRadius: 1.2,
-                      border: '1px solid rgba(148,163,184,0.14)',
-                      background: 'rgba(2,6,23,0.46)',
-                    }}
-                  >
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
-                      <Box sx={{ minWidth: 0 }}>
-                        <Stack direction="row" spacing={0.65} flexWrap="wrap" sx={{ mb: 0.45 }}>
-                          <Chip
-                            size="small"
-                            label={PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
-                            sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                          />
-                          <Chip
-                            size="small"
-                            label={moment.reviewStatusLabel ?? moment.statusLabel}
-                            sx={{
-                              bgcolor: moment.reviewStatus === 'approved'
-                                ? 'rgba(16,185,129,0.16)'
-                                : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
-                                  ? 'rgba(248,113,113,0.16)'
-                                  : 'rgba(148,163,184,0.16)',
-                              color: moment.reviewStatus === 'approved'
-                                ? '#a7f3d0'
-                                : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
-                                  ? '#fecaca'
-                                  : '#cbd5e1',
-                            }}
-                          />
+                {clientMoments.map((moment) => {
+                  const contentLogicMomentKind = getProducerContentLogicMomentKind(moment.id);
+                  const isContentLogicMoment = Boolean(contentLogicMomentKind);
+                  const accountAccessPlatform = getProducerAccountAccessPlatformFromMomentId(moment.id);
+                  const isAccountAccessMoment = Boolean(accountAccessPlatform);
+                  const contentLogicMomentLabel = contentLogicMomentKind
+                    ? PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]
+                    : '';
+                  const linkedDeliveryItem = moment.type === 'content_delivery'
+                    ? deliveryItemsByPlanningMomentId.get(moment.id)
+                    : undefined;
+                  const linkedDeliveryVariantResolution = linkedDeliveryItem && producerPlanningWithLocalLogoSelections
+                    ? resolveProducerBrandLogoVariant(
+                      producerPlanningWithLocalLogoSelections.brandGuide,
+                      linkedDeliveryItem.format,
+                      linkedDeliveryItem.logoVariantSelection ?? 'auto',
+                    )
+                    : null;
+                  return (
+                    <Box
+                      key={moment.id}
+                      sx={{
+                        p: 0.95,
+                        borderRadius: 1.2,
+                        border: isContentLogicMoment
+                          ? '1px solid rgba(167,139,250,0.26)'
+                          : isAccountAccessMoment
+                            ? '1px solid rgba(45,212,191,0.26)'
+                          : '1px solid rgba(148,163,184,0.14)',
+                        background: isContentLogicMoment
+                          ? 'rgba(76,29,149,0.16)'
+                          : isAccountAccessMoment
+                            ? 'rgba(15,118,110,0.14)'
+                          : 'rgba(2,6,23,0.46)',
+                      }}
+                    >
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
+                        <Box sx={{ minWidth: 0 }}>
+                          <Stack direction="row" spacing={0.65} flexWrap="wrap" sx={{ mb: 0.45 }}>
+                            <Chip
+                              size="small"
+                              label={isContentLogicMoment ? 'Content Logic' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
+                              sx={{
+                                bgcolor: isContentLogicMoment ? 'rgba(167,139,250,0.18)' : 'rgba(59,130,246,0.14)',
+                                color: isContentLogicMoment ? '#ede9fe' : '#bfdbfe',
+                              }}
+                            />
+                            {isContentLogicMoment ? (
+                              <Chip
+                                size="small"
+                                label={contentLogicMomentLabel}
+                                sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#cffafe' }}
+                              />
+                            ) : null}
+                            {isAccountAccessMoment && accountAccessPlatform ? (
+                              <>
+                                <Chip
+                                  size="small"
+                                  label="Kontotilgang"
+                                  sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#ccfbf1' }}
+                                />
+                                <Chip
+                                  size="small"
+                                  label={PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[accountAccessPlatform]}
+                                  sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                                />
+                              </>
+                            ) : null}
+                            <Chip
+                              size="small"
+                              label={moment.reviewStatusLabel ?? moment.statusLabel}
+                              sx={{
+                                bgcolor: moment.reviewStatus === 'approved'
+                                  ? 'rgba(16,185,129,0.16)'
+                                  : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
+                                    ? 'rgba(248,113,113,0.16)'
+                                    : 'rgba(148,163,184,0.16)',
+                                color: moment.reviewStatus === 'approved'
+                                  ? '#a7f3d0'
+                                  : moment.reviewStatus === 'changes_requested' || moment.reviewStatus === 'rejected'
+                                    ? '#fecaca'
+                                    : '#cbd5e1',
+                              }}
+                            />
+                          </Stack>
+                          <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
+                            {moment.title}
+                          </Typography>
+                          <Typography sx={{ color: isContentLogicMoment ? 'rgba(233,213,255,0.94)' : isAccountAccessMoment ? 'rgba(204,251,241,0.92)' : 'rgba(226,232,240,0.88)', fontSize: '0.82rem', mt: 0.3 }}>
+                            {moment.detail}
+                          </Typography>
+                          {linkedDeliveryItem && linkedDeliveryVariantResolution ? (
+                            <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.76rem', mt: 0.32 }}>
+                              {`Logo i leveransen: ${linkedDeliveryVariantResolution.resolvedLabel} · ${linkedDeliveryVariantResolution.selectionLabel}`}
+                            </Typography>
+                          ) : null}
+                          {isContentLogicMoment ? (
+                            <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.76rem', mt: 0.3 }}>
+                              Klienten godkjenner hook, CTA og proof points her før storyboard og leveranse låses.
+                            </Typography>
+                          ) : null}
+                          {isAccountAccessMoment ? (
+                            <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.76rem', mt: 0.3 }}>
+                              Klienten må avklare invite, OAuth eller sikker publiseringstilgang før leveransen kan sendes helt videre.
+                            </Typography>
+                          ) : null}
+                        </Box>
+                        <Stack spacing={0.45} alignItems={{ md: 'flex-end' }}>
+                          <Typography sx={{ color: 'rgba(203,213,225,0.88)', fontSize: '0.76rem' }}>
+                            {[moment.date, moment.owner].filter(Boolean).join(' · ') || 'Ingen dato eller ansvarlig satt'}
+                          </Typography>
+                          {(isContentLogicMoment || isAccountAccessMoment || moment.type === 'framework_alignment') && onOpenMedia ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => onOpenMedia(
+                                isAccountAccessMoment
+                                  ? accountWorkspaceFocus
+                                  : defaultClientWorkspaceFocus,
+                              )}
+                              sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
+                            >
+                              {isContentLogicMoment
+                                ? 'Åpne Content Logic'
+                                : isAccountAccessMoment
+                                  ? 'Åpne kontotilgang'
+                                  : 'Åpne brief og materiale'}
+                            </Button>
+                          ) : null}
+                          {!isContentLogicMoment && !isAccountAccessMoment && moment.type !== 'framework_alignment' && onOpenTimeline ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => onOpenTimeline({ focusedPhase: moment.phase })}
+                              sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
+                            >
+                              Åpne i tidslinje
+                            </Button>
+                          ) : null}
                         </Stack>
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
-                          {moment.title}
-                        </Typography>
-                        <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.82rem', mt: 0.3 }}>
-                          {moment.detail}
-                        </Typography>
-                      </Box>
-                      <Stack spacing={0.45} alignItems={{ md: 'flex-end' }}>
-                        <Typography sx={{ color: 'rgba(148,163,184,0.84)', fontSize: '0.76rem' }}>
-                          {[moment.date, moment.owner].filter(Boolean).join(' · ') || 'Ingen dato eller ansvarlig satt'}
-                        </Typography>
-                        {moment.type === 'framework_alignment' && onOpenMedia ? (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => onOpenMedia(defaultClientWorkspaceFocus)}
-                            sx={{ textTransform: 'none', fontWeight: 700 }}
-                          >
-                            Åpne brief og materiale
-                          </Button>
-                        ) : null}
-                        {moment.type !== 'framework_alignment' && onOpenTimeline ? (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => onOpenTimeline({ focusedPhase: moment.phase })}
-                            sx={{ textTransform: 'none', fontWeight: 700 }}
-                          >
-                            Åpne i tidslinje
-                          </Button>
-                        ) : null}
                       </Stack>
-                    </Stack>
-                  </Box>
-                ))}
+                    </Box>
+                  );
+                })}
               </Stack>
             ) : (
               <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.85rem' }}>
@@ -1506,8 +1944,9 @@ export default function ProducerClientReviewPanel({
         <Stack spacing={1.2}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-end' }}>
             <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel sx={{ color: 'rgba(226,232,240,0.82)' }}>Oppfølgingstype</InputLabel>
+              <InputLabel id="review-followup-type-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Oppfølgingstype</InputLabel>
               <Select
+                labelId="review-followup-type-label"
                 label="Oppfølgingstype"
                 value={newType}
                 onChange={(event) => handleReviewTypeChange(String(event.target.value))}
@@ -1587,8 +2026,9 @@ export default function ProducerClientReviewPanel({
             <>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-end' }}>
                 <FormControl size="small" sx={{ minWidth: 180 }}>
-                  <InputLabel sx={{ color: 'rgba(226,232,240,0.82)' }}>Måltype</InputLabel>
+                  <InputLabel id="review-target-type-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Måltype</InputLabel>
                   <Select
+                    labelId="review-target-type-label"
                     label="Måltype"
                     value={newTargetEntityType}
                     onChange={(event) => {
@@ -1608,8 +2048,9 @@ export default function ProducerClientReviewPanel({
                 </FormControl>
                 {filteredEntityOptions.length > 0 ? (
                   <FormControl size="small" sx={{ flex: 1, minWidth: 260 }}>
-                    <InputLabel sx={{ color: 'rgba(226,232,240,0.82)' }}>Målentitet</InputLabel>
+                    <InputLabel id="review-target-entity-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Målentitet</InputLabel>
                     <Select
+                      labelId="review-target-entity-label"
                       label="Målentitet"
                       value={newTargetEntityId}
                       onChange={(event) => setNewTargetEntityId(String(event.target.value))}
@@ -1670,13 +2111,68 @@ export default function ProducerClientReviewPanel({
             const linkedAgreement = review.target_entity_type === 'project_agreement' && review.target_entity_id
               ? agreementsById[review.target_entity_id]
               : undefined;
+            const linkedPlanningMomentId = readPlanningMomentIdFromReview(review);
+            const linkedDeliveryIds = readLinkedDeliveryIdsFromReview(review);
+            const linkedDeliveryItems = linkedDeliveryIds
+              .map((deliveryId) => deliveryItemsById.get(deliveryId))
+              .filter((item): item is NonNullable<typeof item> => Boolean(item));
+            const linkedDeliveryItem = linkedPlanningMomentId
+              ? deliveryItemsByPlanningMomentId.get(linkedPlanningMomentId)
+              : linkedDeliveryItems[0];
+            const linkedDeliveryVariantResolution = linkedDeliveryItem && producerPlanningWithLocalLogoSelections
+              ? resolveProducerBrandLogoVariant(
+                producerPlanningWithLocalLogoSelections.brandGuide,
+                linkedDeliveryItem.format,
+                linkedDeliveryItem.logoVariantSelection ?? 'auto',
+              )
+              : null;
+            const affectedDeliveryCount = linkedDeliveryItems.length > 0
+              ? linkedDeliveryItems.length
+              : linkedDeliveryItem
+                ? 1
+                : 0;
+            const linkedAccountAccessPlatforms = getAccountAccessPlatformsForReview(review);
+            const isAccountAccessReview = linkedAccountAccessPlatforms.length > 0;
+            const linkedAccountAccessEntries = linkedAccountAccessPlatforms
+              .map((platform) => accountAccessEntriesByPlatform.get(platform))
+              .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+            const contentLogicMomentKind = getContentLogicMomentKindForReview(review);
+            const isContentLogicReview = Boolean(contentLogicMomentKind);
+            const contentLogicMomentLabel = contentLogicMomentKind
+              ? PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]
+              : '';
+            const decisionCopy = getDecisionCopyForReview(review);
             const isStatusDriver = statusDriverReview?.id === review.id;
             const isEconomyManagedReview = ECONOMY_MANAGED_REVIEW_TYPES.has(review.review_type)
               || review.target_entity_type === 'project_agreement';
             const isClientGroundingReview = isClientGroundingManagedReview(review);
+            const isDeliveryManagedReview = Boolean(linkedDeliveryItem);
+            const isMediaManagedReview = isClientGroundingReview || isContentLogicReview || isDeliveryManagedReview || isAccountAccessReview;
             const signatureTone = linkedAgreement?.google_signature
               ? getAgreementSignatureTone(linkedAgreement.google_signature)
               : null;
+            const reviewMetaLine = [
+              isContentLogicReview ? 'Content Logic' : isAccountAccessReview ? 'Kontotilgang' : getProducerReviewTypeLabel(review.review_type),
+              isAccountAccessReview ? `Plattform: ${linkedAccountAccessPlatforms.map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]).join(' · ')}` : '',
+              isContentLogicReview ? `Fokus: ${contentLogicMomentLabel}` : entityLabel ? `Mål: ${entityLabel}` : '',
+              review.due_at ? `Frist: ${new Date(review.due_at).toLocaleString('nb-NO')}` : '',
+            ].filter(Boolean).join(' · ');
+            const reviewContextLine = [
+              isStatusDriver ? `Statusdriver (${projectStatusLabel})` : '',
+              isContentLogicReview ? 'Klientavklaring før storyboard, manus og leveranse' : '',
+              isAccountAccessReview ? 'Klientavklaring av sikker kontotilgang før publisering og handoff' : '',
+              linkedDeliveryItem ? `Leveranse ${linkedDeliveryItem.channel} · ${linkedDeliveryItem.format}` : '',
+              isEconomyManagedReview ? 'Økonomistyrt' : '',
+              linkedAgreement ? getAgreementTypeLabel(linkedAgreement.agreement_type) : '',
+              linkedAgreement ? `Avtale ${PROJECT_AGREEMENT_STATUS_LABELS[linkedAgreement.status]}` : '',
+              linkedAgreement ? `${PROJECT_AGREEMENT_COUNTERPARTY_LABELS[linkedAgreement.counterparty_type as 'client' | 'extra'] ?? 'Motpart'}: ${linkedAgreement.counterparty_name}` : '',
+            ].filter(Boolean).join(' · ');
+            const reviewSignatureLine = linkedAgreement?.google_signature
+              ? `Juridisk signatur · ${getAgreementSignatureLabel(linkedAgreement.google_signature)}`
+              : '';
+            const reviewComments = review.comments ?? [];
+            const commentsExpanded = expandedCommentsByReview[review.id] ?? false;
+            const visibleComments = commentsExpanded ? reviewComments : reviewComments.slice(-2);
             return (
               <Box
                 key={review.id}
@@ -1685,11 +2181,19 @@ export default function ProducerClientReviewPanel({
                   borderRadius: 1.5,
                   border: highlightedReviewId === review.id
                     ? '1px solid rgba(251,191,36,0.52)'
-                    : '1px solid rgba(148,163,184,0.22)',
+                    : isContentLogicReview
+                      ? '1px solid rgba(167,139,250,0.32)'
+                      : isAccountAccessReview
+                        ? '1px solid rgba(45,212,191,0.28)'
+                      : '1px solid rgba(148,163,184,0.22)',
                   p: 1.25,
                   bgcolor: highlightedReviewId === review.id
                     ? 'rgba(251,191,36,0.08)'
-                    : 'rgba(15,23,42,0.55)',
+                    : isContentLogicReview
+                      ? 'rgba(76,29,149,0.15)'
+                      : isAccountAccessReview
+                        ? 'rgba(15,118,110,0.12)'
+                      : 'rgba(15,23,42,0.55)',
                   boxShadow: highlightedReviewId === review.id
                     ? '0 0 0 1px rgba(251,191,36,0.12), 0 12px 32px rgba(2,6,23,0.22)'
                     : 'none',
@@ -1698,83 +2202,57 @@ export default function ProducerClientReviewPanel({
               >
                 <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center" flexWrap="wrap">
                   <Box>
+                    {isContentLogicReview ? (
+                      <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
+                        <Chip
+                          size="small"
+                          label="Content Logic"
+                          sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
+                        />
+                        <Chip
+                          size="small"
+                          label={contentLogicMomentLabel}
+                          sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#cffafe' }}
+                        />
+                      </Stack>
+                    ) : null}
+                    {isAccountAccessReview ? (
+                      <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
+                        <Chip
+                          size="small"
+                          label="Kontotilgang"
+                          sx={{ bgcolor: 'rgba(45,212,191,0.18)', color: '#ccfbf1' }}
+                        />
+                        {linkedAccountAccessPlatforms.map((platform) => (
+                          <Chip
+                            key={platform}
+                            size="small"
+                            label={PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]}
+                            sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                          />
+                        ))}
+                      </Stack>
+                    ) : null}
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>{review.title}</Typography>
-                    <Typography sx={{ color: 'rgba(203,213,225,0.8)', fontSize: '0.85rem' }}>
-                      Type: {getProducerReviewTypeLabel(review.review_type)}
+                    <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.82rem', mt: 0.22, lineHeight: 1.45 }}>
+                      {reviewMetaLine}
                     </Typography>
-                    {entityLabel && (
-                      <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.8rem' }}>
-                        Mål: {entityLabel}
+                    {reviewContextLine ? (
+                      <Typography sx={{ color: 'rgba(191,219,254,0.88)', fontSize: '0.78rem', mt: 0.28, lineHeight: 1.45 }}>
+                        {reviewContextLine}
                       </Typography>
-                    )}
-                    {review.due_at && (
-                      <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.8rem' }}>
-                        Frist: {new Date(review.due_at).toLocaleString('nb-NO')}
+                    ) : null}
+                    {reviewSignatureLine ? (
+                      <Typography
+                        sx={{
+                          color: signatureTone?.color ?? 'rgba(226,232,240,0.82)',
+                          fontSize: '0.78rem',
+                          mt: 0.28,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {reviewSignatureLine}
                       </Typography>
-                    )}
-                    {linkedAgreement && (
-                      <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mt: 0.75 }}>
-                        {isStatusDriver ? (
-                          <Chip
-                            size="small"
-                            label={`Prosjektstatusdriver · ${projectStatusLabel}`}
-                            sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }}
-                          />
-                        ) : null}
-                        {isEconomyManagedReview ? (
-                          <Chip
-                            size="small"
-                            label="Økonomistyrt"
-                            sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                          />
-                        ) : null}
-                        <Chip
-                          size="small"
-                          label={getAgreementTypeLabel(linkedAgreement.agreement_type)}
-                          sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                        />
-                        <Chip
-                          size="small"
-                          label={`Avtale ${PROJECT_AGREEMENT_STATUS_LABELS[linkedAgreement.status]}`}
-                          sx={{
-                            bgcolor: `${linkedAgreement.status === 'signed' ? '#10b981' : linkedAgreement.status === 'sent' ? '#f59e0b' : '#94a3b8'}20`,
-                            color: linkedAgreement.status === 'signed' ? '#86efac' : linkedAgreement.status === 'sent' ? '#fcd34d' : '#cbd5e1',
-                          }}
-                        />
-                        <Chip
-                          size="small"
-                          label={`${PROJECT_AGREEMENT_COUNTERPARTY_LABELS[linkedAgreement.counterparty_type as 'client' | 'extra'] ?? 'Motpart'} · ${linkedAgreement.counterparty_name}`}
-                          sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }}
-                        />
-                        {linkedAgreement.google_signature ? (
-                          <Chip
-                            size="small"
-                            label={`Juridisk signatur · ${getAgreementSignatureLabel(linkedAgreement.google_signature)}`}
-                            sx={{
-                              bgcolor: signatureTone?.background,
-                              color: signatureTone?.color,
-                            }}
-                          />
-                        ) : null}
-                      </Stack>
-                    )}
-                    {!linkedAgreement && (isStatusDriver || isEconomyManagedReview) ? (
-                      <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mt: 0.75 }}>
-                        {isStatusDriver ? (
-                          <Chip
-                            size="small"
-                            label={`Prosjektstatusdriver · ${projectStatusLabel}`}
-                            sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }}
-                          />
-                        ) : null}
-                        {isEconomyManagedReview ? (
-                          <Chip
-                            size="small"
-                            label="Økonomistyrt"
-                            sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
-                          />
-                        ) : null}
-                      </Stack>
                     ) : null}
                   </Box>
                   <Chip
@@ -1789,10 +2267,130 @@ export default function ProducerClientReviewPanel({
                 </Stack>
 
                 {review.description && (
-                  <Typography sx={{ color: 'rgba(203,213,225,0.9)', fontSize: '0.9rem', mt: 1 }}>
+                  <Typography sx={{ color: isContentLogicReview ? 'rgba(233,213,255,0.92)' : isAccountAccessReview ? 'rgba(204,251,241,0.92)' : 'rgba(203,213,225,0.9)', fontSize: '0.9rem', mt: 1 }}>
                     {review.description}
                   </Typography>
                 )}
+                {isAccountAccessReview ? (
+                  <Box
+                    sx={{
+                      mt: 0.9,
+                      p: 0.95,
+                      borderRadius: 1.2,
+                      border: '1px solid rgba(45,212,191,0.2)',
+                      bgcolor: 'rgba(15,23,42,0.42)',
+                    }}
+                  >
+                    <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 800 }}>
+                      Konto og tilgang i denne saken
+                    </Typography>
+                    <Stack spacing={0.5} sx={{ mt: 0.35 }}>
+                      {linkedAccountAccessEntries.map((entry) => (
+                        <Box key={entry.platform}>
+                          <Typography sx={{ color: '#ccfbf1', fontSize: '0.78rem', fontWeight: 700 }}>
+                            {`${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]} · ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.76rem', mt: 0.18 }}>
+                            {`${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]} · ${entry.accessScope || 'Scope ikke satt'}`}
+                          </Typography>
+                          <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.75rem', mt: 0.18 }}>
+                            {`Invite / konto: ${entry.inviteTarget || entry.accountLabel || 'Ikke satt'}${entry.clientOwnerLabel ? ` · Eier: ${entry.clientOwnerLabel}` : ''}`}
+                          </Typography>
+                        </Box>
+                      ))}
+                      <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.75rem', mt: 0.1 }}>
+                        2-faktor skal bli hos kontoeier. Role Room skal bare styre invite, OAuth og status.
+                      </Typography>
+                    </Stack>
+                  </Box>
+                ) : null}
+                {linkedDeliveryItem && linkedDeliveryVariantResolution ? (
+                  <Box
+                    sx={{
+                      mt: 0.9,
+                      p: 0.95,
+                      borderRadius: 1.2,
+                      border: '1px solid rgba(59,130,246,0.2)',
+                      bgcolor: 'rgba(15,23,42,0.42)',
+                    }}
+                  >
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.1} justifyContent="space-between">
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 800 }}>
+                          Logo i denne leveransen
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.78rem', mt: 0.18 }}>
+                          {`${linkedDeliveryItem.title} · ${linkedDeliveryItem.channel} · ${linkedDeliveryItem.format || 'Format ikke satt'}`}
+                        </Typography>
+                        <Typography sx={{ color: '#bfdbfe', fontSize: '0.78rem', fontWeight: 700, mt: 0.24 }}>
+                          {`Brukes nå: ${linkedDeliveryVariantResolution.resolvedLabel}`}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.76rem', mt: 0.18 }}>
+                          {`${linkedDeliveryVariantResolution.selectionLabel} · Anbefalt: ${linkedDeliveryVariantResolution.recommendedLabel}${linkedDeliveryVariantResolution.autoApplied ? ' · auto aktiv' : ''}`}
+                        </Typography>
+                        {!linkedDeliveryVariantResolution.autoApplied ? (
+                          <Typography sx={{ color: 'rgba(253,224,71,0.92)', fontSize: '0.75rem', mt: 0.24, fontWeight: 700 }}>
+                            {`Denne overstyringen påvirker ${affectedDeliveryCount || 1} ${affectedDeliveryCount === 1 || affectedDeliveryCount === 0 ? 'leveranse' : 'leveranser'} i preview, handoff, PDF og eksportpakke.`}
+                          </Typography>
+                        ) : null}
+                        {availableLogoVariantTypes.size === 0 ? (
+                          <Typography sx={{ color: 'rgba(251,191,36,0.88)', fontSize: '0.75rem', mt: 0.24 }}>
+                            Ingen logovarianter er lastet opp i merkevareguiden ennå.
+                          </Typography>
+                        ) : null}
+                        {savingDeliveryLogoById[linkedDeliveryItem.id] ? (
+                          <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.74rem', mt: 0.24 }}>
+                            Lagrer logovalg for leveransen...
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <FormControl
+                        size="small"
+                        sx={{ minWidth: { xs: '100%', md: 220 } }}
+                        disabled={!canAdjustDeliveryLogoSelection || availableLogoVariantTypes.size === 0 || Boolean(savingDeliveryLogoById[linkedDeliveryItem.id])}
+                      >
+                        <InputLabel
+                          id={`delivery-logo-selection-label-${review.id}`}
+                          sx={{ color: 'rgba(226,232,240,0.82)' }}
+                        >
+                          Logovalg
+                        </InputLabel>
+                        <Select
+                          labelId={`delivery-logo-selection-label-${review.id}`}
+                          value={linkedDeliveryItem.logoVariantSelection ?? 'auto'}
+                          label="Logovalg"
+                          onChange={(event) => {
+                            void handleDeliveryLogoVariantSelection(
+                              linkedDeliveryItem.id,
+                              event.target.value as ProducerBrandLogoVariantSelection,
+                            );
+                          }}
+                          sx={{
+                            color: '#f8fafc',
+                            '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' },
+                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(96,165,250,0.42)' },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(96,165,250,0.65)' },
+                          }}
+                        >
+                          {DELIVERY_LOGO_SELECTION_OPTIONS.map((option) => (
+                            <MenuItem
+                              key={option.value}
+                              value={option.value}
+                              disabled={option.value !== 'auto' && !availableLogoVariantTypes.has(option.value)}
+                            >
+                              {option.label}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Stack>
+                  </Box>
+                ) : null}
+                {isContentLogicReview ? (
+                  <Typography sx={{ color: 'rgba(191,219,254,0.86)', fontSize: '0.8rem', mt: 0.65, fontWeight: 600 }}>
+                    Denne avklaringen styrer hvordan hook, budskap og CTA faktisk blir behandlet i innholdsproduksjonen.
+                  </Typography>
+                ) : null}
                 {isStatusDriver ? (
                   <Typography sx={{ color: '#fde68a', fontSize: '0.82rem', mt: 0.7, fontWeight: 600 }}>
                     Denne saken er det som akkurat nå styrer prosjektstatusen.
@@ -1817,92 +2415,151 @@ export default function ProducerClientReviewPanel({
                   </Typography>
                 ) : null}
 
-                {(isClientGroundingReview ? onOpenMedia : (onOpenEconomy || onOpenTimeline)) && (
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
-                    {isClientGroundingReview && onOpenMedia ? (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => onOpenMedia(getWorkspaceFocusForReview(review))}
-                        sx={{ textTransform: 'none', fontWeight: 700 }}
-                      >
-                        Åpne relevant arbeidsflate
-                      </Button>
-                    ) : null}
-                    {!isClientGroundingReview && onOpenEconomy ? (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => openEconomyFocus(review)}
-                        sx={{ textTransform: 'none', fontWeight: 700 }}
-                      >
-                        Åpne i økonomi
-                      </Button>
-                    ) : null}
-                    {!isClientGroundingReview && onOpenTimeline ? (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => openTimelineFocus(review)}
-                        sx={{ textTransform: 'none', fontWeight: 700 }}
-                      >
-                        Åpne i tidslinje
-                      </Button>
-                    ) : null}
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<ContentCopyIcon fontSize="small" />}
-                      onClick={() => { void handleCopyReviewPortalUrl(review); }}
-                      sx={{ textTransform: 'none', fontWeight: 700 }}
+                {(isMediaManagedReview ? onOpenMedia : (onOpenEconomy || onOpenTimeline)) && (
+                  <Stack spacing={0.55} sx={{ mt: 0.9 }}>
+                    <Typography
+                      sx={{
+                        color: clientInviteEmailStatus.tone === 'ready' ? 'rgba(167,243,208,0.92)' : 'rgba(253,224,71,0.92)',
+                        fontSize: '0.78rem',
+                        lineHeight: 1.4,
+                      }}
                     >
-                      Kopier godkjenningslenke
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<LaunchIcon fontSize="small" />}
-                      onClick={() => handleOpenReviewPortal(review)}
-                      sx={{ textTransform: 'none', fontWeight: 700 }}
-                    >
-                      Åpne klientlenke
-                    </Button>
+                      {clientInviteEmailStatus.text}
+                    </Typography>
+                    <Stack direction="row" spacing={0.3} flexWrap="wrap" useFlexGap>
+                      {isMediaManagedReview && onOpenMedia ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => onOpenMedia(getWorkspaceFocusForReview(review))}
+                          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
+                        >
+                          {isContentLogicReview
+                            ? 'Åpne Content Logic'
+                            : isAccountAccessReview
+                              ? 'Åpne kontotilgang'
+                            : isDeliveryManagedReview
+                              ? 'Åpne merkevare og leveranse'
+                              : 'Åpne relevant arbeidsflate'}
+                        </Button>
+                      ) : null}
+                      {!isMediaManagedReview && onOpenEconomy ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => openEconomyFocus(review)}
+                          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
+                        >
+                          Åpne i økonomi
+                        </Button>
+                      ) : null}
+                      {!isMediaManagedReview && onOpenTimeline ? (
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => openTimelineFocus(review)}
+                          sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(226,232,240,0.92)', minHeight: 44 }}
+                        >
+                          Åpne i tidslinje
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => { void handleCopyReviewPortalUrl(review); }}
+                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
+                      >
+                        Kopier godkjenningslenke
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => { void handleCopyReviewClientInviteText(review); }}
+                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
+                      >
+                        Kopier klienttekst
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => handleOpenReviewClientInviteMail(review)}
+                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
+                      >
+                        Åpne e-postutkast
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => handleOpenReviewPortal(review)}
+                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
+                      >
+                        Åpne klientlenke
+                      </Button>
+                    </Stack>
                   </Stack>
                 )}
 
-                <Stack spacing={0.6} sx={{ mt: 1 }}>
-                  {(review.comments ?? []).map((comment) => (
-                    <Box key={comment.id} sx={{ p: 0.8, borderRadius: 1, bgcolor: 'rgba(2,6,23,0.55)' }}>
-                      <Typography sx={{ color: '#cbd5e1', fontSize: '0.85rem' }}>{comment.comment_text}</Typography>
-                      <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.75rem', mt: 0.2 }}>
-                        {comment.author_role || 'ukjent'} • {new Date(comment.created_at).toLocaleString('nb-NO')}
-                        {typeof comment.timestamp_seconds === 'number' ? ` • ${formatProducerTimestamp(comment.timestamp_seconds)}` : ''}
+                {reviewComments.length > 0 ? (
+                  <Stack spacing={0.45} sx={{ mt: 0.9 }}>
+                    <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Typography sx={{ color: 'rgba(191,219,254,0.9)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        Kommentarer
                       </Typography>
-                    </Box>
-                  ))}
-                </Stack>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.88)', fontSize: '0.76rem' }}>
+                        {`${reviewComments.length} ${reviewComments.length === 1 ? 'innspill' : 'innspill'}`}
+                      </Typography>
+                      {reviewComments.length > 2 ? (
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => setExpandedCommentsByReview((previous) => ({
+                            ...previous,
+                            [review.id]: !commentsExpanded,
+                          }))}
+                          sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
+                        >
+                          {commentsExpanded ? 'Vis færre' : 'Vis alle'}
+                        </Button>
+                      ) : null}
+                    </Stack>
+                    <Stack spacing={0.35}>
+                      {visibleComments.map((comment) => (
+                        <Box key={comment.id} sx={{ p: 0.6, borderRadius: 1, bgcolor: 'rgba(2,6,23,0.42)' }}>
+                          <Typography sx={{ color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.4 }}>{comment.comment_text}</Typography>
+                          <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.72rem', mt: 0.18 }}>
+                            {comment.author_role || 'ukjent'} • {new Date(comment.created_at).toLocaleString('nb-NO')}
+                            {typeof comment.timestamp_seconds === 'number' ? ` • ${formatProducerTimestamp(comment.timestamp_seconds)}` : ''}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Stack>
+                ) : null}
 
                 {canComment && (
-                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ mt: 1 }}>
-                    <TextField
-                      size="small"
-                      placeholder="Skriv kommentar"
-                      value={commentDraftByReview[review.id] ?? ''}
-                      onChange={(event) => setCommentDraftByReview((prev) => ({ ...prev, [review.id]: event.target.value }))}
-                      sx={{ flex: 1 }}
-                    />
-                    <TextField
-                      size="small"
-                      placeholder="Tid (mm:ss)"
-                      value={commentTimestampByReview[review.id] ?? ''}
-                      onChange={(event) => setCommentTimestampByReview((prev) => ({ ...prev, [review.id]: event.target.value }))}
-                      sx={{ width: { xs: '100%', md: 140 } }}
-                    />
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} sx={{ mt: 0.9 }}>
+                      <TextField
+                        size="small"
+                        placeholder="Skriv kommentar"
+                        inputProps={{ 'aria-label': `Kommentar til ${review.title}` }}
+                        value={commentDraftByReview[review.id] ?? ''}
+                        onChange={(event) => setCommentDraftByReview((prev) => ({ ...prev, [review.id]: event.target.value }))}
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        size="small"
+                        placeholder="Tid (mm:ss)"
+                        inputProps={{ 'aria-label': `Tidskode for kommentar til ${review.title}` }}
+                        value={commentTimestampByReview[review.id] ?? ''}
+                        onChange={(event) => setCommentTimestampByReview((prev) => ({ ...prev, [review.id]: event.target.value }))}
+                        sx={{ width: { xs: '100%', md: 140 } }}
+                      />
                     <Button
+                      size="small"
                       variant="outlined"
                       onClick={() => { void handleComment(review.id); }}
                       disabled={!commentDraftByReview[review.id]?.trim()}
-                      sx={{ textTransform: 'none', fontWeight: 700 }}
+                      sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                     >
                       Kommenter
                     </Button>
@@ -1917,6 +2574,11 @@ export default function ProducerClientReviewPanel({
 
                 {canDecide && decisionOptions.length > 0 && !isClientGroundingReview && (
                   <Stack spacing={1} sx={{ mt: 1 }}>
+                    {decisionCopy.helper ? (
+                      <Typography sx={{ color: 'rgba(191,219,254,0.86)', fontSize: '0.78rem' }}>
+                        {decisionCopy.helper}
+                      </Typography>
+                    ) : null}
                     <Stack direction="row" spacing={1} flexWrap="wrap">
                       {decisionOptions.map((decisionOption) => (
                         <Button
@@ -1929,16 +2591,18 @@ export default function ProducerClientReviewPanel({
                             borderColor: `${decisionOption.color}55`,
                             color: decisionOption.color,
                             '&:hover': { borderColor: decisionOption.color, bgcolor: `${decisionOption.color}18` },
+                            minHeight: 44,
                           }}
                         >
-                          {decisionOption.label}
+                          {decisionCopy.labels[decisionOption.value]}
                         </Button>
                       ))}
                     </Stack>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
                       <TextField
                         size="small"
-                        placeholder="Beslutningsnotat (valgfritt)"
+                        placeholder={decisionCopy.placeholder}
+                        inputProps={{ 'aria-label': `Beslutningsnotat for ${review.title}` }}
                         value={decisionReasonByReview[review.id] ?? ''}
                         onChange={(event) => setDecisionReasonByReview((prev) => ({ ...prev, [review.id]: event.target.value }))}
                         sx={{ flex: 1 }}
@@ -1946,6 +2610,7 @@ export default function ProducerClientReviewPanel({
                       <TextField
                         size="small"
                         placeholder="Tid (mm:ss)"
+                        inputProps={{ 'aria-label': `Tidskode for beslutning på ${review.title}` }}
                         value={decisionTimestampByReview[review.id] ?? ''}
                         onChange={(event) => setDecisionTimestampByReview((prev) => ({ ...prev, [review.id]: event.target.value }))}
                         sx={{ width: { xs: '100%', md: 140 } }}

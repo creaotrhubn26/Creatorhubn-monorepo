@@ -12,6 +12,9 @@ import type {
   RoleRoomGooglePersonContact,
   RoleRoomGoogleProjectBinding,
   RoleRoomGoogleProjectBindingUpdateInput,
+  RoleRoomLinkedInConnection,
+  RoleRoomLinkedInLinkResult,
+  RoleRoomLinkedInOauthStartInput,
 } from '../models/casting';
 
 const API_BASE = '/api/role-room';
@@ -70,6 +73,16 @@ async function apiRequest<T>(
   
   return response.json();
 }
+
+const googleBindingBootstrapRequests = new Map<string, Promise<RoleRoomGoogleBindingResponse>>();
+
+const hasText = (value: unknown): value is string => (
+  typeof value === 'string' && value.trim().length > 0
+);
+
+const hasReadyGoogleProjectBinding = (binding?: RoleRoomGoogleProjectBinding | null): boolean => (
+  hasText(binding?.driveRootFolderId) && hasText(binding?.calendarId)
+);
 
 export interface CastingProject {
   id: string;
@@ -157,6 +170,13 @@ export interface RoleRoomGoogleStatusResponse {
 export interface RoleRoomGoogleBindingResponse {
   binding: RoleRoomGoogleProjectBinding | null;
   artifacts: RoleRoomGoogleArtifactRef[];
+}
+
+export interface RoleRoomLinkedInStatusResponse {
+  configured: boolean;
+  missing: string[];
+  state: 'disconnected' | 'connected' | 'expired' | 'error';
+  connection: RoleRoomLinkedInConnection | null;
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -1715,6 +1735,36 @@ export const googleWorkspaceApi = {
     })
   ),
 
+  ensureProjectBindingReady: async (
+    projectId: string,
+    binding?: RoleRoomGoogleProjectBinding | null,
+  ): Promise<RoleRoomGoogleBindingResponse | null> => {
+    if (hasReadyGoogleProjectBinding(binding)) {
+      return null;
+    }
+
+    const existingRequest = googleBindingBootstrapRequests.get(projectId);
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    const request = apiRequest<RoleRoomGoogleBindingResponse>(`/projects/${projectId}/google/binding`, {
+      method: 'POST',
+      body: JSON.stringify({
+        contactsContext: binding?.contactsContext ?? {},
+        meetCreationEnabled: binding?.meetCreationEnabled ?? true,
+        auditSignatureStorageEnabled: binding?.auditSignatureStorageEnabled ?? true,
+        createDriveLayout: !hasText(binding?.driveRootFolderId),
+        createCalendar: !hasText(binding?.calendarId),
+      } satisfies RoleRoomGoogleProjectBindingUpdateInput),
+    }).finally(() => {
+      googleBindingBootstrapRequests.delete(projectId);
+    });
+
+    googleBindingBootstrapRequests.set(projectId, request);
+    return request;
+  },
+
   syncDrive: async (
     projectId: string,
     payload: RoleRoomGoogleDriveSyncInput,
@@ -1766,6 +1816,38 @@ export const googleWorkspaceApi = {
   },
 };
 
+export const linkedInWorkspaceApi = {
+  getStatus: async (): Promise<RoleRoomLinkedInStatusResponse> => (
+    apiRequest<RoleRoomLinkedInStatusResponse>('/linkedin/status')
+  ),
+
+  startOauth: async (
+    payload: RoleRoomLinkedInOauthStartInput,
+  ): Promise<{ success: boolean; mode: 'link'; authorizationUrl: string; stateId: string }> => (
+    apiRequest('/linkedin/oauth/start', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  ),
+
+  getOauthSessionResult: async (transferId: string): Promise<RoleRoomLinkedInLinkResult> => (
+    apiRequest<RoleRoomLinkedInLinkResult>(`/linkedin/oauth/session-result/${encodeURIComponent(transferId)}`)
+  ),
+
+  completeLink: async (transferId: string): Promise<RoleRoomLinkedInStatusResponse> => (
+    apiRequest<RoleRoomLinkedInStatusResponse>('/linkedin/link', {
+      method: 'POST',
+      body: JSON.stringify({ transferId }),
+    })
+  ),
+
+  unlink: async (): Promise<RoleRoomLinkedInStatusResponse> => (
+    apiRequest<RoleRoomLinkedInStatusResponse>('/linkedin/link', {
+      method: 'DELETE',
+    })
+  ),
+};
+
 export const castingApi = {
   favorites: favoritesApi,
   projects: projectsApi,
@@ -1793,6 +1875,7 @@ export const castingApi = {
   userRoles: userRolesApi,
   shotDetails: shotDetailsApi,
   googleWorkspace: googleWorkspaceApi,
+  linkedInWorkspace: linkedInWorkspaceApi,
 };
 
 export default castingApi;

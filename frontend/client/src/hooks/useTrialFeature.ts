@@ -1,5 +1,5 @@
 // client/src/hooks/useTrialFeature.ts
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   TrialFeatureManager, 
   type TrialFeature, 
@@ -281,35 +281,77 @@ export function useMultipleTrialFeatures(featureIds: string[], componentId: stri
   const [features, setFeatures] = useState<Record<string, UseTrialFeatureReturn>>({});
 
   useEffect(() => {
-    const featureHooks: Record<string, UseTrialFeatureReturn> = {};
-    
-    featureIds.forEach(featureId => {
-      featureHooks[featureId] = useTrialFeature({
-        featureId,
-        componentId,
-        userId,
-        autoCheck: true,
-        showPrompt: false // Don't auto-show prompts for multiple features
-      });
-    });
-    
-    setFeatures(featureHooks);
-  }, [featureIds, componentId, userId]);
+    let cancelled = false;
 
-  return features;
+    const loadFeatures = async () => {
+      const next: Record<string, UseTrialFeatureReturn> = {};
+
+      for (const featureId of featureIds) {
+        const feature = trialFeatureManager.getFeature(featureId) ?? null;
+        const eligibility = feature
+          ? await trialFeatureManager.checkTrialEligibility(featureId, userId ?? 'current-user')
+          : null;
+        const trialStatus = eligibility?.trialStatus ?? null;
+
+        next[featureId] = {
+          trialStatus,
+          eligibility,
+          feature,
+          loading: false,
+          startTrial: async () => {
+            await trialFeatureManager.startTrial(featureId, userId ?? 'current-user');
+          },
+          endTrial: async () => {},
+          trackUsage: (action: string) => {
+            void trialFeatureManager.trackTrialUsage(featureId, userId ?? 'current-user', action);
+          },
+          hasAccess: eligibility?.reason === 'User already has access',
+          isTrialActive: trialStatus?.isActive ?? false,
+          isTrialExpired: trialStatus?.hasExpired ?? false,
+          canUpgrade: eligibility?.canUpgrade ?? trialStatus?.canUpgrade ?? false,
+          isEligible: eligibility?.eligible ?? false,
+          showTrialPrompt: Boolean(eligibility?.eligible),
+          showUpgradePrompt: Boolean(eligibility?.canUpgrade ?? trialStatus?.canUpgrade),
+          showFeature: Boolean(
+            eligibility?.reason === 'User already has access' || trialStatus?.isActive,
+          ),
+          showTrialDialog: false,
+          setShowTrialDialog: () => {},
+          showUpgradeDialog: false,
+          setShowUpgradeDialog: () => {},
+          handleUpgradeSuccess: () => {},
+        };
+      }
+
+      if (!cancelled) {
+        setFeatures(next);
+      }
+    };
+
+    void loadFeatures();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [componentId, featureIds, userId]);
+
+  return useMemo(() => features, [features]);
 }
 
 // Hook for trial analytics
 export function useTrialAnalytics(featureId?: string) {
-  const [analytics, setAnalytics] = useState<any>(null);
+  const [analytics, setAnalytics] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchAnalytics = useCallback(async () => {
     try {
       setLoading(true);
-      // This would fetch analytics from the API
-      // const data = await apiRequest(`/api/trials/analytics${featureId ? `/${featureId}` :', '}`);
-      // setAnalytics(data);
+      const summary = {
+        featureId: featureId ?? 'all-features',
+        refreshedAt: new Date().toISOString(),
+        activeTrials: trialFeatureManager.getAllFeatures().length,
+      };
+      setAnalytics(summary);
     } catch (error) {
       console.error('Error fetching trial analytics:', error);
     } finally {

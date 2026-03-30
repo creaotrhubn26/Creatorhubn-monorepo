@@ -333,7 +333,7 @@ export default function UniversalCommunicationHub({
               icon={<PersonIcon />}
               label={profession}
               size="small"
-              sx={{ bgcolor: 'rgba(25,255,255,0.2)', color: 'white' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'white' }}
             />
             <IconButton sx={{ color: 'white' }}>
               <SettingsIcon />

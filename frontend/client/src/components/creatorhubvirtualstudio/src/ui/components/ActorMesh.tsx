@@ -14,14 +14,16 @@
 
 import React, { useEffect, useRef, useMemo } from 'react';
 import { logger } from '../../core/services/logger';
+import type * as ThreeModule from 'three';
+import { mergeGeometries as mergeBufferGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const log = logger.module('ActorMesh');
 import type { SceneNode } from '../../core/models/scene';
 
 // Dynamic THREE import (same pattern as Stage3D)
-let THREE: any = null;
+let THREE: typeof ThreeModule | null = null;
 try {
-  THREE = require('three');
+  THREE = require('three') as typeof import('three');
 } catch {
   log.warn('THREE.js not available in ActorMesh');
 }
@@ -30,20 +32,61 @@ interface ActorMeshProps {
   node: SceneNode;
 }
 
+type ActorMeshUserData = SceneNode['userData'] & {
+  geometry?: ThreeModule.BufferGeometry;
+  material?: ThreeModule.Material;
+  skinTone?: string;
+  actorParams?: {
+    height?: number;
+  };
+};
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isBufferGeometry(value: unknown): value is ThreeModule.BufferGeometry {
+  return isObject(value) && 'attributes' in value && 'computeVertexNormals' in value;
+}
+
+function isMaterial(value: unknown): value is ThreeModule.Material {
+  return isObject(value) && 'visible' in value && 'opacity' in value;
+}
+
+function getActorMeshUserData(node: SceneNode): ActorMeshUserData | null {
+  if (!isObject(node.userData)) {
+    return null;
+  }
+
+  const userData = node.userData;
+  const actorParams = isObject(userData.actorParams)
+    ? {
+        height:
+          typeof userData.actorParams.height === 'number' ? userData.actorParams.height : undefined,
+      }
+    : undefined;
+
+  return {
+    ...userData,
+    geometry: isBufferGeometry(userData.geometry) ? userData.geometry : undefined,
+    material: isMaterial(userData.material) ? userData.material : undefined,
+    skinTone: typeof userData.skinTone === 'string' ? userData.skinTone : undefined,
+    actorParams,
+  };
+}
+
 /**
  * Create a realistic human silhouette mesh
  * Used as a placeholder when Anny service hasn't generated the mesh yet
  */
 function createHumanSilhouette(height: number = 1.7, skinTone: string = '#f4c2a0'): {
-  geometry: THREE.BufferGeometry;
-  material: THREE.Material;
+  geometry: ThreeModule.BufferGeometry | null;
+  material: ThreeModule.Material | null;
 } {
   if (!THREE) {
     return { geometry: null, material: null };
   }
 
-  const group = new THREE.Group();
-  
   // Proportions based on average adult human (8 heads tall)
   const headHeight = height / 8;
   const torsoHeight = height * 0.35;
@@ -51,7 +94,7 @@ function createHumanSilhouette(height: number = 1.7, skinTone: string = '#f4c2a0
   const armLength = height * 0.38;
   
   // Create merged geometry from body parts
-  const geometries: THREE.BufferGeometry[] = [];
+  const geometries: ThreeModule.BufferGeometry[] = [];
 
   // Head (sphere)
   const headGeom = new THREE.SphereGeometry(headHeight * 0.5, 16, 12);
@@ -192,9 +235,7 @@ function createHumanSilhouette(height: number = 1.7, skinTone: string = '#f4c2a0
   geometries.push(footGeomR);
 
   // Merge all geometries
-  const mergedGeometry = THREE.BufferGeometryUtils
-    ? THREE.BufferGeometryUtils.mergeGeometries(geometries)
-    : mergeGeometries(geometries);
+  const mergedGeometry = mergeBufferGeometries(geometries, false) ?? mergeGeometries(geometries);
 
   // Create PBR skin material
   const material = new THREE.MeshStandardMaterial({
@@ -211,7 +252,9 @@ function createHumanSilhouette(height: number = 1.7, skinTone: string = '#f4c2a0
 }
 
 // Fallback merge function if BufferGeometryUtils not available
-function mergeGeometries(geometries: THREE.BufferGeometry[]): THREE.BufferGeometry {
+function mergeGeometries(
+  geometries: ThreeModule.BufferGeometry[],
+): ThreeModule.BufferGeometry | null {
   if (!THREE) return null;
   
   // Simple merge - just use the first geometry as a fallback
@@ -279,15 +322,18 @@ function mergeGeometries(geometries: THREE.BufferGeometry[]): THREE.BufferGeomet
  * Renders a virtual actor mesh in the scene
  */
 export function ActorMesh({ node }: ActorMeshProps) {
-  const meshRef = useRef<any>(null);
+  const meshRef = useRef<ThreeModule.Mesh | null>(null);
 
   // Extract geometry and material from userData or create placeholder
   const { geometry, material } = useMemo(() => {
-    if (!node.userData || !THREE) {
+    if (!THREE) {
       return { geometry: null, material: null };
     }
 
-    const userData = node.userData as any;
+    const userData = getActorMeshUserData(node);
+    if (!userData) {
+      return { geometry: null, material: null };
+    }
     
     // If geometry and material are already created by Anny service, use them
     if (userData.geometry && userData.material) {
@@ -307,7 +353,7 @@ export function ActorMesh({ node }: ActorMeshProps) {
     const skinTone = userData.skinTone ||'#f4c2a0';
 
     return createHumanSilhouette(height, skinTone);
-  }, [node.userData]);
+  }, [node]);
 
   // Update mesh when node changes
   useEffect(() => {

@@ -54,6 +54,21 @@ class ProducerDeliveryWorkspaceService {
     const files: ProducerDeliveryWorkspaceFile[] = [];
     const agreements = Array.isArray(options?.agreements) ? options?.agreements : [];
     const googleArtifacts = Array.isArray(options?.googleArtifacts) ? options?.googleArtifacts : [];
+    const overlayFormatProfiles = manifest.overlayFormatProfiles;
+    const overlaySpec = {
+      logoUrl: manifest.brandChecklist.find((item) => item.startsWith('Logo er koblet')) ? 'configured' : 'missing',
+      placement: manifest.logoPlacementLabel,
+      timingLabel: manifest.logoTimingLabel,
+      timingDetail: manifest.logoTimingDetail,
+      treatment: manifest.logoTreatmentLabel,
+      defaultVariantRule: 'Primær i 16:9 / 4:5, ikon i 9:16 / 1:1 når ikonvariant finnes.',
+      safeZone: manifest.overlayEditorGuidance.safeZone,
+      opacity: manifest.overlayEditorGuidance.opacity,
+      recommendedMargin: manifest.overlayEditorGuidance.recommendedMargin,
+      note: manifest.overlayEditorGuidance.note,
+      profiles: overlayFormatProfiles,
+      contentLogic: manifest.contentLogicSummary,
+    };
 
     const addTextFile = (
       key: string,
@@ -96,6 +111,8 @@ class ProducerDeliveryWorkspaceService {
         packageName,
         generatedAt: generatedAtIso,
         deliveryItems: manifest.deliveryItems,
+        logoUsageMatrix: manifest.logoUsageMatrix,
+        accountAccessSummary: manifest.accountAccessSummary,
       },
       {
         source: 'role_room_delivery_workspace',
@@ -113,6 +130,21 @@ class ProducerDeliveryWorkspaceService {
         `Prosjekt: ${projectName}`,
         `Generert: ${generatedAtIso}`,
         `Leveranser: ${manifest.deliveryItems.length}`,
+        `Logo plassering: ${manifest.logoPlacementLabel}`,
+        `Logo behandling: ${manifest.logoTreatmentLabel}`,
+        `Logo i video: ${manifest.logoTimingDetail}`,
+        `Safe zone: ${manifest.overlayEditorGuidance.safeZone.label}`,
+        `Opacity: ${manifest.overlayEditorGuidance.opacity.label}`,
+        `Anbefalt margin: ${manifest.overlayEditorGuidance.recommendedMargin.label}`,
+        `Logomatrise: ${manifest.logoUsageMatrix.length} leveranser med eksplisitt variantregel`,
+        `Kontotilgang: ${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount} nødvendige plattformer koblet`,
+        `Matrisefil: ${packageName}-logo-usage-matrix.json`,
+        `Kontotilgangsfil: ${packageName}-account-access.json`,
+        ...(overlayFormatProfiles.length > 0
+          ? ['', 'Formatprofiler:', ...overlayFormatProfiles.map((profile) => (
+            `- ${profile.formatLabel}: ${profile.recommendedVariantLabel} · ${profile.safeZone.label} · ${profile.opacity.label} · ${profile.recommendedMargin.label}`
+          ))]
+          : []),
         '',
         'Denne filpakken beskriver leveransearbeidsområdet for prosjektet.',
         'Hver leveranse har egne prosjektfiler med mappe, pakke, versjon og leveringsstatus.',
@@ -126,10 +158,160 @@ class ProducerDeliveryWorkspaceService {
       },
     );
 
+    addJsonFile(
+      'workspace-overlay-spec',
+      `${packageName}-overlay-spec.json`,
+      overlaySpec,
+      {
+        source: 'role_room_delivery_workspace',
+        workspaceType: 'overlay_spec',
+        packageName,
+        folderPath: 'delivery-workspace/oversikt',
+        generatedAt: generatedAtIso,
+      },
+    );
+
+    addTextFile(
+      'workspace-overlay-spec-readme',
+      `${packageName}-overlay-spec.txt`,
+      [
+        `Prosjekt: ${projectName}`,
+        `Logo plassering: ${manifest.logoPlacementLabel}`,
+        `Logo behandling: ${manifest.logoTreatmentLabel}`,
+        `Logo i video: ${manifest.logoTimingDetail}`,
+        `Safe zone: ${manifest.overlayEditorGuidance.safeZone.label}`,
+        `Opacity: ${manifest.overlayEditorGuidance.opacity.label}`,
+        `Anbefalt margin: ${manifest.overlayEditorGuidance.recommendedMargin.label}`,
+        `Editornotat: ${manifest.overlayEditorGuidance.note}`,
+        ...(overlayFormatProfiles.length > 0
+          ? ['', 'Formatprofiler:', ...overlayFormatProfiles.flatMap((profile) => ([
+            `${profile.formatLabel}:`,
+            `  Anbefalt variant: ${profile.recommendedVariantLabel}`,
+            `  Safe zone: ${profile.safeZone.label}`,
+            `  Opacity: ${profile.opacity.label}`,
+            `  Margin: ${profile.recommendedMargin.label}`,
+            `  Notat: ${profile.note}`,
+          ]))]
+          : []),
+        `Mål: ${manifest.contentLogicSummary.objective || 'Ikke satt'}`,
+        `Hook: ${manifest.contentLogicSummary.hook || 'Ikke satt'}`,
+        `CTA: ${manifest.contentLogicSummary.callToAction || 'Ikke satt'}`,
+        `Distribusjon: ${manifest.contentLogicSummary.distributionPlan || 'Ikke satt'}`,
+        `Bevis: ${manifest.contentLogicSummary.proofPoints.length > 0 ? manifest.contentLogicSummary.proofPoints.join(' · ') : 'Ikke satt'}`,
+        '',
+        'Bruk denne specen som arbeidsgrunnlag for editor, motion og grafikk.',
+      ].join('\n'),
+      {
+        source: 'role_room_delivery_workspace',
+        workspaceType: 'overlay_spec_readme',
+        packageName,
+        folderPath: 'delivery-workspace/oversikt',
+        generatedAt: generatedAtIso,
+      },
+    );
+
+    addJsonFile(
+      'workspace-logo-usage-matrix',
+      `${packageName}-logo-usage-matrix.json`,
+      manifest.logoUsageMatrix,
+      {
+        source: 'role_room_delivery_workspace',
+        workspaceType: 'logo_usage_matrix',
+        packageName,
+        folderPath: 'delivery-workspace/oversikt',
+        generatedAt: generatedAtIso,
+      },
+    );
+
+    addTextFile(
+      'workspace-logo-usage-matrix-readme',
+      `${packageName}-logo-usage-matrix.txt`,
+      [
+        `Prosjekt: ${projectName}`,
+        `Generert: ${generatedAtIso}`,
+        `Leveranser i matrisen: ${manifest.logoUsageMatrix.length}`,
+        '',
+        ...(manifest.logoUsageMatrix.length > 0
+          ? manifest.logoUsageMatrix.flatMap((item) => ([
+            `${item.title} · ${item.channel} · ${item.format}`,
+            `  Valg: ${item.selectionLabel}`,
+            `  Brukes: ${item.resolvedLabel}`,
+            `  Anbefalt: ${item.recommendedLabel}${item.autoApplied ? ' · auto aktiv' : ''}`,
+            `  Leveringstrinn: ${item.deliveryStageLabel}`,
+            '',
+          ]))
+          : ['Ingen leveranser i logomatrise ennå.', '']),
+        'Bruk denne matrisen når editor, motion og automasjon må vite nøyaktig hvilken logovariant som skal brukes per leveranse.',
+      ].join('\n'),
+      {
+        source: 'role_room_delivery_workspace',
+        workspaceType: 'logo_usage_matrix_readme',
+        packageName,
+        folderPath: 'delivery-workspace/oversikt',
+        generatedAt: generatedAtIso,
+      },
+    );
+
+    addJsonFile(
+      'workspace-account-access',
+      `${packageName}-account-access.json`,
+      manifest.accountAccessSummary,
+      {
+        source: 'role_room_delivery_workspace',
+        workspaceType: 'account_access',
+        packageName,
+        folderPath: 'delivery-workspace/oversikt',
+        generatedAt: generatedAtIso,
+      },
+    );
+
+    addTextFile(
+      'workspace-account-access-readme',
+      `${packageName}-account-access.txt`,
+      [
+        `Prosjekt: ${projectName}`,
+        `Generert: ${generatedAtIso}`,
+        `Nødvendige plattformer koblet: ${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount}`,
+        `Trenger klienthandling: ${manifest.accountAccessSummary.clientActionCount}`,
+        `Invitasjoner sendt: ${manifest.accountAccessSummary.inviteSentCount}`,
+        `Sikkerhetsnotat: ${manifest.accountAccessSummary.securityNotes || 'Ikke satt'}`,
+        `Revoke-plan: ${manifest.accountAccessSummary.revokePlan || 'Ikke satt'}`,
+        '',
+        ...(manifest.accountAccessSummary.entries.length > 0
+          ? manifest.accountAccessSummary.entries.flatMap((entry) => ([
+            `${entry.platformLabel}${entry.requiredForProject ? ' · kreves' : ''}`,
+            `  Status: ${entry.statusLabel} · Metode: ${entry.methodLabel}`,
+            `  Scope: ${entry.accessScope || 'Ikke satt'}`,
+            `  Konto / side: ${entry.accountLabel || 'Ikke satt'}`,
+            `  Invite: ${entry.inviteTarget || 'Ikke satt'}`,
+            `  Eier: ${entry.clientOwnerLabel || 'Ikke satt'}`,
+            `  2-faktor hos kontoeier: ${entry.twoFactorRequired ? 'Ja' : 'Nei'}`,
+            `  Notat: ${entry.notes || 'Ingen notater.'}`,
+            '',
+          ]))
+          : ['Ingen kontotilganger registrert.', '']),
+        'Bruk denne oversikten når publiseringsansvarlig, klient og produsent må bekrefte hvem som har tilgang til hvilke plattformer.',
+      ].join('\n'),
+      {
+        source: 'role_room_delivery_workspace',
+        workspaceType: 'account_access_readme',
+        packageName,
+        folderPath: 'delivery-workspace/oversikt',
+        generatedAt: generatedAtIso,
+      },
+    );
+
     manifest.deliveryItems.forEach((item, index) => {
       const deliveryKey = `${item.id}-${index}`;
       const safeName = sanitizeFileToken(item.packageName || item.title || `leveranse-${index + 1}`);
       const folderPath = hasText(item.folderPath) ? item.folderPath : 'delivery-workspace/ukategorisert';
+      const itemOverlayProfile = overlayFormatProfiles.find((profile) => profile.format === item.format) ?? {
+        format: item.format,
+        formatLabel: item.format,
+        recommendedVariantType: item.logoVariantResolvedType,
+        recommendedVariantLabel: item.logoVariantRecommendedLabel,
+        ...manifest.overlayEditorGuidance,
+      };
 
       addTextFile(
         `${deliveryKey}-readme`,
@@ -145,6 +327,18 @@ class ProducerDeliveryWorkspaceService {
           `Leveringstrinn: ${item.deliveryStageLabel}`,
           `Publisering: ${item.publishDateLabel || 'Ikke satt'}`,
           item.estimatedDurationLabel ? `Estimert lengde: ${item.estimatedDurationLabel}` : 'Estimert lengde: Ikke beregnet',
+          `Logo plassering: ${manifest.logoPlacementLabel}`,
+          `Logo behandling: ${manifest.logoTreatmentLabel}`,
+          `Overlay-spec: ${manifest.logoTimingDetail}`,
+          `Logo-variant: ${item.logoVariantResolvedLabel} (${item.logoVariantSelectionLabel})`,
+          `Safe zone: ${itemOverlayProfile.safeZone.label}`,
+          `Opacity: ${itemOverlayProfile.opacity.label}`,
+          `Anbefalt margin: ${itemOverlayProfile.recommendedMargin.label}`,
+          `Formatprofil: ${itemOverlayProfile.formatLabel}`,
+          `Anbefalt formatvariant: ${itemOverlayProfile.recommendedVariantLabel}`,
+          `Editornotat: ${itemOverlayProfile.note}`,
+          `Hook: ${manifest.contentLogicSummary.hook || 'Ikke satt'}`,
+          `CTA: ${manifest.contentLogicSummary.callToAction || 'Ikke satt'}`,
           item.notes ? `Notat: ${item.notes}` : 'Notat: Ingen notater.',
         ].join('\n'),
         {
@@ -165,7 +359,24 @@ class ProducerDeliveryWorkspaceService {
       addJsonFile(
         `${deliveryKey}-json`,
         `${safeName}.delivery.json`,
-        item,
+        {
+          ...item,
+          overlaySpec: {
+            placement: manifest.logoPlacementLabel,
+            timingLabel: manifest.logoTimingLabel,
+            timingDetail: manifest.logoTimingDetail,
+            treatment: manifest.logoTreatmentLabel,
+            variantSelectionLabel: item.logoVariantSelectionLabel,
+            variantResolvedLabel: item.logoVariantResolvedLabel,
+            variantRecommendedLabel: item.logoVariantRecommendedLabel,
+            safeZone: itemOverlayProfile.safeZone,
+            opacity: itemOverlayProfile.opacity,
+            recommendedMargin: itemOverlayProfile.recommendedMargin,
+            note: itemOverlayProfile.note,
+            formatLabel: itemOverlayProfile.formatLabel,
+          },
+          contentLogic: manifest.contentLogicSummary,
+        },
         {
           source: 'role_room_delivery_workspace',
           workspaceType: 'delivery_manifest_item',

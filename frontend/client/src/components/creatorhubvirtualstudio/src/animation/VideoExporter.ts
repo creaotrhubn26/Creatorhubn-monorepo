@@ -15,9 +15,47 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { logger } from '../core/services/logger';
 
-const log = logger.module('VideoExporter, ');
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+const log = logger.module('VideoExporter');
 import { integrationService } from '../services/integrations';
+
+async function toBlobURL(url: string, mimeType: string): Promise<string> {
+  const response = await fetch(url);
+  const sourceBlob = await response.blob();
+  const blob = sourceBlob.type === mimeType
+    ? sourceBlob
+    : new Blob([await sourceBlob.arrayBuffer()], { type: mimeType });
+  return URL.createObjectURL(blob);
+}
+
+async function fetchBinaryFile(source: Blob | string): Promise<Uint8Array> {
+  if (source instanceof Blob) {
+    return new Uint8Array(await source.arrayBuffer());
+  }
+
+  const response = await fetch(source);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+function toBlobPart(data: unknown): BlobPart {
+  if (typeof data === 'string' || data instanceof ArrayBuffer || data instanceof Blob) {
+    return data;
+  }
+
+  if (data instanceof Uint8Array) {
+    return new Uint8Array(data).buffer;
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    return new Uint8Array(view).buffer;
+  }
+
+  if (data instanceof SharedArrayBuffer) {
+    return new Uint8Array(data).buffer;
+  }
+
+  return new Uint8Array().buffer;
+}
 
 export interface VideoExportOptions {
   resolution: '720p' | '1080p' | '4K' | 'custom';
@@ -153,7 +191,7 @@ export class VideoExporter {
 
       for (let i = 0; i < frames.length; i++) {
         const filename = `frame${i.toString().padStart(5, '0')}.png`;
-        await this.ffmpeg.writeFile(filename, await fetchFile(frames[i]));
+        await this.ffmpeg.writeFile(filename, await fetchBinaryFile(frames[i]));
 
         const progress = ((i + 1) / frames.length) * 100;
         onProgress?.({
@@ -197,10 +235,10 @@ export class VideoExporter {
 
       const outputFilename = config.watermark ? 'output_watermarked.mp4' : 'output.mp4';
       const data = await this.ffmpeg.readFile(outputFilename);
-      const videoBlob = new Blob([data], { type: `video/${config.format}` });
+      const videoBlob = new Blob([toBlobPart(data)], { type: `video/${config.format}` });
 
       // Cleanup virtual filesystem
-      await this.cleanup(frames.length, config.watermark);
+      await this.cleanup(frames.length, Boolean(config.watermark));
 
       const exportTime = performance.now() - startTime;
       const fileSize = (videoBlob.size / (1024 * 1024)).toFixed(2);
@@ -274,6 +312,11 @@ export class VideoExporter {
     // This allows videos to start playing before fully downloaded
     args.push('-movflags','+faststart');
 
+    // Make the encoded frame count deterministic when the caller already knows the sequence length.
+    if (frameCount > 0) {
+      args.push('-frames:v', frameCount.toString());
+    }
+
     // Output
     args.push('output.mp4');
 
@@ -346,7 +389,8 @@ export class VideoExporter {
       }
     } else if (watermark.text) {
       // Text watermark
-      const filter = `drawtext=text='${watermark.text}':x=${position.split(' : ')[0]}:y=${position.split(' : ')[1]}:fontsize=24:fontcolor=white@${opacity}:shadowcolor=black@0.5:shadowx=2:shadowy=2`;
+      const [x, y] = position.split(':');
+      const filter = `drawtext=text='${watermark.text}':x=${x}:y=${y}:fontsize=24:fontcolor=white@${opacity}:shadowcolor=black@0.5:shadowx=2:shadowy=2`;
 
       await this.ffmpeg.exec([
         '-i',
@@ -360,7 +404,7 @@ export class VideoExporter {
     } else if (watermark.image) {
       // Image watermark
       // Write watermark image to FS
-      await this.ffmpeg.writeFile('watermark.png', await fetchFile(watermark.image));
+      await this.ffmpeg.writeFile('watermark.png', await fetchBinaryFile(watermark.image));
 
       const filter = `overlay=${position}:alpha=${opacity}`;
 
@@ -446,15 +490,21 @@ export class VideoExporter {
       // Delete output files
       try {
         await this.ffmpeg.deleteFile('output.mp4');
-      } catch {}
+      } catch (error) {
+        log.debug('Cleanup skipped for output.mp4', error);
+      }
 
       if (hasWatermark) {
         try {
           await this.ffmpeg.deleteFile('output_watermarked.mp4');
-        } catch {}
+        } catch (error) {
+          log.debug('Cleanup skipped for output_watermarked.mp4', error);
+        }
         try {
           await this.ffmpeg.deleteFile('watermark.png');
-        } catch {}
+        } catch (error) {
+          log.debug('Cleanup skipped for watermark.png', error);
+        }
       }
     } catch (error) {
       log.warn('Cleanup warning:', error);

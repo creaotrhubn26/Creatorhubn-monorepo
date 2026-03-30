@@ -4,7 +4,7 @@
  * Right-click context menu for objects
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   Menu,
   MenuItem,
@@ -12,12 +12,6 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import EditIcon from '@mui/icons-material/Edit';
-import InfoIcon from '@mui/icons-material/Info';
-import GroupIcon from '@mui/icons-material/Group';
-import UngroupIcon from '@mui/icons-material/Ungroup';
 import { colors, spacing } from '../../styles/designTokens';
 
 export interface ContextMenuItem {
@@ -126,5 +120,3 @@ export function useContextMenu() {
     handleClose,
   };
 }
-
-

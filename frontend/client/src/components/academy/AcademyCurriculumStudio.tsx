@@ -302,6 +302,8 @@ const normalizeList = (values: unknown): string[] => {
     .filter((value) => value.length > 0);
 };
 
+const isPresent = <T,>(value: T | null): value is T => value !== null;
+
 const createSkillMapItem = (
   title = "",
   focus = "",
@@ -461,7 +463,7 @@ const normalizeCompetencyMapItems = (
 ): PedagogicalCompetencyMapItem[] => {
   if (!Array.isArray(values)) return [];
   return values
-    .map((value, index) => {
+    .map<PedagogicalCompetencyMapItem | null>((value, index) => {
       if (!value || typeof value !== "object") return null;
       const row = value as Record<string, unknown>;
       const normalizeLevelList = (entry: unknown): string[] =>
@@ -486,7 +488,7 @@ const normalizeCompetencyMapItems = (
       ) {
         return null;
       }
-      return {
+      const item: PedagogicalCompetencyMapItem = {
         id:
           String(row.id || "").trim() ||
           `competency-map-${`${title}-${description}`.toLowerCase().replace(/[^a-z0-9]+/g, "-") || index + 1}`,
@@ -496,11 +498,10 @@ const normalizeCompetencyMapItems = (
         operational,
         advanced,
         locked: Boolean(row.locked),
-      } satisfies PedagogicalCompetencyMapItem;
+      };
+      return item;
     })
-    .filter(
-      (entry): entry is PedagogicalCompetencyMapItem => Boolean(entry),
-    )
+    .filter(isPresent)
     .slice(0, 8);
 };
 
@@ -510,7 +511,7 @@ const normalizeSkillSuggestions = (
 ): PedagogicalSkillSuggestion[] => {
   if (!Array.isArray(values)) return [];
   return values
-    .map((value, index) => {
+    .map<PedagogicalSkillSuggestion | null>((value, index) => {
       if (!value || typeof value !== "object") return null;
       const row = value as Record<string, unknown>;
       const title = String(row.title || "").trim();
@@ -524,7 +525,7 @@ const normalizeSkillSuggestions = (
             ? "advanced"
             : "operational";
       if ((!title || !competency || !objective) && !preserveIncomplete) return null;
-      return {
+      const item: PedagogicalSkillSuggestion = {
         id:
           String(row.id || "").trim() ||
           `skill-suggestion-${`${competency}-${title}-${level}`.toLowerCase().replace(/[^a-z0-9]+/g, "-") || index + 1}`,
@@ -537,9 +538,10 @@ const normalizeSkillSuggestions = (
           Math.min(45, Number(row.recommendedDurationMinutes || 8) || 8),
         ),
         locked: Boolean(row.locked),
-      } satisfies PedagogicalSkillSuggestion;
+      };
+      return item;
     })
-    .filter((entry): entry is PedagogicalSkillSuggestion => Boolean(entry))
+    .filter(isPresent)
     .slice(0, 18);
 };
 
@@ -549,12 +551,12 @@ const normalizeQuizSuggestionOptions = (
 ): PedagogicalQuizSuggestionOption[] => {
   if (!Array.isArray(values)) return [];
   return values
-    .map((value, index) => {
+    .map<PedagogicalQuizSuggestionOption | null>((value, index) => {
       if (!value || typeof value !== "object") return null;
       const row = value as Record<string, unknown>;
       const text = String(row.text || "").trim();
       if (!text && !preserveIncomplete) return null;
-      return {
+      const option: PedagogicalQuizSuggestionOption = {
         label:
           String(row.label || String.fromCharCode(65 + index))
             .trim()
@@ -563,9 +565,10 @@ const normalizeQuizSuggestionOptions = (
         text,
         isCorrect: Boolean(row.isCorrect),
         explanation: String(row.explanation || "").trim() || undefined,
-      } satisfies PedagogicalQuizSuggestionOption;
+      };
+      return option;
     })
-    .filter((entry): entry is PedagogicalQuizSuggestionOption => Boolean(entry))
+    .filter(isPresent)
     .slice(0, 6);
 };
 
@@ -575,7 +578,7 @@ const normalizeQuizSuggestions = (
 ): PedagogicalQuizSuggestion[] => {
   if (!Array.isArray(values)) return [];
   return values
-    .map((value, index) => {
+    .map<PedagogicalQuizSuggestion | null>((value, index) => {
       if (!value || typeof value !== "object") return null;
       const row = value as Record<string, unknown>;
       const prompt = String(row.prompt || "").trim();
@@ -597,7 +600,7 @@ const normalizeQuizSuggestions = (
             : typeRaw === "short-answer"
               ? "short-answer"
               : "single-choice";
-      return {
+      const suggestion: PedagogicalQuizSuggestion = {
         id:
           String(row.id || "").trim() ||
           `quiz-suggestion-${`${competency}-${prompt}`.toLowerCase().replace(/[^a-z0-9]+/g, "-") || index + 1}`,
@@ -627,9 +630,10 @@ const normalizeQuizSuggestions = (
               .slice(0, 8)
           : [],
         locked: Boolean(row.locked),
-      } satisfies PedagogicalQuizSuggestion;
+      };
+      return suggestion;
     })
-    .filter((entry): entry is PedagogicalQuizSuggestion => Boolean(entry))
+    .filter(isPresent)
     .slice(0, 12);
 };
 
@@ -639,7 +643,7 @@ const normalizeAnnotationSuggestions = (
 ): PedagogicalAnnotationSuggestion[] => {
   if (!Array.isArray(values)) return [];
   return values
-    .map((value, index) => {
+    .map<PedagogicalAnnotationSuggestion | null>((value, index) => {
       if (!value || typeof value !== "object") return null;
       const row = value as Record<string, unknown>;
       const title = String(row.title || "").trim();
@@ -672,7 +676,7 @@ const normalizeAnnotationSuggestions = (
         actionTypeRaw === "showQuiz"
           ? actionTypeRaw
           : undefined;
-      return {
+      const suggestion: PedagogicalAnnotationSuggestion = {
         id:
           String(row.id || "").trim() ||
           `annotation-suggestion-${`${competency}-${title}-${type}`.toLowerCase().replace(/[^a-z0-9]+/g, "-") || index + 1}`,
@@ -693,11 +697,10 @@ const normalizeAnnotationSuggestions = (
         actionType,
         actionTarget: String(row.actionTarget || "").trim() || undefined,
         locked: Boolean(row.locked),
-      } satisfies PedagogicalAnnotationSuggestion;
+      };
+      return suggestion;
     })
-    .filter(
-      (entry): entry is PedagogicalAnnotationSuggestion => Boolean(entry),
-    )
+    .filter(isPresent)
     .slice(0, 12);
 };
 
@@ -1181,7 +1184,7 @@ const normalizeSavedFoundationTemplates = (
 ): SavedCurriculumFoundationTemplate[] => {
   if (!Array.isArray(value)) return [];
   return value
-    .map((entry, index) => {
+    .map<SavedCurriculumFoundationTemplate | null>((entry, index) => {
       if (!entry || typeof entry !== "object") return null;
       const row = entry as Record<string, unknown>;
       const name = String(row.name || "").trim();
@@ -1189,7 +1192,7 @@ const normalizeSavedFoundationTemplates = (
         (row.architecture || emptyArchitecture) as PedagogicalArchitecture,
       );
       if (!name) return null;
-      return {
+      const template: SavedCurriculumFoundationTemplate = {
         id:
           String(row.id || "").trim() ||
           `foundation-template-${`${name}-${index + 1}`.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
@@ -1199,9 +1202,10 @@ const normalizeSavedFoundationTemplates = (
           String(row.sourceProjectTemplateId || "").trim() || undefined,
         createdAt: String(row.createdAt || row.updatedAt || new Date().toISOString()).trim(),
         updatedAt: String(row.updatedAt || row.createdAt || new Date().toISOString()).trim(),
-      } satisfies SavedCurriculumFoundationTemplate;
+      };
+      return template;
     })
-    .filter((entry): entry is SavedCurriculumFoundationTemplate => Boolean(entry))
+    .filter(isPresent)
     .slice(0, 100);
 };
 
@@ -2646,12 +2650,15 @@ function AcademyCurriculumStudio({
           new Date(draftEntry.savedAt).getTime() >=
             new Date(activeCourse.updatedAt).getTime()),
     );
-    applyCurriculumSnapshot(shouldRestoreDraft ? draftEntry : persistedSnapshot, {
+    applyCurriculumSnapshot(
+      shouldRestoreDraft && draftEntry ? draftEntry : persistedSnapshot,
+      {
       savedAt: shouldRestoreDraft
         ? draftEntry?.savedAt
         : String(activeCourse?.updatedAt || "").trim() || undefined,
       selectedVersionId: "",
-    });
+      },
+    );
     const versionEntries = readCurriculumFoundationVersionEntries(
       curriculumFoundationScopeId,
     );
@@ -6315,7 +6322,7 @@ function AcademyCurriculumStudio({
                           direction={{ xs: "column", lg: "row" }}
                           spacing={0.8}
                         >
-                          {[
+                          {([
                             {
                               key: "basic",
                               label: tt("Grunnleggende", "Basic"),
@@ -6337,7 +6344,13 @@ function AcademyCurriculumStudio({
                               tint: "rgba(92,180,128,0.12)",
                               border: "rgba(92,180,128,0.24)",
                             },
-                          ].map((level) => (
+                          ] as Array<{
+                            key: "basic" | "operational" | "advanced";
+                            label: string;
+                            items: string[];
+                            tint: string;
+                            border: string;
+                          }>).map((level) => (
                             <Box
                               key={`${row.id}-${level.key}`}
                               sx={{

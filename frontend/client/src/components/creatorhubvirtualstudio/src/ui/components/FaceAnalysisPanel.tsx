@@ -15,6 +15,7 @@ import {
   Paper,
   Alert,
   CircularProgress,
+  Slider,
   Tabs,
   Tab,
   Grid,
@@ -34,7 +35,7 @@ import {
   Redo as RedoIcon,
   History as HistoryIcon,
 } from '@mui/icons-material';
-import { faceXFormerService, type FaceAnalysisTask } from '../../services/FaceXFormerService';
+import { faceXFormerService, type FaceAnalysisTask, type FaceAnalysisResult } from '../../services/FaceXFormerService';
 import { sam2Service } from '@/services/SAM2Service';
 import { logger } from '../../core/services/logger';
 import { getR3FCanvas } from '../../core/services/viewports';
@@ -74,12 +75,30 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
+function createHistoryResult(analysisResults: FaceAnalysisResults): FaceAnalysisResult {
+  return {
+    success: true,
+    task: 'all',
+    results: {
+      face: undefined,
+      parsing: analysisResults.parsing,
+      parsing_visualization: undefined,
+      landmarks: analysisResults.landmarks,
+      landmarks_visualization: undefined,
+      headpose: analysisResults.headpose,
+      headpose_visualization: undefined,
+      attributes: analysisResults.attributes,
+    },
+  };
+}
+
 export function FaceAnalysisPanel() {
+  const { setAnalysisData } = useFaceAnalysis();
   const [selectedTasks, setSelectedTasks] = useState<Set<FaceAnalysisTask>>(new Set(['all']));
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<any>(null);
+  const [results, setResults] = useState<FaceAnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState(0);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   
@@ -88,13 +107,15 @@ export function FaceAnalysisPanel() {
   const [faceAwareLighting, setFaceAwareLighting] = useState(true);
   const [showCompositionGuides, setShowCompositionGuides] = useState(true);
   const [realtimeAnalysis, setRealtimeAnalysis] = useState(false);
+  const [backgroundAnalysis, setBackgroundAnalysis] = useState(false);
+  const [backgroundInterval, setBackgroundInterval] = useState(5000);
   
   // Store access
   const storeActions = useActions();
   const nodes = useNodes();
   
   // Composition guides state
-  const [compositionGuides, setCompositionGuides] = useState<any>(null);
+  const [compositionGuides, setCompositionGuides] = useState<ReturnType<typeof calculateCompositionGuides> | null>(null);
   
   // Analysis history state
   const [historyStats, setHistoryStats] = useState(faceAnalysisHistory.getStats());
@@ -174,6 +195,18 @@ export function FaceAnalysisPanel() {
     });
   }, [tasks.length]);
 
+  function dataURLtoFile(dataurl: string, filename: string): File {
+    const arr = dataurl.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+  }
+
   /**
    * Calculate scene hash to detect camera, model, and light changes
    * Watches camera position/rotation, model position/rotation, and light positions/power
@@ -210,11 +243,20 @@ export function FaceAnalysisPanel() {
     });
   }, [nodes]);
 
+  const cameraHash = sceneHash;
+
   /**
    * Background auto-analysis effect
    * Runs automatically when camera, model, or lights change, without user interaction
    */
   useEffect(() => {
+    backgroundIntervalRef.current = setInterval(() => {
+      lastBackgroundAnalysisRef.current = Math.max(
+        0,
+        lastBackgroundAnalysisRef.current - backgroundInterval,
+      );
+    }, backgroundInterval);
+
     if (backgroundAnalysis) {
       // Check if scene has changed (camera, model, or lights)
       const sceneChanged = sceneHash !== lastSceneHashRef.current;
@@ -343,6 +385,10 @@ export function FaceAnalysisPanel() {
     
     // Cleanup function
     return () => {
+      if (backgroundIntervalRef.current) {
+        clearInterval(backgroundIntervalRef.current);
+        backgroundIntervalRef.current = null;
+      }
       if (backgroundTimeoutRef.current) {
         clearTimeout(backgroundTimeoutRef.current);
         backgroundTimeoutRef.current = null;
@@ -502,18 +548,6 @@ export function FaceAnalysisPanel() {
   /**
    * Convert base64 data URL to File for API
    */
-  const dataURLtoFile = useCallback((dataurl: string, filename: string): File => {
-    const arr = dataurl.split(', ');
-    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new File([u8arr], filename, { type: mime });
-  }, []);
-
   const handleAnalyze = useCallback(async () => {
     if (!capturedImage) {
       setError('Please capture the scene first');
@@ -632,7 +666,8 @@ export function FaceAnalysisPanel() {
 
       {/* Scene Capture */}
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="subtitle2" gutterBottom>
+        <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ImageIcon fontSize="small" />
           Capture Current Scene
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
@@ -755,7 +790,9 @@ export function FaceAnalysisPanel() {
               </Typography>
               <Slider
                 value={backgroundInterval}
-                onChange={(_, value) => setBackgroundInterval(value as number)}
+                onChange={(_: Event, value: number | number[]) =>
+                  setBackgroundInterval(Array.isArray(value) ? value[0] : value)
+                }
                 min={2000}
                 max={30000}
                 step={1000}
@@ -766,7 +803,7 @@ export function FaceAnalysisPanel() {
                   { value: 30000, label: '30s' },
                 ]}
                 valueLabelDisplay="auto"
-                valueLabelFormat={(value) => `${value / 1000}s`}
+                valueLabelFormat={(value: number) => `${value / 1000}s`}
               />
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                 Analyzes automatically when camera, model, or lights change, or after interval
@@ -817,8 +854,10 @@ export function FaceAnalysisPanel() {
       </Button>
 
       {/* History Controls */}
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="subtitle2" gutterBottom>
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+        <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <HistoryIcon fontSize="small" />
           Analysis History
         </Typography>
         <Stack direction="row" spacing={1}>
@@ -827,7 +866,7 @@ export function FaceAnalysisPanel() {
             size="small"
             startIcon={<UndoIcon />}
             onClick={() => {
-              const snapshot = faceAnalysisHistory.undo();
+              const snapshot: AnalysisSnapshot | null = faceAnalysisHistory.undo();
               if (snapshot) {
                 // Restore scene state from snapshot
                 if (snapshot.cameraAdjustment) {
@@ -852,7 +891,7 @@ export function FaceAnalysisPanel() {
                   headPose: snapshot.analysisResults.headpose,
                   compositionGuides: snapshot.compositionGuides,
                 });
-                setResults({ results: snapshot.analysisResults });
+                setResults(createHistoryResult(snapshot.analysisResults));
                 setCompositionGuides(snapshot.compositionGuides);
                 setHistoryStats(faceAnalysisHistory.getStats());
                 log.info('Restored from history', snapshot.id);
@@ -868,7 +907,7 @@ export function FaceAnalysisPanel() {
             size="small"
             startIcon={<RedoIcon />}
             onClick={() => {
-              const snapshot = faceAnalysisHistory.redo();
+              const snapshot: AnalysisSnapshot | null = faceAnalysisHistory.redo();
               if (snapshot) {
                 // Restore scene state from snapshot
                 if (snapshot.cameraAdjustment) {
@@ -893,7 +932,7 @@ export function FaceAnalysisPanel() {
                   headPose: snapshot.analysisResults.headpose,
                   compositionGuides: snapshot.compositionGuides,
                 });
-                setResults({ results: snapshot.analysisResults });
+                setResults(createHistoryResult(snapshot.analysisResults));
                 setCompositionGuides(snapshot.compositionGuides);
                 setHistoryStats(faceAnalysisHistory.getStats());
                 log.info('Restored from history', snapshot.id);
@@ -905,10 +944,12 @@ export function FaceAnalysisPanel() {
             Redo
           </Button>
         </Stack>
+        <Divider sx={{ my: 1.5 }} />
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
           {historyStats.totalSnapshots} analyses saved
         </Typography>
-      </Paper>
+        </CardContent>
+      </Card>
 
       {/* Error Display */}
       {error && (
@@ -970,7 +1011,11 @@ export function FaceAnalysisPanel() {
                 <Button
                   size="small"
                   startIcon={<DownloadIcon />}
-                  onClick={() => handleDownload(results.results.face, 'face.png')}
+                  onClick={() => {
+                    if (results.results.face) {
+                      handleDownload(results.results.face, 'face.png');
+                    }
+                  }}
                   sx={{ mt: 1 }}
                 >
                   Download
@@ -999,12 +1044,13 @@ export function FaceAnalysisPanel() {
                 <Button
                   size="small"
                   startIcon={<DownloadIcon />}
-                  onClick={() =>
-                    handleDownload(
-                      results.results.parsing_visualization || results.results.parsing,
-                      'parsing.png'
-                    )
-                  }
+                  onClick={() => {
+                    const parsingDownload =
+                      results.results.parsing_visualization ?? results.results.parsing;
+                    if (parsingDownload) {
+                      handleDownload(parsingDownload, 'parsing.png');
+                    }
+                  }}
                   sx={{ mt: 1 }}
                 >
                   Download
@@ -1035,12 +1081,13 @@ export function FaceAnalysisPanel() {
                 <Button
                   size="small"
                   startIcon={<DownloadIcon />}
-                  onClick={() =>
-                    handleDownload(
-                      results.results.landmarks_visualization || results.results.face,
-                      'landmarks.png'
-                    )
-                  }
+                  onClick={() => {
+                    const landmarksDownload =
+                      results.results.landmarks_visualization ?? results.results.face;
+                    if (landmarksDownload) {
+                      handleDownload(landmarksDownload, 'landmarks.png');
+                    }
+                  }}
                   sx={{ mt: 1 }}
                 >
                   Download
@@ -1084,12 +1131,13 @@ export function FaceAnalysisPanel() {
                 <Button
                   size="small"
                   startIcon={<DownloadIcon />}
-                  onClick={() =>
-                    handleDownload(
-                      results.results.headpose_visualization || results.results.face,
-                      'headpose.png'
-                    )
-                  }
+                  onClick={() => {
+                    const headposeDownload =
+                      results.results.headpose_visualization ?? results.results.face;
+                    if (headposeDownload) {
+                      handleDownload(headposeDownload, 'headpose.png');
+                    }
+                  }}
                   sx={{ mt: 1 }}
                 >
                   Download
@@ -1130,4 +1178,3 @@ export function FaceAnalysisPanel() {
     </Box>
   );
 }
-

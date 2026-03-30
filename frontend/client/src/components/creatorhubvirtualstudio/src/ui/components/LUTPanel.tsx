@@ -6,7 +6,7 @@
 import React, { useState, useRef } from 'react';
 import { logger } from '../../core/services/logger';
 
-const log = logger.module('LUTPanel, ');
+const log = logger.module('LUTPanel');
 import {
   Box,
   Paper,
@@ -26,14 +26,14 @@ import {
   Clear,
   Palette,
 } from '@mui/icons-material';
-import { lutService } from '../../core/services/lutService';
+import { lutService, type LUT3D } from '../../core/services/lutService';
 
 export interface LUTPanelProps {
   enabled: boolean;
   intensity: number;
   onEnabledChange: (enabled: boolean) => void;
   onIntensityChange: (intensity: number) => void;
-  onLUTLoaded?: (lut: any) => void;
+  onLUTLoaded?: (lut: LUT3D) => void;
 }
 
 export const LUTPanel: React.FC<LUTPanelProps> = ({
@@ -43,7 +43,7 @@ export const LUTPanel: React.FC<LUTPanelProps> = ({
   onIntensityChange,
   onLUTLoaded,
 }) => {
-  const [currentLUT, setCurrentLUT] = useState<any>(null);
+  const [currentLUT, setCurrentLUT] = useState<LUT3D | null>(null);
   const [lutName, setLutName] = useState<string>('');
   const [error, setError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -55,7 +55,7 @@ export const LUTPanel: React.FC<LUTPanelProps> = ({
     try {
       setError('');
       const text = await file.text();
-      const lut = lutService.parseCubeFile(text);
+      const lut = lutService.parseCubeLUT(text);
       
       setCurrentLUT(lut);
       setLutName(file.name);
@@ -73,9 +73,9 @@ export const LUTPanel: React.FC<LUTPanelProps> = ({
     if (!currentLUT) return;
 
     try {
-      const cubeData = lutService.exportToCube(currentLUT, {
-        title: lutName || 'Exported LUT',
-        domain: [0, 1],
+      const cubeData = lutService.exportToCube({
+        ...currentLUT,
+        title: lutName || currentLUT.title || 'Exported LUT',
       });
 
       // Create download
@@ -95,10 +95,10 @@ export const LUTPanel: React.FC<LUTPanelProps> = ({
 
   const handleClear = () => {
     setCurrentLUT(null);
-    setLutName(', ');
-    setError(', ');
+    setLutName('');
+    setError('');
     if (fileInputRef.current) {
-      fileInputRef.current.value = ', ';
+      fileInputRef.current.value = '';
     }
   };
 
@@ -209,4 +209,3 @@ export const LUTPanel: React.FC<LUTPanelProps> = ({
     </Paper>
   );
 };
-

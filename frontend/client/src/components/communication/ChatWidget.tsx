@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Avatar,
   Badge,
   Box,
@@ -103,18 +104,22 @@ function parseMessages(payload: unknown): ChatMessage[] {
 
   return source
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-    .map((item, index) => ({
-      id: typeof item.id === 'string' ? item.id : `message-${index}`,
-      content: typeof item.content === 'string' ? item.content : '',
-      sender:
-        typeof item.sender === 'string' && item.sender === 'customer'
-          ? 'customer'
-          : typeof item.senderType === 'string' && item.senderType === 'customer'
+    .map((item, index) => {
+      const normalizedMessage: ChatMessage = {
+        id: typeof item.id === 'string' ? item.id : `message-${index}`,
+        content: typeof item.content === 'string' ? item.content : '',
+        sender:
+          typeof item.sender === 'string' && item.sender === 'customer'
             ? 'customer'
-            : 'photographer',
-      timestamp: item.timestamp ? new Date(String(item.timestamp)) : new Date(),
-      leadId: typeof item.leadId === 'string' ? item.leadId : undefined,
-    }))
+            : typeof item.senderType === 'string' && item.senderType === 'customer'
+              ? 'customer'
+              : 'photographer',
+        timestamp: item.timestamp ? new Date(String(item.timestamp)) : new Date(),
+        ...(typeof item.leadId === 'string' ? { leadId: item.leadId } : {}),
+      };
+
+      return normalizedMessage;
+    })
     .filter((message) => message.content.length > 0);
 }
 

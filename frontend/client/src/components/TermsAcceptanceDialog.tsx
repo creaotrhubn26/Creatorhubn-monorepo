@@ -117,7 +117,7 @@ export default function TermsAcceptanceDialog({
       {/* Header */}
       <DialogTitle sx={{ 
         p:  3, 
-        borderBottom: '1px solid rgba(25,255,255,0.1)',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center'
@@ -128,7 +128,7 @@ export default function TermsAcceptanceDialog({
             <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
               Vilkår og betingelser
             </Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(25,255,255,0.7)' }}>
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.72)' }}>
               Les og akseptér vilkårene før du fortsetter med bildevalg
             </Typography>
           </Box>
@@ -137,7 +137,7 @@ export default function TermsAcceptanceDialog({
         <IconButton 
           onClick={onClose}
           sx={{ 
-            color: 'rgba(25,255,255,0.7)', '&:hover': { color: '#fff', bgcolor: 'rgba(25,255,255,0.1)' }
+            color: 'rgba(255,255,255,0.72)', '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.08)' }
         }}
         >
           {theming.getThemedIcon('close')}
@@ -155,7 +155,7 @@ export default function TermsAcceptanceDialog({
             flexDirection: 'column',
             gap: 2 }}>
             <CircularProgress sx={{ color: '#ffa726'}} />
-            <Typography sx={{ color: 'rgba(25,255,255,0.7)' }}>
+            <Typography sx={{ color: 'rgba(255,255,255,0.72)' }}>
               Laster vilkår og betingelser...
             </Typography>
           </Box>
@@ -171,7 +171,7 @@ export default function TermsAcceptanceDialog({
             {mainTerms && (
               <Paper sx={{
                 bgcolor: '#0f1410',
-                border: '1px solid rgba(25,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 2,
                 p: 3,
                 mb: 3,
@@ -182,7 +182,7 @@ export default function TermsAcceptanceDialog({
                   {mainTerms.name}
                 </Typography>
                 
-                <Box component="ol" sx={{ pl: 2, m: 0, color: 'rgba(25,255,255,0.8)' }}>
+                <Box component="ol" sx={{ pl: 2, m: 0, color: 'rgba(255,255,255,0.82)' }}>
                   {mainTerms.terms.map((term, index) => (
                     <Typography component="li" key={index} sx={{ mb: 1, lineHeight: 1.6 }}>
                       {term}
@@ -190,14 +190,14 @@ export default function TermsAcceptanceDialog({
                   ))}
                 </Box>
 
-                <Box sx={{ mt:  3, pt: 2, borderTop: '1px solid rgba(25,255,255,0.1)' }}>
+                <Box sx={{ mt:  3, pt: 2, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                   <FormControlLabel
                     control={
                       <Checkbox
                         checked={termsAccepted}
                         onChange={(e) => setTermsAccepted(e.target.checked)}
                         sx={{
-                          color: 'rgba(25,255,255,0.7)','&.Mui-checked': { color: '#ffa726',}
+                          color: 'rgba(255,255,255,0.72)','&.Mui-checked': { color: '#ffa726',}
                       }}
                       />
                   }
@@ -225,7 +225,7 @@ export default function TermsAcceptanceDialog({
                   {gdprTerms.name}
                 </Typography>
 
-                <Box component="ol" sx={{ pl: 2, m: 0, color: 'rgba(25,255,255,0.8)' }}>
+                <Box component="ol" sx={{ pl: 2, m: 0, color: 'rgba(255,255,255,0.82)' }}>
                   {gdprTerms.terms.map((term, index) => (
                     <Typography component="li" key={index} sx={{ mb: 1, lineHeight: 1.6 }}>
                       {term}
@@ -233,14 +233,14 @@ export default function TermsAcceptanceDialog({
                   ))}
                 </Box>
 
-                <Box sx={{ mt:  3, pt: 2, borderTop: '1px solid rgba(25,255,255,0.1)' }}>
+                <Box sx={{ mt:  3, pt: 2, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                   <FormControlLabel
                     control={
                       <Checkbox
                         checked={gdprAccepted}
                         onChange={(e) => setGdprAccepted(e.target.checked)}
                         sx={{
-                          color: 'rgba(25,255,255,0.7)','&.Mui-checked': { color: '#4caf50',}
+                          color: 'rgba(255,255,255,0.72)','&.Mui-checked': { color: '#4caf50',}
                       }}
                       />
                   }
@@ -283,11 +283,11 @@ export default function TermsAcceptanceDialog({
           variant="outlined"
           onClick={onClose}
           sx={{
-            color: 'rgba(25,255,255,0.7)',
-            borderColor: 'rgba(25,255,255,0.3)',
+            color: 'rgba(255,255,255,0.72)',
+            borderColor: 'rgba(255,255,255,0.22)',
             '&:hover': {
-              borderColor: 'rgba(25,255,255,0.5)',
-              bgcolor: 'rgba(25,255,255,0.05)'
+              borderColor: 'rgba(255,255,255,0.36)',
+              bgcolor: 'rgba(255,255,255,0.06)'
           }
         }}
         >
@@ -298,12 +298,12 @@ export default function TermsAcceptanceDialog({
           onClick={handleAccept}
           disabled={!canProceed}
           sx={{
-            bgcolor: canProceed ? '#ffa726' : 'rgba(25,255,255,0.1)',
-            color: canProceed ? '#000' : 'rgba(25,255,255,0.5)',
+            bgcolor: canProceed ? '#ffa726' : 'rgba(255,255,255,0.12)',
+            color: canProceed ? '#000' : 'rgba(255,255,255,0.45)',
             fontWeight: 600,
               px: 4,
               '&:hover': {
-                bgcolor: canProceed ? '#ffb74d' : 'rgba(25,255,255,0.1)'
+                bgcolor: canProceed ? '#ffb74d' : 'rgba(255,255,255,0.12)'
               },
               '&:disabled': {
                 cursor: 'not-allowed'

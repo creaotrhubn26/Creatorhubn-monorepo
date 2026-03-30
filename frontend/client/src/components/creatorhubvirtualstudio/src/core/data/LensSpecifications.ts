@@ -19,7 +19,7 @@ export interface LensSpec {
   
   // Aperture
   maxAperture: number | [number, number];  // f-number (single or variable)
-  minAperture: number;                     // Smallest aperture (largest f-number)
+  minAperture: number | [number, number]; // Smallest aperture (largest f-number)
   apertureBlades: number;                  // Number of diaphragm blades
   
   // Optical
@@ -1307,6 +1307,14 @@ export function findLensSpec(brand: string, model: string): LensSpec | null {
   }) || null;
 }
 
+export function getFocalLengthFromLensSpec(lensSpec: LensSpec): number {
+  return Array.isArray(lensSpec.focalLength) ? lensSpec.focalLength[0] : lensSpec.focalLength;
+}
+
+export function getMaxApertureFromLensSpec(lensSpec: LensSpec): number {
+  return Array.isArray(lensSpec.maxAperture) ? lensSpec.maxAperture[0] : lensSpec.maxAperture;
+}
+
 /**
  * Find closest matching lens by brand
  */
@@ -1448,4 +1456,3 @@ export function lensSpecToCameraData(spec: LensSpec): {
 }
 
 export default ALL_LENS_SPECS;
-

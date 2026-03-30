@@ -598,7 +598,7 @@ export {
   SceneComparisonPanel,
   snapshotManager,
 } from './ui/components/SceneComparison';
-export type { SceneSnapshot } from './ui/components/SceneComparison';
+export type { SceneSnapshot as ComparisonSceneSnapshot } from './ui/components/SceneComparison';
 
 // =============================================================================
 // KEYBOARD SHORTCUTS REFERENCE
@@ -769,7 +769,7 @@ export {
 } from './core/animation/AnimationStateManager';
 export type {
   SceneBinding,
-  AnimationState,
+  AnimationState as ManagedAnimationState,
   PropertyUpdate,
   UpdateCallback,
   StateChangeCallback,
@@ -793,7 +793,7 @@ export { SelectionHighlight } from './ui/components/SelectionHighlight';
 // =============================================================================
 
 export { QuickAccessToolbar, MiniToolbar } from './ui/components/QuickAccessToolbar';
-export type { TransformMode, ViewMode } from './ui/components/QuickAccessToolbar';
+export type { TransformMode as ToolbarTransformMode, ViewMode } from './ui/components/QuickAccessToolbar';
 
 // =============================================================================
 // ANIMATION BINDING
@@ -913,8 +913,8 @@ export { storyboardExportService, StoryboardExportService } from './core/storybo
 export type {
   ExportFormat,
   ExportOptions,
-  ExportProgress,
-  ExportResult,
+  ExportProgress as StoryboardExportProgress,
+  ExportResult as StoryboardExportResult,
 } from './core/storyboard/StoryboardExportService';
 
 // Collaboration
@@ -927,7 +927,7 @@ export type {
   CommentStatus,
   CommentAttachment,
   VersionSnapshot,
-  ShareLink,
+  ShareLink as CollaborationShareLink,
   TeamMember,
   PermissionLevel,
   ActiveCollaborator,
@@ -1056,7 +1056,7 @@ export {
   useLongPressMenu,
 } from './hooks/useTouchGestures';
 export type {
-  Point,
+  Point as TouchPoint,
   GestureState,
   SwipeDirection,
   TouchGestureCallbacks,
@@ -1248,7 +1248,7 @@ export {
 } from './core/storyboard/FrameCanvasEngine';
 export type {
   ToolType,
-  Point,
+  Point as CanvasPoint,
   DrawingStyle,
   CanvasObject,
   CanvasState,
@@ -1293,7 +1293,7 @@ export {
   clientSharingService,
 } from './core/services/clientSharingService';
 export type {
-  ShareLink,
+  ShareLink as ClientShareLink,
   SharePermissions,
   ClientComment,
   ApprovalStatus,
@@ -1338,4 +1338,3 @@ export type {
   EquipmentGroupDB,
   SceneSnapshotDB,
 } from'./core/api/virtualStudioApi';
-

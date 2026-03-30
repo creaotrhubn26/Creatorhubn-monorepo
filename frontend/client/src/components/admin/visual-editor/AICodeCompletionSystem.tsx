@@ -183,6 +183,38 @@ export class AICodeCompletionEngine {
     this.loadApiKey();
   }
 
+  private persistKvValue(key: string, value: unknown) {
+    void fetch('/api/user/kv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ key, value }),
+    }).catch(() => {
+      // Remote KV persistence is optional; localStorage remains the source of truth when offline.
+    });
+  }
+
+  private hydrateKvValue(path: string, onValue: (value: unknown) => void) {
+    void fetch(path, { credentials: 'include' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!payload) {
+          return;
+        }
+
+        const value = payload && typeof payload === 'object' && 'value' in payload
+          ? payload.value
+          : payload;
+
+        if (value != null) {
+          onValue(value);
+        }
+      })
+      .catch(() => {
+        // Ignore unavailable KV endpoints; local config should still work.
+      });
+  }
+
   /**
    * Load API key from environment or storage
    */
@@ -203,30 +235,24 @@ export class AICodeCompletionEngine {
       null;
 
     // Async hydrate from server KV
-    fetch('/api/user/kv/ai_api_key', { credentials: 'include' })
-      .then(r => (r.ok ? r.json() : null))
-      .then(j => {
-        const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
-        if (v) this.apiKey = v as string;
-      })
-      .catch((err: unknown) => console.error('Request failed:', err));
+    this.hydrateKvValue('/api/user/kv/ai_api_key', (value) => {
+      if (typeof value === 'string' && value.trim()) {
+        this.apiKey = value;
+      }
+    });
   }
 
   private hydrateTeamKeyFromServer(teamId: string) {
-    fetch('/api/user/kv/ai_team_keys', { credentials: 'include' })
-      .then(r => (r.ok ? r.json() : null))
-      .then(j => {
-        const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
-        if (v) {
-          try {
-            const parsed = typeof v === 'string' ? JSON.parse(v) : v;
-            if (parsed && parsed[teamId]) this.apiKey = parsed[teamId];
-          } catch (parseErr) {
-            console.warn('Failed to parse team API keys:', parseErr);
-          }
+    this.hydrateKvValue('/api/user/kv/ai_team_keys', (value) => {
+      try {
+        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+        if (parsed && typeof parsed === 'object' && teamId in parsed) {
+          this.apiKey = (parsed as Record<string, string>)[teamId] ?? this.apiKey;
         }
-      })
-      .catch((err: unknown) => console.error('Request failed:', err));
+      } catch (parseErr) {
+        console.warn('Failed to parse team API keys:', parseErr);
+      }
+    });
   }
 
   /**
@@ -250,22 +276,15 @@ export class AICodeCompletionEngine {
    */
   setTeamApiKey(teamId: string, key: string, role: 'admin' | 'member' = 'member') {
     try {
-      const teamKeys = JSON.parse(localStorage.getItem('ai_team_keys') || '{},');
+      const teamKeys = JSON.parse(localStorage.getItem('ai_team_keys') || '{}');
       teamKeys[teamId] = key;
-      // Mirror to server KV
-      fetch('/api/user/kv', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ key: 'ai_team_keys', value: teamKeys })
-      }).catch((err: unknown) => console.error('Request failed:', err));
+      this.persistKvValue('ai_team_keys', teamKeys);
       localStorage.setItem('ai_team_keys', JSON.stringify(teamKeys));
 
       // Store role permissions
-      const permissions = JSON.parse(localStorage.getItem('ai_team_permissions') || '{},');
+      const permissions = JSON.parse(localStorage.getItem('ai_team_permissions') || '{}');
       permissions[teamId] = { role, canEdit: role === 'admin' };
-      fetch('/api/user/kv', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ key: 'ai_team_permissions', value: permissions })
-      }).catch((err: unknown) => console.error('Request failed:', err));
+      this.persistKvValue('ai_team_permissions', permissions);
       localStorage.setItem('ai_team_permissions', JSON.stringify(permissions));
     } catch (error) {
       console.error('Failed to set team API key: ', error);
@@ -277,11 +296,7 @@ export class AICodeCompletionEngine {
    */
   setApiKey(key: string) {
     this.apiKey = key;
-    // Mirror to server KV
-    fetch('/api/user/kv', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ key: 'ai_api_key', value: key })
-    }).catch((err: unknown) => console.error('Request failed:', err));
+    this.persistKvValue('ai_api_key', key);
     localStorage.setItem('ai_api_key', key);
   }
 

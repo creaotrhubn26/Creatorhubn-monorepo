@@ -40,10 +40,9 @@ import {
   StarBorder,
   Info,
 } from '@mui/icons-material';
-import type {
-  HDRIRecommendation} from '../../core/services/hdriRecommendationService';
 import {
-  getHDRIRecommendations
+  getHDRIRecommendations,
+  type HDRIRecommendation,
 } from '../../core/services/hdriRecommendationService';
 import type { CachedActor } from '../../core/services/actorModelCache';
 
@@ -86,8 +85,17 @@ export const HDRIRecommendationDialog: React.FC<HDRIRecommendationDialogProps> =
   // Get recommendations based on character
   const recommendations = useMemo(() => {
     if (!actor) return [];
-    
-    const tags = actor.metadata?.tags || [];
+
+    const tags = [
+      actor.category,
+      actor.description,
+      actor.costume?.clothingStyle,
+      ...(actor.costume?.accessories || []),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .flatMap((value) => value.toLowerCase().split(/[\s,/]+/))
+      .filter((value) => value.length > 2);
+
     return getHDRIRecommendations(
       actor.name,
       tags,

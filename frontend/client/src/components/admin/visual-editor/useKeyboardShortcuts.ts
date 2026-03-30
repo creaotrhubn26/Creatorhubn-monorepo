@@ -1,6 +1,5 @@
-import { useEffect, useRef, useCallback } from 'react';
-import { useVisualEditor } from './VisualEditorContext';
-import type { EditorElement } from './VisualEditorContext';
+import { useEffect, useRef } from 'react';
+import { useVisualEditor, type EditorElement } from './VisualEditorContext';
 
 export const useKeyboardShortcuts = () => {
   const {
@@ -9,7 +8,7 @@ export const useKeyboardShortcuts = () => {
     canUndo,
     canRedo,
     state,
-    dispatch,
+    addElement,
     deleteElement,
     duplicateElement,
     selectElement,
@@ -17,92 +16,12 @@ export const useKeyboardShortcuts = () => {
     setZoom,
     copyElements,
     pasteElements,
-    addElement,
-    updateElement,
+    groupElements,
+    ungroupElement,
+    reorderElement,
+    saveProject,
+    setCurrentOrientation,
   } = useVisualEditor();
-
-  // Group elements: wrap selected elements into a container parent
-  const groupElements = useCallback(
-    (ids: string[]) => {
-      if (ids.length < 2) return;
-      const groupedEls = state.elements.filter((el) => ids.includes(el.id));
-      if (groupedEls.length === 0) return;
-
-      // Calculate bounding box
-      const minX = Math.min(...groupedEls.map((el) => el.x));
-      const minY = Math.min(...groupedEls.map((el) => el.y));
-      const maxX = Math.max(...groupedEls.map((el) => el.x + el.width));
-      const maxY = Math.max(...groupedEls.map((el) => el.y + el.height));
-
-      // Create a container element holding the children
-      const container: Omit<EditorElement, 'id'> = {
-        type: 'container',
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-        styles: { backgroundColor: 'transparent' },
-        props: {},
-        children: ids,
-      };
-      addElement(container);
-
-      // Update children to reference the new parent (parent id assigned after addElement)
-      groupedEls.forEach((el) => {
-        updateElement(el.id, {
-          x: el.x - minX,
-          y: el.y - minY,
-        });
-      });
-    },
-    [state.elements, addElement, updateElement],
-  );
-
-  // Ungroup: remove parent container and release children
-  const ungroupElements = useCallback(
-    (containerId: string) => {
-      const container = state.elements.find((el) => el.id === containerId);
-      if (!container || !container.children || container.children.length === 0) return;
-
-      // Move children back to absolute positions
-      container.children.forEach((childId) => {
-        const child = state.elements.find((el) => el.id === childId);
-        if (child) {
-          updateElement(childId, {
-            x: child.x + container.x,
-            y: child.y + container.y,
-            parent: undefined,
-          });
-        }
-      });
-
-      // Delete the container
-      deleteElement(containerId);
-    },
-    [state.elements, updateElement, deleteElement],
-  );
-
-  // Bring forward / send backward by reordering elements
-  const reorderElement = useCallback(
-    (elementId: string, direction: 'forward' | 'backward') => {
-      const idx = state.elements.findIndex((el) => el.id === elementId);
-      if (idx === -1) return;
-      const newElements = [...state.elements];
-      if (direction === 'forward' && idx < newElements.length - 1) {
-        [newElements[idx], newElements[idx + 1]] = [newElements[idx + 1], newElements[idx]];
-      } else if (direction === 'backward' && idx > 0) {
-        [newElements[idx], newElements[idx - 1]] = [newElements[idx - 1], newElements[idx]];
-      }
-      // We set elements through a full state override — dispatch raw action
-      dispatch({ type: 'UNDO' }); // snapshot current
-      dispatch({ type: 'REDO' }); // restore (noop to push history)
-      // Since we cannot set elements directly, update each element's z-order via ordering.
-      // The element array defines render order (later = on top), so we swap by re-adding.
-      // For now, the simplest working approach: swap the two elements' positions
-      // (This keeps the element order in state consistent)
-    },
-    [state.elements, dispatch],
-  );
 
   const clipboardRef = useRef<EditorElement[]>([]);
 
@@ -114,13 +33,19 @@ export const useKeyboardShortcuts = () => {
       // Prevent default browser shortcuts for our custom ones
       const shouldPreventDefault =
         (modifier &&
-          ['z','y','c','v','d','a','g','0','=','-','[',']'].includes(
+          ['z','y','c','v','d','a','g','s','0','=','-','[',']','r'].includes(
             e.key.toLowerCase(),
           )) ||
         ['Delete','Backspace'].includes(e.key);
 
       if (shouldPreventDefault) {
         e.preventDefault();
+      }
+
+      // Save: Cmd/Ctrl + S
+      if (modifier && e.key.toLowerCase() === 's' && !isInputFocused()) {
+        saveProject();
+        return;
       }
 
       // Undo: Cmd/Ctrl + Z
@@ -194,7 +119,7 @@ export const useKeyboardShortcuts = () => {
               timestamp: Date.now(),
             };
             navigator.clipboard.writeText(JSON.stringify(clipboardData)).catch(() => {
-              // Silently fall back to internal clipboard
+              // Fall back to internal clipboard if system clipboard rejects the write.
             });
           }
         }
@@ -270,7 +195,20 @@ export const useKeyboardShortcuts = () => {
 
       // Fit to Screen: Cmd/Ctrl + 0
       if (modifier && e.key === '0') {
-        setZoom(1);
+        const fitCanvasEvent = new CustomEvent('visual-editor:fit-canvas', {
+          cancelable: true,
+        });
+        window.dispatchEvent(fitCanvasEvent);
+
+        if (!fitCanvasEvent.defaultPrevented) {
+          setZoom(1);
+        }
+        return;
+      }
+
+      // Rotate Device: Cmd/Ctrl + Shift + R
+      if (modifier && e.shiftKey && e.key.toLowerCase() === 'r' && state.currentBreakpoint !== 'desktop') {
+        setCurrentOrientation(state.currentOrientation === 'portrait' ? 'landscape' : 'portrait');
         return;
       }
 
@@ -287,7 +225,7 @@ export const useKeyboardShortcuts = () => {
         if (state.selectedElement) {
           const element = state.elements.find((el) => el.id === state.selectedElement);
           if (element && element.children && element.children.length > 0) {
-            ungroupElements(state.selectedElement);
+            ungroupElement(state.selectedElement);
           }
         }
         return;
@@ -296,7 +234,7 @@ export const useKeyboardShortcuts = () => {
       // Bring Forward: Cmd/Ctrl + ]
       if (modifier && e.key === ']') {
         if (state.selectedElement) {
-          reorderElement(state.selectedElement, 'forward');
+          reorderElement(state.selectedElement, 'down');
         }
         return;
       }
@@ -304,7 +242,7 @@ export const useKeyboardShortcuts = () => {
       // Send Backward: Cmd/Ctrl + [
       if (modifier && e.key === '[') {
         if (state.selectedElement) {
-          reorderElement(state.selectedElement, 'backward');
+          reorderElement(state.selectedElement, 'up');
         }
         return;
       }
@@ -338,10 +276,11 @@ export const useKeyboardShortcuts = () => {
     setZoom,
     copyElements,
     pasteElements,
-    addElement,
     groupElements,
-    ungroupElements,
+    ungroupElement,
     reorderElement,
+    saveProject,
+    setCurrentOrientation,
   ]);
 };
 

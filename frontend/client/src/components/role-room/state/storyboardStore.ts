@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import type { ShotType, CameraAngle, CameraMovement } from '../models/casting';
+import type { StoryboardDrawingDocument } from './storyboardDrawingDocument';
 export type { ShotType, CameraAngle, CameraMovement };
 
 // Types
@@ -29,6 +30,9 @@ export type FrameImageSource = 'ai' | 'captured' | 'drawn' | 'uploaded';
 export interface FrameDrawingData {
   dataUrl: string; // Base64 canvas export
   strokes?: string; // JSON stringified stroke data for replay
+  document?: StoryboardDrawingDocument; // Versioned drawing document for layers/timeline/spatial state
+  baseImageUrl?: string; // Underlay/reference image used while drawing
+  originalBaseImageUrl?: string; // Original frame/base image to restore after draw-over edits
   brushSettings?: {
     type: string;
     size: number;
@@ -97,7 +101,8 @@ interface StoryboardState {
   };
 
   // Actions
-  createStoryboard: (name: string, aspectRatio: Storyboard['aspectRatio']) => void;
+  createStoryboard: (name: string, aspectRatio: Storyboard['aspectRatio']) => Storyboard;
+  updateStoryboard: (storyboardId: string, updates: Partial<Storyboard>) => void;
   loadStoryboard: (id: string) => void;
   deleteStoryboard: (id: string) => void;
   addFrame: (frame: Omit<StoryboardFrame, 'id' | 'index' | 'createdAt' | 'updatedAt'>) => void;
@@ -137,6 +142,21 @@ export const useStoryboardStore = create<StoryboardState>((set, get) => ({
     set((state) => ({
       storyboards: [...state.storyboards, newStoryboard],
       currentStoryboardId: newStoryboard.id,
+    }));
+    return newStoryboard;
+  },
+
+  updateStoryboard: (storyboardId, updates) => {
+    set((state) => ({
+      storyboards: state.storyboards.map((storyboard) =>
+        storyboard.id === storyboardId
+          ? {
+              ...storyboard,
+              ...updates,
+              updatedAt: new Date().toISOString(),
+            }
+          : storyboard,
+      ),
     }));
   },
 
@@ -368,7 +388,3 @@ export function formatDuration(seconds: number): string {
   const secs = Math.floor(seconds % 60);
   return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
 }
-
-
-
-

@@ -13,7 +13,7 @@ const log = logger.module('PBRRecommendation, ');
 export interface PBRItem {
   id: string;
   name: string;
-  type: 'prop, ' | 'backdrop' | 'floor' | 'furniture' | 'tool' | 'accessory';
+  type: 'prop' | 'backdrop' | 'floor' | 'furniture' | 'tool' | 'accessory';
   category: string;
   thumbnail: string;
   model?: string; // GLB/GLTF model path

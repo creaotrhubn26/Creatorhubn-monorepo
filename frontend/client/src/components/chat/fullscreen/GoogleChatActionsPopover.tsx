@@ -17,6 +17,7 @@ interface GoogleChatActionsPopoverProps {
   accentColor: string;
   displayName: string;
   googleChatStatus: 'connected' | 'disconnected' | 'testing' | 'not_configured';
+  zIndex?: number;
   onClose: () => void;
   onCreateProjectSpace: () => void;
   onJoinSpace: () => void;
@@ -32,6 +33,7 @@ export default function GoogleChatActionsPopover({
   accentColor,
   displayName,
   googleChatStatus,
+  zIndex,
   onClose,
   onCreateProjectSpace,
   onJoinSpace,
@@ -56,7 +58,7 @@ export default function GoogleChatActionsPopover({
           horizontal: 'left',
         }}
         sx={{
-          zIndex: 999,
+          zIndex,
           '& .MuiPopover-paper': {
             border: `2px solid ${accentColor}`,
             borderRadius: 2,
@@ -139,4 +141,3 @@ export default function GoogleChatActionsPopover({
     </Portal>
   );
 }
-

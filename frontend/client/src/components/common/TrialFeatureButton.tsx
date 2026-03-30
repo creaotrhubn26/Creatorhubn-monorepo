@@ -6,8 +6,9 @@ import {
   IconButton,
   Tooltip,
   Typography,
+  type ButtonProps,
+  type ChipProps,
 } from '@mui/material';
-import type { ButtonProps, ChipProps } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material/styles';
 import { AutoAwesome, CheckCircle, PlayArrow, Timer, Upgrade } from '@mui/icons-material';
 import { useTrialFeatureIntegration } from '@/contexts/TrialFeatureContext';
@@ -34,7 +35,7 @@ interface TrialFeatureButtonProps {
 }
 
 interface RenderMeta {
-  icon: React.ReactNode;
+  icon: React.ReactElement;
   label: React.ReactNode;
   buttonColor: ButtonColor;
   chipColor: ChipColor;
@@ -76,7 +77,7 @@ export function TrialFeatureButton({
   className,
   sx,
 }: TrialFeatureButtonProps) {
-  const { feature, trialStatus, hasAccess, isActive, startTrial, trackUsage, showTrialDialog } =
+  const { feature, trialStatus, hasAccess, isActive, startTrial, trackUsage, openTrialDialog } =
     useTrialFeatureIntegration(featureId, componentId);
 
   if (!feature) {
@@ -84,6 +85,7 @@ export function TrialFeatureButton({
   }
 
   const daysLeft = trialStatus?.endDate ? getDaysRemaining(new Date(trialStatus.endDate)) : 0;
+  const chipSize: ChipProps['size'] = size === 'large' ? 'medium' : size;
 
   const renderMeta: RenderMeta = (() => {
     if (hasAccess) {
@@ -135,7 +137,7 @@ export function TrialFeatureButton({
       return;
     } catch {
       // Fallback to dialog flow when direct start is unavailable.
-      showTrialDialog();
+      openTrialDialog();
       onUpgradeRequired?.();
     }
   };
@@ -167,7 +169,7 @@ export function TrialFeatureButton({
               void handleClick();
             }}
             color={renderMeta.chipColor}
-            size={size}
+            size={chipSize}
             className={className}
             sx={sx}
           />
@@ -200,7 +202,10 @@ export function TrialFeatureButton({
           >
             {renderMeta.icon}
             {showLabel && (
-              <Typography variant="body2" color={`${renderMeta.buttonColor}.main`}>
+              <Typography
+                variant="body2"
+                sx={{ color: renderMeta.buttonColor === 'inherit' ? 'text.primary' : `${renderMeta.buttonColor}.main` }}
+              >
                 {renderMeta.label}
               </Typography>
             )}

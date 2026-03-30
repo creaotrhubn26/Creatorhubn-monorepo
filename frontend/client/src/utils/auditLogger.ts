@@ -399,7 +399,9 @@ class AuditLogger {
 
   private async logToFile(events: AuditEvent[]): Promise<void> {
     // This would typically write to a file on the server
-    console.log('File logging not implemented in browser environment');
+    console.log('File logging not implemented in browser environment', {
+      queuedEvents: events.length,
+    });
 }
 
   private async logToRemote(events: AuditEvent[]): Promise<void> {
@@ -634,7 +636,6 @@ export const auditLogger = new AuditLogger();
 // Export types and class
 export { AuditLogger };
 export default auditLogger;
-
 
 
 

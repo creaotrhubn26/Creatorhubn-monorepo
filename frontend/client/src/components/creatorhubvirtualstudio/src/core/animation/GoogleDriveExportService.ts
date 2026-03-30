@@ -27,7 +27,7 @@ export interface GoogleDriveUploadProgress {
   bytesUploaded: number;
   totalBytes: number;
   percentage: number;
-  status: 'preparing, ' | 'uploading' | 'processing' | 'complete' | 'error';
+  status: 'preparing' | 'uploading' | 'processing' | 'complete' | 'error';
   error?: string;
 }
 
@@ -390,7 +390,9 @@ export class GoogleDriveExportService {
     oauthAvailable: boolean;
   }> {
     try {
-      const response = await fetch('/test/api/google-drive/hybrid/test');
+      const response = await fetch(
+        `/test/api/google-drive/hybrid/test?userId=${encodeURIComponent(userId)}`,
+      );
       const data = await response.json();
       return {
         connected: data.success,
@@ -607,4 +609,3 @@ export class GoogleDriveExportService {
 export const googleDriveExportService = new GoogleDriveExportService();
 
 export default googleDriveExportService;
-

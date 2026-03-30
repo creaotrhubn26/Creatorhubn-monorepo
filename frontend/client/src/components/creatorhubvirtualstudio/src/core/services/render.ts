@@ -171,7 +171,7 @@ export async function renderHighQuality(
   });
 
   // Create data URL
-  const dataUrl = canvas.toDataURL(mimeType, quality);
+  const dataUrl = canvas.toDataURL(mimeType, imageQuality);
 
   // Clean up renderer
   renderer.dispose();

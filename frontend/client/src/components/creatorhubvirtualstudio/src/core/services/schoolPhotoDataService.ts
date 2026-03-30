@@ -9,10 +9,15 @@
  */
 
 import { logger } from './logger';
-import type { ClassPhotoSession, TeacherConfig, Student, ClassPhotoRow, ClassPhotoProp } from './classPhotoService';
-import { ClassPhotoSetup } from './classPhotoService';
+import type {
+  ClassPhotoSession,
+  TeacherConfig,
+  Student,
+  ClassPhotoRow,
+  ClassPhotoProp,
+} from './classPhotoService';
 
-const log = logger.module('SchoolPhotoData, ');
+const log = logger.module('SchoolPhotoData');
 const API_BASE = '/api/virtual-studio/school-photo';
 
 // =============================================================================
@@ -143,7 +148,7 @@ export const classPhotoSessionsService = {
         return response.sessions;
       }
     } catch (error) {
-      log.warn('Failed to fetch sessions from API, using localStorage');
+      log.warn('Failed to fetch sessions from API, using localStorage', error);
     }
     
     const saved = localStorage.getItem(STORAGE_KEYS.SESSIONS);
@@ -160,7 +165,7 @@ export const classPhotoSessionsService = {
         return response.session;
       }
     } catch (error) {
-      log.warn('Failed to fetch session from API, ');
+      log.warn('Failed to fetch session from API', error);
     }
     
     const sessions = await this.getAll();
@@ -186,7 +191,7 @@ export const classPhotoSessionsService = {
         return response.session;
       }
     } catch (error) {
-      log.warn('Failed to create session in API, saving to localStorage');
+      log.warn('Failed to create session in API, saving to localStorage', error);
       
       // Fallback to localStorage
       const localSession: ClassPhotoSessionDB = {
@@ -224,7 +229,7 @@ export const classPhotoSessionsService = {
         return response.session;
       }
     } catch (error) {
-      log.warn('Failed to update session in API, updating localStorage');
+      log.warn('Failed to update session in API, updating localStorage', error);
       
       // Fallback to localStorage
       const sessions = await this.getAll();
@@ -245,7 +250,7 @@ export const classPhotoSessionsService = {
     try {
       await apiRequest(`/sessions/${id}`, { method: 'DELETE' });
     } catch (error) {
-      log.warn('Failed to delete session from API');
+      log.warn('Failed to delete session from API', error);
     }
     
     // Remove from local cache
@@ -270,8 +275,11 @@ export const classPhotoSessionsService = {
       teachers: session.setup.teachers,
       students: Object.fromEntries(session.students),
       rows: session.rows,
-      props: session.props,
-      cameraSettings: session.camera,
+      props: Array.from(session.props.values()),
+      cameraSettings: {
+        position: session.cameraPosition,
+        target: session.cameraTarget,
+      },
       status: 'draft',
     };
   },
@@ -293,7 +301,7 @@ export const schoolPhotoPreferencesService = {
         return response.preferences;
       }
     } catch (error) {
-      log.warn('Failed to fetch preferences from API, using localStorage');
+      log.warn('Failed to fetch preferences from API, using localStorage', error);
     }
     
     const saved = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
@@ -327,7 +335,7 @@ export const schoolPhotoPreferencesService = {
         return response.preferences;
       }
     } catch (error) {
-      log.warn('Failed to update preferences in API');
+      log.warn('Failed to update preferences in API', error);
     }
     
     return updated as SchoolPhotoPreferences;
@@ -388,7 +396,7 @@ export const savedArrangementsService = {
         return response.arrangements;
       }
     } catch (error) {
-      log.warn('Failed to fetch arrangements from API, using localStorage');
+      log.warn('Failed to fetch arrangements from API, using localStorage', error);
     }
     
     const saved = localStorage.getItem(STORAGE_KEYS.ARRANGEMENTS);
@@ -411,7 +419,7 @@ export const savedArrangementsService = {
         return response.arrangement;
       }
     } catch (error) {
-      log.warn('Failed to create arrangement in API');
+      log.warn('Failed to create arrangement in API', error);
       
       // Fallback to localStorage
       const localArrangement: SavedArrangement = {
@@ -437,7 +445,7 @@ export const savedArrangementsService = {
     try {
       await apiRequest(`/arrangements/${id}`, { method: 'DELETE' });
     } catch (error) {
-      log.warn('Failed to delete arrangement from API');
+      log.warn('Failed to delete arrangement from API', error);
     }
     
     const arrangements = await this.getAll();
@@ -453,7 +461,7 @@ export const savedArrangementsService = {
     try {
       await apiRequest(`/arrangements/${id}/use`, { method: 'POST' });
     } catch (error) {
-      log.warn('Failed to record arrangement usage');
+      log.warn('Failed to record arrangement usage', error);
     }
   },
 };
@@ -474,7 +482,7 @@ export const customPropsService = {
         return response.props;
       }
     } catch (error) {
-      log.warn('Failed to fetch custom props from API, using localStorage');
+      log.warn('Failed to fetch custom props from API, using localStorage', error);
     }
     
     const saved = localStorage.getItem(STORAGE_KEYS.PROPS);
@@ -497,7 +505,7 @@ export const customPropsService = {
         return response.prop;
       }
     } catch (error) {
-      log.warn('Failed to create custom prop in API');
+      log.warn('Failed to create custom prop in API', error);
       
       // Fallback to localStorage
       const localProp: CustomPropConfig = {
@@ -523,7 +531,7 @@ export const customPropsService = {
     try {
       await apiRequest(`/props/${id}`, { method: 'DELETE' });
     } catch (error) {
-      log.warn('Failed to delete custom prop from API');
+      log.warn('Failed to delete custom prop from API', error);
     }
     
     const props = await this.getAll();

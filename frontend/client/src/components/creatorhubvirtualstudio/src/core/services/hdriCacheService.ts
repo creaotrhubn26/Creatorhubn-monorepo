@@ -10,16 +10,16 @@
 
 import { logger } from './logger';
 
-const log = logger.module('HDRICache, ');
+const log = logger.module('HDRICache');
 
 // =============================================================================
 // API Helper
 // =============================================================================
 
-async function apiRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
+async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(endpoint, {
     ...options,
-    credentials: 'include, ',
+    credentials: 'include',
     headers: {
       'Content-Type' : 'application/json',
       ...options.headers,
@@ -30,7 +30,7 @@ async function apiRequest(endpoint: string, options: RequestInit = {}): Promise<
     throw new Error(`API error: ${response.status}`);
   }
   
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
 // =============================================================================
@@ -75,6 +75,16 @@ interface UserPreferences {
   recentHdris: string[];
   hasCompletedInitialPreCache: boolean;
   firstVisitAt: string | null;
+}
+
+interface CacheIdsResponse {
+  success: boolean;
+  ids: string[];
+}
+
+interface PreferencesResponse {
+  success: boolean;
+  preferences: UserPreferences;
 }
 
 // =============================================================================
@@ -137,7 +147,7 @@ class HDRICacheService {
    * Initialize IndexedDB
    */
   private async initIndexedDB(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (typeof indexedDB === 'undefined') {
         log.warn('IndexedDB not available');
         resolve();
@@ -175,13 +185,13 @@ class HDRICacheService {
    */
   private async syncWithServer(): Promise<void> {
     try {
-      const response = await apiRequest(`${API_BASE}/ids`, { method: 'GET' });
+      const response = await apiRequest<CacheIdsResponse>(`${API_BASE}/ids`, { method: 'GET' });
       if (response.success && response.ids) {
         this.serverCachedIds = new Set(response.ids);
         log.debug(`Synced ${response.ids.length} cached IDs from server`);
       }
     } catch (error) {
-      log.warn('Failed to sync with server, using local cache only');
+      log.warn('Failed to sync with server, using local cache only', error);
     }
   }
 
@@ -190,7 +200,7 @@ class HDRICacheService {
    */
   private async checkFirstVisit(): Promise<void> {
     try {
-      const response = await apiRequest(`${API_BASE}/preferences`, { method: 'GET' });
+      const response = await apiRequest<PreferencesResponse>(`${API_BASE}/preferences`, { method: 'GET' });
       if (response.success && response.preferences) {
         this.preferences = response.preferences;
         
@@ -207,7 +217,7 @@ class HDRICacheService {
         }
       }
     } catch (error) {
-      log.warn('Failed to fetch preferences');
+      log.warn('Failed to fetch preferences', error);
     }
   }
 
@@ -364,7 +374,7 @@ class HDRICacheService {
     try {
       await apiRequest(`${API_BASE}/stats/hit`, { method: 'POST' });
     } catch (error) {
-      // Silently fail
+      log.debug('Failed to record cache hit', error);
     }
   }
 
@@ -375,7 +385,7 @@ class HDRICacheService {
     try {
       await apiRequest(`${API_BASE}/stats/miss`, { method: 'POST' });
     } catch (error) {
-      // Silently fail
+      log.debug('Failed to record cache miss', error);
     }
   }
 
@@ -496,7 +506,7 @@ class HDRICacheService {
       await apiRequest(API_BASE, { method: 'DELETE' });
       this.serverCachedIds.clear();
     } catch (error) {
-      log.warn('Failed to clear server cache');
+      log.warn('Failed to clear server cache', error);
     }
 
     this.hits = 0;
@@ -539,13 +549,13 @@ class HDRICacheService {
     if (this.preferences) return this.preferences;
     
     try {
-      const response = await apiRequest(`${API_BASE}/preferences`, { method: 'GET' });
+      const response = await apiRequest<PreferencesResponse>(`${API_BASE}/preferences`, { method: 'GET' });
       if (response.success && response.preferences) {
         this.preferences = response.preferences;
         return this.preferences;
       }
     } catch (error) {
-      log.warn('Failed to fetch preferences');
+      log.warn('Failed to fetch preferences', error);
     }
     
     return null;
@@ -556,7 +566,7 @@ class HDRICacheService {
    */
   async updatePreferences(updates: Partial<UserPreferences>): Promise<void> {
     try {
-      const response = await apiRequest(`${API_BASE}/preferences`, {
+      const response = await apiRequest<PreferencesResponse>(`${API_BASE}/preferences`, {
         method: 'PUT',
         body: JSON.stringify(updates),
       });

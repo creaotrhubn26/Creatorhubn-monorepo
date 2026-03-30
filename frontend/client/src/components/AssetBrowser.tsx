@@ -75,8 +75,7 @@ import {
 } from '@mui/icons-material';
 import { UniversalFileUpload } from './universal/UniversalFileUpload';
 import { FileManagementStatusProvider } from '../contexts/FileManagementStatusContext';
-import type { StoryArc, BeatClip, Track } from '../services/storyArcDataIntegration';
-import StoryArcDataIntegration from '../services/storyArcDataIntegration';
+import StoryArcDataIntegration, { type StoryArc, type BeatClip, type Track } from '../services/storyArcDataIntegration';
 import { apiRequest } from '@/lib/queryClient';
 
 interface AssetBrowserProps {
@@ -163,7 +162,11 @@ interface MediaFile {
   source?: 'local' | 'google_drive';
   driveFileId?: string;
   downloadLink?: string;
-  mimeType?: string
+  mimeType?: string;
+  camera?: string;
+  syncGroup?: string;
+  isFolder?: boolean;
+  previewProxyUrl?: string;
 }
 
 const STORY_ARC_TEMPLATES: Template[] = [
@@ -1013,11 +1016,11 @@ export default function AssetBrowser({
       (async () => {
         try {
           const arc = await StoryArcDataIntegration.fetchStoryArcData(storyArcId);
-          if (arc?.name) {
-            setStoryArcName(arc.name);
+          if (arc?.title) {
+            setStoryArcName(arc.title);
             // Update Google Drive folder to project-specific path (only if not already set)
             if (!googleDriveFolder || googleDriveFolder === 'CreatorHub Norge Projects') {
-              setGoogleDriveFolder(`CreatorHub Norge Projects/Story Arc Studio/${arc.name}`);
+              setGoogleDriveFolder(`CreatorHub Norge Projects/Story Arc Studio/${arc.title}`);
               setFolderHistory([]); // Reset folder history when switching projects
             }
           }
@@ -1139,13 +1142,6 @@ export default function AssetBrowser({
     },
     enabled: googleDriveTab === 1 && !!currentUser?.id,
     retry: false,
-    onError: (err: any) => {
-      showToast({
-        title: 'Kunne ikke hente Google Drive-filer, ',
-        description: typeof err?.message === 'string' ? err.message : 'Ukjent feil under henting',
-        variant: 'destructive',
-      });
-    },
   });
 
 
@@ -1513,6 +1509,7 @@ export default function AssetBrowser({
       const start = i * segDur;
       const end = i === segCount - 1 ? total : (i + 1) * segDur;
       let segmentType: 'opening' | 'build-up' | 'climax' | 'resolution' | 'closing' = 'build-up';
+      const pacing: StoryArc['segments'][number]['pacing'] = 'medium';
       if (i === 0) segmentType = 'opening';
       else if (i === segCount - 1) segmentType = 'closing';
       else if (i === Math.floor(segCount / 2)) segmentType = 'climax';
@@ -1524,7 +1521,7 @@ export default function AssetBrowser({
         endTime: end,
         sourceClips: [],
         segmentType,
-        pacing: 'medium',
+        pacing,
         emotionalArc: { joy: 0.6, sadness: 0.1, excitement: 0.5, calm: 0.5, tension: 0.2, romance: 0.3 },
         priority: i + 1,
       };
@@ -1554,6 +1551,7 @@ export default function AssetBrowser({
       const start = i * segDur;
       const end = i === segCount - 1 ? total : (i + 1) * segDur;
       let segmentType: 'opening' | 'build-up' | 'climax' | 'resolution' | 'closing' = 'build-up';
+      const pacing: StoryArc['segments'][number]['pacing'] = 'medium';
       if (i === 0) segmentType = 'opening';
       else if (i === segCount - 1) segmentType = 'closing';
       else if (i === Math.floor(segCount / 2)) segmentType = 'climax';
@@ -1565,7 +1563,7 @@ export default function AssetBrowser({
         endTime: end,
         sourceClips: [],
         segmentType,
-        pacing: 'medium',
+        pacing,
         emotionalArc: { joy: 0.6, sadness: 0.1, excitement: 0.5, calm: 0.5, tension: 0.2, romance: 0.3 },
         priority: i + 1,
       };

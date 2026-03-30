@@ -26,15 +26,14 @@
  * - 4.1.3 Status Messages (Level AA)
  */
 
-import type {
-  ReactNode} from 'react';
 import React, {
   createContext,
   useContext,
   useState,
   useEffect,
   useCallback,
-  useRef
+  useRef,
+  type ReactNode,
 } from 'react';
 
 // ============================================================================
@@ -78,7 +77,7 @@ export interface FocusTrapConfig {
 
 export interface Announcement {
   message: string;
-  priority: 'polite, ' | 'assertive';
+  priority: 'polite' | 'assertive';
   clearAfter?: number;
 }
 
@@ -211,7 +210,7 @@ export function AccessibilityProvider({
       setIsReducedMotion(e.matches);
       setSettings((prev) => ({ ...prev, reducedMotion: e.matches }));
     };
-    motionQuery.addEventListener('change,', handleMotionChange);
+    motionQuery.addEventListener('change', handleMotionChange);
 
     // High contrast
     const contrastQuery = window.matchMedia('(prefers-contrast: high)');
@@ -222,10 +221,10 @@ export function AccessibilityProvider({
       setIsHighContrast(e.matches);
       setSettings((prev) => ({ ...prev, highContrast: e.matches }));
     };
-    contrastQuery.addEventListener('change,', handleContrastChange);
+    contrastQuery.addEventListener('change', handleContrastChange);
 
     return () => {
-      motionQuery.removeEventListener('change, ', handleMotionChange);
+      motionQuery.removeEventListener('change', handleMotionChange);
       contrastQuery.removeEventListener('change', handleContrastChange);
     };
   }, []);
@@ -692,13 +691,14 @@ export function useKeyboardNavigation(
           onNavigate(direction);
         } else {
           moveFocus(direction);
+          announce(`Moved focus ${direction}`);
         }
       }
     };
 
     container.addEventListener('keydown', handleKeyDown);
     return () => container.removeEventListener('keydown', handleKeyDown);
-  }, [containerRef, orientation, loop, moveFocus, onNavigate]);
+  }, [announce, containerRef, orientation, loop, moveFocus, onNavigate]);
 }
 
 /**
@@ -772,9 +772,10 @@ export function useAnnounce() {
 /**
  * Visually Hidden - For screen reader only content
  */
-export function VisuallyHidden({ children }: { children: ReactNode }) {
+export function VisuallyHidden({ children, id }: { children: ReactNode; id?: string }) {
   return (
     <span
+      id={id}
       style={{
         position: 'absolute',
         width: '1px',

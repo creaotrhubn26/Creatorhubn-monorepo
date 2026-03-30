@@ -7,12 +7,70 @@ import { useEffect, useCallback, useState, useMemo } from 'react';
 import { integrationService } from '../services/integrations';
 import { logger } from '../core/services/logger';
 
-const log = logger.module('VSIntegration, ');
+const log = logger.module('VSIntegration');
 
-// Import from EnhancedMasterIntegrationProvider
+type IntegrationStatus = ReturnType<typeof integrationService.getStatus>;
+
+interface IntegrationAuthState {
+  isAuthenticated: boolean;
+  isLoading?: boolean;
+  user?: unknown;
+  token?: string | null;
+  error?: string | null;
+}
+
+interface IntegrationAnalytics {
+  trackEvent?: (event: string, data?: Record<string, unknown>) => void;
+  getMetrics?: () => Record<string, unknown>;
+  clearMetrics?: () => void;
+}
+
+interface IntegrationAuth {
+  getAuthHeader?: () => Promise<Record<string, string>>;
+  isAuthenticated?: () => boolean;
+  state?: IntegrationAuthState;
+}
+
+interface IntegrationFeatures {
+  trackFeatureUsage?: (feature: string, action: string, data?: Record<string, unknown>) => void;
+  isEnabled?: (feature: string) => boolean;
+  checkFeatureAccess?: (feature: string) => { hasAccess: boolean; reason: string };
+}
+
+interface IntegrationHealth {
+  getStatus?: () => Record<string, unknown>;
+  status?: string;
+  components?: Record<string, number>;
+  performance?: Record<string, number>;
+  lastCheck?: number;
+}
+
+interface MasterIntegrationBridge {
+  analytics?: IntegrationAnalytics;
+  auth?: IntegrationAuth;
+  features?: IntegrationFeatures;
+  health?: IntegrationHealth;
+  lifecycle?: {
+    registerComponent?: (component: {
+      id: string;
+      type: string;
+      version: string;
+      capabilities: Record<string, string[]>;
+      dependencies: string[];
+      lastActive: number;
+      performance: {
+        renderCount: number;
+        avgRenderTime: number;
+        memoryUsage: number;
+      };
+    }) => void;
+  };
+}
+
 declare global {
   interface Window {
-    masterIntegration?: any;
+    masterIntegration?: MasterIntegrationBridge;
+    EnhancedMasterIntegration?: MasterIntegrationBridge;
   }
 }
 
@@ -27,14 +85,18 @@ export interface VirtualStudioIntegrationConfig {
 
 export interface VirtualStudioBackendAPI {
   // Camera Path Management
-  uploadCameraPath: (fileName: string, content: any, metadata?: any) => Promise<any>;
-  listCameraPaths: () => Promise<any[]>;
-  downloadCameraPath: (fileId: string) => Promise<any>;
+  uploadCameraPath: (
+    fileName: string,
+    content: unknown,
+    metadata?: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  listCameraPaths: () => Promise<Record<string, unknown>[]>;
+  downloadCameraPath: (fileId: string) => Promise<unknown>;
   deleteCameraPath: (fileId: string) => Promise<void>;
 
   // Analytics
-  trackEvent: (event: string, data: unknown) => void;
-  trackFeatureUsage: (feature: string, action: string, data?: any) => void;
+  trackEvent: (event: string, data?: Record<string, unknown>) => void;
+  trackFeatureUsage: (feature: string, action: string, data?: Record<string, unknown>) => void;
 
   // Authentication
   getAuthHeader: () => Promise<Record<string, string>>;
@@ -51,14 +113,38 @@ export interface VirtualStudioMasterIntegration {
   backend: VirtualStudioBackendAPI;
 
   // Master Integration Features
-  analytics: unknown;
-  auth: unknown;
-  features: unknown;
-  health: unknown;
+  analytics: IntegrationAnalytics;
+  auth: Required<Pick<IntegrationAuth, 'getAuthHeader' | 'isAuthenticated'>> & IntegrationAuth;
+  features: IntegrationFeatures;
+  health: IntegrationHealth;
 
   // Status
   isInitialized: boolean;
-  status: unknown;
+  status: IntegrationStatus;
+}
+
+interface StandaloneIntegrationWindow extends Window {
+  virtualStudioIntegration?: unknown;
+}
+
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return { value: null };
+  }
+
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (Array.isArray(value)) {
+    return { items: value };
+  }
+
+  return { value };
 }
 
 /**
@@ -68,7 +154,7 @@ export function useVirtualStudioIntegration(
   config: VirtualStudioIntegrationConfig = {},
 ): VirtualStudioMasterIntegration {
   const [isInitialized, setIsInitialized] = useState(false);
-  const [masterIntegration, setMasterIntegration] = useState<unknown>(null);
+  const [masterIntegration, setMasterIntegration] = useState<MasterIntegrationBridge | null>(null);
 
   // Default config
   const finalConfig: VirtualStudioIntegrationConfig = {
@@ -85,13 +171,13 @@ export function useVirtualStudioIntegration(
   useEffect(() => {
     const initialize = async () => {
       try {
-        log.info('Connecting Virtual Studio to Master Integration..., ');
+        log.info('Connecting Virtual Studio to Master Integration...');
 
         // Initialize Virtual Studio services
         await integrationService.initialize();
 
         // Try to connect to Master Integration Provider
-        const master = window.masterIntegration || (window as any).EnhancedMasterIntegration;
+        const master = window.masterIntegration ?? window.EnhancedMasterIntegration;
         if (master) {
           setMasterIntegration(master);
           log.info('Connected to EnhancedMasterIntegrationProvider');
@@ -145,7 +231,7 @@ export function useVirtualStudioIntegration(
   // Backend API implementation
   const backend: VirtualStudioBackendAPI = {
     uploadCameraPath: useCallback(
-      async (fileName: string, content: any, metadata?: any) => {
+      async (fileName: string, content: unknown, metadata?: Record<string, unknown>) => {
         try {
           const authHeader = masterIntegration?.auth?.getAuthHeader
             ? await masterIntegration.auth.getAuthHeader()
@@ -168,13 +254,13 @@ export function useVirtualStudioIntegration(
             throw new Error('Failed to upload camera path');
           }
 
-          const result = await response.json();
+          const result = (await response.json()) as Record<string, unknown>;
 
           // Track in analytics
           if (masterIntegration?.analytics?.trackEvent) {
             masterIntegration.analytics.trackEvent('camera_path_uploaded', {
               fileName,
-              metadata,
+              ...toRecord(metadata),
             });
           }
 
@@ -201,7 +287,7 @@ export function useVirtualStudioIntegration(
           throw new Error('Failed to list camera paths');
         }
 
-        const result = await response.json();
+        const result = (await response.json()) as { files?: Record<string, unknown>[] };
         return result.files || [];
       } catch (error) {
         log.error('List camera paths failed:', error);
@@ -224,7 +310,7 @@ export function useVirtualStudioIntegration(
             throw new Error('Failed to download camera path');
           }
 
-          const result = await response.json();
+          const result = (await response.json()) as { content?: unknown };
 
           // Track in analytics
           if (masterIntegration?.analytics?.trackEvent) {
@@ -269,22 +355,30 @@ export function useVirtualStudioIntegration(
     ),
 
     trackEvent: useCallback(
-      (event: string, data: unknown) => {
+      (event: string, data?: Record<string, unknown>) => {
+        const payload = toRecord(data);
+
         if (masterIntegration?.analytics?.trackEvent) {
-          masterIntegration.analytics.trackEvent(`virtual_studio_${event}`, data);
+          masterIntegration.analytics.trackEvent(`virtual_studio_${event}`, payload);
         } else {
-          log.debug(`Virtual Studio Event: ${event}`, data);
+          log.debug(`Virtual Studio Event: ${event}`, payload);
         }
       },
       [masterIntegration],
     ),
 
     trackFeatureUsage: useCallback(
-      (feature: string, action: string, data?: any) => {
+      (feature: string, action: string, data?: Record<string, unknown>) => {
+        const payload = toRecord(data);
+
         if (masterIntegration?.features?.trackFeatureUsage) {
-          masterIntegration.features.trackFeatureUsage(`virtual-studio-${feature}`, action, data);
+          masterIntegration.features.trackFeatureUsage(
+            `virtual-studio-${feature}`,
+            action,
+            payload,
+          );
         } else {
-          log.debug(`Feature Usage: virtual-studio-${feature} - ${action}`, data);
+          log.debug(`Feature Usage: virtual-studio-${feature} - ${action}`, payload);
         }
       },
       [masterIntegration],
@@ -298,7 +392,11 @@ export function useVirtualStudioIntegration(
     }, [masterIntegration]),
 
     isAuthenticated: useCallback(() => {
-      return masterIntegration?.auth?.state?.isAuthenticated || false;
+      if (masterIntegration?.auth?.isAuthenticated) {
+        return masterIntegration.auth.isAuthenticated();
+      }
+
+      return masterIntegration?.auth?.state?.isAuthenticated ?? false;
     }, [masterIntegration]),
   };
 
@@ -312,11 +410,22 @@ export function useVirtualStudioIntegration(
   }, [masterIntegration, backend.trackEvent]);
 
   // Memoize auth object to prevent infinite loops
-  const auth = useMemo(() => {
-    return masterIntegration?.auth || {
-      state: { isAuthenticated: false, isLoading: false, user: null, token: null, error: null },
-      getAuthHeader: backend.getAuthHeader,
-      isAuthenticated: backend.isAuthenticated,
+  const auth = useMemo<
+    Required<Pick<IntegrationAuth, 'getAuthHeader' | 'isAuthenticated'>> & IntegrationAuth
+  >(() => {
+    const integrationAuth = masterIntegration?.auth;
+
+    return {
+      ...integrationAuth,
+      state: integrationAuth?.state ?? {
+        isAuthenticated: false,
+        isLoading: false,
+        user: null,
+        token: null,
+        error: null,
+      },
+      getAuthHeader: integrationAuth?.getAuthHeader ?? backend.getAuthHeader,
+      isAuthenticated: integrationAuth?.isAuthenticated ?? backend.isAuthenticated,
     };
   }, [masterIntegration, backend.getAuthHeader, backend.isAuthenticated]);
 
@@ -364,8 +473,8 @@ export function useVirtualStudioIntegration(
  * Helper to expose master integration globally for debugging
  */
 export function exposeMasterIntegration(integration: unknown) {
-  if (typeof window !=='undefined') {
-    (window as any).virtualStudioIntegration = integration;
+  if (typeof window !== 'undefined') {
+    (window as StandaloneIntegrationWindow).virtualStudioIntegration = integration;
     log.debug('Virtual Studio integration exposed at window.virtualStudioIntegration');
   }
 }

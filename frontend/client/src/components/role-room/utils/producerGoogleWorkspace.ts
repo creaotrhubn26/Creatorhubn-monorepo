@@ -149,9 +149,10 @@ const mapFolderKeyToSurface = (folderKey: RoleRoomGoogleFolderKey): ProducerWork
       return 'materials';
     case 'brand':
       return 'brand';
+    case 'meetings':
+      return 'meetings';
     case 'delivery':
     case 'approvals':
-    case 'meetings':
       return 'delivery';
     case 'brief':
     default:
@@ -328,6 +329,29 @@ export const buildProducerGoogleGeneratedArtifacts = ({
         projectId: project.id,
       },
     },
+    {
+      localEntityType: 'producer_meeting_workspace',
+      localEntityId: 'meeting-workspace',
+      artifactType: 'drive_file',
+      title: 'Møte - agenda og oppfølging.json',
+      folderKey: 'meetings',
+      mimeType: 'application/json',
+      sourceLabel: 'producer_meeting_workspace',
+      contentText: JSON.stringify({
+        projectName: project.name,
+        sessionLabel: planning.meetingWorkspace.sessionLabel ?? '',
+        status: planning.meetingWorkspace.status,
+        activeMeetUrl: planning.meetingWorkspace.activeMeetUrl ?? null,
+        agenda: planning.meetingWorkspace.agenda,
+        decisions: planning.meetingWorkspace.decisions,
+        followUps: planning.meetingWorkspace.followUps,
+        liveNotes: planning.meetingWorkspace.liveNotes ?? '',
+      }, null, 2),
+      metadata: {
+        workspaceSurface: 'meetings',
+        projectId: project.id,
+      },
+    },
   ];
 };
 
@@ -476,12 +500,17 @@ export const buildProducerGoogleMeetSession = ({
   return {
     entityType: 'meet_session',
     entityId: pendingReview?.id ?? openMoment?.id ?? productionDay?.id ?? 'client-sync',
-    title: `Klientsync · ${project.name}`,
+    title: planning.meetingWorkspace.sessionLabel?.trim() || `Klientsync · ${project.name}`,
     description: pendingReview
       ? `Gjennomgang av ${pendingReview.title}`
       : openMoment
         ? getCalendarMomentDescription(openMoment, project)
-        : 'Statusmøte for prosjektplan, materiale og levering.',
+        : planning.meetingWorkspace.agenda.length > 0
+          ? planning.meetingWorkspace.agenda
+            .slice(0, 4)
+            .map((item) => item.title)
+            .join('\n')
+          : 'Statusmøte for prosjektplan, materiale og levering.',
     start,
     end: addMinutes(start, 45),
     phase: pendingReview?.metadata?.phase as string | undefined

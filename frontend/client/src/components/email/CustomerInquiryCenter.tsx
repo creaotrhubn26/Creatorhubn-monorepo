@@ -79,9 +79,10 @@ interface CustomerInquiryCenterProps {
   onProjectSelect?: (project: any) => void;
   selectedClient?: any;
   onCreateProjectFromSubmission?: (data: any) => void;
+  onOpenInquiryInChat?: (email: EmailMessage) => void;
 }
 
-interface EmailMessage {
+export interface EmailMessage {
   id: string;
   subject: string;
   from: { name: string; email: string };
@@ -90,7 +91,11 @@ interface EmailMessage {
   isStarred: boolean;
   category: 'inquiry' | 'project' | 'general';
   priority: 'low' | 'normal' | 'high';
-  isCustomerInquiry?: boolean
+  isCustomerInquiry?: boolean;
+  body?: string;
+  eventDate?: string | null;
+  budget?: number | null;
+  location?: string;
 }
 
 function TabPanel({ children, value, index, ...other }: any) {
@@ -123,6 +128,7 @@ export default function CustomerInquiryCenter({
   onProjectSelect,
   selectedClient,
   onCreateProjectFromSubmission,
+  onOpenInquiryInChat,
 }: CustomerInquiryCenterProps) {
   // Dynamic profession system hooks
   const { user } = useAuth();
@@ -139,6 +145,7 @@ export default function CustomerInquiryCenter({
   const userProfession = profession || 'photographer';
   const professionConfig = getProfessionConfig(userProfession || '');
   const brandColor = customBranding?.color || '#ff8c00';
+  const hasResolvedUser = typeof userId === 'string' && userId.trim().length > 0 && userId !== 'guest';
 
   const [selectedTab, setSelectedTab] = useState(0);
   const [filterStatus, setFilterStatus] = useState<'all' | 'new' | 'replied' | 'starred'>('new');
@@ -155,23 +162,28 @@ export default function CustomerInquiryCenter({
   const { data: emails = [], isLoading: emailsLoading } = useQuery({
     queryKey: ['/api/emails/recent', userId],
     queryFn: () => apiRequest(`/api/emails/recent?userId=${userId}`),
-    refetchInterval: 30000 });
+    enabled: hasResolvedUser,
+    refetchInterval: hasResolvedUser ? 30000 : false,
+  });
 
   const { data: emailStats } = useQuery({
     queryKey: ['/api/emails/stats', userId],
     queryFn: () => apiRequest(`/api/emails/stats?userId=${userId}`),
-    refetchInterval: 60000 });
+    enabled: hasResolvedUser,
+    refetchInterval: hasResolvedUser ? 60000 : false,
+  });
 
   const { data: emailContacts = [] } = useQuery({
     queryKey: ['/api/emails/contacts', userId],
-    queryFn: () => apiRequest(`/api/emails/contacts?userId=${userId}`)
-});
+    queryFn: () => apiRequest(`/api/emails/contacts?userId=${userId}`),
+    enabled: hasResolvedUser,
+  });
 
   const { data: submissions = [], isLoading: submissionsLoading } = useQuery({
     queryKey: ['/api/submissions', userProfession],
     queryFn: () => apiRequest(`/api/submissions?profession=${userProfession}`),
-    enabled: !!userProfession && !professionsLoading && !!userId && userId !== 'guest'
-});
+    enabled: !!userProfession && !professionsLoading && hasResolvedUser,
+  });
 
   // Handle compose actions
   const handleReply = (email: EmailMessage) => {
@@ -193,6 +205,36 @@ Svar med profesjonell og vennlig tone.
     setSelectedEmail(replyEmail);
     setReplyOpen(true);
 };
+
+  const buildSubmissionEmailMessage = (submission: any): EmailMessage => ({
+    id: submission.id,
+    subject: submission.projectType || submission.project_type
+      ? `Forespørsel: ${submission.projectType || submission.project_type} - ${submission.name || submission.email || 'Kunde'}`
+      : `Ny kundeforespørsel fra ${submission.name || submission.email || 'Kunde'}`,
+    from: {
+      name: submission.name || 'Kunde',
+      email: submission.email || '',
+    },
+    timestamp: submission.createdAt || submission.created_at || new Date().toISOString(),
+    isRead: false,
+    isStarred: false,
+    category: 'inquiry',
+    priority: submission.priority === 'urgent' || submission.priority === 'high' ? 'high' : 'normal',
+    isCustomerInquiry: true,
+    body: submission.description || submission.message || '',
+    eventDate: submission.eventDate || submission.event_date || null,
+    budget: submission.budget || null,
+    location: submission.location || '',
+  });
+
+  const handleOpenInquiry = (email: EmailMessage) => {
+    if (onOpenInquiryInChat) {
+      onOpenInquiryInChat(email);
+      return;
+    }
+
+    handleReply(email);
+  };
 
 
 
@@ -554,11 +596,14 @@ Svar med profesjonell og vennlig tone.
               {filteredInquiries.map((email: EmailMessage) => (
                 <ListItem
                   key={email.id}
+                  component="div"
+                  onClick={() => handleOpenInquiry(email)}
                   sx={{
                     mb: 1,
                     border: `1px solid ${email.isRead ? '#e0e0e0' : `${brandColor}55`}`,
                     borderRadius: 2,
                     bgcolor: email.isRead ? '#f9f9f9' : `${brandColor}11`,
+                    cursor: 'pointer',
                   }}
                 >
                   <ListItemIcon>
@@ -575,7 +620,14 @@ Svar med profesjonell og vennlig tone.
                         </Typography>
                         {email.priority === 'high' && <PriorityIcon sx={{ color: '#f44336', fontSize: '1rem' }} />}
                         <Tooltip title={email.isStarred ? 'Fjern stjerne' : 'Marker som viktig'}>
-                          <IconButton size="small" onClick={() => handleToggleStar(email.id)} sx={{ color: email.isStarred ? '#ffb400' : '#9e9e9e' }}>
+                          <IconButton
+                            size="small"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleToggleStar(email.id);
+                            }}
+                            sx={{ color: email.isStarred ? '#ffb400' : '#9e9e9e' }}
+                          >
                             {email.isStarred ? <StarIcon /> : <StarBorderIcon />}
                           </IconButton>
                         </Tooltip>
@@ -591,7 +643,10 @@ Svar med profesjonell og vennlig tone.
                             size="small"
                             variant="outlined"
                             startIcon={<ReplyIcon />}
-                            onClick={() => handleReply(email)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleOpenInquiry(email);
+                            }}
                             sx={{ borderColor: brandColor, color: brandColor }}
                           >
                             Svar
@@ -600,7 +655,10 @@ Svar med profesjonell og vennlig tone.
                             size="small"
                             variant="contained"
                             startIcon={<AddIcon />}
-                            onClick={() => handleCreateProject(email)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleCreateProject(email);
+                            }}
                             sx={{ bgcolor: brandColor }}
                           >
                             Opprett Prosjekt
@@ -627,7 +685,12 @@ Svar med profesjonell og vennlig tone.
         <TabPanel value={selectedTab} index={1}>
           <List dense>
             {(Array.isArray(emails) ? emails : []).map((email: any) => (
-              <ListItem key={email.id} sx={{ mb: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+              <ListItem
+                key={email.id}
+                component="div"
+                onClick={() => handleOpenInquiry(email)}
+                sx={{ mb: 1, border: '1px solid #e0e0e0', borderRadius: 1, cursor: 'pointer' }}
+              >
                 <ListItemIcon><EmailIcon /></ListItemIcon>
                 <ListItemText primary={email.subject} secondary={`${email.from?.name || 'Ukjent'} • ${email.timestamp}`} />
               </ListItem>
@@ -643,14 +706,20 @@ Svar med profesjonell og vennlig tone.
             </Box>
           ) : (
             <List dense>
-              {submissions.map((submission: any) => (
+              {submissions.map((submission: any) => {
+                const submissionEmail = buildSubmissionEmailMessage(submission);
+
+                return (
                 <ListItem
                   key={submission.id}
+                  component="div"
+                  onClick={() => handleOpenInquiry(submissionEmail)}
                   sx={{
                     mb: 1,
                     border: `1px solid ${brandColor}55`,
                     borderRadius: 2,
                     bgcolor: `${brandColor}11`,
+                    cursor: 'pointer',
                   }}
                 >
                   <ListItemIcon>
@@ -667,18 +736,9 @@ Svar med profesjonell og vennlig tone.
                       size="small"
                       variant="outlined"
                       startIcon={<ReplyIcon />}
-                      onClick={() => {
-                        setSelectedEmail({
-                          id: submission.id,
-                          subject: `Re: ${submission.projectType || 'Forespørsel'}`,
-                          from: { name: submission.name || 'Kunde', email: submission.email || '' },
-                          timestamp: submission.createdAt || new Date().toISOString(),
-                          isRead: false,
-                          isStarred: false,
-                          category: 'inquiry',
-                          priority: 'normal',
-                        });
-                        setReplyOpen(true);
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleOpenInquiry(submissionEmail);
                       }}
                     >
                       Svar
@@ -687,14 +747,18 @@ Svar med profesjonell og vennlig tone.
                       size="small"
                       variant="contained"
                       startIcon={<AddIcon />}
-                      onClick={() => handleCreateProject(submission)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleCreateProject(submission);
+                      }}
                       sx={{ bgcolor: brandColor }}
                     >
                       Opprett Prosjekt
                     </Button>
                   </Stack>
                 </ListItem>
-              ))}
+                );
+              })}
             </List>
           )}
         </TabPanel>

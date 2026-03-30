@@ -11,7 +11,7 @@
  * - Copy/Paste/Delete
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Box,
   IconButton,
@@ -27,6 +27,9 @@ import {
   CropFree,
   OpenWith,
   Rotate90DegreesCcw,
+  PanoramaFishEye,
+  SwapHoriz,
+  FilterCenterFocus,
   Flip,
   FlipCameraAndroid,
   ContentCopy,
@@ -36,8 +39,6 @@ import {
   Deselect,
   GroupWork,
   CallSplit,
-  Lock,
-  LockOpen,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import type { PencilPoint, PencilStroke } from '../../hooks/useApplePencil';
@@ -46,7 +47,7 @@ import type { PencilPoint, PencilStroke } from '../../hooks/useApplePencil';
 // Types
 // =============================================================================
 
-export type SelectionMode = 'none' | 'rectangle' | 'lasso' | 'move' | 'scale' | 'rotate';
+export type SelectionMode = 'none' | 'rectangle' | 'ellipse' | 'lasso' | 'move' | 'scale' | 'rotate';
 
 export interface SelectionBounds {
   x: number;
@@ -54,6 +55,23 @@ export interface SelectionBounds {
   width: number;
   height: number;
   rotation: number;
+  pivotX?: number;
+  pivotY?: number;
+  customPivot?: boolean;
+}
+
+export type CornerWarpCorner = 'nw' | 'ne' | 'se' | 'sw';
+
+export interface CornerWarpOffset {
+  x: number;
+  y: number;
+}
+
+export interface CornerWarp {
+  nw: CornerWarpOffset;
+  ne: CornerWarpOffset;
+  se: CornerWarpOffset;
+  sw: CornerWarpOffset;
 }
 
 export interface Transform {
@@ -62,6 +80,9 @@ export interface Transform {
   scaleX: number;
   scaleY: number;
   rotation: number;
+  perspectiveX: number;
+  perspectiveY: number;
+  cornerWarp?: CornerWarp;
 }
 
 export interface SelectionToolsProps {
@@ -76,10 +97,13 @@ export interface SelectionToolsProps {
   onDelete: () => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
+  onInvertSelection?: () => void;
+  onResetPivot?: () => void;
   onGroup?: () => void;
   onUngroup?: () => void;
   canPaste: boolean;
   hasSelection: boolean;
+  canResetPivot?: boolean;
 }
 
 // =============================================================================
@@ -125,6 +149,11 @@ export const SelectionBox: React.FC<SelectionBoxProps> = ({
 }) => {
   const handleSize = 10;
   const rotateHandleOffset = 25;
+  const perspectiveHandleSize = 12;
+  const perspectiveHandleOffset = 18;
+  const pivotHandleSize = 12;
+  const pivotX = (Number.isFinite(bounds.pivotX) ? bounds.pivotX : bounds.x + (bounds.width / 2)) - bounds.x;
+  const pivotY = (Number.isFinite(bounds.pivotY) ? bounds.pivotY : bounds.y + (bounds.height / 2)) - bounds.y;
 
   const handles = [
     { id: 'nw', x: -handleSize/2, y: -handleSize/2, cursor: 'nwse-resize' },
@@ -137,8 +166,36 @@ export const SelectionBox: React.FC<SelectionBoxProps> = ({
     { id: 'w', x: -handleSize/2, y: bounds.height/2 - handleSize/2, cursor: 'ew-resize' },
   ];
 
+  const perspectiveHandles = [
+    {
+      id: 'perspective-nw',
+      x: -(perspectiveHandleOffset + (perspectiveHandleSize / 2)),
+      y: -(perspectiveHandleOffset + (perspectiveHandleSize / 2)),
+    },
+    {
+      id: 'perspective-ne',
+      x: bounds.width + perspectiveHandleOffset - (perspectiveHandleSize / 2),
+      y: -(perspectiveHandleOffset + (perspectiveHandleSize / 2)),
+    },
+    {
+      id: 'perspective-se',
+      x: bounds.width + perspectiveHandleOffset - (perspectiveHandleSize / 2),
+      y: bounds.height + perspectiveHandleOffset - (perspectiveHandleSize / 2),
+    },
+    {
+      id: 'perspective-sw',
+      x: -(perspectiveHandleOffset + (perspectiveHandleSize / 2)),
+      y: bounds.height + perspectiveHandleOffset - (perspectiveHandleSize / 2),
+    },
+  ];
+
   return (
     <Box
+      data-testid="pencil-canvas-selection-box"
+      data-selection-rotation={bounds.rotation}
+      data-selection-pivot-x={Number.isFinite(bounds.pivotX) ? bounds.pivotX : bounds.x + (bounds.width / 2)}
+      data-selection-pivot-y={Number.isFinite(bounds.pivotY) ? bounds.pivotY : bounds.y + (bounds.height / 2)}
+      data-selection-custom-pivot={bounds.customPivot ? 'true' : 'false'}
       sx={{
         position: 'absolute',
         left: bounds.x,
@@ -152,6 +209,7 @@ export const SelectionBox: React.FC<SelectionBoxProps> = ({
     >
       {/* Selection border */}
       <Box
+        data-testid="pencil-canvas-selection-handle-move"
         sx={{
           position: 'absolute',
           inset: -2,
@@ -177,6 +235,7 @@ export const SelectionBox: React.FC<SelectionBoxProps> = ({
       {handles.map((handle) => (
         <Box
           key={handle.id}
+          data-testid={`pencil-canvas-selection-handle-${handle.id}`}
           sx={{
             position: 'absolute',
             left: handle.x,
@@ -196,6 +255,75 @@ export const SelectionBox: React.FC<SelectionBoxProps> = ({
         />
       ))}
 
+      {perspectiveHandles.map((handle) => (
+        <Box
+          key={handle.id}
+          data-testid={`pencil-canvas-selection-handle-${handle.id}`}
+          sx={{
+            position: 'absolute',
+            left: handle.x,
+            top: handle.y,
+            width: perspectiveHandleSize,
+            height: perspectiveHandleSize,
+            bgcolor: '#f59e0b',
+            border: '2px solid rgba(255,255,255,0.96)',
+            borderRadius: 1,
+            cursor: 'alias',
+            pointerEvents: 'auto',
+            transform: 'rotate(45deg)',
+            boxShadow: '0 0 0 1px rgba(15,23,42,0.6), 0 0 18px rgba(245,158,11,0.3)',
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              inset: 2,
+              borderRadius: 0.5,
+              border: '1px solid rgba(15,23,42,0.55)',
+            },
+            '&:hover': {
+              bgcolor: '#fbbf24',
+              transform: 'rotate(45deg) scale(1.08)',
+            },
+          }}
+          onPointerDown={(e) => onTransformStart(handle.id, e)}
+        />
+      ))}
+
+      <Box
+        data-testid="pencil-canvas-selection-handle-pivot"
+        sx={{
+          position: 'absolute',
+          left: pivotX - (pivotHandleSize / 2),
+          top: pivotY - (pivotHandleSize / 2),
+          width: pivotHandleSize,
+          height: pivotHandleSize,
+          bgcolor: bounds.customPivot ? '#f59e0b' : 'rgba(255,255,255,0.95)',
+          border: '2px solid rgba(15,23,42,0.95)',
+          borderRadius: '50%',
+          cursor: 'grab',
+          pointerEvents: 'auto',
+          boxShadow: bounds.customPivot
+            ? '0 0 0 2px rgba(245,158,11,0.24), 0 0 18px rgba(245,158,11,0.32)'
+            : '0 0 0 1px rgba(59,130,246,0.32)',
+          '&::before, &::after': {
+            content: '""',
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            bgcolor: '#0f172a',
+            transform: 'translate(-50%, -50%)',
+          },
+          '&::before': {
+            width: 1.5,
+            height: 8,
+          },
+          '&::after': {
+            width: 8,
+            height: 1.5,
+          },
+        }}
+        onPointerDown={(e) => onTransformStart('pivot', e)}
+      />
+
       {/* Rotate handle */}
       {showRotate && (
         <>
@@ -211,6 +339,7 @@ export const SelectionBox: React.FC<SelectionBoxProps> = ({
             }}
           />
           <Box
+            data-testid="pencil-canvas-selection-handle-rotate"
             sx={{
               position: 'absolute',
               left: bounds.width / 2 - handleSize/2,
@@ -261,6 +390,9 @@ export function getStrokeBounds(strokes: PencilStroke[]): SelectionBounds | null
     width: maxX - minX,
     height: maxY - minY,
     rotation: 0,
+    pivotX: (minX + maxX) / 2,
+    pivotY: (minY + maxY) / 2,
+    customPivot: false,
   };
 }
 
@@ -286,6 +418,26 @@ export function isStrokeInRectangle(
   return stroke.points.some(p => 
     p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY
   );
+}
+
+export function isStrokeInEllipse(
+  stroke: PencilStroke,
+  rect: { x1: number; y1: number; x2: number; y2: number }
+): boolean {
+  const minX = Math.min(rect.x1, rect.x2);
+  const maxX = Math.max(rect.x1, rect.x2);
+  const minY = Math.min(rect.y1, rect.y2);
+  const maxY = Math.max(rect.y1, rect.y2);
+  const radiusX = Math.max(0.5, (maxX - minX) / 2);
+  const radiusY = Math.max(0.5, (maxY - minY) / 2);
+  const centerX = minX + radiusX;
+  const centerY = minY + radiusY;
+
+  return stroke.points.some((point) => {
+    const normalizedX = (point.x - centerX) / radiusX;
+    const normalizedY = (point.y - centerY) / radiusY;
+    return ((normalizedX * normalizedX) + (normalizedY * normalizedY)) <= 1;
+  });
 }
 
 export function isPointInLasso(point: { x: number; y: number }, lassoPoints: PencilPoint[]): boolean {
@@ -315,10 +467,16 @@ export function transformStroke(
   stroke: PencilStroke,
   transform: Transform,
   pivotX: number,
-  pivotY: number
+  pivotY: number,
+  warpBounds?: Pick<SelectionBounds, 'x' | 'y' | 'width' | 'height'>
 ): PencilStroke {
   const cosA = Math.cos((transform.rotation * Math.PI) / 180);
   const sinA = Math.sin((transform.rotation * Math.PI) / 180);
+  const baseLeft = ((warpBounds?.x ?? pivotX) - pivotX) * transform.scaleX;
+  const baseTop = ((warpBounds?.y ?? pivotY) - pivotY) * transform.scaleY;
+  const baseWidth = Math.max(0.0001, (warpBounds?.width ?? 0) * Math.max(0.0001, Math.abs(transform.scaleX)));
+  const baseHeight = Math.max(0.0001, (warpBounds?.height ?? 0) * Math.max(0.0001, Math.abs(transform.scaleY)));
+  const cornerWarp = transform.cornerWarp;
 
   return {
     ...stroke,
@@ -331,9 +489,32 @@ export function transformStroke(
       x *= transform.scaleX;
       y *= transform.scaleY;
 
+      if (cornerWarp && warpBounds) {
+        const u = (x - baseLeft) / baseWidth;
+        const v = (y - baseTop) / baseHeight;
+        const invU = 1 - u;
+        const invV = 1 - v;
+        const warpOffsetX =
+          (cornerWarp.nw.x * invU * invV) +
+          (cornerWarp.ne.x * u * invV) +
+          (cornerWarp.se.x * u * v) +
+          (cornerWarp.sw.x * invU * v);
+        const warpOffsetY =
+          (cornerWarp.nw.y * invU * invV) +
+          (cornerWarp.ne.y * u * invV) +
+          (cornerWarp.se.y * u * v) +
+          (cornerWarp.sw.y * invU * v);
+        x += warpOffsetX;
+        y += warpOffsetY;
+      }
+
+      // Two-axis perspective slice modeled as a simple invertible shear matrix.
+      const perspectiveXPosition = x + (y * transform.perspectiveX);
+      const perspectiveYPosition = (x * transform.perspectiveY) + y;
+
       // Rotate
-      const rx = x * cosA - y * sinA;
-      const ry = x * sinA + y * cosA;
+      const rx = perspectiveXPosition * cosA - perspectiveYPosition * sinA;
+      const ry = perspectiveXPosition * sinA + perspectiveYPosition * cosA;
 
       // Translate back and apply translation
       return {
@@ -353,18 +534,21 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
   mode,
   onModeChange,
   selectedStrokeIds,
-  onSelectionChange,
-  bounds,
+  onSelectionChange: _onSelectionChange,
+  bounds: _bounds,
   onTransform,
   onCopy,
   onPaste,
   onDelete,
   onSelectAll,
   onDeselectAll,
+  onInvertSelection,
+  onResetPivot,
   onGroup,
   onUngroup,
   canPaste,
   hasSelection,
+  canResetPivot = false,
 }) => {
   const [transformAnchor, setTransformAnchor] = useState<HTMLElement | null>(null);
   const [tempTransform, setTempTransform] = useState<Transform>({
@@ -373,6 +557,8 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
     scaleX: 1,
     scaleY: 1,
     rotation: 0,
+    perspectiveX: 0,
+    perspectiveY: 0,
   });
 
   const handleApplyTransform = useCallback(() => {
@@ -384,6 +570,8 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
       scaleX: 1,
       scaleY: 1,
       rotation: 0,
+      perspectiveX: 0,
+      perspectiveY: 0,
     });
   }, [tempTransform, onTransform]);
 
@@ -408,6 +596,15 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
         </ToolButton>
       </Tooltip>
 
+      <Tooltip title="Ellipse Select" placement="top">
+        <ToolButton
+          active={mode === 'ellipse'}
+          onClick={() => onModeChange(mode === 'ellipse' ? 'none' : 'ellipse')}
+        >
+          <PanoramaFishEye sx={{ fontSize: 18 }} />
+        </ToolButton>
+      </Tooltip>
+
       <Tooltip title="Move" placement="top">
         <ToolButton
           active={mode === 'move'}
@@ -425,7 +622,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
           <IconButton 
             size="small" 
             disabled={!hasSelection}
-            onClick={() => onTransform({ translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 90 })}
+            onClick={() => onTransform({ translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 90, perspectiveX: 0, perspectiveY: 0 })}
           >
             <Rotate90DegreesCcw sx={{ fontSize: 18 }} />
           </IconButton>
@@ -437,7 +634,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
           <IconButton 
             size="small" 
             disabled={!hasSelection}
-            onClick={() => onTransform({ translateX: 0, translateY: 0, scaleX: -1, scaleY: 1, rotation: 0 })}
+            onClick={() => onTransform({ translateX: 0, translateY: 0, scaleX: -1, scaleY: 1, rotation: 0, perspectiveX: 0, perspectiveY: 0 })}
           >
             <Flip sx={{ fontSize: 18 }} />
           </IconButton>
@@ -449,7 +646,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
           <IconButton 
             size="small" 
             disabled={!hasSelection}
-            onClick={() => onTransform({ translateX: 0, translateY: 0, scaleX: 1, scaleY: -1, rotation: 0 })}
+            onClick={() => onTransform({ translateX: 0, translateY: 0, scaleX: 1, scaleY: -1, rotation: 0, perspectiveX: 0, perspectiveY: 0 })}
           >
             <FlipCameraAndroid sx={{ fontSize: 18, transform: 'rotate(90deg)' }} />
           </IconButton>
@@ -461,6 +658,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
           <IconButton 
             size="small" 
             disabled={!hasSelection}
+            data-testid="pencil-canvas-selection-transform"
             onClick={(e) => setTransformAnchor(e.currentTarget)}
           >
             <OpenWith sx={{ fontSize: 16 }} />
@@ -476,7 +674,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
         transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         slotProps={{ paper: { sx: { bgcolor: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(8px)' } } }}
       >
-        <Box sx={{ p: 2, width: 220 }}>
+        <Box sx={{ p: 2, width: 220 }} data-testid="pencil-canvas-selection-transform-popover">
           <Typography variant="subtitle2" sx={{ mb: 2 }}>Transform Selection</Typography>
           
           <Box sx={{ mb: 2 }}>
@@ -520,11 +718,44 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
             />
           </Box>
 
+          <Box sx={{ mb: 2 }} data-testid="pencil-canvas-selection-transform-perspective-x">
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Perspective X: {(tempTransform.perspectiveX * 100).toFixed(0)}%
+            </Typography>
+            <Slider
+              size="small"
+              value={tempTransform.perspectiveX}
+              min={-1}
+              max={1}
+              step={0.05}
+              onChange={(_, v) => setTempTransform(prev => ({ ...prev, perspectiveX: v as number }))}
+            />
+          </Box>
+
+          <Box sx={{ mb: 2 }} data-testid="pencil-canvas-selection-transform-perspective-y">
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Perspective Y: {(tempTransform.perspectiveY * 100).toFixed(0)}%
+            </Typography>
+            <Slider
+              size="small"
+              value={tempTransform.perspectiveY}
+              min={-1}
+              max={1}
+              step={0.05}
+              onChange={(_, v) => setTempTransform(prev => ({ ...prev, perspectiveY: v as number }))}
+            />
+          </Box>
+
           <Stack direction="row" spacing={1} justifyContent="flex-end">
             <IconButton size="small" onClick={() => setTransformAnchor(null)}>
               Cancel
             </IconButton>
-            <IconButton size="small" color="primary" onClick={handleApplyTransform}>
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={handleApplyTransform}
+              data-testid="pencil-canvas-selection-transform-apply"
+            >
               Apply
             </IconButton>
           </Stack>
@@ -547,6 +778,26 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
           </IconButton>
         </span>
       </Tooltip>
+
+      {onInvertSelection && (
+        <Tooltip title="Invert Selection" placement="top">
+          <span>
+            <IconButton size="small" onClick={onInvertSelection}>
+              <SwapHoriz sx={{ fontSize: 18 }} />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+
+      {onResetPivot && (
+        <Tooltip title="Reset Pivot" placement="top">
+          <span>
+            <IconButton size="small" disabled={!canResetPivot} onClick={onResetPivot}>
+              <FilterCenterFocus sx={{ fontSize: 18 }} />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
 
       <Divider orientation="vertical" flexItem sx={{ mx: 0.5, bgcolor: 'rgba(255,255,255,0.1)' }} />
 

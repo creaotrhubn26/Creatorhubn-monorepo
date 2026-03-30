@@ -37,6 +37,11 @@ import {
   DialogContent,
   DialogActions,
   Avatar,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   TrendingUp as TrendingUpIcon,
@@ -71,8 +76,8 @@ import {
 } from '@mui/icons-material';
 import Grid from '@mui/material/Grid2';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
+import { alpha } from '@mui/material/styles';
 
 // Import dynamic profession system
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
@@ -83,17 +88,16 @@ import getProfessionIcon from '@/utils/profession-icons';
 // Import Business Intelligence components
 import SWOTKanbanBoard from './SWOTKanbanBoard';
 import SWOTVisualizations from './SWOTVisualizations';
-import type { PersonaData } from './PersonaBuilder';
-import PersonaBuilder from './PersonaBuilder';
-import type { SurveyData } from './SurveyBuilder';
-import SurveyBuilder from './SurveyBuilder';
+import PersonaBuilder, { type PersonaData } from './PersonaBuilder';
+import SurveyBuilder, { type SurveyData } from './SurveyBuilder';
 import EmailDesignerComplete from '../EmailDesigner/EmailDesignerComplete';
 import CommunicationHubV2 from './CommunicationHubV2';
-import type {
-  SWOTItem,
-  SWOTTrend
+import businessIntelligenceService, {
+  type CustomerPersona,
+  type Survey,
+  type SWOTItem,
+  type SWOTTrend,
 } from '../../services/BusinessIntelligenceService';
-import businessIntelligenceService from '../../services/BusinessIntelligenceService';
 import pdfExportService from '../../services/PDFExportService';
 import { ALL_ENHANCED_NEWSLETTER_TEMPLATES } from '../../data/enhancedNewsletterTemplates';
 
@@ -211,6 +215,8 @@ interface ContractSummaryResponse {
   recent?: ContractSummaryItem[];
 }
 
+type PersonaRecord = PersonaData & { id: string };
+
 interface ProjectTypeRef {
   label: string;
 }
@@ -219,6 +225,88 @@ interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number
+}
+
+function parsePersonaAge(ageRange: string): number {
+  const matches = ageRange.match(/\d+/g);
+  if (!matches || matches.length === 0) {
+    return 35;
+  }
+
+  const ages = matches.map((value) => Number.parseInt(value, 10)).filter((value) => !Number.isNaN(value));
+  if (ages.length === 0) {
+    return 35;
+  }
+
+  return Math.round(ages.reduce((sum, value) => sum + value, 0) / ages.length);
+}
+
+function mapCustomerPersonaToPersonaRecord(persona: CustomerPersona): PersonaRecord {
+  return {
+    id: persona.id,
+    name: persona.name,
+    age: parsePersonaAge(persona.ageRange),
+    location: persona.location,
+    occupation: persona.description,
+    family: persona.customerType.replace(/_/g, ' '),
+    income: persona.income,
+    bio: persona.description,
+    goals: persona.goals,
+    frustrations: persona.painPoints,
+    personality: {
+      introvert: 50,
+      sensing: 50,
+      thinking: 50,
+      judging: 50,
+    },
+    social: {
+      growth: 50,
+      power: 50,
+      social: 50,
+    },
+    preferredChannels: {
+      traditionalAds: 30,
+      socialMedia: 50,
+      referral: 60,
+      email: 40,
+    },
+    preferredBrands: [],
+    avatarColor: persona.avatarUrl ? undefined : '#ff6b35',
+  };
+}
+
+function deriveCustomerType(persona: PersonaData): CustomerPersona['customerType'] {
+  const referralBias = persona.preferredChannels.referral;
+  const emailBias = persona.preferredChannels.email;
+  const socialBias = persona.preferredChannels.socialMedia;
+
+  if (referralBias >= 70) {
+    return 'quality_focused';
+  }
+  if (emailBias >= 65) {
+    return 'time_sensitive';
+  }
+  if (socialBias >= 75) {
+    return 'luxury_seeker';
+  }
+
+  return 'budget_conscious';
+}
+
+function deriveBudgetTier(income: string): CustomerPersona['budgetTier'] {
+  const normalizedIncome = income.toLowerCase();
+
+  if (normalizedIncome.includes('high') || normalizedIncome.includes('premium') || normalizedIncome.includes('luxury')) {
+    return 'luxury';
+  }
+  if (normalizedIncome.includes('mid') || normalizedIncome.includes('middle')) {
+    return 'standard';
+  }
+  if (normalizedIncome.includes('upper')) {
+    return 'premium';
+  }
+
+  return 'economy';
 }
 
 function TabPanel(props: TabPanelProps) {
@@ -267,6 +355,8 @@ export default function BusinessIntelligenceDashboard({
   
   // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(profession);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const professionConfig = professionConfigs?.[profession];
   
   // Merge API profession configs with dynamic configs for enhanced data
@@ -342,6 +432,21 @@ export default function BusinessIntelligenceDashboard({
   const [surveyDialog, setSurveyDialog] = useState(false);
   const [editingSurvey, setEditingSurvey] = useState<SurveyData | undefined>(undefined);
 
+  const mapSurveyRecordToBuilderData = (survey: Survey): SurveyData => ({
+    id: survey.id,
+    title: survey.title,
+    description: survey.description,
+    purpose: survey.purpose,
+    questions: survey.questions.map((question) => ({
+      id: question.id,
+      type: question.type,
+      question: question.question,
+      options: question.options,
+      required: question.required,
+    })),
+    status: survey.status,
+  });
+
   // Fetch SWOT items
   const { data: swotItems = [] } = useQuery<SWOTItem[]>({
     queryKey: [`swot_items_${userId}_${profession}`],
@@ -357,10 +462,20 @@ export default function BusinessIntelligenceDashboard({
   });
 
   // Fetch personas
-  const { data: personas = [] } = useQuery<PersonaData[]>({
+  const { data: customerPersonas = [] } = useQuery<CustomerPersona[]>({
     queryKey: [`personas_${userId}_${profession}`],
     queryFn: () => businessIntelligenceService.getCustomerPersonas(userId, profession),
     staleTime: 60 * 60 * 1000,
+  });
+  const personas = React.useMemo<PersonaRecord[]>(
+    () => customerPersonas.map(mapCustomerPersonaToPersonaRecord),
+    [customerPersonas],
+  );
+
+  const { data: surveys = [], isLoading: surveysLoading } = useQuery<Survey[]>({
+    queryKey: [`surveys_${userId}_${profession}`],
+    queryFn: () => businessIntelligenceService.getSurveys(userId, profession),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Fetch contract analytics
@@ -414,7 +529,23 @@ export default function BusinessIntelligenceDashboard({
 
   // Persona mutations
   const savePersonaMutation = useMutation({
-    mutationFn: (persona: PersonaData) => businessIntelligenceService.savePersona(userId, profession, persona),
+    mutationFn: (persona: PersonaData) =>
+      businessIntelligenceService.savePersona(userId, profession, {
+        id: persona.id,
+        name: persona.name,
+        description: persona.bio || persona.occupation,
+        ageRange: `${Math.max(persona.age - 5, 18)}-${persona.age + 5}`,
+        location: persona.location,
+        income: persona.income,
+        goals: persona.goals.filter((goal) => goal.trim().length > 0),
+        painPoints: persona.frustrations.filter((painPoint) => painPoint.trim().length > 0),
+        motivations: persona.preferredBrands.length > 0 ? persona.preferredBrands : persona.goals.filter((goal) => goal.trim().length > 0),
+        customerType: deriveCustomerType(persona),
+        budgetTier: deriveBudgetTier(persona.income),
+        marketSize: 1000,
+        averageValue: getDefaultHourlyRate() * 8,
+        conversionRate: Math.round((persona.preferredChannels.referral + persona.preferredChannels.email) / 8),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`personas_${userId}_${profession}`] });
       setPersonaDialog(false);
@@ -429,6 +560,33 @@ export default function BusinessIntelligenceDashboard({
     },
   });
 
+  const saveSurveyMutation = useMutation({
+    mutationFn: (survey: SurveyData) =>
+      businessIntelligenceService.createSurvey(userId, profession, {
+        id: survey.id,
+        title: survey.title,
+        description: survey.description,
+        purpose: survey.purpose,
+        questions: survey.questions,
+        status: survey.status,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`surveys_${userId}_${profession}`] });
+      queryClient.invalidateQueries({ queryKey: [`swot_items_${userId}_${profession}`] });
+      setSurveyDialog(false);
+      setEditingSurvey(undefined);
+    },
+  });
+
+  const surveyStats = React.useMemo(() => {
+    const activeCount = surveys.filter((survey) => survey.status === 'active').length;
+    const totalResponses = surveys.reduce((sum, survey) => sum + (survey.responseCount || 0), 0);
+    const generatedInsights = surveys.filter(
+      (survey) => survey.purpose === 'swot_analysis' || survey.purpose === 'market_research',
+    ).length;
+    return { activeCount, totalResponses, generatedInsights };
+  }, [surveys]);
+
   if (isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py:  4 }}>
@@ -439,178 +597,366 @@ export default function BusinessIntelligenceDashboard({
 
   const quickStats = dashboardData?.data?.quickStats;
   const recommendations = dashboardData?.data?.recommendations || [];
+  const seasonalRecommendations = seasonalData?.data?.recommendations ?? [];
+  const primaryColor = theming.colors.primary || '#ff6b35';
+  const secondaryColor = theming.colors.secondary || '#ff9a62';
+  const contractTemplateCount = getContractTemplates().length;
+  const activeTabLabel = [
+    'Markedsanalyse',
+    'SWOT Analyse',
+    'Markedsføring',
+    'Nyhetsbrev',
+    'Personas',
+    'Undersøkelser',
+    'Kommunikasjon',
+    'Kontrakter',
+  ][tabValue];
+
+  const topInsightChips = [
+    getDefaultHourlyRate() ? `${getDefaultHourlyRate()} kr / time` : 'Sett standard timepris',
+    `${projectTypeRefs.length || 0} prosjekttyper`,
+    `${contractTemplateCount} kontraktsmaler`,
+  ];
+
+  const metricCards = [
+    {
+      label: 'Markedsgjennomsnitt',
+      value: `${quickStats?.averageMarketPrice?.toLocaleString('no-NO') || '0'} kr`,
+      description: 'Anbefalt prisnivå i markedet',
+      icon: <MoneyIcon aria-hidden="true" />,
+      gradient: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+    },
+    {
+      label: 'Konkurrenter',
+      value: `${quickStats?.competitorCount || 0}`,
+      description: 'Aktive aktører i segmentet',
+      icon: <PeopleIcon aria-hidden="true" />,
+      gradient: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+    },
+    {
+      label: 'Etterspørsel',
+      value: `${quickStats?.seasonalDemand || 'Medium'}`,
+      description: 'Nåværende markedsmoment',
+      icon: <TrendingUpIcon aria-hidden="true" />,
+      gradient: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+    },
+    {
+      label: 'Toppregioner',
+      value: `${quickStats?.bestRegions?.length || 0}`,
+      description: 'Regioner med best potensial',
+      icon: <LocationIcon aria-hidden="true" />,
+      gradient: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+    },
+  ];
 
   return (
-    <Box>
-      {/* Header */}
-      <Box sx={{ mb:  3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-          {professionIcon && (
-            <Box sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center' }}>
-              {professionIcon}
-            </Box>
-          )}
-          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-            {enhancedProfessionConfig?.displayName || professionConfig?.displayName
-              ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Business Intelligence`
-              : 'Business Intelligence'}
-          </Typography>
-        </Box>
-        <Typography variant="body2" color="text.secondary">
-          {enhancedProfessionConfig?.displayName || professionConfig?.displayName
-            ? `Markedsanalyse og konkurranseovervåking for ${(enhancedProfessionConfig?.displayName || professionConfig.displayName).toLowerCase()}`
-            : 'Markedsanalyse, strategisk planlegging og konkurranseovervåking'}
-        </Typography>
-      </Box>
-
-      {/* Quick Stats Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }} role="region" aria-label="Hurtigstatistikk">
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card
-            role="article"
-            aria-label={`Markedsgjennomsnitt: ${quickStats?.averageMarketPrice?.toLocaleString('no-NO') || '0'} kroner`}
-            sx={{
-              ...theming.getThemedCardSx(),
-              background: 'linear-gradient(135deg, #ff6b35 0%, #f57c00 100%)',
-              color: 'white'}}
-          >
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'}}
-              >
-                <Box>
-                  <Typography variant="h4" component="p" sx={{ fontWeight: 'bold', color: 'white' }}>
-                    {quickStats?.averageMarketPrice?.toLocaleString('no-NO') || '0'} kr
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Markedsgjennomsnitt
-                  </Typography>
-                </Box>
-                <MoneyIcon aria-hidden="true" sx={{ fontSize: 40, opacity: 0.8 }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card
-            role="article"
-            aria-label={`Antall konkurrenter: ${quickStats?.competitorCount || 0}`}
-            sx={{
-              ...theming.getThemedCardSx(),
-              background: 'linear-gradient(135deg, #2196f3 0%, #1976d2 100%)',
-              color: 'white'}}
-          >
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'}}
-              >
-                <Box>
-                  <Typography variant="h4" component="p" sx={{ fontWeight: 'bold', color: 'white' }}>
-                    {quickStats?.competitorCount || 0}
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Konkurrenter
-                  </Typography>
-                </Box>
-                <PeopleIcon aria-hidden="true" sx={{ fontSize: 40, opacity: 0.8 }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card
-            role="article"
-            aria-label={`Etterspørsel: ${quickStats?.seasonalDemand || 'Medium'}`}
-            sx={{
-              ...theming.getThemedCardSx(),
-              background: 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)',
-              color: 'white'}}
-          >
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'}}
-              >
-                <Box>
-                  <Typography variant="h4" component="p" sx={{ fontWeight: 'bold', textTransform: 'capitalize', color: 'white' }}>
-                    {quickStats?.seasonalDemand || 'Medium'}
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Etterspørsel
-                  </Typography>
-                </Box>
-                <TrendingUpIcon aria-hidden="true" sx={{ fontSize: 40, opacity: 0.8 }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card
-            role="article"
-            aria-label={`Antall toppregioner: ${quickStats?.bestRegions?.length || 0}`}
-            sx={{
-              ...theming.getThemedCardSx(),
-              background: 'linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%)',
-              color: 'white'}}
-          >
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'}}
-              >
-                <Box>
-                  <Typography variant="h4" component="p" sx={{ fontWeight: 'bold', color: 'white' }}>
-                    {quickStats?.bestRegions?.length || 0}
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Toppregioner
-                  </Typography>
-                </Box>
-                <LocationIcon aria-hidden="true" sx={{ fontSize: 40, opacity: 0.8 }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Tabs Navigation */}
+    <Box
+      sx={{
+        display: 'grid',
+        gap: { xs: 2.5, md: 3 },
+        '& .MuiCard-root:not(.bi-metric-card)': {
+          borderRadius: 4,
+          border: `1px solid ${alpha(primaryColor, 0.12)}`,
+          background: `linear-gradient(180deg, rgba(255,255,255,0.98) 0%, ${alpha(primaryColor, 0.04)} 100%)`,
+          boxShadow: `0 20px 45px ${alpha('#0f172a', 0.08)}`,
+        },
+        '& .MuiCardContent-root': {
+          p: { xs: 2.25, md: 3 },
+        },
+        '& .MuiAlert-root': {
+          borderRadius: 3,
+          border: `1px solid ${alpha(primaryColor, 0.12)}`,
+        },
+        '& .MuiTableContainer-root': {
+          borderRadius: 3,
+          border: `1px solid ${alpha(primaryColor, 0.1)}`,
+          overflow: 'hidden',
+        },
+      }}
+    >
       <Paper
         sx={{
           ...theming.getThemedCardSx(),
-          background: 'rgba(25, 255, 255, 0.95)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(25, 107, 53, 0.2)'}}
+          position: 'relative',
+          overflow: 'hidden',
+          p: { xs: 2.5, md: 3.5 },
+          borderRadius: 5,
+          border: `1px solid ${alpha(primaryColor, 0.12)}`,
+          background: `linear-gradient(135deg, ${alpha(primaryColor, 0.12)} 0%, rgba(255,255,255,0.98) 32%, ${alpha(secondaryColor, 0.10)} 100%)`,
+          boxShadow: `0 28px 70px ${alpha('#0f172a', 0.12)}`,
+        }}
       >
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 'auto -80px -120px auto',
+            width: 280,
+            height: 280,
+            borderRadius: '50%',
+            background: `radial-gradient(circle, ${alpha(secondaryColor, 0.20)} 0%, transparent 68%)`,
+            pointerEvents: 'none',
+          }}
+        />
+        <Grid container spacing={3} alignItems="stretch">
+          <Grid size={{ xs: 12, lg: 8 }}>
+            <Stack spacing={2}>
+              <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+                <Box
+                  sx={{
+                    width: 54,
+                    height: 54,
+                    display: 'grid',
+                    placeItems: 'center',
+                    borderRadius: 3,
+                    bgcolor: alpha(primaryColor, 0.12),
+                    color: primaryColor,
+                    border: `1px solid ${alpha(primaryColor, 0.16)}`,
+                  }}
+                >
+                  {professionIcon || <InsightsIcon />}
+                </Box>
+                <Chip
+                  size="small"
+                  label={enhancedProfessionConfig?.displayName || professionConfig?.displayName || 'Business Intelligence'}
+                  sx={{
+                    bgcolor: alpha(primaryColor, 0.10),
+                    color: primaryColor,
+                    fontWeight: 700,
+                    borderRadius: 999,
+                  }}
+                />
+                <Chip
+                  size="small"
+                  label={activeTabLabel}
+                  sx={{
+                    bgcolor: 'rgba(15,23,42,0.06)',
+                    color: '#0f172a',
+                    fontWeight: 600,
+                    borderRadius: 999,
+                  }}
+                />
+              </Stack>
+              <Box>
+                <Typography
+                  variant={isMobile ? 'h4' : 'h3'}
+                  sx={{
+                    color: '#0f172a',
+                    fontWeight: 800,
+                    lineHeight: 1.05,
+                    letterSpacing: '-0.03em',
+                    mb: 1.25,
+                  }}
+                >
+                  Business Intelligence som faktisk er lett å bruke
+                </Typography>
+                <Typography
+                  variant="body1"
+                  sx={{
+                    color: 'rgba(15,23,42,0.72)',
+                    maxWidth: 760,
+                    lineHeight: 1.7,
+                    fontSize: { xs: '0.96rem', md: '1.02rem' },
+                  }}
+                >
+                  Få et ryddig overblikk over marked, SWOT, kommunikasjon, kontrakter og vekstmuligheter for{' '}
+                  {(enhancedProfessionConfig?.displayName || professionConfig?.displayName || 'din virksomhet').toLowerCase()}.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                {topInsightChips.map((item) => (
+                  <Chip
+                    key={item}
+                    label={item}
+                    sx={{
+                      bgcolor: 'rgba(255,255,255,0.72)',
+                      backdropFilter: 'blur(12px)',
+                      border: `1px solid ${alpha(primaryColor, 0.12)}`,
+                      color: '#0f172a',
+                      fontWeight: 600,
+                      borderRadius: 999,
+                    }}
+                  />
+                ))}
+              </Stack>
+            </Stack>
+          </Grid>
+          <Grid size={{ xs: 12, lg: 4 }}>
+            <Box
+              sx={{
+                height: '100%',
+                p: 2.5,
+                borderRadius: 4,
+                bgcolor: 'rgba(255,255,255,0.72)',
+                backdropFilter: 'blur(18px)',
+                border: `1px solid ${alpha(primaryColor, 0.10)}`,
+                display: 'grid',
+                gap: 1.5,
+                alignContent: 'start',
+              }}
+            >
+              <Typography variant="overline" sx={{ color: primaryColor, fontWeight: 800, letterSpacing: '0.12em' }}>
+                Fokus akkurat nå
+              </Typography>
+              {recommendations.length > 0 ? (
+                recommendations.slice(0, 3).map((recommendation, index) => (
+                  <Box
+                    key={`${recommendation}-${index}`}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 3,
+                      bgcolor: index === 0 ? alpha(primaryColor, 0.10) : 'rgba(15,23,42,0.04)',
+                      border: `1px solid ${alpha(primaryColor, index === 0 ? 0.14 : 0.08)}`,
+                    }}
+                  >
+                    <Typography sx={{ color: '#0f172a', fontWeight: 600, lineHeight: 1.45 }}>
+                      {recommendation}
+                    </Typography>
+                  </Box>
+                ))
+              ) : (
+                <Typography variant="body2" sx={{ color: 'rgba(15,23,42,0.68)', lineHeight: 1.6 }}>
+                  Når innsiktene er klare, dukker de viktigste anbefalingene opp her først.
+                </Typography>
+              )}
+            </Box>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      <Grid container spacing={2.5} role="region" aria-label="Hurtigstatistikk">
+        {metricCards.map((card) => (
+          <Grid key={card.label} size={{ xs: 12, sm: 6, xl: 3 }}>
+            <Card
+              className="bi-metric-card"
+              role="article"
+              aria-label={`${card.label}: ${card.value}`}
+              sx={{
+                borderRadius: 4,
+                overflow: 'hidden',
+                color: 'white',
+                border: 'none',
+                background: card.gradient,
+                boxShadow: `0 24px 60px ${alpha('#0f172a', 0.14)}`,
+              }}
+            >
+              <CardContent sx={{ p: { xs: 2.25, md: 2.75 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+                  <Box>
+                    <Typography variant="overline" sx={{ opacity: 0.88, letterSpacing: '0.08em', fontWeight: 700 }}>
+                      {card.label}
+                    </Typography>
+                    <Typography
+                      variant="h4"
+                      component="p"
+                      sx={{
+                        fontWeight: 800,
+                        color: 'white',
+                        lineHeight: 1.05,
+                        textTransform: card.label === 'Etterspørsel' ? 'capitalize' : 'none',
+                        mb: 0.75,
+                      }}
+                    >
+                      {card.value}
+                    </Typography>
+                    <Typography variant="body2" sx={{ opacity: 0.84, maxWidth: 220 }}>
+                      {card.description}
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      width: 52,
+                      height: 52,
+                      display: 'grid',
+                      placeItems: 'center',
+                      borderRadius: 3,
+                      bgcolor: 'rgba(255,255,255,0.16)',
+                      color: 'white',
+                    }}
+                  >
+                    {card.icon}
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      <Paper
+        sx={{
+          ...theming.getThemedCardSx(),
+          borderRadius: 5,
+          overflow: 'hidden',
+          border: `1px solid ${alpha(primaryColor, 0.12)}`,
+          background: 'rgba(255,255,255,0.96)',
+          boxShadow: `0 24px 60px ${alpha('#0f172a', 0.08)}`,
+        }}
+      >
+        <Box
+          sx={{
+            px: { xs: 2, md: 3 },
+            pt: { xs: 2, md: 2.5 },
+            pb: 1.5,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+            flexWrap: 'wrap',
+            borderBottom: `1px solid ${alpha(primaryColor, 0.10)}`,
+          }}
+        >
+          <Box>
+            <Typography variant="h6" sx={{ color: '#0f172a', fontWeight: 800 }}>
+              Arbeidsflater
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'rgba(15,23,42,0.64)' }}>
+              Bytt mellom innsikt, tiltak og oppfølging uten å miste oversikten.
+            </Typography>
+          </Box>
+          <Chip
+            label={`${activeTabLabel} aktiv`}
+            sx={{
+              bgcolor: alpha(primaryColor, 0.10),
+              color: primaryColor,
+              fontWeight: 700,
+              borderRadius: 999,
+            }}
+          />
+        </Box>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs
             value={tabValue}
             onChange={(_, newValue) => setTabValue(newValue)}
             aria-label="Business Intelligence navigasjon"
+            variant="scrollable"
+            allowScrollButtonsMobile
             sx={{
+              px: { xs: 1, md: 1.5 },
               '& .MuiTab-root': {
-                color: '#666','&.Mui-selected': {
-                  color: '#ff6b30',
-                }, '&:focus-visible': {
+                color: 'rgba(15,23,42,0.64)',
+                minHeight: 64,
+                textTransform: 'none',
+                fontWeight: 700,
+                borderRadius: 999,
+                mx: 0.5,
+                my: 1,
+                minWidth: 'max-content',
+                '&.Mui-selected': {
+                  color: primaryColor,
+                  bgcolor: alpha(primaryColor, 0.08),
+                },
+                '&:focus-visible': {
                   outline: '3px solid',
                   outlineColor: 'primary.main',
                   outlineOffset: '2px',
                 },
-              }, '& .MuiTabs-indicator': {
-                backgroundColor: '#ff6b30',
-              }}}
+              },
+              '& .MuiTabs-indicator': {
+                backgroundColor: primaryColor,
+                height: 3,
+                borderRadius: '999px 999px 0 0',
+              },
+            }}
           >
             <Tab
               icon={<AnalyticsIcon aria-hidden="true" />}
@@ -798,11 +1144,11 @@ export default function BusinessIntelligenceDashboard({
                           );
                       })}
                       </Grid>
-                      {seasonalData.data.recommendations?.length > 0 && (
+                      {seasonalRecommendations.length > 0 && (
                         <Box sx={{ mt:  2 }}>
                           <Typography variant="subtitle2" sx={{ mb:  1 }}>
                             Anbefalinger: </Typography>
-                          {seasonalData.data.recommendations.map((rec: string, index: number) => (
+                          {seasonalRecommendations.map((rec: string, index: number) => (
                             <Alert key={index} severity="info" sx={{ mb:  1 }}>
                               {rec}
                             </Alert>
@@ -1594,13 +1940,13 @@ export default function BusinessIntelligenceDashboard({
               Customer Personas
             </Typography>
             <Box sx={{ display: 'flex', gap: 2 }}>
-              {personas.length > 0 && (
+              {customerPersonas.length > 0 && (
                 <Button
                   variant="outlined"
                   size="small"
                   startIcon={<PdfIcon />}
                   onClick={() => {
-                    pdfExportService.exportPersonas(personas, {
+                    pdfExportService.exportPersonas(customerPersonas, {
                       title: 'Customer Personas',
                       subtitle: `${profession} - ${new Date().toLocaleDateString('nb-NO')}`,
                       primaryColor: theming.colors.primary,
@@ -1638,7 +1984,7 @@ export default function BusinessIntelligenceDashboard({
             </Alert>
           ) : (
             <Grid container spacing={3}>
-              {personas.map((persona: PersonaData) => (
+              {personas.map((persona) => (
                 <Grid key={persona.id} size={{ xs: 12, md: 6, lg: 4 }}>
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent>
@@ -1671,7 +2017,7 @@ export default function BusinessIntelligenceDashboard({
                           <IconButton
                             size="small"
                             onClick={() => {
-                              if (confirm(`Delete persona "${persona.name}"?`)) {
+                              if (window.confirm(`Delete persona "${persona.name}"?`)) {
                                 deletePersonaMutation.mutate(persona.id);
                               }
                             }}
@@ -1759,7 +2105,7 @@ export default function BusinessIntelligenceDashboard({
                   <Box display="flex" alignItems="center" gap={2} mb={2}>
                     <PollIcon sx={{ fontSize: 40, color: theming.colors.primary }} />
                     <Box>
-                      <Typography variant="h4">0</Typography>
+                      <Typography variant="h4">{surveysLoading ? '…' : surveyStats.activeCount}</Typography>
                       <Typography variant="body2" color="text.secondary">
                         Active Surveys
                       </Typography>
@@ -1775,7 +2121,7 @@ export default function BusinessIntelligenceDashboard({
                   <Box display="flex" alignItems="center" gap={2} mb={2}>
                     <PeopleIcon sx={{ fontSize: 40, color: '#4caf50' }} />
                     <Box>
-                      <Typography variant="h4">0</Typography>
+                      <Typography variant="h4">{surveysLoading ? '…' : surveyStats.totalResponses}</Typography>
                       <Typography variant="body2" color="text.secondary">
                         Total Responses
                       </Typography>
@@ -1791,7 +2137,7 @@ export default function BusinessIntelligenceDashboard({
                   <Box display="flex" alignItems="center" gap={2} mb={2}>
                     <InsightsIcon sx={{ fontSize: 40, color: '#2196f3' }} />
                     <Box>
-                      <Typography variant="h4">0</Typography>
+                      <Typography variant="h4">{surveysLoading ? '…' : surveyStats.generatedInsights}</Typography>
                       <Typography variant="body2" color="text.secondary">
                         Insights Generated
                       </Typography>
@@ -1805,46 +2151,103 @@ export default function BusinessIntelligenceDashboard({
           <Card sx={{ ...theming.getThemedCardSx(), mt: 3 }}>
             <CardContent>
               <Typography variant="h6" sx={{ mb: 2 }}>
-                Survey Features
+                Surveyflyt
               </Typography>
-              <List>
-                <ListItem>
-                  <ListItemIcon>
-                    <CheckCircleIcon sx={{ color: '#4caf50' }} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Drag-and-drop survey builder"
-                    secondary="Multiple question types: text, rating, multiple choice, checkbox, scale"
-                  />
-                </ListItem>
-                <ListItem>
-                  <ListItemIcon>
-                    <CheckCircleIcon sx={{ color: '#4caf50' }} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Real-time preview"
-                    secondary="See how your survey will look to respondents"
-                  />
-                </ListItem>
-                <ListItem>
-                  <ListItemIcon>
-                    <CheckCircleIcon sx={{ color: '#4caf50' }} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Sentiment analysis"
-                    secondary="Automatically analyze responses for positive/negative sentiment"
-                  />
-                </ListItem>
-                <ListItem>
-                  <ListItemIcon>
-                    <CheckCircleIcon sx={{ color: '#4caf50' }} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Auto-generate SWOT items"
-                    secondary="Convert survey insights into actionable SWOT analysis"
-                  />
-                </ListItem>
-              </List>
+              {surveysLoading ? (
+                <Alert severity="info">Henter undersøkelser...</Alert>
+              ) : surveys.length === 0 ? (
+                <List>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircleIcon sx={{ color: '#4caf50' }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Drag-and-drop survey builder"
+                      secondary="Multiple question types: text, rating, multiple choice, checkbox, scale"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircleIcon sx={{ color: '#4caf50' }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Real-time preview"
+                      secondary="See how your survey will look to respondents"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircleIcon sx={{ color: '#4caf50' }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Sentiment analysis"
+                      secondary="Automatically analyze responses for positive/negative sentiment"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircleIcon sx={{ color: '#4caf50' }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Auto-generate SWOT items"
+                      secondary="Convert survey insights into actionable SWOT analysis"
+                    />
+                  </ListItem>
+                </List>
+              ) : (
+                <Stack spacing={1.25}>
+                  {surveys.map((survey) => (
+                    <Box
+                      key={survey.id}
+                      sx={{
+                        p: 2,
+                        borderRadius: 3,
+                        border: `1px solid ${alpha(primaryColor, 0.12)}`,
+                        bgcolor: 'rgba(255,255,255,0.92)',
+                        display: 'grid',
+                        gap: 1,
+                      }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" useFlexGap flexWrap="wrap">
+                        <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#0f172a' }}>
+                          {survey.title}
+                        </Typography>
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                          <Chip size="small" label={survey.status} sx={{ fontWeight: 700 }} />
+                          <Chip size="small" label={`${survey.responseCount} svar`} sx={{ fontWeight: 700 }} />
+                          <Chip size="small" label={`${survey.completionRate}% fullført`} sx={{ fontWeight: 700 }} />
+                        </Stack>
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary">
+                        {survey.description || 'Ingen beskrivelse lagt til ennå.'}
+                      </Typography>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<EditIcon />}
+                          onClick={() => {
+                            setEditingSurvey(mapSurveyRecordToBuilderData(survey));
+                            setSurveyDialog(true);
+                          }}
+                        >
+                          Rediger
+                        </Button>
+                        {survey.shareableLink && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<PollIcon />}
+                            onClick={() => window.open(survey.shareableLink, '_blank', 'noopener,noreferrer')}
+                          >
+                            Åpne lenke
+                          </Button>
+                        )}
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+              )}
             </CardContent>
           </Card>
         </TabPanel>
@@ -2128,7 +2531,11 @@ export default function BusinessIntelligenceDashboard({
                                 <ListItem key={contract.id}>
                                   <ListItemText
                                     primary={contract.title || contract.client_name}
-                                    secondary={new Date(contract.signed_at).toLocaleDateString('no-NO')}
+                                    secondary={
+                                      contract.signed_at
+                                        ? new Date(contract.signed_at).toLocaleDateString('no-NO')
+                                        : 'Dato mangler'
+                                    }
                                   />
                                 </ListItem>
                               ))}
@@ -2325,12 +2732,7 @@ export default function BusinessIntelligenceDashboard({
             setSurveyDialog(false);
             setEditingSurvey(undefined);
           }}
-          onSave={(survey) => {
-            console.log('Survey saved: ', survey);
-            // TODO: Implement survey save mutation
-            setSurveyDialog(false);
-            setEditingSurvey(undefined);
-          }}
+          onSave={(survey) => saveSurveyMutation.mutate(survey)}
           initialData={editingSurvey}
         />
 

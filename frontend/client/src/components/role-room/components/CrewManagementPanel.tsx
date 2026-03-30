@@ -783,13 +783,13 @@ function AssignShootDayDialog({
                     {!existing ? (
                       <>
                         <Button size="small" variant="outlined"
-                          onClick={() => onAssign(member.id, day.id, day.date, 'assigned', unit, day.callTime ?? '07:00')}
+                          onClick={() => onAssign(member.id, day.id, day.date ?? '', 'assigned', unit, day.callTime ?? '07:00')}
                           sx={{ fontSize: 11, color: '#10b981', borderColor: '#10b981', minWidth: 36, py: 0.25, px: 0.5 }}>W</Button>
                         <Button size="small" variant="outlined"
-                          onClick={() => onAssign(member.id, day.id, day.date, 'hold', unit, day.callTime ?? '07:00')}
+                          onClick={() => onAssign(member.id, day.id, day.date ?? '', 'hold', unit, day.callTime ?? '07:00')}
                           sx={{ fontSize: 11, color: '#ffb800', borderColor: '#ffb800', minWidth: 36, py: 0.25, px: 0.5 }}>H</Button>
                         <Button size="small" variant="outlined"
-                          onClick={() => onAssign(member.id, day.id, day.date, 'travel', unit, day.callTime ?? '07:00')}
+                          onClick={() => onAssign(member.id, day.id, day.date ?? '', 'travel', unit, day.callTime ?? '07:00')}
                           sx={{ fontSize: 11, color: '#3b82f6', borderColor: '#3b82f6', minWidth: 36, py: 0.25, px: 0.5 }}>T</Button>
                       </>
                     ) : (
@@ -1124,12 +1124,12 @@ export function CrewManagementPanel({
   useEffect(() => {
     if (effectiveBudget > 0 && formData.rate && formData.rate > 0) {
       const newPercentage = (formData.rate / effectiveBudget) * 100;
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         splitSheet: {
-          ...prev.splitSheet,
+          ...(prev.splitSheet ?? {}),
           percentage: newPercentage,
-        }
+        },
       }));
     }
   }, [effectiveBudget, formData.rate]);
@@ -1715,7 +1715,8 @@ export function CrewManagementPanel({
       if (!member) continue;
       const startDate = member.availability?.startDate;
       const endDate = member.availability?.endDate;
-      if (startDate && (assignment.shootDayDate < startDate || (endDate && assignment.shootDayDate > endDate))) {
+      const shootDayDate = assignment.shootDayDate;
+      if (startDate && shootDayDate && (shootDayDate < startDate || (endDate && shootDayDate > endDate))) {
         if (!availabilityConflicts.some((item) => item.id === member.id)) {
           availabilityConflicts.push(member);
         }
@@ -2157,7 +2158,7 @@ export function CrewManagementPanel({
   const assignCrewToDayQuick = useCallback((crewMemberId: string, dayId: string) => {
     const targetDay = productionDays.find((day) => day.id === dayId);
     if (!targetDay) return;
-    void handleCrewAssign(crewMemberId, targetDay.id, targetDay.date, 'assigned', 'A', '08:00');
+    void handleCrewAssign(crewMemberId, targetDay.id, targetDay.date ?? '', 'assigned', 'A', '08:00');
     logActivity('Planner', `Drog crew til ${targetDay.date}`);
   }, [productionDays, handleCrewAssign, logActivity]);
 
@@ -2270,7 +2271,7 @@ export function CrewManagementPanel({
     }
   };
 
-  type ProjectExportInfo = { name: string };
+  type ProjectExportInfo = { id: string; name: string };
   const generateCrewHTML = (project: ProjectExportInfo, crew: CrewMember[]): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
@@ -3913,7 +3914,7 @@ export function CrewManagementPanel({
                 <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Status</TableCell>
                 {productionDays.slice(0, 4).map((day, i) => (
                   <TableCell key={day.id} align="center" sx={{ py: 1, fontSize: 11, color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap', px: 1, fontWeight: 600, letterSpacing: 0.5 }}>
-                    {(['Mon','Tue','Wed','Thu'] as const)[i] ?? new Date(day.date).toLocaleDateString('en', { weekday: 'short' })}
+                    {(['Mon','Tue','Wed','Thu'] as const)[i] ?? new Date(day.date ?? '').toLocaleDateString('en', { weekday: 'short' })}
                   </TableCell>
                 ))}
                 <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Handlinger</TableCell>
@@ -4018,7 +4019,7 @@ export function CrewManagementPanel({
                           <Tooltip title={copiedField === `email-${member.id}` ? 'Kopiert!' : 'Kopier'}>
                             <IconButton
                               size="small"
-                              onClick={() => handleCopy(member.contactInfo.email!, `email-${member.id}`)}
+                              onClick={() => handleCopy(member.contactInfo?.email ?? '', `email-${member.id}`)}
                               sx={{ color: copiedField === `email-${member.id}` ? '#4caf50' : 'rgba(255,255,255,0.5)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                             >
                               {copiedField === `email-${member.id}` ? <CheckCircleIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} /> : <CopyIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} />}
@@ -4039,7 +4040,7 @@ export function CrewManagementPanel({
                           <Tooltip title={copiedField === `phone-${member.id}` ? 'Kopiert!' : 'Kopier'}>
                             <IconButton
                               size="small"
-                              onClick={() => handleCopy(member.contactInfo.phone!, `phone-${member.id}`)}
+                              onClick={() => handleCopy(member.contactInfo?.phone ?? '', `phone-${member.id}`)}
                               sx={{ color: copiedField === `phone-${member.id}` ? '#4caf50' : 'rgba(255,255,255,0.5)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                             >
                               {copiedField === `phone-${member.id}` ? <CheckCircleIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} /> : <CopyIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} />}
@@ -4368,7 +4369,7 @@ export function CrewManagementPanel({
                         <Tooltip title={copiedField === `grid-email-${member.id}` ? 'Kopiert!' : 'Kopier'}>
                           <IconButton
                             size="small"
-                            onClick={() => handleCopy(member.contactInfo.email!, `grid-email-${member.id}`)}
+                            onClick={() => handleCopy(member.contactInfo?.email ?? '', `grid-email-${member.id}`)}
                             sx={{ color: copiedField === `grid-email-${member.id}` ? '#4caf50' : 'rgba(255,255,255,0.4)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                           >
                             {copiedField === `grid-email-${member.id}` ? <CheckCircleIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <CopyIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
@@ -4432,7 +4433,7 @@ export function CrewManagementPanel({
                         <Tooltip title={copiedField === `grid-phone-${member.id}` ? 'Kopiert!' : 'Kopier'}>
                           <IconButton
                             size="small"
-                            onClick={() => handleCopy(member.contactInfo.phone!, `grid-phone-${member.id}`)}
+                            onClick={() => handleCopy(member.contactInfo?.phone ?? '', `grid-phone-${member.id}`)}
                             sx={{ color: copiedField === `grid-phone-${member.id}` ? '#4caf50' : 'rgba(255,255,255,0.4)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                           >
                             {copiedField === `grid-phone-${member.id}` ? <CheckCircleIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <CopyIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
@@ -5456,8 +5457,8 @@ export function CrewManagementPanel({
                   value={formData.splitSheet?.percentage?.toFixed(2) ?? ''}
                   onChange={(e) => setFormData({
                     ...formData,
-                    splitSheet: { 
-                      ...formData.splitSheet, 
+                    splitSheet: {
+                      ...(formData.splitSheet ?? {}),
                       percentage: parseFloat(e.target.value) || 0 
                     }
                   })}
@@ -5519,8 +5520,8 @@ export function CrewManagementPanel({
                     value={formData.splitSheet?.invitationStatus || 'not_sent'}
                     onChange={(e) => setFormData({
                       ...formData,
-                      splitSheet: { 
-                        ...formData.splitSheet, 
+                      splitSheet: {
+                        ...(formData.splitSheet ?? {}),
                         percentage: formData.splitSheet?.percentage ?? 0,
                         invitationStatus: e.target.value as 'not_sent' | 'sent' | 'viewed' | 'signed' | 'declined'
                       }
@@ -5580,8 +5581,8 @@ export function CrewManagementPanel({
                   value={formData.splitSheet?.notes || ''}
                   onChange={(e) => setFormData({
                     ...formData,
-                    splitSheet: { 
-                      ...formData.splitSheet, 
+                    splitSheet: {
+                      ...(formData.splitSheet ?? {}),
                       percentage: formData.splitSheet?.percentage ?? 0,
                       notes: e.target.value 
                     }
@@ -5637,7 +5638,7 @@ export function CrewManagementPanel({
                     setFormData((prev) => ({
                       ...prev,
                       splitSheet: {
-                        ...prev.splitSheet,
+                        ...(prev.splitSheet ?? {}),
                         percentage: prev.splitSheet?.percentage ?? 0,
                         notes: applyMentionSuggestion(
                           typeof prev.splitSheet?.notes === 'string' ? prev.splitSheet.notes : '',

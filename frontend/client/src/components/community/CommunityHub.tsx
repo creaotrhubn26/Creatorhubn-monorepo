@@ -21,9 +21,9 @@ interface CommunityHubProps {
 }
 
 export default function CommunityHub({ userId, userEmail, profession }: CommunityHubProps) {
-  const { user } = useEnhancedMasterIntegration();
+  const { auth } = useEnhancedMasterIntegration();
   // Use provided email or fallback to user context
-  const currentUserEmail = userEmail || user?.email;
+  const currentUserEmail = userEmail || auth.state.user?.email;
   const [loading, setLoading] = useState(true);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [showLanding, setShowLanding] = useState(false);
@@ -136,4 +136,3 @@ export default function CommunityHub({ userId, userEmail, profession }: Communit
     </CommunityDMProvider>
   );
 }
-

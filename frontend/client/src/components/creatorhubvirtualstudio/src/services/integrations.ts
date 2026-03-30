@@ -6,22 +6,20 @@
  * - AI Vision Service (ONNX Runtime, scene analysis)
  */
 
-import type { LUT3D } from '../../../../../services/lut-engine';
-import { LUTEngine } from '../../../../../services/lut-engine';
-import { EnhancedLUTEngine } from '../../../../../services/lut-engine-enhanced';
-import { lutLoader } from '../../../../../services/lut-loader';
-import { gpuLUTApplier } from '../../../../../services/gpu-lut-applier';
-import { SVGRendererService } from '../../../../../services/svg-renderer';
-import type {
-  PhotoAnalysis,
-  SceneClassification} from '../../../../../services/ai-vision-service';
+import { LUTEngine, type LUT3D } from '@/services/lut-engine';
+import { EnhancedLUTEngine } from '@/services/lut-engine-enhanced';
+import { lutLoader } from '@/services/lut-loader';
+import { gpuLUTApplier } from '@/services/gpu-lut-applier';
+import svgRenderer, { type SVGRendererService } from '@/services/svg-renderer';
 import {
-  AIVisionService
-} from '../../../../../services/ai-vision-service';
+  AIVisionService,
+  type PhotoAnalysis,
+  type SceneClassification,
+} from '@/services/ai-vision-service';
 import * as THREE from 'three';
 import { logger } from '../core/services/logger';
 
-const log = logger.module('Integrations, ');
+const log = logger.module('Integrations');
 
 // ============================================
 // LUT INTEGRATION
@@ -56,8 +54,8 @@ export class LUTIntegration {
    */
   async loadLUT(path: string): Promise<LUT3D | null> {
     // Check if it's an enhanced LUT
-    if (path.startsWith('enhanced://,')) {
-      const lutType = path.replace('enhanced://,', ', ');
+    if (path.startsWith('enhanced://')) {
+      const lutType = path.replace('enhanced://', '');
       let lutString = '';
 
       switch (lutType) {
@@ -101,7 +99,19 @@ export class LUTIntegration {
       ...options,
     };
 
-    LUTEngine.applyLUT(canvas, this.currentLUT, opts);
+    if (!opts.preserveSkinTones && !opts.useGPU) {
+      LUTEngine.applyLUT(canvas, this.currentLUT);
+      return true;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return false;
+    }
+
+    const source = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const graded = this.applyLUTToImageData(source, opts);
+    ctx.putImageData(graded, 0, 0);
     return true;
   }
 
@@ -204,17 +214,14 @@ export interface SVGOverlayOptions {
 }
 
 export class SVGRendererIntegration {
-  private renderer: any = null; // SVGRendererService instance
+  private renderer: SVGRendererService | null = null;
 
   /**
    * Initialize SVG renderer
    */
   async initialize(): Promise<void> {
     if (this.renderer) return;
-
-    // Dynamic import to avoid circular dependencies
-    const { default: SVGRenderer } = await import('../../../../../services/svg-renderer');
-    this.renderer = new SVGRenderer();
+    this.renderer = svgRenderer;
     await this.renderer.initialize();
   }
 
@@ -226,6 +233,9 @@ export class SVGRendererIntegration {
     options?: { width?: number; height?: number; format?: 'png' | 'webp' },
   ): Promise<{ dataUrl: string; width: number; height: number }> {
     await this.initialize();
+    if (!this.renderer) {
+      throw new Error('SVG renderer failed to initialize');
+    }
 
     const result = await this.renderer.renderSVGToPNG(svg, {
       width: options?.width,
@@ -273,6 +283,9 @@ export class SVGRendererIntegration {
    */
   async batchRender(svgs: Array<{ id: string; svg: string; width?: number; height?: number }>) {
     await this.initialize();
+    if (!this.renderer) {
+      throw new Error('SVG renderer failed to initialize');
+    }
 
     return await this.renderer.batchRender(
       svgs.map((item) => ({
@@ -480,10 +493,11 @@ export class VirtualStudioIntegrationService {
    * Get integration status
    */
   getStatus() {
+    const library = this.lut.getLUTLibrary();
     return {
       initialized: this.initialized,
       lut: {
-        library: this.lut.getLUTLibrary().reduce((sum, cat) => sum + cat.luts.length, 0),
+        library: library.reduce((sum, category) => sum + category.luts.length, 0),
         gpu: this.lut.isGPUAvailable(),
         gpuInfo: this.lut.getGPUInfo(),
       },

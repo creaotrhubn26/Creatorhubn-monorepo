@@ -12,7 +12,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { logger } from '../core/services/logger';
 
-const log = logger.module('AIJourneyChat, ');
+const log = logger.module('AIJourneyChat');
 import {
   Dialog,
   DialogTitle,
@@ -29,9 +29,6 @@ import {
   IconButton,
   CircularProgress,
   Divider,
-  List,
-  ListItem,
-  ListItemText,
   Card,
   CardContent,
 } from '@mui/material';
@@ -58,6 +55,22 @@ interface JourneyPreview {
   role: string;
   stages: number;
   preview: string;
+}
+
+interface JourneyStage {
+  icon?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface GeneratedJourneyPayload {
+  journey: JourneyStage[];
+  [key: string]: unknown;
+}
+
+declare global {
+  interface Window {
+    lastGeneratedJourney?: GeneratedJourneyPayload;
+  }
 }
 
 interface AIJourneyChatDialogProps {
@@ -91,7 +104,7 @@ export default function AIJourneyChatDialog({
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth,' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   // Focus input on mount
@@ -114,7 +127,7 @@ export default function AIJourneyChatDialog({
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    setInput(', ');
+    setInput('');
     setGenerating(true);
 
     try {
@@ -221,7 +234,7 @@ Be conversational, helpful, and ask follow-up questions to create the best journ
           setMessages((prev) => [...prev, confirmMessage]);
 
           // Store journey for later use
-          (window as any).lastGeneratedJourney = journeyData;
+          window.lastGeneratedJourney = journeyData;
         } catch (error) {
           log.error('Failed to parse journey JSON: ', error);
           const errorMessage: Message = {
@@ -264,7 +277,7 @@ Be conversational, helpful, and ask follow-up questions to create the best journ
    * Use the last generated journey
    */
   const handleUseJourney = () => {
-    const journey = (window as any).lastGeneratedJourney;
+    const journey = window.lastGeneratedJourney;
     if (journey) {
       // Convert icon strings to React components
       const iconMap: Record<string, React.ReactNode> = {
@@ -277,14 +290,24 @@ Be conversational, helpful, and ask follow-up questions to create the best journ
         CameraAlt: <AutoAwesome />,
       };
 
-      journey.journey = journey.journey.map((stage: unknown) => ({
+      journey.journey = journey.journey.map((stage) => ({
         ...stage,
-        icon: iconMap[stage.icon] || <AutoAwesome />,
+        icon:
+          (typeof stage.icon === 'string' ? iconMap[stage.icon] : undefined) ?? <AutoAwesome />,
       }));
 
       onJourneyGenerated(journey);
       handleClose();
     }
+  };
+
+  const handleCopyJourney = async () => {
+    const journey = window.lastGeneratedJourney;
+    if (!journey) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(JSON.stringify(journey, null, 2));
   };
 
   /**
@@ -302,7 +325,7 @@ Be conversational, helpful, and ask follow-up questions to create the best journ
     setConversationHistory([]);
     setJourneyPreviews([]);
     setInput('');
-    delete (window as any).lastGeneratedJourney;
+    delete window.lastGeneratedJourney;
   };
 
   /**
@@ -503,17 +526,22 @@ Be conversational, helpful, and ask follow-up questions to create the best journ
       </DialogContent>
 
       <DialogActions>
-        {(window as any).lastGeneratedJourney && (
-          <Button
-            variant="contained"
-            startIcon={<CheckCircle />}
-            onClick={handleUseJourney}
-            sx={{
-              background: 'linear-gradient(135deg, #10b981, 0%, #059669, 100%)',
-              color:'#fff'}}
-          >
-            Use This Journey
-          </Button>
+        {window.lastGeneratedJourney && (
+          <>
+            <Button startIcon={<ContentCopy />} onClick={() => void handleCopyJourney()}>
+              Copy JSON
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<CheckCircle />}
+              onClick={handleUseJourney}
+              sx={{
+                background: 'linear-gradient(135deg, #10b981, 0%, #059669, 100%)',
+                color:'#fff'}}
+            >
+              Use This Journey
+            </Button>
+          </>
         )}
         <Button onClick={handleClose}>Close</Button>
       </DialogActions>

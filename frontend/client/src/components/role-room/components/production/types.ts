@@ -57,14 +57,17 @@ export type AddShotState =
   | { open: false }
   | { open: true; step: 'chooseMode' }
   | { open: true; step: 'upload'; selectedImage: string | null }
+  | { open: true; step: 'storyboard'; selectedStoryboardId: string | null }
   | { open: true; step: 'search'; query: string; loading: boolean; results: ShotSearchResult[]; selectedImage: string | null };
 
 export type AddShotAction =
   | { type: 'OPEN' }
   | { type: 'CLOSE' }
   | { type: 'CHOOSE_UPLOAD' }
+  | { type: 'CHOOSE_STORYBOARD' }
   | { type: 'CHOOSE_SEARCH' }
   | { type: 'SET_IMAGE'; url: string | null }
+  | { type: 'SET_STORYBOARD_SELECTION'; id: string | null }
   | { type: 'SET_QUERY'; query: string }
   | { type: 'SEARCH_START' }
   | { type: 'SEARCH_DONE'; results: ShotSearchResult[] }
@@ -78,11 +81,16 @@ export function addShotReducer(state: AddShotState, action: AddShotAction): AddS
       return { open: false };
     case 'CHOOSE_UPLOAD':
       return { open: true, step: 'upload', selectedImage: null };
+    case 'CHOOSE_STORYBOARD':
+      return { open: true, step: 'storyboard', selectedStoryboardId: null };
     case 'CHOOSE_SEARCH':
       return { open: true, step: 'search', query: '', loading: false, results: [], selectedImage: null };
     case 'SET_IMAGE':
       if (!state.open || (state.step !== 'upload' && state.step !== 'search')) return state;
       return { ...state, selectedImage: action.url };
+    case 'SET_STORYBOARD_SELECTION':
+      if (!state.open || state.step !== 'storyboard') return state;
+      return { ...state, selectedStoryboardId: action.id };
     case 'SET_QUERY':
       if (!state.open || state.step !== 'search') return state;
       return { ...state, query: action.query };

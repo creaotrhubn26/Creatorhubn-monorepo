@@ -11,26 +11,22 @@
  * 5. Warnings for missing/incompatible equipment
  */
 
-import type { 
-  LightSource,
-  ExposureRecommendation} from './exposureCalculatorService';
-import { 
+import {
   exposureCalculator,
   MODIFIER_LIGHT_LOSS,
+  type LightSource,
+  type ExposureRecommendation,
 } from './exposureCalculatorService';
-import type { 
-  CinematographyPattern, 
-  LightSetup} from './cinematographyPatternsService';
 import {
   cinematographyPatternsService,
+  type CinematographyPattern,
+  type LightSetup,
 } from './cinematographyPatternsService';
-import type {
-  StudioLight} from '../data/LightSpecifications';
-import { 
-  findLightSpec, 
-  findLightSpecByBrand, 
+import {
+  findLightSpec,
+  findLightSpecByBrand,
   getDefaultLightSpec,
-  LightType,
+  type StudioLight,
 } from '../data/LightSpecifications';
 import type { UserEquipmentItem } from '@/hooks/useUserEquipmentInventory';
 
@@ -122,6 +118,12 @@ const BASE_POWER_BY_ROLE: Record<string, number> = {
   bounce: 150,
 };
 
+type EquipmentSpecifications = {
+  power?: number;
+  modifier?: string;
+  colorTemp?: number;
+};
+
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
@@ -135,12 +137,25 @@ function calculateRequiredPower(
   modifier?: string,
   iso: number = 100
 ): number {
-  return exposureCalculator.calculateRequiredStrobePower(
-    targetFStop,
-    distance,
-    modifier,
-    iso
-  );
+  const normalizedModifier = modifier?.toLowerCase();
+  const modifierLoss =
+    normalizedModifier && normalizedModifier in MODIFIER_LIGHT_LOSS
+      ? MODIFIER_LIGHT_LOSS[normalizedModifier]
+      : undefined;
+
+  if (modifierLoss === undefined) {
+    return exposureCalculator.calculateRequiredStrobePower(
+      targetFStop,
+      distance,
+      modifier,
+      iso,
+    );
+  }
+
+  const isoFactor = Math.sqrt(iso / 100);
+  let targetGuideNumber = (targetFStop * distance) / isoFactor;
+  targetGuideNumber *= Math.pow(2, modifierLoss / 2);
+  return Math.pow(targetGuideNumber, 2) / 2;
 }
 
 /**
@@ -183,9 +198,10 @@ function scoreEquipmentMatch(
   let score = 0;
   let powerMatch: EquipmentMatch['powerMatch'] = 'none';
   let modifierMatch: EquipmentMatch['modifierMatch'] = 'none';
+  const equipmentSpecifications = equipment?.specifications as EquipmentSpecifications | undefined;
   
   // Power scoring (60% weight)
-  const availablePower = spec?.power || (equipment?.specifications as any)?.power || 0;
+  const availablePower = spec?.power || equipmentSpecifications?.power || 0;
   if (availablePower > 0) {
     const ratio = availablePower / requirement.idealPower;
     if (ratio >= 0.95 && ratio <= 1.1) {
@@ -207,7 +223,7 @@ function scoreEquipmentMatch(
   }
   
   // Modifier scoring (30% weight)
-  const equipmentModifier = (equipment?.specifications as any)?.modifier || 
+  const equipmentModifier = equipmentSpecifications?.modifier || 
                             equipment?.name?.toLowerCase() || '';
   const modMatch = modifierMatches(requirement.modifier, equipmentModifier);
   modifierMatch = modMatch;
@@ -219,7 +235,7 @@ function scoreEquipmentMatch(
   }
   
   // CCT scoring (10% weight)
-  const availableCCT = spec?.colorTemp || (equipment?.specifications as any)?.colorTemp || 5600;
+  const availableCCT = spec?.colorTemp || equipmentSpecifications?.colorTemp || 5600;
   const cctDiff = Math.abs(availableCCT - requirement.cct);
   if (cctDiff <= 200) {
     score += 0.1;
@@ -257,9 +273,10 @@ function findBestEquipmentMatch(
   });
   
   for (const light of lights) {
-    const spec = findLightSpec(light.brand, light.model) || 
-                 findLightSpecByBrand(light.brand) ||
-                 getDefaultLightSpec('strobe');
+    const spec =
+      (light.brand && light.model ? findLightSpec(light.brand, light.model) : null) ||
+      (light.brand ? findLightSpecByBrand(light.brand) : null) ||
+      getDefaultLightSpec('strobe');
     
     const { score } = scoreEquipmentMatch(requirement, light, spec);
     
@@ -595,6 +612,7 @@ class PatternExposureIntegrationService {
     
     // Convert to array and prioritize
     const suggestions = Array.from(missingMap.entries()).map(([key, value]) => ({
+      suggestionKey: key,
       equipment: `${Math.round(value.power)}Ws ${value.type}`,
       power: value.power,
       type: value.type,

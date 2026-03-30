@@ -14,6 +14,7 @@ import {
   Alert,
   Snackbar,
   FormControl,
+  InputLabel,
   Select,
   MenuItem,
   Table,
@@ -3064,7 +3065,12 @@ function CandidateManagementPanelInner({
         />
 
         <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140, md: 135, lg: 150, xl: 180 } }}>
+          <InputLabel id="candidate-status-filter-label" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            Status
+          </InputLabel>
           <Select
+            labelId="candidate-status-filter-label"
+            label="Status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             aria-label="Filtrer etter status"
@@ -3092,6 +3098,7 @@ function CandidateManagementPanelInner({
             <Button
               variant={viewMode === 'grid' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('grid')}
+              aria-label="Bytt til kortvisning"
               aria-pressed={viewMode === 'grid'}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
@@ -3109,6 +3116,7 @@ function CandidateManagementPanelInner({
             <Button
               variant={viewMode === 'table' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('table')}
+              aria-label="Bytt til tabellvisning"
               aria-pressed={viewMode === 'table'}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
@@ -3197,6 +3205,7 @@ function CandidateManagementPanelInner({
                     checked={selectedIds.size === filteredAndSortedCandidates.length && filteredAndSortedCandidates.length > 0}
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedCandidates.length}
                     onChange={handleSelectAll}
+                    inputProps={{ 'aria-label': 'Velg alle kandidater' }}
                     sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#b86bff' } }}
                   />
                 </TableCell>
@@ -3252,17 +3261,23 @@ function CandidateManagementPanelInner({
                     <Checkbox
                       checked={selectedIds.has(candidate.id)}
                       onChange={() => handleToggleSelect(candidate.id)}
+                      inputProps={{ 'aria-label': `Velg kandidat ${candidate.name}` }}
                       sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#b86bff' } }}
                     />
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                      <IconButton onClick={() => toggleFavorite(candidate.id)} sx={{ color: favorites.has(candidate.id) ? '#ffc107' : 'rgba(255,255,255,0.3)' }}>
+                      <IconButton
+                        onClick={() => toggleFavorite(candidate.id)}
+                        aria-label={favorites.has(candidate.id) ? `Fjern ${candidate.name} fra favoritter` : `Legg til ${candidate.name} i favoritter`}
+                        sx={{ color: favorites.has(candidate.id) ? '#ffc107' : 'rgba(255,255,255,0.3)' }}
+                      >
                         {favorites.has(candidate.id) ? <StarIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
                       </IconButton>
                       <Tooltip title={quickContacts.has(candidate.id) ? 'Fjern fra hurtigkontakt' : 'Legg til hurtigkontakt'}>
                         <IconButton
                           onClick={() => toggleQuickContact(candidate.id)}
+                          aria-label={quickContacts.has(candidate.id) ? `Fjern ${candidate.name} fra hurtigkontakt` : `Legg til ${candidate.name} i hurtigkontakt`}
                           sx={{
                             color: quickContacts.has(candidate.id) ? quickContactColor : quickContactColorMuted,
                             bgcolor: quickContacts.has(candidate.id) ? quickContactBackground : 'transparent',
@@ -3327,22 +3342,38 @@ function CandidateManagementPanelInner({
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
                       <Tooltip title="Lagre til pool">
-                        <IconButton onClick={() => handleSaveToPool(candidate)} sx={{ color: '#8b5cf6', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
+                        <IconButton
+                          onClick={() => handleSaveToPool(candidate)}
+                          aria-label={`Lagre ${candidate.name} til pool`}
+                          sx={{ color: '#8b5cf6', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                        >
                           <UploadIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Dupliser">
-                        <IconButton onClick={() => handleDuplicate(candidate)} sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
+                        <IconButton
+                          onClick={() => handleDuplicate(candidate)}
+                          aria-label={`Dupliser ${candidate.name}`}
+                          sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                        >
                           <DuplicateIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Rediger">
-                        <IconButton onClick={() => onEditCandidate(candidate)} sx={{ color: '#b86bff', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
+                        <IconButton
+                          onClick={() => onEditCandidate(candidate)}
+                          aria-label={`Rediger ${candidate.name}`}
+                          sx={{ color: '#b86bff', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                        >
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Slett">
-                        <IconButton onClick={() => handleDeleteWithUndo(candidate)} sx={{ color: '#ff4444', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
+                        <IconButton
+                          onClick={() => handleDeleteWithUndo(candidate)}
+                          aria-label={`Slett ${candidate.name}`}
+                          sx={{ color: '#ff4444', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                        >
                           <DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
@@ -3528,6 +3559,7 @@ function CandidateManagementPanelInner({
                         <Checkbox
                           checked={selectedIds.has(candidate.id)}
                           onChange={() => handleToggleSelect(candidate.id)}
+                          inputProps={{ 'aria-label': `Velg kandidat ${candidate.name}` }}
                           sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: '#b86bff' } }}
                         />
                         <Typography

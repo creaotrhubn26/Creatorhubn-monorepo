@@ -11,21 +11,23 @@
  * - Vignetting preview
  */
 
-import { useMemo, useCallback, useEffect, useState } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import { useNodes, useActions } from '@/state/selectors';
-import type {
-  LightSource,
-  CameraSettings,
-  ExposureRecommendation} from '@/core/services/exposureCalculatorService';
 import { 
   exposureCalculator, 
-  SceneExposureAnalysis,
   MODIFIER_LIGHT_LOSS,
+  type LightSource,
+  type CameraSettings,
+  type ExposureRecommendation,
 } from '@/core/services/exposureCalculatorService';
-import type { LensSpec} from '@/core/data/LensSpecifications';
-import { findLensSpec, findLensSpecByBrand, getFocalLengthFromLensSpec, getMaxApertureFromLensSpec } from '@/core/data/LensSpecifications';
-import type { LensEffectsParams } from '@/core/rendering/LensEffectsRenderer';
-import { lensSpecToEffects } from '@/core/rendering/LensEffectsRenderer';
+import {
+  findLensSpec,
+  findLensSpecByBrand,
+  getFocalLengthFromLensSpec,
+  getMaxApertureFromLensSpec,
+  type LensSpec,
+} from '@/core/data/LensSpecifications';
+import { lensSpecToEffects, type LensEffectsParams } from '@/core/rendering/LensEffectsRenderer';
 
 // =============================================================================
 // TYPES
@@ -95,6 +97,14 @@ export function useLightLensIntegration() {
   const nodes = useNodes();
   const { updateNode } = useActions();
   const [subjectPosition, setSubjectPosition] = useState<[number, number, number]>([0, 1.6, 0]);
+
+  const isVisibleLightNode = useCallback(
+    (
+      node: (typeof nodes)[number],
+    ): node is (typeof nodes)[number] & { light: NonNullable<(typeof nodes)[number]['light']> } =>
+      Boolean(node.light) && node.visible !== false,
+    [],
+  );
   
   // ==========================================================================
   // EXTRACT LIGHTS
@@ -102,26 +112,30 @@ export function useLightLensIntegration() {
   
   const lights = useMemo<LightInfo[]>(() => {
     return nodes
-      .filter(n => n.light && n.visible !== false)
-      .map(n => {
-        const userData = n.userData || {};
-        const specs = userData.specifications || {};
+      .filter(isVisibleLightNode)
+      .map((n) => {
+        const userData = n.userData;
+        const specs = userData.specifications;
         
         // Determine light type
-        const lightType = userData.lightType || 
-          (specs.guideNumber ? 'speedlite' : 
-           specs.lumens ? 'continuous' : 'strobe');
+        const detectedType = userData.lightType ??
+          (specs?.guideNumber ? 'speedlite' :
+           specs?.lumens ? 'continuous' : 'strobe');
+        const lightType: LightInfo['type'] =
+          detectedType === 'speedlite' || detectedType === 'continuous' || detectedType === 'led_panel'
+            ? detectedType
+            : 'strobe';
         
         // Get raw power
         let power = n.light.power || 0.5;
-        if (userData.wattage) {
+        if (typeof userData.wattage === 'number') {
           power = userData.wattage;
         } else if (lightType === 'strobe') {
           power = power * 1000;
         } else if (lightType === 'continuous' || lightType === 'led_panel') {
           power = power * 600;
         } else if (lightType === 'speedlite') {
-          power = specs.guideNumber || 40;
+          power = specs?.guideNumber ?? 40;
         }
         
         // Calculate distance to subject
@@ -147,21 +161,21 @@ export function useLightLensIntegration() {
         
         return {
           id: n.id,
-          name: n.name,
-          type: lightType as any,
+          name: n.name ?? 'Light',
+          type: lightType,
           power,
           powerAtSubject,
           distance,
           modifier: n.light.modifier,
           modifierLoss,
-          colorTemp: n.light.cct || specs.colorTemp,
+          colorTemp: n.light.cct ?? specs?.colorTemp,
           recommendedFStop,
           position: n.transform.position as [number, number, number],
-          hss: specs.hss,
-          ttl: specs.ttl,
+          hss: specs?.hss ?? n.light.hss,
+          ttl: specs?.ttl ?? n.light.ttl,
         };
       });
-  }, [nodes, subjectPosition]);
+  }, [isVisibleLightNode, nodes, subjectPosition]);
   
   // ==========================================================================
   // EXTRACT CAMERA
@@ -171,12 +185,12 @@ export function useLightLensIntegration() {
     const camNode = nodes.find(n => n.camera && n.visible !== false);
     if (!camNode?.camera) return null;
     
-    const userData = camNode.userData || {};
+    const userData = camNode.userData;
     const lensSpecs = userData.lensSpecs;
     
     // Detect mount
-    const brand = (userData.brand || '').toLowerCase();
-    const model = (userData.model || '').toLowerCase();
+    const brand = (userData.brand ?? '').toLowerCase();
+    const model = (userData.model ?? '').toLowerCase();
     let mount = 'universal';
     if (brand.includes('canon')) mount = model.includes('eos r') ? 'rf' : 'ef';
     else if (brand.includes('sony')) mount = 'fe';
@@ -194,7 +208,7 @@ export function useLightLensIntegration() {
     
     return {
       id: camNode.id,
-      name: camNode.name,
+      name: camNode.name ?? 'Camera',
       brand: userData.brand,
       model: userData.model,
       mount,
@@ -202,7 +216,7 @@ export function useLightLensIntegration() {
       shutter,
       iso,
       focalLength: camNode.camera.focalLength || 50,
-      focusDistance: userData.focusDistance || 2,
+      focusDistance: userData.focusDistance ?? 2,
       sensorSize: camNode.camera.sensor || [36, 24],
       ev,
       attachedLens: userData.attachedLens,
@@ -334,11 +348,13 @@ export function useLightLensIntegration() {
   }) => {
     if (!camera) return;
     
-    const lensSpec = findLensSpec(lens.brand, lens.model) || 
-                     findLensSpecByBrand(lens.brand);
+    const lensBrand = lens.brand ?? '';
+    const lensModel = lens.model ?? '';
+    const lensSpec = findLensSpec(lensBrand, lensModel) ||
+                     (lensBrand ? findLensSpecByBrand(lensBrand) : null);
     
-    const focalLength = lensSpec ? getFocalLengthFromLensSpec(lensSpec as LensSpec) : 50;
-    const maxAperture = lensSpec ? getMaxApertureFromLensSpec(lensSpec as LensSpec) : 2.8;
+    const focalLength = lensSpec ? getFocalLengthFromLensSpec(lensSpec) : 50;
+    const maxAperture = lensSpec ? getMaxApertureFromLensSpec(lensSpec) : 2.8;
     
     updateNode(camera.id, {
       camera: {
@@ -471,4 +487,3 @@ export function useLightLensIntegration() {
 }
 
 export default useLightLensIntegration;
-

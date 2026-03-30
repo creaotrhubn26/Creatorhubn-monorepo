@@ -195,7 +195,7 @@ export const AccessibleIconButton = forwardRef<HTMLButtonElement, AccessibleIcon
 // AccessibleSlider
 // ============================================================================
 
-interface AccessibleSliderProps extends Omit<SliderProps, 'onChange, '> {
+interface AccessibleSliderProps extends Omit<SliderProps, 'onChange'> {
   /** Accessible label */
   label: string;
   /** Value format for announcements */

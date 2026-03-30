@@ -24,6 +24,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Stack,
   List,
   ListItem,
   ListItemText,
@@ -101,6 +102,55 @@ interface DatabaseStats {
   lastUpdate: Date
 }
 
+interface AuthenticImageMatch {
+  brand: string;
+  model: string;
+  category: string;
+  imageFound: boolean;
+  imageCount: number;
+  source: string;
+  sampleImage: string | null;
+  officialUrl: string | null;
+  thumbnail?: string | null;
+  confidence?: number;
+  databaseStored?: boolean;
+  googleImages?: string[] | Array<{ link?: string; thumbnail?: string }>;
+}
+
+const normalizeExternalUrl = (rawUrl?: string | null): string | null => {
+  const trimmed = rawUrl?.trim();
+  if (!trimmed || trimmed === ',' || trimmed === ', ' || trimmed === 'null' || trimmed === 'undefined') {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith('//')) {
+    return `https:${trimmed}`;
+  }
+
+  try {
+    return new URL(trimmed, typeof window !== 'undefined' ? window.location.origin : 'https://creatorhub.no').toString();
+  } catch {
+    return null;
+  }
+};
+
+const getExternalHostname = (rawUrl?: string | null): string => {
+  const normalizedUrl = normalizeExternalUrl(rawUrl);
+  if (!normalizedUrl) {
+    return 'ukjent kilde';
+  }
+
+  try {
+    return new URL(normalizedUrl).hostname.replace(/^www\./, '');
+  } catch {
+    return 'ukjent kilde';
+  }
+};
+
 const ComprehensiveGearDatabase: React.FC = () => {
   // Enhanced Master Integration
   const { 
@@ -109,6 +159,8 @@ const ComprehensiveGearDatabase: React.FC = () => {
     debugging, 
     lifecycle 
   } = useEnhancedMasterIntegration();
+  const { user } = useAuth();
+  const userId = user?.id || 'guest';
   
   const [gearData, setGearData] = useState<GearItem[]>([]);
   const [stats, setStats] = useState<DatabaseStats | null>(null);
@@ -127,9 +179,17 @@ const ComprehensiveGearDatabase: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<GearItem | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [collectionProgress, setCollectionProgress] = useState<string>('');
-  const [authenticImages, setAuthenticImages] = useState<any[]>([]);
+  const [authenticImages, setAuthenticImages] = useState<AuthenticImageMatch[]>([]);
   const [showImageGallery, setShowImageGallery] = useState(false);
   const [loadingImages, setLoadingImages] = useState(false);
+  const [firmwareSearchSummary, setFirmwareSearchSummary] = useState('');
+  const { data: inventoryContextData = [], isLoading: inventoryContextLoading } = useQuery({
+    queryKey: ['/api/equipment/inventory', userId],
+    queryFn: () => apiRequest(`/api/equipment/inventory?userId=${userId}`),
+    enabled: userId !== 'guest',
+    staleTime: 5 * 60 * 1000,
+  });
+  const inventoryContext = Array.isArray(inventoryContextData) ? inventoryContextData : [];
   
   // Register component with Enhanced Master Integration
   useEffect(() => {
@@ -178,6 +238,12 @@ const ComprehensiveGearDatabase: React.FC = () => {
   // Kategori-ikoner med amber fargekoordinering
   const getCategoryIcon = (category: string) => {
     const iconProps = { sx: { color: '#FFA726', fontSize: '1.5rem' } }; // Amber farge
+    const normalizedCategory = categoryMapping[category] || category?.toLowerCase();
+    const IndexedIcon = categoryIcons[normalizedCategory as keyof typeof categoryIcons];
+
+    if (IndexedIcon) {
+      return <IndexedIcon {...iconProps} />;
+    }
     
     switch (category?.toLowerCase()) {
       case 'kameraer':
@@ -216,16 +282,17 @@ const ComprehensiveGearDatabase: React.FC = () => {
     support: TripodIcon
 };
 
+  const getDisplayCategory = (category: string) => reverseCategoryMapping[category] || category;
+
   // Fetch available brands from API
   const fetchAvailableBrands = async () => {
     try {
-      const response = await fetch('/api/equipment/brands');
-      const data = await response.json();
+      const data = await apiRequest('/api/equipment/brands');
       if (data.success) {
         setAvailableBrands(data.data || []);
     }
   } catch (error) {
-      // Error fetching brands
+      debugging.logIntegration('error', 'Error fetching equipment brands', error);
   }
 };
 
@@ -320,7 +387,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
         throw new Error(data.error || 'Innsamling mislyktes');
       }
     } catch (error) {
-      // Collection error occurred
+      debugging.logIntegration('error', 'Collection error occurred', error);
       setCollectionProgress('Innsamling mislyktes. Prøv igjen senere.');
       setTimeout(() => {
         setCollectionProgress('');
@@ -379,7 +446,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
     setSearchQuery('');
     setSelectedBrand('');
     setSelectedCategory('');
-    setSelectedYear(', ');
+    setSelectedYear('');
     setGearData([]);
     setCurrentPage(1);
 };
@@ -418,8 +485,48 @@ const ComprehensiveGearDatabase: React.FC = () => {
         return [];
       }
     } catch (error) {
-      console.error('Feil ved henting av autentiske bilder: ', error);
+      debugging.logIntegration('error', 'Feil ved henting av autentiske bilder', error);
       return [];
+    }
+  };
+
+  const handleAuthenticImageCheck = async () => {
+    setLoadingImages(true);
+
+    const testProducts = [
+      { brand: 'Canon', model: 'EOS R', category: 'Kameraer' },
+      { brand: 'Sony', model: 'A7R', category: 'Kameraer' },
+      { brand: 'Nikon', model: 'Z', category: 'Kameraer' },
+      { brand: 'Profoto', model: 'B1', category: 'Lys' },
+      { brand: 'Rode', model: 'VideoMic Pro', category: 'Lyd' },
+    ];
+
+    try {
+      const results = await fetchAuthenticImages(testProducts);
+      const validResults = results.filter((result): result is AuthenticImageMatch => Boolean(result));
+
+      validResults.forEach((result) => {
+        debugging.logIntegration('info', 'Authentic image result loaded', {
+          brand: result.brand,
+          model: result.model,
+          source: result.source,
+          imageFound: result.imageFound,
+        });
+      });
+
+      setAuthenticImages(validResults);
+      setActiveTab(2);
+      setShowImageGallery(validResults.length > 0);
+      setCollectionProgress(
+        validResults.length > 0
+          ? `Fant ${validResults.length} autentiske bildesett fra produsentkilder`
+          : 'Fant ingen autentiske bilder i denne testen'
+      );
+    } catch (error) {
+      debugging.logIntegration('error', 'Google Images search failed', error);
+      setCollectionProgress('Kunne ikke hente autentiske bilder akkurat nå');
+    } finally {
+      setLoadingImages(false);
     }
   };
 
@@ -492,7 +599,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
               {getCategoryIcon(item.category)}
               <Chip
-                label={item.category}
+                label={getDisplayCategory(item.category)}
                 size="small"
                 color="primary"
                 variant="outlined"
@@ -620,7 +727,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
                         variant="body2" 
                         sx={{ mt: 1, textAlign: 'center', fontWeight: 500}}
                       >
-                        {category}
+                        {getDisplayCategory(category)}
                       </Typography>
                     </Box>
                   </Grid>
@@ -644,7 +751,148 @@ const ComprehensiveGearDatabase: React.FC = () => {
         </Grid>
       </Grid>
     );
-};
+  };
+
+  const renderOverviewPanel = () => (
+    <>
+      {renderDatabaseStats()}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={6}>
+          <Accordion defaultExpanded>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <InventoryIcon color="primary" />
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  Inventarkontekst
+                </Typography>
+                <Badge color="primary" badgeContent={inventoryContext.length} />
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              {inventoryContextLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  <CircularProgress size={24} />
+                </Box>
+              ) : inventoryContext.length > 0 ? (
+                <List dense>
+                  {inventoryContext.slice(0, 4).map((item: any) => (
+                    <ListItem key={item.id || item.name}>
+                      <ListItemAvatar>
+                        <Avatar sx={{ bgcolor: `${theming.colors.primary}15`, color: theming.colors.primary }}>
+                          <InventoryIcon fontSize="small" />
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={item.name || `${item.brand || ''} ${item.model || ''}`.trim() || 'Utstyr'}
+                        secondary={item.category || 'Ukjent kategori'}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Alert severity="info" icon={<InfoIcon />}>
+                  Logg inn og koble inventaret ditt for å se hvilke databasefunn som matcher eget utstyr.
+                </Alert>
+              )}
+            </AccordionDetails>
+          </Accordion>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Accordion defaultExpanded>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <SpecIcon color="primary" />
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  Datakvalitet
+                </Typography>
+                <Badge color="secondary" badgeContent={gearData.length} />
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Stack spacing={1.5}>
+                <Alert severity={gearData.length > 0 ? 'success' : 'warning'} icon={gearData.length > 0 ? <CheckCircleIcon /> : <WarningIcon />}>
+                  {gearData.length > 0
+                    ? `Søket har returnert ${gearData.length} treff med strukturert metadata.`
+                    : 'Ingen treff lastet ennå. Kjør et søk eller start innsamling for å bygge opp datagrunnlaget.'}
+                </Alert>
+                <Alert severity={authenticImages.length > 0 ? 'success' : 'info'} icon={authenticImages.length > 0 ? <CameraIcon /> : <InfoIcon />}>
+                  {authenticImages.length > 0
+                    ? `${authenticImages.length} produkter har verifiserte bilder fra produsentkilder.`
+                    : 'Ingen verifiserte produsentbilder er lastet i denne økten ennå.'}
+                </Alert>
+                {collectionProgress && (
+                  <Alert severity="info" icon={<InfoIcon />}>
+                    {collectionProgress}
+                  </Alert>
+                )}
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
+        </Grid>
+      </Grid>
+    </>
+  );
+
+  const renderImageCoveragePanel = () => (
+    <Card sx={{ mb: 3 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography variant="h6" sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CameraIcon />
+            Bildekilder og verifikasjon
+          </Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={loadingImages ? <CircularProgress size={16} /> : <RefreshIcon />}
+            onClick={handleAuthenticImageCheck}
+            disabled={loadingImages}
+          >
+            Oppdater bilder
+          </Button>
+        </Box>
+
+        {authenticImages.length > 0 ? (
+          <Grid container spacing={2}>
+            {authenticImages.map((image) => (
+              <Grid item xs={12} md={6} key={`${image.brand}-${image.model}`}>
+                <ListItem
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 2,
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <ListItemAvatar>
+                    <Avatar
+                      src={image.thumbnail || image.sampleImage || undefined}
+                      sx={{ bgcolor: `${theming.colors.primary}10` }}
+                    >
+                      <CameraIcon fontSize="small" />
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={`${image.brand} ${image.model}`}
+                    secondary={`${getDisplayCategory(image.category)} · ${image.source}`}
+                  />
+                  <Chip
+                    label={image.imageFound ? 'Verifisert' : 'Mangler bilde'}
+                    color={image.imageFound ? 'success' : 'warning'}
+                    size="small"
+                  />
+                </ListItem>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Alert severity="info" icon={<ErrorIcon />}>
+            Ingen produsentbilder er lastet ennå. Kjør «Se Database Bilder» for å verifisere bildedekning.
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
+  );
 
   return (
     <Box sx={{ p: 3 }}>
@@ -694,10 +942,11 @@ const ComprehensiveGearDatabase: React.FC = () => {
               });
               const data = await response.json();
               if (data.success) {
-                // Category icons generated successfully
+                debugging.logIntegration('info', 'Category icons generated successfully', data);
+                setCollectionProgress('Kategori-ikonene ble regenerert for denne databasen');
             }
           } catch (error) {
-              // Error generating icons
+              debugging.logIntegration('error', 'Error generating category icons', error);
           }
         }}
           disabled={isCollecting}
@@ -825,89 +1074,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
             <Button
               variant="outlined"
               color="success"
-              onClick={async () => {
-                setLoadingImages(true);
-                // Checking database-stored images first
-                const testProducts = [
-                  { brand: 'Canon', model: 'EOS R', category: 'Kameraer'},
-                  { brand: 'Sony', model: 'A7R', category: 'Kameraer'},
-                  { brand: 'Nikon', model: 'Z', category: 'Kameraer'},
-                  { brand: 'Profoto', model: 'B1', category: 'Lys'},
-                  { brand: 'Rode', model: 'VideoMic Pro', category: 'Audio'}
-                ];
-                
-                try {
-                  // FØRST: Test om databasehenting fungerer
-                  const searchResponse = await fetch('/api/equipment/search?brand=Canon&q=EOS%20R5&limit=1');
-                  const searchData = await searchResponse.json();
-                  
-                  if (searchData.success && searchData.data.length > 0) {
-                    const item = searchData.data[0];
-                    // Database prioritization working
-              }
-                  
-                  const imagePromises = testProducts.map(async (product) => {
-                    try {
-                      // Bruk equipment search API som prioriterer database
-                      const response = await fetch(`/api/equipment/search?brand=${product.brand}&q=${encodeURIComponent(product.model)}&limit=1`);
-                      const data = await response.json();
-                      
-                      if (data.success && data.data.length > 0) {
-                        const item = data.data[0];
-                        return {
-                          brand: item.brand,
-                          model: item.model,
-                          category: item.category,
-                          imageFound: item.images && item.images.length > 0,
-                          imageCount: item.images?.length || 0,
-                          source: item.searchSource || 'Database',
-                          sampleImage: item.images?.[0] || ', ',
-                          officialUrl: item.images?.[0] || ', ',
-                          confidence: 0.5,
-                          databaseStored: item.databaseStored || false,
-                          googleImages: item.images || []
-                    };
-                    }
-                      return null;
-                      
-                      if (data.success && data.images.length > 0) {
-                        return {
-                          brand: product.brand,
-                          model: product.model,
-                          category: product.category,
-                          imageFound: true,
-                          imageCount: data.images.length,
-                          source: 'Google Images',
-                          sampleImage: data.images[0].link,
-                          thumbnail: data.images[0].thumbnail,
-                          officialUrl: data.images[0].link,
-                          confidence: 0.9,
-                          googleImages: data.images
-                    };
-                    }
-                      return null;
-                  } catch (error) {
-                      // Search error for product
-                      return null;
-                  }
-                });
-
-                  const results = await Promise.all(imagePromises);
-                  const validResults = results.filter(result => result !== null);
-                  
-                  // Found database images successfully
-                  validResults.forEach(result => {
-                    // Image found: brand and model details
-              });
-                  
-                  setAuthenticImages(validResults);
-                  setShowImageGallery(true);
-              } catch (error) {
-                  // Google Images search failed
-              } finally {
-                  setLoadingImages(false);
-              }
-            }}
+              onClick={handleAuthenticImageCheck}
               size="small"
               disabled={loadingImages}
               startIcon={loadingImages ? <CircularProgress size={16} /> : <CameraIcon />}
@@ -939,7 +1106,10 @@ const ComprehensiveGearDatabase: React.FC = () => {
                     }
                       return null;
                   } catch (error) {
-                      // Firmware search failed for product
+                      debugging.logIntegration('warn', 'Firmware search failed for product', {
+                        product,
+                        error,
+                      });
                       return null;
                   }
                 });
@@ -947,17 +1117,17 @@ const ComprehensiveGearDatabase: React.FC = () => {
                   const results = await Promise.all(firmwarePromises);
                   const validResults = results.filter(result => result !== null);
                   
-                  // Found firmware info for products
                   validResults.forEach(result => {
                     if (result.firmwareFound) {
-                      // Firmware info: brand model version and release date
+                      debugging.logIntegration('info', 'Firmware info found', result);
                 }
                 });
                   
-                  // TODO: Display firmware results in UI
-                  alert(`Firmware søk fullført: ${validResults.length}/${testProducts.length} produkter har tilgjengelig firmware`);
+                  const summary = `Firmware søk fullført: ${validResults.length}/${testProducts.length} produkter har tilgjengelig firmware`;
+                  setFirmwareSearchSummary(summary);
+                  alert(summary);
               } catch (error) {
-                  // Google firmware search failed
+                  debugging.logIntegration('error', 'Google firmware search failed', error);
               } finally {
                   setLoadingImages(false);
               }
@@ -972,40 +1142,66 @@ const ComprehensiveGearDatabase: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Results */}
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : gearData.length > 0 ? (
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ pb: 0 }}>
+          <Tabs value={activeTab} onChange={(_event, value) => setActiveTab(value)} sx={{ mb: 2 }}>
+            <Tab label="Oversikt" />
+            <Tab label={<Badge color="primary" badgeContent={gearData.length}>Resultater</Badge>} />
+            <Tab label={<Badge color="secondary" badgeContent={authenticImages.length}>Bilder</Badge>} />
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      {activeTab === 0 && renderOverviewPanel()}
+
+      {activeTab === 1 && (
         <>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            {gearData.length} resultater funnet
-          </Typography>
-          
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            {currentItems.map(renderGearCard)}
-          </Grid>
-          
-          {totalPages > 1 && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-              <Pagination
-                count={totalPages}
-                page={currentPage}
-                onChange={(event, value) => setCurrentPage(value)}
-                color="primary"
-              />
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+              <CircularProgress />
             </Box>
+          ) : gearData.length > 0 ? (
+            <>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                {gearData.length} resultater funnet
+              </Typography>
+
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                {currentItems.map(renderGearCard)}
+              </Grid>
+
+              {totalPages > 1 && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                  <Pagination
+                    count={totalPages}
+                    page={currentPage}
+                    onChange={(_event, value) => setCurrentPage(value)}
+                    color="primary"
+                  />
+                </Box>
+              )}
+            </>
+          ) : searchQuery || selectedBrand || selectedCategory || selectedYear ? (
+            <Alert severity="info">
+              Ingen resultater funnet for dine søkekriterier. Prøv å justere filtrene.
+            </Alert>
+          ) : (
+            <Alert severity="info">
+              Bruk søk eller filtrer for å finne utstyr, eller start datainnsamling for å fylle databasen.
+            </Alert>
           )}
         </>
-      ) : searchQuery || selectedBrand || selectedCategory || selectedYear ? (
-        <Alert severity="info">
-          Ingen resultater funnet for dine søkekriterier. Prøv å justere filtrene.
-        </Alert>
-      ) : (
-        <Alert severity="info">
-          Bruk søk eller filtrer for å finne utstyr, eller start datainnsamling for å fylle databasen.
-        </Alert>
+      )}
+
+      {activeTab === 2 && (
+        <>
+          {renderImageCoveragePanel()}
+          {firmwareSearchSummary && (
+            <Alert severity="info" icon={<UpdateIcon />} sx={{ mb: 3 }}>
+              {firmwareSearchSummary}
+            </Alert>
+          )}
+        </>
       )}
 
       {/* Item Details Dialog */}
@@ -1037,7 +1233,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
                     Produsent: {selectedItem.brand}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Kategori: {selectedItem.category}
+                    Kategori: {getDisplayCategory(selectedItem.category)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Utgivelsesår: {selectedItem.releaseYear}
@@ -1046,32 +1242,49 @@ const ComprehensiveGearDatabase: React.FC = () => {
                 
                 {Object.keys(selectedItem.specifications).length > 0 && (
                   <Grid item xs={12}>
-                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                      Spesifikasjoner
-                    </Typography>
-                    {Object.entries(selectedItem.specifications).map(([key, value]) => (
-                      <Typography key={key} variant="body2">
-                        <strong>{key}:</strong> {value}
-                      </Typography>
-                    ))}
+                    <Accordion defaultExpanded>
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <SpecIcon color="primary" />
+                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                            Spesifikasjoner
+                          </Typography>
+                        </Box>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <List dense>
+                          {Object.entries(selectedItem.specifications).map(([key, value]) => (
+                            <ListItem key={key}>
+                              <ListItemText primary={key} secondary={String(value)} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </AccordionDetails>
+                    </Accordion>
                   </Grid>
                 )}
                 
                 {selectedItem.images && selectedItem.images.length > 1 && (
                   <Grid item xs={12}>
-                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                      Flere bilder
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                      {selectedItem.images.slice(1).map((image, index) => (
-                        <img
-                          key={index}
-                          src={image}
-                          alt={`${selectedItem.model} ${index + 2}`}
-                          style={{ width: 100, height: 100, objectFit: 'contain', border: '1px solid #ddd' }}
-                        />
-                      ))}
-                    </Box>
+                    <Accordion>
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                          Flere bilder
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          {selectedItem.images.slice(1).map((image, index) => (
+                            <img
+                              key={index}
+                              src={image}
+                              alt={`${selectedItem.model} ${index + 2}`}
+                              style={{ width: 100, height: 100, objectFit: 'contain', border: '1px solid #ddd' }}
+                            />
+                          ))}
+                        </Box>
+                      </AccordionDetails>
+                    </Accordion>
                   </Grid>
                 )}
               </Grid>
@@ -1104,7 +1317,11 @@ const ComprehensiveGearDatabase: React.FC = () => {
           </Typography>
           
           <Grid container spacing={3}>
-            {authenticImages.map((image, index) => (
+            {authenticImages.map((image, index) => {
+              const sourceUrl = image.officialUrl || image.sampleImage;
+              const sourceHostname = getExternalHostname(sourceUrl);
+
+              return (
               <Grid item xs={12} sm={6} md={4} key={index}>
                 <Card sx={{ height: '100%' }}>
                   <Box
@@ -1113,8 +1330,8 @@ const ComprehensiveGearDatabase: React.FC = () => {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: '#f5f5f',
-                      border: '2px dashed #FFA72',
+                      backgroundColor: '#f5f5f5',
+                      border: '2px dashed #FFA726',
                       borderRadius: '8px',
                       flexDirection: 'column',
                       gap: 1
@@ -1127,7 +1344,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
                       </Typography>
                     </Box>
                     <Typography variant="body2" sx={{ color: '#666', textAlign: 'center', px: 2 }}>
-                      Ekte produktbilde fra {new URL(image.officialUrl || image.sampleImage).hostname}
+                      Ekte produktbilde fra {sourceHostname}
                     </Typography>
                     <Typography variant="caption" sx={{ color: '#999', textAlign: 'center' }}>
                       {image.confidence ? `${(image.confidence * 100).toFixed(0)}% tillitsscore` : 'Bekreftet autentisk'}
@@ -1138,7 +1355,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
                       {image.brand} {image.model}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Kategori: {image.category}
+                      Kategori: {getDisplayCategory(image.category)}
                     </Typography>
                     <Chip 
                       label={`${(image.confidence * 100).toFixed(0)}% tillitsscore`}
@@ -1152,26 +1369,32 @@ const ComprehensiveGearDatabase: React.FC = () => {
                       color={image.source === 'official_norwegian' ? 'primary' : 'secondary'}
                       size="small"
                     />
-                    {image.officialUrl && (
+                    {sourceUrl && (
                       <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                         <Typography variant="caption" display="block">
-                          Kilde: {new URL(image.officialUrl).hostname}
+                          Kilde: {sourceHostname}
                         </Typography>
                         <Button
                           size="small"
                           variant="outlined"
                           color="primary"
-                          onClick={() => window.open(image.sampleImage, '_blank')}
+                          onClick={() => {
+                            const targetUrl = normalizeExternalUrl(sourceUrl);
+                            if (targetUrl) {
+                              window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                            }
+                          }}
                           sx={{ fontSize:'0.7rem', py: 0.5 }}
                         >
-                          Se ekte bilde på {new URL(image.officialUrl).hostname}
+                          Se ekte bilde på {sourceHostname}
                         </Button>
                       </Box>
                     )}
                   </CardContent>
                 </Card>
               </Grid>
-            ))}
+            );
+            })}
           </Grid>
         </DialogContent>
         <DialogActions>

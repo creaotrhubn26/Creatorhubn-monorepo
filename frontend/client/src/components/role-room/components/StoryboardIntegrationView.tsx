@@ -32,11 +32,13 @@ import {
   Image as ImageIcon,
   List as ListIcon,
   Add as AddIcon,
+  ContentCopy as ContentCopyIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   CameraAlt as CameraIcon,
   Lightbulb as LightIcon,
   Brush as BrushIcon,
+  AutoAwesome as AutoAwesomeIcon,
   Create as CreateIcon,
   TouchApp as TouchAppIcon,
   Link as LinkIcon,
@@ -50,14 +52,26 @@ import {
 import type { SceneBreakdown, StoryboardFrame as StoryboardFrameModel } from '../models/casting';
 import { FrameDrawingEditor } from './FrameDrawingEditor';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
+import type { PencilStroke } from '../hooks/useApplePencil';
 import type { FrameDrawingData } from '../state/storyboardStore';
+import {
+  getPrimaryStoryboardDocumentReferenceImage,
+  getPrimaryStoryboardDocumentStrokes,
+  restoreStoryboardDrawingDocumentFromLegacy,
+  type StoryboardDrawingDocument,
+} from '../state/storyboardDrawingDocument';
 import { useScriptStoryboardOptional } from '../contexts/ScriptStoryboardContext';
 import { useToast } from './ToastStack';
 import { useAuth } from '../../../hooks/useAuth';
+import {
+  loadRawStoryboardLibraryPayloadForProject,
+  saveStoryboardLibraryPayloadForProject,
+} from '../services/storyboardLibraryService';
 
 interface StoryboardIntegrationViewProps {
   scene: SceneBreakdown;
   onUpdate: (scene: SceneBreakdown) => void;
+  projectId?: string;
   // Script integration
   scriptContent?: string;
   onScriptChange?: (content: string) => void;
@@ -68,6 +82,17 @@ interface StoryboardIntegrationViewProps {
 }
 
 type ViewMode = 'script' | 'storyboard' | 'shotlist' | 'split';
+type StoryboardWorkspaceMode = 'thumbnail' | 'scene' | 'review';
+type StoryboardDetailLevel = 'idea' | 'blocking' | 'shot' | 'presentation';
+type StoryboardAssistFlag =
+  | 'perspectiveGrid'
+  | 'eyelineGuide'
+  | 'silhouetteCheck'
+  | 'focusPoint'
+  | 'screenDirection'
+  | 'negativeSpace';
+type ScreenDirection = 'left-to-right' | 'right-to-left' | 'static';
+type StoryboardAssistSettings = Partial<Record<StoryboardAssistFlag, boolean>>;
 
 interface StoryboardFrame {
   id: string;
@@ -86,7 +111,67 @@ interface StoryboardFrame {
   sceneId?: string;
   scriptLineRange?: [number, number];
   dialogueCharacter?: string;
+  detailLevel?: StoryboardDetailLevel;
+  blockingNotes?: string;
+  focusPoint?: string;
+  screenDirection?: ScreenDirection;
+  assist?: StoryboardAssistSettings;
+  variantGroupId?: string;
+  variantLabel?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
+
+const DETAIL_LEVEL_OPTIONS: Array<{
+  value: StoryboardDetailLevel;
+  label: string;
+  shortLabel: string;
+  editorLabel: string;
+}> = [
+  { value: 'idea', label: 'Thumbnail', shortLabel: 'Thumb', editorLabel: 'Idé / thumbnail' },
+  { value: 'blocking', label: 'Blocking', shortLabel: 'Block', editorLabel: 'Scene / blocking' },
+  { value: 'shot', label: 'Shot', shortLabel: 'Shot', editorLabel: 'Shot / acting' },
+  { value: 'presentation', label: 'Review', shortLabel: 'Review', editorLabel: 'Presentasjon' },
+];
+
+const WORKSPACE_MODE_OPTIONS: Array<{ value: StoryboardWorkspaceMode; label: string }> = [
+  { value: 'thumbnail', label: 'Thumbnails' },
+  { value: 'scene', label: 'Scene' },
+  { value: 'review', label: 'Review' },
+];
+
+const STORYBOARD_LANGUAGE_OPTIONS = ['Wide', 'Medium', 'Close-up', 'Insert', 'Over-shoulder', 'Top shot'] as const;
+const SCREEN_DIRECTION_OPTIONS: ScreenDirection[] = ['left-to-right', 'right-to-left', 'static'];
+
+const DEFAULT_ASSIST_BY_LEVEL: Record<StoryboardDetailLevel, StoryboardAssistSettings> = {
+  idea: {
+    negativeSpace: true,
+    silhouetteCheck: true,
+  },
+  blocking: {
+    perspectiveGrid: true,
+    eyelineGuide: true,
+    screenDirection: true,
+  },
+  shot: {
+    perspectiveGrid: true,
+    focusPoint: true,
+    eyelineGuide: true,
+  },
+  presentation: {
+    focusPoint: true,
+    silhouetteCheck: true,
+  },
+};
+
+const ASSIST_FLAG_OPTIONS: Array<{ key: StoryboardAssistFlag; label: string; levels: StoryboardDetailLevel[] }> = [
+  { key: 'perspectiveGrid', label: 'Perspektiv-grid', levels: ['blocking', 'shot'] },
+  { key: 'eyelineGuide', label: 'Eyeline', levels: ['blocking', 'shot', 'presentation'] },
+  { key: 'silhouetteCheck', label: 'Silhuett', levels: ['idea', 'presentation'] },
+  { key: 'focusPoint', label: 'Fokuspunkt', levels: ['shot', 'presentation'] },
+  { key: 'screenDirection', label: 'Retning', levels: ['blocking', 'shot'] },
+  { key: 'negativeSpace', label: 'Negative spaces', levels: ['idea', 'shot'] },
+];
 
 interface StoryboardLibraryItem {
   id: string;
@@ -153,6 +238,118 @@ const buildStoryboardLibraryStorageKey = (scopeKey: string): string =>
 
 const normalizeTag = (value: string): string => value.trim().toLowerCase();
 
+const isStoryboardDetailLevel = (value: unknown): value is StoryboardDetailLevel =>
+  DETAIL_LEVEL_OPTIONS.some((option) => option.value === value);
+
+const isScreenDirection = (value: unknown): value is ScreenDirection =>
+  SCREEN_DIRECTION_OPTIONS.includes(value as ScreenDirection);
+
+const normalizeAssistSettings = (value?: StoryboardAssistSettings): StoryboardAssistSettings | undefined => {
+  if (!value) return undefined;
+  const normalized = ASSIST_FLAG_OPTIONS.reduce<StoryboardAssistSettings>((acc, option) => {
+    const flagValue = value[option.key];
+    if (typeof flagValue === 'boolean') {
+      acc[option.key] = flagValue;
+    }
+    return acc;
+  }, {});
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+};
+
+const parseAssistSettings = (value: unknown): StoryboardAssistSettings | undefined => {
+  if (!isObject(value)) return undefined;
+  return normalizeAssistSettings(value as StoryboardAssistSettings);
+};
+
+const mergeAssistSettings = (
+  detailLevel?: StoryboardDetailLevel,
+  assist?: StoryboardAssistSettings
+): StoryboardAssistSettings | undefined =>
+  normalizeAssistSettings({
+    ...(detailLevel ? DEFAULT_ASSIST_BY_LEVEL[detailLevel] : {}),
+    ...(assist || {}),
+  });
+
+const serializeAssistSettings = (value?: StoryboardAssistSettings): string =>
+  JSON.stringify(normalizeAssistSettings(value) || {});
+
+const getDetailLevelMeta = (value?: StoryboardDetailLevel) =>
+  DETAIL_LEVEL_OPTIONS.find((option) => option.value === value) || DETAIL_LEVEL_OPTIONS[0];
+
+const getAssistCount = (value?: StoryboardAssistSettings): number =>
+  Object.values(normalizeAssistSettings(value) || {}).filter(Boolean).length;
+
+const getScreenDirectionLabel = (value?: ScreenDirection): string | undefined => {
+  if (!value) return undefined;
+  switch (value) {
+    case 'left-to-right':
+      return 'Venstre til hoyre';
+    case 'right-to-left':
+      return 'Hoyre til venstre';
+    case 'static':
+      return 'Statisk';
+    default:
+      return undefined;
+  }
+};
+
+const buildUniqueShotNumber = (frames: StoryboardFrame[], desiredShotNumber: string): string => {
+  const trimmed = desiredShotNumber.trim();
+  if (!trimmed) return getNextShotNumber(frames);
+  const existing = new Set(frames.map((frame) => frame.shotNumber.trim().toLowerCase()));
+  if (!existing.has(trimmed.toLowerCase())) return trimmed;
+
+  let attempt = 2;
+  let candidate = `${trimmed}-${attempt}`;
+  while (existing.has(candidate.toLowerCase())) {
+    attempt += 1;
+    candidate = `${trimmed}-${attempt}`;
+  }
+  return candidate;
+};
+
+const createStoryboardDraftFrame = (
+  frames: StoryboardFrame[],
+  overrides: Partial<StoryboardFrame> = {}
+): StoryboardFrame => {
+  const now = new Date().toISOString();
+  const detailLevel =
+    isStoryboardDetailLevel(overrides.detailLevel) ? overrides.detailLevel : 'idea';
+  const shotNumber = buildUniqueShotNumber(
+    frames,
+    typeof overrides.shotNumber === 'string' && overrides.shotNumber.trim().length > 0
+      ? overrides.shotNumber
+      : getNextShotNumber(frames)
+  );
+
+  return {
+    id: overrides.id || createFrameId(),
+    shotNumber,
+    description: overrides.description?.trim() || 'Ny shot',
+    cameraAngle: overrides.cameraAngle?.trim() || STORYBOARD_LANGUAGE_OPTIONS[0],
+    movement: overrides.movement?.trim() || 'Static',
+    duration: Math.max(1, Number(overrides.duration) || 2),
+    detailLevel,
+    blockingNotes: overrides.blockingNotes?.trim() || undefined,
+    focusPoint: overrides.focusPoint?.trim() || undefined,
+    screenDirection: isScreenDirection(overrides.screenDirection) ? overrides.screenDirection : undefined,
+    assist: mergeAssistSettings(detailLevel, overrides.assist),
+    imageUrl: overrides.imageUrl,
+    thumbnailUrl: overrides.thumbnailUrl,
+    sketch: overrides.sketch,
+    drawingData: overrides.drawingData,
+    imageSource: overrides.imageSource,
+    notes: overrides.notes?.trim() || undefined,
+    sceneId: overrides.sceneId,
+    scriptLineRange: overrides.scriptLineRange,
+    dialogueCharacter: overrides.dialogueCharacter,
+    variantGroupId: overrides.variantGroupId,
+    variantLabel: overrides.variantLabel?.trim() || undefined,
+    createdAt: overrides.createdAt || now,
+    updatedAt: overrides.updatedAt || now,
+  };
+};
+
 const buildLibraryItemTags = (
   frame: StoryboardFrame,
   sceneNumber?: number | string,
@@ -161,6 +358,9 @@ const buildLibraryItemTags = (
   const raw = [
     frame.cameraAngle,
     frame.movement,
+    frame.detailLevel ? `nivaa:${frame.detailLevel}` : undefined,
+    getScreenDirectionLabel(frame.screenDirection),
+    frame.focusPoint ? `fokus:${frame.focusPoint}` : undefined,
     frame.imageSource ? `kilde:${frame.imageSource}` : undefined,
     sceneHeading,
     sceneNumber !== undefined ? `scene ${sceneNumber}` : undefined,
@@ -192,6 +392,98 @@ const createCreditEvent = (
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const parseStoredStrokes = (value: unknown): PencilStroke[] | undefined => {
+  if (typeof value !== 'string' || value.trim().length === 0) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as PencilStroke[]) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const parseFrameDrawingData = (
+  drawingDataRaw: unknown,
+  options: {
+    frameId?: string;
+    storyboardId?: string;
+    workflowLevel?: StoryboardDetailLevel;
+    imageUrl?: string;
+  } = {}
+): FrameDrawingData | undefined => {
+  if (!isObject(drawingDataRaw)) return undefined;
+
+  const brushSettings =
+    isObject(drawingDataRaw.brushSettings)
+    && typeof drawingDataRaw.brushSettings.type === 'string'
+    && typeof drawingDataRaw.brushSettings.size === 'number'
+    && typeof drawingDataRaw.brushSettings.color === 'string'
+    && typeof drawingDataRaw.brushSettings.opacity === 'number'
+      ? {
+          type: drawingDataRaw.brushSettings.type,
+          size: drawingDataRaw.brushSettings.size,
+          color: drawingDataRaw.brushSettings.color,
+          opacity: drawingDataRaw.brushSettings.opacity,
+        }
+      : undefined;
+
+  const createdAt =
+    typeof drawingDataRaw.createdAt === 'string'
+      ? drawingDataRaw.createdAt
+      : new Date().toISOString();
+  const updatedAt =
+    typeof drawingDataRaw.updatedAt === 'string'
+      ? drawingDataRaw.updatedAt
+      : createdAt;
+  const document = restoreStoryboardDrawingDocumentFromLegacy({
+    document: drawingDataRaw.document,
+    strokes: drawingDataRaw.strokes,
+    baseImageUrl:
+      typeof drawingDataRaw.baseImageUrl === 'string'
+        ? drawingDataRaw.baseImageUrl
+        : options.imageUrl,
+    originalBaseImageUrl:
+      typeof drawingDataRaw.originalBaseImageUrl === 'string'
+        ? drawingDataRaw.originalBaseImageUrl
+        : options.imageUrl,
+    dataUrl: typeof drawingDataRaw.dataUrl === 'string' ? drawingDataRaw.dataUrl : options.imageUrl,
+    brushSettings,
+  }, {
+    frameId: options.frameId,
+    storyboardId: options.storyboardId,
+    workflowLevel: options.workflowLevel,
+    createdAt,
+    updatedAt,
+  });
+  const documentStrokes = getPrimaryStoryboardDocumentStrokes(document);
+
+  return {
+    dataUrl: typeof drawingDataRaw.dataUrl === 'string' ? drawingDataRaw.dataUrl : '',
+    strokes:
+      typeof drawingDataRaw.strokes === 'string'
+        ? drawingDataRaw.strokes
+        : JSON.stringify(documentStrokes),
+    document,
+    baseImageUrl:
+      typeof drawingDataRaw.baseImageUrl === 'string'
+        ? drawingDataRaw.baseImageUrl
+        : undefined,
+    originalBaseImageUrl:
+      typeof drawingDataRaw.originalBaseImageUrl === 'string'
+        ? drawingDataRaw.originalBaseImageUrl
+        : undefined,
+    brushSettings,
+    deviceType:
+      drawingDataRaw.deviceType === 'pencil'
+      || drawingDataRaw.deviceType === 'touch'
+      || drawingDataRaw.deviceType === 'mouse'
+        ? drawingDataRaw.deviceType
+        : undefined,
+    createdAt,
+    updatedAt,
+  };
+};
 
 const parseCreditLog = (value: unknown): StoryboardCreditEvent[] => {
   if (!Array.isArray(value)) return [];
@@ -244,6 +536,13 @@ const toLibraryItem = (value: unknown): StoryboardLibraryItem | null => {
     notes: typeof frameRaw.notes === 'string' ? frameRaw.notes : undefined,
     sceneId: typeof frameRaw.sceneId === 'string' ? frameRaw.sceneId : undefined,
     dialogueCharacter: typeof frameRaw.dialogueCharacter === 'string' ? frameRaw.dialogueCharacter : undefined,
+    detailLevel: isStoryboardDetailLevel(frameRaw.detailLevel) ? frameRaw.detailLevel : undefined,
+    blockingNotes: typeof frameRaw.blockingNotes === 'string' ? frameRaw.blockingNotes : undefined,
+    focusPoint: typeof frameRaw.focusPoint === 'string' ? frameRaw.focusPoint : undefined,
+    screenDirection: isScreenDirection(frameRaw.screenDirection) ? frameRaw.screenDirection : undefined,
+    assist: parseAssistSettings(frameRaw.assist),
+    variantGroupId: typeof frameRaw.variantGroupId === 'string' ? frameRaw.variantGroupId : undefined,
+    variantLabel: typeof frameRaw.variantLabel === 'string' ? frameRaw.variantLabel : undefined,
     scriptLineRange:
       Array.isArray(frameRaw.scriptLineRange) &&
       frameRaw.scriptLineRange.length === 2 &&
@@ -259,46 +558,11 @@ const toLibraryItem = (value: unknown): StoryboardLibraryItem | null => {
       frameRaw.imageSource === 'generated'
         ? frameRaw.imageSource
         : undefined,
-    drawingData: isObject(frameRaw.drawingData)
-      ? {
-          dataUrl: typeof frameRaw.drawingData.dataUrl === 'string' ? frameRaw.drawingData.dataUrl : '',
-          strokes: typeof frameRaw.drawingData.strokes === 'string' ? frameRaw.drawingData.strokes : undefined,
-          brushSettings: isObject(frameRaw.drawingData.brushSettings)
-            ? {
-                type:
-                  typeof frameRaw.drawingData.brushSettings.type === 'string'
-                    ? frameRaw.drawingData.brushSettings.type
-                    : 'brush',
-                size:
-                  typeof frameRaw.drawingData.brushSettings.size === 'number'
-                    ? frameRaw.drawingData.brushSettings.size
-                    : 2,
-                color:
-                  typeof frameRaw.drawingData.brushSettings.color === 'string'
-                    ? frameRaw.drawingData.brushSettings.color
-                    : '#ffffff',
-                opacity:
-                  typeof frameRaw.drawingData.brushSettings.opacity === 'number'
-                    ? frameRaw.drawingData.brushSettings.opacity
-                    : 1,
-              }
-            : undefined,
-          deviceType:
-            frameRaw.drawingData.deviceType === 'pencil' ||
-            frameRaw.drawingData.deviceType === 'touch' ||
-            frameRaw.drawingData.deviceType === 'mouse'
-              ? frameRaw.drawingData.deviceType
-              : undefined,
-          createdAt:
-            typeof frameRaw.drawingData.createdAt === 'string'
-              ? frameRaw.drawingData.createdAt
-              : new Date().toISOString(),
-          updatedAt:
-            typeof frameRaw.drawingData.updatedAt === 'string'
-              ? frameRaw.drawingData.updatedAt
-              : new Date().toISOString(),
-        }
-      : undefined,
+    drawingData: parseFrameDrawingData(frameRaw.drawingData, {
+      frameId: typeof frameRaw.id === 'string' ? frameRaw.id : undefined,
+      workflowLevel: isStoryboardDetailLevel(frameRaw.detailLevel) ? frameRaw.detailLevel : undefined,
+      imageUrl: typeof frameRaw.imageUrl === 'string' ? frameRaw.imageUrl : undefined,
+    }),
   });
 
   const sceneNumber =
@@ -357,61 +621,46 @@ const toLibraryFolder = (value: unknown): StoryboardLibraryFolder | null => {
   };
 };
 
+const parseStoryboardLibraryPayload = (parsed: unknown): StoryboardLibraryPayload => {
+  // Backward compatibility: old format stored as plain item array.
+  if (Array.isArray(parsed)) {
+    const items = parsed
+      .map((entry) => toLibraryItem(entry))
+      .filter((entry): entry is StoryboardLibraryItem => Boolean(entry));
+    return { items, folders: [] };
+  }
+
+  if (!isObject(parsed)) return { items: [], folders: [] };
+  const parsedItemsRaw = Array.isArray(parsed.items) ? parsed.items : [];
+  const parsedFoldersRaw = Array.isArray(parsed.folders) ? parsed.folders : [];
+  const items = parsedItemsRaw
+    .map((entry) => toLibraryItem(entry))
+    .filter((entry): entry is StoryboardLibraryItem => Boolean(entry));
+  const folders = parsedFoldersRaw
+    .map((entry) => toLibraryFolder(entry))
+    .filter((entry): entry is StoryboardLibraryFolder => Boolean(entry));
+
+  const folderIds = new Set(folders.map((folder) => folder.id));
+  const normalizedItems = items.map((item) =>
+    item.folderId && folderIds.has(item.folderId)
+      ? item
+      : {
+          ...item,
+          folderId: undefined,
+        }
+  );
+
+  return { items: normalizedItems, folders };
+};
+
 const loadStoryboardLibrary = (storageKey: string): StoryboardLibraryPayload => {
   if (typeof window === 'undefined') return { items: [], folders: [] };
   try {
     const raw = window.localStorage.getItem(storageKey);
     if (!raw) return { items: [], folders: [] };
-    const parsed: unknown = JSON.parse(raw);
-
-    // Backward compatibility: old format stored as plain item array.
-    if (Array.isArray(parsed)) {
-      const items = parsed
-        .map((entry) => toLibraryItem(entry))
-        .filter((entry): entry is StoryboardLibraryItem => Boolean(entry));
-      return { items, folders: [] };
-    }
-
-    if (!isObject(parsed)) return { items: [], folders: [] };
-    const parsedItemsRaw = Array.isArray(parsed.items) ? parsed.items : [];
-    const parsedFoldersRaw = Array.isArray(parsed.folders) ? parsed.folders : [];
-    const items = parsedItemsRaw
-      .map((entry) => toLibraryItem(entry))
-      .filter((entry): entry is StoryboardLibraryItem => Boolean(entry));
-    const folders = parsedFoldersRaw
-      .map((entry) => toLibraryFolder(entry))
-      .filter((entry): entry is StoryboardLibraryFolder => Boolean(entry));
-
-    const folderIds = new Set(folders.map((folder) => folder.id));
-    const normalizedItems = items.map((item) =>
-      item.folderId && folderIds.has(item.folderId)
-        ? item
-        : {
-            ...item,
-            folderId: undefined,
-          }
-    );
-
-    return { items: normalizedItems, folders };
+    return parseStoryboardLibraryPayload(JSON.parse(raw));
   } catch {
     return { items: [], folders: [] };
-  }
-};
-
-const saveStoryboardLibrary = (
-  storageKey: string,
-  payload: StoryboardLibraryPayload
-): void => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(storageKey, JSON.stringify(payload));
-    window.dispatchEvent(
-      new CustomEvent('role-room:storyboard-library-updated', {
-        detail: { storageKey },
-      })
-    );
-  } catch {
-    // ignore quota / storage errors and keep editor functional
   }
 };
 
@@ -487,6 +736,15 @@ const toLocalFrames = (frames?: StoryboardFrameModel[]): StoryboardFrame[] => {
     dialogueCharacter: f.dialogueCharacter,
     drawingData: f.drawingData as FrameDrawingData | undefined,
     imageSource: f.imageSource as StoryboardFrame['imageSource'],
+    detailLevel: isStoryboardDetailLevel(f.detailLevel) ? f.detailLevel : undefined,
+    blockingNotes: typeof f.blockingNotes === 'string' ? f.blockingNotes : undefined,
+    focusPoint: typeof f.focusPoint === 'string' ? f.focusPoint : undefined,
+    screenDirection: isScreenDirection(f.screenDirection) ? f.screenDirection : undefined,
+    assist: parseAssistSettings(f.assist),
+    variantGroupId: typeof f.variantGroupId === 'string' ? f.variantGroupId : undefined,
+    variantLabel: typeof f.variantLabel === 'string' ? f.variantLabel : undefined,
+    createdAt: typeof f.createdAt === 'string' ? f.createdAt : undefined,
+    updatedAt: typeof f.updatedAt === 'string' ? f.updatedAt : undefined,
   }));
 };
 
@@ -507,6 +765,15 @@ const toModelFrames = (frames: StoryboardFrame[], defaultSceneId: string): Story
     dialogueCharacter: f.dialogueCharacter,
     drawingData: f.drawingData as StoryboardFrameModel['drawingData'],
     imageSource: f.imageSource,
+    detailLevel: f.detailLevel,
+    blockingNotes: f.blockingNotes,
+    focusPoint: f.focusPoint,
+    screenDirection: f.screenDirection,
+    assist: normalizeAssistSettings(f.assist),
+    variantGroupId: f.variantGroupId,
+    variantLabel: f.variantLabel,
+    createdAt: f.createdAt,
+    updatedAt: f.updatedAt,
   }));
 
 const rangeEqual = (a?: [number, number], b?: [number, number]): boolean =>
@@ -531,8 +798,20 @@ const framesEqual = (a: StoryboardFrame[], b: StoryboardFrame[]): boolean => {
       left.notes !== right.notes ||
       left.sceneId !== right.sceneId ||
       left.dialogueCharacter !== right.dialogueCharacter ||
+      left.detailLevel !== right.detailLevel ||
+      left.blockingNotes !== right.blockingNotes ||
+      left.focusPoint !== right.focusPoint ||
+      left.screenDirection !== right.screenDirection ||
+      left.variantGroupId !== right.variantGroupId ||
+      left.variantLabel !== right.variantLabel ||
+      serializeAssistSettings(left.assist) !== serializeAssistSettings(right.assist) ||
       !rangeEqual(left.scriptLineRange, right.scriptLineRange) ||
+      left.createdAt !== right.createdAt ||
+      left.updatedAt !== right.updatedAt ||
       left.drawingData?.dataUrl !== right.drawingData?.dataUrl ||
+      left.drawingData?.strokes !== right.drawingData?.strokes ||
+      left.drawingData?.baseImageUrl !== right.drawingData?.baseImageUrl ||
+      left.drawingData?.document?.updatedAt !== right.drawingData?.document?.updatedAt ||
       left.drawingData?.updatedAt !== right.drawingData?.updatedAt
     ) {
       return false;
@@ -544,6 +823,7 @@ const framesEqual = (a: StoryboardFrame[], b: StoryboardFrame[]): boolean => {
 export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps> = ({
   scene,
   onUpdate,
+  projectId,
   scriptContent,
   onScriptChange,
   showScriptPanel = false,
@@ -693,6 +973,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
               sceneId: currentScene.sceneId,
               scriptLineRange: [lineNumber, lineNumber] as [number, number],
               dialogueCharacter: currentDialogue?.characterName,
+              updatedAt: new Date().toISOString(),
             }
           : f
       )
@@ -715,7 +996,14 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
         setStoryboardFrames((frames) =>
           frames.map((frame) =>
             frame.id === frameId
-              ? { ...frame, imageUrl, thumbnailUrl, drawingData, imageSource: 'drawn' as const }
+              ? {
+                  ...frame,
+                  imageUrl,
+                  thumbnailUrl,
+                  drawingData,
+                  imageSource: 'drawn' as const,
+                  updatedAt: new Date().toISOString(),
+                }
               : frame
           )
         );
@@ -815,6 +1103,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
             onUpdate={setStoryboardFrames}
             onFrameDrawingComplete={handleFrameDrawingComplete}
             sceneId={scene.id}
+            projectId={projectId || scene.projectId}
             sceneNumber={scene.sceneNumber}
             sceneHeading={scene.heading || scene.sceneName}
             libraryScopeKey={String(scene.projectId || scene.manuscriptId || 'global')}
@@ -877,6 +1166,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
                 onUpdate={setStoryboardFrames}
                 onFrameDrawingComplete={handleFrameDrawingComplete}
                 sceneId={scene.id}
+                projectId={projectId || scene.projectId}
                 sceneNumber={scene.sceneNumber}
                 sceneHeading={scene.heading || scene.sceneName}
                 libraryScopeKey={String(scene.projectId || scene.manuscriptId || 'global')}
@@ -980,6 +1270,7 @@ const StoryboardView: React.FC<{
   onUpdate: (frames: StoryboardFrame[]) => void;
   onFrameDrawingComplete: (frameId: string, drawingData: FrameDrawingData, imageUrl: string) => void;
   sceneId: string;
+  projectId?: string;
   sceneNumber?: number | string;
   sceneHeading?: string;
   libraryScopeKey: string;
@@ -990,6 +1281,7 @@ const StoryboardView: React.FC<{
   onUpdate,
   onFrameDrawingComplete,
   sceneId,
+  projectId,
   sceneNumber,
   sceneHeading,
   libraryScopeKey,
@@ -999,6 +1291,7 @@ const StoryboardView: React.FC<{
   const device = useDeviceDetection();
   const { showSuccess, showInfo } = useToast();
   const { user } = useAuth();
+  const [workspaceMode, setWorkspaceMode] = useState<StoryboardWorkspaceMode>('thumbnail');
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
   const [quickViewFrameId, setQuickViewFrameId] = useState<string | null>(null);
   const [editingFrameId, setEditingFrameId] = useState<string | null>(null);
@@ -1025,10 +1318,13 @@ const StoryboardView: React.FC<{
     const payload = loadStoryboardLibrary(libraryStorageKey);
     return payload.folders;
   });
+  const [libraryHydrated, setLibraryHydrated] = useState(false);
 
   const editingFrame = frames.find((frame) => frame.id === editingFrameId) || null;
   const quickViewFrame = frames.find((frame) => frame.id === quickViewFrameId) || null;
   const activeFrame = frames[activeFrameIndex] || null;
+  const activeDetailLevel: StoryboardDetailLevel = activeFrame?.detailLevel || 'idea';
+  const activeAssist = mergeAssistSettings(activeDetailLevel, activeFrame?.assist);
   const creditHistoryItem = libraryItems.find((item) => item.id === creditHistoryItemId) || null;
   const sceneLabel =
     sceneHeading?.trim() ||
@@ -1076,6 +1372,10 @@ const StoryboardView: React.FC<{
     ],
     [availableLibraryFolders]
   );
+  const activeAssistOptions = useMemo(
+    () => ASSIST_FLAG_OPTIONS.filter((option) => option.levels.includes(activeDetailLevel)),
+    [activeDetailLevel]
+  );
   const filteredLibraryItems = useMemo(() => {
     const query = libraryQuery.trim().toLowerCase();
     return libraryItems.filter((item) => {
@@ -1111,18 +1411,42 @@ const StoryboardView: React.FC<{
   }, [folderNameById, libraryAuthorFilter, libraryFolderFilter, libraryItems, libraryQuery, libraryTagFilter]);
 
   useEffect(() => {
-    const payload = loadStoryboardLibrary(libraryStorageKey);
-    setLibraryItems(payload.items);
-    setLibraryFolders(payload.folders);
+    let cancelled = false;
+    const fallbackPayload = loadStoryboardLibrary(libraryStorageKey);
+    setLibraryItems(fallbackPayload.items);
+    setLibraryFolders(fallbackPayload.folders);
     setLibraryFolderFilter('alle');
-  }, [libraryStorageKey]);
+    setLibraryHydrated(!projectId);
+
+    if (!projectId) {
+      setLibraryHydrated(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void loadRawStoryboardLibraryPayloadForProject(projectId, libraryScopeKey).then((payload) => {
+      if (cancelled) return;
+      if (payload) {
+        const parsedPayload = parseStoryboardLibraryPayload(payload);
+        setLibraryItems(parsedPayload.items);
+        setLibraryFolders(parsedPayload.folders);
+      }
+      setLibraryHydrated(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [libraryScopeKey, libraryStorageKey, projectId]);
 
   useEffect(() => {
-    saveStoryboardLibrary(libraryStorageKey, {
+    if (!libraryHydrated) return;
+    void saveStoryboardLibraryPayloadForProject(projectId, libraryScopeKey, {
       items: libraryItems,
       folders: libraryFolders,
     });
-  }, [libraryFolders, libraryItems, libraryStorageKey]);
+  }, [libraryFolders, libraryHydrated, libraryItems, libraryScopeKey, projectId]);
 
   useEffect(() => {
     if (!editingFrame) {
@@ -1130,12 +1454,39 @@ const StoryboardView: React.FC<{
       return;
     }
     setEditDraft({ ...editingFrame });
-  }, [editingFrameId, editingFrame?.id, editingFrame?.description, editingFrame?.cameraAngle, editingFrame?.movement, editingFrame?.duration, editingFrame?.notes, editingFrame?.shotNumber]);
+  }, [editingFrame]);
 
   const patchFrame = useCallback(
     (frameId: string, patch: Partial<StoryboardFrame>) => {
+      const hasDetailLevel = Object.prototype.hasOwnProperty.call(patch, 'detailLevel');
+      const hasAssist = Object.prototype.hasOwnProperty.call(patch, 'assist');
+      const hasScreenDirection = Object.prototype.hasOwnProperty.call(patch, 'screenDirection');
       onUpdate(
-        frames.map((frame) => (frame.id === frameId ? { ...frame, ...patch } : frame))
+        frames.map((frame) =>
+          frame.id === frameId
+            ? {
+                ...frame,
+                ...patch,
+                detailLevel:
+                  hasDetailLevel && isStoryboardDetailLevel(patch.detailLevel)
+                    ? patch.detailLevel
+                    : frame.detailLevel || 'idea',
+                screenDirection: hasScreenDirection
+                  ? (isScreenDirection(patch.screenDirection) ? patch.screenDirection : undefined)
+                  : frame.screenDirection,
+                assist:
+                  hasDetailLevel || hasAssist
+                    ? mergeAssistSettings(
+                        hasDetailLevel && isStoryboardDetailLevel(patch.detailLevel)
+                          ? patch.detailLevel
+                          : frame.detailLevel || 'idea',
+                        hasAssist ? patch.assist : frame.assist
+                      )
+                    : frame.assist,
+                updatedAt: new Date().toISOString(),
+              }
+            : frame
+        )
       );
     },
     [frames, onUpdate]
@@ -1150,16 +1501,163 @@ const StoryboardView: React.FC<{
   );
 
   const handleAddFrame = () => {
-    const newFrame: StoryboardFrame = {
-      id: createFrameId(),
-      shotNumber: getNextShotNumber(frames),
-      description: 'Ny shot',
-      cameraAngle: 'Medium',
-      movement: 'Static',
-      duration: 2,
-    };
-    onUpdate([...frames, newFrame]);
+    const newFrame = createStoryboardDraftFrame(frames, {
+      sceneId,
+      detailLevel: workspaceMode === 'review' ? 'presentation' : workspaceMode === 'scene' ? 'blocking' : 'idea',
+    });
+    const nextFrames = [...frames, newFrame];
+    onUpdate(nextFrames);
+    onSelectFrame(nextFrames.length - 1);
   };
+
+  const duplicateFrame = useCallback(
+    (
+      sourceFrame: StoryboardFrame,
+      existingFrames: StoryboardFrame[],
+      overrides: Partial<StoryboardFrame> = {}
+    ): StoryboardFrame => {
+      const now = new Date().toISOString();
+      const nextDetailLevel =
+        overrides.detailLevel && isStoryboardDetailLevel(overrides.detailLevel)
+          ? overrides.detailLevel
+          : sourceFrame.detailLevel || 'idea';
+      const hasBlockingNotes = Object.prototype.hasOwnProperty.call(overrides, 'blockingNotes');
+      const hasFocusPoint = Object.prototype.hasOwnProperty.call(overrides, 'focusPoint');
+      const hasScreenDirection = Object.prototype.hasOwnProperty.call(overrides, 'screenDirection');
+      const hasAssist = Object.prototype.hasOwnProperty.call(overrides, 'assist');
+      const hasVariantLabel = Object.prototype.hasOwnProperty.call(overrides, 'variantLabel');
+      const shotNumberCandidate =
+        typeof overrides.shotNumber === 'string' && overrides.shotNumber.trim().length > 0
+          ? overrides.shotNumber
+          : `${sourceFrame.shotNumber || getNextShotNumber(existingFrames)}-copy`;
+
+      return {
+        ...cloneStoryboardFrame(sourceFrame),
+        ...overrides,
+        id: createFrameId(),
+        shotNumber: buildUniqueShotNumber(existingFrames, shotNumberCandidate),
+        detailLevel: nextDetailLevel,
+        blockingNotes: hasBlockingNotes
+          ? (typeof overrides.blockingNotes === 'string' ? overrides.blockingNotes.trim() || undefined : undefined)
+          : sourceFrame.blockingNotes,
+        focusPoint: hasFocusPoint
+          ? (typeof overrides.focusPoint === 'string' ? overrides.focusPoint.trim() || undefined : undefined)
+          : sourceFrame.focusPoint,
+        screenDirection: hasScreenDirection
+          ? (isScreenDirection(overrides.screenDirection) ? overrides.screenDirection : undefined)
+          : sourceFrame.screenDirection,
+        assist: mergeAssistSettings(nextDetailLevel, hasAssist ? overrides.assist : sourceFrame.assist),
+        variantLabel: hasVariantLabel
+          ? (typeof overrides.variantLabel === 'string' ? overrides.variantLabel.trim() || undefined : undefined)
+          : sourceFrame.variantLabel,
+        createdAt: now,
+        updatedAt: now,
+        drawingData: sourceFrame.drawingData
+          ? {
+              ...sourceFrame.drawingData,
+              createdAt: now,
+              updatedAt: now,
+            }
+          : undefined,
+      };
+    },
+    []
+  );
+
+  const handleDuplicateActiveFrame = useCallback(() => {
+    if (!activeFrame) {
+      showInfo('Velg en frame for å duplisere den.');
+      return;
+    }
+    const duplicate = duplicateFrame(activeFrame, frames, {
+      shotNumber: `${activeFrame.shotNumber}-copy`,
+      variantGroupId: undefined,
+      variantLabel: undefined,
+    });
+    const insertIndex = activeFrameIndex + 1;
+    const nextFrames = [...frames];
+    nextFrames.splice(insertIndex, 0, duplicate);
+    onUpdate(nextFrames);
+    onSelectFrame(insertIndex);
+    showSuccess(`Dupliserte shot ${activeFrame.shotNumber}.`);
+  }, [activeFrame, activeFrameIndex, duplicateFrame, frames, onSelectFrame, onUpdate, showInfo, showSuccess]);
+
+  const handleCreateVariantsForActiveFrame = useCallback(() => {
+    if (!activeFrame) {
+      showInfo('Velg en frame for å lage varianter.');
+      return;
+    }
+
+    const variantGroupId = activeFrame.variantGroupId || createFrameId();
+    const updatedActiveFrame: StoryboardFrame = {
+      ...activeFrame,
+      variantGroupId,
+      variantLabel: activeFrame.variantLabel || 'Original',
+      assist: mergeAssistSettings(activeDetailLevel, activeFrame.assist),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const variants: StoryboardFrame[] = [];
+    ['A', 'B', 'C'].forEach((suffix, index) => {
+      variants.push(
+        duplicateFrame(activeFrame, [...frames, ...variants], {
+          shotNumber: `${activeFrame.shotNumber}-${suffix}`,
+          variantGroupId,
+          variantLabel: `Variant ${suffix}`,
+          description: activeFrame.description,
+          detailLevel: activeDetailLevel,
+          notes:
+            index === 0
+              ? activeFrame.notes
+              : `${activeFrame.notes ? `${activeFrame.notes}\n` : ''}Utforsk alternativ ${suffix}`,
+        })
+      );
+    });
+
+    const nextFrames = frames.map((frame, index) =>
+      index === activeFrameIndex ? updatedActiveFrame : frame
+    );
+    nextFrames.splice(activeFrameIndex + 1, 0, ...variants);
+    onUpdate(nextFrames);
+    onSelectFrame(activeFrameIndex + 1);
+    showSuccess(`La til 3 varianter for shot ${activeFrame.shotNumber}.`);
+  }, [
+    activeDetailLevel,
+    activeFrame,
+    activeFrameIndex,
+    duplicateFrame,
+    frames,
+    onSelectFrame,
+    onUpdate,
+    showInfo,
+    showSuccess,
+  ]);
+
+  const handleSetActiveDetailLevel = useCallback(
+    (detailLevel: StoryboardDetailLevel) => {
+      if (!activeFrame) {
+        showInfo('Velg en frame for å endre detaljnivaa.');
+        return;
+      }
+      patchFrame(activeFrame.id, { detailLevel });
+    },
+    [activeFrame, patchFrame, showInfo]
+  );
+
+  const handleToggleAssistFlag = useCallback(
+    (flag: StoryboardAssistFlag) => {
+      if (!activeFrame) {
+        showInfo('Velg en frame for å justere guide-lagene.');
+        return;
+      }
+      const nextAssist = {
+        ...(mergeAssistSettings(activeDetailLevel, activeFrame.assist) || {}),
+        [flag]: !(mergeAssistSettings(activeDetailLevel, activeFrame.assist)?.[flag] ?? false),
+      };
+      patchFrame(activeFrame.id, { assist: nextAssist });
+    },
+    [activeDetailLevel, activeFrame, patchFrame, showInfo]
+  );
 
   const saveFrameToLibrary = useCallback(
     (frame: StoryboardFrame) => {
@@ -1264,6 +1762,8 @@ const StoryboardView: React.FC<{
           id: currentFrame.id,
           shotNumber: currentFrame.shotNumber,
           sceneId,
+          createdAt: currentFrame.createdAt,
+          updatedAt: new Date().toISOString(),
         };
         onUpdate(
           frames.map((frame, index) => (index === activeFrameIndex ? replacementFrame : frame))
@@ -1273,11 +1773,14 @@ const StoryboardView: React.FC<{
         return;
       }
 
+      const now = new Date().toISOString();
       const insertedFrame: StoryboardFrame = {
         ...cloneStoryboardFrame(item.frame),
         id: createFrameId(),
         shotNumber: getNextShotNumber(frames),
         sceneId,
+        createdAt: now,
+        updatedAt: now,
       };
       const updatedFrames = [...frames, insertedFrame];
       onUpdate(updatedFrames);
@@ -1425,8 +1928,51 @@ const StoryboardView: React.FC<{
     [filteredLibraryItems]
   );
 
-  const drawingFrame = frames.find(f => f.id === drawingFrameId);
-  const cameraAngles = ['Wide', 'Medium', 'Close-up', 'Overhead', 'POV'];
+  const drawingFrame = frames.find((frame) => frame.id === drawingFrameId);
+  const drawingFrameDocument = useMemo<StoryboardDrawingDocument | undefined>(() => {
+    if (!drawingFrame?.drawingData) return undefined;
+    return restoreStoryboardDrawingDocumentFromLegacy({
+      document: drawingFrame.drawingData.document,
+      strokes: drawingFrame.drawingData.strokes,
+      baseImageUrl: drawingFrame.drawingData.baseImageUrl || drawingFrame.imageUrl,
+      originalBaseImageUrl: drawingFrame.drawingData.originalBaseImageUrl || drawingFrame.imageUrl,
+      dataUrl: drawingFrame.drawingData.dataUrl || drawingFrame.imageUrl,
+      brushSettings: drawingFrame.drawingData.brushSettings,
+    }, {
+      frameId: drawingFrame.id,
+      workflowLevel: drawingFrame.detailLevel,
+      createdAt: drawingFrame.drawingData.createdAt,
+      updatedAt: drawingFrame.drawingData.updatedAt,
+    });
+  }, [drawingFrame]);
+  const drawingFrameInitialStrokes = useMemo(
+    () => parseStoredStrokes(drawingFrame?.drawingData?.strokes) || (
+      drawingFrameDocument ? getPrimaryStoryboardDocumentStrokes(drawingFrameDocument) : undefined
+    ),
+    [drawingFrame?.drawingData?.strokes, drawingFrameDocument]
+  );
+  const drawingFrameBaseImage = useMemo(() => {
+    if (!drawingFrame) return undefined;
+    return drawingFrameInitialStrokes !== undefined
+      ? drawingFrame.drawingData?.baseImageUrl
+      : drawingFrame.imageUrl;
+  }, [drawingFrame, drawingFrameInitialStrokes]);
+  const drawingFrameReferenceImage = useMemo(() => {
+    const reference = drawingFrameDocument
+      ? getPrimaryStoryboardDocumentReferenceImage(drawingFrameDocument)
+      : undefined;
+    if (!reference) return undefined;
+    return {
+      src: reference.src,
+      opacity: reference.opacity,
+      visible: reference.visible,
+      x: reference.x,
+      y: reference.y,
+      width: reference.width,
+      height: reference.height,
+    };
+  }, [drawingFrameDocument]);
+  const cameraAngles = Array.from(STORYBOARD_LANGUAGE_OPTIONS);
 
   return (
     <Box>
@@ -1438,59 +1984,198 @@ const StoryboardView: React.FC<{
           background: 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.8))',
         }}
       >
-        <Stack
-          direction={{ xs: 'column', md: 'row' }}
-          spacing={1.5}
-          alignItems={{ xs: 'stretch', md: 'center' }}
-          justifyContent="space-between"
-        >
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-            <Typography variant="h6">Storyboard-rutenett</Typography>
-            <Chip size="small" color="primary" variant="outlined" label={`${frames.length} frames`} />
-            {(device.isIPad || device.hasTouchScreen) && (
+        <Stack spacing={1.5}>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={1.5}
+            alignItems={{ xs: 'stretch', md: 'center' }}
+            justifyContent="space-between"
+          >
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Typography variant="h6">Storyboard-rutenett</Typography>
+              <Chip size="small" color="primary" variant="outlined" label={`${frames.length} frames`} />
               <Chip
-                icon={device.hasPencilSupport ? <CreateIcon /> : <TouchAppIcon />}
-                label={device.hasPencilSupport ? 'Apple Pencil klar' : 'Touch-tegning'}
                 size="small"
                 color="secondary"
                 variant="outlined"
+                label={`Modus: ${WORKSPACE_MODE_OPTIONS.find((option) => option.value === workspaceMode)?.label || 'Thumbnails'}`}
               />
-            )}
+              {(device.isIPad || device.hasTouchScreen) && (
+                <Chip
+                  icon={device.hasPencilSupport ? <CreateIcon /> : <TouchAppIcon />}
+                  label={device.hasPencilSupport ? 'Apple Pencil klar' : 'Touch-tegning'}
+                  size="small"
+                  color="secondary"
+                  variant="outlined"
+                />
+              )}
+            </Stack>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch">
+              <Button
+                startIcon={<SaveIcon />}
+                variant="outlined"
+                size="small"
+                onClick={handleSaveActiveFrameToLibrary}
+                disabled={!activeFrame}
+              >
+                Lagre valgt i bibliotek
+              </Button>
+              <Button
+                startIcon={<CollectionsBookmarkIcon />}
+                variant="outlined"
+                size="small"
+                onClick={() => setLibraryDialogOpen(true)}
+              >
+                Storyboard-bibliotek ({libraryItems.length})
+              </Button>
+              <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={handleAddFrame}>
+                Ny storyboard
+              </Button>
+            </Stack>
           </Stack>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch">
-            <Button
-              startIcon={<SaveIcon />}
-              variant="outlined"
+
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', lg: 'center' }}>
+            <ToggleButtonGroup
               size="small"
-              onClick={handleSaveActiveFrameToLibrary}
-              disabled={!activeFrame}
+              exclusive
+              value={workspaceMode}
+              onChange={(_, mode: StoryboardWorkspaceMode | null) => {
+                if (mode) setWorkspaceMode(mode);
+              }}
             >
-              Lagre valgt i bibliotek
-            </Button>
-            <Button
-              startIcon={<CollectionsBookmarkIcon />}
-              variant="outlined"
-              size="small"
-              onClick={() => setLibraryDialogOpen(true)}
-            >
-              Storyboard-bibliotek ({libraryItems.length})
-            </Button>
-            <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={handleAddFrame}>
-              Ny Storyboard
-            </Button>
+              {WORKSPACE_MODE_OPTIONS.map((option) => (
+                <ToggleButton key={option.value} value={option.value}>
+                  {option.label}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch" sx={{ flex: 1 }}>
+              <Button
+                startIcon={<ContentCopyIcon />}
+                variant="outlined"
+                size="small"
+                disabled={!activeFrame}
+                onClick={handleDuplicateActiveFrame}
+              >
+                Dupliser valgt
+              </Button>
+              <Button
+                startIcon={<AutoAwesomeIcon />}
+                variant="outlined"
+                size="small"
+                disabled={!activeFrame}
+                onClick={handleCreateVariantsForActiveFrame}
+              >
+                Lag 3 varianter
+              </Button>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={activeDetailLevel}
+                onChange={(_, value: StoryboardDetailLevel | null) => {
+                  if (value) handleSetActiveDetailLevel(value);
+                }}
+                sx={{ flexWrap: 'wrap' }}
+              >
+                {DETAIL_LEVEL_OPTIONS.map((option) => (
+                  <ToggleButton key={option.value} value={option.value}>
+                    {option.shortLabel}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+            </Stack>
           </Stack>
+
+          {activeFrame && (
+            <Stack spacing={1}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'stretch', md: 'center' }}>
+                <TextField
+                  select
+                  size="small"
+                  label="Shot language"
+                  value={activeFrame.cameraAngle || STORYBOARD_LANGUAGE_OPTIONS[0]}
+                  onChange={(event) => patchFrame(activeFrame.id, { cameraAngle: event.target.value })}
+                  sx={{ minWidth: { xs: '100%', md: 180 } }}
+                >
+                  {STORYBOARD_LANGUAGE_OPTIONS.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  size="small"
+                  label="Screen direction"
+                  value={activeFrame.screenDirection || ''}
+                  onChange={(event) =>
+                    patchFrame(activeFrame.id, {
+                      screenDirection: event.target.value ? (event.target.value as ScreenDirection) : undefined,
+                    })
+                  }
+                  sx={{ minWidth: { xs: '100%', md: 180 } }}
+                >
+                  <MenuItem value="">Ingen</MenuItem>
+                  {SCREEN_DIRECTION_OPTIONS.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {getScreenDirectionLabel(option)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  size="small"
+                  label="Fokuspunkt"
+                  value={activeFrame.focusPoint || ''}
+                  onChange={(event) => patchFrame(activeFrame.id, { focusPoint: event.target.value })}
+                  sx={{ minWidth: { xs: '100%', md: 200 } }}
+                />
+                <TextField
+                  size="small"
+                  label="Blocking"
+                  value={activeFrame.blockingNotes || ''}
+                  onChange={(event) => patchFrame(activeFrame.id, { blockingNotes: event.target.value })}
+                  sx={{ flex: 1, minWidth: { xs: '100%', md: 240 } }}
+                />
+              </Stack>
+
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                {activeAssistOptions.map((option) => {
+                  const enabled = Boolean(activeAssist?.[option.key]);
+                  return (
+                    <Chip
+                      key={option.key}
+                      label={option.label}
+                      size="small"
+                      color={enabled ? 'primary' : 'default'}
+                      variant={enabled ? 'filled' : 'outlined'}
+                      onClick={() => handleToggleAssistFlag(option.key)}
+                    />
+                  );
+                })}
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`${getAssistCount(activeAssist)} aktive guider`}
+                />
+                {activeFrame.variantLabel && (
+                  <Chip size="small" color="secondary" variant="outlined" label={activeFrame.variantLabel} />
+                )}
+              </Stack>
+            </Stack>
+          )}
         </Stack>
       </Paper>
 
       <Box
         sx={{
           display: 'grid',
-          gap: 2,
+          gap: workspaceMode === 'thumbnail' ? 1.5 : 2,
           gridTemplateColumns: {
-            xs: '1fr',
-            sm: 'repeat(2, minmax(0, 1fr))',
-            lg: 'repeat(3, minmax(0, 1fr))',
-            xl: 'repeat(4, minmax(0, 1fr))',
+            xs: workspaceMode === 'thumbnail' ? 'repeat(2, minmax(0, 1fr))' : '1fr',
+            sm: workspaceMode === 'thumbnail' ? 'repeat(3, minmax(0, 1fr))' : 'repeat(2, minmax(0, 1fr))',
+            lg: workspaceMode === 'thumbnail' ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))',
+            xl: workspaceMode === 'thumbnail' ? 'repeat(5, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
           },
         }}
       >
@@ -1507,12 +2192,56 @@ const StoryboardView: React.FC<{
             <StoryboardFrameCard
               frame={frame}
               index={index}
+              workspaceMode={workspaceMode}
               isActive={index === activeFrameIndex}
               onSelect={() => onSelectFrame(index)}
               onQuickViewClick={() => setQuickViewFrameId(frame.id)}
               onDrawClick={() => setDrawingFrameId(frame.id)}
               onEditClick={() => setEditingFrameId(frame.id)}
               onDeleteClick={() => setDeletingFrameId(frame.id)}
+              onDuplicateClick={() => {
+                onSelectFrame(index);
+                const duplicate = duplicateFrame(frame, frames, {
+                  shotNumber: `${frame.shotNumber}-copy`,
+                  variantGroupId: undefined,
+                  variantLabel: undefined,
+                });
+                const nextFrames = [...frames];
+                nextFrames.splice(index + 1, 0, duplicate);
+                onUpdate(nextFrames);
+                onSelectFrame(index + 1);
+              }}
+              onCreateVariantsClick={() => {
+                onSelectFrame(index);
+                const variantGroupId = frame.variantGroupId || createFrameId();
+                const updatedFrame: StoryboardFrame = {
+                  ...frame,
+                  variantGroupId,
+                  variantLabel: frame.variantLabel || 'Original',
+                  assist: mergeAssistSettings(frame.detailLevel || 'idea', frame.assist),
+                  updatedAt: new Date().toISOString(),
+                };
+                const variants: StoryboardFrame[] = [];
+                ['A', 'B', 'C'].forEach((suffix, variantIndex) => {
+                  variants.push(
+                    duplicateFrame(frame, [...frames, ...variants], {
+                      shotNumber: `${frame.shotNumber}-${suffix}`,
+                      variantGroupId,
+                      variantLabel: `Variant ${suffix}`,
+                      notes:
+                        variantIndex === 0
+                          ? frame.notes
+                          : `${frame.notes ? `${frame.notes}\n` : ''}Utforsk alternativ ${suffix}`,
+                    })
+                  );
+                });
+                const nextFrames = frames.map((entry, entryIndex) =>
+                  entryIndex === index ? updatedFrame : entry
+                );
+                nextFrames.splice(index + 1, 0, ...variants);
+                onUpdate(nextFrames);
+                onSelectFrame(index + 1);
+              }}
               onSaveToLibraryClick={() => handleSaveFrameCardToLibrary(frame)}
               onCameraClick={() => {
                 const current = cameraAngles.indexOf(frame.cameraAngle);
@@ -1546,9 +2275,13 @@ const StoryboardView: React.FC<{
         <FrameDrawingEditor
           frameId={drawingFrame.id}
           aspectRatio="16:9"
-          initialImage={drawingFrame.imageUrl}
+          initialImage={drawingFrameBaseImage}
+          initialStrokes={drawingFrameInitialStrokes}
+          initialDrawingData={drawingFrame.drawingData}
+          workflowLevel={drawingFrame.detailLevel || 'idea'}
           mode="dialog"
           sceneId={sceneId}
+          referenceImage={drawingFrameReferenceImage}
           onSave={(drawingData, imageUrl) => {
             onFrameDrawingComplete(drawingFrame.id, drawingData, imageUrl);
             setDrawingFrameId(null);
@@ -2156,10 +2889,25 @@ const StoryboardView: React.FC<{
                 <Chip label={`Kamera: ${quickViewFrame.cameraAngle}`} size="small" />
                 <Chip label={`Bevegelse: ${quickViewFrame.movement}`} size="small" />
                 <Chip label={`Varighet: ${quickViewFrame.duration}s`} size="small" />
+                <Chip label={getDetailLevelMeta(quickViewFrame.detailLevel).editorLabel} size="small" />
+                {quickViewFrame.screenDirection && (
+                  <Chip label={getScreenDirectionLabel(quickViewFrame.screenDirection)} size="small" />
+                )}
+                {quickViewFrame.variantLabel && <Chip label={quickViewFrame.variantLabel} size="small" color="secondary" />}
               </Stack>
               <Typography variant="body2" color="text.secondary">
                 {quickViewFrame.description}
               </Typography>
+              {quickViewFrame.focusPoint && (
+                <Typography variant="body2">
+                  Fokuspunkt: {quickViewFrame.focusPoint}
+                </Typography>
+              )}
+              {quickViewFrame.blockingNotes && (
+                <Typography variant="body2">
+                  Blocking: {quickViewFrame.blockingNotes}
+                </Typography>
+              )}
               {quickViewFrame.notes && (
                 <Typography variant="body2">
                   {quickViewFrame.notes}
@@ -2194,8 +2942,14 @@ const StoryboardView: React.FC<{
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(editingFrameId && editDraft)} onClose={() => setEditingFrameId(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Rediger frame</DialogTitle>
+      <Dialog
+        open={Boolean(editingFrameId && editDraft)}
+        onClose={() => setEditingFrameId(null)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ 'data-testid': 'scene-storyboard-edit-dialog' }}
+      >
+        <DialogTitle data-testid="scene-storyboard-edit-title">Rediger frame</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
@@ -2209,8 +2963,28 @@ const StoryboardView: React.FC<{
               value={editDraft?.description || ''}
               onChange={(event) => setEditDraft((prev) => (prev ? { ...prev, description: event.target.value } : prev))}
               fullWidth
+              inputProps={{ 'data-testid': 'scene-storyboard-edit-description' }}
             />
             <Stack direction="row" gap={2}>
+              <TextField
+                select
+                label="Detaljnivaa"
+                value={editDraft?.detailLevel || 'idea'}
+                onChange={(event) =>
+                  setEditDraft((prev) =>
+                    prev && isStoryboardDetailLevel(event.target.value)
+                      ? { ...prev, detailLevel: event.target.value }
+                      : prev
+                  )
+                }
+                fullWidth
+              >
+                {DETAIL_LEVEL_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.editorLabel}
+                  </MenuItem>
+                ))}
+              </TextField>
               <TextField
                 label="Kamera"
                 value={editDraft?.cameraAngle || ''}
@@ -2224,6 +2998,49 @@ const StoryboardView: React.FC<{
                 fullWidth
               />
             </Stack>
+            <Stack direction="row" gap={2}>
+              <TextField
+                select
+                label="Screen direction"
+                value={editDraft?.screenDirection || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          screenDirection: event.target.value
+                            ? (event.target.value as ScreenDirection)
+                            : undefined,
+                        }
+                      : prev
+                  )
+                }
+                fullWidth
+              >
+                <MenuItem value="">Ingen</MenuItem>
+                {SCREEN_DIRECTION_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {getScreenDirectionLabel(option)}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="Fokuspunkt"
+                value={editDraft?.focusPoint || ''}
+                onChange={(event) => setEditDraft((prev) => (prev ? { ...prev, focusPoint: event.target.value } : prev))}
+                fullWidth
+              />
+            </Stack>
+            <TextField
+              label="Blocking"
+              value={editDraft?.blockingNotes || ''}
+              onChange={(event) =>
+                setEditDraft((prev) => (prev ? { ...prev, blockingNotes: event.target.value } : prev))
+              }
+              multiline
+              minRows={2}
+              fullWidth
+            />
             <TextField
               label="Varighet (sekunder)"
               type="number"
@@ -2249,17 +3066,27 @@ const StoryboardView: React.FC<{
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditingFrameId(null)}>Avbryt</Button>
+          <Button onClick={() => setEditingFrameId(null)} data-testid="scene-storyboard-edit-cancel">
+            Avbryt
+          </Button>
           <Button
             variant="contained"
+            data-testid="scene-storyboard-edit-save"
             onClick={() => {
               if (!editingFrameId || !editDraft) return;
+              const detailLevel = isStoryboardDetailLevel(editDraft.detailLevel)
+                ? editDraft.detailLevel
+                : 'idea';
               patchFrame(editingFrameId, {
                 shotNumber: editDraft.shotNumber.trim() || '1A',
                 description: editDraft.description.trim() || 'Ny shot',
                 cameraAngle: editDraft.cameraAngle.trim() || 'Medium',
                 movement: editDraft.movement.trim() || 'Static',
                 duration: Math.max(1, Number(editDraft.duration) || 1),
+                detailLevel,
+                screenDirection: editDraft.screenDirection,
+                focusPoint: editDraft.focusPoint?.trim() || undefined,
+                blockingNotes: editDraft.blockingNotes?.trim() || undefined,
                 notes: editDraft.notes?.trim() || undefined,
               });
               setEditingFrameId(null);
@@ -2291,12 +3118,15 @@ const StoryboardView: React.FC<{
 const StoryboardFrameCard: React.FC<{
   frame: StoryboardFrame;
   index: number;
+  workspaceMode: StoryboardWorkspaceMode;
   isActive?: boolean;
   onSelect?: () => void;
   onQuickViewClick?: () => void;
   onDrawClick?: () => void;
   onEditClick?: () => void;
   onDeleteClick?: () => void;
+  onDuplicateClick?: () => void;
+  onCreateVariantsClick?: () => void;
   onSaveToLibraryClick?: () => void;
   onCameraClick?: () => void;
   onLightClick?: () => void;
@@ -2305,12 +3135,15 @@ const StoryboardFrameCard: React.FC<{
 }> = ({
   frame,
   index,
+  workspaceMode,
   isActive,
   onSelect,
   onQuickViewClick,
   onDrawClick,
   onEditClick,
   onDeleteClick,
+  onDuplicateClick,
+  onCreateVariantsClick,
   onSaveToLibraryClick,
   onCameraClick,
   onLightClick,
@@ -2319,9 +3152,15 @@ const StoryboardFrameCard: React.FC<{
 }) => {
   const previewImageUrl = frame.thumbnailUrl || frame.imageUrl;
   const hasPreviewImage = Boolean(previewImageUrl);
+  const detailMeta = getDetailLevelMeta(frame.detailLevel);
+  const assistCount = getAssistCount(mergeAssistSettings(frame.detailLevel || 'idea', frame.assist));
+  const isThumbnailMode = workspaceMode === 'thumbnail';
+  const supportText = frame.blockingNotes || frame.focusPoint || frame.notes;
 
   return (
     <Card
+      data-testid={isActive ? 'scene-storyboard-active-frame-card' : `scene-storyboard-frame-card-${frame.id}`}
+      data-frame-id={frame.id}
       aria-label={`Storyboard frame ${index + 1}`}
       onClick={onSelect}
       sx={{
@@ -2329,6 +3168,7 @@ const StoryboardFrameCard: React.FC<{
         display: 'flex',
         flexDirection: 'column',
         cursor: 'pointer',
+        borderRadius: isThumbnailMode ? 2 : 3,
         border: isActive ? '1px solid rgba(14, 165, 233, 0.95)' : '1px solid rgba(148,163,184,0.22)',
         background: 'linear-gradient(180deg, rgba(2,6,23,0.96), rgba(15,23,42,0.96))',
         boxShadow: isActive
@@ -2346,7 +3186,7 @@ const StoryboardFrameCard: React.FC<{
       <Box
         sx={{
           position: 'relative',
-          paddingTop: '56.25%', // 16:9 aspect ratio
+          paddingTop: isThumbnailMode ? '62%' : '56.25%',
           bgcolor: 'rgba(15,23,42,0.7)',
           borderBottom: 1,
           borderColor: 'divider',
@@ -2408,17 +3248,44 @@ const StoryboardFrameCard: React.FC<{
         )}
 
         {/* Shot Number Overlay */}
-        <Chip
-          label={`Shot ${frame.shotNumber}`}
-          size="small"
+        <Stack
+          direction="row"
+          spacing={0.5}
           sx={{
             position: 'absolute',
             top: 8,
             left: 8,
-            bgcolor: 'rgba(0,0,0,0.7)',
-            color: 'white',
+            maxWidth: 'calc(100% - 92px)',
+            flexWrap: 'wrap',
           }}
-        />
+        >
+          <Chip
+            label={`Shot ${frame.shotNumber}`}
+            size="small"
+            sx={{
+              bgcolor: 'rgba(0,0,0,0.7)',
+              color: 'white',
+            }}
+          />
+          <Chip
+            label={detailMeta.shortLabel}
+            size="small"
+            sx={{
+              bgcolor: 'rgba(15,23,42,0.78)',
+              color: 'rgba(226,232,240,0.95)',
+            }}
+          />
+          {frame.variantLabel && (
+            <Chip
+              label={frame.variantLabel}
+              size="small"
+              sx={{
+                bgcolor: 'rgba(139,92,246,0.9)',
+                color: 'white',
+              }}
+            />
+          )}
+        </Stack>
 
         {/* Image Source Badge */}
         {frame.imageSource === 'drawn' && (
@@ -2428,7 +3295,7 @@ const StoryboardFrameCard: React.FC<{
             size="small"
             sx={{
               position: 'absolute',
-              top: hasPreviewImage ? 48 : 8,
+              top: hasPreviewImage ? 48 : 42,
               right: 8,
               bgcolor: 'rgba(139,92,246,0.9)',
               color: 'white',
@@ -2546,27 +3413,52 @@ const StoryboardFrameCard: React.FC<{
         </Stack>
       </Box>
 
-      <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: isThumbnailMode ? 1.25 : 2 }}>
         <Stack spacing={1}>
-          <Typography variant="body2" fontWeight="medium" color="rgba(248,250,252,0.95)">
+          <Typography
+            variant={isThumbnailMode ? 'caption' : 'body2'}
+            fontWeight="medium"
+            color="rgba(248,250,252,0.95)"
+            sx={{
+              display: '-webkit-box',
+              WebkitLineClamp: isThumbnailMode ? 2 : 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
             {frame.description}
           </Typography>
 
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
             <Chip label={frame.cameraAngle} size="small" sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: 'rgba(224,242,254,0.95)' }} />
             <Chip label={frame.movement} size="small" sx={{ bgcolor: 'rgba(14,165,233,0.16)', color: 'rgba(224,242,254,0.95)' }} />
             <Chip label={`${frame.duration}s`} size="small" sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: 'rgba(254,243,199,0.95)' }} />
+            {frame.screenDirection && (
+              <Chip
+                label={getScreenDirectionLabel(frame.screenDirection)}
+                size="small"
+                sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: 'rgba(209,250,229,0.98)' }}
+              />
+            )}
+            {assistCount > 0 && (
+              <Chip
+                label={`${assistCount} guider`}
+                size="small"
+                variant="outlined"
+                sx={{ color: 'rgba(226,232,240,0.9)', borderColor: 'rgba(148,163,184,0.35)' }}
+              />
+            )}
           </Stack>
 
-          {frame.notes && (
+          {supportText && (
             <Typography variant="caption" color="rgba(148,163,184,0.95)">
-              {frame.notes}
+              {supportText}
             </Typography>
           )}
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.22)' }} />
 
-          <Stack direction="row" spacing={1} mt={1} sx={{ mt: 'auto' }}>
+          <Stack direction="row" spacing={0.5} mt={1} sx={{ mt: 'auto', flexWrap: 'wrap' }} useFlexGap>
             <Tooltip title="Lagre i storyboard-bibliotek">
               <IconButton
                 size="small"
@@ -2579,10 +3471,39 @@ const StoryboardFrameCard: React.FC<{
                 <CollectionsBookmarkIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <IconButton size="small" color="primary" onClick={(event) => {
-              event.stopPropagation();
-              onEditClick?.();
-            }}>
+            <Tooltip title="Dupliser panel">
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDuplicateClick?.();
+                }}
+              >
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Lag 3 varianter">
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCreateVariantsClick?.();
+                }}
+              >
+                <AutoAwesomeIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <IconButton
+              size="small"
+              color="primary"
+              data-testid={isActive ? 'scene-storyboard-active-edit-button' : `scene-storyboard-edit-button-${frame.id}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onEditClick?.();
+              }}
+            >
               <EditIcon fontSize="small" />
             </IconButton>
             <IconButton size="small" color="error" onClick={(event) => {
@@ -2768,6 +3689,7 @@ const ShotListView: React.FC<{
           variant="outlined"
           fullWidth
           onClick={() => {
+            const now = new Date().toISOString();
             const newFrame: StoryboardFrame = {
               id: createFrameId(),
               shotNumber: getNextShotNumber(frames),
@@ -2775,6 +3697,8 @@ const ShotListView: React.FC<{
               cameraAngle: 'Medium',
               movement: 'Static',
               duration: 2,
+              createdAt: now,
+              updatedAt: now,
             };
             onUpdate([...frames, newFrame]);
           }}

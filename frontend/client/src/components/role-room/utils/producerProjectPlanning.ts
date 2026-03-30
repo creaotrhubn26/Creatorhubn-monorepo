@@ -1,13 +1,33 @@
 import type {
   CastingProject,
+  ProducerAccountAccessEntry,
+  ProducerAccountAccessMethod,
+  ProducerAccountAccessPlatform,
+  ProducerAccountAccessStatus,
+  ProducerAccountAccessWorkspace,
   ProducerActivationPlan,
   ProducerBrandGuide,
+  ProducerBrandLogoDetection,
+  ProducerBrandLogoVariantSelection,
+  ProducerBrandLogoVariantType,
+  ProducerBrandLogoVariant,
+  ProducerBrandLogoPlacement,
+  ProducerBrandLogoTiming,
+  ProducerBrandLogoTreatment,
+  ProducerClientLogicMode,
   ProducerClientIntake,
   ProducerClientMaterial,
   ProducerClientMaterialType,
+  ProducerContentLogic,
   ProducerContentCalendarItem,
   ProducerContentCalendarStatus,
+  ProducerDeliveryPresetId,
   ProducerDeliveryWorkflow,
+  ProducerMeetingAgendaItem,
+  ProducerMeetingDecisionItem,
+  ProducerMeetingFollowUpItem,
+  ProducerMeetingWorkspace,
+  ProducerMeetingWorkspaceStatus,
   ProducerPhasePlanItem,
   ProducerPlanningFrameworkStep,
   ProducerPlanningFrameworkStepKey,
@@ -47,6 +67,111 @@ export const PRODUCER_CONTENT_CALENDAR_STATUS_LABELS: Record<ProducerContentCale
   published: 'Publisert',
 };
 
+export interface ProducerContentFormatOption {
+  value: string;
+  label: string;
+  helper: string;
+  frame: {
+    width: number;
+    height: number;
+  };
+}
+
+export interface ProducerContentChannelOption {
+  value: string;
+  label: string;
+  helper: string;
+  primaryFormat: ProducerContentFormatOption['value'];
+  recommendedFormats: ProducerContentFormatOption['value'][];
+}
+
+export const PRODUCER_CONTENT_FORMAT_OPTIONS: ProducerContentFormatOption[] = [
+  {
+    value: '16:9',
+    label: '16:9',
+    helper: 'Nettside, YouTube, presentasjon og hero-video.',
+    frame: { width: 16, height: 9 },
+  },
+  {
+    value: '1:1',
+    label: '1:1',
+    helper: 'Kvadratisk feedformat for enkle kampanjeflater.',
+    frame: { width: 1, height: 1 },
+  },
+  {
+    value: '4:5',
+    label: '4:5',
+    helper: 'Feed-optimalisert format for Meta og LinkedIn.',
+    frame: { width: 4, height: 5 },
+  },
+  {
+    value: '9:16',
+    label: '9:16',
+    helper: 'Vertikal visning for reels, stories og shorts.',
+    frame: { width: 9, height: 16 },
+  },
+];
+
+export const PRODUCER_CONTENT_CHANNEL_OPTIONS: ProducerContentChannelOption[] = [
+  {
+    value: 'Web / salgsflate',
+    label: 'Web / salgsflate',
+    helper: 'Herofilm og forklaringsinnhold på nettside eller landingsside.',
+    primaryFormat: '16:9',
+    recommendedFormats: ['16:9'],
+  },
+  {
+    value: 'LinkedIn / Meta',
+    label: 'LinkedIn / Meta',
+    helper: 'Paid/organic feed og kampanjeflater.',
+    primaryFormat: '4:5',
+    recommendedFormats: ['4:5', '1:1'],
+  },
+  {
+    value: 'Reels / Stories',
+    label: 'Reels / Stories',
+    helper: 'Vertikale flater med rask krok og tydelig CTA.',
+    primaryFormat: '9:16',
+    recommendedFormats: ['9:16'],
+  },
+  {
+    value: 'YouTube / webinar',
+    label: 'YouTube / webinar',
+    helper: 'Lengre formater med bred komposisjon og tydelige safe zones.',
+    primaryFormat: '16:9',
+    recommendedFormats: ['16:9'],
+  },
+  {
+    value: 'Display / stills',
+    label: 'Display / stills',
+    helper: 'Statiske eller korte formatvarianter for annonser og assets.',
+    primaryFormat: '1:1',
+    recommendedFormats: ['1:1', '4:5'],
+  },
+];
+
+export const getProducerContentFormatOption = (
+  value?: string,
+): ProducerContentFormatOption | null => (
+  PRODUCER_CONTENT_FORMAT_OPTIONS.find((option) => option.value === value) ?? null
+);
+
+export const getProducerContentChannelOption = (
+  value?: string,
+): ProducerContentChannelOption | null => (
+  PRODUCER_CONTENT_CHANNEL_OPTIONS.find((option) => option.value === value) ?? null
+);
+
+export const getRecommendedFormatsForProducerChannel = (channel?: string): ProducerContentFormatOption[] => {
+  const option = getProducerContentChannelOption(channel);
+  const values = option?.recommendedFormats ?? [];
+  return PRODUCER_CONTENT_FORMAT_OPTIONS.filter((format) => values.includes(format.value));
+};
+
+export const getPrimaryFormatForProducerChannel = (channel?: string): string => (
+  getProducerContentChannelOption(channel)?.primaryFormat ?? ''
+);
+
 export const PRODUCER_PLANNING_FRAMEWORK_LABELS: Record<ProducerPlanningFrameworkStepKey, string> = {
   strategy: 'Strategi',
   concept_development: 'Konseptutvikling',
@@ -67,7 +192,7 @@ export const PRODUCER_PLANNING_FRAMEWORK_HELPERS: Record<ProducerPlanningFramewo
 
 export interface ProducerPlanningClientMoment {
   id: string;
-  type: 'framework_alignment' | 'phase_checkpoint' | 'content_delivery';
+  type: 'framework_alignment' | 'phase_checkpoint' | 'content_delivery' | 'account_access';
   title: string;
   detail: string;
   phase: ProducerPlanningPhase;
@@ -89,7 +214,86 @@ export const PRODUCER_PLANNING_CLIENT_MOMENT_LABELS: Record<ProducerPlanningClie
   framework_alignment: 'Retning / idé / aktivering',
   phase_checkpoint: 'Klientcheckpoint',
   content_delivery: 'Publisering / levering',
+  account_access: 'Kontotilgang',
 };
+
+export type ProducerContentLogicMomentKind = 'hook' | 'cta' | 'proof';
+
+export const PRODUCER_CONTENT_LOGIC_MOMENT_LABELS: Record<ProducerContentLogicMomentKind, string> = {
+  hook: 'Hook',
+  cta: 'CTA',
+  proof: 'Bevis',
+};
+
+export const getProducerContentLogicMomentKind = (
+  momentId?: string | null,
+): ProducerContentLogicMomentKind | null => {
+  if (momentId === 'content-logic:hook') {
+    return 'hook';
+  }
+  if (momentId === 'content-logic:cta') {
+    return 'cta';
+  }
+  if (momentId === 'content-logic:proof') {
+    return 'proof';
+  }
+  return null;
+};
+
+export const getProducerAccountAccessPlatformFromMomentId = (
+  momentId?: string | null,
+): ProducerAccountAccessPlatform | null => {
+  if (typeof momentId !== 'string') {
+    return null;
+  }
+  const normalized = momentId.trim().toLowerCase();
+  if (!normalized.startsWith('account-access:')) {
+    return null;
+  }
+  const platform = normalized.replace(/^account-access:/, '').trim();
+  if (platform in PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS) {
+    return platform as ProducerAccountAccessPlatform;
+  }
+  return null;
+};
+
+export const getProducerClientMomentDisplayLabel = (
+  moment: Pick<ProducerPlanningClientMoment, 'id' | 'type'>,
+): string => {
+  const contentLogicMomentKind = getProducerContentLogicMomentKind(moment.id);
+  if (contentLogicMomentKind) {
+    return `Content Logic · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}`;
+  }
+  return PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type];
+};
+
+export const getProducerClientMomentTextEyebrow = (
+  moment: Pick<ProducerPlanningClientMoment, 'id' | 'type'>,
+): string => `[${getProducerClientMomentDisplayLabel(moment)}]`;
+
+export interface ProducerOverlayEditorGuidance {
+  safeZone: {
+    horizontalPercent: number;
+    verticalPercent: number;
+    label: string;
+  };
+  opacity: {
+    percent: number;
+    label: string;
+  };
+  recommendedMargin: {
+    pixelsAt1080: number;
+    label: string;
+  };
+  note: string;
+}
+
+export interface ProducerOverlayFormatProfile extends ProducerOverlayEditorGuidance {
+  format: string;
+  formatLabel: string;
+  recommendedVariantType: ProducerBrandLogoVariantType | null;
+  recommendedVariantLabel: string;
+}
 
 export interface ProducerDeliveryManifestItem {
   id: string;
@@ -109,7 +313,51 @@ export interface ProducerDeliveryManifestItem {
   estimatedDurationLabel?: string;
   linkedShotListId?: string;
   backupRuleLabel?: string;
+  logoVariantSelection: ProducerBrandLogoVariantSelection;
+  logoVariantSelectionLabel: string;
+  logoVariantResolvedType: ProducerBrandLogoVariantType | null;
+  logoVariantResolvedLabel: string;
+  logoVariantRecommendedLabel: string;
+  logoVariantAutoApplied: boolean;
   notes?: string;
+}
+
+export interface ProducerDeliveryLogoUsageMatrixItem {
+  id: string;
+  title: string;
+  channel: string;
+  format: string;
+  deliveryStageLabel: string;
+  selectionLabel: string;
+  resolvedLabel: string;
+  recommendedLabel: string;
+  autoApplied: boolean;
+}
+
+export interface ProducerDeliveryManifestAccountAccessItem {
+  platform: ProducerAccountAccessPlatform;
+  platformLabel: string;
+  method: ProducerAccountAccessMethod;
+  methodLabel: string;
+  status: ProducerAccountAccessStatus;
+  statusLabel: string;
+  requiredForProject: boolean;
+  accessScope: string;
+  accountLabel?: string;
+  inviteTarget?: string;
+  clientOwnerLabel?: string;
+  notes?: string;
+  twoFactorRequired: boolean;
+}
+
+export interface ProducerDeliveryManifestAccountAccessSummary {
+  requiredPlatformCount: number;
+  connectedCount: number;
+  clientActionCount: number;
+  inviteSentCount: number;
+  entries: ProducerDeliveryManifestAccountAccessItem[];
+  securityNotes: string;
+  revokePlan: string;
 }
 
 export interface ProducerDeliveryManifest {
@@ -126,6 +374,8 @@ export interface ProducerDeliveryManifest {
   productionLoadLabel: string;
   pendingClientMoments: ProducerPlanningClientMoment[];
   deliveryItems: ProducerDeliveryManifestItem[];
+  logoUsageMatrix: ProducerDeliveryLogoUsageMatrixItem[];
+  accountAccessSummary: ProducerDeliveryManifestAccountAccessSummary;
   frameworkSections: Array<{
     key: ProducerPlanningFrameworkStepKey;
     label: string;
@@ -133,6 +383,21 @@ export interface ProducerDeliveryManifest {
     output: string;
     notes: string;
   }>;
+  contentLogicSummary: {
+    objective: string;
+    audience: string;
+    hook: string;
+    coreMessage: string;
+    proofPoints: string[];
+    callToAction: string;
+    distributionPlan: string;
+  };
+  logoPlacementLabel: string;
+  logoTimingLabel: string;
+  logoTreatmentLabel: string;
+  logoTimingDetail: string;
+  overlayEditorGuidance: ProducerOverlayEditorGuidance;
+  overlayFormatProfiles: ProducerOverlayFormatProfile[];
   brandChecklist: string[];
   workflowChecklist: string[];
   generatedAt: string;
@@ -151,6 +416,7 @@ export interface ProducerClientGroundingSummary {
 export type ProducerClientContributionSourceType =
   | 'framework'
   | 'brand'
+  | 'accounts'
   | 'delivery'
   | 'calendar';
 
@@ -180,6 +446,7 @@ export interface ProducerClientContributionTask {
 export const PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS: Record<ProducerClientContributionSourceType, string> = {
   framework: 'Retning / idé / aktivering',
   brand: 'Merkevareguide',
+  accounts: 'Kontotilgang',
   delivery: 'Leveringsrutine',
   calendar: 'Content-kalender',
 };
@@ -194,7 +461,38 @@ export const PRODUCER_WORKSPACE_SURFACE_LABELS: Record<ProducerWorkspaceSurfaceK
   brief: 'Brief',
   materials: 'Materiale',
   brand: 'Merkevareguide',
+  accounts: 'Kontotilgang',
   delivery: 'Leveringsrutine',
+  meetings: 'Møte',
+};
+
+export const PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS: Record<ProducerAccountAccessPlatform, string> = {
+  google: 'Google Workspace',
+  meta: 'Meta Business',
+  linkedin: 'LinkedIn',
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+};
+
+export const PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS: Record<ProducerAccountAccessMethod, string> = {
+  oauth: 'OAuth',
+  business_invite: 'Business invite',
+  manual_handoff: 'Klienthandling',
+};
+
+export const PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS: Record<ProducerAccountAccessStatus, string> = {
+  not_started: 'Ikke startet',
+  client_action: 'Venter på klient',
+  invite_sent: 'Invitasjon sendt',
+  connected: 'Koblet',
+  revoked: 'Avsluttet',
+};
+
+export const PRODUCER_MEETING_WORKSPACE_STATUS_LABELS: Record<ProducerMeetingWorkspaceStatus, string> = {
+  planned: 'Planlagt',
+  lobby: 'Lobby',
+  live: 'Live',
+  follow_up: 'Oppfølging',
 };
 
 export const PRODUCER_WORKSPACE_LAYOUT_LABELS: Record<ProducerWorkspaceLayout, string> = {
@@ -217,14 +515,110 @@ export const PRODUCER_WORKSPACE_SURFACE_COLORS: Record<ProducerWorkspaceSurfaceK
   brief: '#38bdf8',
   materials: '#fbbf24',
   brand: '#a855f7',
+  accounts: '#14b8a6',
   delivery: '#22c55e',
+  meetings: '#f97316',
 };
+
+export const PRODUCER_BRAND_LOGO_PLACEMENT_LABELS: Record<ProducerBrandLogoPlacement, string> = {
+  top_left: 'Oppe venstre',
+  top_right: 'Oppe høyre',
+  bottom_left: 'Nede venstre',
+  bottom_right: 'Nede høyre',
+  center: 'Sentrert',
+};
+
+export const PRODUCER_BRAND_LOGO_TIMING_LABELS: Record<ProducerBrandLogoTiming, string> = {
+  intro: 'Kun intro',
+  outro: 'Kun outro',
+  throughout: 'Hele videoen',
+  custom: 'Fra / til sekunder',
+  none: 'Ikke vis logo',
+};
+
+export const PRODUCER_BRAND_LOGO_TREATMENT_LABELS: Record<ProducerBrandLogoTreatment, string> = {
+  clean: 'Ren logo',
+  badge: 'Badge',
+  watermark: 'Vannmerke',
+};
+
+export const PRODUCER_BRAND_LOGO_VARIANT_LABELS: Record<ProducerBrandLogoVariantType, string> = {
+  primary: 'Primær',
+  light: 'Lys',
+  dark: 'Mørk',
+  icon: 'Ikon',
+};
+
+export interface ProducerDeliveryWorkflowPreset {
+  id: ProducerDeliveryPresetId;
+  label: string;
+  helper: string;
+  workflow: Omit<ProducerDeliveryWorkflow, 'presetId'>;
+}
+
+export const PRODUCER_DELIVERY_WORKFLOW_PRESETS: ProducerDeliveryWorkflowPreset[] = [
+  {
+    id: 'social_pack',
+    label: 'SoMe-pakke',
+    helper: 'Flere korte versjoner, raske revisjoner og klare finalmapper per kanal.',
+    workflow: {
+      fileNamingConvention: '[Prosjekt]_[Kanal]_[Format]_[Dato]_[Versjon].mp4',
+      versioningRule: 'Bruk v01-v09 for utkast. Lås FINAL når klienten har godkjent per kanalformat.',
+      folderStructure: '01_Brief / 02_Assets / 03_Edit / 04_Review / 05_SoMe_Final / 06_Arkiv',
+      draftVsFinalRule: 'Hold alle arbeidsfiler og preview-eksporter i Review. Flytt kun kanalspesifikke finaler til SoMe_Final.',
+      backupRoutine: 'Backup etter hver større revisjon og alltid før publisering. Behold siste godkjente fil per kanal separat.',
+      deliveryCadence: 'Del første cut raskt, samle tilbakemeldinger i én runde, og lever kanaltilpassede finaler samlet.',
+    },
+  },
+  {
+    id: 'web_pack',
+    label: 'Web-pakke',
+    helper: 'Hero-film, nettvideo og komprimerte webfiler med tydelig godkjenning før publisering.',
+    workflow: {
+      fileNamingConvention: '[Prosjekt]_[Leveranse]_[16x9]_[Dato]_[Versjon].mp4',
+      versioningRule: 'Bruk v01-v05 internt. Sett FINAL først når nettansvarlig og klient har godkjent samme fil.',
+      folderStructure: '01_Brief / 02_Prepro / 03_Edit / 04_Web_Review / 05_Web_Final / 06_Arkiv',
+      draftVsFinalRule: 'Preview-filer går i Web_Review. Web_Final inneholder kun optimaliserte, publiseringsklare filer.',
+      backupRoutine: 'Hold master, web-optimalisert fil og publisert fil i tre separate kopier.',
+      deliveryCadence: 'Send én webpakke per godkjenningsrunde med tydelig versjonsnotat og publiseringsklar final.',
+    },
+  },
+  {
+    id: 'campaign_pack',
+    label: 'Kampanjepakke',
+    helper: 'Hovedfilm med cutdowns, statiske varianter og tydelig pakking per distribusjonsløp.',
+    workflow: {
+      fileNamingConvention: '[Prosjekt]_[Kampanje]_[Format]_[Variant]_[Versjon].mp4',
+      versioningRule: 'Bruk én hovedversjon per kampanjebølge og undernummer for kanaltilpasninger.',
+      folderStructure: '01_Strategi / 02_Master / 03_Cutdowns / 04_Client_Review / 05_Final_Packages / 06_Arkiv',
+      draftVsFinalRule: 'Master og cutdowns holdes separat. Final_Packages inneholder bare godkjente leveranser med kanalmerking.',
+      backupRoutine: 'Backup ved hver leveransebølge, og speil hele Final_Packages til separat arkiv.',
+      deliveryCadence: 'Lever kampanjen som samlet pakke med hero, cutdowns og kanaloversikt i samme utsending.',
+    },
+  },
+  {
+    id: 'training_pack',
+    label: 'Opplæringspakke',
+    helper: 'Langsiktige filer, tydelig versjonskontroll og trygg overlevering til kundeorganisasjon.',
+    workflow: {
+      fileNamingConvention: '[Prosjekt]_[Modul]_[Språk]_[Dato]_[Versjon].mp4',
+      versioningRule: 'Nummerer revisjoner fortløpende og hold FINAL kun for godkjent opplæringsversjon.',
+      folderStructure: '01_Innhold / 02_Review / 03_Subtitles / 04_Final / 05_Source_Backup / 06_Arkiv',
+      draftVsFinalRule: 'Review inneholder arbeidsfiler og QA-versjoner. Final inneholder kun leverte filer og tilhørende dokumentasjon.',
+      backupRoutine: 'Oppbevar source, undertekster og finaler separat. Ta full backup etter hver godkjente modul.',
+      deliveryCadence: 'Lever modulvis med tydelig status for hva som er klart, under review og arkivert.',
+    },
+  },
+];
 
 export const getProducerWorkspaceSurfaceForContributionSource = (
   sourceType: ProducerClientContributionSourceType,
 ): ProducerWorkspaceSurfaceKey => {
   if (sourceType === 'brand') {
     return 'brand';
+  }
+  if (sourceType === 'accounts') {
+    return 'accounts';
   }
   if (sourceType === 'delivery') {
     return 'delivery';
@@ -308,6 +702,13 @@ const DEFAULT_CALENDAR_ITEMS: ProducerContentCalendarItem[] = [
 ];
 
 const DEFAULT_BRAND_GUIDE: ProducerBrandGuide = {
+  activeLogoVariantType: 'primary',
+  logoPlacement: 'bottom_right',
+  logoTiming: 'outro',
+  logoStartSecond: 0,
+  logoEndSecond: 3,
+  logoTreatment: 'clean',
+  logoVariants: [],
   fonts: ['Primær font', 'Sekundær font'],
   toneOfVoice: 'Trygg, konkret og handlingsorientert. Skriv tydelig, menneskelig og uten unødvendig fagsjargong.',
   visualStyle: 'Rene komposisjoner, tydelig motivseparasjon, konsistente farger og gjenkjennelig merkevarebruk i alle flater.',
@@ -324,13 +725,161 @@ const DEFAULT_BRAND_GUIDE: ProducerBrandGuide = {
   colors: [],
 };
 
+const DEFAULT_CONTENT_LOGIC: ProducerContentLogic = {
+  mode: 'content_logic',
+  objective: '',
+  audience: '',
+  hook: '',
+  coreMessage: '',
+  proofPoints: [],
+  callToAction: '',
+  distributionPlan: '',
+  successSignals: [],
+};
+
+const DEFAULT_ACCOUNT_ACCESS: ProducerAccountAccessWorkspace = {
+  entries: [
+    {
+      platform: 'google',
+      method: 'oauth',
+      status: 'not_started',
+      accessScope: 'Drive, Kalender og Meet for prosjektet.',
+      notes: 'Bruk Google OAuth. Ikke del passord eller 2FA-koder i prosjektrommet.',
+      twoFactorRequired: true,
+    },
+    {
+      platform: 'meta',
+      method: 'business_invite',
+      status: 'not_started',
+      accessScope: 'Meta Business Manager, side og annonsekontoer.',
+      notes: 'Be klienten invitere riktig jobbprofil eller Business Manager-bruker. Ikke lagre passord.',
+      twoFactorRequired: true,
+    },
+    {
+      platform: 'linkedin',
+      method: 'business_invite',
+      status: 'not_started',
+      accessScope: 'Company page og publiseringsrettigheter.',
+      notes: 'Be sideeier gi admin- eller super admin-tilgang. Hold 2-faktor hos klienten.',
+      twoFactorRequired: true,
+    },
+    {
+      platform: 'youtube',
+      method: 'business_invite',
+      status: 'not_started',
+      accessScope: 'Brand Account eller kanalrettigheter for opplasting.',
+      notes: 'Be om rollebasert kanaltilgang, ikke delt Google-passord.',
+      twoFactorRequired: true,
+    },
+    {
+      platform: 'tiktok',
+      method: 'business_invite',
+      status: 'not_started',
+      accessScope: 'TikTok Business Center eller sikker publiseringstilgang for vertikale flater.',
+      notes: 'Bruk Business Center-invitasjon eller annen rollebasert tilgang. Unngå å lagre login i prosjektet.',
+      twoFactorRequired: true,
+    },
+  ],
+  securityNotes: 'Bruk OAuth, business invite eller klientstyrt handling. Ikke lagre passord eller 2FA-koder i Role Room.',
+  revokePlan: 'Revider tilgang etter publisering og fjern koblinger som ikke lenger trengs.',
+  updatedAt: undefined,
+};
+
+const getProducerRequiredAccountPlatforms = (
+  planning: Pick<ProducerProjectPlanning, 'contentCalendar'>,
+): Set<ProducerAccountAccessPlatform> => {
+  const channelSignature = planning.contentCalendar
+    .map((item) => `${item.channel ?? ''} ${item.format ?? ''}`)
+    .join(' ')
+    .toLowerCase();
+  const requiredPlatforms = new Set<ProducerAccountAccessPlatform>(['google']);
+
+  if (
+    channelSignature.includes('meta')
+    || channelSignature.includes('reels')
+    || channelSignature.includes('stories')
+    || channelSignature.includes('instagram')
+    || channelSignature.includes('facebook')
+  ) {
+    requiredPlatforms.add('meta');
+  }
+  if (channelSignature.includes('linkedin')) {
+    requiredPlatforms.add('linkedin');
+  }
+  if (channelSignature.includes('youtube') || channelSignature.includes('webinar')) {
+    requiredPlatforms.add('youtube');
+  }
+  if (channelSignature.includes('tiktok')) {
+    requiredPlatforms.add('tiktok');
+  }
+
+  return requiredPlatforms;
+};
+
+const getRelevantProducerAccountAccessEntries = (
+  planning: Pick<ProducerProjectPlanning, 'contentCalendar' | 'accountAccess'>,
+): ProducerDeliveryManifestAccountAccessItem[] => {
+  const requiredPlatforms = getProducerRequiredAccountPlatforms(planning);
+  return planning.accountAccess.entries
+    .filter((entry) => (
+      requiredPlatforms.has(entry.platform)
+      || entry.status !== 'not_started'
+      || hasText(entry.accountLabel)
+      || hasText(entry.inviteTarget)
+    ))
+    .map((entry) => ({
+      platform: entry.platform,
+      platformLabel: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform],
+      method: entry.method,
+      methodLabel: PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method],
+      status: entry.status,
+      statusLabel: PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status],
+      requiredForProject: requiredPlatforms.has(entry.platform),
+      accessScope: entry.accessScope ?? '',
+      accountLabel: entry.accountLabel,
+      inviteTarget: entry.inviteTarget,
+      clientOwnerLabel: entry.ownerName,
+      notes: entry.notes,
+      twoFactorRequired: entry.twoFactorRequired,
+    }));
+};
+
+const buildProducerAccountAccessSummary = (
+  planning: Pick<ProducerProjectPlanning, 'contentCalendar' | 'accountAccess'>,
+): ProducerDeliveryManifestAccountAccessSummary => {
+  const entries = getRelevantProducerAccountAccessEntries(planning);
+  return {
+    requiredPlatformCount: entries.filter((entry) => entry.requiredForProject).length,
+    connectedCount: entries.filter((entry) => entry.requiredForProject && entry.status === 'connected').length,
+    clientActionCount: entries.filter((entry) => entry.requiredForProject && entry.status === 'client_action').length,
+    inviteSentCount: entries.filter((entry) => entry.requiredForProject && entry.status === 'invite_sent').length,
+    entries,
+    securityNotes: planning.accountAccess.securityNotes ?? '',
+    revokePlan: planning.accountAccess.revokePlan ?? '',
+  };
+};
+
 const DEFAULT_DELIVERY_WORKFLOW: ProducerDeliveryWorkflow = {
+  presetId: 'campaign_pack',
   fileNamingConvention: '[Prosjekt]_[Format]_[Dato]_[Versjon].ext',
   versioningRule: 'Bruk v01, v02, v03 for interne utkast og FINAL først når klienten har godkjent leveransen.',
   folderStructure: '01_Brief / 02_Prepro / 03_Produksjon / 04_Post / 05_Leveranser / 06_Arkiv',
   draftVsFinalRule: 'Legg alle arbeidsfiler i Draft. Flytt kun godkjente eksportfiler til Final med låst versjonsnummer.',
   backupRoutine: 'Minst tre kopier: lokal arbeidsdisk, prosjektserver/skylagring og separat backup etter opptaksdag.',
   deliveryCadence: 'Send første utkast med tydelig frist for tilbakemelding. Loggfør hver revisjon og bekreft leveringsklar final i samme tråd.',
+};
+
+const DEFAULT_MEETING_WORKSPACE: ProducerMeetingWorkspace = {
+  status: 'planned',
+  sessionLabel: 'Klientsync',
+  activeMeetUrl: '',
+  activeMeetArtifactId: '',
+  activeMeetCalendarEventId: '',
+  liveNotes: '',
+  agenda: [],
+  decisions: [],
+  followUps: [],
+  updatedAt: undefined,
 };
 
 const DEFAULT_ACTIVATION_FRAMEWORK: ProducerPlanningFrameworkStep[] = [
@@ -389,6 +938,72 @@ const normalizeStringArray = (value: unknown): string[] => (
     : []
 );
 
+const normalizeProducerAccountAccessPlatform = (value: unknown): ProducerAccountAccessPlatform => (
+  value === 'google'
+  || value === 'meta'
+  || value === 'linkedin'
+  || value === 'youtube'
+  || value === 'tiktok'
+    ? value
+    : 'google'
+);
+
+const normalizeProducerAccountAccessMethod = (value: unknown, fallback: ProducerAccountAccessMethod): ProducerAccountAccessMethod => (
+  value === 'oauth'
+  || value === 'business_invite'
+  || value === 'manual_handoff'
+    ? value
+    : fallback
+);
+
+const normalizeProducerAccountAccessStatus = (value: unknown): ProducerAccountAccessStatus => (
+  value === 'not_started'
+  || value === 'client_action'
+  || value === 'invite_sent'
+  || value === 'connected'
+  || value === 'revoked'
+    ? value
+    : 'not_started'
+);
+
+const normalizeProducerAccountAccessEntry = (
+  value: unknown,
+  fallback: ProducerAccountAccessEntry,
+): ProducerAccountAccessEntry => {
+  const record = asRecord(value);
+  return {
+    platform: fallback.platform,
+    method: normalizeProducerAccountAccessMethod(record.method, fallback.method),
+    status: normalizeProducerAccountAccessStatus(record.status),
+    accountLabel: hasText(record.accountLabel) ? record.accountLabel.trim() : '',
+    inviteTarget: hasText(record.inviteTarget) ? record.inviteTarget.trim() : '',
+    accessScope: hasText(record.accessScope) ? record.accessScope.trim() : fallback.accessScope,
+    ownerName: hasText(record.ownerName) ? record.ownerName.trim() : '',
+    notes: hasText(record.notes) ? record.notes.trim() : fallback.notes,
+    twoFactorRequired: typeof record.twoFactorRequired === 'boolean' ? record.twoFactorRequired : fallback.twoFactorRequired,
+    lastUpdatedAt: hasText(record.lastUpdatedAt) ? record.lastUpdatedAt.trim() : undefined,
+  };
+};
+
+const normalizeProducerAccountAccessWorkspace = (
+  value: unknown,
+  fallback: ProducerAccountAccessWorkspace,
+): ProducerAccountAccessWorkspace => {
+  const record = asRecord(value);
+  const rawEntries = Array.isArray(record.entries) ? record.entries : [];
+  const entries = fallback.entries.map((defaultEntry) => {
+    const matched = rawEntries.find((item) => normalizeProducerAccountAccessPlatform(asRecord(item).platform) === defaultEntry.platform);
+    return normalizeProducerAccountAccessEntry(matched, defaultEntry);
+  });
+
+  return {
+    entries,
+    securityNotes: hasText(record.securityNotes) ? record.securityNotes.trim() : fallback.securityNotes,
+    revokePlan: hasText(record.revokePlan) ? record.revokePlan.trim() : fallback.revokePlan,
+    updatedAt: hasText(record.updatedAt) ? record.updatedAt.trim() : fallback.updatedAt,
+  };
+};
+
 const createWorkspaceId = (prefix: 'section' | 'page'): string => (
   globalThis.crypto?.randomUUID?.()
     ? `${prefix}-${globalThis.crypto.randomUUID()}`
@@ -400,6 +1015,194 @@ const normalizeWorkspaceColor = (value: unknown, fallback: string): string => (
     ? value.trim()
     : fallback
 );
+
+const normalizeBrandLogoPlacement = (value: unknown): ProducerBrandLogoPlacement => (
+  value === 'top_left'
+  || value === 'top_right'
+  || value === 'bottom_left'
+  || value === 'bottom_right'
+  || value === 'center'
+    ? value
+    : DEFAULT_BRAND_GUIDE.logoPlacement ?? 'bottom_right'
+);
+
+const normalizeBrandLogoTiming = (value: unknown): ProducerBrandLogoTiming => (
+  value === 'intro'
+  || value === 'outro'
+  || value === 'throughout'
+  || value === 'custom'
+  || value === 'none'
+    ? value
+    : DEFAULT_BRAND_GUIDE.logoTiming ?? 'outro'
+);
+
+const normalizeBrandLogoSecond = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value);
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.floor(parsed);
+    }
+  }
+
+  return fallback;
+};
+
+const normalizeBrandLogoTreatment = (value: unknown): ProducerBrandLogoTreatment => (
+  value === 'clean'
+  || value === 'badge'
+  || value === 'watermark'
+    ? value
+    : DEFAULT_BRAND_GUIDE.logoTreatment ?? 'clean'
+);
+
+const normalizeBrandLogoVariantType = (value: unknown): ProducerBrandLogoVariantType => (
+  value === 'primary'
+  || value === 'light'
+  || value === 'dark'
+  || value === 'icon'
+    ? value
+    : DEFAULT_BRAND_GUIDE.activeLogoVariantType ?? 'primary'
+);
+
+const normalizeBrandLogoVariantSelection = (value: unknown): ProducerBrandLogoVariantSelection => (
+  value === 'auto'
+  || value === 'primary'
+  || value === 'light'
+  || value === 'dark'
+  || value === 'icon'
+    ? value
+    : 'auto'
+);
+
+const normalizeBrandLogoDetection = (
+  value: unknown,
+): ProducerBrandLogoDetection | undefined => {
+  const record = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  if (!record) {
+    return undefined;
+  }
+
+  const dominantColors = Array.isArray(record.dominantColors)
+    ? record.dominantColors
+      .map((item, index) => {
+        const colorRecord = item !== null && typeof item === 'object' && !Array.isArray(item)
+          ? item as Record<string, unknown>
+          : null;
+        if (!colorRecord || !hasText(colorRecord.label) || !hasText(colorRecord.hex)) {
+          return null;
+        }
+        return {
+          id: hasText(colorRecord.id) ? colorRecord.id.trim() : `detected-brand-color-${index + 1}`,
+          label: colorRecord.label.trim(),
+          hex: colorRecord.hex.trim(),
+          usage: hasText(colorRecord.usage) ? colorRecord.usage.trim() : undefined,
+        };
+      })
+      .filter((item): item is NonNullable<ProducerBrandLogoDetection['dominantColors']>[number] => item !== null)
+    : [];
+
+  const markType = record.markType === 'wordmark'
+    || record.markType === 'symbol'
+    || record.markType === 'combination'
+    ? record.markType
+    : undefined;
+
+  return {
+    sourceFileName: hasText(record.sourceFileName) ? record.sourceFileName.trim() : undefined,
+    sourceProjectFileId: hasText(record.sourceProjectFileId) ? record.sourceProjectFileId.trim() : undefined,
+    sourceProjectFileUrl: hasText(record.sourceProjectFileUrl) ? record.sourceProjectFileUrl.trim() : undefined,
+    imageWidth: typeof record.imageWidth === 'number' && Number.isFinite(record.imageWidth) ? Math.max(1, Math.round(record.imageWidth)) : undefined,
+    imageHeight: typeof record.imageHeight === 'number' && Number.isFinite(record.imageHeight) ? Math.max(1, Math.round(record.imageHeight)) : undefined,
+    aspectRatioLabel: hasText(record.aspectRatioLabel) ? record.aspectRatioLabel.trim() : undefined,
+    markType,
+    hasTransparency: typeof record.hasTransparency === 'boolean' ? record.hasTransparency : undefined,
+    dominantColors,
+    suggestedPlacement: normalizeBrandLogoPlacement(record.suggestedPlacement),
+    suggestedTiming: normalizeBrandLogoTiming(record.suggestedTiming),
+    suggestedTreatment: normalizeBrandLogoTreatment(record.suggestedTreatment),
+    suggestedOpacityPercent: typeof record.suggestedOpacityPercent === 'number' && Number.isFinite(record.suggestedOpacityPercent)
+      ? Math.max(0, Math.min(100, Math.round(record.suggestedOpacityPercent)))
+      : undefined,
+    suggestedSafeZoneHorizontalPercent: typeof record.suggestedSafeZoneHorizontalPercent === 'number' && Number.isFinite(record.suggestedSafeZoneHorizontalPercent)
+      ? Math.max(0, Math.min(40, Number(record.suggestedSafeZoneHorizontalPercent)))
+      : undefined,
+    suggestedSafeZoneVerticalPercent: typeof record.suggestedSafeZoneVerticalPercent === 'number' && Number.isFinite(record.suggestedSafeZoneVerticalPercent)
+      ? Math.max(0, Math.min(40, Number(record.suggestedSafeZoneVerticalPercent)))
+      : undefined,
+    suggestedMarginPixelsAt1080: typeof record.suggestedMarginPixelsAt1080 === 'number' && Number.isFinite(record.suggestedMarginPixelsAt1080)
+      ? Math.max(0, Math.round(record.suggestedMarginPixelsAt1080))
+      : undefined,
+    note: hasText(record.note) ? record.note.trim() : undefined,
+    detectedAt: hasText(record.detectedAt) ? record.detectedAt.trim() : undefined,
+  };
+};
+
+const normalizeBrandLogoVariant = (
+  value: unknown,
+  index: number,
+): ProducerBrandLogoVariant | null => {
+  const record = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  if (!record) {
+    return null;
+  }
+
+  const type = normalizeBrandLogoVariantType(record.type);
+  const detection = normalizeBrandLogoDetection(record.detection);
+  const logoUrl = hasText(record.logoUrl)
+    ? record.logoUrl.trim()
+    : hasText(record.projectFileUrl)
+      ? record.projectFileUrl.trim()
+      : undefined;
+
+  if (!logoUrl && !detection) {
+    return null;
+  }
+
+  return {
+    id: hasText(record.id) ? record.id.trim() : `brand-logo-variant-${type}-${index + 1}`,
+    type,
+    label: hasText(record.label) ? record.label.trim() : undefined,
+    fileName: hasText(record.fileName) ? record.fileName.trim() : undefined,
+    logoUrl,
+    projectFileId: hasText(record.projectFileId) ? record.projectFileId.trim() : undefined,
+    projectFileUrl: hasText(record.projectFileUrl) ? record.projectFileUrl.trim() : undefined,
+    detection,
+    uploadedAt: hasText(record.uploadedAt) ? record.uploadedAt.trim() : undefined,
+  };
+};
+
+export const getProducerDeliveryWorkflowPreset = (
+  presetId?: string | null,
+): ProducerDeliveryWorkflowPreset | null => (
+  PRODUCER_DELIVERY_WORKFLOW_PRESETS.find((preset) => preset.id === presetId) ?? null
+);
+
+export const applyProducerDeliveryWorkflowPreset = (
+  presetId: ProducerDeliveryPresetId,
+  current?: ProducerDeliveryWorkflow,
+): ProducerDeliveryWorkflow => {
+  const preset = getProducerDeliveryWorkflowPreset(presetId);
+  if (!preset) {
+    return {
+      ...DEFAULT_DELIVERY_WORKFLOW,
+      ...current,
+    };
+  }
+  return {
+    ...DEFAULT_DELIVERY_WORKFLOW,
+    ...current,
+    ...preset.workflow,
+    presetId: preset.id,
+  };
+};
 
 export const createProducerWorkspacePage = (
   surface: ProducerWorkspaceSurfaceKey = 'brief',
@@ -446,15 +1249,28 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     },
   );
   const deliverySection = createProducerWorkspaceSection(
-    'Retning og levering',
+    'Retning, tilgang og levering',
     [
       createProducerWorkspacePage('brand', { id: 'workspace-page-brand', order: 0 }),
-      createProducerWorkspacePage('delivery', { id: 'workspace-page-delivery', order: 1 }),
+      createProducerWorkspacePage('accounts', { id: 'workspace-page-accounts', order: 1 }),
+      createProducerWorkspacePage('delivery', { id: 'workspace-page-delivery', order: 2 }),
     ],
     {
       id: 'workspace-section-delivery',
       color: '#a855f7',
       order: 1,
+      layout: 'focus',
+    },
+  );
+  const meetingsSection = createProducerWorkspaceSection(
+    'Møte og oppfølging',
+    [
+      createProducerWorkspacePage('meetings', { id: 'workspace-page-meetings', pinned: true, order: 0 }),
+    ],
+    {
+      id: 'workspace-section-meetings',
+      color: '#f97316',
+      order: 2,
       layout: 'focus',
     },
   );
@@ -465,7 +1281,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     navigationPinned: true,
     activeSectionId: foundationSection.id,
     activePageId: foundationSection.pages[0]?.id,
-    sections: [foundationSection, deliverySection],
+    sections: [foundationSection, deliverySection, meetingsSection],
   };
 };
 
@@ -490,8 +1306,10 @@ const normalizeProducerWorkspacePage = (value: unknown, index: number): Producer
   const surface = record.surface;
   const normalizedSurface: ProducerWorkspaceSurfaceKey = surface === 'materials'
     || surface === 'brand'
+    || surface === 'accounts'
     || surface === 'delivery'
-    ? surface
+    || surface === 'meetings'
+      ? surface
     : 'brief';
 
   return createProducerWorkspacePage(normalizedSurface, {
@@ -550,7 +1368,21 @@ export const normalizeProducerWorkspaceNavigation = (
       .sort((left, right) => (left.order ?? 0) - (right.order ?? 0))
     : [];
 
-  const normalizedSections = sections.length > 0 ? sections : fallback.sections;
+  const normalizedSectionsBase = sections.length > 0 ? sections : fallback.sections;
+  const existingSurfaces = new Set(
+    normalizedSectionsBase.flatMap((section) => flattenProducerWorkspacePages(section).map((page) => page.surface)),
+  );
+  const missingFallbackSections = fallback.sections
+    .filter((section) => flattenProducerWorkspacePages(section).some((page) => !existingSurfaces.has(page.surface)))
+    .map((section) => ({
+      ...section,
+      pages: section.pages.map((page) => ({ ...page })),
+    }));
+  const normalizedSections = [...normalizedSectionsBase, ...missingFallbackSections]
+    .map((section, index) => ({
+      ...section,
+      order: index,
+    }));
   const allPages = normalizedSections.flatMap((section) => flattenProducerWorkspacePages(section));
   const activeSectionId = normalizedSections.some((section) => section.id === raw.activeSectionId)
     ? raw.activeSectionId
@@ -653,6 +1485,139 @@ const normalizePhasePlanItem = (value: unknown, fallback: ProducerPhasePlanItem)
   };
 };
 
+const normalizeMeetingAgendaItem = (
+  value: unknown,
+  index: number,
+): ProducerMeetingAgendaItem | null => {
+  const record = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  if (!record || !hasText(record.title)) {
+    return null;
+  }
+
+  const rawPhase = hasText(record.phase) ? record.phase.trim() : '';
+  const phase = rawPhase === 'preproduction' || rawPhase === 'production' || rawPhase === 'postproduction'
+    ? rawPhase
+    : undefined;
+  const rawSourceType = hasText(record.sourceType) ? record.sourceType.trim() : '';
+  const sourceType = rawSourceType === 'client_review'
+    || rawSourceType === 'timeline'
+    || rawSourceType === 'framework'
+    || rawSourceType === 'manual'
+    ? rawSourceType
+    : 'manual';
+
+  return {
+    id: hasText(record.id) ? record.id.trim() : `meeting-agenda-${index + 1}`,
+    title: record.title.trim(),
+    detail: hasText(record.detail) ? record.detail.trim() : undefined,
+    phase,
+    sourceType,
+    linkedEntityType: hasText(record.linkedEntityType) ? record.linkedEntityType.trim() : undefined,
+    linkedEntityId: hasText(record.linkedEntityId) ? record.linkedEntityId.trim() : undefined,
+    completed: Boolean(record.completed),
+  };
+};
+
+const normalizeMeetingDecisionItem = (
+  value: unknown,
+  index: number,
+): ProducerMeetingDecisionItem | null => {
+  const record = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  if (!record || !hasText(record.title)) {
+    return null;
+  }
+
+  const rawPhase = hasText(record.phase) ? record.phase.trim() : '';
+  const phase = rawPhase === 'preproduction' || rawPhase === 'production' || rawPhase === 'postproduction'
+    ? rawPhase
+    : undefined;
+
+  return {
+    id: hasText(record.id) ? record.id.trim() : `meeting-decision-${index + 1}`,
+    title: record.title.trim(),
+    phase,
+    owner: hasText(record.owner) ? record.owner.trim() : undefined,
+    dueAt: hasText(record.dueAt) ? record.dueAt.trim() : undefined,
+    status: hasText(record.status) && record.status.trim() === 'done' ? 'done' : 'open',
+    clientVisible: Boolean(record.clientVisible),
+    linkedEntityType: hasText(record.linkedEntityType) ? record.linkedEntityType.trim() : undefined,
+    linkedEntityId: hasText(record.linkedEntityId) ? record.linkedEntityId.trim() : undefined,
+    notes: hasText(record.notes) ? record.notes.trim() : undefined,
+  };
+};
+
+const normalizeMeetingFollowUpItem = (
+  value: unknown,
+  index: number,
+): ProducerMeetingFollowUpItem | null => {
+  const record = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  if (!record || !hasText(record.title)) {
+    return null;
+  }
+
+  const rawStatus = hasText(record.status) ? record.status.trim() : '';
+  const status = rawStatus === 'in_progress' || rawStatus === 'done' ? rawStatus : 'planned';
+  const rawPhase = hasText(record.phase) ? record.phase.trim() : '';
+  const phase = rawPhase === 'preproduction' || rawPhase === 'production' || rawPhase === 'postproduction'
+    ? rawPhase
+    : undefined;
+
+  return {
+    id: hasText(record.id) ? record.id.trim() : `meeting-follow-up-${index + 1}`,
+    title: record.title.trim(),
+    phase,
+    owner: hasText(record.owner) ? record.owner.trim() : undefined,
+    dueAt: hasText(record.dueAt) ? record.dueAt.trim() : undefined,
+    status,
+    linkedEntityType: hasText(record.linkedEntityType) ? record.linkedEntityType.trim() : undefined,
+    linkedEntityId: hasText(record.linkedEntityId) ? record.linkedEntityId.trim() : undefined,
+    notes: hasText(record.notes) ? record.notes.trim() : undefined,
+  };
+};
+
+const normalizeMeetingWorkspace = (value: unknown, fallback: ProducerMeetingWorkspace): ProducerMeetingWorkspace => {
+  const record = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const rawStatus = hasText(record.status) ? record.status.trim() : '';
+  const status: ProducerMeetingWorkspaceStatus = rawStatus === 'lobby'
+    || rawStatus === 'live'
+    || rawStatus === 'follow_up'
+    ? rawStatus
+    : 'planned';
+
+  return {
+    status,
+    sessionLabel: hasText(record.sessionLabel) ? record.sessionLabel.trim() : fallback.sessionLabel,
+    activeMeetUrl: hasText(record.activeMeetUrl) ? record.activeMeetUrl.trim() : '',
+    activeMeetArtifactId: hasText(record.activeMeetArtifactId) ? record.activeMeetArtifactId.trim() : '',
+    activeMeetCalendarEventId: hasText(record.activeMeetCalendarEventId) ? record.activeMeetCalendarEventId.trim() : '',
+    liveNotes: hasText(record.liveNotes) ? record.liveNotes.trim() : '',
+    agenda: Array.isArray(record.agenda)
+      ? record.agenda
+        .map((item, itemIndex) => normalizeMeetingAgendaItem(item, itemIndex))
+        .filter((item): item is ProducerMeetingAgendaItem => item !== null)
+      : fallback.agenda.map((item) => ({ ...item })),
+    decisions: Array.isArray(record.decisions)
+      ? record.decisions
+        .map((item, itemIndex) => normalizeMeetingDecisionItem(item, itemIndex))
+        .filter((item): item is ProducerMeetingDecisionItem => item !== null)
+      : fallback.decisions.map((item) => ({ ...item })),
+    followUps: Array.isArray(record.followUps)
+      ? record.followUps
+        .map((item, itemIndex) => normalizeMeetingFollowUpItem(item, itemIndex))
+        .filter((item): item is ProducerMeetingFollowUpItem => item !== null)
+      : fallback.followUps.map((item) => ({ ...item })),
+    updatedAt: hasText(record.updatedAt) ? record.updatedAt.trim() : fallback.updatedAt,
+  };
+};
+
 const normalizeCalendarItem = (value: unknown, index: number): ProducerContentCalendarItem | null => {
   const record = value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -666,6 +1631,7 @@ const normalizeCalendarItem = (value: unknown, index: number): ProducerContentCa
     title: record.title.trim(),
     channel: hasText(record.channel) ? record.channel.trim() : undefined,
     format: hasText(record.format) ? record.format.trim() : undefined,
+    logoVariantSelection: normalizeBrandLogoVariantSelection(record.logoVariantSelection),
     publishAt: hasText(record.publishAt) ? record.publishAt.trim() : undefined,
     owner: hasText(record.owner) ? record.owner.trim() : undefined,
     phase: record.phase === 'preproduction'
@@ -734,6 +1700,48 @@ const normalizeActivationPlan = (
       )) ?? null;
       return normalizeActivationFrameworkStep(matched, fallback);
     }) ?? [],
+  };
+};
+
+const normalizeProducerClientLogicMode = (value: unknown): ProducerClientLogicMode => (
+  value === 'activation_plan' || value === 'content_logic'
+    ? value
+    : DEFAULT_CONTENT_LOGIC.mode ?? 'content_logic'
+);
+
+const getDefaultContentLogicFromActivationPlan = (
+  activationPlan: ProducerActivationPlan,
+): ProducerContentLogic => ({
+  ...DEFAULT_CONTENT_LOGIC,
+  objective: activationPlan.businessGoal ?? activationPlan.direction ?? '',
+  audience: activationPlan.targetAudience ?? '',
+  hook: activationPlan.idea ?? '',
+  coreMessage: activationPlan.coreMessage ?? '',
+  distributionPlan: activationPlan.activation ?? '',
+  successSignals: activationPlan.successSignals ?? [],
+});
+
+const normalizeContentLogic = (
+  value: unknown,
+  activationPlan: ProducerActivationPlan,
+): ProducerContentLogic => {
+  const record = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const fallback = getDefaultContentLogicFromActivationPlan(activationPlan);
+  const proofPoints = normalizeStringArray(record.proofPoints);
+  const successSignals = normalizeStringArray(record.successSignals);
+
+  return {
+    mode: normalizeProducerClientLogicMode(record.mode),
+    objective: hasText(record.objective) ? record.objective.trim() : fallback.objective ?? '',
+    audience: hasText(record.audience) ? record.audience.trim() : fallback.audience ?? '',
+    hook: hasText(record.hook) ? record.hook.trim() : fallback.hook ?? '',
+    coreMessage: hasText(record.coreMessage) ? record.coreMessage.trim() : fallback.coreMessage ?? '',
+    proofPoints,
+    callToAction: hasText(record.callToAction) ? record.callToAction.trim() : '',
+    distributionPlan: hasText(record.distributionPlan) ? record.distributionPlan.trim() : fallback.distributionPlan ?? '',
+    successSignals: successSignals.length > 0 ? successSignals : fallback.successSignals ?? [],
   };
 };
 
@@ -908,6 +1916,297 @@ const getDeliveryStageFolderLabel = (stage: ProducerDeliveryManifestItem['delive
   }
 };
 
+const getProducerBrandLogoTimingSummary = (brandGuide: ProducerBrandGuide): { label: string; detail: string } => {
+  const customStart = Math.max(0, Math.floor(brandGuide.logoStartSecond ?? 0));
+  const customEnd = Math.max(customStart + 1, Math.floor(brandGuide.logoEndSecond ?? customStart + 3));
+
+  switch (brandGuide.logoTiming ?? 'outro') {
+    case 'intro':
+      return {
+        label: 'Intro',
+        detail: 'Logoen vises i introen og tar de første 3 sekundene av videoen.',
+      };
+    case 'throughout':
+      return {
+        label: 'Hele videoen',
+        detail: 'Logoen ligger synlig gjennom hele videoen.',
+      };
+    case 'custom':
+      return {
+        label: `${formatSeconds(customStart)}-${formatSeconds(customEnd)}`,
+        detail: `Logoen vises fra ${formatSeconds(customStart)} til ${formatSeconds(customEnd)} i videoen.`,
+      };
+    case 'none':
+      return {
+        label: 'Skjult',
+        detail: 'Logoen vises ikke i denne videoen.',
+      };
+    case 'outro':
+    default:
+      return {
+        label: 'Outro',
+        detail: 'Logoen vises i outroen og følger de siste 3 sekundene av videoen.',
+      };
+  }
+};
+
+const getProducerOverlayEditorGuidance = (
+  brandGuide: ProducerBrandGuide,
+): ProducerOverlayEditorGuidance => {
+  const placement = brandGuide.logoPlacement ?? 'bottom_right';
+  const treatment = brandGuide.logoTreatment ?? 'clean';
+  const timing = brandGuide.logoTiming ?? 'outro';
+
+  if (timing === 'none') {
+    return {
+      safeZone: {
+        horizontalPercent: 0,
+        verticalPercent: 0,
+        label: 'Ikke i bruk',
+      },
+      opacity: {
+        percent: 0,
+        label: '0%',
+      },
+      recommendedMargin: {
+        pixelsAt1080: 0,
+        label: 'Ikke i bruk',
+      },
+      note: 'Logo skal ikke legges på denne leveransen.',
+    };
+  }
+
+  const isCentered = placement === 'center';
+  const safeZoneHorizontalPercent = isCentered
+    ? 18
+    : treatment === 'watermark'
+      ? 5
+      : treatment === 'badge'
+        ? 7
+        : 8;
+  const safeZoneVerticalPercent = isCentered
+    ? 12
+    : treatment === 'watermark'
+      ? 5
+      : treatment === 'badge'
+        ? 7
+        : 8;
+  const opacityPercent = treatment === 'watermark'
+    ? 42
+    : treatment === 'badge'
+      ? 96
+      : 100;
+  const recommendedMarginPxAt1080 = isCentered
+    ? 0
+    : treatment === 'watermark'
+      ? 56
+      : treatment === 'badge'
+        ? 72
+        : 96;
+
+  const note = isCentered
+    ? 'Sentrert logo trenger fri sone rundt motiv, teksting og CTA før den legges inn i bildet.'
+    : treatment === 'watermark'
+      ? 'Hold vannmerket lavt nok til at det ikke konkurrerer med teksting, CTA eller viktige motivflater.'
+      : treatment === 'badge'
+        ? 'Badge kan stå tettere på kanten, men skal fortsatt ligge innenfor safe zone og utenfor undertekster.'
+        : 'Bruk full logo med ren luft mot kanten og hold den utenfor tekst, undertekster og UI-elementer.';
+
+  return {
+    safeZone: {
+      horizontalPercent: safeZoneHorizontalPercent,
+      verticalPercent: safeZoneVerticalPercent,
+      label: `${safeZoneHorizontalPercent}% horisontalt / ${safeZoneVerticalPercent}% vertikalt`,
+    },
+    opacity: {
+      percent: opacityPercent,
+      label: `${opacityPercent}%`,
+    },
+    recommendedMargin: {
+      pixelsAt1080: recommendedMarginPxAt1080,
+      label: isCentered ? '0 px fra kant · bruk fri sone rundt logoen' : `${recommendedMarginPxAt1080} px @1080p`,
+    },
+    note,
+  };
+};
+
+export const getProducerRecommendedBrandLogoVariantType = (
+  brandGuide: ProducerBrandGuide,
+  format?: string,
+): ProducerBrandLogoVariantType | null => {
+  const availableVariantTypes = new Set((brandGuide.logoVariants ?? []).map((item) => item.type));
+  const preferredType = format === '9:16' || format === '1:1'
+    ? 'icon'
+    : 'primary';
+  if (availableVariantTypes.has(preferredType)) {
+    return preferredType;
+  }
+  if (availableVariantTypes.has('primary')) {
+    return 'primary';
+  }
+  if (availableVariantTypes.has('icon')) {
+    return 'icon';
+  }
+  return brandGuide.activeLogoVariantType ?? null;
+};
+
+export const resolveProducerBrandLogoVariant = (
+  brandGuide: ProducerBrandGuide,
+  format?: string,
+  selection: ProducerBrandLogoVariantSelection = 'auto',
+): {
+  selection: ProducerBrandLogoVariantSelection;
+  selectionLabel: string;
+  recommendedType: ProducerBrandLogoVariantType | null;
+  recommendedLabel: string;
+  resolvedType: ProducerBrandLogoVariantType | null;
+  resolvedLabel: string;
+  autoApplied: boolean;
+} => {
+  const availableVariantTypes = new Set((brandGuide.logoVariants ?? []).map((item) => item.type));
+  const recommendedType = getProducerRecommendedBrandLogoVariantType(brandGuide, format);
+  const recommendedLabel = recommendedType
+    ? PRODUCER_BRAND_LOGO_VARIANT_LABELS[recommendedType]
+    : 'Ingen variant';
+  const fallbackType = availableVariantTypes.has('primary')
+    ? 'primary'
+    : availableVariantTypes.has('icon')
+      ? 'icon'
+      : brandGuide.activeLogoVariantType ?? null;
+  const requestedType = selection === 'auto'
+    ? recommendedType
+    : selection;
+  const resolvedType = requestedType && availableVariantTypes.has(requestedType)
+    ? requestedType
+    : fallbackType;
+  const resolvedLabel = resolvedType
+    ? PRODUCER_BRAND_LOGO_VARIANT_LABELS[resolvedType]
+    : 'Ingen variant';
+
+  return {
+    selection,
+    selectionLabel: selection === 'auto'
+      ? 'Bruk anbefalt variant'
+      : `Tving ${PRODUCER_BRAND_LOGO_VARIANT_LABELS[selection]}`,
+    recommendedType,
+    recommendedLabel,
+    resolvedType,
+    resolvedLabel,
+    autoApplied: selection === 'auto',
+  };
+};
+
+export const getProducerOverlayFormatProfile = (
+  brandGuide: ProducerBrandGuide,
+  format?: string,
+): ProducerOverlayFormatProfile => {
+  const baseGuidance = getProducerOverlayEditorGuidance(brandGuide);
+  const normalizedFormat = hasText(format) ? format.trim() : 'standard';
+  const variantResolution = resolveProducerBrandLogoVariant(brandGuide, normalizedFormat, 'auto');
+
+  if (normalizedFormat === '9:16') {
+    return {
+      format: normalizedFormat,
+      formatLabel: '9:16',
+      recommendedVariantType: variantResolution.recommendedType,
+      recommendedVariantLabel: variantResolution.recommendedLabel,
+      safeZone: {
+        horizontalPercent: Math.max(baseGuidance.safeZone.horizontalPercent, 12),
+        verticalPercent: Math.max(baseGuidance.safeZone.verticalPercent, 14),
+        label: `${Math.max(baseGuidance.safeZone.horizontalPercent, 12)}% horisontalt / ${Math.max(baseGuidance.safeZone.verticalPercent, 14)}% vertikalt`,
+      },
+      opacity: baseGuidance.opacity,
+      recommendedMargin: {
+        pixelsAt1080: baseGuidance.recommendedMargin.pixelsAt1080 > 0
+          ? Math.max(40, baseGuidance.recommendedMargin.pixelsAt1080 - 24)
+          : 0,
+        label: baseGuidance.recommendedMargin.pixelsAt1080 > 0
+          ? `${Math.max(40, baseGuidance.recommendedMargin.pixelsAt1080 - 24)} px @1080x1920`
+          : baseGuidance.recommendedMargin.label,
+      },
+      note: `${baseGuidance.note} Hold ekstra luft mot topp og bunn for UI, captions og CTA i vertikal feed.`,
+    };
+  }
+
+  if (normalizedFormat === '4:5') {
+    return {
+      format: normalizedFormat,
+      formatLabel: '4:5',
+      recommendedVariantType: variantResolution.recommendedType,
+      recommendedVariantLabel: variantResolution.recommendedLabel,
+      safeZone: {
+        horizontalPercent: Math.max(baseGuidance.safeZone.horizontalPercent, 10),
+        verticalPercent: Math.max(baseGuidance.safeZone.verticalPercent, 12),
+        label: `${Math.max(baseGuidance.safeZone.horizontalPercent, 10)}% horisontalt / ${Math.max(baseGuidance.safeZone.verticalPercent, 12)}% vertikalt`,
+      },
+      opacity: baseGuidance.opacity,
+      recommendedMargin: {
+        pixelsAt1080: baseGuidance.recommendedMargin.pixelsAt1080 > 0
+          ? Math.max(48, baseGuidance.recommendedMargin.pixelsAt1080 - 16)
+          : 0,
+        label: baseGuidance.recommendedMargin.pixelsAt1080 > 0
+          ? `${Math.max(48, baseGuidance.recommendedMargin.pixelsAt1080 - 16)} px @1080x1350`
+          : baseGuidance.recommendedMargin.label,
+      },
+      note: `${baseGuidance.note} Feed-varianten trenger litt mer topp- og bunnluft enn bredformatet for tekst og plattformkrom.`,
+    };
+  }
+
+  if (normalizedFormat === '1:1') {
+    return {
+      format: normalizedFormat,
+      formatLabel: '1:1',
+      recommendedVariantType: variantResolution.recommendedType,
+      recommendedVariantLabel: variantResolution.recommendedLabel,
+      safeZone: {
+        horizontalPercent: Math.max(baseGuidance.safeZone.horizontalPercent, 10),
+        verticalPercent: Math.max(baseGuidance.safeZone.verticalPercent, 10),
+        label: `${Math.max(baseGuidance.safeZone.horizontalPercent, 10)}% horisontalt / ${Math.max(baseGuidance.safeZone.verticalPercent, 10)}% vertikalt`,
+      },
+      opacity: baseGuidance.opacity,
+      recommendedMargin: {
+        pixelsAt1080: baseGuidance.recommendedMargin.pixelsAt1080 > 0
+          ? Math.max(48, baseGuidance.recommendedMargin.pixelsAt1080 - 12)
+          : 0,
+        label: baseGuidance.recommendedMargin.pixelsAt1080 > 0
+          ? `${Math.max(48, baseGuidance.recommendedMargin.pixelsAt1080 - 12)} px @1080x1080`
+          : baseGuidance.recommendedMargin.label,
+      },
+      note: `${baseGuidance.note} Kvadratisk uttak trenger balansert luft rundt logoen på alle kanter.`,
+    };
+  }
+
+  if (normalizedFormat === '16:9') {
+    return {
+      format: normalizedFormat,
+      formatLabel: '16:9',
+      recommendedVariantType: variantResolution.recommendedType,
+      recommendedVariantLabel: variantResolution.recommendedLabel,
+      safeZone: {
+        horizontalPercent: Math.max(baseGuidance.safeZone.horizontalPercent, 8),
+        verticalPercent: Math.max(baseGuidance.safeZone.verticalPercent, 8),
+        label: `${Math.max(baseGuidance.safeZone.horizontalPercent, 8)}% horisontalt / ${Math.max(baseGuidance.safeZone.verticalPercent, 8)}% vertikalt`,
+      },
+      opacity: baseGuidance.opacity,
+      recommendedMargin: {
+        pixelsAt1080: baseGuidance.recommendedMargin.pixelsAt1080,
+        label: baseGuidance.recommendedMargin.pixelsAt1080 > 0
+          ? `${baseGuidance.recommendedMargin.pixelsAt1080} px @1920x1080`
+          : baseGuidance.recommendedMargin.label,
+      },
+      note: `${baseGuidance.note} Bredformatet tåler mer sideplass, men hold nedre tredel fri for captions og CTA.`,
+    };
+  }
+
+  return {
+    format: normalizedFormat,
+    formatLabel: normalizedFormat,
+    recommendedVariantType: variantResolution.recommendedType,
+    recommendedVariantLabel: variantResolution.recommendedLabel,
+    ...baseGuidance,
+  };
+};
+
 const getPhaseFolderLabel = (phase: ProducerPlanningPhase): string => {
   switch (phase) {
     case 'preproduction':
@@ -959,6 +2258,7 @@ export const getDefaultProducerProjectPlanning = (projectName: string): Producer
     successSignals: [],
     framework: DEFAULT_ACTIVATION_FRAMEWORK.map((item) => ({ ...item })),
   },
+  contentLogic: { ...DEFAULT_CONTENT_LOGIC, proofPoints: [], successSignals: [] },
   phasePlan: DEFAULT_PHASE_PLAN.map((item) => ({
     ...item,
     notes: item.phase === 'preproduction'
@@ -967,7 +2267,15 @@ export const getDefaultProducerProjectPlanning = (projectName: string): Producer
   })),
   contentCalendar: DEFAULT_CALENDAR_ITEMS.map((item) => ({ ...item })),
   brandGuide: { ...DEFAULT_BRAND_GUIDE, colors: [] },
+  accountAccess: {
+    ...DEFAULT_ACCOUNT_ACCESS,
+    entries: DEFAULT_ACCOUNT_ACCESS.entries.map((entry) => ({ ...entry })),
+  },
   deliveryWorkflow: { ...DEFAULT_DELIVERY_WORKFLOW },
+  meetingWorkspace: {
+    ...DEFAULT_MEETING_WORKSPACE,
+    sessionLabel: `Klientsync · ${projectName}`,
+  },
   workspaceNavigation: getDefaultProducerWorkspaceNavigation(),
   updatedAt: undefined,
 });
@@ -980,6 +2288,7 @@ export const normalizeProducerProjectPlanning = (project: CastingProject): Produ
     return defaults;
   }
 
+  const activationPlan = normalizeActivationPlan(source.activationPlan, defaults.activationPlan);
   const phasePlan = defaults.phasePlan.map((fallback) => {
     const matched = source.phasePlan?.find((item) => item.phase === fallback.phase) ?? null;
     return normalizePhasePlanItem(matched, fallback);
@@ -993,13 +2302,38 @@ export const normalizeProducerProjectPlanning = (project: CastingProject): Produ
 
   const brandGuide = source.brandGuide ?? {};
   const deliveryWorkflow = source.deliveryWorkflow ?? {};
+  const accountAccess = normalizeProducerAccountAccessWorkspace(source.accountAccess, defaults.accountAccess);
+  const logoStartSecond = normalizeBrandLogoSecond(
+    brandGuide.logoStartSecond,
+    DEFAULT_BRAND_GUIDE.logoStartSecond ?? 0,
+  );
+  const logoEndSecond = Math.max(
+    logoStartSecond + 1,
+    normalizeBrandLogoSecond(
+      brandGuide.logoEndSecond,
+      DEFAULT_BRAND_GUIDE.logoEndSecond ?? logoStartSecond + 3,
+    ),
+  );
 
   return {
-    activationPlan: normalizeActivationPlan(source.activationPlan, defaults.activationPlan),
+    activationPlan,
+    contentLogic: normalizeContentLogic(source.contentLogic, activationPlan),
     phasePlan,
     contentCalendar,
     brandGuide: {
       logoUrl: hasText(brandGuide.logoUrl) ? brandGuide.logoUrl.trim() : undefined,
+      activeLogoVariantType: normalizeBrandLogoVariantType(brandGuide.activeLogoVariantType),
+      logoPlacement: normalizeBrandLogoPlacement(brandGuide.logoPlacement),
+      logoTiming: normalizeBrandLogoTiming(brandGuide.logoTiming),
+      logoStartSecond,
+      logoEndSecond,
+      logoTreatment: normalizeBrandLogoTreatment(brandGuide.logoTreatment),
+      logoDetection: normalizeBrandLogoDetection(brandGuide.logoDetection),
+      logoVariants: Array.isArray(brandGuide.logoVariants)
+        ? brandGuide.logoVariants
+          .map((item, index) => normalizeBrandLogoVariant(item, index))
+          .filter((item): item is ProducerBrandLogoVariant => item !== null)
+        : [],
       fonts: normalizeStringArray(brandGuide.fonts),
       toneOfVoice: hasText(brandGuide.toneOfVoice) ? brandGuide.toneOfVoice.trim() : '',
       visualStyle: hasText(brandGuide.visualStyle) ? brandGuide.visualStyle.trim() : '',
@@ -1024,7 +2358,11 @@ export const normalizeProducerProjectPlanning = (project: CastingProject): Produ
           .filter((item): item is NonNullable<ProducerBrandGuide['colors']>[number] => item !== null)
         : [],
     },
+    accountAccess,
     deliveryWorkflow: {
+      presetId: getProducerDeliveryWorkflowPreset(
+        hasText(deliveryWorkflow.presetId) ? deliveryWorkflow.presetId.trim() : '',
+      )?.id ?? DEFAULT_DELIVERY_WORKFLOW.presetId,
       fileNamingConvention: hasText(deliveryWorkflow.fileNamingConvention) ? deliveryWorkflow.fileNamingConvention.trim() : '',
       versioningRule: hasText(deliveryWorkflow.versioningRule) ? deliveryWorkflow.versioningRule.trim() : '',
       folderStructure: hasText(deliveryWorkflow.folderStructure) ? deliveryWorkflow.folderStructure.trim() : '',
@@ -1032,6 +2370,7 @@ export const normalizeProducerProjectPlanning = (project: CastingProject): Produ
       backupRoutine: hasText(deliveryWorkflow.backupRoutine) ? deliveryWorkflow.backupRoutine.trim() : '',
       deliveryCadence: hasText(deliveryWorkflow.deliveryCadence) ? deliveryWorkflow.deliveryCadence.trim() : '',
     },
+    meetingWorkspace: normalizeMeetingWorkspace(source.meetingWorkspace, defaults.meetingWorkspace),
     workspaceNavigation: normalizeProducerWorkspaceNavigation(source.workspaceNavigation),
     updatedAt: hasText(source.updatedAt) ? source.updatedAt.trim() : undefined,
   };
@@ -1096,6 +2435,53 @@ export const getProducerPlanningClientMoments = (
       }];
     });
 
+  const contentLogic = planning.contentLogic ?? getDefaultContentLogicFromActivationPlan(planning.activationPlan);
+  const preproductionPhaseItem = planning.phasePlan.find((item) => item.phase === 'preproduction');
+  const contentLogicMoments: ProducerPlanningClientMoment[] = [
+    {
+      id: 'content-logic:hook',
+      title: 'Content Logic · Hook',
+      detail: joinNonEmpty([
+        hasText(contentLogic.hook) ? `Hook: ${contentLogic.hook}` : '',
+        hasText(contentLogic.coreMessage) ? `Budskap: ${contentLogic.coreMessage}` : '',
+      ], ' · '),
+      statusLabel: hasText(contentLogic.hook) ? 'Klar til godkjenning' : 'Trenger innspill',
+      priority: -27,
+    },
+    {
+      id: 'content-logic:cta',
+      title: 'Content Logic · CTA',
+      detail: joinNonEmpty([
+        hasText(contentLogic.callToAction) ? `CTA: ${contentLogic.callToAction}` : '',
+        hasText(contentLogic.distributionPlan) ? `Distribusjon: ${contentLogic.distributionPlan}` : '',
+      ], ' · '),
+      statusLabel: hasText(contentLogic.callToAction) ? 'Klar til godkjenning' : 'Trenger innspill',
+      priority: -26,
+    },
+    {
+      id: 'content-logic:proof',
+      title: 'Content Logic · Bevis',
+      detail: contentLogic.proofPoints.length > 0
+        ? contentLogic.proofPoints.map((item) => `Bevis: ${item}`).join(' · ')
+        : '',
+      statusLabel: contentLogic.proofPoints.length > 0 ? 'Klar til godkjenning' : 'Trenger innspill',
+      priority: -25,
+    },
+  ]
+    .filter((moment) => hasText(moment.detail))
+    .map((moment) => ({
+      id: moment.id,
+      type: 'framework_alignment' as const,
+      title: moment.title,
+      detail: moment.detail,
+      phase: 'preproduction' as const,
+      date: preproductionPhaseItem?.startDate ?? preproductionPhaseItem?.endDate,
+      owner: preproductionPhaseItem?.owner,
+      linkedShotListId: preproductionPhaseItem?.linkedShotListIds?.[0],
+      statusLabel: moment.statusLabel,
+      priority: moment.priority,
+    }));
+
   const phaseMoments: ProducerPlanningClientMoment[] = planning.phasePlan
     .filter((item) => hasText(item.clientCheckpoint))
     .map((item) => ({
@@ -1124,7 +2510,30 @@ export const getProducerPlanningClientMoments = (
     priority: calendarStatusPriority[item.status ?? 'planned'],
   }));
 
-  return [...frameworkMoments, ...phaseMoments, ...contentMoments].sort((left, right) => {
+  const requiredAccountPlatforms = getProducerRequiredAccountPlatforms(planning);
+  const postproductionPhaseItem = planning.phasePlan.find((item) => item.phase === 'postproduction');
+  const accountAccessMoments: ProducerPlanningClientMoment[] = planning.accountAccess.entries
+    .filter((entry) => requiredAccountPlatforms.has(entry.platform) && (entry.status === 'client_action' || entry.status === 'invite_sent'))
+    .map((entry) => ({
+      id: `account-access:${entry.platform}`,
+      type: 'account_access' as const,
+      title: `Kontotilgang · ${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}`,
+      detail: [
+        `Status: ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`,
+        `Metode: ${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]}`,
+        hasText(entry.accountLabel) ? `Konto: ${entry.accountLabel}` : '',
+        hasText(entry.inviteTarget) ? `Invitasjon til: ${entry.inviteTarget}` : '',
+        hasText(entry.accessScope) ? `Scope: ${entry.accessScope}` : '',
+        entry.twoFactorRequired ? '2-faktor holdes hos kontoeier' : '',
+      ].filter((value): value is string => value.trim().length > 0).join(' · '),
+      phase: 'postproduction',
+      date: postproductionPhaseItem?.startDate ?? postproductionPhaseItem?.endDate,
+      owner: entry.ownerName ?? postproductionPhaseItem?.owner,
+      statusLabel: PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status],
+      priority: entry.status === 'client_action' ? 34 : 35,
+    }));
+
+  return [...frameworkMoments, ...contentLogicMoments, ...phaseMoments, ...contentMoments, ...accountAccessMoments].sort((left, right) => {
     const leftDate = left.date ? Date.parse(left.date) : Number.POSITIVE_INFINITY;
     const rightDate = right.date ? Date.parse(right.date) : Number.POSITIVE_INFINITY;
     if (leftDate !== rightDate) {
@@ -1156,6 +2565,7 @@ const isPlanningManagedReview = (review: ProducerClientReview): boolean => {
       review.review_type === 'framework_alignment'
       || review.review_type === 'phase_checkpoint'
       || review.review_type === 'content_delivery'
+      || review.review_type === 'account_access'
     );
 };
 
@@ -1458,6 +2868,39 @@ export const getProducerClientContributionTasks = (
     suggestedUsageNotes: 'Brukes i grafikk, lower thirds, thumbnails, presentasjoner og endelige leveranser.',
   });
 
+  const relevantAccountEntries = getRelevantProducerAccountAccessEntries(planning);
+  const connectedAccountCount = relevantAccountEntries.filter((entry) => entry.status === 'connected').length;
+  const startedAccountCount = relevantAccountEntries.filter((entry) => entry.status !== 'not_started').length;
+  const accountStatus: ProducerClientContributionStatus = connectedAccountCount === relevantAccountEntries.length
+    ? 'ready'
+    : startedAccountCount > 0
+      ? 'partial'
+      : 'missing';
+  const accessMissing = relevantAccountEntries
+    .filter((entry) => entry.status !== 'connected')
+    .slice(0, 3)
+    .map((entry) => `${entry.platformLabel} · ${entry.statusLabel}`);
+
+  tasks.push({
+    id: 'accounts:access',
+    sourceType: 'accounts',
+    sourceLabel: PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS.accounts,
+    title: 'Avklar kontotilgang',
+    detail: [
+      `${relevantAccountEntries.length} plattformer i arbeidsløpet`,
+      connectedAccountCount > 0 ? `${connectedAccountCount} koblet` : undefined,
+      describeMissingRequirements(accessMissing),
+    ].filter(hasText).join(' · '),
+    phase: 'postproduction',
+    status: accountStatus,
+    statusLabel: PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS[accountStatus],
+    priority: 45,
+    suggestedMaterialType: 'document',
+    suggestedTitle: 'Kontotilgang og publiseringsansvar',
+    suggestedDescription: 'Avklar hvilke kontoer som skal brukes, hvem som eier tilgangen, og hvordan produsenten får sikker tilgang uten delte passord.',
+    suggestedUsageNotes: 'Bruk OAuth, business invite eller klientstyrt handling. 2-faktor blir liggende hos kontoeier.',
+  });
+
   const deliveryReadySignals = [
     hasText(planning.deliveryWorkflow.fileNamingConvention),
     hasText(planning.deliveryWorkflow.versioningRule),
@@ -1589,6 +3032,11 @@ export const applyProducerClientGroundingToPlanning = (
   const referenceCount = grounding.materialsByType.reference ?? 0;
   const brandAssetCount = grounding.materialsByType.brand_asset ?? 0;
   const documentCount = grounding.materialsByType.document ?? 0;
+  const nextSuccessSignals = appendUniqueLines(planning.activationPlan.successSignals, [
+    hasText(intake.deliverables) ? 'Alle avtalte leveranser er klare for godkjenning og publisering.' : undefined,
+    hasText(intake.timingConstraints) ? `Prosjektet holder kritiske frister: ${intake.timingConstraints}` : undefined,
+    grounding.materialCount > 0 ? `${grounding.materialCount} klientmaterialer er samlet som arbeidsgrunnlag.` : undefined,
+  ]);
 
   return {
     ...planning,
@@ -1615,11 +3063,7 @@ export const applyProducerClientGroundingToPlanning = (
         joinNonEmpty([intake.projectGoal, intake.deliverables], ' · '),
       ),
       coreMessage: fillIfBlank(planning.activationPlan.coreMessage, intake.keyMessage),
-      successSignals: appendUniqueLines(planning.activationPlan.successSignals, [
-        hasText(intake.deliverables) ? 'Alle avtalte leveranser er klare for godkjenning og publisering.' : undefined,
-        hasText(intake.timingConstraints) ? `Prosjektet holder kritiske frister: ${intake.timingConstraints}` : undefined,
-        grounding.materialCount > 0 ? `${grounding.materialCount} klientmaterialer er samlet som arbeidsgrunnlag.` : undefined,
-      ]),
+      successSignals: nextSuccessSignals,
       framework: mapPlanningFramework(planning.activationPlan.framework, (section) => {
         if (section.key === 'strategy') {
           return {
@@ -1687,6 +3131,40 @@ export const applyProducerClientGroundingToPlanning = (
         };
       }),
     },
+    contentLogic: {
+      ...getDefaultContentLogicFromActivationPlan(planning.activationPlan),
+      ...(planning.contentLogic ?? {}),
+      objective: fillIfBlank(
+        planning.contentLogic?.objective,
+        joinNonEmpty([intake.projectGoal, intake.deliverables], ' · '),
+      ),
+      audience: fillIfBlank(planning.contentLogic?.audience, intake.targetAudience),
+      hook: fillIfBlank(
+        planning.contentLogic?.hook,
+        joinNonEmpty([
+          intake.keyMessage,
+          materialTitles ? `Bygg vinkelen videre på ${materialTitles}` : undefined,
+        ], '. '),
+      ),
+      coreMessage: fillIfBlank(planning.contentLogic?.coreMessage, intake.keyMessage),
+      proofPoints: appendUniqueLines(planning.contentLogic?.proofPoints ?? [], [
+        hasText(intake.deliverables) ? `Avtalte leveranser: ${intake.deliverables}` : undefined,
+        referenceCount > 0 ? `${referenceCount} referanser ligger klare som bevisgrunnlag.` : undefined,
+        brandAssetCount > 0 ? `${brandAssetCount} merkevarefiler finnes for grafikk og logo.` : undefined,
+      ]),
+      callToAction: fillIfBlank(
+        planning.contentLogic?.callToAction,
+        hasText(intake.deliverables) ? 'Be om godkjenning av leveransen og lås publiseringsklar versjon.' : '',
+      ),
+      distributionPlan: fillIfBlank(
+        planning.contentLogic?.distributionPlan,
+        joinNonEmpty([
+          hasText(intake.deliverables) ? `Fordel ${intake.deliverables} per kanal og publiseringsløp.` : undefined,
+          hasText(intake.timingConstraints) ? `Hold planen mot ${intake.timingConstraints}` : undefined,
+        ], ' · '),
+      ),
+      successSignals: appendUniqueLines(planning.contentLogic?.successSignals ?? [], nextSuccessSignals),
+    },
     phasePlan: planning.phasePlan.map((phaseItem) => {
       if (phaseItem.phase === 'preproduction') {
         return {
@@ -1729,6 +3207,10 @@ export const applyStoryLogicToProducerPlanning = (
   const emotionalJourney = Array.isArray(theme.emotionalJourney)
     ? theme.emotionalJourney.filter(hasText)
     : [];
+  const nextSuccessSignals = appendUniqueLines(planning.activationPlan.successSignals, [
+    hasText(logline.stakes) ? `Publikum skal forstå hva som står på spill: ${logline.stakes}` : undefined,
+    hasText(theme.transformationArc) ? `Transformasjonen må være tydelig: ${theme.transformationArc}` : undefined,
+  ]);
 
   return {
     ...planning,
@@ -1747,10 +3229,7 @@ export const applyStoryLogicToProducerPlanning = (
       ),
       targetAudience: fillIfBlank(planning.activationPlan.targetAudience, concept.targetAudience),
       coreMessage: fillIfBlank(planning.activationPlan.coreMessage, joinNonEmpty([theme.themeStatement, theme.centralTheme], ' · ')),
-      successSignals: appendUniqueLines(planning.activationPlan.successSignals, [
-        hasText(logline.stakes) ? `Publikum skal forstå hva som står på spill: ${logline.stakes}` : undefined,
-        hasText(theme.transformationArc) ? `Transformasjonen må være tydelig: ${theme.transformationArc}` : undefined,
-      ]),
+      successSignals: nextSuccessSignals,
       framework: mapPlanningFramework(planning.activationPlan.framework, (section) => {
         if (section.key === 'strategy') {
           return {
@@ -1800,15 +3279,44 @@ export const applyStoryLogicToProducerPlanning = (
         };
       }),
     },
+    contentLogic: {
+      ...getDefaultContentLogicFromActivationPlan(planning.activationPlan),
+      ...(planning.contentLogic ?? {}),
+      objective: fillIfBlank(planning.contentLogic?.objective, conceptSummary),
+      audience: fillIfBlank(planning.contentLogic?.audience, concept.targetAudience),
+      hook: fillIfBlank(
+        planning.contentLogic?.hook,
+        joinNonEmpty([concept.uniqueAngle, logline.fullLogline, concept.corePremise], ' · '),
+      ),
+      coreMessage: fillIfBlank(
+        planning.contentLogic?.coreMessage,
+        joinNonEmpty([theme.themeStatement, theme.centralTheme], ' · '),
+      ),
+      proofPoints: appendUniqueLines(planning.contentLogic?.proofPoints ?? [], [
+        hasText(logline.stakes) ? `Hva står på spill: ${logline.stakes}` : undefined,
+        hasText(theme.moralArgument) ? `Moralsk konflikt: ${theme.moralArgument}` : undefined,
+        hasText(theme.transformationArc) ? `Transformasjon: ${theme.transformationArc}` : undefined,
+      ]),
+      callToAction: fillIfBlank(
+        planning.contentLogic?.callToAction,
+        emotionalJourney.length > 0 ? `La publikum sitte igjen med ${emotionalJourney[emotionalJourney.length - 1]}.` : '',
+      ),
+      distributionPlan: fillIfBlank(
+        planning.contentLogic?.distributionPlan,
+        concept.targetAudience ? `Tilpass kanaluttak og publiseringsløp til ${concept.targetAudience}.` : '',
+      ),
+      successSignals: appendUniqueLines(planning.contentLogic?.successSignals ?? [], nextSuccessSignals),
+    },
   };
 };
 
 export const getProducerStrategySnapshot = (planning: ProducerProjectPlanning): Array<{ label: string; value: string }> => {
   const activationPlan = planning.activationPlan;
+  const contentLogic = planning.contentLogic;
   return [
-    { label: 'Retning', value: activationPlan.direction ?? '' },
-    { label: 'Idé', value: activationPlan.idea ?? '' },
-    { label: 'Aktivering', value: activationPlan.activation ?? '' },
+    { label: 'Mål', value: contentLogic?.objective ?? activationPlan.businessGoal ?? activationPlan.direction ?? '' },
+    { label: 'Hook', value: contentLogic?.hook ?? activationPlan.idea ?? '' },
+    { label: 'CTA', value: contentLogic?.callToAction ?? contentLogic?.distributionPlan ?? activationPlan.activation ?? '' },
   ].filter((entry) => hasText(entry.value));
 };
 
@@ -1837,10 +3345,19 @@ export const buildProducerDeliveryManifest = (
   estimate: ContentProductionEstimate,
   reviews: ProducerClientReview[] = [],
 ): ProducerDeliveryManifest => {
+  const contentLogic = planning.contentLogic ?? getDefaultContentLogicFromActivationPlan(planning.activationPlan);
+  const logoTimingSummary = getProducerBrandLogoTimingSummary(planning.brandGuide);
+  const overlayEditorGuidance = getProducerOverlayEditorGuidance(planning.brandGuide);
+  const accountAccessSummary = buildProducerAccountAccessSummary(planning);
   const deliveryItems: ProducerDeliveryManifestItem[] = planning.contentCalendar.map((item) => {
     const matchingFormat = estimate.formatEstimates.find((formatEstimate) => (
       hasText(item.format) && formatEstimate.aspectRatio === item.format
     ));
+    const variantResolution = resolveProducerBrandLogoVariant(
+      planning.brandGuide,
+      item.format,
+      item.logoVariantSelection ?? 'auto',
+    );
     const stage = getDeliveryStage(item.status);
     const versionLabel = getDeliveryVersionLabel(planning.deliveryWorkflow, stage.deliveryStage);
     const filename = applyNamingConvention(planning.deliveryWorkflow, projectName, item, versionLabel);
@@ -1864,12 +3381,20 @@ export const buildProducerDeliveryManifest = (
       estimatedDurationLabel: matchingFormat ? formatSeconds(matchingFormat.estimatedSeconds) : undefined,
       linkedShotListId: item.linkedShotListId,
       backupRuleLabel: planning.deliveryWorkflow.backupRoutine || 'Ikke satt',
+      logoVariantSelection: item.logoVariantSelection ?? 'auto',
+      logoVariantSelectionLabel: variantResolution.selectionLabel,
+      logoVariantResolvedType: variantResolution.resolvedType,
+      logoVariantResolvedLabel: variantResolution.resolvedLabel,
+      logoVariantRecommendedLabel: variantResolution.recommendedLabel,
+      logoVariantAutoApplied: variantResolution.autoApplied,
       notes: item.notes,
     };
   });
 
   const brandChecklist: string[] = [
     hasText(planning.brandGuide.logoUrl) ? 'Logo er koblet til prosjektet.' : 'Logo må legges inn før endelig levering.',
+    `Logo i video: ${logoTimingSummary.detail}`,
+    `Automatisk logovalg: Primær i 16:9 / 4:5, ikon i 9:16 / 1:1 når ikonvariant finnes.`,
     planning.brandGuide.colors && planning.brandGuide.colors.length > 0
       ? `${planning.brandGuide.colors.length} merkevarefarger er definert.`
       : 'Merkevarefarger bør defineres før eksport.',
@@ -1889,6 +3414,24 @@ export const buildProducerDeliveryManifest = (
     `Backup: ${planning.deliveryWorkflow.backupRoutine || 'Ikke satt'}`,
     `Leveringsrytme: ${planning.deliveryWorkflow.deliveryCadence || 'Ikke satt'}`,
   ];
+  const overlayFormatProfiles = Array.from(
+    new Set(
+      planning.contentCalendar
+        .map((item) => item.format?.trim())
+        .filter((value): value is string => hasText(value)),
+    ),
+  ).map((format) => getProducerOverlayFormatProfile(planning.brandGuide, format));
+  const logoUsageMatrix: ProducerDeliveryLogoUsageMatrixItem[] = deliveryItems.map((item) => ({
+    id: item.id,
+    title: item.title,
+    channel: item.channel,
+    format: item.format,
+    deliveryStageLabel: item.deliveryStageLabel,
+    selectionLabel: item.logoVariantSelectionLabel,
+    resolvedLabel: item.logoVariantResolvedLabel,
+    recommendedLabel: item.logoVariantRecommendedLabel,
+    autoApplied: item.logoVariantAutoApplied,
+  }));
 
   return {
     projectName,
@@ -1905,6 +3448,8 @@ export const buildProducerDeliveryManifest = (
     pendingClientMoments: mergeProducerPlanningClientMomentsWithReviews(planning, reviews)
       .filter((moment) => isProducerPlanningMomentOpen(moment)),
     deliveryItems,
+    logoUsageMatrix,
+    accountAccessSummary,
     frameworkSections: (planning.activationPlan.framework ?? []).map((section) => ({
       key: section.key,
       label: PRODUCER_PLANNING_FRAMEWORK_LABELS[section.key],
@@ -1912,6 +3457,21 @@ export const buildProducerDeliveryManifest = (
       output: section.output ?? '',
       notes: section.notes ?? '',
     })),
+    contentLogicSummary: {
+      objective: contentLogic.objective ?? '',
+      audience: contentLogic.audience ?? '',
+      hook: contentLogic.hook ?? '',
+      coreMessage: contentLogic.coreMessage ?? '',
+      proofPoints: contentLogic.proofPoints ?? [],
+      callToAction: contentLogic.callToAction ?? '',
+      distributionPlan: contentLogic.distributionPlan ?? '',
+    },
+    logoPlacementLabel: PRODUCER_BRAND_LOGO_PLACEMENT_LABELS[planning.brandGuide.logoPlacement ?? 'bottom_right'],
+    logoTimingLabel: logoTimingSummary.label,
+    logoTreatmentLabel: PRODUCER_BRAND_LOGO_TREATMENT_LABELS[planning.brandGuide.logoTreatment ?? 'clean'],
+    logoTimingDetail: logoTimingSummary.detail,
+    overlayEditorGuidance,
+    overlayFormatProfiles,
     brandChecklist,
     workflowChecklist,
     generatedAt: new Date().toISOString(),
@@ -1934,6 +3494,16 @@ export const formatProducerDeliveryManifestAsText = (manifest: ProducerDeliveryM
     `Forretningsmål: ${manifest.businessGoal || 'Ikke satt'}`,
     `Målgruppe: ${manifest.targetAudience || 'Ikke satt'}`,
     `Kjernebudskap: ${manifest.coreMessage || 'Ikke satt'}`,
+    `Content Logic mål: ${manifest.contentLogicSummary.objective || 'Ikke satt'}`,
+    `Content Logic hook: ${manifest.contentLogicSummary.hook || 'Ikke satt'}`,
+    `Content Logic CTA: ${manifest.contentLogicSummary.callToAction || 'Ikke satt'}`,
+    `Logo plassering: ${manifest.logoPlacementLabel || 'Ikke satt'}`,
+    `Logo behandling: ${manifest.logoTreatmentLabel || 'Ikke satt'}`,
+    `Logo timing: ${manifest.logoTimingDetail || 'Ikke satt'}`,
+    `Kontotilgang: ${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount} nødvendige plattformer koblet`,
+    `Safe zone: ${manifest.overlayEditorGuidance.safeZone.label}`,
+    `Opacity: ${manifest.overlayEditorGuidance.opacity.label}`,
+    `Anbefalt margin: ${manifest.overlayEditorGuidance.recommendedMargin.label}`,
     `Hovedleveranse: ${manifest.primaryDeliveryLabel}`,
     `Anbefalte opptaksdager: ${manifest.recommendedShootDays}`,
     `Produksjonsbelastning: ${manifest.productionLoadLabel}`,
@@ -1942,7 +3512,7 @@ export const formatProducerDeliveryManifestAsText = (manifest: ProducerDeliveryM
     ...(
       manifest.pendingClientMoments.length > 0
         ? manifest.pendingClientMoments.map((moment) => (
-          `- ${moment.title} (${PRODUCER_PLANNING_PHASE_LABELS[moment.phase]})${moment.date ? ` · ${moment.date}` : ''} · ${moment.statusLabel}`
+          `- ${getProducerClientMomentTextEyebrow(moment)} ${moment.title} (${PRODUCER_PLANNING_PHASE_LABELS[moment.phase]})${moment.date ? ` · ${moment.date}` : ''} · ${moment.statusLabel}`
         ))
         : ['- Ingen åpne klientpunkter']
     ),
@@ -1955,13 +3525,49 @@ export const formatProducerDeliveryManifestAsText = (manifest: ProducerDeliveryM
         `  Pakke: ${item.packageName}`,
         `  Filnavn: ${item.filename}`,
         `  Versjon / stage: ${item.versionLabel} · ${item.deliveryStageLabel}`,
+        `  Logo: ${item.logoVariantResolvedLabel} (${item.logoVariantSelectionLabel})`,
         item.publishDateLabel ? `  Publisering: ${item.publishDateLabel}` : '  Publisering: Ikke satt',
         item.estimatedDurationLabel ? `  Estimert lengde: ${item.estimatedDurationLabel}` : '  Estimert lengde: Ikke beregnet',
       ].join('\n')
     )),
     '',
+    'LOGOBRUKSMATRISE',
+    ...(
+      manifest.logoUsageMatrix.length > 0
+        ? manifest.logoUsageMatrix.map((item) => (
+          [
+            `- ${item.title} · ${item.channel} · ${item.format}`,
+            `  Valg: ${item.selectionLabel}`,
+            `  Brukes: ${item.resolvedLabel}`,
+            `  Anbefalt: ${item.recommendedLabel}${item.autoApplied ? ' · auto aktiv' : ''}`,
+            `  Leveringstrinn: ${item.deliveryStageLabel}`,
+          ].join('\n')
+        ))
+        : ['- Ingen leveranser i matrisen']
+    ),
+    '',
     'MERKEVARE',
     ...manifest.brandChecklist.map((item) => `- ${item}`),
+    '',
+    'KONTOTILGANG',
+    ...(
+      manifest.accountAccessSummary.entries.length > 0
+        ? manifest.accountAccessSummary.entries.map((entry) => (
+          [
+            `- ${entry.platformLabel}${entry.requiredForProject ? ' · kreves for prosjektet' : ''}`,
+            `  Status: ${entry.statusLabel} · Metode: ${entry.methodLabel}`,
+            `  Scope: ${entry.accessScope || 'Ikke satt'}`,
+            `  Konto / side: ${entry.accountLabel || 'Ikke satt'}`,
+            `  Invite / mottaker: ${entry.inviteTarget || 'Ikke satt'}`,
+            `  Kontoeier: ${entry.clientOwnerLabel || 'Ikke satt'}`,
+            `  2-faktor hos kontoeier: ${entry.twoFactorRequired ? 'Ja' : 'Nei'}`,
+            `  Notat: ${entry.notes || 'Ingen notater.'}`,
+          ].join('\n')
+        ))
+        : ['- Ingen kontotilganger registrert ennå.']
+    ),
+    `Sikkerhetsnotat: ${manifest.accountAccessSummary.securityNotes || 'Ikke satt'}`,
+    `Revoke-plan: ${manifest.accountAccessSummary.revokePlan || 'Ikke satt'}`,
     '',
     'LEVERINGSRUTINE',
     ...manifest.workflowChecklist.map((item) => `- ${item}`),
@@ -1969,6 +3575,48 @@ export const formatProducerDeliveryManifestAsText = (manifest: ProducerDeliveryM
 
   if (manifest.successSignals.length > 0) {
     lines.push('', 'TEGN PÅ SUKSESS', ...manifest.successSignals.map((item) => `- ${item}`));
+  }
+
+  const contentLogicRows = [
+    `Mål: ${manifest.contentLogicSummary.objective || 'Ikke satt'}`,
+    `Målgruppe: ${manifest.contentLogicSummary.audience || 'Ikke satt'}`,
+    `Hook: ${manifest.contentLogicSummary.hook || 'Ikke satt'}`,
+    `Budskap: ${manifest.contentLogicSummary.coreMessage || 'Ikke satt'}`,
+    `CTA: ${manifest.contentLogicSummary.callToAction || 'Ikke satt'}`,
+    `Distribusjon: ${manifest.contentLogicSummary.distributionPlan || 'Ikke satt'}`,
+  ];
+
+  if (manifest.contentLogicSummary.proofPoints.length > 0) {
+    contentLogicRows.push('Bevis:');
+    contentLogicRows.push(...manifest.contentLogicSummary.proofPoints.map((item) => `- ${item}`));
+  }
+
+  lines.push('', 'CONTENT LOGIC', ...contentLogicRows);
+  lines.push(
+    '',
+    'OVERLAY-SPEC',
+    `Safe zone: ${manifest.overlayEditorGuidance.safeZone.label}`,
+    `Opacity: ${manifest.overlayEditorGuidance.opacity.label}`,
+    `Anbefalt margin: ${manifest.overlayEditorGuidance.recommendedMargin.label}`,
+    `Editornotat: ${manifest.overlayEditorGuidance.note}`,
+  );
+
+  if (manifest.overlayFormatProfiles.length > 0) {
+    lines.push('', 'OVERLAY PER FORMAT');
+    for (const profile of manifest.overlayFormatProfiles) {
+      lines.push(
+        `${profile.formatLabel}`,
+        `Anbefalt variant: ${profile.recommendedVariantLabel}`,
+        `Safe zone: ${profile.safeZone.label}`,
+        `Opacity: ${profile.opacity.label}`,
+        `Anbefalt margin: ${profile.recommendedMargin.label}`,
+        `Editornotat: ${profile.note}`,
+        '',
+      );
+    }
+    if (lines[lines.length - 1] === '') {
+      lines.pop();
+    }
   }
 
   const filledFrameworkSections = manifest.frameworkSections.filter((section) => (

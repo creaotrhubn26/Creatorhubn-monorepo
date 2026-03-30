@@ -18,6 +18,7 @@ import {
   List,
   ListItem,
   ListItemAvatar,
+  ListItemButton,
   ListItemText,
   Badge,
   Chip,
@@ -31,6 +32,7 @@ import {
   MenuItem,
   Divider,
 } from '@mui/material';
+import type { TransitionProps } from '@mui/material/transitions';
 import {
   Chat,
   Close,
@@ -70,6 +72,48 @@ interface ChatMessage {
   type: 'text' | 'file' | 'image';
   status: 'sent' | 'delivered' | 'read'
 }
+
+interface ConversationRecord {
+  id: string;
+  contactName?: string;
+  contactEmail?: string;
+  status?: ChatContact['status'];
+  lastMessage?: string;
+  unreadCount?: number;
+  type?: Exclude<ChatContact['type'], 'google_chat'>;
+}
+
+interface ConversationsResponse {
+  conversations?: ConversationRecord[];
+}
+
+interface GoogleChatSpaceRecord {
+  name: string;
+  displayName?: string;
+  spaceDetails?: {
+    description?: string;
+  };
+  lastMessage?: {
+    text?: string;
+  };
+}
+
+interface GoogleChatSpacesResponse {
+  spaces?: GoogleChatSpaceRecord[];
+}
+
+interface ChatMessagesResponse {
+  messages?: ChatMessage[];
+}
+
+const UpwardSlide = React.forwardRef(function UpwardSlide(
+  props: TransitionProps & {
+    children: React.ReactElement<unknown>;
+  },
+  ref: React.Ref<unknown>,
+) {
+  return <Slide direction="up" ref={ref} {...props} />;
+});
 
 export default function ChatWidget({
   position = 'bottom-right',
@@ -123,14 +167,14 @@ export default function ChatWidget({
   const messageRefetchInterval = isPageVisible ? 2000 : 7000;
 
   // Fetch internal conversations - SAME AS FULLSCREEN
-  const { data: conversationsResponse } = useQuery({
+  const { data: conversationsResponse } = useQuery<ConversationsResponse>({
     queryKey: ['/api/communication/conversations'],
     queryFn: () => apiRequest('/api/communication/conversations'),
     enabled: open && tabValue === 0,
     refetchInterval: open && tabValue === 0 ? conversationRefetchInterval : false,
   });
 
-  const contacts: ChatContact[] = (conversationsResponse?.conversations || []).map((conv: any) => ({
+  const contacts: ChatContact[] = (conversationsResponse?.conversations || []).map((conv) => ({
     id: conv.id,
     name: conv.contactName || 'Unknown Contact',
     email: conv.contactEmail || 'ukjent@creatorhub.no',
@@ -141,7 +185,7 @@ export default function ChatWidget({
   }));
 
   // Fetch Google Chat spaces
-  const { data: googleSpacesResponse } = useQuery({
+  const { data: googleSpacesResponse } = useQuery<GoogleChatSpacesResponse>({
     queryKey: ['/api/google/chat/spaces'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -151,7 +195,7 @@ export default function ChatWidget({
     refetchInterval: open && tabValue === 1 ? conversationRefetchInterval : false,
   });
 
-  const googleSpaces = (googleSpacesResponse?.spaces || []).map((space: any) => ({
+  const googleSpaces: ChatContact[] = (googleSpacesResponse?.spaces || []).map((space) => ({
     id: space.name,
     name: space.displayName || 'Google Chat Space',
     email: space.spaceDetails?.description || 'Google Chat',
@@ -162,7 +206,7 @@ export default function ChatWidget({
 }));
 
   // Fetch messages for selected contact - SAME AS FULLSCREEN
-  const { data: messagesResponse } = useQuery({
+  const { data: messagesResponse } = useQuery<ChatMessagesResponse | null>({
     queryKey: ['/api/communication/messages', selectedContact?.id],
     queryFn: () =>
       selectedContact?.id
@@ -173,7 +217,7 @@ export default function ChatWidget({
   });
 
   // Fetch Google Chat messages
-  const { data: googleMessagesResponse } = useQuery({
+  const { data: googleMessagesResponse } = useQuery<ChatMessagesResponse | null>({
     queryKey: ['/api/google/chat/messages', selectedContact?.id],
     queryFn: async () => {
       if (!selectedContact?.id) return null;
@@ -186,6 +230,7 @@ export default function ChatWidget({
 
   const messages: ChatMessage[] =
     tabValue === 0 ? messagesResponse?.messages || [] : googleMessagesResponse?.messages || [];
+  const visibleContacts: ChatContact[] = tabValue === 0 ? contacts : googleSpaces;
 
   // Send message mutation - SAME AS FULLSCREEN
   const sendMessageMutation = useMutation({
@@ -373,16 +418,18 @@ export default function ChatWidget({
 
   // Format time
   const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('no-N', {
+    return new Date(timestamp).toLocaleTimeString('no-NO', {
       hour: '2-digit',
       minute: '2-digit',
   });
 };
 
-  const positionStyles =
-    position === 'bottom-right'
-      ? { position: 'fixed', bottom: 16, right: 24, zIndex: 1200 }
-      : { position: 'fixed', bottom: 16, left: 24, zIndex: 1200 };
+  const positionStyles = {
+    position: 'fixed' as const,
+    bottom: 16,
+    zIndex: 1200,
+    ...(position === 'bottom-right' ? { right: 24 } : { left: 24 }),
+  };
 
   return (
     <ChatWidgetErrorBoundary widgetName="ChatWidget">
@@ -420,8 +467,7 @@ export default function ChatWidget({
             background: 'linear-gradient(145deg, rgba(255,255,255,0.97), rgba(248,250,252,0.98))',
             backdropFilter: 'blur(10px)',
         }}}
-        TransitionComponent={Slide}
-        TransitionProps={{ direction: 'up'}}
+        TransitionComponent={UpwardSlide}
       >
         <DialogTitle
           sx={{
@@ -541,72 +587,75 @@ export default function ChatWidget({
               }}
             >
               <List sx={{ py:  0 }}>
-                {(tabValue === 0 ? contacts : googleSpaces).map((contact) => (
+                {visibleContacts.map((contact) => (
                   <ListItem
                     key={contact.id}
-                    button
-                    selected={selectedContact?.id === contact.id}
-                    onClick={() => setSelectedContact(contact)}
+                    disablePadding
                     sx={{
                       '&.Mui-selected': {
                         bgcolor: `${getProfessionColor()}20`,
                     }}}
                   >
-                    <ListItemAvatar>
-                      <Avatar
-                        sx={{
-                          bgcolor: contact.type === 'google_chat' ? '#4285F4' : getProfessionColor(),
-                          width:  32,
-                          height:  32}}
-                      >
-                        {contact.type === 'google_chat' ? (
-                          <Google sx={{ fontSize:  18, color: 'white'}} />
-                        ) : (
-                          contact.name.charAt(0)
-                        )}
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={
-                        <Box
+                    <ListItemButton
+                      selected={selectedContact?.id === contact.id}
+                      onClick={() => setSelectedContact(contact)}
+                    >
+                      <ListItemAvatar>
+                        <Avatar
                           sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 0.5}}
+                            bgcolor: contact.type === 'google_chat' ? '#4285F4' : getProfessionColor(),
+                            width:  32,
+                            height:  32}}
                         >
-                          <Typography variant="subtitle2" sx={{ flex:  1 }}>
-                            {contact.name}
+                          {contact.type === 'google_chat' ? (
+                            <Google sx={{ fontSize:  18, color: 'white'}} />
+                          ) : (
+                            contact.name.charAt(0)
+                          )}
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.5}}
+                          >
+                            <Typography variant="subtitle2" sx={{ flex:  1 }}>
+                              {contact.name}
+                            </Typography>
+                            {(contact.unreadCount ?? 0) > 0 && (
+                              <Badge badgeContent={contact.unreadCount} color="error" />
+                            )}
+                            {contact.type === 'google_chat' && (
+                              <Chip
+                                label="Google"
+                                size="small"
+                                sx={{
+                                  height:  16,
+                                  fontSize: '0.6rem',
+                                  bgcolor: '#4285F0',
+                                  color: 'white'}}
+                              />
+                            )}
+                          </Box>
+                      }
+                        secondary={
+                          <Typography variant="caption" color="text.secondary">
+                            {typeof contact.lastMessage === 'string'
+                              ? contact.lastMessage.slice(0, 20)
+                              : 'Ny samtale'}
+                            ...
                           </Typography>
-                          {contact.unreadCount > 0 && (
-                            <Badge badgeContent={contact.unreadCount} color="error" />
-                          )}
-                          {contact.type === 'google_chat' && (
-                            <Chip
-                              label="Google"
-                              size="small"
-                              sx={{
-                                height:  16,
-                                fontSize: '0.6rem',
-                                bgcolor: '#4285F0',
-                                color: 'white'}}
-                            />
-                          )}
-                        </Box>
-                    }
-                      secondary={
-                        <Typography variant="caption" color="text.secondary">
-                          {typeof contact.lastMessage === 'string'
-                            ? contact.lastMessage.slice(0, 20)
-                            : 'Ny samtale'}
-                          ...
-                        </Typography>
-                    }
-                    />
+                      }
+                      />
+                    </ListItemButton>
                   </ListItem>
                 ))}
 
                 {/* Empty state */}
-                {(tabValue === 0 ? contacts : googleSpaces).length === 0 && (
+                {visibleContacts.length === 0 && (
                   <Box sx={{ p: 2, textAlign: 'center'}}>
                     <Typography variant="caption" color="text.secondary">
                       {tabValue === 0 ? 'Ingen samtaler ennå' : 'Ingen Google Chat-rom'}

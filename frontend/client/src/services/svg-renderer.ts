@@ -43,7 +43,7 @@ export interface RenderResult {
   cached: boolean;
 }
 
-class SVGRendererService {
+export class SVGRendererService {
   private initialized = false;
   private cache = new Map<string, RenderResult>();
   private maxCacheSize = 500; // Max cached items

@@ -65,11 +65,10 @@ import {
   DirectionsRun,
 } from '@mui/icons-material';
 import { useAppStore } from '../../state/store';
-import type {
-  ActorParameters,
-  ActorMeshData,
-  AnnyModelInfo} from '../../core/services/virtualActorService';
 import {
+  type ActorParameters,
+  type ActorMeshData,
+  type AnnyModelInfo,
   virtualActorService
 } from '../../core/services/virtualActorService';
 import {
@@ -82,8 +81,7 @@ import {
   getHairStyleById,
 } from '../../core/data/hairStyles';
 import { GlassesSelector } from '../../ui/components/GlassesSelector';
-import type { GlassesOptions } from '../../core/models/GlassesModel';
-import { createGlassesModel } from '../../core/models/GlassesModel';
+import { createGlassesModel, type GlassesOptions } from '../../core/models/GlassesModel';
 import { ActorLibraryPanel } from '../../ui/components/ActorLibraryPanel';
 
 interface VirtualActorPanelProps {
@@ -1075,4 +1073,3 @@ export const VirtualActorPanel: React.FC<VirtualActorPanelProps> = ({ onActorGen
 };
 
 export default VirtualActorPanel;
-

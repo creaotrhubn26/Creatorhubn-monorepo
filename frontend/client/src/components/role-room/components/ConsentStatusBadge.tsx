@@ -113,25 +113,41 @@ export function ConsentStatusBadge({
   // Simple badge for no consents
   if (summary.status === 'no_consents') {
     return (
-      <Tooltip title="Ingen samtykker registrert">
+      <Box
+        component="span"
+        onClick={onClick}
+        title="Ingen samtykker registrert"
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 0.5,
+          cursor: onClick ? 'pointer' : 'default',
+          opacity: 0.5,
+        }}
+      >
+        <ConsentsIcon sx={{ fontSize: iconSize, color: 'rgba(255,255,255,0.87)' }} />
         <Box
-          onClick={onClick}
+          component="span"
           sx={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 0.5,
-            cursor: onClick ? 'pointer' : 'default',
-            opacity: 0.5,
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            p: 0,
+            m: -1,
+            overflow: 'hidden',
+            clip: 'rect(0 0 0 0)',
+            whiteSpace: 'nowrap',
+            border: 0,
           }}
         >
-          <ConsentsIcon sx={{ fontSize: iconSize, color: 'rgba(255,255,255,0.87)' }} />
-          {showDetails && (
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize }}>
-              Ingen samtykker
-            </Typography>
-          )}
+          Ingen samtykker registrert
         </Box>
-      </Tooltip>
+        {showDetails && (
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize }}>
+            Ingen samtykker
+          </Typography>
+        )}
+      </Box>
     );
   }
 

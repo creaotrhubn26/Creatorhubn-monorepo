@@ -130,6 +130,7 @@ export interface UserPreferencesDB {
   keyframeColor: string;
   onboardingCompleted: boolean;
   tutorialsCompleted?: string[];
+  gearPresets?: GearPresetState[];
   createdAt: string;
   updatedAt: string;
 }
@@ -527,3 +528,4 @@ export const virtualStudioApi = {
 };
 
 export default virtualStudioApi;
+import type { GearPresetState } from '../services/masterLightingIntegration';

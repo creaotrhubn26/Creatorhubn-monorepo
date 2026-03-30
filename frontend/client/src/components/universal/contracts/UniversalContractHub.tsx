@@ -167,13 +167,14 @@ export default function UniversalContractHub({
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'amount' | 'client' | 'status'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const contractsQueryKey = ['/api/contracts', userId, statusFilter, searchQuery];
 
   // Get contracts for current user
   const { data: contracts, isLoading, error, refetch } = useQuery({
-    queryKey: ['/api/contracts,', userId, statusFilter, searchQuery],
+    queryKey: contractsQueryKey,
     queryFn: () => {
       const params = new URLSearchParams();
-      if (statusFilter !== 'all') params.append('status, ', statusFilter);
+      if (statusFilter !== 'all') params.append('status', statusFilter);
       if (searchQuery) params.append('search', searchQuery);
       return apiRequest(`/api/contracts?${params.toString()}`);
     },
@@ -216,8 +217,8 @@ export default function UniversalContractHub({
           bValue = b.totalAmount || 0;
           break;
         case 'client':
-          aValue = (a.clientName || ', ').toLowerCase();
-          bValue = (b.clientName || ', ').toLowerCase();
+          aValue = (a.clientName || '').toLowerCase();
+          bValue = (b.clientName || '').toLowerCase();
           break;
         case 'status':
           aValue = a.status || 'draft';
@@ -385,7 +386,7 @@ export default function UniversalContractHub({
     try {
       const response = await fetch(`/api/contracts/${contractId}/pdf`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ', '}`,
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
         },
       });
       
@@ -733,7 +734,7 @@ export default function UniversalContractHub({
                             const promises = Array.from(selectedContracts).map(async (id) => {
                               const response = await fetch(`/api/contracts/${id}/pdf`, {
                                 headers: {
-                                  'Authorization': `Bearer ${localStorage.getItem('token') || ', '}`,
+                                  'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
                                 },
                               });
                               if (response.ok) {
@@ -776,8 +777,11 @@ export default function UniversalContractHub({
                   >
                     <MenuItem value="all">Alle</MenuItem>
                     <MenuItem value="draft">Utkast</MenuItem>
+                    <MenuItem value="pending_signatures">Venter signatur</MenuItem>
+                    <MenuItem value="signed">Signert</MenuItem>
                     <MenuItem value="active">Aktiv</MenuItem>
                     <MenuItem value="completed">Fullført</MenuItem>
+                    <MenuItem value="rejected">Avvist</MenuItem>
                     <MenuItem value="cancelled">Kansellert</MenuItem>
                   </Select>
                 </FormControl>
@@ -1050,8 +1054,11 @@ export default function UniversalContractHub({
             sx={{ mt: 2 }}
           >
             <MenuItem value="draft">Utkast</MenuItem>
+            <MenuItem value="pending_signatures">Venter signatur</MenuItem>
+            <MenuItem value="signed">Signert</MenuItem>
             <MenuItem value="active">Aktiv</MenuItem>
             <MenuItem value="completed">Fullført</MenuItem>
+            <MenuItem value="rejected">Avvist</MenuItem>
             <MenuItem value="cancelled">Kansellert</MenuItem>
           </TextField>
         </DialogContent>
@@ -1320,7 +1327,7 @@ export default function UniversalContractHub({
                   ? [
                       {
                         name: selectedContractForDetails.clientName || 'Klient',
-                        email: selectedContractForDetails.clientEmail || ', ',
+                        email: selectedContractForDetails.clientEmail || '',
                         role:'client' as any,
                         percentage: 0,
                         order_index: 0,
@@ -1348,7 +1355,3 @@ export default function UniversalContractHub({
     </Box>
   );
 }
-
-
-
-

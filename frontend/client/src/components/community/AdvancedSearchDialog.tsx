@@ -95,6 +95,10 @@ interface SearchResult {
   matchScore?: number;
 }
 
+interface BookmarkRecord {
+  message_id: string;
+}
+
 interface AdvancedSearchDialogProps {
   open: boolean;
   onClose: () => void;
@@ -154,8 +158,12 @@ export default function AdvancedSearchDialog({
 
   const fetchBookmarks = async () => {
     try {
-      const response = await apiRequest('/api/community/bookmarks,');
-      const bookmarkIds = new Set(response.bookmarks.map((b: any) => b.message_id));
+      const response = (await apiRequest('/api/community/bookmarks')) as {
+        bookmarks?: BookmarkRecord[];
+      };
+      const bookmarkIds = new Set(
+        (response.bookmarks ?? []).map((bookmark) => bookmark.message_id),
+      );
       setBookmarkedIds(bookmarkIds);
     } catch (error) {
       console.error('Error fetching bookmarks: ', error);
@@ -165,11 +173,23 @@ export default function AdvancedSearchDialog({
   const performSearch = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({
-        q: searchQuery,
-        ...filters,
-        scopeId: filters.scopeId || ', ',
-      });
+      const params = new URLSearchParams();
+      params.set('q', searchQuery);
+      params.set('scope', filters.scope);
+      params.set('scopeId', filters.scopeId ?? '');
+      params.set('type', filters.type);
+      params.set('sortBy', filters.sortBy);
+      params.set('dateRange', filters.dateRange ?? 'all');
+
+      if (typeof filters.hasAttachment === 'boolean') {
+        params.set('hasAttachment', String(filters.hasAttachment));
+      }
+      if (typeof filters.hasSolution === 'boolean') {
+        params.set('hasSolution', String(filters.hasSolution));
+      }
+      if (filters.fromUser) {
+        params.set('fromUser', filters.fromUser);
+      }
       
       const response = await apiRequest(`/api/community/search/advanced?${params}`);
       setResults(response.results || []);
@@ -512,5 +532,4 @@ export default function AdvancedSearchDialog({
     </Dialog>
   );
 }
-
 

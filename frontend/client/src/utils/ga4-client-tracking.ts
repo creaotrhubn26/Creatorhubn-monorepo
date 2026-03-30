@@ -7,13 +7,6 @@
  *   trackEvent('button_click', { button_name: 'create_project' });
  */
 
-declare global {
-  interface Window {
-    gtag?: (...args: unknown[]) => void;
-    dataLayer?: unknown[];
-  }
-}
-
 // Get GA4 Measurement ID from environment
 const GA4_ID = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-6E5MJT8REW';
 

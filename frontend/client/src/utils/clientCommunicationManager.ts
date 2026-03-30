@@ -347,6 +347,14 @@ export class ClientCommunicationManager {
     return communication;
 }
 
+  deleteCommunication(id: string): boolean {
+    const index = this.communications.findIndex((communication) => communication.id === id);
+    if (index === -1) return false;
+
+    this.communications.splice(index, 1);
+    return true;
+  }
+
   getCommunications(filter?: {
     clientId?: string;
     projectId?: string;
@@ -394,6 +402,25 @@ export class ClientCommunicationManager {
     this.templates.push(newTemplate);
     return newTemplate;
 }
+
+  updateTemplate(
+    id: string,
+    updates: Partial<Omit<CommunicationTemplate, 'id' | 'createdAt' | 'updatedAt'>>
+  ): CommunicationTemplate | null {
+    const template = this.templates.find((item) => item.id === id);
+    if (!template) return null;
+
+    Object.assign(template, updates, { updatedAt: new Date() });
+    return template;
+  }
+
+  deleteTemplate(id: string): boolean {
+    const index = this.templates.findIndex((template) => template.id === id);
+    if (index === -1) return false;
+
+    this.templates.splice(index, 1);
+    return true;
+  }
 
   // Deadline Management
   createDeadlineAlert(data: Omit<DeadlineAlert, 'id' | 'createdAt'>): DeadlineAlert {
@@ -472,6 +499,25 @@ export class ClientCommunicationManager {
     return newSegment;
 }
 
+  updateClientSegment(
+    id: string,
+    updates: Partial<Omit<ClientSegment, 'id' | 'createdAt' | 'updatedAt'>>
+  ): ClientSegment | null {
+    const segment = this.clientSegments.find((item) => item.id === id);
+    if (!segment) return null;
+
+    Object.assign(segment, updates, { updatedAt: new Date() });
+    return segment;
+  }
+
+  deleteClientSegment(id: string): boolean {
+    const index = this.clientSegments.findIndex((segment) => segment.id === id);
+    if (index === -1) return false;
+
+    this.clientSegments.splice(index, 1);
+    return true;
+  }
+
   updateClientSegments(clientData: any[]): void {
     this.clientSegments.forEach(segment => {
       segment.clients = clientData.filter(client => this.matchesSegmentCriteria(client, segment.criteria)).map(c => c.id);
@@ -533,7 +579,9 @@ export class ClientCommunicationManager {
 
   private executeFollowUpStep(step: any, clientId: string, projectId?: string): void {
     // Implementation would execute the follow-up step
-    console.log(`Executing follow-up step: ${step.template} for client ${clientId}`);
+    console.log(
+      `Executing follow-up step: ${step.template} for client ${clientId}${projectId ? ` on project ${projectId}` : ''}`,
+    );
 }
 
   // Client Success Metrics
@@ -567,8 +615,8 @@ export class ClientCommunicationManager {
     const projectCount = clientData.projectCount || 0;
     const satisfactionScore = clientData.satisfactionScore || 0;
 
-    if (daysSinceLastProject > 365 || satisfactionScore < 3) return 'high';
-    if (daysSinceLastProject > 180 || satisfactionScore < 4) return 'medium';
+    if (daysSinceLastProject > 365 || satisfactionScore < 3 || projectCount <= 1) return 'high';
+    if (daysSinceLastProject > 180 || satisfactionScore < 4 || projectCount <= 2) return 'medium';
     return 'low';
 }
 
@@ -613,6 +661,4 @@ export class ClientCommunicationManager {
 }
 
 export const clientCommunicationManager = new ClientCommunicationManager();
-
-
 

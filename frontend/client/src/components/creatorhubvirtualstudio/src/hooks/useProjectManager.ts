@@ -9,9 +9,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import * as THREE from 'three';
 import { useAppStore } from '../state/store';
-import { integrationService } from '../services/integrations';
 import { logger } from '../core/services/logger';
 
 const log = logger.module('ProjectManager');
@@ -132,12 +130,13 @@ export function useProjectManager() {
     setState(prev => ({ ...prev, isSaving: true }));
 
     try {
-      const project = captureCurrentState(store, projectName || state.currentProject?.name || 'Untitled Project');
+      const currentProject = state.currentProject;
+      const project = captureCurrentState(store, projectName || currentProject?.name || 'Untitled Project');
 
       // Determine if this is a new project or an update
-      const isUpdate = state.currentProject?.id;
-      const url = isUpdate
-        ? `/api/virtual-studio/projects/${state.currentProject.id}`
+      const isUpdate = currentProject?.id;
+      const url = currentProject
+        ? `/api/virtual-studio/projects/${currentProject.id}`
         : '/api/virtual-studio/projects';
       const method = isUpdate ? 'PUT' : 'POST';
 
@@ -189,9 +188,10 @@ export function useProjectManager() {
         const project = await response.json();
 
         // Apply project state to store
-        if (project.scene?.nodes) {
-          store.setNodes(project.scene.nodes);
-        }
+        store.setScene({
+          ...store.scene,
+          nodes: project.scene?.nodes ?? store.scene.nodes,
+        });
 
         setState(prev => ({
           ...prev,
@@ -287,4 +287,3 @@ function captureCurrentState(store: any, name: string): VirtualStudioProject {
 
 // Note: localStorage functions removed - all data now persisted in database
 // Projects are automatically saved to PostgreSQL via the backend API
-

@@ -12,13 +12,12 @@
 import * as THREE from 'three';
 import { logger } from '../services/logger';
 
-const log = logger.module('AnimationTemplates, ');
+const log = logger.module('AnimationTemplates');
 import type {
   AnimationClip,
   AnimationTrack,
-  Keyframe} from './SceneGraphAnimationEngine';
-import {
-  EasingName,
+  Keyframe,
+  TrackType,
 } from './SceneGraphAnimationEngine';
 import {
   AnimationBlendingService,
@@ -36,7 +35,7 @@ export interface AnimationStep {
   presetId: string;       // Which preset to apply
   presetCategory: 'camera' | 'light';
   targetNodeId: string;   // Which node to animate
-  parameters?: Record<string, any>;  // Override preset params
+  parameters?: Record<string, unknown>;  // Override preset params
   blendMode?: 'override' | 'additive';
   weight?: number;
 }
@@ -68,6 +67,24 @@ export interface RequiredNode {
   type: 'camera' | 'light' | 'object';
   description: string;
 }
+
+const getNumberParameter = (
+  parameters: Record<string, unknown>,
+  key: string,
+  fallback: number,
+): number => {
+  const value = parameters[key];
+  return typeof value === 'number' ? value : fallback;
+};
+
+const getStringParameter = (
+  parameters: Record<string, unknown>,
+  key: string,
+  fallback: string,
+): string => {
+  const value = parameters[key];
+  return typeof value === 'string' ? value : fallback;
+};
 
 // ============================================================================
 // Template Generator
@@ -136,7 +153,7 @@ export class AnimationTemplateGenerator {
     category: 'camera' | 'light',
     nodeId: string,
     duration: number,
-    parameters: Record<string, any>
+    parameters: Record<string, unknown>
   ): AnimationTrack[] {
     const tracks: AnimationTrack[] = [];
 
@@ -145,9 +162,9 @@ export class AnimationTemplateGenerator {
         case 'cameraShake': {
           const { position, rotation } = this.blendingService.generateCameraShakeKeyframes(
             duration,
-            parameters.intensity ?? 0.1,
-            parameters.frequency ?? 20,
-            parameters.decay ?? 0.9
+            getNumberParameter(parameters, 'intensity', 0.1),
+            getNumberParameter(parameters, 'frequency', 20),
+            getNumberParameter(parameters, 'decay', 0.9),
           );
           tracks.push(
             this.createTrack(nodeId, 'position', position),
@@ -159,9 +176,9 @@ export class AnimationTemplateGenerator {
         case 'dollyZoom': {
           const { position, focalLength } = this.blendingService.generateDollyZoomKeyframes(
             duration,
-            parameters.startDistance ?? 5,
-            parameters.endDistance ?? 15,
-            parameters.targetSize ?? 1
+            getNumberParameter(parameters, 'startDistance', 5),
+            getNumberParameter(parameters, 'endDistance', 15),
+            getNumberParameter(parameters, 'targetSize', 1),
           );
           tracks.push(
             this.createTrack(nodeId, 'position', position),
@@ -173,10 +190,10 @@ export class AnimationTemplateGenerator {
         case 'rackFocus': {
           const { focusDistance, aperture } = this.blendingService.generateRackFocusKeyframes(
             duration,
-            parameters.nearDistance ?? 1,
-            parameters.farDistance ?? 5,
-            parameters.shallowAperture ?? 1.4,
-            parameters.deepAperture ?? 2.8
+            getNumberParameter(parameters, 'nearDistance', 1),
+            getNumberParameter(parameters, 'farDistance', 5),
+            getNumberParameter(parameters, 'shallowAperture', 1.4),
+            getNumberParameter(parameters, 'deepAperture', 2.8),
           );
           tracks.push(
             this.createTrack(nodeId, 'focusDistance', focusDistance),
@@ -188,9 +205,9 @@ export class AnimationTemplateGenerator {
         case 'handheld': {
           const { position, rotation } = this.blendingService.generateHandheldKeyframes(
             duration,
-            parameters.driftAmount ?? 0.05,
-            parameters.rotationAmount ?? 0.02,
-            parameters.breathingSpeed ?? 0.5
+            getNumberParameter(parameters, 'driftAmount', 0.05),
+            getNumberParameter(parameters, 'rotationAmount', 0.02),
+            getNumberParameter(parameters, 'breathingSpeed', 0.5),
           );
           tracks.push(
             this.createTrack(nodeId, 'position', position, 'additive'),
@@ -200,8 +217,8 @@ export class AnimationTemplateGenerator {
         }
 
         case 'sliderMove': {
-          const distance = parameters.distance ?? 2;
-          const horizontal = parameters.direction === 'horizontal';
+          const distance = getNumberParameter(parameters, 'distance', 2);
+          const horizontal = getStringParameter(parameters, 'direction', 'horizontal') === 'horizontal';
           tracks.push(
             this.createTrack(nodeId, 'position', [
               { time: 0, value: new THREE.Vector3(horizontal ? -distance / 2 : 0, 0), easing: 'easeInOutCubic' },
@@ -212,8 +229,8 @@ export class AnimationTemplateGenerator {
         }
 
         case 'jibUp': {
-          const startHeight = parameters.startHeight ?? 1;
-          const endHeight = parameters.endHeight ?? 4;
+          const startHeight = getNumberParameter(parameters, 'startHeight', 1);
+          const endHeight = getNumberParameter(parameters, 'endHeight', 4);
           tracks.push(
             this.createTrack(nodeId, 'position', [
               { time: 0, value: new THREE.Vector3(0, startHeight, 0), easing: 'easeInOutCubic' },
@@ -230,15 +247,15 @@ export class AnimationTemplateGenerator {
         case 'crashZoom': {
           tracks.push(
             this.createTrack(nodeId, 'focalLength', [
-              { time: 0, value: parameters.startFov ?? 60, easing: 'easeInQuart' },
-              { time: duration, value: parameters.endFov ?? 20, easing: 'easeInQuart' },
+              { time: 0, value: getNumberParameter(parameters, 'startFov', 60), easing: 'easeInQuart' },
+              { time: duration, value: getNumberParameter(parameters, 'endFov', 20), easing: 'easeInQuart' },
             ])
           );
           break;
         }
 
         case 'whipPan': {
-          const angle = parameters.panAngle ?? Math.PI / 2;
+          const angle = getNumberParameter(parameters, 'panAngle', Math.PI / 2);
           tracks.push(
             this.createTrack(nodeId, 'rotation', [
               { time: 0, value: new THREE.Euler(0, 0, 0), easing: 'easeInOutQuad' },
@@ -254,9 +271,9 @@ export class AnimationTemplateGenerator {
         case 'lightFlicker': {
           const keyframes = this.blendingService.generateFlickerKeyframes(
             duration,
-            parameters.minIntensity ?? 0.2,
-            parameters.maxIntensity ?? 1,
-            parameters.frequency ?? 10
+            getNumberParameter(parameters, 'minIntensity', 0.2),
+            getNumberParameter(parameters, 'maxIntensity', 1),
+            getNumberParameter(parameters, 'frequency', 10),
           );
           tracks.push(this.createTrack(nodeId, 'lightPower', keyframes));
           break;
@@ -265,17 +282,17 @@ export class AnimationTemplateGenerator {
         case 'dimmerFade': {
           tracks.push(
             this.createTrack(nodeId, 'lightPower', [
-              { time: 0, value: parameters.startPower ?? 1, easing: 'easeInOutCubic' },
-              { time: duration, value: parameters.endPower ?? 0, easing: 'easeInOutCubic' },
+              { time: 0, value: getNumberParameter(parameters, 'startPower', 1), easing: 'easeInOutCubic' },
+              { time: duration, value: getNumberParameter(parameters, 'endPower', 0), easing: 'easeInOutCubic' },
             ])
           );
           break;
         }
 
         case 'sunriseToSunset': {
-          const startK = parameters.startKelvin ?? 2000;
-          const middayK = parameters.middayKelvin ?? 5600;
-          const endK = parameters.endKelvin ?? 2500;
+          const startK = getNumberParameter(parameters, 'startKelvin', 2000);
+          const middayK = getNumberParameter(parameters, 'middayKelvin', 5600);
+          const endK = getNumberParameter(parameters, 'endKelvin', 2500);
           tracks.push(
             this.createTrack(nodeId, 'colorTemperature', [
               { time: 0, value: startK, easing: 'easeInOutCubic' },
@@ -294,8 +311,8 @@ export class AnimationTemplateGenerator {
         }
 
         case 'pulsatingGlow': {
-          const minPower = parameters.minPower ?? 0.5;
-          const maxPower = parameters.maxPower ?? 1;
+          const minPower = getNumberParameter(parameters, 'minPower', 0.5);
+          const maxPower = getNumberParameter(parameters, 'maxPower', 1);
           const keyframes: Keyframe<number>[] = [];
           const cycles = Math.ceil(duration / 2);
           
@@ -303,7 +320,7 @@ export class AnimationTemplateGenerator {
             keyframes.push({
               time: (i / (cycles * 2)) * duration,
               value: i % 2 === 0 ? minPower : maxPower,
-              easing: 'easeInOutSine',
+              easing: 'easeInOut',
             });
           }
           
@@ -312,7 +329,7 @@ export class AnimationTemplateGenerator {
         }
 
         case 'lightSweep': {
-          const sweepAngle = parameters.sweepAngle ?? Math.PI;
+          const sweepAngle = getNumberParameter(parameters, 'sweepAngle', Math.PI);
           tracks.push(
             this.createTrack(nodeId, 'rotation', [
               { time: 0, value: new THREE.Euler(0, -sweepAngle / 2, 0), easing: 'easeInOutCubic' },
@@ -323,8 +340,8 @@ export class AnimationTemplateGenerator {
         }
 
         case 'thunderFlash': {
-          const base = parameters.baseIntensity ?? 0.5;
-          const flash = parameters.flashIntensity ?? 5;
+          const base = getNumberParameter(parameters, 'baseIntensity', 0.5);
+          const flash = getNumberParameter(parameters, 'flashIntensity', 5);
           tracks.push(
             this.createTrack(nodeId, 'lightPower', [
               { time: 0, value: base, easing: 'step' },
@@ -343,16 +360,16 @@ export class AnimationTemplateGenerator {
     return tracks;
   }
 
-  private createTrack(
+  private createTrack<T>(
     nodeId: string,
-    type: string,
-    keyframes: Keyframe[],
+    type: TrackType,
+    keyframes: Keyframe<T>[],
     blendMode: 'override' | 'additive' = 'override'
   ): AnimationTrack {
     return {
       id: `track_${nodeId}_${type}_${Date.now()}`,
       nodeId,
-      type: type as any,
+      type,
       propertyPath: type,
       keyframes,
       enabled: true,

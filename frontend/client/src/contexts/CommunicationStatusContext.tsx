@@ -51,9 +51,26 @@ export function CommunicationStatusProvider({ children }: CommunicationStatusPro
   const testGoogleChat = async () => {
     try {
       updateStatus({ googleChatStatus: 'connecting' });
+
+      let googleChatStatusUrl = '/api/communication/google-chat/status?force=1';
+      try {
+        const storedUserRaw = localStorage.getItem('creatorhub_auth_user');
+        const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
+        const userIdCandidate =
+          storedUser?.id ||
+          storedUser?.userId ||
+          localStorage.getItem('userId') ||
+          '';
+
+        if (typeof userIdCandidate === 'string' && userIdCandidate.trim().length > 0) {
+          googleChatStatusUrl += `&userId=${encodeURIComponent(userIdCandidate.trim())}`;
+        }
+      } catch {
+        // Ignore localStorage parse issues and fall back to global status check.
+      }
       
       // Test Google Chat API connectivity
-      const response = await fetch('/api/communication/google-chat/status', {
+      const response = await fetch(googleChatStatusUrl, {
         method: 'GET',
         headers: {
           'Content-Type' : 'application/json',
@@ -62,6 +79,12 @@ export function CommunicationStatusProvider({ children }: CommunicationStatusPro
       
       const responseStatus = response.status;
       const responseText = response.statusText;
+      const responseBody = await response.json().catch(() => null) as {
+        connected?: boolean;
+        status?: string;
+        message?: string;
+        missingScopes?: string[];
+      } | null;
 
       if (responseStatus === 404) {
         updateStatus({
@@ -72,16 +95,23 @@ export function CommunicationStatusProvider({ children }: CommunicationStatusPro
         return;
       }
       
-      if (responseStatus === 200) {
+      const connected = response.ok && Boolean(responseBody?.connected);
+      const responseSummary = responseBody?.message
+        || (Array.isArray(responseBody?.missingScopes) && responseBody?.missingScopes.length > 0
+          ? `Mangler scopes: ${responseBody.missingScopes.join(', ')}`
+          : responseBody?.status)
+        || `${responseStatus} ${responseText}`;
+
+      if (connected) {
         updateStatus({
           googleChatStatus: 'connected',
-          googleChatResponse: `${responseStatus} ${responseText}`,
+          googleChatResponse: responseSummary,
           googleChatLastCheck: new Date()
       });
     } else {
         updateStatus({
           googleChatStatus: 'disconnected',
-          googleChatResponse: `${responseStatus} ${responseText}`,
+          googleChatResponse: responseSummary,
           googleChatLastCheck: new Date()
       });
     }

@@ -766,7 +766,7 @@ export function useCreatorHubBranding(options: UseBrandingOptions = {}) {
           ...(previewMode && previewPresetId ? {
             border: `2px dashed ${modeAdjustedColor}`,
             '&::before': {
-              content: ', "PREVIEW MODE"',
+              content: '\"PREVIEW MODE\"',
               display: 'block',
               bgcolor: 'warning.light',
               color: 'warning.dark',

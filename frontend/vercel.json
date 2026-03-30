@@ -10,15 +10,5 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "env": {
-    "VITE_API_URL": "https://evendi.onrender.com",
-    "VITE_VAPID_PUBLIC_KEY": "BN_3cOcqCG21vOe5QCvuMeJtdtS43Fc4ZnHbs8GXjY_FOjqWVuPy4gBBqht1cBoTuCenp22ETqDZN8hOY01DnzE"
-  },
-  "build": {
-    "env": {
-      "VITE_API_URL": "https://evendi.onrender.com",
-      "VITE_VAPID_PUBLIC_KEY": "BN_3cOcqCG21vOe5QCvuMeJtdtS43Fc4ZnHbs8GXjY_FOjqWVuPy4gBBqht1cBoTuCenp22ETqDZN8hOY01DnzE"
-    }
-  }
+  ]
 }

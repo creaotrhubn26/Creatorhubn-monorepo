@@ -34,25 +34,22 @@ import {
   Lightbulb,
   WbIncandescent,
   FlashlightOn,
-  Brightness5,
   Brightness6,
   Brightness7,
   CheckCircle,
   Close,
   Star,
   StarBorder,
-  Info,
   TipsAndUpdates,
   Camera,
   HighlightAlt,
 } from '@mui/icons-material';
-import type {
-  LightSetupRecommendation,
-  CharacterContext,
-  HDRIContext,
-  LightConfig} from '../../core/services/lightSetupRecommendationService';
 import {
-  getLightSetupRecommendations
+  getLightSetupRecommendations,
+  type LightSetupRecommendation,
+  type CharacterContext,
+  type HDRIContext,
+  type LightConfig,
 } from '../../core/services/lightSetupRecommendationService';
 import type { CachedActor } from '../../core/services/actorModelCache';
 import type { HDRIRecommendation } from '../../core/services/hdriRecommendationService';
@@ -177,10 +174,20 @@ export const LightSetupRecommendationDialog: React.FC<LightSetupRecommendationDi
   // Get recommendations based on character and HDRI
   const recommendations = useMemo(() => {
     if (!actor) return [];
-    
+
+    const tags = [
+      actor.category,
+      actor.description,
+      actor.costume?.clothingStyle,
+      ...(actor.costume?.accessories || []),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .flatMap((value) => value.toLowerCase().split(/[\s,/]+/))
+      .filter((value) => value.length > 2);
+
     const characterContext: CharacterContext = {
       name: actor.name,
-      tags: actor.metadata?.tags || [],
+      tags,
       genre: actor.metadata?.genre,
       era: actor.metadata?.era,
       mood: actor.metadata?.mood,

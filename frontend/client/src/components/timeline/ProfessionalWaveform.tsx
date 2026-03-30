@@ -19,7 +19,7 @@ import {
   VolumeOff,
 } from '@mui/icons-material';
 import WaveSurfer from 'wavesurfer.js';
-import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions';
+import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
 
 interface ProfessionalWaveformProps {
   audioUrl: string;

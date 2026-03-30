@@ -10,12 +10,12 @@ export interface SecurityScanResult {
   fileName: string;
   fileSize: number;
   fileType: string;
-  scanType: 'file, ' | 'content, ' | 'url' | 'code';
+  scanType: 'file' | 'content' | 'url' | 'code';
   status: 'clean' | 'suspicious' | 'malicious' | 'error';
   threats: SecurityThreat[];
   score: number; // 0-10, higher is more secure
   recommendations: string[];
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export interface SecurityThreat {
@@ -58,7 +58,7 @@ export interface ScanOptions {
   code?: string;
   scanType: 'file' | 'content' | 'url' | 'code';
   priority?: 'low' | 'normal' | 'high' | 'urgent';
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 class SecurityScanner {
@@ -112,7 +112,7 @@ class SecurityScanner {
   private setupFileUploadListener(): void {
     if (typeof window !== 'undefined') {
       // Listen for file uploads
-      document.addEventListener('change, ', (event) => {
+      document.addEventListener('change', (event) => {
         const target = event.target as HTMLInputElement;
         if (target.type === 'file' && target.files) {
           Array.from(target.files).forEach(file => {
@@ -122,7 +122,7 @@ class SecurityScanner {
   });
 
       // Listen for drag and drop
-      document.addEventListener('drop, ', (event) => {
+      document.addEventListener('drop', (event) => {
         event.preventDefault();
         if (event.dataTransfer?.files) {
           Array.from(event.dataTransfer.files).forEach(file => {
@@ -155,7 +155,7 @@ class SecurityScanner {
  }]);
 }
 
-    if (!this.config.allowedFileTypes.includes(file.type) && file.type !== ', ') {
+    if (!this.config.allowedFileTypes.includes(file.type) && file.type !== '') {
       return this.createThreatResult(file, [{
         id: this.generateId(),
         type: 'suspicious_content',
@@ -261,13 +261,13 @@ class SecurityScanner {
           threats.push(...await this.scanFileContent(scanOptions));
           break;
         case 'content':
-          threats.push(...await this.scanTextContent(scanOptions.content || ', '));
+          threats.push(...await this.scanTextContent(scanOptions.content || ''));
           break;
         case 'url':
-          threats.push(...await this.scanUrlContent(scanOptions.url || ', '));
+          threats.push(...await this.scanUrlContent(scanOptions.url || ''));
           break;
         case 'code':
-          threats.push(...await this.scanCodeContent(scanOptions.code || ', '));
+          threats.push(...await this.scanCodeContent(scanOptions.code || ''));
           break;
  }
 
@@ -377,7 +377,7 @@ class SecurityScanner {
       /<iframe[^>]*>.*?<\/iframe>/gi
     ];
 
-    xssPatterns.forEach((pattern, index) => {
+    xssPatterns.forEach((pattern) => {
       if (pattern.test(content)) {
         threats.push({
           id: this.generateId(),
@@ -392,7 +392,7 @@ class SecurityScanner {
 
     // Check for SQL injection patterns
     const sqlPatterns = [
-      /('|(\\')|(;)|(\-\-)|(\/\*)|(\*\/))/gi,
+      /('|(\\')|(;)|(--)|(\/\*)|(\*\/))/gi,
       /(union|select|insert|update|delete|drop|create|alter)/gi
     ];
 
@@ -547,7 +547,7 @@ class SecurityScanner {
   private async handleScanResult(result: SecurityScanResult): Promise<void> {
     // Log result
     if (this.config.enableLogging) {
-      console.log('Security scan result, :', result);
+      console.log('Security scan result:', result);
 }
 
     // Send notification
@@ -585,12 +585,12 @@ class SecurityScanner {
 }
 
   private deleteFile(fileId: string): void {
-    console.log('Deleting malicious file, :', fileId);
+    console.log('Deleting malicious file:', fileId);
     // Implement file deletion logic
 }
 
   private quarantineFile(fileId: string): void {
-    console.log('Quarantining suspicious file, :', fileId);
+    console.log('Quarantining suspicious file:', fileId);
     // Implement file quarantine logic
 }
 
@@ -679,7 +679,17 @@ class SecurityScanner {
 };
 }
 
-  private createErrorResult(scanOptions: ScanOptions, error: string): SecurityScanResult {
+  private createErrorResult(source: ScanOptions | File, error: string): SecurityScanResult {
+    const scanOptions: ScanOptions = source instanceof File
+      ? {
+          fileId: this.generateId(),
+          fileName: source.name,
+          fileSize: source.size,
+          fileType: source.type,
+          scanType: 'file',
+        }
+      : source;
+
     return {
       id: this.generateId(),
       timestamp: Date.now(),
@@ -747,8 +757,6 @@ export const securityScanner = new SecurityScanner();
 // Export types and class
 export { SecurityScanner };
 export default securityScanner;
-
-
 
 
 

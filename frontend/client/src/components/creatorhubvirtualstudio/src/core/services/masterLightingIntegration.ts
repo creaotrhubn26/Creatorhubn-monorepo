@@ -17,14 +17,20 @@
  * 12. Virtual Actors - Skin tone metering
  */
 
-import type { ExposureRecommendation} from './exposureCalculatorService';
-import { exposureCalculator, MODIFIER_LIGHT_LOSS } from './exposureCalculatorService';
-import type { PatternExposureAnalysis } from './patternExposureIntegration';
-import { patternExposureIntegration } from './patternExposureIntegration';
-import type { CinematographyPattern, LightSetup } from './cinematographyPatternsService';
-import { cinematographyPatternsService } from './cinematographyPatternsService';
-import type { StudioLight } from '../data/LightSpecifications';
-import { findLightSpec, findLensSpec } from '../data/LightSpecifications';
+import {
+  exposureCalculator,
+  type ExposureRecommendation,
+} from './exposureCalculatorService';
+import {
+  patternExposureIntegration,
+  type PatternExposureAnalysis,
+} from './patternExposureIntegration';
+import {
+  cinematographyPatternsService,
+  type CinematographyPattern,
+  type LightSetup,
+} from './cinematographyPatternsService';
+import { findLightSpec, type StudioLight } from '../data/LightSpecifications';
 import type { UserEquipmentItem } from '@/hooks/useUserEquipmentInventory';
 
 // =============================================================================
@@ -464,7 +470,7 @@ class MasterLightingIntegrationService {
     }));
     
     // Match equipment
-    const { matches, missing, feasibilityScore } = patternExposureIntegration.matchEquipment(
+    const { missing, feasibilityScore } = patternExposureIntegration.matchEquipment(
       requirements.map((r, i) => ({
         ...r,
         name: template.lights[i].name,
@@ -544,8 +550,10 @@ class MasterLightingIntegrationService {
     
     for (const match of analysis.equipmentMatches) {
       const spec = match.matchedSpec as StudioLight | undefined;
-      const purchasePrice = spec?.price || this.estimatePrice(match.requirement.idealPower, match.requirement.modifier);
-      const rentalPrice = spec?.rentalPrice || Math.round(purchasePrice * 0.05);  // 5% of purchase per day
+      const purchasePrice = spec
+        ? this.estimatePrice(spec.power, match.requirement.modifier)
+        : this.estimatePrice(match.requirement.idealPower, match.requirement.modifier);
+      const rentalPrice = Math.round(purchasePrice * 0.05);  // 5% of purchase per day
       
       if (match.matchedEquipment) {
         ownedEquipmentValue += purchasePrice;
@@ -616,7 +624,7 @@ class MasterLightingIntegrationService {
     );
     
     // Determine contrast ratio from lights
-    const keyLight = sceneState.lights.find(l => l.userData?.role === 'key, ');
+    const keyLight = sceneState.lights.find(l => l.userData?.role === 'key');
     const fillLight = sceneState.lights.find(l => l.userData?.role === 'fill');
     const contrastRatio = keyLight && fillLight 
       ? `${Math.round(keyLight.power / fillLight.power)}:1`
@@ -820,18 +828,6 @@ class MasterLightingIntegrationService {
     );
     
     for (const cam of cameras) {
-      // Calculate light intensity at this camera position
-      let totalIntensity = 0;
-      for (const light of lights) {
-        const dx = light.position[0] - cam.position[0];
-        const dy = light.position[1] - cam.position[1];
-        const dz = light.position[2] - cam.position[2];
-        const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
-        
-        const effectivePower = exposureCalculator.calculatePowerAfterModifier(light.power, light.modifier);
-        totalIntensity += exposureCalculator.calculateIntensityAtDistance(effectivePower, distance);
-      }
-      
       // Calculate recommended settings
       const camEV = exposureCalculator.calculateEV(
         cam.currentSettings.aperture,
@@ -1164,6 +1160,10 @@ class MasterLightingIntegrationService {
     
     for (const req of requirements) {
       const hasEquipment = inventory.some(item => {
+        if (!item.brand || !item.model) {
+          return false;
+        }
+
         const spec = findLightSpec(item.brand, item.model);
         return spec && spec.power! >= req.idealPower * 0.7;
       });
@@ -1226,6 +1226,7 @@ class MasterLightingIntegrationService {
       reasons.push(`${analysis.missingEquipment.length} light(s) to acquire/rent`);
     }
     
+    reasons.push(`AI fit score ${Math.round(score * 100)}%`);
     reasons.push(`${pattern.difficulty} difficulty level`);
     
     if (pattern.usedIn.length > 0) {

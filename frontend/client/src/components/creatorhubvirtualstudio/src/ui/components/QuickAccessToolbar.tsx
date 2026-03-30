@@ -30,26 +30,17 @@ import {
   OpenWith,
   Rotate90DegreesCcw,
   ZoomOutMap,
-  Visibility,
-  VisibilityOff,
   Delete,
   ContentCopy,
-  ContentPaste,
   Undo,
   Redo,
   CenterFocusStrong,
   GridOn,
   GridOff,
-  Camera,
-  Lightbulb,
-  Animation,
   Lock,
-  LockOpen,
   Group,
   Link,
   LinkOff,
-  Fullscreen,
-  FullscreenExit,
   MoreVert,
   Apps,
   ViewInAr,
@@ -105,7 +96,7 @@ interface ToolButtonProps {
   icon: React.ReactNode;
   label: string;
   shortcut?: string;
-  onClick?: () => void;
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   active?: boolean;
   disabled?: boolean;
   badge?: number;
@@ -156,7 +147,7 @@ function ToolButton({ icon, label, shortcut, onClick, active, disabled, badge }:
 // ============================================================================
 
 function SelectionInfo() {
-  const selection = useSelection('toolbar,');
+  const selection = useSelection('toolbar');
 
   if (selection.selectedIds.length === 0) {
     return (
@@ -181,7 +172,7 @@ function SelectionInfo() {
 // ============================================================================
 
 export function QuickAccessToolbar({
-  transformMode = 'translate,',
+  transformMode = 'translate',
   onTransformModeChange,
   viewMode = 'perspective',
   onViewModeChange,
@@ -230,6 +221,20 @@ export function QuickAccessToolbar({
       equipmentGroupingService.createGroup('New Group', selection.selectedIds);
     }
   }, [onGroup, selection.selectedIds]);
+
+  const handleUngroup = useCallback(() => {
+    if (onUngroup) {
+      onUngroup();
+      return;
+    }
+
+    selection.selectedIds.forEach((selectedId) => {
+      const node = equipmentGroupingService.getNode(selectedId);
+      if (node?.groupId) {
+        equipmentGroupingService.removeFromGroup(selectedId, node.groupId);
+      }
+    });
+  }, [onUngroup, selection.selectedIds]);
 
   const isHorizontal = position === 'top' || position === 'bottom';
 
@@ -339,7 +344,7 @@ export function QuickAccessToolbar({
           <ToolButton
             icon={<ThreeDRotation />}
             label="View Mode"
-            onClick={(e: any) => setViewMenuAnchor(e?.currentTarget)}
+            onClick={(event) => setViewMenuAnchor(event.currentTarget)}
           />
         </Box>
 
@@ -361,7 +366,7 @@ export function QuickAccessToolbar({
         <ToolButton
           icon={<MoreVert />}
           label="More Options"
-          onClick={(e: any) => setMoreMenuAnchor(e?.currentTarget)}
+          onClick={(event) => setMoreMenuAnchor(event.currentTarget)}
         />
 
         {/* View Menu */}
@@ -403,6 +408,16 @@ export function QuickAccessToolbar({
           <MenuItem onClick={() => { setMoreMenuAnchor(null); }}>
             <ListItemIcon><Link fontSize="small" /></ListItemIcon>
             <ListItemText>Link Objects</ListItemText>
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              handleUngroup();
+              setMoreMenuAnchor(null);
+            }}
+            disabled={selection.selectedIds.length === 0}
+          >
+            <ListItemIcon><LinkOff fontSize="small" /></ListItemIcon>
+            <ListItemText>Ungroup Selection</ListItemText>
           </MenuItem>
           <MenuItem onClick={() => { setMoreMenuAnchor(null); }}>
             <ListItemIcon><Lock fontSize="small" /></ListItemIcon>

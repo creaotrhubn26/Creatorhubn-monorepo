@@ -69,9 +69,11 @@ interface Project {
   id: string;
   title: string;
   clientName: string;
+  clientEmail?: string;
   status: string;
   eventDate?: string;
-  type: string
+  type: string;
+  customerId?: string | null;
 }
 
 export function QuickMeetingNotesModal({
@@ -85,13 +87,15 @@ export function QuickMeetingNotesModal({
   selectedProject,
   onProjectSelect
 }: QuickMeetingNotesModalProps) {
+  const initialProjectId = preselectedProjectId || selectedProject?.id || '';
+
   // Form state
   const [meetingTitle, setMeetingTitle] = useState('');
-  const [selectedProjectId, setSelectedProjectId] = useState(preselectedProjectId || ',');
+  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [meetingDate, setMeetingDate] = useState(new Date().toISOString().slice(0, 16));
   const [quickNotes, setQuickNotes] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
-  const [isPersonalNote, setIsPersonalNote] = useState(!preselectedProjectId);
+  const [isPersonalNote, setIsPersonalNote] = useState(!initialProjectId);
 
   const queryClient = useQueryClient();
   
@@ -143,19 +147,48 @@ export function QuickMeetingNotesModal({
 });
 
   const createNoteMutation = useMutation({
-    mutationFn: (noteData: any) => apiRequest('/api/meeting-notes','POST', noteData),
-    onSuccess: () => {
+    mutationFn: (noteData: any) => apiRequest('/api/meeting-notes', {
+      method: 'POST',
+      body: noteData,
+    }),
+    onSuccess: (note: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/meeting-notes', ],});
+      if (onMeetingCreate) {
+        onMeetingCreate(note);
+      }
       handleClose();
   }
 });
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const nextProjectId = preselectedProjectId || selectedProject?.id || '';
+    setSelectedProjectId(nextProjectId);
+    setIsPersonalNote(!nextProjectId);
+  }, [isOpen, preselectedProjectId, selectedProject]);
+
+  useEffect(() => {
+    if (!isOpen || !Array.isArray(projects) || projects.length === 0 || !selectedProjectId) {
+      return;
+    }
+
+    const hasSelectedProject = projects.some((project: Project) => project.id === selectedProjectId);
+    if (!hasSelectedProject) {
+      setSelectedProjectId('');
+      setIsPersonalNote(true);
+    }
+  }, [isOpen, projects, selectedProjectId]);
+
   const handleClose = () => {
+    const nextProjectId = preselectedProjectId || selectedProject?.id || '';
     setMeetingTitle('');
-    setSelectedProjectId(preselectedProjectId || ', ');
-    setQuickNotes(', ');
+    setSelectedProjectId(nextProjectId);
+    setQuickNotes('');
     setIsPrivate(false);
-    setIsPersonalNote(!preselectedProjectId);
+    setIsPersonalNote(!nextProjectId);
     onClose();
 };
 
@@ -169,6 +202,9 @@ export function QuickMeetingNotesModal({
       meetingDate,
       profession,
       projectId: selectedProjectId || null,
+      clientId: currentProject?.customerId || selectedProject?.customerId || null,
+      clientName: currentProject?.clientName || selectedProject?.clientName || '',
+      clientEmail: currentProject?.clientEmail || selectedProject?.clientEmail || '',
       personalNotes: {
         content: quickNotes,
         sections:  [],
@@ -176,7 +212,7 @@ export function QuickMeetingNotesModal({
   },
       clientNotes: (!isPersonalNote && !isPrivate) ? { content: quickNotes, sections: [] } : null,
       isClientVisible: isPersonalNote ? false : !isPrivate,
-      clientAccessLevel: isPersonalNote ? 'none' : (isPrivate ? 'none' : ', '),
+      clientAccessLevel: isPersonalNote ? 'none' : (isPrivate ? 'none' : 'summary'),
       noteType: isPersonalNote ? 'personal' : 'project'
 };
 
@@ -193,6 +229,9 @@ export function QuickMeetingNotesModal({
 };
 
   const currentProject = projects?.find((p: Project) => p.id === selectedProjectId);
+  const selectedProjectValue = Array.isArray(projects) && projects.some((project: Project) => project.id === selectedProjectId)
+    ? selectedProjectId
+    : '';
 
   return (
     <Dialog open={isOpen} onClose={handleClose} maxWidth="md" fullWidth>
@@ -244,7 +283,10 @@ export function QuickMeetingNotesModal({
                     borderColor: !selectedProjectId ? '#2196F3' : '#bdbdbd'
                   }
                 }}
-                onClick={() => setSelectedProjectId('')}
+                onClick={() => {
+                  setSelectedProjectId('');
+                  setIsPersonalNote(true);
+                }}
               >
                 <CardContent sx={{ p: 2, textAlign: 'center' ,  ...theming.getThemedCardSx() }}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap:  1 }}>
@@ -268,9 +310,11 @@ export function QuickMeetingNotesModal({
               }
               }}
                 onClick={() => {
+                  setIsPersonalNote(false);
                   if (!selectedProjectId && projects && projects.length > 0) {
                     setSelectedProjectId(projects[0].id);
-                }
+                    onProjectSelect?.(projects[0]);
+                  }
               }}
               >
                 <CardContent sx={{ p: 2, textAlign: 'center' ,  ...theming.getThemedCardSx() }}>
@@ -296,12 +340,23 @@ export function QuickMeetingNotesModal({
               <FormControl fullWidth>
                 <InputLabel>Velg {profConfig.projectLabel}</InputLabel>
                 <Select
-                  value={selectedProjectId}
-                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  value={selectedProjectValue}
+                  onChange={(e) => {
+                    const nextProjectId = String(e.target.value || '');
+                    setSelectedProjectId(nextProjectId);
+                    setIsPersonalNote(!nextProjectId);
+                    const nextProject = projects?.find((project: Project) => project.id === nextProjectId);
+                    if (nextProject) {
+                      onProjectSelect?.(nextProject);
+                    }
+                  }}
                   label={`Velg ${profConfig.projectLabel}`}
                 >
+                  <MenuItem value="" disabled>
+                    Velg {profConfig.projectLabel.toLowerCase()}
+                  </MenuItem>
                   {projects?.map((project: Project) => (
-                    <MenuItem key={project.d} value={project.id}>
+                    <MenuItem key={project.id} value={project.id}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                         <Typography>{project.title}</Typography>
                         <Chip label={project.clientName} size="small" sx={{ ml:  1 }} />

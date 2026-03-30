@@ -56,12 +56,18 @@ function SessionSeeder({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const seedSession = async () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const sessionMode = searchParams.get('session');
+      const isContentProducerSession = sessionMode === 'content-producer';
+
       // Pre-seed admin user so CastingPlannerPanel won't redirect when isStandalone=true
       await authSessionService.setAdminUser({
         id: 'e2e-test-user',
         email: 'e2e@test.local',
         role: 'admin',
         display_name: 'E2E Tester',
+        loginAs: isContentProducerSession ? 'content_producer' : undefined,
+        requestedRole: isContentProducerSession ? 'content_producer' : null,
       });
       // Pre-seed profession so the profession selector dialog doesn't open
       await settingsService.setSetting('virtualStudio_castingProfession', 'photographer', {

@@ -3,7 +3,7 @@
  * Provides theme context and utilities for glass components
  */
 
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, createContext, useContext } from 'react';
 import { designTokens } from '../design-tokens';
 
 // ============ TYPES ============
@@ -32,6 +32,39 @@ export interface GlassThemeContext {
 // ============ CONTEXT ============
 
 const GlassThemeContext = createContext<GlassThemeContext | null>(null);
+
+const norwegianTerminology: Record<UserType, Record<string, string>> = {
+  photographer: {
+    booking: 'booking',
+    client: 'kunde',
+    invoice: 'faktura',
+    project: 'oppdrag',
+  },
+  videographer: {
+    booking: 'produksjon',
+    client: 'kunde',
+    invoice: 'faktura',
+    project: 'videooppdrag',
+  },
+  musicProducer: {
+    booking: 'session',
+    client: 'artist',
+    invoice: 'faktura',
+    project: 'produksjon',
+  },
+  admin: {
+    booking: 'aktivitet',
+    client: 'bruker',
+    invoice: 'fakturagrunnlag',
+    project: 'arbeidsområde',
+  },
+};
+
+const norwegianCompliance = {
+  gdpr: true,
+  vatRegistered: true,
+  professionalStandards: true,
+};
 
 // ============ HOOK ============
 
@@ -98,7 +131,7 @@ export const GlassThemeProvider: React.FC<GlassThemeProviderProps> = ({
       },
       smooth: {
         type: 'tween',
-        ease: designTokens.motion.easing.smooth,
+        ease: designTokens.motion.smooth,
         duration: 0.3,
       },
     };
@@ -107,7 +140,7 @@ export const GlassThemeProvider: React.FC<GlassThemeProviderProps> = ({
   };
 
   const getColorVariant = (userType: UserType): string => {
-    return designTokens.color.dashboard[userType];
+    return designTokens.userTypes[userType].primary;
   };
 
   const contextValue: GlassThemeContext = {
@@ -125,29 +158,30 @@ export const GlassThemeProvider: React.FC<GlassThemeProviderProps> = ({
 // ============ UTILITIES ============
 
 export const createGlassVariant = (userType: UserType, intensity: GlassIntensity = 'medium') => {
-  const baseColor = designTokens.color.glass[userType];
+  const baseColor = designTokens.userTypes[userType].border;
   const blurLevel = designTokens.glass.blur[intensity];
-  const background = designTokens.glass.backgrounds[intensity];
+  const background = designTokens.glass.background[intensity];
+  const shadowLevel = intensity === 'ultra' ? 'heavy' : intensity;
 
   return {
     backgroundColor: background,
-    backdropFilter: blurLevel,
+    backdropFilter: `blur(${blurLevel})`,
     border: `1px solid ${baseColor}`,
-    boxShadow: designTokens.glass.shadows[intensity],
+    boxShadow: designTokens.shadows.glass[shadowLevel],
   };
 };
 
 export const getNorvegianTerminology = (userType: UserType, key: string): string => {
-  const terminology = designTokens.norwegian.terminology[userType];
+  const terminology = norwegianTerminology[userType];
   return terminology[key as keyof typeof terminology] || key;
 };
 
 export const isGDPRCompliant = (): boolean => {
-  return designTokens.norwegian.compliance.gdpr;
+  return norwegianCompliance.gdpr;
 };
 
 export const isVATRegistered = (): boolean => {
-  return designTokens.norwegian.compliance.vatRegistered;
+  return norwegianCompliance.vatRegistered;
 };
 
 // ============ CUSTOM HOOKS ============
@@ -170,7 +204,7 @@ export const useUserTypeTheme = (userType?: UserType) => {
     userType: activeUserType,
     color: getColorVariant(activeUserType),
     classes: getThemeClasses(activeUserType),
-    terminology: designTokens.norwegian.terminology[activeUserType],
+    terminology: norwegianTerminology[activeUserType],
   };
 };
 
@@ -182,9 +216,9 @@ export const useGlassCompliance = () => {
     isGDPRCompliant: isGDPRCompliant(),
     isVATRegistered: isVATRegistered(),
     complianceStatus: {
-      gdpr: designTokens.norwegian.compliance.gdpr,
-      vat: designTokens.norwegian.compliance.vatRegistered,
-      professional: designTokens.norwegian.compliance.professionalStandards,
+      gdpr: norwegianCompliance.gdpr,
+      vat: norwegianCompliance.vatRegistered,
+      professional: norwegianCompliance.professionalStandards,
     },
   };
 };

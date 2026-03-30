@@ -117,23 +117,27 @@ const getDefaultPerformanceMetrics = (): PerformanceMetrics => ({
   errorRate: 0,
   cacheHitRate: 0,
   bandwidthSaved: 0,
-  peakLoad: 0,
-  throughput: 0,
+  apiCallsSaved: 0,
+  timeSaved: 0,
 });
 
 const getDefaultSecurityMetrics = (): SecurityMetrics => ({
-  authenticationFailures: 0,
-  suspiciousActivities: 0,
-  tokenRefreshes: 0,
-  lastSecurityScan: new Date(),
-  securityScore: 100,
-  vulnerabilities: [],
+  totalTokens: 0,
+  activeTokens: 0,
+  expiredTokens: 0,
+  tokensNeedingRotation: 0,
+  recentFailures: 0,
+  securityIssues: [],
 });
 
 const getDefaultOptimizationMetrics = (): OptimizationMetrics => ({
-  apiCallsOptimized: 0,
-  bandwidthSaved: 0,
-  cacheEfficiency: 0,
+  totalOptimizations: 0,
+  averageSavings: {
+    bandwidth: 0,
+    apiCalls: 0,
+    battery: 0,
+    time: 0,
+  },
   recommendations: [],
 });
 
@@ -199,7 +203,12 @@ export const GoogleServicesAnalyticsDashboard: React.FC<GoogleServicesAnalyticsD
   }
 };
 
-  const getMockMetrics = () => ({
+  const getMockMetrics = (): {
+    services: ServiceMetrics[];
+    performance: PerformanceMetrics;
+    security: SecurityMetrics;
+    optimization: OptimizationMetrics;
+  } => ({
     services: [
       {
         service: 'Google Drive',

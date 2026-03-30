@@ -384,8 +384,13 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
             <Button variant="contained"
               onClick={connectToYouTube}
               sx={{
-                bgcolor: '#FF0000', '&:hover': { bgcolor: '#CC0000' }}}
-             sx={theming.getThemedButtonSx()}>
+                ...theming.getThemedButtonSx(),
+                bgcolor: '#FF0000',
+                '&:hover': {
+                  ...(theming.getThemedButtonSx()['&:hover'] ?? {}),
+                  bgcolor: '#CC0000',
+                },
+              }}>
               Koble til YouTube
             </Button>
           </Box>

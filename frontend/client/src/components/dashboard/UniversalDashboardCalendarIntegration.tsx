@@ -377,7 +377,7 @@ export default function UniversalDashboardCalendarIntegration({
               <Box
                 sx={{
                   p:  2,
-                  background: 'rgba(25, 255, 255, 0.8)',
+                  background: 'rgba(255, 255, 255, 0.84)',
                   borderRadius:  2,
                   border: `1px solid ${colors.primary}20`}}
               >
@@ -410,7 +410,7 @@ export default function UniversalDashboardCalendarIntegration({
               <Box
                 sx={{
                   p:  2,
-                  background: 'rgba(25, 255, 255, 0.8)',
+                  background: 'rgba(255, 255, 255, 0.84)',
                   borderRadius:  2,
                   border: `1px solid ${colors.primary}20`}}
               >
@@ -435,7 +435,7 @@ export default function UniversalDashboardCalendarIntegration({
               <Box
                 sx={{
                   p:  2,
-                  background: 'rgba(25, 255, 255, 0.8)',
+                  background: 'rgba(255, 255, 255, 0.84)',
                   borderRadius:  2,
                   border: `1px solid ${colors.primary}20`}}
               >

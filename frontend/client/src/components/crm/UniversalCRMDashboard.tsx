@@ -15,6 +15,7 @@ import {
   Grid,
   Card,
   CardContent,
+  Paper,
   Button,
   Chip,
   TextField,
@@ -33,12 +34,14 @@ import {
   ListItemAvatar,
   Avatar,
   Divider,
+  Stack,
+  InputAdornment,
 } from '@mui/material';
 import {
   AddCircle as AddIcon,
   Search as SearchIcon,
-  Business as BusinessIcon,
   VideoCall,
+  Task as TaskIcon,
   WorkOutline,
   Add,
   Schedule,
@@ -51,6 +54,8 @@ import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import BusinessIntelligenceDashboard from '../business-intelligence/BusinessIntelligenceDashboard';
+import GoogleTasksIntegration from '../google-tasks/GoogleTasksIntegration';
+import { alpha } from '@mui/material/styles';
 
 interface UniversalCustomer {
   id: string;
@@ -67,7 +72,12 @@ interface UniversalCustomer {
   source: string;
   createdAt: string;
   updatedAt: string;
-  customFields: Record<string, any>;
+  customFields: Record<string, unknown>;
+}
+
+interface GooglePeopleContact {
+  id: string;
+  email: string;
 }
 
 interface EventContext {
@@ -100,6 +110,8 @@ export default function UniversalCRMDashboard({
 }: CRMDashboardProps) {
   // Master integration system for "everything interacts with everything"
   const { integration, communication, dataFlow, componentRegistry, features } = useEnhancedMasterIntegration();
+  const { user } = useAuth();
+  const { professionConfigs } = useProfessionConfigs();
   
   // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(profession || 'photographer,');
@@ -117,6 +129,7 @@ export default function UniversalCRMDashboard({
   const queryClient = useQueryClient();
   const { profession: currentProfession, adaptTabLabels, adaptDashboardTitle } = useProfessionAdapter();
   const { getCurrentUserProfession, getProfessionDisplayName, getUserProfessionColor } = useDynamicProfessions();
+  const resolvedUserId = user?.id || user?.email || queryClient.getQueryData<{ id?: string; email?: string }>(['user'])?.id || queryClient.getQueryData<{ id?: string; email?: string }>(['user'])?.email || 'default';
   
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -127,6 +140,7 @@ export default function UniversalCRMDashboard({
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<UniversalCustomer | null>(null);
   const [showBIDialog, setShowBIDialog] = useState(false);
+  const [showTasksDialog, setShowTasksDialog] = useState(false);
 
   // Link to event dialog state
   const [showLinkDialog, setShowLinkDialog] = useState(false);
@@ -134,6 +148,12 @@ export default function UniversalCRMDashboard({
   const [linkNotes, setLinkNotes] = useState<string>('');
   const [showContractsDialog, setShowContractsDialog] = useState(false);
   const [customerContracts, setCustomerContracts] = useState<any[]>([]);
+  const [meetingForm, setMeetingForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    time: '10:00',
+    duration: 60,
+    description: '',
+  });
 
   // Register component with MasterIntegrationProvider
   useEffect(() => {
@@ -146,7 +166,7 @@ export default function UniversalCRMDashboard({
       timestamp: Date.now(),
       component: 'UniversalCRMDashboard',
       profession: currentProfession,
-      userId: userId
+      userId: resolvedUserId
 });
 
     // Register data flow nodes
@@ -174,10 +194,64 @@ export default function UniversalCRMDashboard({
     return () => {
       communication.unregisterComponent('universal-crm-dashboard');
     };
-  }, [communication, dataFlow]);
+  }, [communication, dataFlow, features, currentProfession, resolvedUserId]);
 
   // Use profession from props or context with dynamic fallback
   const activeProfession = profession || currentProfession || getCurrentUserProfession();
+  const availableProfessionConfigs = Object.entries(professionConfigs || {});
+  const professionPreset =
+    professionConfigs?.[activeProfession] ||
+    availableProfessionConfigs.find(([professionId, config]) => {
+      const normalizedActiveProfession = activeProfession.toLowerCase();
+      return (
+        professionId === activeProfession ||
+        config.name.toLowerCase() === normalizedActiveProfession ||
+        config.displayName.toLowerCase() === normalizedActiveProfession
+      );
+    })?.[1];
+  const professionIcon = getProfessionIcon(activeProfession);
+  const enabledCRMFeatures = [
+    { label: 'CRM', access: crmDashboardAccess },
+    { label: 'Kunder', access: customerManagementAccess },
+    { label: 'Leads', access: leadManagementAccess },
+    { label: 'Prosjekter', access: projectManagementAccess },
+    { label: 'Kontakter', access: contactManagementAccess },
+    { label: 'Analyse', access: crmAnalyticsAccess },
+    { label: 'Salg', access: salesTrackingAccess },
+    { label: 'Kommunikasjon', access: communicationTrackingAccess },
+  ];
+
+  useEffect(() => {
+    componentRegistry.registerComponent({
+      id: 'universal-crm-dashboard',
+      name: 'Universal CRM Dashboard',
+      type: 'dashboard',
+      category: 'crm',
+      profession: activeProfession,
+      capabilities: ['crm:manage', 'customer:manage', 'project:create', 'meeting:schedule', 'analytics:view'],
+      dependencies: ['communication', 'data-flow', 'feature-access'],
+      props: ['profession', 'selectedProject', 'eventContext'],
+      events: ['customer:selected', 'project:selected', 'meeting:scheduled', 'crm:customer:update'],
+      dataKeys: ['universal-crm-dashboard:customers', 'universal-crm-dashboard:projects', 'universal-crm-dashboard:meetings'],
+      features: ['universal-crm', 'customer-management', 'project-management', 'communication-tracking'],
+      version: '1.0.0',
+      description: 'CRM-arbeidsflate for kunder, prosjekter, møter og kontrakter.',
+    });
+
+    integration.emit('crm:dashboard:opened', {
+      profession: activeProfession,
+      userId: resolvedUserId,
+      selectedProjectId: selectedProject?.id || null,
+    });
+
+    return () => {
+      componentRegistry.unregisterComponent('universal-crm-dashboard');
+      integration.emit('crm:dashboard:closed', {
+        profession: activeProfession,
+        userId: resolvedUserId,
+      });
+    };
+  }, [activeProfession, componentRegistry, integration, resolvedUserId, selectedProject?.id]);
 
   // Listen to global events
   useEffect(() => {
@@ -207,6 +281,19 @@ export default function UniversalCRMDashboard({
     });
     return unsubscribe;
   }, [communication, onProjectSelect, onCustomerSelect, activeProfession]);
+
+  useEffect(() => {
+    if (!selectedCustomer || !showMeetingDialog) {
+      return;
+    }
+
+    setMeetingForm({
+      date: new Date().toISOString().split('T')[0],
+      time: '10:00',
+      duration: 60,
+      description: `Kundemøte for ${selectedCustomer.projectType || selectedProject?.projectType || 'prosjekt'}${selectedProject?.name ? ` • ${selectedProject.name}` : ''}`,
+    });
+  }, [selectedCustomer, selectedProject, showMeetingDialog]);
 
   const tabLabels = adaptTabLabels();
   
@@ -310,19 +397,23 @@ export default function UniversalCRMDashboard({
         const phone: string = created?.phone || created?.customer?.phone || '';
         const companyName: string = created?.company || created?.customer?.company || '';
         if (email) {
-          // Search existing
-          const searchRes = await fetch(`/api/google/people/search-contacts?q=${encodeURIComponent(email)}`);
-          let foundId: string | null = null;
-          if (searchRes.ok) {
-            const contacts = await searchRes.json();
-            const found = contacts.find((c: any) => c.email?.toLowerCase() === email.toLowerCase());
-            if (found?.id) foundId = found.id;
-          }
+          const contacts = await apiRequest(
+            `/api/google/people/search-contacts?q=${encodeURIComponent(email)}&userId=${encodeURIComponent(resolvedUserId)}`,
+          ) as GooglePeopleContact[];
+          const foundId = contacts.find((contact) => contact.email?.toLowerCase() === email.toLowerCase())?.id ?? null;
           if (!foundId) {
-            await fetch('/api/google/people/create-contact', {
+            await apiRequest('/api/google/people/create-contact', {
               method: 'POST',
-              headers: { 'Content-Type' : 'application/json' },
-              body: JSON.stringify({ firstName, lastName: lastName || '-', email, phone, companyName, profession: activeProfession, notes: 'Created from Universal CRM' })
+              body: {
+                firstName,
+                lastName: lastName || '-',
+                email,
+                phone,
+                companyName,
+                profession: activeProfession,
+                notes: 'Created from Universal CRM',
+                userId: resolvedUserId,
+              },
             });
           }
         }
@@ -349,7 +440,9 @@ export default function UniversalCRMDashboard({
     onSuccess: (updated) => {
       try {
         communication.sendBroadcast('customer:updated', updated);
-      } catch {}
+      } catch (error) {
+        console.warn('Could not broadcast updated customer:', error);
+      }
       queryClient.invalidateQueries({ queryKey: ['universal-crm-customers'] });
       queryClient.invalidateQueries({ queryKey: ['universal-crm-stats'] });
       setShowEditDialog(false);
@@ -433,6 +526,43 @@ export default function UniversalCRMDashboard({
 
   const customers = customersData?.customers || [];
   const stats = statsData?.stats || { total: 0, byStatus: {}, recentlyAdded: 0 };
+  const filteredCustomers = React.useMemo(
+    () => customers.filter((customer: UniversalCustomer) => !statusFilter || customer.status === statusFilter),
+    [customers, statusFilter],
+  );
+  const heroSummary = [
+    `${stats.total || 0} kontakter totalt`,
+    `${stats.byStatus?.active || 0} aktive`,
+    `${stats.byStatus?.lead || 0} nye henvendelser`,
+  ];
+  const primaryMetrics = [
+    {
+      label: 'Kontakter',
+      value: stats.total || 0,
+      description: 'samlet kundeoversikt',
+      tone: 'linear-gradient(135deg, #0f766e 0%, #34d399 100%)',
+    },
+    {
+      label: terminology.projects || 'Prosjekter',
+      value: stats.byStatus?.active || 0,
+      description: 'aktive leveranser',
+      tone: 'linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)',
+    },
+    {
+      label: 'Leads',
+      value: stats.byStatus?.lead || 0,
+      description: 'venter oppfølging',
+      tone: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)',
+    },
+    {
+      label: 'Siste uke',
+      value: stats.recentlyAdded || 0,
+      description: 'nye registreringer',
+      tone: 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
+    },
+  ];
+  const surfaceBorder = `1px solid ${alpha(colors.primary, 0.12)}`;
+  const surfaceShadow = `0 18px 42px ${alpha('#0f172a', 0.08)}`;
 
   // Fetch split sheets for each customer (only for music producers)
   const { data: customerSplitSheetsData } = useQuery({
@@ -467,14 +597,23 @@ export default function UniversalCRMDashboard({
   const getDomainFromWebsite = (web?: string) => {
     const w = (web || '').trim();
     if (!w) return '';
-    try { return new URL(w).hostname; } catch {}
-    try { return new URL(`https://${w}`).hostname; } catch {}
+    const normalizedWebsite = /^https?:\/\//i.test(w) ? w : `https://${w}`;
+    try {
+      return new URL(normalizedWebsite).hostname;
+    } catch (error) {
+      console.warn('Invalid customer website, skipping logo lookup:', web, error);
+    }
     return '';
   };
 
   const getCompanyLogoFromWebsite = (website?: string): string | undefined => {
     const domain = getDomainFromWebsite(website);
     return domain ? `https://logo.clearbit.com/${domain}` : undefined;
+  };
+
+  const getCustomerWebsite = (customer: UniversalCustomer) => {
+    const websiteValue = customer.customFields?.website;
+    return typeof websiteValue === 'string' ? websiteValue : '';
   };
 
   const getStatusColor = (status: string) => {
@@ -493,70 +632,66 @@ export default function UniversalCRMDashboard({
     try {
       if (!customer?.email) return;
       const name = customer.name || '';
-      const [firstName, ...rest] = name.split('');
-      const lastName = rest.join('');
+      const [firstName, ...rest] = name.split(' ');
+      const lastName = rest.join(' ');
       const companyName = customer.company || '';
       const phone = customer.phone || '';
 
-      // Search existing contact by email
-      const searchRes = await fetch(`/api/google/people/search-contacts?q=${encodeURIComponent(customer.email)}`);
-      let contactId: string | null = null;
-      if (searchRes.ok) {
-        const contacts = await searchRes.json();
-        const found = contacts.find((c: any) => c.email?.toLowerCase() === customer.email.toLowerCase());
-        if (found?.id) contactId = found.id;
-      }
+      const contacts = await apiRequest(
+        `/api/google/people/search-contacts?q=${encodeURIComponent(customer.email)}&userId=${encodeURIComponent(resolvedUserId)}`,
+      ) as GooglePeopleContact[];
+      let contactId: string | null =
+        contacts.find((contact) => contact.email?.toLowerCase() === customer.email.toLowerCase())?.id ?? null;
 
       if (contactId) {
-        // Update existing contact
-        await fetch(`/api/google/people/update-contact/${encodeURIComponent(contactId)}`, {
+        await apiRequest(`/api/google/people/update-contact/${encodeURIComponent(contactId)}`, {
           method: 'PUT',
-          headers: { 'Content-Type' : 'application/json' },
-          body: JSON.stringify({
+          body: {
             firstName: firstName || '-',
             lastName: lastName || '-',
             email: customer.email,
             phone,
             profession: activeProfession,
             companyName,
-            notes: customer.notes || ''
-          })
+            notes: customer.notes || '',
+            userId: resolvedUserId,
+          },
         });
       } else {
-        // Create new contact
-        const createResp = await fetch('/api/google/people/create-contact', {
+        const created = await apiRequest('/api/google/people/create-contact', {
           method: 'POST',
-          headers: { 'Content-Type' : 'application/json' },
-          body: JSON.stringify({
+          body: {
             firstName: firstName || '-',
             lastName: lastName || '-',
             email: customer.email,
             phone,
             profession: activeProfession,
             companyName,
-            notes: customer.notes || 'Created from Universal CRM'
-          })
+            notes: customer.notes || 'Created from Universal CRM',
+            userId: resolvedUserId,
+          },
         });
-        if (createResp.ok) {
-          const created = await createResp.json();
-          contactId = created.contactId;
-        }
+        contactId = typeof created?.contactId === 'string' ? created.contactId : null;
       }
 
       // Set contact photo only if company website is provided
       if (contactId) {
-        const website = (customer as any)?.customFields?.website || '';
+        const website = getCustomerWebsite(customer);
         if (website) {
           try {
             const domain = getDomainFromWebsite(website);
             if (domain) {
-              await fetch(`/api/google/people/set-contact-photo/${encodeURIComponent(contactId)}`, {
+              await apiRequest(`/api/google/people/set-contact-photo/${encodeURIComponent(contactId)}`, {
                 method: 'POST',
-                headers: { 'Content-Type' : 'application/json' },
-                body: JSON.stringify({ photoUrl: `https://logo.clearbit.com/${domain}` })
+                body: {
+                  photoUrl: `https://logo.clearbit.com/${domain}`,
+                  userId: resolvedUserId,
+                },
               });
             }
-          } catch {}
+          } catch (error) {
+            console.warn('Could not update Google contact photo:', error);
+          }
         }
       }
     } catch (e) {
@@ -579,609 +714,781 @@ export default function UniversalCRMDashboard({
 };
     
     createCustomerMutation.mutate(customerData);
-};
+  };
 
   return (
-    <Box sx={{ p: 2 }}>
-      {/* Header with profession-specific styling */}
-      <Box sx={{ 
-        mb: 3, 
-        p: 2,
-        background: `linear-gradient(135deg, ${colors.primary}15, ${colors.secondary}15)`,
-        borderRadius: 2,
-        border: `1px solid ${colors.primary}30`
-      }}>
-        <Box>
-          <Typography variant="h5" sx={{ 
-            fontWeight: 'bold', 
-            color: theming.colors.primary,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1
-          }}>
-            <BusinessIcon />
-            {terminology.customerManagement || 'Kundestyring'}
-            {activeProfession && (
-              <Chip 
-                label={terminology.professionName}
-                sx={{ 
-                  backgroundColor: colors.primary, 
-                  color: 'white',
-                  fontSize: '0.75rem'
-            }}
+    <Box sx={{ p: { xs: 0, md: 1 } }}>
+      <Stack spacing={3}>
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 2.5, md: 3.5 },
+            borderRadius: 4,
+            border: surfaceBorder,
+            boxShadow: surfaceShadow,
+            background: `linear-gradient(135deg, ${alpha(colors.primary, 0.12)} 0%, rgba(255,255,255,0.98) 42%, ${alpha(colors.secondary, 0.08)} 100%)`,
+          }}
+        >
+          <Stack spacing={3}>
+            <Stack
+              direction={{ xs: 'column', lg: 'row' }}
+              spacing={2.5}
+              justifyContent="space-between"
+              alignItems={{ xs: 'flex-start', lg: 'center' }}
+            >
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Avatar
+                  sx={{
+                    width: 54,
+                    height: 54,
+                    bgcolor: alpha(colors.primary, 0.12),
+                    color: colors.primary,
+                    border: `1px solid ${alpha(colors.primary, 0.18)}`,
+                  }}
+                >
+                  {professionIcon}
+                </Avatar>
+                <Stack spacing={1}>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+                    <Typography variant="h4" sx={{ fontWeight: 800, color: theming.colors.primary, lineHeight: 1.1 }}>
+                      {adaptDashboardTitle(terminology.customerManagement || 'Kundestyring')}
+                    </Typography>
+                    {activeProfession && (
+                      <Chip
+                        label={professionPreset?.name || terminology.professionName}
+                        size="small"
+                        sx={{
+                          bgcolor: colors.primary,
+                          color: 'white',
+                          fontWeight: 700,
+                        }}
+                      />
+                    )}
+                  </Stack>
+                  <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 760 }}>
+                    {crmDashboardAccess.hasAccess
+                      ? `Samle leads, kunder, kontrakter og ${terminology.projects.toLowerCase()} i én rolig arbeidsflate med tydelig neste steg.`
+                      : crmDashboardAccess.reason}
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    {heroSummary.map((summaryItem) => (
+                      <Chip
+                        key={summaryItem}
+                        label={summaryItem}
+                        variant="outlined"
+                        size="small"
+                        sx={{
+                          borderColor: alpha(colors.primary, 0.2),
+                          bgcolor: alpha('#ffffff', 0.72),
+                        }}
+                      />
+                    ))}
+                    <Chip
+                      label={`${enabledCRMFeatures.filter(({ access }) => access.hasAccess).length} moduler aktive`}
+                      size="small"
+                      sx={{
+                        bgcolor: alpha(colors.primary, 0.12),
+                        color: colors.primary,
+                        fontWeight: 700,
+                      }}
+                    />
+                  </Stack>
+                </Stack>
+              </Stack>
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} sx={{ width: { xs: '100%', lg: 'auto' } }}>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => setShowAddForm((current) => !current)}
+                  disabled={!customerManagementAccess.hasAccess}
+                  sx={{
+                    minWidth: 156,
+                    bgcolor: colors.primary,
+                    color: '#fff',
+                    boxShadow: `0 14px 32px ${alpha(colors.primary, 0.26)}`,
+                    '&:hover': { bgcolor: colors.secondary },
+                  }}
+                >
+                  {showAddForm ? 'Skjul skjema' : 'Ny kunde'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<AssessmentIcon />}
+                  onClick={() => setShowBIDialog(true)}
+                  disabled={!crmAnalyticsAccess.hasAccess}
+                  sx={{
+                    minWidth: 176,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': {
+                      borderColor: colors.secondary,
+                      bgcolor: alpha(colors.primary, 0.08),
+                    },
+                  }}
+                >
+                  Business Intelligence
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<TaskIcon />}
+                  onClick={() => setShowTasksDialog(true)}
+                  sx={{
+                    minWidth: 150,
+                    borderColor: alpha(colors.primary, 0.25),
+                    color: colors.primary,
+                    bgcolor: alpha('#fff', 0.86),
+                    '&:hover': {
+                      borderColor: colors.secondary,
+                      bgcolor: alpha(colors.primary, 0.08),
+                    },
+                  }}
+                >
+                  Google Tasks
+                </Button>
+              </Stack>
+            </Stack>
+
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {enabledCRMFeatures.map(({ label, access }) => (
+                <Chip
+                  key={label}
+                  size="small"
+                  label={label}
+                  variant={access.hasAccess ? 'filled' : 'outlined'}
+                  sx={
+                    access.hasAccess
+                      ? {
+                          bgcolor: alpha(colors.primary, 0.12),
+                          color: colors.primary,
+                          fontWeight: 600,
+                        }
+                      : {
+                          borderColor: alpha('#64748b', 0.18),
+                          color: 'text.secondary',
+                        }
+                  }
+                />
+              ))}
+              <Chip
+                label={`Adopsjon ${Math.round(features.getFeatureAnalytics().featureAdoptionRate * 100)}%`}
+                size="small"
+                variant="outlined"
+                sx={{ borderColor: alpha(colors.primary, 0.2), bgcolor: alpha('#fff', 0.72) }}
               />
+            </Stack>
+          </Stack>
+        </Paper>
+
+        {(selectedProject || eventContext) && (
+          <Grid container spacing={2}>
+            {selectedProject && (
+              <Grid item xs={12} md={6}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2.25,
+                    borderRadius: 3,
+                    border: surfaceBorder,
+                    background: alpha(colors.primary, 0.05),
+                  }}
+                >
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <Avatar sx={{ bgcolor: alpha(colors.primary, 0.12), color: colors.primary }}>
+                      <WorkOutline />
+                    </Avatar>
+                    <Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                        Aktivt prosjekt
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {selectedProject.name || selectedProject.title || selectedProject.id}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </Paper>
+              </Grid>
             )}
-          </Typography>
-          
-          {/* Feature Analytics Display */}
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 1,
-            mt: 1
-      }}>
-            <Typography variant="caption" color="text.secondary">
-              Features: {features.getFeatureAnalytics().enabledFeatures}/{features.getFeatureAnalytics().totalFeatures}
-            </Typography>
-            <Chip 
-              label={`${Math.round(features.getFeatureAnalytics().featureAdoptionRate * 100)}%`}
-              size="small"
-              variant="outlined"
-              sx={{ fontSize: '10px', height: 18 }}
-            />
-          </Box>
-        </Box>
-      </Box>
+            {eventContext && (
+              <Grid item xs={12} md={6}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2.25,
+                    borderRadius: 3,
+                    border: surfaceBorder,
+                    background: alpha('#0ea5e9', 0.05),
+                  }}
+                >
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1.5}
+                    alignItems={{ xs: 'flex-start', sm: 'center' }}
+                    justifyContent="space-between"
+                  >
+                    <Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                        Event-kontekst
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {eventContext.name}
+                      </Typography>
+                    </Box>
+                    <Button size="small" variant="outlined" onClick={() => setShowLinkDialog(true)}>
+                      Link kontakt
+                    </Button>
+                  </Stack>
+                </Paper>
+              </Grid>
+            )}
+          </Grid>
+        )}
 
-      {/* Event Context Bar */}
-      {eventContext && (
-        <Box sx={{ mb: 2 }}>
-          <Alert severity="info" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box>
-              <strong>Event-kontekst:</strong> {eventContext.name}
-            </Box>
-            <Box>
-              <Button size="small" variant="outlined" onClick={() => setShowLinkDialog(true)}>
-                Link kontakt til event
-              </Button>
-            </Box>
-          </Alert>
-        </Box>
-      )}
-
-      {/* Stats Cards */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color={colors.primary} sx={{ ...{}, color: theming.colors.primary }}>
-                {stats.total}
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                Totalt antall kunder
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="#4caf50" sx={{ ...{}, color: theming.colors.primary }}>
-                {stats.byStatus?.active || 0}
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                Aktive {terminology.projects?.toLowerCase() || 'prosjekter'}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="#ff9800" sx={{ ...{}, color: theming.colors.primary }}>
-                {stats.byStatus?.lead || 0}
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                Nye henvendelser
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="#2196f3" sx={{ ...{}, color: theming.colors.primary }}>
-                {stats.recentlyAdded}
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                Siste uke
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Split Sheet Statistics - Only for Music Producers */}
-        {isMusicProducer && (
-          <>
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ ...theming.getThemedCardSx(), border: '1px solid', borderColor: '#9f7aea30' }}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" color="#9f7aea" sx={{ fontWeight: 600}}>
-                    {splitSheetStats.total || 0}
+        <Grid container spacing={2}>
+          {primaryMetrics.map((metric) => (
+            <Grid item xs={12} sm={6} md={3} key={metric.label}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.5,
+                  minHeight: 176,
+                  borderRadius: 3.5,
+                  color: 'white',
+                  background: metric.tone,
+                  boxShadow: `0 20px 44px ${alpha('#0f172a', 0.14)}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Typography variant="overline" sx={{ opacity: 0.82, letterSpacing: 0.8 }}>
+                  {metric.label}
+                </Typography>
+                <Box>
+                  <Typography variant="h2" sx={{ fontWeight: 800, lineHeight: 1, mb: 1 }}>
+                    {metric.value}
                   </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Split Sheets
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    {metric.description}
                   </Typography>
-                </CardContent>
-              </Card>
+                </Box>
+              </Paper>
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ ...theming.getThemedCardSx(), border: '1px solid', borderColor: '#ff980030' }}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" color="#ff9800" sx={{ fontWeight: 600}}>
-                    {splitSheetStats.pendingSignatures || 0}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Venter signaturer
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ ...theming.getThemedCardSx(), border: '1px solid', borderColor: '#4caf5030' }}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" color="#4caf50" sx={{ fontWeight: 600}}>
+          ))}
+
+          {isMusicProducer && (
+            <>
+              <Grid item xs={12} sm={6} md={3}>
+                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#9f7aea', 0.2)}`, bgcolor: alpha('#9f7aea', 0.06) }}>
+                  <Typography variant="overline" sx={{ color: '#7c3aed' }}>Split Sheets</Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#7c3aed' }}>{splitSheetStats.total || 0}</Typography>
+                  <Typography variant="body2" color="text.secondary">aktive fordelingsark</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#f59e0b', 0.2)}`, bgcolor: alpha('#f59e0b', 0.06) }}>
+                  <Typography variant="overline" sx={{ color: '#d97706' }}>Venter signatur</Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#d97706' }}>{splitSheetStats.pendingSignatures || 0}</Typography>
+                  <Typography variant="body2" color="text.secondary">må følges opp</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#22c55e', 0.2)}`, bgcolor: alpha('#22c55e', 0.06) }}>
+                  <Typography variant="overline" sx={{ color: '#16a34a' }}>Total inntekt</Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#16a34a' }}>
                     {splitSheetStats.totalRevenue ? `${splitSheetStats.totalRevenue.toLocaleString('nb-NO')} kr` : '0 kr'}
                   </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Total inntekt
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ ...theming.getThemedCardSx(), border: '1px solid', borderColor: '#9f7aea30' }}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" color="#9f7aea" sx={{ fontWeight: 600}}>
-                    {splitSheetStats.completed || 0}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Fullførte split sheets
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </>
-        )}
-      </Grid>
-
-      {/* Search and Filter Controls */}
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-        <TextField
-          placeholder="Søk etter kunder..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          InputProps={{
-            startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
-          }}
-          sx={{ minWidth: 250 }}
-        />
-        
-        <FormControl sx={{ minWidth: 150 }}>
-          <InputLabel>Status</InputLabel>
-          <Select
-            value={statusFilter}
-            label="Status"
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <MenuItem value="">Alle</MenuItem>
-            <MenuItem value="lead">Henvendelser</MenuItem>
-            <MenuItem value="prospect">Potensielle</MenuItem>
-            <MenuItem value="active">Aktive</MenuItem>
-            <MenuItem value="completed">Fullført</MenuItem>
-          </Select>
-        </FormControl>
-        
-        <Button variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setShowAddForm(!showAddForm)}
-          sx={{
-            backgroundColor: colors.primary, '&:hover': { backgroundColor: colors.secondary }
-          }}
-        >
-          Ny kunde
-        </Button>
-
-        <Button
-          variant="outlined"
-          startIcon={<AssessmentIcon />}
-          onClick={() => setShowBIDialog(true)}
-          sx={{
-            borderColor: colors.primary,
-            color: colors.primary,
-            '&:hover': {
-              borderColor: colors.secondary,
-              backgroundColor: `${colors.primary}10`
-            }
-          }}
-        >
-          Business Intelligence
-        </Button>
-      </Box>
-
-      {/* Add Customer Form */}
-      {showAddForm && (
-        <Card sx={{ mb: 3, border: `1px solid ${colors.primary}30`, ...theming.getThemedCardSx() }}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
-              Legg til ny kunde
-            </Typography>
-            
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              handleCreateCustomer(new FormData(e.currentTarget));
-          }}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    name="name"
-                    label="Navn *"
-                    fullWidth
-                    required
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    name="email"
-                    label="E-post *"
-                    type="email"
-                    fullWidth
-                    required
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    name="phone"
-                    label="Telefon"
-                    fullWidth
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    name="company"
-                    label="Firma"
-                    fullWidth
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    name="website"
-                    label="Nettside (https://...)"
-                    placeholder="https://firma.no"
-                    fullWidth
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    name="projectType"
-                    label={`Type ${terminology.project?.toLowerCase() || 'prosjekt'}`}
-                    fullWidth
-                    placeholder="f.eks. bryllup, portrett, konsert"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    name="budget"
-                    label="Budsjett (NOK)"
-                    type="number"
-                    fullWidth
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    name="notes"
-                    label="Notater"
-                    multiline
-                    rows={3}
-                    fullWidth
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <Box sx={{ display: 'flex', gap: 2,justifyContent: 'flex-end'}}>
-                    <Button 
-                      type="button" 
-                      onClick={() => setShowAddForm(false)}
-                    >
-                      Avbryt
-                    </Button>
-                    <Button type="submit" 
-                      variant="contained"
-                      disabled={createCustomerMutation.isPending}
-                      sx={{ 
-                        backgroundColor: colors.primary,
-                        '&:hover': { backgroundColor: colors.secondary },
-                        ...theming.getThemedButtonSx()
-                      }}>
-                      {createCustomerMutation.isPending ? 'Lagrer...' : 'Lagre kunde'}
-                    </Button>
-                  </Box>
-                </Grid>
+                  <Typography variant="body2" color="text.secondary">registrert i split sheets</Typography>
+                </Paper>
               </Grid>
-            </form>
-          </CardContent>
-        </Card>
-      )}
+              <Grid item xs={12} sm={6} md={3}>
+                <Paper elevation={0} sx={{ p: 2.25, borderRadius: 3, border: `1px solid ${alpha('#8b5cf6', 0.2)}`, bgcolor: alpha('#8b5cf6', 0.06) }}>
+                  <Typography variant="overline" sx={{ color: '#7c3aed' }}>Fullført</Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#7c3aed' }}>{splitSheetStats.completed || 0}</Typography>
+                  <Typography variant="body2" color="text.secondary">klare arkivklare avtaler</Typography>
+                </Paper>
+              </Grid>
+            </>
+          )}
+        </Grid>
 
-      {/* Customer List */}
-      {isLoading ? (
-        <Typography>Laster kunder...</Typography>
-      ) : error ? (
-        <Typography color="error">Feil ved lasting av kunder</Typography>
-      ) : (
-        <Grid container spacing={2}>
-          {customers
-            .filter(customer => !statusFilter || customer.status === statusFilter)
-            .map((customer: UniversalCustomer) => (
-              <Grid item xs={12} sm={6} md={4} key={customer.id}>
-                <Card 
-                  sx={{ 
-                    cursor: onCustomerSelect ? 'pointer' : 'default','&:hover': onCustomerSelect ? { 
-                      boxShadow: 4,
-                      borderColor: colors.primary 
-                } : {},
-                    border: `1px solid ${colors.primary}20`
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2.25,
+            borderRadius: 3.5,
+            border: surfaceBorder,
+            boxShadow: `0 14px 28px ${alpha('#0f172a', 0.05)}`,
+          }}
+        >
+          <Stack spacing={2}>
+            <Stack
+              direction={{ xs: 'column', xl: 'row' }}
+              spacing={2}
+              alignItems={{ xs: 'stretch', xl: 'center' }}
+              justifyContent="space-between"
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ flex: 1 }}>
+                <TextField
+                  placeholder="Søk etter navn, e-post eller firma"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  sx={{ minWidth: { xs: '100%', md: 320 }, flex: 1 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ color: 'text.secondary' }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <FormControl sx={{ minWidth: { xs: '100%', md: 190 } }}>
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={statusFilter}
+                    label="Status"
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    <MenuItem value="">Alle</MenuItem>
+                    <MenuItem value="lead">Henvendelser</MenuItem>
+                    <MenuItem value="prospect">Potensielle</MenuItem>
+                    <MenuItem value="active">Aktive</MenuItem>
+                    <MenuItem value="completed">Fullført</MenuItem>
+                    <MenuItem value="archived">Arkivert</MenuItem>
+                  </Select>
+                </FormControl>
+              </Stack>
+
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Chip
+                  label={`${filteredCustomers.length} synlige kunder`}
+                  sx={{ bgcolor: alpha(colors.primary, 0.08), color: colors.primary, fontWeight: 700 }}
+                />
+                {statusFilter && (
+                  <Button size="small" onClick={() => setStatusFilter('')}>
+                    Nullstill filter
+                  </Button>
+                )}
+              </Stack>
+            </Stack>
+
+            {selectedProject && (
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                Nye kunder, møter og prosjektopprettelser kobles mot <strong>{selectedProject.name || selectedProject.title}</strong> når det er relevant.
+              </Alert>
+            )}
+          </Stack>
+        </Paper>
+
+        {showAddForm && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 2, md: 2.5 },
+              borderRadius: 3.5,
+              border: surfaceBorder,
+              boxShadow: `0 18px 40px ${alpha('#0f172a', 0.06)}`,
+            }}
+          >
+            <Stack spacing={2.5}>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 0.75 }}>
+                  Legg til ny kunde
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Opprett en kontakt med riktig prosjektkontekst fra start, så blir CRM, tilbud, kontrakt og kommunikasjon synket videre.
+                </Typography>
+              </Box>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCreateCustomer(new FormData(e.currentTarget));
                 }}
-                  onClick={() => onCustomerSelect?.(customer)}
-                >
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                      <Avatar src={getCompanyLogoFromWebsite((customer as any)?.customFields?.website)} sx={{ width: 28, height: 28, mr: 1 }}>
-                        {(customer.name || '').slice(0,1)}
-                      </Avatar>
-                      <Typography variant="h6" sx={{ flexGrow: 1, color: theming.colors.primary }}>
-                        {customer.name}
-                      </Typography>
-                      <Chip
-                        label={customer.status}
-                        size="small"
-                        sx={{ 
-                          backgroundColor: getStatusColor(customer.status),
-                          color: 'white',
-                          fontSize: '0.7rem'
-                    }}
-                      />
+              >
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField name="name" label="Navn *" fullWidth required />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField name="email" label="E-post *" type="email" fullWidth required />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField name="phone" label="Telefon" fullWidth />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField name="company" label="Firma" fullWidth />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      name="website"
+                      label="Nettside (https://...)"
+                      placeholder="https://firma.no"
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      name="projectType"
+                      label={`Type ${terminology.project?.toLowerCase() || 'prosjekt'}`}
+                      fullWidth
+                      placeholder="f.eks. bryllup, portrett, konsert"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField name="budget" label="Budsjett (NOK)" type="number" fullWidth />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField name="notes" label="Notater" multiline rows={4} fullWidth />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      <Button type="button" onClick={() => setShowAddForm(false)}>
+                        Avbryt
+                      </Button>
+                      <Button
+                        type="submit"
+                        variant="contained"
+                        disabled={createCustomerMutation.isPending}
+                        sx={{
+                          backgroundColor: colors.primary,
+                          '&:hover': { backgroundColor: colors.secondary },
+                          ...theming.getThemedButtonSx(),
+                        }}
+                      >
+                        {createCustomerMutation.isPending ? 'Lagrer...' : 'Lagre kunde'}
+                      </Button>
                     </Box>
-                    
-                    <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-                      {customer.email}
-                    </Typography>
-                    
-                    {customer.phone && (
-                      <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-                        📞 {customer.phone}
-                      </Typography>
-                    )}
-                    
-                    {customer.company && (
-                      <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-                        🏢 {customer.company}
-                      </Typography>
-                    )}
-                    
-                    {customer.projectType && (
-                      <Chip
-                        label={customer.projectType}
-                        size="small"
-                        variant="outlined"
-                        sx={{ 
-                          mr: 1,
-                          mb: 1,
-                          borderColor: colors.primary,
-                          color: colors.primary
-                    }}
-                      />
-                    )}
-                    
-                    {customer.budget && (
-                      <Typography variant="body2" color={colors.primary} sx={{ fontWeight: 600 }}>
-                        {customer.budget.toLocaleString('nb-NO')} kr
-                      </Typography>
-                    )}
+                  </Grid>
+                </Grid>
+              </form>
+            </Stack>
+          </Paper>
+        )}
 
-                    {/* Split Sheet Information - Only for Music Producers */}
-                    {isMusicProducer && (() => {
-                      // Find split sheets for this customer's projects
-                      const customerProjectIds = customer.customFields?.projectIds || [];
-                      const customerSplitSheetsList = customerProjectIds.flatMap((pid: string) => customerSplitSheets[pid] || []);
-                      
-                      if (customerSplitSheetsList.length > 0) {
-                        const completedCount = customerSplitSheetsList.filter((ss: any) => ss.status === 'completed').length;
-                        const pendingCount = customerSplitSheetsList.filter((ss: any) => ss.status === 'pending_signatures').length;
-                        
-                        return (
-                          <Box sx={{ mt: 1, mb: 1 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                              <SplitSheetIcon sx={{ fontSize: 16, color: '#9f7aea' }} />
-                              <Typography variant="caption" sx={{ fontWeight: 600, color: '#9f7aea' }}>
-                                Split Sheets: {customerSplitSheetsList.length}
+        <Stack spacing={2}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" useFlexGap>
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+                Kundeoversikt
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Prioriter leads, følg opp aktive kunder og gå videre til møter, prosjekter og kontrakter uten å miste kontekst.
+              </Typography>
+            </Box>
+          </Stack>
+
+          {isLoading ? (
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: surfaceBorder }}>
+              <Typography>Laster kunder...</Typography>
+            </Paper>
+          ) : error ? (
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: surfaceBorder }}>
+              <Typography color="error">Feil ved lasting av kunder</Typography>
+            </Paper>
+          ) : filteredCustomers.length === 0 ? (
+            <Paper
+              elevation={0}
+              sx={{
+                p: { xs: 3, md: 4 },
+                borderRadius: 3.5,
+                border: `1px dashed ${alpha(colors.primary, 0.22)}`,
+                bgcolor: alpha(colors.primary, 0.03),
+              }}
+            >
+              <Stack spacing={1.5} alignItems="flex-start">
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Ingen kunder matcher filtrene
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Prøv et annet søk, nullstill filteret eller opprett en ny kontakt direkte herfra.
+                </Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {statusFilter && (
+                    <Button variant="outlined" onClick={() => setStatusFilter('')}>
+                      Nullstill filter
+                    </Button>
+                  )}
+                  <Button variant="contained" onClick={() => setShowAddForm(true)} sx={{ bgcolor: colors.primary }}>
+                    Ny kunde
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          ) : (
+            <Grid container spacing={2.25}>
+              {filteredCustomers.map((customer: UniversalCustomer) => {
+                const customerProjectIds = Array.isArray(customer.customFields?.projectIds)
+                  ? (customer.customFields.projectIds as string[])
+                  : [];
+                const customerSplitSheetsList = isMusicProducer
+                  ? customerProjectIds.flatMap((pid: string) => customerSplitSheets[pid] || [])
+                  : [];
+                const completedCount = customerSplitSheetsList.filter((ss: any) => ss.status === 'completed').length;
+                const pendingCount = customerSplitSheetsList.filter((ss: any) => ss.status === 'pending_signatures').length;
+                const linkedToEvent = eventContext ? linkedCustomersForEvent.includes(customer.email) : false;
+
+                return (
+                  <Grid item xs={12} md={6} xl={4} key={customer.id}>
+                    <Card
+                      elevation={0}
+                      sx={{
+                        height: '100%',
+                        borderRadius: 3.5,
+                        border: `1px solid ${alpha(colors.primary, 0.12)}`,
+                        boxShadow: `0 18px 36px ${alpha('#0f172a', 0.06)}`,
+                        cursor: onCustomerSelect ? 'pointer' : 'default',
+                        transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease',
+                        '&:hover': onCustomerSelect
+                          ? {
+                              transform: 'translateY(-2px)',
+                              boxShadow: `0 22px 42px ${alpha('#0f172a', 0.09)}`,
+                              borderColor: alpha(colors.primary, 0.28),
+                            }
+                          : undefined,
+                      }}
+                      onClick={() => onCustomerSelect?.(customer)}
+                    >
+                      <CardContent sx={{ p: 2.5 }}>
+                        <Stack spacing={2}>
+                          <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                            <Avatar
+                              src={getCompanyLogoFromWebsite(getCustomerWebsite(customer))}
+                              sx={{
+                                width: 44,
+                                height: 44,
+                                bgcolor: alpha(colors.primary, 0.12),
+                                color: colors.primary,
+                              }}
+                            >
+                              {(customer.name || '').slice(0, 1)}
+                            </Avatar>
+                            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                <Typography variant="h6" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+                                  {customer.name}
+                                </Typography>
+                                <Chip
+                                  label={customer.status}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: alpha(getStatusColor(customer.status), 0.12),
+                                    color: getStatusColor(customer.status),
+                                    fontWeight: 700,
+                                    textTransform: 'capitalize',
+                                  }}
+                                />
+                              </Stack>
+                              {customer.company && (
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                                  {customer.company}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Stack>
+
+                          <Stack spacing={1}>
+                            <Typography variant="body2" color="text.secondary">
+                              {customer.email}
+                            </Typography>
+                            {customer.phone && (
+                              <Typography variant="body2" color="text.secondary">
+                                {customer.phone}
+                              </Typography>
+                            )}
+                          </Stack>
+
+                          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            {customer.projectType && (
+                              <Chip
+                                label={customer.projectType}
+                                size="small"
+                                variant="outlined"
+                                sx={{ borderColor: alpha(colors.primary, 0.24), color: colors.primary }}
+                              />
+                            )}
+                            {customer.budget != null && (
+                              <Chip
+                                label={`${customer.budget.toLocaleString('nb-NO')} kr`}
+                                size="small"
+                                sx={{ bgcolor: alpha(colors.primary, 0.08), color: colors.primary, fontWeight: 700 }}
+                              />
+                            )}
+                            {linkedToEvent && <Chip label="Linket til event" size="small" color="success" />}
+                            {customer.tags?.slice(0, 2).map((tag) => (
+                              <Chip key={tag} label={tag} size="small" variant="outlined" />
+                            ))}
+                          </Stack>
+
+                          {customer.notes?.trim() && (
+                            <Box
+                              sx={{
+                                p: 1.5,
+                                borderRadius: 2,
+                                bgcolor: alpha(colors.primary, 0.05),
+                                border: `1px solid ${alpha(colors.primary, 0.08)}`,
+                              }}
+                            >
+                              <Typography variant="body2" color="text.secondary">
+                                {customer.notes.length > 120 ? `${customer.notes.slice(0, 120)}...` : customer.notes}
                               </Typography>
                             </Box>
-                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                              {completedCount > 0 && (
-                                <Chip
-                                  label={`${completedCount} fullført`}
-                                  size="small"
-                                  sx={{ 
-                                    bgcolor: '#4caf50', 
-                                    color: 'white',
-                                    fontSize: '0.65rem',
-                                    height: 20
-                                  }}
-                                />
-                              )}
-                              {pendingCount > 0 && (
-                                <Chip
-                                  label={`${pendingCount} venter`}
-                                  size="small"
-                                  sx={{ 
-                                    bgcolor: '#ff9800', 
-                                    color: 'white',
-                                    fontSize: '0.65rem',
-                                    height: 20
-                                  }}
-                                />
-                              )}
-                            </Box>
-                          </Box>
-                        );
-                      }
-                      return null;
-                    })()}
-                    
-                    {/* Relations Chip */}
-                    {eventContext && (
-                      <Chip
-                        label={linkedCustomersForEvent.includes(customer.email) ? 'Linket til event' : 'Ikke linket'}
-                        size="small"
-                        color={linkedCustomersForEvent.includes(customer.email) ? 'success' : 'default'}
-                        sx={{ mr: 1 }}
-                      />
-                    )}
-                    {/* Action Buttons */}
-                    <Box sx={{ display: 'flex', gap: 1,mt: 2,justifyContent: 'flex-end'}}>
-                      {eventContext && (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedCustomer(customer);
-                            setLinkRole('Client');
-                            setLinkNotes('');
-                            setShowLinkDialog(true);
-                          }}
-                        >
-                          Link til event
-                        </Button>
-                      )}
-                      <Button 
-                        size="small" 
-                        variant="outlined"
-                        startIcon={theming.getThemedIcon('videoCall')}
-                        onClick={() => {
-                          setSelectedCustomer(customer);
-                          setShowMeetingDialog(true);
-                      }}
-                        disabled={customer.status === 'archived'}
-                        sx={{ fontSize: '0.75rem'}}
-                      >
-                        Møte
-                      </Button>
-                      <Button size="small" 
-                        variant="contained"
-                        startIcon={theming.getThemedIcon('add')}
-                        onClick={() => {
-                          setSelectedCustomer(customer);
-                          setShowProjectDialog(true);
-                        }}
-                        disabled={customer.status === 'archived'}
-                        sx={{ 
-                          fontSize: '0.75rem',
-                          bgcolor: '#4caf50','&:hover': { bgcolor: '#45a049' } 
-                        }}
-                      >
-                        Prosjekt
-                      </Button>
-                      {/* Split Sheet Quick Action - Only for Music Producers */}
-                      {isMusicProducer && (
-                        <Button 
-                          size="small" 
-                          variant="outlined"
-                          startIcon={<SplitSheetIcon />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Send message to split-sheet-manager to create/view split sheets
-                            try {
-                              communication.sendMessage({
-                                from: 'universal-crm-dashboard',
-                                to: 'split-sheet-manager',
-                                type: 'view-customer-split-sheets',
-                                data: { 
-                                  customerId: customer.id,
-                                  customerName: customer.name,
-                                  projectIds: customer.customFields?.projectIds || []
-                                },
-                                priority: 'medium'
-                              });
-                            } catch (err) {
-                              console.warn('Could not send message to split-sheet-manager:', err);
-                            }
-                          }}
-                          sx={{ 
-                            fontSize: '0.75rem',
-                            color: '#9f7aea',
-                            borderColor: '#9f7aea','&:hover': {
-                              borderColor: '#9f7aea',
-                              bgcolor: '#9f7aea10'
-                            }
-                          }}
-                        >
-                          Split Sheet
-                        </Button>
-                      )}
-                      <Button 
-                        size="small" 
-                        variant="outlined"
-                        startIcon={<WorkOutline />}
-                        onClick={() => onCustomerSelect?.(customer)}
-                        sx={{ fontSize: '0.75rem'}}
-                      >
-                        Detaljer
-                      </Button>
-                      <Button 
-                        size="small"
-                        variant="text"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingCustomer(customer);
-                          setShowEditDialog(true);
-                        }}
-                        sx={{ fontSize: '0.75rem' }}
-                      >
-                        Rediger
-                      </Button>
-                      <Button 
-                        size="small" 
-                        variant="outlined"
-                        startIcon={<ContractIcon />}
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          setSelectedCustomer(customer);
-                          // Fetch contracts for this customer
-                          try {
-                            const contracts = await apiRequest(`/api/contracts?clientId=${customer.id}`);
-                            setCustomerContracts(contracts.contracts || []);
-                            setShowContractsDialog(true);
-                          } catch (error) {
-                            console.error('Error fetching contracts:', error);
-                            setCustomerContracts([]);
-                            setShowContractsDialog(true);
-                          }
-                        }}
-                        sx={{ fontSize: '0.75rem', borderColor: '#f57c00', color: '#f57c00' }}
-                      >
-                        Kontrakter
-                      </Button>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-        </Grid>
-      )}
+                          )}
+
+                          {isMusicProducer && customerSplitSheetsList.length > 0 && (
+                            <Stack spacing={1}>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <SplitSheetIcon sx={{ fontSize: 16, color: '#7c3aed' }} />
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: '#7c3aed' }}>
+                                  Split sheets {customerSplitSheetsList.length}
+                                </Typography>
+                              </Stack>
+                              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                {completedCount > 0 && (
+                                  <Chip label={`${completedCount} fullført`} size="small" sx={{ bgcolor: '#4caf50', color: 'white' }} />
+                                )}
+                                {pendingCount > 0 && (
+                                  <Chip label={`${pendingCount} venter`} size="small" sx={{ bgcolor: '#ff9800', color: 'white' }} />
+                                )}
+                              </Stack>
+                            </Stack>
+                          )}
+
+                          <Divider />
+
+                          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            {eventContext && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedCustomer(customer);
+                                  setLinkRole('Client');
+                                  setLinkNotes('');
+                                  setShowLinkDialog(true);
+                                }}
+                              >
+                                Link event
+                              </Button>
+                            )}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<VideoCall />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCustomer(customer);
+                                setShowMeetingDialog(true);
+                              }}
+                              disabled={customer.status === 'archived' || !communicationTrackingAccess.hasAccess}
+                            >
+                              Møte
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              startIcon={theming.getThemedIcon('add')}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCustomer(customer);
+                                setShowProjectDialog(true);
+                              }}
+                              disabled={customer.status === 'archived' || !projectManagementAccess.hasAccess}
+                              sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }}
+                            >
+                              Prosjekt
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<WorkOutline />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onCustomerSelect?.(customer);
+                              }}
+                            >
+                              Detaljer
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingCustomer(customer);
+                                setShowEditDialog(true);
+                              }}
+                            >
+                              Rediger
+                            </Button>
+                            {isMusicProducer && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<SplitSheetIcon />}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    communication.sendMessage({
+                                      from: 'universal-crm-dashboard',
+                                      to: 'split-sheet-manager',
+                                      type: 'view-customer-split-sheets',
+                                      data: {
+                                        customerId: customer.id,
+                                        customerName: customer.name,
+                                        projectIds: customerProjectIds,
+                                      },
+                                      priority: 'medium',
+                                    });
+                                  } catch (err) {
+                                    console.warn('Could not send message to split-sheet-manager:', err);
+                                  }
+                                }}
+                                sx={{
+                                  color: '#7c3aed',
+                                  borderColor: alpha('#7c3aed', 0.36),
+                                  '&:hover': {
+                                    borderColor: '#7c3aed',
+                                    bgcolor: alpha('#7c3aed', 0.08),
+                                  },
+                                }}
+                              >
+                                Split Sheet
+                              </Button>
+                            )}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<ContractIcon />}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setSelectedCustomer(customer);
+                                try {
+                                  const contracts = await apiRequest(`/api/contracts?clientId=${customer.id}`);
+                                  setCustomerContracts(contracts.contracts || []);
+                                  setShowContractsDialog(true);
+                                } catch (fetchError) {
+                                  console.error('Error fetching contracts:', fetchError);
+                                  setCustomerContracts([]);
+                                  setShowContractsDialog(true);
+                                }
+                              }}
+                              sx={{ borderColor: alpha('#f57c00', 0.4), color: '#f57c00' }}
+                            >
+                              Kontrakter
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          )}
+        </Stack>
+      </Stack>
 
       {/* Customer Contracts Dialog */}
       <Dialog open={showContractsDialog} onClose={() => setShowContractsDialog(false)} maxWidth="md" fullWidth>
@@ -1239,7 +1546,13 @@ export default function UniversalCRMDashboard({
           ) : (
             <List>
               {customerContracts.map((contract: any) => (
-                <ListItem key={contract.id} divider>
+                <React.Fragment key={contract.id}>
+                <ListItem alignItems="flex-start">
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: '#f57c0020', color: '#f57c00' }}>
+                      <ContractIcon fontSize="small" />
+                    </Avatar>
+                  </ListItemAvatar>
                   <ListItemText
                     primary={contract.projectDescription || 'Kontrakt'}
                     secondary={
@@ -1259,6 +1572,8 @@ export default function UniversalCRMDashboard({
                     color={contract.status === 'active' ? 'success' : contract.status === 'draft' ? 'warning' : 'default'}
                   />
                 </ListItem>
+                <Divider component="li" />
+                </React.Fragment>
               ))}
             </List>
           )}
@@ -1272,7 +1587,7 @@ export default function UniversalCRMDashboard({
       <Dialog open={showMeetingDialog} onClose={() => setShowMeetingDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <VideoCall color="primary" />
+            <Schedule color="primary" />
             Planlegg møte med {selectedCustomer?.name}
           </Box>
         </DialogTitle>
@@ -1280,37 +1595,37 @@ export default function UniversalCRMDashboard({
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2,mt: 1 }}>
             <TextField
               label="Møtetittel"
-              value={`Møte med ${selectedCustomer?.name}`}
+              value={`Møte med ${selectedCustomer?.name}${selectedProject?.name ? ` • ${selectedProject.name}` : ''}`}
               fullWidth
               disabled
             />
             <TextField
               label="Dato"
               type="date"
-              value={new Date().toISOString().split('T')[0]}
-              onChange={(e) => {/* Handle date change */}}
+              value={meetingForm.date}
+              onChange={(event) => setMeetingForm((current) => ({ ...current, date: event.target.value }))}
               fullWidth
             />
             <TextField
               label="Tid"
               type="time"
-              value="10: 00"
-              onChange={(e) => {/* Handle time change , *, /}}
+              value={meetingForm.time}
+              onChange={(event) => setMeetingForm((current) => ({ ...current, time: event.target.value }))}
               fullWidth
             />
             <TextField
               label="Varighet (minutter)"
               type="number"
-              value={60}
-              onChange={(e) => {/* Handle duration change */}}
+              value={meetingForm.duration}
+              onChange={(event) => setMeetingForm((current) => ({ ...current, duration: Number(event.target.value) || 0 }))}
               fullWidth
             />
             <TextField
               label="Beskrivelse"
               multiline
               rows={3}
-              value={`Kundemøte for ${selectedCustomer?.projectType || 'prosjekt'}`}
-              onChange={(e) => {/* Handle description change */}}
+              value={meetingForm.description}
+              onChange={(event) => setMeetingForm((current) => ({ ...current, description: event.target.value }))}
               fullWidth
             />
           </Box>
@@ -1321,9 +1636,10 @@ export default function UniversalCRMDashboard({
             onClick={() => selectedCustomer && scheduleMeetingMutation.mutate({
               customer: selectedCustomer,
               meetingData: {
-                date: new Date().toISOString().split('T')[0],
-                time: '10:00',
-                duration: 60
+                date: meetingForm.date,
+                time: meetingForm.time,
+                duration: meetingForm.duration,
+                description: meetingForm.description,
               }
             })}
             disabled={scheduleMeetingMutation.isPending}
@@ -1347,9 +1663,14 @@ export default function UniversalCRMDashboard({
             <Alert severity="info" sx={{ mb: 2 }}>
               Dette vil opprette et nytt prosjekt basert på kundeinformasjonen og oppdatere kundestatusen til "Aktiv".
             </Alert>
+            {selectedProject && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Prosjektet kobles mot valgt dashboard-kontekst: <strong>{selectedProject.name || selectedProject.title}</strong>.
+              </Alert>
+            )}
             <TextField
               label="Prosjektnavn"
-              value={`${selectedCustomer?.name} - ${selectedCustomer?.projectType || 'Prosjekt'}`}
+              value={`${selectedCustomer?.name} - ${selectedCustomer?.projectType || selectedProject?.projectType || 'Prosjekt'}`}
               fullWidth
               disabled
             />
@@ -1432,7 +1753,9 @@ export default function UniversalCRMDashboard({
                     role: linkRole,
                     notes: linkNotes,
                   });
-                } catch {}
+                } catch (error) {
+                  console.warn('Could not link customer to event via communication bus:', error);
+                }
               }
               setShowLinkDialog(false);
             }}
@@ -1512,8 +1835,13 @@ export default function UniversalCRMDashboard({
         fullWidth
         PaperProps={{
           sx: {
-            height: '90vh',
-            maxHeight: '90vh',
+            width: 'min(1500px, 96vw)',
+            height: 'min(92vh, 1100px)',
+            maxHeight: '92vh',
+            borderRadius: 4,
+            overflow: 'hidden',
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.96) 100%)',
+            boxShadow: '0 32px 80px rgba(15, 23, 42, 0.18)',
           }
         }}
       >
@@ -1521,22 +1849,64 @@ export default function UniversalCRMDashboard({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          borderBottom: `2px solid ${colors.primary}`,
-          pb: 2
+          px: 3,
+          py: 2.25,
+          borderBottom: `1px solid ${colors.primary}22`,
+          background: `linear-gradient(135deg, ${colors.primary}14 0%, rgba(255,255,255,0.92) 58%, ${colors.primary}08 100%)`,
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <AssessmentIcon sx={{ color: colors.primary }} />
-            <Typography variant="h6">Business Intelligence Dashboard</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>Business Intelligence Dashboard</Typography>
           </Box>
           <Button onClick={() => setShowBIDialog(false)}>Lukk</Button>
         </DialogTitle>
-        <DialogContent sx={{ p: 0, overflow: 'hidden' }}>
-          <Box sx={{ height: '100%', overflow: 'auto', p: 3 }}>
+        <DialogContent sx={{ p: 0, overflow: 'hidden', bgcolor: 'transparent' }}>
+          <Box sx={{ height: '100%', overflow: 'auto', p: { xs: 2, md: 3 } }}>
             <BusinessIntelligenceDashboard
-              userId={queryClient.getQueryData(['user'])?.id || 'default'}
+              userId={resolvedUserId}
               profession={activeProfession}
             />
           </Box>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showTasksDialog}
+        onClose={() => setShowTasksDialog(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            width: 'min(1200px, 94vw)',
+            height: 'min(88vh, 980px)',
+            maxHeight: '88vh',
+            borderRadius: 4,
+            overflow: 'hidden',
+          },
+        }}
+      >
+        <DialogTitle sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          px: 3,
+          py: 2.25,
+          borderBottom: `1px solid ${colors.primary}22`,
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TaskIcon sx={{ color: colors.primary }} />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Google Tasks
+            </Typography>
+          </Box>
+          <Button onClick={() => setShowTasksDialog(false)}>Lukk</Button>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          <GoogleTasksIntegration
+            profession={activeProfession}
+            userId={resolvedUserId}
+            projectId={typeof selectedProject?.id === 'string' ? selectedProject.id : undefined}
+          />
         </DialogContent>
       </Dialog>
 

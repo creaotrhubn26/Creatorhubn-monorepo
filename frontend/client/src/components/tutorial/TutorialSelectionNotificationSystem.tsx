@@ -237,7 +237,7 @@ Fortsett å bidra - din neste tutorial kan være den neste vinneren! 🚀`;
           </Box>
         </DialogTitle>
 
-        <DialogContent sx={{ bgcolor: 'rgba(25,255,255,0.95)' }}>
+        <DialogContent sx={{ bgcolor: 'rgba(255,255,255,0.96)' }}>
           {/* Winner Announcement */}
           <Card
             sx={{

@@ -603,7 +603,7 @@ export class ClassPhotoService {
           teacher.pose = 'standing';
           break;
         
-        case 'both_ends':
+        case 'both_ends': {
           // For 'both_ends', we need to handle multiple teachers
           // First teacher goes left, second goes right
           const teacherIndex = teachers.indexOf(teacher);
@@ -611,6 +611,7 @@ export class ClassPhotoService {
           insertPosition = teacherIndex % 2 === 0 ? 'start' : 'end';
           teacher.pose = 'standing';
           break;
+        }
         
         case 'center_front':
           targetRow = frontRowIdx;
@@ -653,7 +654,7 @@ export class ClassPhotoService {
           break;
         
         case 'center':
-        default:
+        default: {
           const centerIdx = Math.floor(row.studentIds.length / 2);
           teacher.positionInRow = centerIdx;
           row.studentIds.splice(centerIdx, 0, teacher.id);
@@ -665,6 +666,7 @@ export class ClassPhotoService {
             }
           });
           break;
+        }
       }
     }
   }
@@ -841,7 +843,7 @@ export class ClassPhotoService {
     const position = new THREE.Vector3(0, 0, row.zPosition);
     
     // Create riser
-    const riser = this.addProp('riser,', position);
+    const riser = this.addProp('riser', position);
     row.propIds.push(riser.id);
     
     // Assign all students in row to riser
@@ -860,9 +862,9 @@ export class ClassPhotoService {
     
     for (const issue of issues) {
       if (issue.visibilityScore < 50) {
-        suggestions.add('riser,');
+        suggestions.add('riser');
       } else if (issue.visibilityScore < 80) {
-        suggestions.add('apple_box, ');
+        suggestions.add('apple_box');
       }
     }
     
@@ -954,9 +956,9 @@ export class ClassPhotoService {
     } else if (visibility < 50) {
       return `Add apple box (20cm) under ${student.name}`;
     } else if (visibility < 80) {
-      return `Slightly adjust ${student.name}, 's position`;
+      return `Slightly adjust ${student.name}'s position`;
     }
-    return ', ';
+    return 'No visibility adjustment needed';
   }
 
   /**
@@ -1124,18 +1126,18 @@ export class ClassPhotoService {
    * Get arrangement summary
    */
   getArrangementSummary(): string {
-    if (!this.session) return ', ';
+    if (!this.session) return 'No active class photo session.';
     
     let summary = `Class Photo: ${this.session.students.size} students in ${this.session.rows.length} rows\n\n`;
     
     for (const row of this.session.rows) {
       const rowStudents = row.studentIds.map(id => {
         const s = this.session!.students.get(id);
-        return s ? `${s.name} (${Math.round(s.height)}cm)` : ', ';
+        return s ? `${s.name} (${Math.round(s.height)}cm)` : 'Unknown student';
       }).filter(Boolean);
       
       summary += `Row ${row.index + 1} (${row.baseHeight > 0 ? `+${Math.round(row.baseHeight * 100)}cm` : 'floor'}): `;
-      summary += rowStudents.join('') +'\n';
+      summary += rowStudents.join(', ') + '\n';
     }
     
     return summary;

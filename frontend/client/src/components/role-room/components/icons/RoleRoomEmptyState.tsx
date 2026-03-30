@@ -34,6 +34,29 @@ export interface RoleRoomEmptyStateProps {
   iconSize?: number | Record<string, number>;
 }
 
+const getAccessibleButtonTextColor = (color: string): string => {
+  const hexMatch = color.trim().match(/^#([0-9a-f]{6})$/i);
+  if (hexMatch) {
+    const value = hexMatch[1];
+    const r = parseInt(value.slice(0, 2), 16);
+    const g = parseInt(value.slice(2, 4), 16);
+    const b = parseInt(value.slice(4, 6), 16);
+    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return luminance > 0.62 ? '#111827' : '#fff';
+  }
+
+  const rgbaMatch = color.trim().match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (rgbaMatch) {
+    const r = Number(rgbaMatch[1]);
+    const g = Number(rgbaMatch[2]);
+    const b = Number(rgbaMatch[3]);
+    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return luminance > 0.62 ? '#111827' : '#fff';
+  }
+
+  return '#fff';
+};
+
 export const RoleRoomEmptyState: React.FC<RoleRoomEmptyStateProps> = ({
   iconSrc,
   title,
@@ -49,6 +72,7 @@ export const RoleRoomEmptyState: React.FC<RoleRoomEmptyStateProps> = ({
 }) => {
   // Resolve icon dimensions (responsive-aware)
   const sizeVal = iconSize ?? { xs: 60, sm: 70, md: 65, lg: 80, xl: 104 };
+  const buttonTextColor = getAccessibleButtonTextColor(color);
 
   return (
     <Fade in timeout={500}>
@@ -152,14 +176,17 @@ export const RoleRoomEmptyState: React.FC<RoleRoomEmptyStateProps> = ({
               disabled={disabled}
               sx={{
                 bgcolor: color,
-                color: '#000',
+                color: buttonTextColor,
                 fontWeight: 600,
                 px: 4,
                 py: { xs: 1.25, sm: 1.5 },
                 fontSize: { xs: '0.875rem', sm: '1rem' },
                 minHeight: 44,
                 '&:hover': { filter: 'brightness(0.9)', transform: 'translateY(-2px)' },
-                '&:disabled': { bgcolor: `${color}4D`, color: 'rgba(0,0,0,0.5)' },
+                '&:disabled': {
+                  bgcolor: `${color}4D`,
+                  color: buttonTextColor === '#fff' ? 'rgba(255,255,255,0.55)' : 'rgba(15,23,42,0.55)',
+                },
                 transition: 'all 0.2s',
               }}
             >

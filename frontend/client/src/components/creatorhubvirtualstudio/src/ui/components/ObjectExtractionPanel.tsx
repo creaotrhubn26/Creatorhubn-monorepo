@@ -88,8 +88,14 @@ export function ObjectExtractionPanel({
       try {
         const result = await sam2Service.segmentImage(
           imageFile,
-          prompt,
-          prompt ? (prompt.points ? 'point' : 'box') : 'auto','small');
+          prompt?.box
+            ? { box: prompt.box }
+            : prompt?.points
+              ? { points: prompt.points }
+              : undefined,
+          prompt ? (prompt.points ? 'point' : 'box') : 'auto',
+          'small',
+        );
         
         // Convert segmentation results to extracted objects
         const objects: ExtractedObject[] = result.masks.map((mask, idx) => ({
@@ -116,7 +122,7 @@ export function ObjectExtractionPanel({
   });
 
   const handleAutoExtract = () => {
-    segmentImageMutation.mutate();
+    segmentImageMutation.mutate(undefined);
   };
 
   const handleExtractAtPoint = (x: number, y: number) => {
@@ -189,7 +195,6 @@ export function ObjectExtractionPanel({
                 <img
                   src={imageUrl}
                   alt="Source image"
-                  style={{ width: '100%', height: 'auto', display: 'block' }}
                   onClick={(e) => {
                     if (!isSegmenting) {
                       const rect = e.currentTarget.getBoundingClientRect();

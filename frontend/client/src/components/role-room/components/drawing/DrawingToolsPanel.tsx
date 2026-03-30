@@ -59,7 +59,6 @@ import TextAnnotationsToolbar, {
 } from './TextAnnotations';
 import {
   SelectionTools,
-  getStrokeBounds,
   type SelectionMode,
   type SelectionBounds,
   type Transform,
@@ -127,6 +126,7 @@ export interface DrawingState {
   activeTool: ActiveTool;
   activeShapeType: ShapeType | null;
   selectionMode: SelectionMode;
+  selectionSnapEnabled: boolean;
   selectedStrokeIds: string[];
   storyboardTemplate: StoryboardTemplate | null;
   customTemplates: StoryboardTemplate[];
@@ -174,6 +174,10 @@ export interface DrawingToolsPanelProps {
   onPaste: () => void;
   onCut: () => void;
   onDelete: () => void;
+  onSelectAllSelection: () => void;
+  onDeselectAllSelection: () => void;
+  onInvertSelection: () => void;
+  onResetSelectionPivot: () => void;
   
   // Display options
   position?: 'left' | 'right';
@@ -209,10 +213,11 @@ export const DEFAULT_DRAWING_STATE: DrawingState = {
   onionSkinSettings: DEFAULT_ONION_SKIN_SETTINGS,
   gestureSettings: DEFAULT_GESTURE_SETTINGS,
   selectionBounds: null,
-  transform: { translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  transform: { translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, perspectiveX: 0, perspectiveY: 0 },
   activeTool: 'brush',
   activeShapeType: null,
   selectionMode: 'none',
+  selectionSnapEnabled: false,
   selectedStrokeIds: [],
   storyboardTemplate: null,
   customTemplates: [],
@@ -306,6 +311,10 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
   onPaste,
   onCut,
   onDelete,
+  onSelectAllSelection,
+  onDeselectAllSelection,
+  onInvertSelection,
+  onResetSelectionPivot,
   position = 'right',
   defaultTab = 0,
   collapsed: controlledCollapsed,
@@ -737,18 +746,14 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
             onTransform={(transform) => onStateChange({ transform })}
             onCopy={onCopy}
             onPaste={onPaste}
-            onDelete={handleDeleteSelection}
-            onSelectAll={() => {
-              const ids = strokes.map((_, index) => `stroke-${index}`);
-              onStateChange({
-                activeTool: 'select',
-                selectedStrokeIds: ids,
-                selectionBounds: getStrokeBounds(strokes),
-              });
-            }}
-            onDeselectAll={() => onStateChange({ selectedStrokeIds: [], selectionBounds: null })}
+          onDelete={handleDeleteSelection}
+            onSelectAll={onSelectAllSelection}
+            onDeselectAll={onDeselectAllSelection}
+            onInvertSelection={onInvertSelection}
+            onResetPivot={onResetSelectionPivot}
             canPaste={false}
             hasSelection={state.selectedStrokeIds.length > 0}
+            canResetPivot={Boolean(state.selectionBounds?.customPivot)}
           />
         </Collapse>
 

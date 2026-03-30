@@ -2,7 +2,7 @@ import { useTheming } from '../../utils/theming-helper';
 import QuickMessageTemplates from './QuickMessageTemplates';
 import * as React from 'react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { apiRequest } from '../../lib/queryClient';
+import { apiRequest, isApiEndpointMissing } from '../../lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -185,6 +185,27 @@ interface CurrentLead {
   value?: number | string;
 }
 
+interface BusinessAnalyticsData {
+  monthlyRevenue?: string | number;
+  revenue?: string | number;
+}
+
+interface LeadAnalyticsData {
+  newLeads: number;
+  qualifiedLeads: number;
+  convertedLeads: number;
+  conversionRate: string;
+  hotLeads: LeadListItem[];
+}
+
+interface SalesAnalyticsData {
+  currentMonth: string;
+  previousMonth: string;
+  growth: string;
+  averagePerLead: string;
+  topSales: SaleListItem[];
+}
+
 interface GoogleChatSpaceItem extends ChatContact {
   isGoogleSpace?: boolean;
   spaceName?: string;
@@ -305,6 +326,26 @@ export default function FullscreenChatWidget({
   const professionConfig = (professionConfigs?.[userProfession] || dynamicProfessionConfigs?.[userProfession]) as DisplayProfessionConfig | undefined;
   const professionIcon = getProfessionIcon(userProfession);
   const isProfessionLoading = professionsLoading || professionConfigsLoading;
+  const googleChatPopoverStatus =
+    communicationStatus.googleChatStatus === 'connecting'
+      ? 'testing'
+      : communicationStatus.googleChatStatus === 'unknown'
+        ? 'not_configured'
+        : communicationStatus.googleChatStatus;
+  const emptyLeadAnalyticsData: LeadAnalyticsData = {
+    newLeads: 0,
+    qualifiedLeads: 0,
+    convertedLeads: 0,
+    conversionRate: '0%',
+    hotLeads: [],
+  };
+  const emptySalesAnalyticsData: SalesAnalyticsData = {
+    currentMonth: '0 NOK',
+    previousMonth: '0 NOK',
+    growth: '+0%',
+    averagePerLead: '0 NOK',
+    topSales: [],
+  };
   
   // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(userProfession);
@@ -398,28 +439,37 @@ export default function FullscreenChatWidget({
 	    enabled: userEmail === user?.email,
 	  });
 
-	  const { data: businessData } = useQuery({
+	  const fetchOptionalAnalytics = async <T,>(url: string, fallback: T): Promise<T> => {
+	    try {
+	      return await apiRequest(url);
+	    } catch (queryError) {
+	      if (isApiEndpointMissing(queryError)) {
+	        console.debug(`[FullscreenChatWidget] Optional analytics endpoint unavailable: ${url}`);
+	        return fallback;
+	      }
+	      throw queryError;
+	    }
+	  };
+
+	  const { data: businessData } = useQuery<BusinessAnalyticsData | null>({
 	    queryKey: ['/api/admin/analytics/business'],
-	    queryFn: async () => {
-	      return apiRequest('/api/admin/analytics/business');
-	    },
+	    queryFn: () => fetchOptionalAnalytics<BusinessAnalyticsData | null>('/api/admin/analytics/business', null),
 	    enabled: userEmail === user?.email,
+	    retry: false,
 	  });
 
-	  const { data: leadsData } = useQuery({
+	  const { data: leadsData = emptyLeadAnalyticsData } = useQuery<LeadAnalyticsData>({
 	    queryKey: ['/api/crm/analytics/leads'],
-	    queryFn: async () => {
-	      return apiRequest('/api/crm/analytics/leads');
-	    },
+	    queryFn: () => fetchOptionalAnalytics<LeadAnalyticsData>('/api/crm/analytics/leads', emptyLeadAnalyticsData),
 	    enabled: userEmail === user?.email,
+	    retry: false,
 	  });
 
-	  const { data: salesData } = useQuery({
+	  const { data: salesData = emptySalesAnalyticsData } = useQuery<SalesAnalyticsData>({
 	    queryKey: ['/api/crm/analytics/sales'],
-	    queryFn: async () => {
-	      return apiRequest('/api/crm/analytics/sales');
-	    },
+	    queryFn: () => fetchOptionalAnalytics<SalesAnalyticsData>('/api/crm/analytics/sales', emptySalesAnalyticsData),
 	    enabled: userEmail === user?.email,
+	    retry: false,
 	  });
   
   // Admin-specific features
@@ -1302,11 +1352,18 @@ export default function FullscreenChatWidget({
 
   const showConnectionPanel =
     isConnectedToGoogle ||
-    communicationStatus.googleChatStatus !== 'not_configured' ||
+    communicationStatus.googleChatStatus !== 'unknown' ||
     Boolean(communicationStatus.googleChatResponse);
   const monthlyBusinessRevenue = businessData?.monthlyRevenue ?? businessData?.revenue ?? salesData?.currentMonth ?? '0 NOK';
   const neutralSurface = 'rgba(15, 23, 42, 0.05)';
   const neutralText = '#1f2937';
+  const fullscreenOverlayZIndex = {
+    root: 1700,
+    menu: 1740,
+    popover: 1750,
+    dialog: 1760,
+    snackbar: 1780,
+  };
 
   return (
     <ChatWidgetErrorBoundary widgetName="FullscreenChatWidget">
@@ -1316,7 +1373,7 @@ export default function FullscreenChatWidget({
       onClose={onClose}
       maxWidth="lg"
       fullWidth
-      sx={{ zIndex: 140}}
+      sx={{ zIndex: fullscreenOverlayZIndex.root }}
       PaperProps={{
         sx: {
           height: '90vh',
@@ -1425,11 +1482,11 @@ export default function FullscreenChatWidget({
               }}
                   sx={{ 
                     color: 'white',
-                    border: '2px solid rgba(25,255,255,0.5)',
-                    bgcolor: googleChatMenuAnchor ? 'rgba(25,255,255,0.2)' : 'transparent','&:hover': {
-                      bgcolor: 'rgba(25,255,255,0.15)',
+                    border: '2px solid rgba(255,255,255,0.24)',
+                    bgcolor: googleChatMenuAnchor ? 'rgba(255,255,255,0.16)' : 'transparent','&:hover': {
+                      bgcolor: 'rgba(255,255,255,0.12)',
                       transform: 'scale(1.05, )',
-                      border: '2px solid rgba(25,255,255,0.8)'
+                      border: '2px solid rgba(255,255,255,0.38)'
                 }
               }}
                 >
@@ -2372,6 +2429,7 @@ export default function FullscreenChatWidget({
                     onSelectTemplate={(msg) => handleMessageInputChange(msg)}
                     profession={userProfession}
                     storageKey={`quick-msg-fullscreen-${user?.id || 'anon'}`}
+                    overlayZIndexBase={fullscreenOverlayZIndex.dialog}
                   />
 
 	                  <Box sx={{ 
@@ -2583,7 +2641,7 @@ export default function FullscreenChatWidget({
 	                    <Box sx={{ 
 	                      mt: 2,
 	                      p: 2,
-	                      bgcolor: 'rgba(25, 255, 255, 0.95)',
+	                      bgcolor: 'rgba(255, 255, 255, 0.96)',
 	                      borderRadius:  2,
 	                      border: `1px solid ${getProfessionColor()}30`,
 	                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
@@ -2668,7 +2726,7 @@ export default function FullscreenChatWidget({
                     <Box sx={{ 
                       mt: 2,
                       p:  3, 
-                      bgcolor: 'rgba(25, 255, 255, 0.95)',
+                      bgcolor: 'rgba(255, 255, 255, 0.96)',
                       borderRadius:  2,
                       border: `1px solid ${getProfessionColor()}30`,
                       display: 'flex',
@@ -2901,6 +2959,13 @@ export default function FullscreenChatWidget({
           anchorEl={anchorEl}
           open={Boolean(anchorEl)}
           onClose={() => setAnchorEl(null)}
+          sx={{ zIndex: fullscreenOverlayZIndex.menu }}
+          PaperProps={{
+            sx: {
+              borderRadius: 2.5,
+              boxShadow: '0 22px 48px rgba(15, 23, 42, 0.18)',
+            },
+          }}
         >
           <MenuItem onClick={() => setShowContactInfo(!showContactInfo)}>
             <Info sx={{ mr:  1 }} /> Kontaktinfo
@@ -2918,7 +2983,8 @@ export default function FullscreenChatWidget({
           anchorEl={googleChatMenuAnchor}
           accentColor={getProfessionColor()}
           displayName={professionConfig?.displayName || professionConfig?.name || userProfession}
-          googleChatStatus={communicationStatus.googleChatStatus}
+          googleChatStatus={googleChatPopoverStatus}
+          zIndex={fullscreenOverlayZIndex.popover}
           onClose={() => setGoogleChatMenuAnchor(null)}
           onCreateProjectSpace={() => {
             void handleCreateProjectSpace();
@@ -2957,7 +3023,7 @@ export default function FullscreenChatWidget({
             maxWidth="md"
             fullWidth
             sx={{
-	              zIndex: 999,
+	              zIndex: fullscreenOverlayZIndex.dialog,
 	              '& .MuiDialog-paper': {
 	                borderRadius: 3,
 	                border: '2px solid #ff8c00',
@@ -3057,7 +3123,7 @@ export default function FullscreenChatWidget({
             maxWidth="lg"
             fullWidth
             sx={{
-	              zIndex: 999,
+	              zIndex: fullscreenOverlayZIndex.dialog,
 	              '& .MuiDialog-paper': {
 	                borderRadius: 3,
 	                border: '2px solid #ff6b60',
@@ -3242,7 +3308,7 @@ export default function FullscreenChatWidget({
             maxWidth="xl"
             fullWidth
 	            sx={{
-	              zIndex: 999,
+	              zIndex: fullscreenOverlayZIndex.dialog,
 	              '& .MuiDialog-paper': {
 	                borderRadius: 3,
 	                border: '2px solid #08cdc4',
@@ -3460,7 +3526,7 @@ export default function FullscreenChatWidget({
             maxWidth="lg"
             fullWidth
             sx={{
-              zIndex: 999,
+              zIndex: fullscreenOverlayZIndex.dialog,
               '& .MuiDialog-paper': {
                 borderRadius: 3,
                 border: '2px solid #1027b0',
@@ -3730,7 +3796,7 @@ export default function FullscreenChatWidget({
             maxWidth="xl"
             fullWidth
             sx={{
-              zIndex: 999,
+              zIndex: fullscreenOverlayZIndex.dialog,
               '& .MuiDialog-paper': {
                 borderRadius: 3,
                 border: '2px solid #09b7d1',
@@ -3979,7 +4045,7 @@ export default function FullscreenChatWidget({
             maxWidth="xl"
             fullWidth
             sx={{
-              zIndex: 999,
+              zIndex: fullscreenOverlayZIndex.dialog,
               '& .MuiDialog-paper': {
                 borderRadius: 3,
                 border: '2px solid #06af50',
@@ -4343,7 +4409,7 @@ export default function FullscreenChatWidget({
             maxWidth="xl"
             fullWidth
             sx={{
-              zIndex: 999,
+              zIndex: fullscreenOverlayZIndex.dialog,
               '& .MuiDialog-paper': {
                 borderRadius: 3,
                 border: '2px solid #ff8c00',
@@ -4733,7 +4799,7 @@ export default function FullscreenChatWidget({
             maxWidth="xl"
             fullWidth
             sx={{
-              zIndex: 999,
+              zIndex: fullscreenOverlayZIndex.dialog,
               '& .MuiDialog-paper': {
                 borderRadius: 3,
                 border: '2px solid #184336',
@@ -5109,7 +5175,7 @@ export default function FullscreenChatWidget({
             maxWidth="lg"
             fullWidth
             sx={{
-              zIndex: 999,
+              zIndex: fullscreenOverlayZIndex.dialog,
               '& .MuiDialog-paper': {
                 borderRadius: 3,
                 border: '2px solid #0d3ab7',
@@ -5370,6 +5436,7 @@ export default function FullscreenChatWidget({
       <QuoteCreationModal
         open={quoteModalOpen}
         onClose={() => setQuoteModalOpen(false)}
+        modalZIndex={fullscreenOverlayZIndex.dialog + 10}
         clientData={quoteClientData}
         onQuoteCreated={(quoteData) => {
           void handleQuoteCreatedFromChat(quoteData);
@@ -5378,7 +5445,13 @@ export default function FullscreenChatWidget({
 
       {/* Push Notification Settings Dialog */}
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog
+          open={pushSettingsOpen}
+          onClose={() => setPushSettingsOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          sx={{ zIndex: fullscreenOverlayZIndex.dialog }}
+        >
           <DialogTitle>Push-varsler innstillinger</DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>
@@ -5396,6 +5469,7 @@ export default function FullscreenChatWidget({
           autoHideDuration={3500}
           onClose={() => setStatusToast((prev) => ({ ...prev, open: false }))}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          sx={{ zIndex: fullscreenOverlayZIndex.snackbar }}
         >
           <Alert
             onClose={() => setStatusToast((prev) => ({ ...prev, open: false }))}

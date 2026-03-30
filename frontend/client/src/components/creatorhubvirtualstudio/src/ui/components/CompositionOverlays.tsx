@@ -34,6 +34,11 @@ interface CompositionOverlaysProps {
   };
 }
 
+type CompositionFeedbackObject = {
+  center: [number, number];
+  bbox: [number, number, number, number];
+};
+
 // Rule of Thirds Grid
 const RuleOfThirds: React.FC<{ color: string; opacity: number }> = ({ color, opacity }) => (
   <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
@@ -160,6 +165,7 @@ export const CompositionOverlays: React.FC<CompositionOverlaysProps> = ({
   opacity = 0.5,
   width = '100%',
   height = '100%',
+  aiFeedback,
 }) => {
   const guideComponents = useMemo(() => {
     return activeGuides.map((guide) => {
@@ -196,7 +202,7 @@ export const CompositionOverlays: React.FC<CompositionOverlaysProps> = ({
         zIndex: 1}}
     >
       {/* AI Feedback Overlay */}
-      {aiFeedback && aiFeedback.objects && aiFeedback.objects.map((obj, idx) => (
+      {aiFeedback?.objects?.map((obj: CompositionFeedbackObject, idx: number) => (
         <Box
           key={idx}
           sx={{
@@ -216,4 +222,3 @@ export const CompositionOverlays: React.FC<CompositionOverlaysProps> = ({
 };
 
 export default CompositionOverlays;
-

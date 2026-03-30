@@ -125,6 +125,23 @@ const buildAvailableSceneName = (sceneId: string, preferredName?: string): strin
   return `${SCENE_FALLBACK_PREFIX} ${sceneId}`;
 };
 
+const projectHasRichData = (project: CastingProject | null | undefined): boolean => (
+  (project?.candidates?.length ?? 0) > 0 ||
+  (project?.roles?.length ?? 0) > 0 ||
+  (project?.crew?.length ?? 0) > 0 ||
+  ((project?.candidatesCount ?? 0) > 0) ||
+  ((project?.rolesCount ?? 0) > 0) ||
+  ((project?.crewCount ?? 0) > 0)
+);
+
+const getProjectFreshnessTimestamp = (project: CastingProject | null | undefined): number => {
+  const rawTimestamp = project?.updatedAt || project?.createdAt || '';
+  const parsed = rawTimestamp ? new Date(rawTimestamp).getTime() : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const LOCAL_ONLY_PROJECT_RETENTION_MS = 30 * 60 * 1000;
+
 const getRoleRoomAuthHeaders = (): Record<string, string> => authSessionService.getAuthHeadersSync();
 
 const collectAvailableScenesFromProject = (
@@ -145,12 +162,19 @@ const collectAvailableScenesFromProject = (
     if (!sceneId || sceneMap.has(sceneId)) {
       return;
     }
+    const storyboardFrames = Array.isArray(scene.storyboardFrames) ? scene.storyboardFrames : [];
+    const firstStoryboardFrame = storyboardFrames.find((frame) => asRecord(frame));
+    const thumbnail =
+      firstStoryboardFrame && asRecord(firstStoryboardFrame)
+        ? readFirstNonEmptyString(firstStoryboardFrame.thumbnailUrl, firstStoryboardFrame.imageUrl)
+        : undefined;
     sceneMap.set(sceneId, {
       id: sceneId,
       name: buildAvailableSceneName(
         sceneId,
         readFirstNonEmptyString(scene.sceneName, scene.heading),
       ),
+      thumbnail,
     });
   });
 
@@ -392,6 +416,10 @@ function producerDemoProjectNeedsUpgrade(project: CastingProject): boolean {
   const sceneBreakdowns = Array.isArray(project.sceneBreakdowns) ? project.sceneBreakdowns : [];
   const shotLists = Array.isArray(project.shotLists) ? project.shotLists : [];
   const productionDays = Array.isArray(project.productionDays) ? project.productionDays : [];
+  const storyboardLinkedShots = shotLists.reduce((count, shotList) => {
+    const shots = Array.isArray(shotList.shots) ? shotList.shots : [];
+    return count + shots.filter((shot) => Boolean(shot.storyboardFrameId || shot.storyboardLibraryItemId)).length;
+  }, 0);
 
   return (
     String(project.name || '').trim() !== PRODUCER_DEMO_PROJECT_NAME ||
@@ -399,8 +427,55 @@ function producerDemoProjectNeedsUpgrade(project: CastingProject): boolean {
     !String(project.clientCompanyName || '').trim() ||
     sceneBreakdowns.length < 3 ||
     shotLists.length < 3 ||
-    productionDays.length < 2
+    productionDays.length < 2 ||
+    storyboardLinkedShots < 6
   );
+}
+
+function mergeStoryboardShotFields(
+  apiShot: CastingShot,
+  projectShot: CastingShot | undefined,
+): CastingShot {
+  if (!projectShot) {
+    return apiShot;
+  }
+
+  return {
+    ...projectShot,
+    ...apiShot,
+    storyboardFrameId: apiShot.storyboardFrameId ?? projectShot.storyboardFrameId,
+    storyboardLibraryItemId: apiShot.storyboardLibraryItemId ?? projectShot.storyboardLibraryItemId,
+    storyboardLinkedSceneId: apiShot.storyboardLinkedSceneId ?? projectShot.storyboardLinkedSceneId,
+    storyboardSourceType: apiShot.storyboardSourceType ?? projectShot.storyboardSourceType,
+  };
+}
+
+function enrichShotListsWithProjectData(
+  sourceShotLists: ShotList[],
+  projectShotLists: ShotList[],
+): ShotList[] {
+  if (projectShotLists.length === 0) {
+    return sourceShotLists;
+  }
+
+  const projectShotListMap = new Map(projectShotLists.map((shotList) => [shotList.id, shotList]));
+
+  return sourceShotLists.map((shotList) => {
+    const projectShotList = projectShotListMap.get(shotList.id);
+    if (!projectShotList) {
+      return shotList;
+    }
+
+    const projectShots = Array.isArray(projectShotList.shots) ? projectShotList.shots : [];
+    const sourceShots = Array.isArray(shotList.shots) ? shotList.shots : [];
+    const projectShotMap = new Map(projectShots.map((shot) => [shot.id, shot]));
+
+    return {
+      ...projectShotList,
+      ...shotList,
+      shots: sourceShots.map((shot) => mergeStoryboardShotFields(shot, projectShotMap.get(shot.id))),
+    };
+  });
 }
 
 function isTransientProjectFetchError(error: unknown): boolean {
@@ -504,23 +579,8 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
     // This prevents overwriting mock data with empty DB data
     if (dbProjects.length > 0) {
       // Check both arrays and counts (API may return counts instead of full arrays)
-      const dbHasData = dbProjects.some((p: any) => 
-        (p.candidates?.length > 0) || 
-        (p.roles?.length > 0) || 
-        (p.crew?.length > 0) ||
-        (p.candidatesCount > 0) ||
-        (p.rolesCount > 0) ||
-        (p.crewCount > 0)
-      );
-      
-      const localHasData = localProjects.some(p => 
-        (p.candidates?.length > 0) || 
-        (p.roles?.length > 0) || 
-        (p.crew?.length > 0) ||
-        ((p.candidatesCount ?? 0) > 0) ||
-        ((p.rolesCount ?? 0) > 0) ||
-        ((p.crewCount ?? 0) > 0)
-      );
+      const dbHasData = dbProjects.some((project) => projectHasRichData(project));
+      const localHasData = localProjects.some((project) => projectHasRichData(project));
       
       // Only overwrite local if DB actually has richer data, or if local is empty and DB has data
       if (dbHasData) {
@@ -528,9 +588,22 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
         return dbProjects;
       }
       
-      // If local has data but DB doesn't, keep local data
+      // If local has richer data, keep the DB list canonical and only retain
+      // recent local-only projects that may not have synced yet.
       if (localHasData) {
-        return localProjects;
+        const mergedProjects = [
+          ...dbProjects,
+          ...localProjects.filter((localProject) => {
+            const existsInDb = dbProjects.some((dbProject) => dbProject.id === localProject.id);
+            if (existsInDb) {
+              return false;
+            }
+            const projectAgeMs = Date.now() - getProjectFreshnessTimestamp(localProject);
+            return projectAgeMs <= LOCAL_ONLY_PROJECT_RETENTION_MS;
+          }),
+        ];
+        saveProjectsToStorage(mergedProjects);
+        return mergedProjects;
       }
       
       // Both are empty, prefer DB
@@ -1254,21 +1327,26 @@ export const castingService = {
    * Get shot lists for a project from database
    */
   async getShotLists(projectId: string): Promise<ShotList[]> {
+    const project = await this.getProject(projectId);
+    const projectShotLists = Array.isArray(project?.shotLists) ? project.shotLists : [];
+
     try {
       // Try to fetch from database API first
       const response = await fetch(`/api/casting/projects/${projectId}/shot-lists`);
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.shotLists) {
-          return data.shotLists;
+          return enrichShotListsWithProjectData(data.shotLists, projectShotLists);
+        }
+        if (Array.isArray(data)) {
+          return enrichShotListsWithProjectData(data, projectShotLists);
         }
       }
     } catch (error) {
       console.warn('Failed to fetch shot lists from API, falling back to local data:', error);
     }
     // Fallback to local project data
-    const project = await this.getProject(projectId);
-    return project?.shotLists || [];
+    return projectShotLists;
   },
 
   /**
@@ -1277,6 +1355,14 @@ export const castingService = {
   async getShotListByScene(projectId: string, sceneId: string): Promise<ShotList | null> {
     const shotLists = await this.getShotLists(projectId);
     return shotLists.find(sl => sl.sceneId === sceneId) || null;
+  },
+
+  /**
+   * Get scene breakdowns for a project.
+   */
+  async getSceneBreakdowns(projectId: string): Promise<SceneBreakdown[]> {
+    const project = await this.getProject(projectId);
+    return Array.isArray(project?.sceneBreakdowns) ? project.sceneBreakdowns : [];
   },
 
   /**
@@ -2094,6 +2180,9 @@ export const castingService = {
             priority: 'critical',
             status: 'completed',
             imageUrl: '/role-room-assets/roleroom_producer.webp',
+            storyboardFrameId: `${producerSceneIds.kickoff}-frame-1`,
+            storyboardLinkedSceneId: producerSceneIds.kickoff,
+            storyboardSourceType: 'scene-frame',
             createdAt: now,
             updatedAt: now,
           } as CastingShot,
@@ -2108,6 +2197,9 @@ export const castingService = {
             priority: 'important',
             status: 'completed',
             imageUrl: '/role-room-assets/roleroom_contract.webp',
+            storyboardFrameId: `${producerSceneIds.kickoff}-frame-2`,
+            storyboardLinkedSceneId: producerSceneIds.kickoff,
+            storyboardSourceType: 'scene-frame',
             createdAt: now,
             updatedAt: now,
           } as CastingShot,
@@ -2135,6 +2227,9 @@ export const castingService = {
             priority: 'critical',
             status: 'in_progress',
             imageUrl: '/role-room-assets/roleroom_filmfotograf.webp',
+            storyboardFrameId: `${producerSceneIds.training}-frame-1`,
+            storyboardLinkedSceneId: producerSceneIds.training,
+            storyboardSourceType: 'scene-frame',
             createdAt: now,
             updatedAt: now,
           } as CastingShot,
@@ -2149,6 +2244,9 @@ export const castingService = {
             priority: 'important',
             status: 'in_progress',
             imageUrl: '/role-room-assets/roleroom_camera.webp',
+            storyboardFrameId: `${producerSceneIds.training}-frame-2`,
+            storyboardLinkedSceneId: producerSceneIds.training,
+            storyboardSourceType: 'scene-frame',
             createdAt: now,
             updatedAt: now,
           } as CastingShot,
@@ -2190,6 +2288,9 @@ export const castingService = {
             priority: 'important',
             status: 'completed',
             imageUrl: '/role-room-assets/roleroom_dashboard.webp',
+            storyboardFrameId: `${producerSceneIds.post}-frame-1`,
+            storyboardLinkedSceneId: producerSceneIds.post,
+            storyboardSourceType: 'scene-frame',
             createdAt: now,
             updatedAt: now,
           } as CastingShot,
@@ -2204,6 +2305,9 @@ export const castingService = {
             priority: 'important',
             status: 'completed',
             imageUrl: '/role-room-assets/roleroom_chat.webp',
+            storyboardFrameId: `${producerSceneIds.post}-frame-2`,
+            storyboardLinkedSceneId: producerSceneIds.post,
+            storyboardSourceType: 'scene-frame',
             createdAt: now,
             updatedAt: now,
           } as CastingShot,
@@ -2440,6 +2544,7 @@ export const castingService = {
 
     try {
       await this.saveProject(demoProject);
+      await Promise.all(producerShotLists.map((shotList) => this.saveShotList(demoProject.id, shotList)));
       const saved = await this.getProject(demoProject.id);
       if (!saved) {
         console.error('❌ Failed to verify content producer demo project was saved!');

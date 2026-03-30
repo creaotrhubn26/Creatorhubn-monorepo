@@ -22,21 +22,19 @@ import { useNodes, useActions } from '@/state/selectors';
 const log = logger.module('MasterLightingIntegration');
 import { useUserEquipmentInventory } from './useUserEquipmentInventory';
 import { preferencesApi } from '../core/api/virtualStudioApi';
-import type {
-  HDRIExposureData,
-  TemplateExposureData,
-  GearPresetState,
-  LUTRecommendation,
-  MultiCameraExposure,
-  HistogramFeedback,
-  CommunityShareData,
-  VirtualActorMetering,
-  TimelineExposureKeyframe} from '@/core/services/masterLightingIntegration';
 import { 
-  masterLightingIntegration
+  masterLightingIntegration,
+  type HDRIExposureData,
+  type TemplateExposureData,
+  type GearPresetState,
+  type LUTRecommendation,
+  type MultiCameraExposure,
+  type HistogramFeedback,
+  type CommunityShareData,
+  type VirtualActorMetering,
+  type TimelineExposureKeyframe,
 } from '@/core/services/masterLightingIntegration';
 import type { CinematographyPattern } from '@/core/services/cinematographyPatternsService';
-import { cinematographyPatternsService } from '@/core/services/cinematographyPatternsService';
 import type { PatternExposureAnalysis } from '@/core/services/patternExposureIntegration';
 
 // =============================================================================
@@ -86,7 +84,7 @@ export interface MasterIntegrationState {
 export function useMasterLightingIntegration() {
   const nodes = useNodes();
   const { updateNode, addNode } = useActions();
-  const { userInventory, isLoading: inventoryLoading } = useUserEquipmentInventory();
+  const { inventory: userInventory, isLoading: inventoryLoading } = useUserEquipmentInventory();
   
   // State
   const [aiRecommendations, setAiRecommendations] = useState<AIRecommendation[]>([]);
@@ -95,6 +93,22 @@ export function useMasterLightingIntegration() {
   const [savedPresets, setSavedPresets] = useState<GearPresetState[]>([]);
   const [syncMode, setSyncMode] = useState<'match-ev' | 'match-aperture' | 'independent'>('match-ev');
   const [histogramData, setHistogramData] = useState<{ r: number[]; g: number[]; b: number[] } | null>(null);
+
+  const isVisibleLightNode = useCallback(
+    (
+      node: (typeof nodes)[number],
+    ): node is (typeof nodes)[number] & { light: NonNullable<(typeof nodes)[number]['light']> } =>
+      Boolean(node.light) && node.visible !== false,
+    [],
+  );
+
+  const isVisibleCameraNode = useCallback(
+    (
+      node: (typeof nodes)[number],
+    ): node is (typeof nodes)[number] & { camera: NonNullable<(typeof nodes)[number]['camera']> } =>
+      Boolean(node.camera) && node.visible !== false,
+    [],
+  );
   
   // ==========================================================================
   // EXTRACT SCENE DATA
@@ -102,38 +116,47 @@ export function useMasterLightingIntegration() {
   
   const lights = useMemo(() => {
     return nodes
-      .filter(n => n.light && n.visible !== false)
-      .map(n => ({
+      .filter(isVisibleLightNode)
+      .map((n) => ({
         id: n.id,
         position: n.transform.position as [number, number, number],
         rotation: n.transform.rotation as [number, number, number],
-        power: (n.userData?.wattage || n.light.power * 1000),
+        power: n.userData.wattage ?? n.light.power * 1000,
         cct: n.light.cct || 5600,
         modifier: n.light.modifier,
         userData: n.userData,
       }));
-  }, [nodes]);
+  }, [isVisibleLightNode, nodes]);
   
   const cameras = useMemo(() => {
     return nodes
-      .filter(n => n.camera && n.visible !== false)
-      .map(n => ({
+      .filter(isVisibleCameraNode)
+      .map((n) => ({
         id: n.id,
-        name: n.name,
+        name: n.name ?? 'Camera',
         position: n.transform.position as [number, number, number],
         currentSettings: {
           aperture: n.camera.aperture || 2.8,
           shutter: n.camera.shutter || 1/125,
           iso: n.camera.iso || 100,
+          focalLength: n.camera.focalLength || 50,
         },
-        isMain: n.userData?.isMainCamera,
+        isMain: n.userData.isMainCamera ?? false,
         userData: n.userData,
       }));
-  }, [nodes]);
+  }, [isVisibleCameraNode, nodes]);
   
   const activeCamera = useMemo(() => {
     return cameras.find(c => c.isMain) || cameras[0];
   }, [cameras]);
+
+  const inferLightNodeType = useCallback((modifier?: string) => {
+    const normalizedModifier = modifier?.toLowerCase() ?? '';
+    if (normalizedModifier.includes('umbrella')) return 'umbrella';
+    if (normalizedModifier.includes('reflector')) return 'reflector';
+    if (normalizedModifier.includes('fresnel') || normalizedModifier.includes('spot')) return 'spot';
+    return 'softbox';
+  }, []);
   
   // ==========================================================================
   // 1. AI RECOMMENDATIONS
@@ -277,14 +300,110 @@ export function useMasterLightingIntegration() {
   
   const loadPreset = useCallback((preset: GearPresetState) => {
     const { lights: presetLights, camera, events } = masterLightingIntegration.applyGearPreset(preset);
-    
-    // Dispatch events for scene updates
+    const sceneLightNodes = nodes.filter((node) => Boolean(node.light));
+
+    presetLights.forEach((light, index) => {
+      const existingLight = sceneLightNodes[index];
+      const normalizedPower = light.power > 1 ? Math.min(1, light.power / 1000) : light.power;
+
+      if (existingLight) {
+        updateNode(existingLight.id, {
+          name: light.model ? `${light.brand ?? 'Studio'} ${light.model}` : existingLight.name,
+          transform: {
+            position: light.position,
+            rotation: light.rotation,
+            scale: existingLight.transform.scale,
+          },
+          light: {
+            ...existingLight.light,
+            power: normalizedPower,
+            cct: light.cct,
+            modifier: light.modifier,
+          },
+          userData: {
+            ...existingLight.userData,
+            brand: light.brand,
+            model: light.model,
+            wattage: light.power,
+          },
+        });
+        return;
+      }
+
+      addNode({
+        id: `preset_light_${preset.id}_${index}`,
+        type: inferLightNodeType(light.modifier),
+        name: light.model ? `${light.brand ?? 'Studio'} ${light.model}` : `Preset Light ${index + 1}`,
+        visible: true,
+        transform: {
+          position: light.position,
+          rotation: light.rotation,
+          scale: [1, 1, 1],
+        },
+        light: {
+          power: normalizedPower,
+          cct: light.cct,
+          modifier: light.modifier,
+          beam: 45,
+        },
+        userData: {
+          brand: light.brand,
+          model: light.model,
+          wattage: light.power,
+        },
+      });
+    });
+
+    const existingCameraNode = nodes.find((node) => Boolean(node.camera)) ?? null;
+    if (existingCameraNode) {
+      updateNode(existingCameraNode.id, {
+        transform: {
+          position: camera.position,
+          rotation: existingCameraNode.transform.rotation,
+          scale: existingCameraNode.transform.scale,
+        },
+        camera: {
+          ...existingCameraNode.camera,
+          aperture: camera.aperture,
+          shutter: camera.shutter,
+          iso: camera.iso,
+          focalLength: camera.focalLength,
+        },
+      });
+    } else {
+      addNode({
+        id: `preset_camera_${preset.id}`,
+        type: 'camera',
+        name: preset.camera.model ? `${preset.camera.brand ?? 'Preset'} ${preset.camera.model}` : 'Preset Camera',
+        visible: true,
+        transform: {
+          position: camera.position,
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1],
+        },
+        camera: {
+          sensor: [36, 24],
+          aperture: camera.aperture,
+          shutter: camera.shutter,
+          iso: camera.iso,
+          focalLength: camera.focalLength,
+        },
+        userData: {
+          brand: preset.camera.brand,
+          model: preset.camera.model,
+          equipmentId: preset.camera.equipmentId,
+          attachedLens: preset.lens,
+          isMainCamera: true,
+        },
+      });
+    }
+
     for (const event of events) {
       window.dispatchEvent(new CustomEvent(event.type, { detail: event.detail }));
     }
     
     return { lights: presetLights, camera };
-  }, []);
+  }, [addNode, inferLightNodeType, nodes, updateNode]);
   
   const deletePreset = useCallback((presetId: string) => {
     setSavedPresets(prev => {
@@ -559,4 +678,3 @@ export function useMasterLightingIntegration() {
 }
 
 export default useMasterLightingIntegration;
-

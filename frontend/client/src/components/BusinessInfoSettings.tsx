@@ -69,6 +69,7 @@ interface BusinessInfo {
   customLogo: string;
   brandingColor: string;
   tagline: string;
+  businessStatus?: string;
 }
 
 interface BusinessInfoSettingsProps {
@@ -89,7 +90,7 @@ export default function BusinessInfoSettings({
   // Theming system
   // const theming = useTheming('photographer,');
   const theming = { colors: { primary: '#1976d2' } };
-  const userProfession = 'photographer';
+  const userProfession = user?.profession || 'photographer';
   
   // External Data Service integration for address validation
   const { 
@@ -299,7 +300,7 @@ export default function BusinessInfoSettings({
       analytics.trackEvent('business_info_loaded', {
         userId,
         hasData: !!existingInfo.businessName,
-        businessStatus: (existingInfo as any).businessStatus || 'active',
+        businessStatus: existingInfo.businessStatus || 'active',
         source: 'auto_refresh'
       });
   }
@@ -307,11 +308,16 @@ export default function BusinessInfoSettings({
 
   // ⭐ Listen for onboarding completion events from Master Integration
   React.useEffect(() => {
-    const { communication } = { communication: { subscribe: (event: string, callback: Function) => () => {} } };
+    const communication = {
+      subscribe: (
+        _event: string,
+        _callback: (payload: { userId?: string }) => void,
+      ) => () => {},
+    };
     
     // Subscribe to onboarding completion
-    const unsubscribeOnboarding = communication.subscribe('onboarding:completed', (data: any) => {
-      debugging.logIntegration('info, ','Onboarding completed - refreshing business info', { userId });
+    const unsubscribeOnboarding = communication.subscribe('onboarding:completed', (data: { userId?: string }) => {
+      debugging.logIntegration('info', 'Onboarding completed - refreshing business info', { userId });
       
       // Trigger immediate refresh
       refetch();
@@ -319,7 +325,7 @@ export default function BusinessInfoSettings({
       analytics.trackEvent('business_info_auto_refreshed', {
         userId,
         trigger: 'onboarding_completed',
-        source: 'master_integration'
+        source: data.userId === userId ? 'master_integration_same_user' : 'master_integration'
       });
     });
     

@@ -228,8 +228,8 @@ export default function GooglePayIntegration({ onConfigurationUpdate }: GooglePa
             startIcon={<RefreshIcon />}
             onClick={handleTestConfiguration}
             sx={{
-              bgcolor: 'rgba(25, 255, 255, 0.2)',
-              color: 'white', '&:hover': { bgcolor: 'rgba(25, 255, 255, 0.3)' }}}
+              bgcolor: 'rgba(255, 255, 255, 0.16)',
+              color: 'white', '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.24)' }}}
           >
             Test
           </Button>
@@ -412,7 +412,6 @@ export default function GooglePayIntegration({ onConfigurationUpdate }: GooglePa
     </Box>
   );
 }
-
 
 
 

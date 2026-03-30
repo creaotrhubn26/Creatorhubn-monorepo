@@ -1,6 +1,6 @@
 import { useTheming } from '../utils/theming-helper';
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Container,
   Typography,
@@ -33,11 +33,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Paper,
   TablePagination,
   Snackbar,
   LinearProgress,
-  Divider,
   List,
   ListItem,
   ListItemText,
@@ -48,20 +46,11 @@ import {
   PhotoLibrary,
   Memory,
   Analytics,
-  Add,
   Search,
-  Edit,
-  Delete,
   Upload,
   Description,
-  FilterList,
-  Refresh,
-  Save,
-  Cancel,
   Warning,
   CheckCircle,
-  Error as ErrorIcon,
-  ContentCopy,
   FindInPage,
   TrendingUp,
   Cloud,
@@ -127,6 +116,63 @@ interface NewProduct {
   technicalSpecs?: string
 }
 
+interface ProductSearchResult {
+  brand?: string;
+  model?: string;
+  type?: string;
+  description?: string;
+  imageUrl?: string;
+  officialUrl?: string;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const getOptionalString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+const parseBulkImportProduct = (value: unknown, index: number): NewProduct => {
+  if (!isRecord(value)) {
+    throw new Error(`Produkt ${index + 1} har ugyldig format`);
+  }
+
+  const type = getOptionalString(value.type)?.trim() || '';
+  const brand = getOptionalString(value.brand)?.trim() || '';
+  const model = getOptionalString(value.model)?.trim() || '';
+
+  if (!type || !brand || !model) {
+    throw new Error(`Produkt ${index + 1} må ha type, brand og model`);
+  }
+
+  return {
+    type,
+    brand,
+    model,
+    series: getOptionalString(value.series),
+    mount: getOptionalString(value.mount),
+    sensorFormat: getOptionalString(value.sensorFormat),
+    sourceUrl: getOptionalString(value.sourceUrl),
+    license: getOptionalString(value.license),
+    attribution: getOptionalString(value.attribution),
+    technicalSpecs: getOptionalString(value.technicalSpecs),
+  };
+};
+
+const parseBulkImportPayload = (value: unknown): NewProduct[] => {
+  const rawProducts =
+    Array.isArray(value)
+      ? value
+      : isRecord(value) && Array.isArray(value.products)
+        ? value.products
+        : null;
+
+  if (!rawProducts) {
+    throw new Error('Data må være en array eller ha en "products" property');
+  }
+
+  return rawProducts.map((product, index) => parseBulkImportProduct(product, index));
+};
+
 const EquipmentAdminPage: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
@@ -144,6 +190,7 @@ const EquipmentAdminPage: React.FC = () => {
   // Selected items
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [bulkData, setBulkData] = useState('');
+  const [bulkImportPreview, setBulkImportPreview] = useState<NewProduct[]>([]);
 
   // Snackbar
   const [snackbar, setSnackbar] = useState<{
@@ -181,7 +228,7 @@ const EquipmentAdminPage: React.FC = () => {
     model: '',
     type: 'camera',
 });
-  const [searchResults, setSearchResults] = useState<any>(null);
+  const [searchResults, setSearchResults] = useState<ProductSearchResult | null>(null);
 
   // Individual input handlers to prevent focus loss
   const handleBrandChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -227,13 +274,14 @@ const EquipmentAdminPage: React.FC = () => {
 });
 
   // Fetch stats
-  const { data: statsResponse, isLoading: statsLoading } = useQuery({
+  const { data: statsResponse } = useQuery({
     queryKey: ['/api/equipment-admin/stats', ],
     refetchInterval: 3000,
 });
 
   const products = (productsResponse as any)?.data || [];
   const stats = (statsResponse as any)?.data || { total:  0 };
+  const equipmentData = products as Product[];
 
   // Google Search API service status
   const { data: searchServiceStatus } = useQuery({
@@ -375,7 +423,7 @@ const EquipmentAdminPage: React.FC = () => {
   const updateProductMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Product> }) => {
       return apiRequest(`/api/equipment-admin/products/${id}`, {
-        method: 'PU',
+        method: 'PUT',
         body: JSON.stringify(data),
         headers: { 'Content-Type' : 'application/json',},
     });
@@ -403,8 +451,8 @@ const EquipmentAdminPage: React.FC = () => {
 
   const deleteProductMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/equipment-admin/products/${d}`, {
-        method: 'DELET',
+      return apiRequest(`/api/equipment-admin/products/${id}`, {
+        method: 'DELETE',
     });
   },
     onSuccess: () => {
@@ -447,6 +495,7 @@ const EquipmentAdminPage: React.FC = () => {
     });
       setBulkImportDialogOpen(false);
       setBulkData('');
+      setBulkImportPreview([]);
       queryClient.invalidateQueries({
         queryKey: ['/api/equipment-admin/products', ],
     });
@@ -473,6 +522,11 @@ const EquipmentAdminPage: React.FC = () => {
 
     return matchesSearch && matchesType && matchesBrand;
 });
+
+  const paginatedProducts = filteredProducts.slice(
+    page * rowsPerPage,
+    page * rowsPerPage + rowsPerPage,
+  );
 
   // Get unique brands and types for filters
   const uniqueBrands = Array.from(new Set(products.map((p: Product) => p.brand))).sort();
@@ -539,7 +593,7 @@ const EquipmentAdminPage: React.FC = () => {
           </Typography>
 
           <Grid container spacing={2} sx={{ mb:  2 }}>
-            <Grid size={{ xs:  12, md:  4 }}>
+            <Grid item xs={12} md={4}>
               <TextField
                 fullWidth
                 label="Produsent"
@@ -550,7 +604,7 @@ const EquipmentAdminPage: React.FC = () => {
                 autoComplete="off"
               />
             </Grid>
-            <Grid size={{ xs:  12, md:  4 }}>
+            <Grid item xs={12} md={4}>
               <TextField
                 fullWidth
                 label="Modell"
@@ -561,7 +615,7 @@ const EquipmentAdminPage: React.FC = () => {
                 autoComplete="off"
               />
             </Grid>
-            <Grid size={{ xs:  12, md:  4 }}>
+            <Grid item xs={12} md={4}>
               <FormControl fullWidth variant="outlined">
                 <InputLabel>Type</InputLabel>
                 <Select value={searchProductInfo.type} label="Type" onChange={handleTypeChange}>
@@ -765,7 +819,7 @@ const EquipmentAdminPage: React.FC = () => {
     if (!selectedProduct) return;
 
     updateProductMutation.mutate({
-      id: selectedProduct.d,
+      id: selectedProduct.id,
       data: selectedProduct,
   });
 };
@@ -778,29 +832,32 @@ const EquipmentAdminPage: React.FC = () => {
 
   const handleBulkImport = () => {
     try {
-      const data = JSON.parse(bulkData);
-      let products;
-
-      // Check if data has "products" property (correct format)
-      if (data.products && Array.isArray(data.products)) {
-        products = data.products;
-    }
-      // Otherwise, assume it's a direct array
-      else if (Array.isArray(data)) {
-        products = data;
-    } else {
-        throw new Error('Data må være en array eller ha en "products" property');
-    }
-
-      bulkImportMutation.mutate(products);
+      const data = JSON.parse(bulkData) as unknown;
+      const parsedProducts = parseBulkImportPayload(data);
+      setBulkImportPreview(parsedProducts);
+      setBulkImportDialogOpen(true);
   } catch (error) {
+      const message = error instanceof Error ? error.message : 'Ugyldig JSON format';
       setSnackbar({
         open: true,
-        message: 'Ugyldig JSON format',
+        message,
         severity: 'error',
     });
   }
 };
+
+  const handleConfirmBulkImport = () => {
+    if (bulkImportPreview.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'Ingen produkter klare for import',
+        severity: 'warning',
+      });
+      return;
+    }
+
+    bulkImportMutation.mutate(bulkImportPreview);
+  };
 
   const handleEditProduct = (product: Product) => {
     setSelectedProduct(product);
@@ -832,7 +889,7 @@ const EquipmentAdminPage: React.FC = () => {
     return typeMap[type] || type;
 };
 
-  const formatMount = (mount: string | null) => {
+  const formatMount = (mount?: string | null) => {
     if (!mount) return '-';
     return mount;
 };
@@ -868,7 +925,7 @@ const EquipmentAdminPage: React.FC = () => {
 
       {/* Stats Overview */}
       <Grid container spacing={3} sx={{ mb:  4 }}>
-        <Grid size={{ xs:  12, md:  3 }}>
+        <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -884,7 +941,7 @@ const EquipmentAdminPage: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid size={{ xs:  12, md:  3 }}>
+        <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -900,7 +957,7 @@ const EquipmentAdminPage: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid size={{ xs:  12, md:  3 }}>
+        <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -916,7 +973,7 @@ const EquipmentAdminPage: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid size={{ xs:  12, md:  3 }}>
+        <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -1019,8 +1076,8 @@ const EquipmentAdminPage: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredProducts.map((product: Product) => (
-                  <TableRow key={product.d}>
+                {paginatedProducts.map((product: Product) => (
+                  <TableRow key={product.id}>
                     <TableCell>
                       <Typography variant="body2" fontWeight="medium">
                         {product.brand}
@@ -1090,7 +1147,7 @@ const EquipmentAdminPage: React.FC = () => {
           </Typography>
 
           <Grid container spacing={3}>
-            <Grid size={{ xs:  12, md:  6 }}>
+            <Grid item xs={12} md={6}>
               <FormControl fullWidth sx={{ mb:  2 }}>
                 <InputLabel>Type *</InputLabel>
                 <Select
@@ -1131,7 +1188,7 @@ const EquipmentAdminPage: React.FC = () => {
               />
             </Grid>
 
-            <Grid size={{ xs:  12, md:  6 }}>
+            <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
                 label="Mount"
@@ -1171,7 +1228,7 @@ const EquipmentAdminPage: React.FC = () => {
               </FormControl>
             </Grid>
 
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <TextField
                 fullWidth
                 label="Tekniske spesifikasjoner"
@@ -1249,7 +1306,7 @@ const EquipmentAdminPage: React.FC = () => {
               onClick={handleBulkImport}
               disabled={bulkImportMutation.isPending || !bulkData.trim()}
              sx={theming.getThemedButtonSx()}>
-              {bulkImportMutation.isPending ? 'Importerer...' : 'Importer produkter'}
+              {bulkImportMutation.isPending ? 'Importerer...' : 'Forhåndsvis import'}
             </Button>
 
             <Button
@@ -1296,7 +1353,7 @@ const EquipmentAdminPage: React.FC = () => {
           
           <Grid container spacing={3}>
             {/* Image Statistics */}
-            <Grid size={{ xs: 12, md: 4 }}>
+            <Grid item xs={12} md={4}>
               <Card variant="outlined">
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -1326,7 +1383,7 @@ const EquipmentAdminPage: React.FC = () => {
             </Grid>
 
             {/* Duplicate Detection */}
-            <Grid size={{ xs: 12, md: 4 }}>
+            <Grid item xs={12} md={4}>
               <Card variant="outlined">
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -1355,7 +1412,7 @@ const EquipmentAdminPage: React.FC = () => {
             </Grid>
 
             {/* Image Optimization */}
-            <Grid size={{ xs: 12, md: 4 }}>
+            <Grid item xs={12} md={4}>
               <Card variant="outlined">
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -1384,7 +1441,7 @@ const EquipmentAdminPage: React.FC = () => {
             </Grid>
 
             {/* Products Missing Images */}
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Card variant="outlined">
                 <CardContent>
                   <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
@@ -1435,7 +1492,7 @@ const EquipmentAdminPage: React.FC = () => {
           
           <Grid container spacing={3}>
             {/* Overview Stats */}
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid item xs={12} sm={6} md={3}>
               <Card variant="outlined" sx={{ bgcolor: 'primary.50' }}>
                 <CardContent>
                   <Typography variant="overline" color="text.secondary">Totalt produkter</Typography>
@@ -1443,7 +1500,7 @@ const EquipmentAdminPage: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid item xs={12} sm={6} md={3}>
               <Card variant="outlined" sx={{ bgcolor: 'success.50' }}>
                 <CardContent>
                   <Typography variant="overline" color="text.secondary">Merker</Typography>
@@ -1453,7 +1510,7 @@ const EquipmentAdminPage: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid item xs={12} sm={6} md={3}>
               <Card variant="outlined" sx={{ bgcolor: 'info.50' }}>
                 <CardContent>
                   <Typography variant="overline" color="text.secondary">Kategorier</Typography>
@@ -1463,7 +1520,7 @@ const EquipmentAdminPage: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid item xs={12} sm={6} md={3}>
               <Card variant="outlined" sx={{ bgcolor: 'warning.50' }}>
                 <CardContent>
                   <Typography variant="overline" color="text.secondary">Lagt til denne måneden</Typography>
@@ -1479,7 +1536,7 @@ const EquipmentAdminPage: React.FC = () => {
             </Grid>
 
             {/* Products by Type */}
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Card variant="outlined">
                 <CardContent>
                   <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
@@ -1512,7 +1569,7 @@ const EquipmentAdminPage: React.FC = () => {
             </Grid>
 
             {/* Products by Brand */}
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Card variant="outlined">
                 <CardContent>
                   <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
@@ -1546,14 +1603,14 @@ const EquipmentAdminPage: React.FC = () => {
             </Grid>
 
             {/* Data Quality Report */}
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Card variant="outlined">
                 <CardContent>
                   <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
                     Datakvalitetsrapport
                   </Typography>
                   <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid item xs={12} sm={6} md={3}>
                       <Box sx={{ textAlign: 'center', p: 2 }}>
                         <Typography variant="body2" color="text.secondary">Med tekniske spesifikasjoner</Typography>
                         <Typography variant="h5" color="success.main">
@@ -1561,7 +1618,7 @@ const EquipmentAdminPage: React.FC = () => {
                         </Typography>
                       </Box>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid item xs={12} sm={6} md={3}>
                       <Box sx={{ textAlign: 'center', p: 2 }}>
                         <Typography variant="body2" color="text.secondary">Med kildelenke</Typography>
                         <Typography variant="h5" color="info.main">
@@ -1569,7 +1626,7 @@ const EquipmentAdminPage: React.FC = () => {
                         </Typography>
                       </Box>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid item xs={12} sm={6} md={3}>
                       <Box sx={{ textAlign: 'center', p: 2 }}>
                         <Typography variant="body2" color="text.secondary">Med lisensinfo</Typography>
                         <Typography variant="h5" color="warning.main">
@@ -1577,7 +1634,7 @@ const EquipmentAdminPage: React.FC = () => {
                         </Typography>
                       </Box>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Grid item xs={12} sm={6} md={3}>
                       <Box sx={{ textAlign: 'center', p: 2 }}>
                         <Typography variant="body2" color="text.secondary">Komplett data</Typography>
                         <Typography variant="h5" color="primary.main">
@@ -1591,7 +1648,7 @@ const EquipmentAdminPage: React.FC = () => {
             </Grid>
 
             {/* Export Options */}
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
                 <Button
                   variant="outlined"
@@ -1642,6 +1699,140 @@ const EquipmentAdminPage: React.FC = () => {
 
       {/* Edit Product Dialog */}
       <Dialog
+        open={addDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Legg til nytt produkt</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Type *</InputLabel>
+                <Select
+                  value={formData.type}
+                  label="Type *"
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                >
+                  <MenuItem value="camera">Kamera</MenuItem>
+                  <MenuItem value="lens">Objektiv</MenuItem>
+                  <MenuItem value="accessory">Tilbehør</MenuItem>
+                  <MenuItem value="flash">Blits</MenuItem>
+                  <MenuItem value="audio">Lyd</MenuItem>
+                </Select>
+              </FormControl>
+
+              <TextField
+                fullWidth
+                label="Produsent *"
+                value={formData.brand}
+                onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                sx={{ mb: 2 }}
+              />
+
+              <TextField
+                fullWidth
+                label="Serie"
+                value={formData.series}
+                onChange={(e) => setFormData({ ...formData, series: e.target.value })}
+                sx={{ mb: 2 }}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Modell *"
+                value={formData.model}
+                onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                sx={{ mb: 2 }}
+              />
+
+              <TextField
+                fullWidth
+                label="Mount"
+                value={formData.mount}
+                onChange={(e) => setFormData({ ...formData, mount: e.target.value })}
+                sx={{ mb: 2 }}
+              />
+
+              <TextField
+                fullWidth
+                label="Kilde URL"
+                value={formData.sourceUrl}
+                onChange={(e) => setFormData({ ...formData, sourceUrl: e.target.value })}
+                sx={{ mb: 2 }}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddDialogOpen(false)}>Avbryt</Button>
+          <Button
+            onClick={handleFormSubmit}
+            variant="contained"
+            disabled={createProductMutation.isPending}
+            sx={theming.getThemedButtonSx()}
+          >
+            {createProductMutation.isPending ? 'Lagrer...' : 'Lagre produkt'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={bulkImportDialogOpen}
+        onClose={() => setBulkImportDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Bekreft masseimport</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Klar til å importere {bulkImportPreview.length} produkter.
+          </Alert>
+
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Type</TableCell>
+                <TableCell>Produsent</TableCell>
+                <TableCell>Modell</TableCell>
+                <TableCell>Mount</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {bulkImportPreview.slice(0, 10).map((product, index) => (
+                <TableRow key={`${product.brand}-${product.model}-${index}`}>
+                  <TableCell>{product.type}</TableCell>
+                  <TableCell>{product.brand}</TableCell>
+                  <TableCell>{product.model}</TableCell>
+                  <TableCell>{product.mount || '-'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {bulkImportPreview.length > 10 && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              Viser de første 10 produktene av {bulkImportPreview.length}.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBulkImportDialogOpen(false)}>Avbryt</Button>
+          <Button
+            onClick={handleConfirmBulkImport}
+            variant="contained"
+            disabled={bulkImportMutation.isPending}
+            sx={theming.getThemedButtonSx()}
+          >
+            {bulkImportMutation.isPending ? 'Importerer...' : 'Importer produkter'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
         open={editDialogOpen}
         onClose={() => setEditDialogOpen(false)}
         maxWidth="md"
@@ -1651,7 +1842,7 @@ const EquipmentAdminPage: React.FC = () => {
         <DialogContent>
           {selectedProduct && (
             <Grid container spacing={2} sx={{ mt:  1 }}>
-              <Grid size={{ xs:  12, md:  6 }}>
+              <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
                   label="Type"
@@ -1692,7 +1883,7 @@ const EquipmentAdminPage: React.FC = () => {
                 />
               </Grid>
 
-              <Grid size={{ xs:  12, md:  6 }}>
+              <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
                   label="Serie"
@@ -1800,7 +1991,7 @@ const EquipmentAdminPage: React.FC = () => {
           bottom:  16,
           right:  16,
       }}
-        onClick={() => setTabValue(1)}
+        onClick={() => setAddDialogOpen(true)}
       >
         {theming.getThemedIcon('add')}
       </Fab>

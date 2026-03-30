@@ -22,10 +22,6 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import {
   Box,
   Paper,
@@ -55,7 +51,6 @@ import {
   FormControlLabel,
   Snackbar,
   Alert,
-  LinearProgress,
   InputAdornment,
 } from '@mui/material';
 import {
@@ -65,9 +60,6 @@ import {
   Highlight as HighlightIcon,
   FormatListBulleted as ActionItemIcon,
   Close as CloseIcon,
-  Add as AddIcon,
-  Schedule as ScheduleIcon,
-  Flag as PriorityIcon,
   Email as EmailIcon,
   Event as CalendarIcon,
   AutoAwesome as AIIcon,
@@ -79,10 +71,8 @@ import {
   Person as ClientIcon,
   NotificationsActive as ReminderIcon,
   Checklist as ChecklistIcon,
-  Search as SearchIcon,
   VolumeUp as ReadAloudIcon,
   MoreVert as MoreIcon,
-  Chat as ChatIcon,
   DriveFileMove as DriveIcon,
   LocationOn as LocationIcon,
   Videocam as VideocamIcon,
@@ -93,8 +83,7 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import type { KartverketPlaceName } from '@/services/ExternalDataService';
-import ExternalDataService from '@/services/ExternalDataService';
+import ExternalDataService, { type KartverketPlaceName } from '@/services/ExternalDataService';
 
 interface TextSelectionContextMenuProps {
   containerRef: React.RefObject<HTMLElement>;
@@ -434,7 +423,12 @@ export default function TextSelectionContextMenu({
       return apiRequest(`/api/google-tasks/tasks`, {
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          userId,
+          projectId,
+          profession,
+        }),
       });
     },
     onSuccess: (data) => {
@@ -766,7 +760,7 @@ export default function TextSelectionContextMenu({
 
   const handleSearchDrive = () => {
     if (selection) {
-      window.open(`https://drive.google.com/drive/search?q=${encodeURIComponent(selection.text.substring(0, 100))}`, '_blank');
+      searchDriveMutation.mutate(selection.text.substring(0, 100));
       setSelection(null);
       setMenuOpen(false);
       setMoreMenuAnchor(null);
@@ -811,6 +805,7 @@ export default function TextSelectionContextMenu({
       notes: selection?.text || '',
       due: taskDueDate || undefined,
       status: 'needsAction',
+      priority: taskPriority,
     });
   };
 
@@ -826,7 +821,9 @@ export default function TextSelectionContextMenu({
 
   const handleSaveCalendarEvent = () => {
     if (!eventTitle.trim() || (!eventAllDay && (!eventStart || !eventEnd))) return;
-    const attendees = eventAttendees ? eventAttendees.split('').map(e => ({ email: e.trim() })).filter(a => a.email) : [];
+    const attendees = eventAttendees
+      ? eventAttendees.split(',').map((entry) => ({ email: entry.trim() })).filter((attendee) => attendee.email)
+      : [];
 
     // Build recurrence rule if needed
     let recurrence: string[] | undefined;
@@ -2293,4 +2290,3 @@ export default function TextSelectionContextMenu({
     </>
   );
 }
-

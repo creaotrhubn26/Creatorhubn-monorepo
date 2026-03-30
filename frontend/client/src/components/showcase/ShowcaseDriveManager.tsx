@@ -360,7 +360,7 @@ export const ShowcaseDriveManager: React.FC<ShowcaseDriveManagerProps> = ({
               <Grid item xs={12} key={mapping.id}>
                 <MuiCard 
                   sx={{ 
-                    background: 'rgba(25, 255, 255, 0.95)',
+                    background: 'rgba(255, 255, 255, 0.96)',
                     backdropFilter: 'blur(10px)',
                     border: '1px solid rgba(25, 1400.2)'
                 }}

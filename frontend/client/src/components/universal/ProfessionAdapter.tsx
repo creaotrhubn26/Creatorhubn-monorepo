@@ -44,6 +44,7 @@ import PriceAdministration from '@/components/PriceAdministration';
 // Import other components
 import UniversalCRMDashboard from '../crm/UniversalCRMDashboard';
 import { EnhancedGearTab } from '../dashboard/EnhancedGearTab';
+import { VisualEditorProvider } from '../admin/visual-editor/VisualEditorContext';
 import FilesTab from './tabs/FilesTab';
 import IntegratedEmailCenter from '../email/EmailComposer';
 import UniversalWorklog from '../worklog/UniversalWorklog';
@@ -368,10 +369,12 @@ export default function ProfessionAdapter({
               <Build sx={{ mr: 2, fontSize: 32 }} />
               {profession === 'music_producer' ? 'Studio' : profession === 'vendor' ? 'Lager' : 'Utstyr'}
             </Typography>
-            <EnhancedGearTab
-              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
-              className="enhanced-equipment-tab"
-            />
+            <VisualEditorProvider>
+              <EnhancedGearTab
+                profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
+                className="enhanced-equipment-tab"
+              />
+            </VisualEditorProvider>
           </Box>
         );
 

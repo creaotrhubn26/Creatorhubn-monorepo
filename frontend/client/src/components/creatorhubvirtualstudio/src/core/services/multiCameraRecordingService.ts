@@ -5,14 +5,10 @@
  * Each camera gets its own video file with synchronized timecode.
  */
 
+import * as THREE from 'three';
 import { logger } from './logger';
 
-const log = logger.module('MultiCameraRecording, ');
-
-let THREE: any = null;
-try {
-  THREE = require('three');
-} catch {}
+const log = logger.module('MultiCameraRecording');
 
 // ============================================================================
 // Types
@@ -68,8 +64,8 @@ class CameraRecorder {
   private camera: any;
   private sourceCamera: any; // Reference to the actual scene camera to sync from
   private renderTarget: any;
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D | null;
+  private canvas: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
   private isRecording = false;
@@ -310,7 +306,7 @@ class CameraRecorder {
    * Render a single frame
    */
   private renderFrame() {
-    if (!this.renderer || !this.scene || !this.camera) return;
+    if (!this.renderer || !this.scene || !this.camera || !this.canvas) return;
     
     // Sync camera transform from source before rendering
     this.syncCameraTransform();
@@ -452,7 +448,10 @@ class MultiCameraRecordingService {
       name: cameraName,
       getTransform,
     });
-    log.debug('Registered camera for recording: ', cameraId, { hasTransformGetter: !!getTransform });
+    log.debug('Registered camera for recording', {
+      cameraId,
+      hasTransformGetter: !!getTransform,
+    });
   }
   
   /**
@@ -647,6 +646,12 @@ class MultiCameraRecordingService {
   private notifyListeners() {
     const state = this.getState();
     this.listeners.forEach(listener => listener(state));
+  }
+
+  private emit(eventName: string, detail: Record<string, unknown>) {
+    window.dispatchEvent(
+      new CustomEvent(`vs-multi-camera-recording-${eventName}`, { detail }),
+    );
   }
   
   /**

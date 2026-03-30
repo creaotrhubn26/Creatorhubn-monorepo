@@ -818,7 +818,7 @@ export default function PricingManagement({ userId, profession, onPricingUpdate 
         {Array.isArray(packages) && packages.map((pkg: any) => (
           <Grid size={{ xs: 12, md: 6, lg: 4 }} key={pkg.id}>
             <Card sx={{
-              background: 'rgba(25, 255, 255, 0.9)',
+              background: 'rgba(255, 255, 255, 0.96)',
               backdropFilter: 'blur(10px)',
               border: '1px solid rgba(25, 107, 53, 0.2)',
               height: '100%',

@@ -1,37 +1,71 @@
-# Render.com Configuration for Backend Service
-# This file helps configure the backend service on Render
-
 services:
   - type: web
     name: creatorhub-backend
-    env: node
-    buildCommand: npm install
-    startCommand: npm run dev
+    runtime: node
+    plan: free
+    branch: main
+    autoDeploy: true
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
     envVars:
-      # Database
       - key: DATABASE_URL
-        sync: false  # Set manually in Render dashboard
-      
-      # VAPID Keys for Push Notifications
-      # Note: Add these in Render dashboard Environment tab (not in this file for security)
-      - key: VAPID_PUBLIC_KEY
-        sync: false  # Set manually: BN_3cOcqCG21vOe5QCvuMeJtdtS43Fc4ZnHbs8GXjY_FOjqWVuPy4gBBqht1cBoTuCenp22ETqDZN8hOY01DnzE
-      - key: VAPID_PRIVATE_KEY
-        sync: false  # Set manually: U5IfYD_QEigu8bjNXEOQn7gBj4-SUYjiRjOPVtF_pSU
-      
-      # Email Configuration
-      - key: GMAIL_USER
-        sync: false  # Set manually in Render dashboard
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_MODELS_BUCKETS
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_ADMIN_EMAIL
+        sync: false
+      - key: GOOGLE_WORKSPACE_DOMAIN
+        sync: false
+      - key: GOOGLE_WORKSPACE_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_DRIVE_FOLDER_ID
+        sync: false
+      - key: GOOGLE_IMPERSONATE_USER
+        sync: false
+      - key: GOOGLE_USE_IMPERSONATION
+        sync: false
+      - key: GOOGLE_TAG_MANAGER_ID
+        sync: false
+      - key: GOOGLE_ANALYTICS_ID
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
       - key: GMAIL_APP_PASSWORD
-        sync: false  # Set manually in Render dashboard
-      
-      # Node Environment
+        sync: false
+      - key: ROLE_ROOM_LINKEDIN_CLIENT_ID
+        sync: false
+      - key: ROLE_ROOM_LINKEDIN_CLIENT_SECRET
+        sync: false
+      - key: ROLE_ROOM_LINKEDIN_REDIRECT_URI
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
       - key: NODE_ENV
         value: production
-
-      # Evendi bridge
       - key: EVENDI_API_URL
-        sync: false  # Set manually in Render dashboard
-
-# Note: For security, sensitive variables (marked with sync: false) should be
-# set directly in the Render dashboard rather than in this file.
+        sync: false

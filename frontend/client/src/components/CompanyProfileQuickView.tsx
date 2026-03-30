@@ -1,41 +1,33 @@
-// CompanyProfileQuickView.tsx - Animated company profile cards with Norwegian business aesthetics
-import { useTheming } from '../utils/theming-helper';
 import React, { useState } from 'react';
 import {
-  Card,
-  CardContent,
-  CardActions,
-  Typography,
-  Box,
   Avatar,
-  Chip,
-  IconButton,
-  Collapse,
-  Fade,
-  Zoom,
-  Slide,
+  Box,
   Button,
+  Card,
+  CardActions,
+  CardContent,
+  Chip,
+  Collapse,
   Divider,
   LinearProgress,
   Rating,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
-  LocationOn as LocationIcon,
-  Phone as PhoneIcon,
-  Email as EmailIcon,
-  Language as WebsiteIcon,
-  ExpandMore as ExpandIcon,
-  Star as StarIcon,
-  People as PeopleIcon,
-  TrendingUp as TrendingIcon,
   CheckCircle as VerifiedIcon,
+  Email as EmailIcon,
+  ExpandMore as ExpandIcon,
   Flag as FlagIcon,
-  Info as InfoIcon,
+  Language as WebsiteIcon,
+  LocationOn as LocationIcon,
+  People as PeopleIcon,
+  Phone as PhoneIcon,
+  TrendingUp as TrendingIcon,
 } from '@mui/icons-material';
-import { motion, AnimatePresence } from 'framer-motion';
-import { keyframes } from '@mui/system';
+import { motion } from 'framer-motion';
+import { useTheming } from '../utils/theming-helper';
 import { useBusinessLogo } from '../hooks/useBusinessLogo';
 
 interface CompanyProfile {
@@ -54,13 +46,13 @@ interface CompanyProfile {
     amount: number;
     year: number;
     currency: string;
-};
+  };
   rating?: number;
   verification: {
     brreg: boolean;
     proff: boolean;
     riskLevel: 'low' | 'medium' | 'high';
-};
+  };
   description?: string;
   founded?: number;
   services?: string[];
@@ -68,7 +60,7 @@ interface CompanyProfile {
     projects: number;
     clients: number;
     reviews: number;
-};
+  };
 }
 
 interface CompanyProfileQuickViewProps {
@@ -77,510 +69,244 @@ interface CompanyProfileQuickViewProps {
   animation?: 'slide' | 'fade' | 'zoom' | 'flip';
   showRiskIndicators?: boolean;
   onViewDetails?: (profile: CompanyProfile) => void;
-  onContact?: (profile: CompanyProfile) => void
+  onContact?: (profile: CompanyProfile) => void;
 }
 
-// Animated gradient keyframes
-const gradientAnimation = keyframes`
-  0% { background-position: 0% 50% }
-  50% { background-position: 100% 50% }
-  100% { background-position: 0% 50% }
-`;
+const getMotionProps = (animation: CompanyProfileQuickViewProps['animation']) => {
+  switch (animation) {
+    case 'fade':
+      return { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.35 } };
+    case 'zoom':
+      return {
+        initial: { opacity: 0, scale: 0.96 },
+        animate: { opacity: 1, scale: 1 },
+        transition: { duration: 0.3 },
+      };
+    case 'flip':
+      return {
+        initial: { opacity: 0, rotateY: 10 },
+        animate: { opacity: 1, rotateY: 0 },
+        transition: { duration: 0.35 },
+      };
+    case 'slide':
+    default:
+      return { initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.3 } };
+  }
+};
 
-export const CompanyProfileQuickView: React.FC<CompanyProfileQuickViewProps> = ({
+const getStatusColor = (status: CompanyProfile['status']) => {
+  switch (status) {
+    case 'verified':
+      return 'success';
+    case 'inactive':
+      return 'error';
+    case 'active':
+    default:
+      return 'primary';
+  }
+};
+
+const getRiskColor = (riskLevel: CompanyProfile['verification']['riskLevel']) => {
+  switch (riskLevel) {
+    case 'low':
+      return 'success';
+    case 'high':
+      return 'error';
+    case 'medium':
+    default:
+      return 'warning';
+  }
+};
+
+export default function CompanyProfileQuickView({
   profile,
   variant = 'expanded',
   animation = 'slide',
   showRiskIndicators = false,
   onViewDetails,
-  onContact
-}) => {
-  const [expanded, setExpanded] = useState(false);
-  
-  // Theming system
+  onContact,
+}: CompanyProfileQuickViewProps) {
   const theming = useTheming('photographer');
-  const [isHovered, setIsHovered] = useState(false);
-  
-  // Get business logo with fallback to generated placeholder
+  const [expanded, setExpanded] = useState(variant === 'expanded');
   const { logoUrl, hasLogo } = useBusinessLogo({
     organizationNumber: profile.organizationNumber,
-    businessName: profile.name
-});
+    businessName: profile.name,
+  });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return '#4caf50';
-      case 'verified': return '#2196f3';
-      case 'inactive': return '#f44336';
-      default: return '#9e9e9e';
-}
-};
-
-  const getRiskColor = (level: string) => {
-    switch (level) {
-      case 'low': return 'success';
-      case 'medium': return 'warning';
-      case 'high': return 'error';
-      default: return 'default';
-}
-};
-
-  const getAnimationProps = () => {
-    switch (animation) {
-      case 'fade':
-        return {
-          initial: { opacity: 0 },
-          animate: { opacity: 1 },
-          transition: { duration: 0.5 }
-      };
-      case 'zoom':
-        return {
-          initial: { scale: 0, opacity: 0 },
-          animate: { scale: 1, opacity: 1 },
-          transition: { duration: 0.3, type: 'spring' }
-      };
-      case 'flip':
-        return {
-          initial: { rotateY: 90, opacity:  0 },
-          animate: { rotateY: 0, opacity:  1 },
-          transition: { duration: 0.6 }
-      };
-      default: // slide
-        return {
-          initial: { x: -0, opacity:  0 },
-          animate: { x: 0, opacity:  1 },
-          transition: { duration: 0.5 }
-      };
-  }
-};
+  const revenueProgress = Math.min(100, Math.max(8, (profile.revenue?.amount ?? 0) / 100000));
 
   return (
-    <motion.div
-      {...getAnimationProps()}
-      onHoverStart={() => setIsHovered(true)}
-      onHoverEnd={() => setIsHovered(false)}
-    >
+    <motion.div {...getMotionProps(animation)}>
       <Card
         sx={{
-          minHeight: variant === 'minimal' ? 120 : 20,
-          background: isHovered 
-            ? 'linear-gradient(-45deg, #ff8c00, #ffa500, #ff6b35, #ff8c00)'
-            : 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
-          backgroundSize: '400% 400, %',
-          animation: isHovered ? `${gradientAnimation} 3s ease infinite` : 'none',
-          border: '1px solid',
-          borderColor: isHovered ? 'transparent' : 'grey.20',
-          borderRadius:  3,
-          boxShadow: isHovered 
-            ? '0 8px 25px rgba(25, 1400.3)'
-            : '0 2px 8px rgba(00, 0.1)',
-          transition: 'all 0.3s cubic-bezier(0, .0, 0.2, 1)',
-          transform: isHovered ? 'translateY(-4px)' : 'translateY(0, )',
-          cursor: 'pointer',
+          height: '100%',
+          minHeight: variant === 'minimal' ? 150 : 250,
+          borderRadius: 3,
+          position: 'relative',
           overflow: 'hidden',
-          position: 'relative'
-    }}
-       sx={theming.getThemedCardSx()}>
-        {/* Status indicator bar */}
+          ...theming.getThemedCardSx(),
+        }}
+      >
         <Box
           sx={{
-            height:  4,
-            background: `linear-gradient(90deg, ${getStatusColor(profile.status)} 0%, ${getStatusColor(profile.status)}aa 100%)`,
             position: 'absolute',
-            top:  0,
-            left:  0,
-            right:  0,
-            zIndex: 1}}
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 4,
+            bgcolor:
+              profile.status === 'verified'
+                ? 'success.main'
+                : profile.status === 'inactive'
+                  ? 'error.main'
+                  : 'primary.main',
+          }}
         />
 
-        <CardContent sx={{ p: 2, color: isHovered ? 'white' : 'inherit',  ...theming.getThemedCardSx() }}>
-          {/* Header Section */}
-          <Box display="flex" alignItems="center" gap={2} mb={2}>
-            <motion.div
-              animate={{ rotate: isHovered ? 360 : 0 }}
-              transition={{ duration: 0.6}}
-            >
-              <Avatar
-                src={logoUrl || profile.logo}
-                sx={{
-                  width: variant === 'minimal' ? 40 : 56,
-                  height: variant === 'minimal' ? 40 : 56,
-                  bgcolor: hasLogo ? 'transparent' : 'primary.main',
-                  border: '2px solid',
-                  borderColor: isHovered ? 'white' : 'grey.20', '& img': {
-                    objectFit: 'contain',
-                    padding: hasLogo ? '4px' : '0'
-              }
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+            <Avatar
+              src={logoUrl || profile.logo}
+              sx={{
+                width: variant === 'minimal' ? 48 : 56,
+                height: variant === 'minimal' ? 48 : 56,
+                bgcolor: hasLogo ? 'transparent' : 'primary.main',
               }}
-              >
-                {!hasLogo && !logoUrl && <BusinessIcon />}
-              </Avatar>
-            </motion.div>
-            
-            <Box flex={1}>
-              <Box display="flex" alignItems="center" gap={1}>
-                <Typography 
-                  variant={variant === 'minimal' ? 'h6' : 'h5'}
-                  fontWeight="bold"
-                  sx={{ 
-                    color: isHovered ? 'white' : 'text.primary',
-                    textShadow: isHovered ? '0 1px 2px rgba(0,0,0,0.3)' : 'none'
-                }}
-                >
+            >
+              {!hasLogo && <BusinessIcon />}
+            </Avatar>
+
+            <Box sx={{ flex: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant={variant === 'minimal' ? 'h6' : 'h5'} fontWeight="bold">
                   {profile.name}
                 </Typography>
                 {profile.verification.brreg && (
-                  <motion.div
-                    initial={{ scale:  0 }}
-                    animate={{ scale:  1 }}
-                    transition={{ delay: 0.3}}
-                  >
-                    <Tooltip title="Bekreftet i Brønnøysundregistrene">
-                      <VerifiedIcon 
-                        sx={{ 
-                          fontSize:  20, 
-                          color: isHovered ? 'white' : 'success.main' 
-                    }}
-                      />
-                    </Tooltip>
-                  </motion.div>
+                  <Tooltip title="Bekreftet i Brønnøysundregistrene">
+                    <VerifiedIcon color="success" fontSize="small" />
+                  </Tooltip>
                 )}
               </Box>
-              
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary',
-                  mb: 0.5 }}
-              >
+              <Typography variant="body2" color="text.secondary">
                 {profile.industry} • Org.nr: {profile.organizationNumber}
               </Typography>
-              
-              <Box display="flex" alignItems="center" gap={1}>
-                <Chip
-                  label={profile.status === 'verified' ? 'Verifisert' : 'Aktiv'}
-                  size="small"
-                  sx={{
-                    bgcolor: isHovered ? 'rgba(25,255,255,0.2)' : getStatusColor(profile.status),
-                    color: isHovered ? 'white' : 'white',
-                    fontSize: '0.75rem'
-              }}
-                />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                <Chip label={profile.status} size="small" color={getStatusColor(profile.status)} />
                 {showRiskIndicators && (
                   <Chip
-                    label={`Risiko: ${profile.verification.riskLevel}`}
+                    icon={<FlagIcon />}
+                    label={`Risiko ${profile.verification.riskLevel}`}
                     size="small"
-                    color={getRiskColor(profile.verification.riskLevel) as any}
-                    variant={isHovered ? 'outlined' : 'filled'}
-                    sx={{
-                      borderColor: isHovered ? 'white' : undefined,
-                      color: isHovered ? 'white' : undefined
-                }}
+                    color={getRiskColor(profile.verification.riskLevel)}
+                    variant="outlined"
                   />
                 )}
               </Box>
             </Box>
           </Box>
 
-          {variant !== 'minimal' && (
-            <>
-              {/* Quick Info */}
-              <Box display="flex" flexWrap="wrap" gap={2} mb={2}>
-                {profile.address && (
-                  <Box display="flex" alignItems="center" gap={0.5}>
-                    <LocationIcon 
-                      sx={{ 
-                        fontSize:  16, 
-                        color: isHovered ? 'rgba(25,255,255,0.8)' : 'text.secondary' 
-                    }}
-                    />
-                    <Typography 
-                      variant="caption" 
-                      sx={{ 
-                        color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary' 
-                    }}
-                    >
-                      {profile.address}
-                    </Typography>
-                  </Box>
-                )}
-                {profile.employees && (
-                  <Box display="flex" alignItems="center" gap={0.5}>
-                    <PeopleIcon 
-                      sx={{ 
-                        fontSize:  16, 
-                        color: isHovered ? 'rgba(25,255,255,0.8)' : 'text.secondary' 
-                    }}
-                    />
-                    <Typography 
-                      variant="caption" 
-                      sx={{ 
-                        color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary' 
-                    }}
-                    >
-                      {profile.employees} ansatte
-                    </Typography>
-                  </Box>
-                )}
-                {profile.founded && (
-                  <Typography 
-                    variant="caption" 
-                    sx={{ 
-                      color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary' 
-                  }}
-                  >
-                    Est. {profile.founded}
-                  </Typography>
-                )}
-              </Box>
-
-              {/* Rating and Social Proof */}
-              {(profile.rating || profile.socialProof) && (
-                <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-                  {profile.rating && (
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <Rating 
-                        value={profile.rating}
-                        readOnly 
-                        size="small"
-                        sx={{
-                          '& .MuiRating-icon': {
-                            color: isHovered ? 'white' : undefined
-                      }
-                      }}
-                      />
-                      <Typography 
-                        variant="caption"
-                        sx={{ 
-                          color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary' 
-                      }}
-                      >
-                        ({profile.rating})
-                      </Typography>
-                    </Box>
-                  )}
-                  
-                  {profile.socialProof && (
-                    <Box display="flex" gap={2}>
-                      <Typography 
-                        variant="caption"
-                        sx={{ 
-                          color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary' 
-                      }}
-                      >
-                        {profile.socialProof.projects} prosjekter
-                      </Typography>
-                      <Typography 
-                        variant="caption"
-                        sx={{ 
-                          color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary' 
-                      }}
-                      >
-                        {profile.socialProof.clients} kunder
-                      </Typography>
-                    </Box>
-                  )}
-                </Box>
-              )}
-
-              {/* Revenue Information */}
-              {profile.revenue && (
-                <Box mb={2}>
-                  <Typography 
-                    variant="caption" 
-                    sx={{ 
-                      color: isHovered ? 'rgba(25,255,255,0.8)' : 'text.secondary' 
-                  }}
-                  >
-                    Omsetning {profile.revenue.year}
-                  </Typography>
-                  <Typography 
-                    variant="body1" 
-                    fontWeight="bold"
-                    sx={{ 
-                      color: isHovered ? 'white' : 'text.primary' 
-                }}
-                  >
-                    {profile.revenue.amount.toLocaleString('nb-NO')} {profile.revenue.currency}
-                  </Typography>
-                </Box>
-              )}
-            </>
-          )}
-        </CardContent>
-
-        {/* Expandable Section */}
-        <AnimatePresence>
-          {expanded && (
-            <motion.div
-              initial={{ height: 0, opacity:  0 }}
-              animate={{ height: 'auto', opacity:  1 }}
-              exit={{ height: 0, opacity:  0 }}
-              transition={{ duration: 0.3}}
-            >
-              <Divider sx={{ borderColor: isHovered ? 'rgba(25,255,255,0.2)' : undefined }} />
-              <CardContent sx={{ pt: 1, color: isHovered ? 'white' : 'inherit',  ...theming.getThemedCardSx() }}>
-                {profile.description && (
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
-                      mb: 2, color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary' 
-                  }}
-                  >
-                    {profile.description}
-                  </Typography>
-                )}
-                
-                {profile.services && (
-                  <Box mb={2}>
-                    <Typography 
-                      variant="subtitle2" 
-                      sx={{ 
-                        mb: 1, color: isHovered ? 'white' : 'text.primary' 
-                  }}
-                    >
-                      Tjenester
-                    </Typography>
-                    <Box display="flex" flexWrap="wrap" gap={0.5}>
-                      {profile.services.map((service, index) => (
-                        <Chip
-                          key={index}
-                          label={service}
-                          size="small"
-                          variant={isHovered ? 'outlined' : 'filled'}
-                          sx={{
-                            fontSize: '0.7rem',
-                            borderColor: isHovered ? 'rgba(25,255,255,0.5)' : undefined,
-                            color: isHovered ? 'rgba(25,255,255,0.9)' : undefined,
-                            bgcolor: isHovered ? 'rgba(25,255,255,0.1)' : undefined
-                        }}
-                        />
-                      ))}
-                    </Box>
-                  </Box>
-                )}
-
-                {/* Contact Information */}
-                <Box display="flex" flexWrap="wrap" gap={2}>
-                  {profile.phone && (
-                    <Box display="flex" alignItems="center" gap={0.5}>
-                      <PhoneIcon 
-                        sx={{ 
-                          fontSize:  14, 
-                          color: isHovered ? 'rgba(25,255,255,0.8)' : 'text.secondary' 
-                      }}
-                      />
-                      <Typography 
-                        variant="caption"
-                        sx={{ 
-                          color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary' 
-                      }}
-                      >
-                        {profile.phone}
-                      </Typography>
-                    </Box>
-                  )}
-                  {profile.email && (
-                    <Box display="flex" alignItems="center" gap={0.5}>
-                      <EmailIcon 
-                        sx={{ 
-                          fontSize:  14, 
-                          color: isHovered ? 'rgba(25,255,255,0.8)' : 'text.secondary' 
-                      }}
-                      />
-                      <Typography 
-                        variant="caption"
-                        sx={{ 
-                          color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary' 
-                      }}
-                      >
-                        {profile.email}
-                      </Typography>
-                    </Box>
-                  )}
-                  {profile.website && (
-                    <Box display="flex" alignItems="center" gap={0.5}>
-                      <WebsiteIcon 
-                        sx={{ 
-                          fontSize:  14, 
-                          color: isHovered ? 'rgba(25,255,255,0.8)' : 'text.secondary' 
-                      }}
-                      />
-                      <Typography 
-                        variant="caption"
-                        sx={{ 
-                          color: isHovered ? 'rgba(25,255,255,0.9)' : 'text.secondary' 
-                      }}
-                      >
-                        {profile.website}
-                      </Typography>
-                    </Box>
-                  )}
-                </Box>
-              </CardContent>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Actions */}
-        <CardActions sx={{ p: 2, pt: 0, justifyContent: 'space-between',  ...theming.getThemedCardSx() }}>
-          <Box display="flex" gap={1}>
-            {onContact && (
-              <Button
-                size="small"
-                variant={isHovered ? 'outlined' : 'contained'}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onContact(profile);
-              }}
-                sx={{
-                  borderColor: isHovered ? 'white' : undefined,
-                  color: isHovered ? 'white' : undefined,
-                  '&:hover': {
-                    bgcolor: isHovered ? 'rgba(255,255,255,0.1)' : undefined
-                  }
-                }}
-              >
-                Kontakt
-              </Button>
-            )}
-            {onViewDetails && (
-              <Button
-                size="small"
-                variant="text"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewDetails(profile);
-              }}
-                sx={{
-                  color: isHovered ? 'rgba(25,255,255,0.9)' : 'primary.main'
-              }}
-              >
-                Detaljer
-              </Button>
-            )}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <LocationIcon fontSize="small" color="action" />
+            <Typography variant="body2">{profile.address}</Typography>
           </Box>
 
-          {variant !== 'minimal' && (
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpanded(!expanded);
-            }}
-              sx={{
-                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg, )',
-                transition: 'transform 0.3',
-                color: isHovered ? 'white' : 'text.secondary'
-          }}
-            >
-              <ExpandIcon />
-            </IconButton>
+          {typeof profile.rating === 'number' && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+              <Rating value={profile.rating} precision={0.1} size="small" readOnly />
+              <Typography variant="body2" color="text.secondary">
+                {profile.rating.toFixed(1)}
+              </Typography>
+            </Box>
           )}
+
+          {profile.description && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              {profile.description}
+            </Typography>
+          )}
+
+          {profile.revenue && variant !== 'minimal' && (
+            <Box sx={{ mb: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Omsetning {profile.revenue.year}
+                </Typography>
+                <Typography variant="caption" fontWeight={600}>
+                  {new Intl.NumberFormat('no-NO', {
+                    style: 'currency',
+                    currency: profile.revenue.currency,
+                    maximumFractionDigits: 0,
+                  }).format(profile.revenue.amount)}
+                </Typography>
+              </Box>
+              <LinearProgress variant="determinate" value={revenueProgress} />
+            </Box>
+          )}
+
+          {variant !== 'minimal' && (
+            <>
+              <Divider sx={{ my: 1.5 }} />
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.5 }}>
+                {profile.socialProof?.projects !== undefined && (
+                  <Chip icon={<TrendingIcon />} label={`${profile.socialProof.projects} prosjekter`} size="small" variant="outlined" />
+                )}
+                {profile.socialProof?.clients !== undefined && (
+                  <Chip icon={<PeopleIcon />} label={`${profile.socialProof.clients} kunder`} size="small" variant="outlined" />
+                )}
+              </Box>
+            </>
+          )}
+
+          <Collapse in={expanded && variant !== 'minimal'}>
+            <Box sx={{ display: 'grid', gap: 1.25 }}>
+              {profile.phone && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <PhoneIcon fontSize="small" color="action" />
+                  <Typography variant="body2">{profile.phone}</Typography>
+                </Box>
+              )}
+              {profile.email && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <EmailIcon fontSize="small" color="action" />
+                  <Typography variant="body2">{profile.email}</Typography>
+                </Box>
+              )}
+              {profile.website && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <WebsiteIcon fontSize="small" color="action" />
+                  <Typography variant="body2">{profile.website}</Typography>
+                </Box>
+              )}
+              {profile.services && profile.services.length > 0 && (
+                <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                  {profile.services.map((service) => (
+                    <Chip key={service} label={service} size="small" />
+                  ))}
+                </Box>
+              )}
+            </Box>
+          </Collapse>
+        </CardContent>
+
+        <CardActions sx={{ px: 2, pb: 2, pt: 0 }}>
+          {variant !== 'minimal' && (
+            <Button
+              size="small"
+              startIcon={<ExpandIcon />}
+              onClick={() => setExpanded((previous) => !previous)}
+            >
+              {expanded ? 'Mindre' : 'Mer'}
+            </Button>
+          )}
+          <Box sx={{ flex: 1 }} />
+          <Button size="small" onClick={() => onViewDetails?.(profile)}>
+            Detaljer
+          </Button>
+          <Button size="small" variant="contained" onClick={() => onContact?.(profile)}>
+            Kontakt
+          </Button>
         </CardActions>
       </Card>
     </motion.div>
   );
-};
-
-export default CompanyProfileQuickView;
+}

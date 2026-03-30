@@ -181,7 +181,7 @@ export default function PricingDashboardWidget({
   if (variant === 'compact') {
     return (
       <Card sx={{
-        background: 'rgba(25, 255, 255, 0.9)',
+        background: 'rgba(255, 255, 255, 0.96)',
         backdropFilter: 'blur(10px)',
         border: '1px solid rgba(25, 107, 53, 0.2)',
         ...theming.getThemedCardSx()
@@ -310,7 +310,7 @@ export default function PricingDashboardWidget({
         {/* Popular Services */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Card sx={{
-            background: 'rgba(25, 255, 255, 0.9)',
+            background: 'rgba(255, 255, 255, 0.96)',
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(25, 107, 53, 0.2)',
             height: '100%',
@@ -377,7 +377,7 @@ export default function PricingDashboardWidget({
         {/* Pricing Recommendations */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Card sx={{
-            background: 'rgba(25, 255, 255, 0.9)',
+            background: 'rgba(255, 255, 255, 0.96)',
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(25, 107, 53, 0.2)',
             height: '100%',
@@ -430,7 +430,7 @@ export default function PricingDashboardWidget({
       {/* Quick Actions */}
       <Card sx={{
         mt: 3,
-        background: 'rgba(25, 255, 255, 0.9)',
+        background: 'rgba(255, 255, 255, 0.96)',
         backdropFilter: 'blur(10px)',
         border: '1px solid rgba(25, 107, 53, 0.2)',
         ...theming.getThemedCardSx()

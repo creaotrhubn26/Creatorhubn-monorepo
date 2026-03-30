@@ -28,6 +28,9 @@ import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { useTheming } from '../utils/theming-helper';
 import CompanyProfileQuickView from './CompanyProfileQuickView';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
 export interface CompanyProfile {
   id: string;
   name: string;
@@ -170,18 +173,20 @@ export const CompanyProfileGrid: React.FC<CompanyProfileGridProps> = ({
   const [sortBy, setSortBy] = useState<'name' | 'rating' | 'employees' | 'revenue' | 'founded'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(defaultView);
 
-  const { data: profiles = SAMPLE_PROFILES, isLoading } = useQuery({
+  const { data: profiles = SAMPLE_PROFILES, isLoading } = useQuery<CompanyProfile[]>({
     queryKey: ['/api/companies/profiles'],
     queryFn: async () => {
-      const response = await apiRequest('/api/companies/profiles', { method: 'GET' });
+      const response: unknown = await apiRequest('/api/companies/profiles', { method: 'GET' });
 
       const payload = Array.isArray(response)
         ? response
-        : Array.isArray(response?.profiles)
+        : isRecord(response) && Array.isArray(response.profiles)
           ? response.profiles
           : [];
 
-      const normalized = payload.map(normalizeProfile).filter((item): item is CompanyProfile => item !== null);
+      const normalized = payload
+        .map(normalizeProfile)
+        .filter((item): item is CompanyProfile => item !== null);
       return normalized.length > 0 ? normalized : SAMPLE_PROFILES;
     },
   });

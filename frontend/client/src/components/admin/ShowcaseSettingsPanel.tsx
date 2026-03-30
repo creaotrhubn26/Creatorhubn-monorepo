@@ -2102,7 +2102,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
                 width: settings.cardSize === 'small' ? 200 : 
                        settings.cardSize === 'medium' ? 250 :
                        settings.cardSize === 'large' ? 300 : 350 }}>
-                <Typography variant="caption" sx={{ color: 'rgba(25,255,255,0.7)', mb: 1, display: 'block'}}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.72)', mb: 1, display: 'block'}}>
                   Eksempel showcase-item ({settings.cardSize})
                 </Typography>
                 
@@ -2111,14 +2111,14 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
                               settings.imageAspectRatio === '16:9' ? '16/9' :
                               settings.imageAspectRatio === '4:3' ? '4/3' :
                               settings.imageAspectRatio === '3:2' ? '3/2' : 'auto',
-                  bgcolor: 'rgba(25,255,255,0.1)',
+                  bgcolor: 'rgba(255,255,255,0.08)',
                   borderRadius:  1,
                   mb:  1,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
             }}>
-                  <Typography variant="caption" sx={{ color: 'rgba(25,255,255,0.5)' }}>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>
                     {settings.imageAspectRatio}
                   </Typography>
                 </Box>
@@ -2181,7 +2181,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
                 </Box>
                 
                 {settings.showStatusText && (
-                  <Typography variant="caption" sx={{ color: 'rgba(25,255,255,0.5)' }}>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>
                     Valgt • Favoritt • 5 likes
                   </Typography>
                 )}

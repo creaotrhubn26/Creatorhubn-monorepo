@@ -48,6 +48,25 @@ export interface EquipmentSpec {
   discontinued?: boolean;
 }
 
+interface SceneNodeWithEquipment {
+  userData?: {
+    equipmentId?: string;
+  };
+}
+
+function hasEquipmentId(node: unknown): node is SceneNodeWithEquipment {
+  if (typeof node !== 'object' || node === null || !('userData' in node)) {
+    return false;
+  }
+
+  const userData = (node as { userData?: unknown }).userData;
+  if (typeof userData !== 'object' || userData === null) {
+    return false;
+  }
+
+  return typeof (userData as { equipmentId?: unknown }).equipmentId === 'string';
+}
+
 /**
  * Fetch equipment from database
  */
@@ -250,8 +269,14 @@ export async function calculateSceneCost(sceneNodes: unknown[]): Promise<{
   let totalMSRP = 0;
 
   for (const node of sceneNodes) {
+    if (!hasEquipmentId(node)) {
+      continue;
+    }
+
     const equipmentId = node.userData?.equipmentId;
-    if (!equipmentId) continue;
+    if (!equipmentId) {
+      continue;
+    }
 
     const equipment = await getEquipmentById(equipmentId);
     if (!equipment || !equipment.price?.msrp) continue;
@@ -345,13 +370,14 @@ export async function getRecommendedEquipment(
   let lens: EquipmentSpec | null = null;
 
   switch (scenario) {
-    case 'portrait':
+    case 'portrait': {
       lights = await getLightingEquipment({ minPower: 250 });
       const cameras = await getCameraEquipment({ brand: 'Canon' });
       camera = cameras[0] || null;
       const lenses = await getLensEquipment({ focalLength: 85 });
       lens = lenses[0] || null;
       break;
+    }
 
     case 'product':
       lights = await getLightingEquipment({ minPower: 200 });
@@ -363,12 +389,13 @@ export async function getRecommendedEquipment(
       lights = lights.slice(0, 3); // 3-point lighting
       break;
 
-    case 'landscape': // Landscape usually doesn't need studio lights
+    case 'landscape': { // Landscape usually doesn't need studio lights
       const landscapeCameras = await getCameraEquipment();
       camera = landscapeCameras[0] || null;
       const wideLenses = await getLensEquipment({ focalLength: 24 });
       lens = wideLenses[0] || null;
       break;
+    }
   }
 
   return { lights: lights.slice(0, 3), camera, lens };

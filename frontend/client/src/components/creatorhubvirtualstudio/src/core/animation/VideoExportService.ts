@@ -135,7 +135,7 @@ export class VideoExportService {
       });
 
       // Create offscreen canvas for rendering
-      const offscreenCanvas = document.createElement('canvas,');
+      const offscreenCanvas = document.createElement('canvas');
       offscreenCanvas.width = config.width;
       offscreenCanvas.height = config.height;
 
@@ -535,7 +535,7 @@ export class VideoExportService {
     onFrameRender?: FrameRenderCallback
   ): Promise<ExportResult> {
     // First, export the video
-    const exportResult = await this.exportAnimation(config, onProgress, onFrameRender);
+    const exportResult = await this.exportVideo(config, onProgress, onFrameRender);
     
     if (!exportResult.success || !exportResult.blob) {
       return exportResult;

@@ -224,8 +224,8 @@ export default function ContractPreviewModal({
                     </TableCell>
                   </TableRow>
                   
-                  <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.02)' }}>
-                    <TableCell sx={{ color: 'rgba(25,255,255,0.7)', border: 'none', py:  2 }}>
+                  <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
+                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)', border: 'none', py:  2 }}>
                       Fotograf: </TableCell>
                     <TableCell sx={{ color: '#fff', border: 'none', py: 2, fontWeight: 600 }}>
                       {contract.photographerName}
@@ -233,7 +233,7 @@ export default function ContractPreviewModal({
                   </TableRow>
 
                   <TableRow>
-                    <TableCell sx={{ color: 'rgba(25,255,255,0.7)', border: 'none', py:  2 }}>
+                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)', border: 'none', py:  2 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                         <Event fontSize="small" />
                         Hendelsesdato: </Box>
@@ -243,8 +243,8 @@ export default function ContractPreviewModal({
                     </TableCell>
                   </TableRow>
 
-                  <TableRow sx={{ bgcolor: 'rgba(25,255,255,0.02)' }}>
-                    <TableCell sx={{ color: 'rgba(25,255,255,0.7)', border: 'none', py:  2 }}>
+                  <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
+                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)', border: 'none', py:  2 }}>
                       Pakke: </TableCell>
                     <TableCell sx={{ color: '#fff', border: 'none', py: 2, fontWeight: 600 }}>
                       {contract.packageType}
@@ -252,7 +252,7 @@ export default function ContractPreviewModal({
                   </TableRow>
 
                   <TableRow sx={{ bgcolor: 'rgba(25,167,38,0.05)' }}>
-                    <TableCell sx={{ color: 'rgba(25,255,255,0.7)', border: 'none', py:  2 }}>
+                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)', border: 'none', py:  2 }}>
                       <Typography sx={{ fontWeight: 600 }}>Inkluderte bilder: </Typography>
                     </TableCell>
                     <TableCell sx={{ color: '#ffa720', border: 'none', py: 2, fontWeight: 700, fontSize: '1.1rem'}}>
@@ -261,7 +261,7 @@ export default function ContractPreviewModal({
                   </TableRow>
 
                   <TableRow sx={{ bgcolor: 'rgba(6,175,80,0.05)' }}>
-                    <TableCell sx={{ color: 'rgba(25,255,255,0.7)', border: 'none', py:  2 }}>
+                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)', border: 'none', py:  2 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                         <Euro fontSize="small" />
                         <Typography sx={{ fontWeight: 600 }}>Total pris: </Typography>
@@ -272,8 +272,8 @@ export default function ContractPreviewModal({
                     </TableCell>
                   </TableRow>
 
-                  <TableRow sx={{ bgcolor: 'rgba(25,255,255,0.02)' }}>
-                    <TableCell sx={{ color: 'rgba(25,255,255,0.7)', border: 'none', py:  2 }}>
+                  <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
+                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)', border: 'none', py:  2 }}>
                       Betalingsbetingelser: </TableCell>
                     <TableCell sx={{ color: '#fff', border: 'none', py:  2 }}>
                       {contract.paymentTerms}
@@ -285,18 +285,18 @@ export default function ContractPreviewModal({
 
             {contract.description && (
               <>
-                <Divider sx={{ my:  3, borderColor: 'rgba(25,255,255,0.1)' }} />
+                <Divider sx={{ my:  3, borderColor: 'rgba(255,255,255,0.08)' }} />
                 <Box>
                   <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
                     Beskrivelse
                   </Typography>
                   <Typography sx={{ 
-                    color: 'rgba(25,255,255,0.8)', 
+                    color: 'rgba(255,255,255,0.82)', 
                     lineHeight: 1.6,
                     p:  2,
-                    bgcolor: 'rgba(25,255,255,0.02)',
+                    bgcolor: 'rgba(255,255,255,0.03)',
                     borderRadius:  1,
-                    border: '1px solid rgba(25,255,255,0.05)'
+                    border: '1px solid rgba(255,255,255,0.06)'
                 }}>
                     {contract.description}
                   </Typography>
@@ -306,18 +306,18 @@ export default function ContractPreviewModal({
 
             {contract.additionalTerms && contract.additionalTerms.length > 0 && (
               <>
-                <Divider sx={{ my:  3, borderColor: 'rgba(25,255,255,0.1)' }} />
+                <Divider sx={{ my:  3, borderColor: 'rgba(255,255,255,0.08)' }} />
                 <Box>
                   <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
                     Tilleggsbestemmelser
                   </Typography>
                   <Box sx={{ 
                     p:  2,
-                    bgcolor: 'rgba(25,255,255,0.02)',
+                    bgcolor: 'rgba(255,255,255,0.03)',
                     borderRadius:  1,
-                    border: '1px solid rgba(25,255,255,0.05)'
+                    border: '1px solid rgba(255,255,255,0.06)'
                 }}>
-                    <Box component="ul" sx={{ pl: 2, m: 0, color: 'rgba(25,255,255,0.8)' }}>
+                    <Box component="ul" sx={{ pl: 2, m: 0, color: 'rgba(255,255,255,0.82)' }}>
                       {contract.additionalTerms.map((term, index) => (
                         <Typography component="li" key={index} sx={{ mb:  1 }}>
                           {term}
@@ -335,7 +335,7 @@ export default function ContractPreviewModal({
       {/* Actions */}
       <DialogActions sx={{ 
         p:  3, 
-        borderTop: '1px solid rgba(25,255,255,0.1)',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
         gap: 2 }}>
         <Button
           variant="outlined"

@@ -256,13 +256,13 @@ const FilesTab: React.FC<FilesTabProps> = ({
   // Handle confirmed restore with backup first
   const handleConfirmedRestore = () => {
     // First create backup, then restore
-    backupStructureMutation.mutate(`Automatisk backup før gjenoppretting ${new Date().toLocaleString('no-NO')}`);
+    backupFolderStructureMutation.mutate(`Automatisk backup før gjenoppretting ${new Date().toLocaleString('no-NO')}`);
     restoreStandardMutation.mutate();
 };
 
   // Backup folder structure
   const backupFolderStructureMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (backupName?: string) => {
       const authHeaders = await auth.getAuthHeader();
       return apiRequest('/api/google-drive/backup-folder-structure', {
         headers: authHeaders,
@@ -270,6 +270,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
         body: JSON.stringify({
           userId,
           projectId: 'current',
+          backupName,
         }),
       });
     },
@@ -386,8 +387,8 @@ const FilesTab: React.FC<FilesTabProps> = ({
           <Button
             variant="outlined"
             startIcon={<Backup />}
-            onClick={() => backupStructureMutation.mutate()}
-            disabled={backupStructureMutation.isPending}
+            onClick={() => backupFolderStructureMutation.mutate()}
+            disabled={backupFolderStructureMutation.isPending}
             sx={{ borderColor: 'info.main', color: 'info.main' }}
           >
             Sikkerhetskopi
@@ -435,7 +436,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
             <Box sx={{ 
               p: 1,
               borderRadius: 2,  
-              bgcolor: 'rgba(25,255,255,0.2)',
+              bgcolor: 'rgba(255,255,255,0.18)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
@@ -986,11 +987,11 @@ const FilesTab: React.FC<FilesTabProps> = ({
                       <Grid item xs={12} sm={6} key={index}>
                         <Paper sx={{ 
                           p: 1.5,
-                          backgroundColor: 'rgba(25, 255, 255, 0.7)',
+                          backgroundColor: 'rgba(255, 255, 255, 0.72)',
                           border: '1px solid info.main',
                           borderRadius:  1,
                           transition: 'all 0.2','&:hover': {
-                            backgroundColor: 'rgba(25, 255, 255, 0.9)',
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
                             transform: 'translateY(-1px)'
                         }
                     ,  ...theming.getThemedCardSx() }}>
@@ -1058,7 +1059,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                     width: '100%',
                     height:  12,
                     borderRadius:  6,
-                    backgroundColor: 'rgba(25, 255, 255, 0.3)','& .MuiLinearProgress-bar': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.22)','& .MuiLinearProgress-bar': {
                       background: `linear-gradient(90deg, info.light 0%, info.main 50%, success.main 100%)`,
                       borderRadius: 6
                   }
@@ -1068,9 +1069,9 @@ const FilesTab: React.FC<FilesTabProps> = ({
                 <Box sx={{ 
                   textAlign: 'center',
                   p:  2,
-                  backgroundColor: 'rgba(25, 255, 255, 0.6)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.56)',
                   borderRadius:  2,
-                  border: '1px solid rgba(25, 255, 255, 0.3)'
+                  border: '1px solid rgba(255, 255, 255, 0.22)'
             }}>
                   <Typography variant="h6" sx={{  
                     fontStyle: 'italic', 
@@ -1194,12 +1195,14 @@ const FilesTab: React.FC<FilesTabProps> = ({
             <Button onClick={handleConfirmedRestore}
               variant="contained"
               startIcon={<RestoreFromTrash />}
-              sx={{ 
-                background: 'linear-gradient(90deg, warning.light 0%, warning.main 100%)','&:hover': {
-                      background: 'linear-gradient(90deg, warning.main 0%, warning.light 100%)'
-                    }
-                  }}
-                  sx={theming.getThemedButtonSx()}
+              sx={{
+                ...theming.getThemedButtonSx(),
+                background: 'linear-gradient(90deg, warning.light 0%, warning.main 100%)',
+                '&:hover': {
+                  ...(theming.getThemedButtonSx()['&:hover'] ?? {}),
+                  background: 'linear-gradient(90deg, warning.main 0%, warning.light 100%)',
+                },
+              }}
             >
               Ja, gjenopprett til standard! 
             </Button>

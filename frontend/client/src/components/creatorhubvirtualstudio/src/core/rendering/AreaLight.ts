@@ -43,9 +43,9 @@ export interface AreaLightConfig {
 
 export class AreaLight extends THREE.Object3D {
   public config: AreaLightConfig;
-  public lightMesh: THREE.Mesh;
+  public lightMesh: THREE.Mesh = new THREE.Mesh();
   public helperMesh?: THREE.Mesh;
-  private emissiveMaterial: THREE.MeshStandardMaterial;
+  private emissiveMaterial: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial();
   
   // For shader integration
   public uniformData: {
@@ -249,4 +249,3 @@ export class AreaLight extends THREE.Object3D {
     );
   }
 }
-

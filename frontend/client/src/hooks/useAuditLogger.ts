@@ -4,8 +4,12 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import type { AuditEvent, AuditQuery, AuditStats } from '../utils/auditLogger';
-import { auditLogger } from '../utils/auditLogger';
+import {
+  auditLogger,
+  type AuditEvent,
+  type AuditQuery,
+  type AuditStats,
+} from '../utils/auditLogger';
 
 export interface UseAuditLoggerOptions {
   userId?: string;
@@ -310,7 +314,6 @@ export const useAuditLogger = (options: UseAuditLoggerOptions = {}): UseAuditLog
 };
 
 export default useAuditLogger;
-
 
 
 

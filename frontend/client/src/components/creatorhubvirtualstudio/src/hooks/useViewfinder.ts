@@ -21,20 +21,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useNodes, useScene } from '../state/selectors';
+import { useNodes } from '../state/selectors';
 import { getActiveCameraId } from '../core/services/viewports';
-import type {
-  ViewfinderSettings,
-  CameraState,
-  ExposureInfo,
-  FocusInfo,
-  CameraInfoDisplay,
-  HistogramData,
-  FrameGuide} from '../core/rendering/ViewfinderRenderer';
 import {
-  ViewfinderRenderer,
   DEFAULT_VIEWFINDER_SETTINGS,
-  calculateEV,
   calculateExposureInfo,
   calculateDOF,
   formatCameraInfo,
@@ -42,8 +32,15 @@ import {
   generateHistogramFromImageData,
   calculateLetterbox,
   getAspectRatioDimensions,
+  type ViewfinderSettings,
+  type CameraState,
+  type ExposureInfo,
+  type FocusInfo,
+  type CameraInfoDisplay,
+  type HistogramData,
+  type FrameGuide,
 } from '../core/rendering/ViewfinderRenderer';
-import { findLensSpec } from '../core/data/LensSpecifications';
+import { findLensSpec, type LensSpec } from '../core/data/LensSpecifications';
 
 // ============================================================================
 // Types
@@ -94,7 +91,6 @@ export interface UseViewfinderReturn {
 
 export function useViewfinder(): UseViewfinderReturn {
   const nodes = useNodes();
-  const scene = useScene();
   
   // Settings state
   const [settings, setSettings] = useState<ViewfinderSettings>(DEFAULT_VIEWFINDER_SETTINGS);
@@ -112,6 +108,30 @@ export function useViewfinder(): UseViewfinderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const isLensSpec = useCallback((lensSpec: Partial<LensSpec> | null | undefined): lensSpec is LensSpec => {
+    return Boolean(
+      lensSpec &&
+      lensSpec.id &&
+      lensSpec.brand &&
+      lensSpec.model &&
+      lensSpec.mount &&
+      lensSpec.focalLength !== undefined &&
+      lensSpec.isZoom !== undefined &&
+      lensSpec.maxAperture !== undefined &&
+      lensSpec.minAperture !== undefined &&
+      lensSpec.apertureBlades !== undefined &&
+      lensSpec.elements !== undefined &&
+      lensSpec.groups !== undefined &&
+      lensSpec.minFocusDistance !== undefined &&
+      lensSpec.maxMagnification !== undefined &&
+      lensSpec.autofocus !== undefined &&
+      lensSpec.stabilization !== undefined &&
+      lensSpec.length !== undefined &&
+      lensSpec.diameter !== undefined &&
+      lensSpec.weight !== undefined
+    );
+  }, []);
   
   // Find active camera
   const activeCameraId = getActiveCameraId();
@@ -131,9 +151,9 @@ export function useViewfinder(): UseViewfinderReturn {
     const transform = cameraNode.transform || { position: [0, 1.7, 3], rotation: [0, 0, 0] };
     
     // Try to get lens spec from userData
-    let lensSpec = userData.lensSpecs;
-    if (!lensSpec && userData.attachedLens) {
-      lensSpec = findLensSpec(userData.attachedLens.brand, userData.attachedLens.model);
+    let lensSpec = isLensSpec(userData.lensSpecs) ? userData.lensSpecs : undefined;
+    if (!lensSpec && userData.attachedLens?.brand && userData.attachedLens?.model) {
+      lensSpec = findLensSpec(userData.attachedLens.brand, userData.attachedLens.model) ?? undefined;
     }
     
     return {
@@ -147,7 +167,7 @@ export function useViewfinder(): UseViewfinderReturn {
       rotation: transform.rotation,
       lensSpec,
     };
-  }, [cameraNode]);
+  }, [cameraNode, isLensSpec]);
   
   // Calculate exposure info
   const exposure = useMemo<ExposureInfo | null>(() => {

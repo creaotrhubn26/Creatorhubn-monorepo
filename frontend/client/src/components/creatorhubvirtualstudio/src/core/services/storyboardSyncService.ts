@@ -10,16 +10,150 @@
  */
 
 import { logger } from './logger';
-import { useStoryboardStore } from '../../state/storyboardStore';
+import {
+  useStoryboardStore,
+  type Storyboard,
+  type StoryboardFrame,
+  type FrameStatus,
+  type ShotType,
+  type CameraAngle,
+  type CameraMovement,
+} from '../../state/storyboardStore';
+import { storyboardsApi, framesApi, type StoryboardDB, type StoryboardFrameDB } from '../api/storyboardApi';
 
-const log = logger.module('StoryboardSync, ');
-import { storyboardsApi, framesApi } from '../api/storyboardApi';
+const log = logger.module('StoryboardSync');
 
 // User ID placeholder - in production, get from auth context
 const getCurrentUserId = () => {
   // Try to get from localStorage or return a default
-  return localStorage.getItem('userId,') || 'local-user';
+  return localStorage.getItem('userId') || 'local-user';
 };
+
+function normalizeFrameStatus(status: StoryboardFrameDB['status']): FrameStatus {
+  switch (status) {
+    case 'review':
+      return 'review';
+    case 'approved':
+      return 'approved';
+    case 'revision_needed':
+      return 'revision_needed';
+    case 'draft':
+    default:
+      return 'draft';
+  }
+}
+
+function normalizeShotType(value: string): ShotType {
+  const normalized = value.trim().toLowerCase();
+  const shotTypeMap: Record<string, ShotType> = {
+    ecu: 'ECU',
+    bcu: 'BCU',
+    cu: 'CU',
+    mcu: 'MCU',
+    medium: 'MS',
+    ms: 'MS',
+    mls: 'MLS',
+    wide: 'LS',
+    ls: 'LS',
+    vls: 'VLS',
+    els: 'ELS',
+    ots: 'OTS',
+    'over shoulder': 'OTS',
+    'over-the-shoulder': 'OTS',
+    pov: 'POV',
+    'point of view': 'POV',
+    insert: 'Insert',
+    detail: 'Insert',
+    cutaway: 'Cutaway',
+    'two shot': 'Two-Shot',
+    'two-shot': 'Two-Shot',
+    'three shot': 'Three-Shot',
+    'three-shot': 'Three-Shot',
+    group: 'Group',
+    establishing: 'Establishing',
+    master: 'Master',
+    coverage: 'Coverage',
+    reaction: 'Reaction',
+    aerial: 'Aerial',
+    macro: 'Macro',
+  };
+
+  return shotTypeMap[normalized] ?? 'MS';
+}
+
+function normalizeCameraAngle(value: string): CameraAngle {
+  const validValues: CameraAngle[] = [
+    'Eye Level',
+    'High Angle',
+    'Low Angle',
+    'Birds Eye',
+    'Worms Eye',
+    'Dutch Angle',
+    'Overhead',
+    'Ground Level',
+  ];
+
+  return validValues.includes(value as CameraAngle) ? (value as CameraAngle) : 'Eye Level';
+}
+
+function normalizeCameraMovement(value: string): CameraMovement {
+  const validValues: CameraMovement[] = [
+    'Static',
+    'Pan',
+    'Tilt',
+    'Dolly',
+    'Truck',
+    'Pedestal',
+    'Crane',
+    'Jib',
+    'Handheld',
+    'Steadicam',
+    'Gimbal',
+    'Zoom',
+    'Push In',
+    'Pull Out',
+    'Rack Focus',
+    'Arc',
+    'Orbit',
+  ];
+
+  return validValues.includes(value as CameraMovement) ? (value as CameraMovement) : 'Static';
+}
+
+function mapDbFrameToStoreFrame(frame: StoryboardFrameDB): StoryboardFrame {
+  return {
+    id: frame.id,
+    storyboardId: frame.storyboardId,
+    index: frame.index,
+    imageUrl: frame.imageUrl ?? '',
+    thumbnailUrl: frame.thumbnailUrl ?? frame.imageUrl ?? '',
+    title: frame.title ?? '',
+    description: frame.description,
+    shotType: normalizeShotType(frame.shotType),
+    cameraAngle: normalizeCameraAngle(frame.cameraAngle),
+    cameraMovement: normalizeCameraMovement(frame.cameraMovement),
+    duration: frame.duration,
+    status: normalizeFrameStatus(frame.status),
+    technicalNotes: frame.technicalNotes,
+    dialogue: frame.dialogue,
+    sceneSnapshot: frame.sceneSnapshot,
+    createdAt: frame.createdAt,
+    updatedAt: frame.updatedAt,
+  };
+}
+
+function mapDbStoryboardToStoreStoryboard(
+  storyboard: StoryboardDB & { frames: StoryboardFrameDB[] },
+): Storyboard {
+  return {
+    id: storyboard.id,
+    name: storyboard.name,
+    aspectRatio: storyboard.aspectRatio,
+    frames: storyboard.frames.map(mapDbFrameToStoreFrame),
+    createdAt: storyboard.createdAt,
+    updatedAt: storyboard.updatedAt,
+  };
+}
 
 // Sync status
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
@@ -76,31 +210,9 @@ export const storyboardSyncService = {
           // New from server - add locally
           // Convert DB format to store format
           const fullSb = await storyboardsApi.get(serverSb.id);
-          store.storyboards.push({
-            id: fullSb.id,
-            name: fullSb.name,
-            aspectRatio: fullSb.aspectRatio,
-            frames: fullSb.frames.map((f) => ({
-              id: f.id,
-              storyboardId: f.storyboardId,
-              index: f.index,
-              image: f.imageUrl || ', ',
-              thumbnail: f.thumbnailUrl,
-              shotType: f.shotType as any,
-              cameraAngle: f.cameraAngle as any,
-              cameraMovement: f.cameraMovement as any,
-              duration: f.duration,
-              title: f.title,
-              description: f.description,
-              technicalNotes: f.technicalNotes,
-              dialogue: f.dialogue,
-              status: f.status,
-              createdAt: f.createdAt,
-              updatedAt: f.updatedAt,
-            })),
-            createdAt: fullSb.createdAt,
-            updatedAt: fullSb.updatedAt,
-          });
+          useStoryboardStore.setState((state) => ({
+            storyboards: [...state.storyboards, mapDbStoryboardToStoreStoryboard(fullSb)],
+          }));
         } else {
           // Exists locally - check timestamps for conflict resolution
           const serverTime = new Date(serverSb.updatedAt).getTime();
@@ -111,25 +223,9 @@ export const storyboardSyncService = {
             const fullSb = await storyboardsApi.get(serverSb.id);
             store.updateStoryboard(serverSb.id, {
               name: fullSb.name,
+              description: fullSb.description,
               aspectRatio: fullSb.aspectRatio,
-              frames: fullSb.frames.map((f) => ({
-                id: f.id,
-                storyboardId: f.storyboardId,
-                index: f.index,
-                image: f.imageUrl || ', ',
-                thumbnail: f.thumbnailUrl,
-                shotType: f.shotType as any,
-                cameraAngle: f.cameraAngle as any,
-                cameraMovement: f.cameraMovement as any,
-                duration: f.duration,
-                title: f.title,
-                description: f.description,
-                technicalNotes: f.technicalNotes,
-                dialogue: f.dialogue,
-                status: f.status,
-                createdAt: f.createdAt,
-                updatedAt: f.updatedAt,
-              })),
+              frames: fullSb.frames.map(mapDbFrameToStoreFrame),
             });
           }
         }
@@ -169,6 +265,7 @@ export const storyboardSyncService = {
           // Exists - update
           await storyboardsApi.update(storyboard.id, {
             name: storyboard.name,
+            description: storyboard.description,
             aspectRatio: storyboard.aspectRatio,
             frameCount: storyboard.frames.length,
             totalDuration: storyboard.frames.reduce((sum, f) => sum + f.duration, 0),
@@ -179,6 +276,7 @@ export const storyboardSyncService = {
             id: storyboard.id,
             userId,
             name: storyboard.name,
+            description: storyboard.description,
             aspectRatio: storyboard.aspectRatio,
             frameCount: storyboard.frames.length,
             totalDuration: storyboard.frames.reduce((sum, f) => sum + f.duration, 0),
@@ -190,8 +288,8 @@ export const storyboardSyncService = {
           try {
             await framesApi.update(frame.id, {
               index: frame.index,
-              imageUrl: frame.image,
-              thumbnailUrl: frame.thumbnail,
+              imageUrl: frame.imageUrl,
+              thumbnailUrl: frame.thumbnailUrl,
               title: frame.title || ', ',
               shotType: frame.shotType,
               cameraAngle: frame.cameraAngle,
@@ -209,8 +307,8 @@ export const storyboardSyncService = {
               storyboardId: storyboard.id,
               userId,
               index: frame.index,
-              imageUrl: frame.image,
-              thumbnailUrl: frame.thumbnail,
+              imageUrl: frame.imageUrl,
+              thumbnailUrl: frame.thumbnailUrl,
               title: frame.title || '',
               shotType: frame.shotType,
               cameraAngle: frame.cameraAngle,
@@ -244,12 +342,12 @@ export const storyboardSyncService = {
   },
 
   // Create storyboard on server
-  createStoryboard: async (name: string, aspectRatio: string = '16:9') => {
+  createStoryboard: async (name: string, aspectRatio: Storyboard['aspectRatio'] = '16:9') => {
     const userId = getCurrentUserId();
     const store = useStoryboardStore.getState();
 
     // Create locally first
-    const localStoryboard = store.createStoryboard(name, aspectRatio as any);
+    const localStoryboard = store.createStoryboard(name, aspectRatio);
 
     // Then sync to server (async, don't block)
     storyboardsApi
@@ -257,7 +355,7 @@ export const storyboardSyncService = {
         id: localStoryboard.id,
         userId,
         name,
-        aspectRatio: aspectRatio as any,
+        aspectRatio,
         frameCount: 0,
         totalDuration: 0,
       })
@@ -284,7 +382,7 @@ export const storyboardSyncService = {
   },
 
   // Add frame and sync
-  addFrame: async (frameData: any) => {
+  addFrame: async (frameData: Omit<StoryboardFrame, 'id' | 'index' | 'createdAt' | 'updatedAt'>) => {
     const store = useStoryboardStore.getState();
     const currentStoryboard = store.currentStoryboard;
 
@@ -293,11 +391,7 @@ export const storyboardSyncService = {
     }
 
     // Add locally
-    store.addFrame(frameData);
-
-    // Get the newly added frame
-    const updatedStoryboard = useStoryboardStore.getState().currentStoryboard;
-    const newFrame = updatedStoryboard?.frames[updatedStoryboard.frames.length - 1];
+    const newFrame = store.addFrame(frameData);
 
     if (newFrame) {
       // Sync to server
@@ -307,9 +401,9 @@ export const storyboardSyncService = {
           storyboardId: currentStoryboard.id,
           userId: getCurrentUserId(),
           index: newFrame.index,
-          imageUrl: newFrame.image,
-          thumbnailUrl: newFrame.thumbnail,
-          title: newFrame.title || ', ',
+          imageUrl: newFrame.imageUrl,
+          thumbnailUrl: newFrame.thumbnailUrl,
+          title: newFrame.title || '',
           shotType: newFrame.shotType,
           cameraAngle: newFrame.cameraAngle,
           cameraMovement: newFrame.cameraMovement,
@@ -317,7 +411,8 @@ export const storyboardSyncService = {
           description: newFrame.description,
           technicalNotes: newFrame.technicalNotes,
           dialogue: newFrame.dialogue,
-          status: newFrame.status ||'draft',
+          sceneSnapshot: newFrame.sceneSnapshot,
+          status: newFrame.status || 'draft',
         })
         .catch((error) => {
           log.warn('Failed to sync new frame to server:', error);
@@ -328,7 +423,7 @@ export const storyboardSyncService = {
   },
 
   // Update frame and sync
-  updateFrame: async (frameId: string, updates: any) => {
+  updateFrame: async (frameId: string, updates: Partial<StoryboardFrame>) => {
     const store = useStoryboardStore.getState();
 
     // Update locally
@@ -338,8 +433,8 @@ export const storyboardSyncService = {
     framesApi
       .update(frameId, {
         ...updates,
-        imageUrl: updates.image,
-        thumbnailUrl: updates.thumbnail,
+        imageUrl: updates.imageUrl,
+        thumbnailUrl: updates.thumbnailUrl,
       })
       .catch((error) => {
         log.warn('Failed to sync frame update to server:', error);
@@ -363,7 +458,7 @@ export const storyboardSyncService = {
 };
 
 // Auto-sync on store changes (debounced)
-let syncTimeout: NodeJS.Timeout | null = null;
+let syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
 useStoryboardStore.subscribe((state, prevState) => {
   // Check if storyboards changed
@@ -382,4 +477,3 @@ useStoryboardStore.subscribe((state, prevState) => {
 });
 
 export default storyboardSyncService;
-

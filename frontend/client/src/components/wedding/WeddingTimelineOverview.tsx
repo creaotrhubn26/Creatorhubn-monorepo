@@ -394,7 +394,7 @@ export default function WeddingTimelineOverview({
           <Chip 
             label={selectedTimeline?.cultural_type}
             size="small"
-            sx={{ bgcolor: 'rgba(25,255,255,0.2)', color: 'white'}}
+            sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'white'}}
           />
         </DialogTitle>
         

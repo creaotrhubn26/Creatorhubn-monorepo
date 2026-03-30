@@ -417,7 +417,7 @@ export default function MarketingSEODashboard() {
                   </Box>
                   <Box
                     sx={{
-                      bgcolor: 'rgba(25,255,255,0.15)',
+                      bgcolor: 'rgba(255,255,255,0.12)',
                       borderRadius:  2,
                       p: 2.5,
                       display: 'flex',
@@ -469,7 +469,7 @@ export default function MarketingSEODashboard() {
                   </Box>
                   <Box
                     sx={{
-                      bgcolor: 'rgba(25,255,255,0.15)',
+                      bgcolor: 'rgba(255,255,255,0.12)',
                       borderRadius:  2,
                       p: 2.5,
                       display: 'flex',
@@ -521,7 +521,7 @@ export default function MarketingSEODashboard() {
                   </Box>
                   <Box
                     sx={{
-                      bgcolor: 'rgba(25,255,255,0.15)',
+                      bgcolor: 'rgba(255,255,255,0.12)',
                       borderRadius:  2,
                       p: 2.5,
                       display: 'flex',
@@ -573,7 +573,7 @@ export default function MarketingSEODashboard() {
                   </Box>
                   <Box
                     sx={{
-                      bgcolor: 'rgba(25,255,255,0.15)',
+                      bgcolor: 'rgba(255,255,255,0.12)',
                       borderRadius:  2,
                       p: 2.5,
                       display: 'flex',

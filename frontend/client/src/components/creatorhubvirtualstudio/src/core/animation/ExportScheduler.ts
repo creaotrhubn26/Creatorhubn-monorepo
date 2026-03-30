@@ -14,24 +14,21 @@
 
 import { logger } from '../services/logger';
 
-const log = logger.module('ExportScheduler, ');
+const log = logger.module('ExportScheduler');
 
-import type {
-  VideoExportConfig,
-  ExportProgress,
-  ExportResult} from './VideoExportService';
 import {
+  type VideoExportConfig,
+  type ExportProgress,
+  type ExportResult,
   videoExportService
 } from './VideoExportService';
-import type {
-  ExportPreset,
-  GoogleDriveUploadProgress} from './GoogleDriveExportService';
 import {
+  type ExportPreset,
+  type GoogleDriveUploadProgress,
   googleDriveExportService,
   EXPORT_PRESETS
 } from './GoogleDriveExportService';
-import type { ExportJobDB } from '../api/virtualStudioApi';
-import { exportJobsApi } from '../api/virtualStudioApi';
+import { exportJobsApi, type ExportJobDB } from '../api/virtualStudioApi';
 
 // ============================================================================
 // Types
@@ -115,6 +112,20 @@ export interface SchedulerState {
 }
 
 export type SchedulerStateCallback = (state: SchedulerState) => void;
+
+function normalizeExportQuality(
+  quality: string,
+): VideoExportConfig['quality'] {
+  switch (quality) {
+    case 'low':
+    case 'medium':
+    case 'high':
+    case 'ultra':
+      return quality;
+    default:
+      return 'high';
+  }
+}
 
 // ============================================================================
 // Priority Order
@@ -582,7 +593,7 @@ class ExportSchedulerService {
       priority: job.priority,
       scheduledTime: job.scheduledTime?.toISOString(),
       delaySeconds: job.delaySeconds,
-      progress: job.exportProgress?.progress || 0,
+      progress: job.exportProgress?.percentage || 0,
       currentFrame: job.exportProgress?.currentFrame,
       totalFrames: job.exportProgress?.totalFrames,
       outputUrl: job.result?.blob ? URL.createObjectURL(job.result.blob) : undefined,
@@ -607,7 +618,7 @@ class ExportSchedulerService {
   private async saveJobToDb(job: ExportJob): Promise<void> {
     try {
       const dbData = this.jobToDbFormat(job);
-      await exportJobsApi.create(dbData as any);
+      await exportJobsApi.create(dbData);
     } catch (e) {
       log.warn('Failed to save job to database: ', e);
     }
@@ -620,7 +631,7 @@ class ExportSchedulerService {
     try {
       await exportJobsApi.update(job.id, {
         status: job.status,
-        progress: job.exportProgress?.progress || 0,
+        progress: job.exportProgress?.percentage || 0,
         currentFrame: job.exportProgress?.currentFrame,
         errorMessage: job.error,
         outputUrl: job.result?.blob ? URL.createObjectURL(job.result.blob) : undefined,
@@ -629,7 +640,7 @@ class ExportSchedulerService {
         driveWebViewLink: job.driveResult?.webViewLink,
         startedAt: job.startedAt?.toISOString(),
         completedAt: job.completedAt?.toISOString(),
-      } as any);
+      });
     } catch (e) {
       log.warn('Failed to update job in database:', e);
     }
@@ -689,7 +700,7 @@ class ExportSchedulerService {
         fps: dbJob.config.fps,
         bitrate: dbJob.config.bitrate,
         duration: dbJob.config.duration,
-        quality: dbJob.config.quality,
+        quality: normalizeExportQuality(dbJob.config.quality),
       },
       preset,
       status: dbJob.status as ExportJobStatus,
@@ -700,11 +711,12 @@ class ExportSchedulerService {
       scheduledTime: dbJob.scheduledTime ? new Date(dbJob.scheduledTime) : undefined,
       delaySeconds: dbJob.delaySeconds || undefined,
       exportProgress: dbJob.progress ? {
-        progress: dbJob.progress,
+        percentage: dbJob.progress,
         currentFrame: dbJob.currentFrame || 0,
         totalFrames: dbJob.totalFrames || 0,
         elapsedTime: 0,
         estimatedTimeRemaining: 0,
+        status: dbJob.status === 'complete' ? 'complete' : 'encoding',
       } : undefined,
       error: dbJob.errorMessage || undefined,
       retryCount: dbJob.retryCount,
@@ -735,6 +747,27 @@ class ExportSchedulerService {
       }, delay);
       this.scheduledTimers.set(job.id, timer);
     }
+  }
+
+  startJob(jobId: string): boolean {
+    const job = this.queue.find((candidate) => candidate.id === jobId);
+    if (!job) {
+      return false;
+    }
+
+    const timer = this.scheduledTimers.get(jobId);
+    if (timer) {
+      clearTimeout(timer);
+      this.scheduledTimers.delete(jobId);
+    }
+
+    job.status = 'queued';
+    job.scheduledTime = undefined;
+    this.sortQueue();
+    this.notifySubscribers();
+    void this.updateJobInDb(job);
+    void this.processNextInQueue();
+    return true;
   }
 
   exportHistory(): string {

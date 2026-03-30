@@ -86,21 +86,33 @@ export interface BrandGuidelines {
 export interface ValidationResult {
   isValid: boolean;
   score: number;
-  issues: Array<{
-    type: 'color, ' | 'typography, ' | 'spacing' | 'component' | 'brand';
-    severity: 'low' | 'medium' | 'high' | 'critical';
-    message: string;
-    element: string;
-    suggestion: string;
-    fix: string;
-}>;
-  warnings: Array<{
-    type: string;
-    message: string;
-    element: string;
-    suggestion: string;
-}>;
+  issues: ValidationIssue[];
+  warnings: ValidationWarning[];
   recommendations: string[]
+}
+
+type ThemeIssueType = 'color' | 'typography' | 'spacing' | 'component' | 'brand';
+
+interface ValidationIssue {
+  type: ThemeIssueType;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  message: string;
+  element: string;
+  suggestion: string;
+  fix: string;
+}
+
+interface ValidationWarning {
+  type: string;
+  message: string;
+  element: string;
+  suggestion: string;
+}
+
+interface ValidationRuleResult {
+  issues: ValidationIssue[];
+  warnings: ValidationWarning[];
+  recommendations: string[];
 }
 
 export interface ColorContrastResult {
@@ -114,7 +126,7 @@ export interface ColorContrastResult {
 class ThemeValidator {
   private themeConfig: ThemeConfig;
   private brandGuidelines: BrandGuidelines;
-  private validationRules: Map<string, Function> = new Map();
+  private validationRules: Map<string, () => ValidationRuleResult> = new Map();
 
   constructor(themeConfig: ThemeConfig, brandGuidelines: BrandGuidelines) {
     this.themeConfig = themeConfig;
@@ -126,7 +138,7 @@ class ThemeValidator {
    * Initialize validation rules
    */
   private initializeValidationRules(): void {
-    this.validationRules.set('colorContrast, ', this.validateColorContrast.bind(this));
+    this.validationRules.set('colorContrast', this.validateColorContrast.bind(this));
     this.validationRules.set('colorConsistency', this.validateColorConsistency.bind(this));
     this.validationRules.set('typographyConsistency', this.validateTypographyConsistency.bind(this));
     this.validationRules.set('spacingConsistency', this.validateSpacingConsistency.bind(this));
@@ -138,21 +150,8 @@ class ThemeValidator {
    * Validate entire theme
    */
   validateTheme(): ValidationResult {
-    const issues: Array<{
-      type: 'color' | 'typography' | 'spacing' | 'component' | 'brand';
-      severity: 'low' | 'medium' | 'high' | 'critical';
-      message: string;
-      element: string;
-      suggestion: string;
-      fix: string;
-}> = [];
-
-    const warnings: Array<{
-      type: string;
-      message: string;
-      element: string;
-      suggestion: string;
-}> = [];
+    const issues: ValidationIssue[] = [];
+    const warnings: ValidationWarning[] = [];
 
     const recommendations: string[] = [];
 
@@ -169,7 +168,6 @@ class ThemeValidator {
   }
 
     // Calculate overall score
-    const totalIssues = issues.length;
     const criticalIssues = issues.filter(i => i.severity === 'critical').length;
     const highIssues = issues.filter(i => i.severity === 'high').length;
     const mediumIssues = issues.filter(i => i.severity === 'medium').length;
@@ -189,13 +187,9 @@ class ThemeValidator {
   /**
    * Validate color contrast
    */
-  private validateColorContrast(): {
-    issues: Array<any>;
-    warnings: Array<any>;
-    recommendations: string[];
-} {
-    const issues: Array<any> = [];
-    const warnings: Array<any> = [];
+  private validateColorContrast(): ValidationRuleResult {
+    const issues: ValidationIssue[] = [];
+    const warnings: ValidationWarning[] = [];
     const recommendations: string[] = [];
 
     // Check text color contrast
@@ -312,13 +306,9 @@ class ThemeValidator {
   /**
    * Validate color consistency
    */
-  private validateColorConsistency(): {
-    issues: Array<any>;
-    warnings: Array<any>;
-    recommendations: string[];
-} {
-    const issues: Array<any> = [];
-    const warnings: Array<any> = [];
+  private validateColorConsistency(): ValidationRuleResult {
+    const issues: ValidationIssue[] = [];
+    const warnings: ValidationWarning[] = [];
     const recommendations: string[] = [];
 
     // Check if colors follow brand guidelines
@@ -365,21 +355,34 @@ class ThemeValidator {
    * Check color harmony
    */
   private checkColorHarmony(colors: string[]): number {
-    // Simplified color harmony check
-    // In a real implementation, this would use color theory algorithms
-    return 0.8; // Placeholder
+    const normalizedColors = colors
+      .map((color) => color.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (normalizedColors.length === 0) {
+      return 0;
+    }
+
+    const uniqueColorRatio = new Set(normalizedColors).size / normalizedColors.length;
+    const luminanceValues = normalizedColors
+      .map((color) => this.hexToRgb(color))
+      .filter((rgb): rgb is { r: number; g: number; b: number } => rgb !== null)
+      .map((rgb) => this.getLuminance(rgb));
+
+    if (luminanceValues.length < 2) {
+      return uniqueColorRatio;
+    }
+
+    const luminanceSpread = Math.max(...luminanceValues) - Math.min(...luminanceValues);
+    return Math.max(0, Math.min(1, uniqueColorRatio * 0.6 + luminanceSpread * 0.4));
 }
 
   /**
    * Validate typography consistency
    */
-  private validateTypographyConsistency(): {
-    issues: Array<any>;
-    warnings: Array<any>;
-    recommendations: string[];
-} {
-    const issues: Array<any> = [];
-    const warnings: Array<any> = [];
+  private validateTypographyConsistency(): ValidationRuleResult {
+    const issues: ValidationIssue[] = [];
+    const warnings: ValidationWarning[] = [];
     const recommendations: string[] = [];
 
     // Check font family consistency
@@ -414,7 +417,7 @@ class ThemeValidator {
    */
   private checkFontSizeScale(sizes: string[]): boolean {
     // Check if sizes follow a consistent scale (e.., 1.2x, 1.5x)
-    const numericSizes = sizes.map(size => parseFloat(size.replace('rem', ', ')));
+    const numericSizes = sizes.map(size => parseFloat(size.replace('rem', '')));
     const ratios = [];
     
     for (let i = 1; i < numericSizes.length; i++) {
@@ -429,13 +432,9 @@ class ThemeValidator {
   /**
    * Validate spacing consistency
    */
-  private validateSpacingConsistency(): {
-    issues: Array<any>;
-    warnings: Array<any>;
-    recommendations: string[];
-} {
-    const issues: Array<any> = [];
-    const warnings: Array<any> = [];
+  private validateSpacingConsistency(): ValidationRuleResult {
+    const issues: ValidationIssue[] = [];
+    const warnings: ValidationWarning[] = [];
     const recommendations: string[] = [];
 
     // Check spacing scale consistency
@@ -457,7 +456,7 @@ class ThemeValidator {
    * Check spacing scale consistency
    */
   private checkSpacingScale(spacings: string[]): boolean {
-    const numericSpacings = spacings.map(spacing => parseFloat(spacing.replace('px', ', ')));
+    const numericSpacings = spacings.map(spacing => parseFloat(spacing.replace('px', '')));
     const ratios = [];
     
     for (let i = 1; i < numericSpacings.length; i++) {
@@ -472,13 +471,9 @@ class ThemeValidator {
   /**
    * Validate component consistency
    */
-  private validateComponentConsistency(): {
-    issues: Array<any>;
-    warnings: Array<any>;
-    recommendations: string[];
-} {
-    const issues: Array<any> = [];
-    const warnings: Array<any> = [];
+  private validateComponentConsistency(): ValidationRuleResult {
+    const issues: ValidationIssue[] = [];
+    const warnings: ValidationWarning[] = [];
     const recommendations: string[] = [];
 
     // Check button consistency
@@ -513,13 +508,9 @@ class ThemeValidator {
   /**
    * Validate brand consistency
    */
-  private validateBrandConsistency(): {
-    issues: Array<any>;
-    warnings: Array<any>;
-    recommendations: string[];
-} {
-    const issues: Array<any> = [];
-    const warnings: Array<any> = [];
+  private validateBrandConsistency(): ValidationRuleResult {
+    const issues: ValidationIssue[] = [];
+    const warnings: ValidationWarning[] = [];
     const recommendations: string[] = [];
 
     // Check if theme follows brand guidelines
@@ -634,6 +625,4 @@ class ThemeValidator {
 }
 
 export default ThemeValidator;
-
-
 

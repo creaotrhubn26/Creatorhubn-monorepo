@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import CameraAlt from '@mui/icons-material/CameraAlt';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
 import { useTheming } from '../../utils/theming-helper';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
@@ -35,19 +34,19 @@ import {
   InputLabel,
   Chip,
   Grid,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
   IconButton,
-  Divider,
   Paper,
   Avatar,
   LinearProgress,
   useTheme,
+  useMediaQuery,
   alpha,
   CircularProgress,
   Tooltip,
+  Stack,
+  Alert,
+  Snackbar,
+  Badge,
 } from '@mui/material';
 import {
   AddCircle as Add,
@@ -80,7 +79,6 @@ import {
   NotificationsActive,
   HelpOutline,
 } from '@mui/icons-material';
-import { Alert, Snackbar, Badge } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
 
 interface WorklogEntry {
@@ -98,6 +96,7 @@ interface WorklogEntry {
   collaborators?: any[];
   nextSteps?: string;
   isPrivate: boolean;
+  googleKeepNoteId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -289,6 +288,7 @@ export default function UniversalWorklog({
   onNotificationCreate
 }: UniversalWorklogProps) {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const baseConfig = getProfessionConfig(profession);
 
   // Context hooks
@@ -336,7 +336,6 @@ export default function UniversalWorklog({
   };
   
   const IconComponent = config.icon;
-  const professionIcon = <CameraAlt />;
   const dailyPrompts = getDailyPrompts(profession);
 
   // Master Integration Provider - used for cross-component communication
@@ -355,7 +354,7 @@ export default function UniversalWorklog({
   }, [componentRegistry, projectId, profession, hasFeature, integration, dataFlow]);
   
   // Theming system - use dynamic profession
-  const theming = useTheming(profession);
+  useTheming(profession);
   
   // Worklog context identification
   const worklogContext = projectId 
@@ -391,9 +390,10 @@ export default function UniversalWorklog({
   const [selectedWorklogId, setSelectedWorklogId] = useState<string | null>(null);
   const [collaboratorEmails, setCollaboratorEmails] = useState<string>('');
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+  const [mobileView, setMobileView] = useState<'overview' | 'capture' | 'timeline'>('overview');
   
   // Real-time notifications
-  const { connected: wsConnected, notifications: realtimeNotifications } = useRealtimeNotifications(userId);
+  const { notifications: realtimeNotifications } = useRealtimeNotifications(userId);
   const { addCollaborators, adding: addingCollaborators } = useWorklogCollaboration();
   
   // Push notifications
@@ -606,6 +606,53 @@ export default function UniversalWorklog({
     },
     enabled: !!projectId
   });
+
+  const worklogEntries = [...(worklogData?.data || [])].sort((a: WorklogEntry, b: WorklogEntry) => {
+    const aTime = new Date(a.date || a.createdAt).getTime();
+    const bTime = new Date(b.date || b.createdAt).getTime();
+    return bTime - aTime;
+  });
+  const totalEntries = worklogEntries.length;
+  const latestEntry = worklogEntries[0] || null;
+  const totalDays = statsData?.data?.totalDays || totalEntries;
+  const totalTimeSpent = statsData?.data?.totalTimeSpent || 0;
+  const averageTimePerDay = statsData?.data?.averageTimePerDay || 0;
+  const categoriesUsed = statsData?.data?.categoriesUsed?.length || 0;
+  const categoryBreakdown = config.categories
+    .map((category) => ({
+      ...category,
+      count: worklogEntries.filter((entry: WorklogEntry) => entry.category === category.value).length,
+    }))
+    .filter((category) => category.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 4);
+  const latestMood = latestEntry?.mood ? getMoodInfo(latestEntry.mood) : null;
+  const worklogStatusItems = [
+    {
+      label: 'Prosjekt',
+      value: selectedProject?.name || currentProject?.name || worklogContext,
+      icon: <WorkOutline sx={{ fontSize: 16 }} />,
+      tone: alpha(config.color, 0.12),
+    },
+    {
+      label: 'Realtime',
+      value: isConnected ? 'Tilkoblet' : 'Offline',
+      icon: <CloudSync sx={{ fontSize: 16 }} />,
+      tone: isConnected ? alpha(theme.palette.success.main, 0.12) : alpha(theme.palette.warning.main, 0.12),
+    },
+    {
+      label: 'Google Keep',
+      value: keepSyncStatus.connected ? `Synk: ${keepSyncStatus.syncedEntries}` : 'Ikke koblet',
+      icon: <Google sx={{ fontSize: 16 }} />,
+      tone: keepSyncStatus.connected ? alpha(theme.palette.success.main, 0.12) : alpha(theme.palette.info.main, 0.12),
+    },
+    {
+      label: 'Varsler',
+      value: pushEnabled ? 'På' : 'Av',
+      icon: <NotificationsActive sx={{ fontSize: 16 }} />,
+      tone: pushEnabled ? alpha(theme.palette.success.main, 0.12) : alpha(theme.palette.grey[500], 0.12),
+    },
+  ];
 
   // Create worklog entry mutation
   const createEntryMutation = useMutation({
@@ -884,569 +931,1533 @@ export default function UniversalWorklog({
       isPrivate: entry.isPrivate
   });
     setEditingEntry(entry);
+    if (isMobile) {
+      setMobileView('capture');
+      return;
+    }
     setShowCreateDialog(true);
 };
 
-  return (
-    <Box sx={{ p: 3 }}>
-      {/* Worklog Context Alert */}
-      <Alert 
-        severity="info" 
-        icon={<WorkOutline />}
-        sx={{ 
-          mb: 3,
-          bgcolor: `${config.color}10`,
-          borderLeft: `4px solid ${config.color}`,
-          '& .MuiAlert-icon': { color: config.color }
-      }}
-      >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="body2">
-            <strong>Worklog-administrasjon: </strong> Du administrerer worklog for {worklogContext}. 
-            Alle arbeidslogg-oppføringer lagres automatisk med {profession}-spesifikke kategorier og timetracking.
-          </Typography>
-          {isConnected && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
-              <Box sx={{ 
-                width: 8, 
-                height: 8, 
-                borderRadius: '50%', 
-                bgcolor: 'success.main',
-                animation: 'pulse 2s infinite'
-            }} />
-              <Typography variant="caption" color="success.main">
-                Live
-              </Typography>
-            </Box>
-          )}
-        </Box>
-      </Alert>
+  if (isMobile) {
+    return (
+      <Box sx={{ p: 1.5, pb: 11, display: 'grid', gap: 2 }}>
+        <MuiCard
+          sx={{
+            borderRadius: 5,
+            overflow: 'hidden',
+            color: 'text.primary',
+            background: `linear-gradient(180deg, ${alpha(config.color, 0.28)} 0%, ${alpha(config.color, 0.08)} 58%, ${theme.palette.background.paper} 100%)`,
+            boxShadow: `0 26px 60px ${alpha(config.color, 0.16)}`,
+            border: `1px solid ${alpha(config.color, 0.14)}`,
+          }}
+        >
+          <CardContent sx={{ p: 2.25 }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" sx={{ color: alpha(theme.palette.text.primary, 0.62), fontWeight: 700 }}>
+                  Hello,
+                </Typography>
+                <Typography
+                  variant="h3"
+                  sx={{
+                    mt: 0.25,
+                    fontWeight: 800,
+                    letterSpacing: '-0.06em',
+                    lineHeight: 0.98,
+                    fontSize: '2.35rem',
+                  }}
+                >
+                  Worklog
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 220 }}>
+                  {selectedProject?.name || currentProject?.name || 'Prosjektlogg'} med fokus på arbeid, refleksjon og neste steg.
+                </Typography>
+              </Box>
 
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 600, color: config.color, display: 'flex', alignItems: 'center' }}>
-          {professionIcon}
-          <IconComponent sx={{ mr: 2, ml: 1, fontSize: 40 }} />
-          {config.title}
-          {wsConnected && (
-            <Box sx={{ 
-              ml: 2, 
-              width: 10, 
-              height: 10, 
-              borderRadius: '50%', 
-              bgcolor: 'success.main',
-              animation: 'pulse 2s infinite'
-            }} 
-            title="Real-time sync active"
-            />
-          )}
-          {keepSyncStatus.connected && (
-            <Tooltip title={`Synkronisert til Google Keep (${keepSyncStatus.syncedEntries} oppføringer)`}>
-              <CloudSync sx={{ ml: 1, fontSize: 20, color: 'success.main' }} />
-            </Tooltip>
-          )}
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          {/* Tutorial/Help button */}
-          <Tooltip title="Åpne worklog-guide">
-            <IconButton 
-              onClick={() => setShowTutorial(true)}
-              color="primary"
-            >
-              <HelpOutline />
-            </IconButton>
-          </Tooltip>
-          
-          {/* Settings button */}
-          <Tooltip title="Synkroniser innstillinger">
-            <IconButton 
-              onClick={handleSettingsSync}
-              color={syncSettings ? 'primary' : 'default'}
-            >
-              <Settings />
-            </IconButton>
-          </Tooltip>
-          
-          {isSupported && (
-            <Tooltip title="Push-varsler innstillinger">
-              <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
-                {pushEnabled ? <NotificationsActive /> : <Notifications />}
-              </IconButton>
-            </Tooltip>
-          )}
-          {/* Real-time notification badge */}
-          <Badge badgeContent={realtimeNotifications.length} color="error">
-            <IconButton 
-              size="small"
-              sx={{ 
-                bgcolor: realtimeNotifications.length > 0 ? 'error.light' : 'transparent', 
-                '&:hover': { bgcolor: 'error.light' }
-              }}
-            >
-              <NotificationIcon />
-            </IconButton>
-          </Badge>
-          
-          <Button
-            variant="outlined"
-            startIcon={<Schedule />}
-            onClick={() => {
-              resetForm();
-              getRandomPrompt();
-              setShowCreateDialog(true);
-            }}
-            sx={{
-              borderColor: config.color,
-              color: config.color, 
-              '&:hover': {
-                borderColor: config.color,
-                bgcolor: `${config.color}10`
-              }
-            }}
-          >
-            Daglig Refleksjon
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={keepSyncStatus.connected ? <Sync /> : <Google />}
-            onClick={() => setShowKeepSync(true)}
-            sx={{
-              borderColor: theme.palette.success.main,
-              color: theme.palette.success.main,
-              '&:hover': {
-                borderColor: theme.palette.success.main,
-                bgcolor: alpha(theme.palette.success.main, 0.1)
-              }
-            }}
-          >
-            Google Keep
-          </Button>
-          <Button 
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => {
-              resetForm();
-              setShowCreateDialog(true);
-            }}
-            sx={{
-              background: `linear-gradient(135deg, ${config.color} 0%, ${config.color}80 100%)`,
-              borderRadius: 2,
-              px: 3
-            }}
-          >
-            Nytt Logg-innslag
-          </Button>
-        </Box>
-      </Box>
-
-      {/* Today's Inspiration */}
-      <MuiCard sx={{ mb: 3, background: `linear-gradient(135deg, ${config.color}15 0%, ${config.color}05 100%)`, border: `1px solid ${config.color}30` }}>
-        <CardContent>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{ 
-              p: 1.5, 
-              borderRadius: 2, 
-              bgcolor: config.color,
-              color: 'white'
-          }}>
-              <IconComponent />
+              <Stack direction="row" spacing={1}>
+                <IconButton
+                  onClick={() => setPushSettingsOpen(true)}
+                  sx={{
+                    bgcolor: alpha(theme.palette.background.paper, 0.9),
+                    border: `1px solid ${alpha(config.color, 0.14)}`,
+                  }}
+                >
+                  {pushEnabled ? <NotificationsActive /> : <Notifications />}
+                </IconButton>
+                <IconButton
+                  onClick={() => setShowTutorial(true)}
+                  sx={{
+                    bgcolor: alpha(theme.palette.background.paper, 0.9),
+                    border: `1px solid ${alpha(config.color, 0.14)}`,
+                  }}
+                >
+                  <HelpOutline />
+                </IconButton>
+              </Stack>
             </Box>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-                Dagens refleksjon
-              </Typography>
-              <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-                {getTodaysSuggestion()}
-              </Typography>
-            </Box>
-            <Button 
-              variant="contained"
-              size="small"
-              onClick={() => {
-                resetForm();
-                getRandomPrompt();
-                setShowCreateDialog(true);
-            }}
-              sx={{
-                bgcolor: config.color,
-                '&:hover': { bgcolor: `${config.color}dd` }
-            }}
-            >
-              Svar
-            </Button>
-          </Box>
-        </CardContent>
-      </MuiCard>
 
-      {/* Worklog Insights Section */}
-      <MuiCard sx={{ mb: 3, background: `linear-gradient(135deg, ${config.color}10 0%, ${config.color}05 100%)`, border: `1px solid ${config.color}30` }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 1,
-            color: theming.colors.primary 
-        }}>
-            🌍 Arbeidsinsikter
-          </Typography>
-          
-          <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
-            <Grid xs={12} sm={8}>
-              <TextField
-                label="Arbeidslokasjon (valgfritt)"
-                fullWidth
-                value={workLocation}
-                onChange={(e) => setWorkLocation(e.target.value)}
-                onBlur={(e) => handleLocationLookup(e.target.value)}
-                placeholder="F.eks. Oslo, Bergen, Trondheim..."
-                helperText="Legg til lokasjon for å få værmelding og reisekostnader. Trykk Tab for adresseoppslag."
-              />
-            </Grid>
-            <Grid xs={12} sm={4}>
-              <Button
-                variant="contained"
-                onClick={() => fetchWorklogInsights(workLocation)}
-                disabled={insightsLoading || !workLocation.trim()}
-                fullWidth
-                startIcon={insightsLoading ? <CircularProgress size={20} /> : <Assessment />}
-                sx={{ 
-                  background: 'linear-gradient(45deg, #ff8c00, #ff6b35)','&:hover': {
-                    background: 'linear-gradient(45deg, #ff6b35, #ff8c00)',
-                }
-              }}
-              >
-                {insightsLoading ? 'Henter...' : 'Hent Insikter'}
-              </Button>
-            </Grid>
-          </Grid>
-          
-          {/* Display Insights */}
-          {worklogInsights && (
-            <Box sx={{ mt: 2 }}>
-              <Divider sx={{ mb: 2 }} />
-              
-              <Grid container spacing={2}>
-                {/* Weather Information */}
-                {worklogInsights.weather && (
-                  <Grid xs={12} sm={6} md={4}>
-                    <Paper sx={{ p: 2, bgcolor: 'info.light', border: '1px solid', borderColor: 'info.main' }}>
-                      <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        🌤️ Vær
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {worklogInsights.weather.location}
-                      </Typography>
-                      <Typography variant="h6" sx={{ color: 'info.dark' }}>
-                        {worklogInsights.weather.temperature}°C
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Luftfuktighet: {worklogInsights.weather.humidity}%
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Vind: {worklogInsights.weather.windSpeed} m/s
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                )}
-                
-                {/* Economic Indicators */}
-                {worklogInsights.economic && (
-                  <Grid xs={12} sm={6} md={4}>
-                    <Paper sx={{ p: 2, bgcolor: 'success.light', border: '1px solid', borderColor: 'success.main' }}>
-                      <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        📊 Økonomi
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Norske økonomiske indikatorer
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {worklogInsights.economic.indicators?.length || 0} indikatorer tilgjengelig
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Oppdatert: {new Date(worklogInsights.economic.lastUpdated).toLocaleDateString('nb-NO')}
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                )}
-                
-                {/* Travel Costs */}
-                {worklogInsights.travelCosts && (
-                  <Grid xs={12} sm={6} md={4}>
-                    <Paper sx={{ p: 2, bgcolor: 'warning.light', border: '1px solid', borderColor: 'warning.main' }}>
-                      <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        🚗 Reisekostnader
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Estimert reisekostnad
-                      </Typography>
-                      <Typography variant="h6" sx={{ color: 'warning.dark' }}>
-                        {formatTravelCost(worklogInsights.travelCosts.breakdown?.totalCost || 0)}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Avstand: {worklogInsights.travelCosts.breakdown?.kilometers || 0} km
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                )}
-              </Grid>
-              
-              {/* Weather Forecast */}
-              {worklogInsights.forecast && worklogInsights.forecast.forecast && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    📅 3-dagers værmelding
+            <Box sx={{ mt: 2, display: 'flex', gap: 1, overflowX: 'auto', pb: 0.5 }}>
+              {[
+                {
+                  title: 'Dager',
+                  value: totalDays,
+                  bg: 'linear-gradient(135deg, #ff6e4a 0%, #ff8f70 100%)',
+                },
+                {
+                  title: 'Tid',
+                  value: formatTime(totalTimeSpent),
+                  bg: 'linear-gradient(135deg, #ffd36c 0%, #ffb347 100%)',
+                },
+                {
+                  title: 'Fokus',
+                  value: categoryBreakdown[0]?.label || 'Start',
+                  bg: 'linear-gradient(135deg, #4fd1c5 0%, #87e4db 100%)',
+                },
+              ].map((card) => (
+                <Paper
+                  key={card.title}
+                  elevation={0}
+                  sx={{
+                    minWidth: 138,
+                    p: 1.75,
+                    borderRadius: 4,
+                    color: card.title === 'Tid' ? 'text.primary' : 'common.white',
+                    background: card.bg,
+                    boxShadow: '0 14px 30px rgba(15, 23, 42, 0.10)',
+                  }}
+                >
+                  <Typography variant="body2" sx={{ opacity: 0.86, fontWeight: 600 }}>
+                    {card.title}
                   </Typography>
-                  <Grid container spacing={1}>
-                    {worklogInsights.forecast.forecast.slice(0, 3).map((day: any, index: number) => (
-                      <Grid xs={4} key={index}>
-                        <Paper sx={{ p: 1, textAlign: 'center', bgcolor: 'background.default' }}>
-                          <Typography variant="caption" color="text.secondary">
-                            {new Date(day.date).toLocaleDateString('nb-NO', { weekday: 'short' })}
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 600}}>
-                            {day.temperature}°C
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {day.precipitation}mm
-                          </Typography>
-                        </Paper>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Box>
-              )}
+                  <Typography variant="h6" sx={{ mt: 1.2, fontWeight: 800, letterSpacing: '-0.04em' }}>
+                    {card.value}
+                  </Typography>
+                </Paper>
+              ))}
             </Box>
-          )}
-        </CardContent>
-      </MuiCard>
 
-      {/* Statistics Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid xs={12} md={3}>
-          <MuiCard sx={{ background: 'linear-gradient(135deg, #4caf50 0%, #81c784 100%)', color: 'white' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="h6">Totalt Dager</Typography>
-                  <Typography variant="h3">{statsData?.data?.totalDays || 0}</Typography>
-                </Box>
-                <CalendarToday sx={{ fontSize: 40, opacity: 0.7 }} />
+            <Paper
+              elevation={0}
+              sx={{
+                mt: 2,
+                p: 1.75,
+                borderRadius: 4,
+                bgcolor: alpha(theme.palette.background.paper, 0.9),
+                border: `1px solid ${alpha(config.color, 0.12)}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1.5,
+              }}
+            >
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.04em' }}>
+                  {worklogEntries.length > 0 ? `${totalEntries} / ${Math.max(totalDays, totalEntries)} aktive dager` : '0 / 0 aktive dager'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {keepSyncStatus.connected ? 'Google Keep er koblet og synker fortløpende.' : 'Koble til Keep for mobilnotater og deling.'}
+                </Typography>
               </Box>
-            </CardContent>
-          </MuiCard>
-        </Grid>
-        
-        <Grid xs={12} md={3}>
-          <MuiCard sx={{ background: 'linear-gradient(135deg, #2196f3 0%, #64b5f6 100%)', color: 'white' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="h6">Total Tid</Typography>
-                  <Typography variant="h3">{formatTime(statsData?.data?.totalTimeSpent || 0)}</Typography>
-                </Box>
-                <AccessTime sx={{ fontSize: 40, opacity: 0.7 }} />
+              <Box
+                sx={{
+                  width: 58,
+                  height: 58,
+                  borderRadius: '50%',
+                  border: `5px solid ${alpha(config.color, 0.14)}`,
+                  borderTopColor: config.color,
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: config.color,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}
+              >
+                {Math.min(Math.round((totalEntries / Math.max(totalDays || totalEntries || 1, 1)) * 100), 100)}%
               </Box>
-            </CardContent>
-          </MuiCard>
-        </Grid>
-
-        <Grid xs={12} md={3}>
-          <MuiCard sx={{ background: 'linear-gradient(135deg, #ff9800 0%, #ffb74d 100%)', color: 'white' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="h6">Snitt per Dag</Typography>
-                  <Typography variant="h3">{formatTime(statsData?.data?.averageTimePerDay || 0)}</Typography>
-                </Box>
-                <TrendingUp sx={{ fontSize: 40, opacity: 0.7 }} />
-              </Box>
-            </CardContent>
-          </MuiCard>
-        </Grid>
-
-        <Grid xs={12} md={3}>
-          <MuiCard sx={{ background: 'linear-gradient(135deg, #9c27b0 0%, #ba68c8 100%)', color: 'white' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="h6">Kategorier</Typography>
-                  <Typography variant="h3">{statsData?.data?.categoriesUsed?.length || 0}</Typography>
-                </Box>
-                <Assessment sx={{ fontSize: 40, opacity: 0.7 }} />
-              </Box>
-            </CardContent>
-          </MuiCard>
-        </Grid>
-      </Grid>
-
-      {/* Worklog Entries */}
-      <MuiCard>
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
-            <Notes sx={{ mr: 1 }} />
-            Arbeids-logg
-          </Typography>
-          
-          {isLoading ? (
-            <LinearProgress />
-          ) : worklogData?.data?.length === 0 ? (
-            <Paper sx={{ p: 4, textAlign: 'center', bgcolor: 'grey.50' }}>
-              <IconComponent sx={{ fontSize: 60, color: 'grey.400', mb: 2 }} />
-              <Typography color="text.secondary" variant="h6">
-                Ingen logg-innslag ennå
-              </Typography>
-              <Typography color="text.secondary">
-                Start med å legge til ditt første arbeids-innslag
-              </Typography>
             </Paper>
-          ) : (
-            <List>
-              {worklogData?.data?.map((entry: WorklogEntry, index: number) => {
+          </CardContent>
+        </MuiCard>
+
+        <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.25 }}>
+          {[
+            { id: 'overview', label: 'Oversikt', icon: <Assessment fontSize="small" /> },
+            { id: 'capture', label: 'Nytt', icon: <Add fontSize="small" /> },
+            { id: 'timeline', label: 'Logg', icon: <Notes fontSize="small" /> },
+          ].map((tab) => {
+            const active = mobileView === tab.id;
+            return (
+              <Button
+                key={tab.id}
+                startIcon={tab.icon}
+                onClick={() => setMobileView(tab.id as 'overview' | 'capture' | 'timeline')}
+                sx={{
+                  flexShrink: 0,
+                  borderRadius: 999,
+                  px: 2,
+                  py: 1,
+                  color: active ? 'common.white' : 'text.primary',
+                  bgcolor: active ? config.color : alpha(theme.palette.background.paper, 0.9),
+                  border: `1px solid ${active ? config.color : alpha(config.color, 0.12)}`,
+                  boxShadow: active ? `0 14px 26px ${alpha(config.color, 0.24)}` : 'none',
+                }}
+              >
+                {tab.label}
+              </Button>
+            );
+          })}
+        </Stack>
+
+        {mobileView === 'overview' && (
+          <Box sx={{ display: 'grid', gap: 2 }}>
+            <MuiCard sx={{ borderRadius: 4, border: `1px solid ${alpha(config.color, 0.12)}` }}>
+              <CardContent sx={{ p: 2 }}>
+                <Typography variant="overline" sx={{ color: config.color, fontWeight: 700, letterSpacing: '0.14em' }}>
+                  Dagens refleksjon
+                </Typography>
+                <Typography variant="h6" sx={{ mt: 0.75, fontWeight: 800, letterSpacing: '-0.04em' }}>
+                  {getTodaysSuggestion()}
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+                  <Button
+                    variant="contained"
+                    onClick={() => {
+                      resetForm();
+                      getRandomPrompt();
+                      setMobileView('capture');
+                    }}
+                    sx={{ borderRadius: 999, bgcolor: config.color }}
+                  >
+                    Svar nå
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setShowKeepSync(true)}
+                    sx={{ borderRadius: 999, borderColor: alpha(config.color, 0.28), color: config.color }}
+                  >
+                    Google Keep
+                  </Button>
+                </Stack>
+              </CardContent>
+            </MuiCard>
+
+            <MuiCard sx={{ borderRadius: 4, border: `1px solid ${alpha(config.color, 0.12)}` }}>
+              <CardContent sx={{ p: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.04em', mb: 1.5 }}>
+                  Synk og samarbeid
+                </Typography>
+                <Stack spacing={1.25}>
+                  {worklogStatusItems.map((item) => (
+                    <Paper
+                      key={item.label}
+                      elevation={0}
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 3,
+                        bgcolor: item.tone,
+                        border: `1px solid ${alpha(config.color, 0.08)}`,
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {item.label}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                        {item.value}
+                      </Typography>
+                    </Paper>
+                  ))}
+                </Stack>
+              </CardContent>
+            </MuiCard>
+
+            <MuiCard sx={{ borderRadius: 4, border: `1px solid ${alpha(config.color, 0.12)}` }}>
+              <CardContent sx={{ p: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.04em', mb: 1.5 }}>
+                  Arbeidsinnsikter
+                </Typography>
+                <TextField
+                  label="Arbeidslokasjon"
+                  fullWidth
+                  value={workLocation}
+                  onChange={(e) => setWorkLocation(e.target.value)}
+                  onBlur={(e) => handleLocationLookup(e.target.value)}
+                  placeholder="Oslo, Bergen, Trondheim..."
+                />
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={() => fetchWorklogInsights(workLocation)}
+                  disabled={insightsLoading || !workLocation.trim()}
+                  startIcon={insightsLoading ? <CircularProgress size={18} color="inherit" /> : <Assessment />}
+                  sx={{
+                    mt: 1.5,
+                    borderRadius: 999,
+                    background: `linear-gradient(135deg, ${config.color} 0%, ${alpha(config.color, 0.8)} 100%)`,
+                  }}
+                >
+                  {insightsLoading ? 'Henter...' : 'Oppdater innsikt'}
+                </Button>
+
+                {worklogInsights?.weather && (
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      mt: 1.5,
+                      p: 1.5,
+                      borderRadius: 3,
+                      bgcolor: alpha(theme.palette.info.main, 0.08),
+                    }}
+                  >
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      {worklogInsights.weather.location}
+                    </Typography>
+                    <Typography variant="h5" sx={{ mt: 0.5, fontWeight: 800, color: 'info.dark' }}>
+                      {worklogInsights.weather.temperature}°C
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Vind {worklogInsights.weather.windSpeed} m/s • Luftfuktighet {worklogInsights.weather.humidity}%
+                    </Typography>
+                  </Paper>
+                )}
+
+                {categoryBreakdown.length > 0 && (
+                  <Stack spacing={1} sx={{ mt: 1.75 }}>
+                    {categoryBreakdown.map((category) => (
+                      <Box key={category.value}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {category.label}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {category.count}
+                          </Typography>
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={Math.max((category.count / Math.max(totalEntries, 1)) * 100, 8)}
+                          sx={{
+                            height: 8,
+                            borderRadius: 999,
+                            bgcolor: alpha(config.color, 0.1),
+                            '& .MuiLinearProgress-bar': {
+                              borderRadius: 999,
+                              bgcolor: config.color,
+                            },
+                          }}
+                        />
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
+              </CardContent>
+            </MuiCard>
+          </Box>
+        )}
+
+        {mobileView === 'capture' && (
+          <MuiCard sx={{ borderRadius: 4, border: `1px solid ${alpha(config.color, 0.12)}` }}>
+            <CardContent sx={{ p: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.04em' }}>
+                  {editingEntry ? 'Rediger logg' : 'Logg work'}
+                </Typography>
+                <Chip
+                  label={editingEntry ? 'Redigerer' : 'In progress'}
+                  size="small"
+                  sx={{
+                    bgcolor: alpha(theme.palette.warning.main, 0.16),
+                    color: 'warning.dark',
+                    fontWeight: 700,
+                  }}
+                />
+              </Box>
+
+              <Stack spacing={1.5}>
+                <TextField
+                  label="Dato / dag"
+                  type="number"
+                  fullWidth
+                  value={formData.day}
+                  onChange={(e) => setFormData({ ...formData, day: parseInt(e.target.value) || 1 })}
+                />
+                <TextField
+                  label="Arbeidet tid (min)"
+                  type="number"
+                  fullWidth
+                  value={formData.timeSpent}
+                  onChange={(e) => setFormData({ ...formData, timeSpent: parseInt(e.target.value) || 0 })}
+                />
+                <TextField
+                  label="Hva jobbet du med?"
+                  fullWidth
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                />
+                <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 0.5 }}>
+                  {config.categories.map((category) => (
+                    <Chip
+                      key={category.value}
+                      label={category.label}
+                      onClick={() => setFormData({ ...formData, category: category.value })}
+                      sx={{
+                        flexShrink: 0,
+                        bgcolor: formData.category === category.value ? config.color : alpha(config.color, 0.08),
+                        color: formData.category === category.value ? 'common.white' : config.color,
+                      }}
+                    />
+                  ))}
+                </Box>
+                <FormControl fullWidth>
+                  <InputLabel>Stemning</InputLabel>
+                  <Select
+                    value={formData.mood}
+                    label="Stemning"
+                    onChange={(e) => setFormData({ ...formData, mood: e.target.value })}
+                  >
+                    <MenuItem value="">
+                      <em>Ingen valgt</em>
+                    </MenuItem>
+                    {moodOptions.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.icon} {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  label="Beskrivelse"
+                  fullWidth
+                  multiline
+                  rows={4}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                />
+                <TextField
+                  label="Neste steg"
+                  fullWidth
+                  multiline
+                  rows={3}
+                  value={formData.nextSteps}
+                  onChange={(e) => setFormData({ ...formData, nextSteps: e.target.value })}
+                />
+
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={() => {
+                      resetForm();
+                      setMobileView('overview');
+                    }}
+                    sx={{ borderRadius: 999, borderColor: alpha(config.color, 0.24), color: config.color }}
+                  >
+                    Nullstill
+                  </Button>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    onClick={() => {
+                      handleSubmit();
+                      setMobileView('timeline');
+                    }}
+                    disabled={!formData.title.trim() || createEntryMutation.isPending || updateEntryMutation.isPending}
+                    sx={{
+                      borderRadius: 999,
+                      background: `linear-gradient(135deg, ${config.color} 0%, ${alpha(config.color, 0.8)} 100%)`,
+                    }}
+                  >
+                    {editingEntry ? 'Oppdater' : 'Lagre'}
+                  </Button>
+                </Stack>
+              </Stack>
+            </CardContent>
+          </MuiCard>
+        )}
+
+        {mobileView === 'timeline' && (
+          <Box sx={{ display: 'grid', gap: 1.5 }}>
+            {isLoading ? (
+              <LinearProgress sx={{ borderRadius: 999, height: 8 }} />
+            ) : worklogEntries.length === 0 ? (
+              <MuiCard sx={{ borderRadius: 4, border: `1px solid ${alpha(config.color, 0.12)}` }}>
+                <CardContent sx={{ p: 3, textAlign: 'center' }}>
+                  <IconComponent sx={{ fontSize: 54, color: alpha(config.color, 0.5), mb: 1 }} />
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    Ingen logg ennå
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                    Opprett første innslag for å bygge tidslinjen.
+                  </Typography>
+                </CardContent>
+              </MuiCard>
+            ) : (
+              worklogEntries.map((entry) => {
                 const categoryInfo = getCategoryInfo(entry.category);
-                const moodInfo = getMoodInfo(entry.mood || ', ');
-                
+                const moodInfo = getMoodInfo(entry.mood || '');
+
                 return (
-                  <React.Fragment key={entry.id}>
-                    <ListItem sx={{ alignItems: 'flex-start', py: 2 }}>
-                      <Avatar sx={{ 
-                        mr: 2, 
-                        mt: 0.5,
-                        bgcolor: config.color,
-                        width: 48,
-                        height: 48,
-                        fontSize: '1.2rem'
-                    }}>
+                  <Paper
+                    key={entry.id}
+                    elevation={0}
+                    sx={{
+                      p: 1.75,
+                      borderRadius: 4,
+                      border: `1px solid ${alpha(config.color, 0.12)}`,
+                      boxShadow: '0 10px 26px rgba(15, 23, 42, 0.05)',
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                      <Avatar
+                        sx={{
+                          width: 42,
+                          height: 42,
+                          bgcolor: alpha(config.color, 0.14),
+                          color: config.color,
+                          fontWeight: 800,
+                        }}
+                      >
                         {entry.day}
                       </Avatar>
-                      
-                      <ListItemText
-                        primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                            <Typography variant="h6" sx={{ fontWeight: 600}}>
-                              {entry.title}
-                            </Typography>
-                            <Chip 
-                              icon={React.createElement(categoryInfo.icon, { style: { fontSize: '16px' } })}
-                              label={categoryInfo.label}
-                              size="small"
-                              variant="outlined"
-                            />
-                            {moodInfo && (
-                              <Chip 
-                                label={`${moodInfo.icon} ${moodInfo.label}`}
-                                size="small"
-                                sx={{ bgcolor: moodInfo.color, color: 'white' }}
-                              />
-                            )}
-                            {entry.timeSpent && entry.timeSpent > 0 && (
-                              <Chip 
-                                label={formatTime(entry.timeSpent)}
-                                size="small"
-                                icon={<AccessTime />}
-                                color="info"
-                              />
-                            )}
-                          </Box>
-                      }
-                        secondary={
-                          <Box>
-                            {entry.description && (
-                              <Typography variant="body2" sx={{ mb: 1, color: 'text.primary' }}>
-                                {entry.description}
-                              </Typography>
-                            )}
-                            {entry.nextSteps && (
-                              <Typography variant="body2" sx={{ 
-                                mb: 1, 
-                                p: 1.5, 
-                                bgcolor: 'info.light', 
-                                borderRadius: 1,
-                                color: 'info.contrastText'
-                            }}>
-                                <strong>Neste steg: </strong> {entry.nextSteps}
-                              </Typography>
-                            )}
-                            <Typography variant="caption" color="text.secondary">
-                              {new Date(entry.date).toLocaleDateString('nb-NO', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            })}
-                            </Typography>
-                          </Box>
-                      }
-                      />
-                      
-                      <ListItemSecondaryAction>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          {/* Import/Export buttons */}
-                          <Tooltip title="Last opp filer">
-                            <IconButton 
-                              onClick={() => handleFileOperations(entry, 'upload')}
-                              color="default"
-                              size="small"
-                            >
-                              <CloudUpload fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Last ned filer">
-                            <IconButton 
-                              onClick={() => handleFileOperations(entry, 'download')}
-                              color="default"
-                              size="small"
-                            >
-                              <CloudDownload fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          {/* Import/Export action */}
-                          <Tooltip title="Eksporter oppføring">
-                            <IconButton
-                              onClick={() => {
-                                const exportData = JSON.stringify(entry, null, 2);
-                                navigator.clipboard.writeText(exportData);
-                                showSuccessToast('Oppføring kopiert til utklippstavle');
-                              }}
-                              color="default"
-                              size="small"
-                            >
-                              <ImportExport fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          {/* Share/Collaborate button if synced to Google Keep */}
-                          {(entry as any).googleKeepNoteId && (
-                            <IconButton 
-                              onClick={() => {
-                                setSelectedWorklogId(entry.id.toString());
-                                setShowCollaborators(true);
-                              }}
-                              color="primary"
-                              title="Add collaborators (Google Keep)"
-                            >
-                              <PersonAdd />
-                            </IconButton>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '-0.03em' }}>
+                          {entry.title}
+                        </Typography>
+                        <Stack direction="row" spacing={0.75} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
+                          <Chip label={categoryInfo.label} size="small" sx={{ bgcolor: alpha(config.color, 0.08), color: config.color }} />
+                          {!!entry.timeSpent && (
+                            <Chip label={formatTime(entry.timeSpent)} size="small" sx={{ bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.dark' }} />
                           )}
-                          <IconButton onClick={() => handleEdit(entry)} color="primary">
-                            <Edit />
-                          </IconButton>
-                          <IconButton 
-                            onClick={() => deleteEntryMutation.mutate(entry.id)}
-                            color="error"
+                          {moodInfo && (
+                            <Chip label={`${moodInfo.icon} ${moodInfo.label}`} size="small" sx={{ bgcolor: alpha(moodInfo.color, 0.16), color: moodInfo.color }} />
+                          )}
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                          {new Date(entry.date).toLocaleDateString('nb-NO', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </Typography>
+                        {entry.description && (
+                          <Typography variant="body2" sx={{ mt: 1.25, color: 'text.primary', lineHeight: 1.6 }}>
+                            {entry.description}
+                          </Typography>
+                        )}
+                        {entry.nextSteps && (
+                          <Paper
+                            elevation={0}
+                            sx={{
+                              mt: 1.25,
+                              p: 1.25,
+                              borderRadius: 2.5,
+                              bgcolor: alpha(theme.palette.info.main, 0.08),
+                            }}
                           >
-                            <Delete />
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: 'info.dark', letterSpacing: '0.08em' }}>
+                              NESTE STEG
+                            </Typography>
+                            <Typography variant="body2" sx={{ mt: 0.4 }}>
+                              {entry.nextSteps}
+                            </Typography>
+                          </Paper>
+                        )}
+                        <Stack direction="row" spacing={0.25} sx={{ mt: 1, flexWrap: 'wrap' }}>
+                          <IconButton onClick={() => handleFileOperations(entry, 'upload')} size="small">
+                            <CloudUpload fontSize="small" />
                           </IconButton>
-                        </Box>
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                    {index < worklogData.data.length - 1 && <Divider />}
-                  </React.Fragment>
+                          <IconButton onClick={() => handleFileOperations(entry, 'download')} size="small">
+                            <CloudDownload fontSize="small" />
+                          </IconButton>
+                          <IconButton onClick={() => handleEdit(entry)} size="small" color="primary">
+                            <Edit fontSize="small" />
+                          </IconButton>
+                          <IconButton onClick={() => deleteEntryMutation.mutate(entry.id)} size="small" color="error">
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                      </Box>
+                    </Box>
+                  </Paper>
                 );
-            })}
-            </List>
-          )}
+              })
+            )}
+          </Box>
+        )}
+
+        <Paper
+          elevation={0}
+          sx={{
+            position: 'sticky',
+            bottom: 12,
+            zIndex: 5,
+            p: 0.9,
+            borderRadius: 999,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 1,
+            bgcolor: alpha(theme.palette.background.paper, 0.96),
+            border: `1px solid ${alpha(config.color, 0.12)}`,
+            boxShadow: '0 18px 46px rgba(15, 23, 42, 0.18)',
+          }}
+        >
+          {[
+            { id: 'overview', icon: <Assessment />, label: 'Hjem' },
+            { id: 'capture', icon: <Add />, label: 'Ny' },
+            { id: 'timeline', icon: <Notes />, label: 'Logg' },
+          ].map((item) => {
+            const active = mobileView === item.id;
+            return (
+              <Button
+                key={item.id}
+                onClick={() => setMobileView(item.id as 'overview' | 'capture' | 'timeline')}
+                sx={{
+                  minWidth: 0,
+                  flex: 1,
+                  py: 1,
+                  borderRadius: active ? 999 : 3,
+                  color: active ? config.color : 'text.secondary',
+                  bgcolor: active ? alpha(config.color, 0.12) : 'transparent',
+                  display: 'grid',
+                  gap: 0.25,
+                }}
+              >
+                <Box sx={{ display: 'grid', placeItems: 'center' }}>{item.icon}</Box>
+                <Typography variant="caption" sx={{ fontWeight: active ? 700 : 500 }}>
+                  {item.label}
+                </Typography>
+              </Button>
+            );
+          })}
+        </Paper>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: { xs: 2, md: 3 }, display: 'grid', gap: 3 }}>
+      <MuiCard
+        sx={{
+          overflow: 'hidden',
+          borderRadius: 4,
+          border: `1px solid ${alpha(config.color, 0.18)}`,
+          background: `linear-gradient(135deg, ${alpha(config.color, 0.22)} 0%, ${alpha(config.color, 0.08)} 42%, ${alpha(theme.palette.background.paper, 0.94)} 100%)`,
+          boxShadow: `0 24px 64px ${alpha(config.color, 0.14)}`,
+        }}
+      >
+        <CardContent sx={{ p: { xs: 2.5, md: 3.5 } }}>
+          <Grid container spacing={3} alignItems="stretch">
+            <Grid xs={12} lg={7}>
+              <Box sx={{ display: 'flex', gap: 2.5, alignItems: 'flex-start' }}>
+                <Box
+                  sx={{
+                    flexShrink: 0,
+                    width: { xs: 56, md: 68 },
+                    height: { xs: 56, md: 68 },
+                    borderRadius: 3,
+                    display: 'grid',
+                    placeItems: 'center',
+                    color: 'common.white',
+                    background: `linear-gradient(135deg, ${config.color} 0%, ${alpha(config.color, 0.7)} 100%)`,
+                    boxShadow: `0 18px 40px ${alpha(config.color, 0.28)}`,
+                  }}
+                >
+                  <IconComponent sx={{ fontSize: { xs: 28, md: 34 } }} />
+                </Box>
+
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography
+                    variant="overline"
+                    sx={{
+                      letterSpacing: '0.18em',
+                      fontWeight: 700,
+                      color: alpha(theme.palette.text.primary, 0.62),
+                    }}
+                  >
+                    Worklog Workspace
+                  </Typography>
+                  <Typography
+                    variant="h3"
+                    sx={{
+                      mt: 0.5,
+                      fontWeight: 800,
+                      lineHeight: 1.05,
+                      letterSpacing: '-0.04em',
+                      color: theme.palette.text.primary,
+                      fontSize: { xs: '2rem', md: '2.7rem' },
+                    }}
+                  >
+                    {config.title}
+                  </Typography>
+                  <Typography
+                    variant="body1"
+                    sx={{
+                      mt: 1.25,
+                      maxWidth: 720,
+                      color: 'text.secondary',
+                      fontSize: { xs: '0.96rem', md: '1.02rem' },
+                    }}
+                  >
+                    Samle dagens arbeid, beslutninger og neste steg i en ryddig arbeidsflyt. Alt her er koblet til prosjekt,
+                    samarbeid og videre oppfølging.
+                  </Typography>
+
+                  <Box sx={{ mt: 2.5, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {worklogStatusItems.map((item) => (
+                      <Chip
+                        key={item.label}
+                        icon={item.icon}
+                        label={`${item.label}: ${item.value}`}
+                        sx={{
+                          bgcolor: item.tone,
+                          color: 'text.primary',
+                          borderRadius: 999,
+                          height: 34,
+                          '& .MuiChip-icon': { color: config.color },
+                        }}
+                      />
+                    ))}
+                    {latestMood && (
+                      <Chip
+                        label={`Siste energi: ${latestMood.icon} ${latestMood.label}`}
+                        sx={{
+                          bgcolor: alpha(latestMood.color, 0.16),
+                          color: latestMood.color,
+                          borderRadius: 999,
+                          height: 34,
+                        }}
+                      />
+                    )}
+                  </Box>
+                </Box>
+              </Box>
+            </Grid>
+
+            <Grid xs={12} lg={5}>
+              <Box
+                sx={{
+                  height: '100%',
+                  display: 'grid',
+                  alignContent: 'space-between',
+                  gap: 2,
+                }}
+              >
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    borderRadius: 3,
+                    border: `1px solid ${alpha(config.color, 0.14)}`,
+                    bgcolor: alpha(theme.palette.background.paper, 0.8),
+                    backdropFilter: 'blur(10px)',
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                    Fokus akkurat nå
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {latestEntry
+                      ? `Siste oppføring var "${latestEntry.title}" ${new Date(latestEntry.date).toLocaleDateString('nb-NO', {
+                          day: 'numeric',
+                          month: 'short',
+                        })}.`
+                      : 'Ingen oppføringer ennå. Start med å dokumentere første arbeidsøkt eller refleksjon.'}
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+                    <Chip
+                      label={`${totalEntries} innslag`}
+                      size="small"
+                      sx={{ bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.dark' }}
+                    />
+                    <Chip
+                      label={formatTime(totalTimeSpent)}
+                      size="small"
+                      sx={{ bgcolor: alpha(theme.palette.success.main, 0.12), color: 'success.dark' }}
+                    />
+                    <Chip
+                      label={`${realtimeNotifications.length} varsler`}
+                      size="small"
+                      sx={{ bgcolor: alpha(theme.palette.warning.main, 0.12), color: 'warning.dark' }}
+                    />
+                  </Stack>
+                </Paper>
+
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25, justifyContent: { xs: 'flex-start', lg: 'flex-end' } }}>
+                  <Tooltip title="Åpne worklog-guide">
+                    <IconButton
+                      onClick={() => setShowTutorial(true)}
+                      sx={{
+                        bgcolor: alpha(theme.palette.background.paper, 0.86),
+                        border: `1px solid ${alpha(config.color, 0.15)}`,
+                      }}
+                    >
+                      <HelpOutline />
+                    </IconButton>
+                  </Tooltip>
+
+                  <Tooltip title="Synkroniser innstillinger">
+                    <IconButton
+                      onClick={handleSettingsSync}
+                      sx={{
+                        bgcolor: alpha(theme.palette.background.paper, 0.86),
+                        border: `1px solid ${alpha(config.color, 0.15)}`,
+                        color: syncSettings ? config.color : 'text.primary',
+                      }}
+                    >
+                      <Settings />
+                    </IconButton>
+                  </Tooltip>
+
+                  {isSupported && (
+                    <Tooltip title="Push-varsler">
+                      <IconButton
+                        onClick={() => setPushSettingsOpen(true)}
+                        sx={{
+                          bgcolor: alpha(theme.palette.background.paper, 0.86),
+                          border: `1px solid ${alpha(config.color, 0.15)}`,
+                          color: pushEnabled ? config.color : 'text.primary',
+                        }}
+                      >
+                        {pushEnabled ? <NotificationsActive /> : <Notifications />}
+                      </IconButton>
+                    </Tooltip>
+                  )}
+
+                  <Badge badgeContent={realtimeNotifications.length} color="error">
+                    <IconButton
+                      sx={{
+                        bgcolor: alpha(theme.palette.background.paper, 0.86),
+                        border: `1px solid ${alpha(config.color, 0.15)}`,
+                      }}
+                    >
+                      <NotificationIcon />
+                    </IconButton>
+                  </Badge>
+
+                  <Button
+                    variant="outlined"
+                    startIcon={<Schedule />}
+                    onClick={() => {
+                      resetForm();
+                      getRandomPrompt();
+                      setShowCreateDialog(true);
+                    }}
+                    sx={{
+                      minHeight: 44,
+                      borderRadius: 999,
+                      borderColor: alpha(config.color, 0.35),
+                      color: config.color,
+                      bgcolor: alpha(theme.palette.background.paper, 0.72),
+                      '&:hover': {
+                        borderColor: config.color,
+                        bgcolor: alpha(config.color, 0.08),
+                      },
+                    }}
+                  >
+                    Daglig refleksjon
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={keepSyncStatus.connected ? <Sync /> : <Google />}
+                    onClick={() => setShowKeepSync(true)}
+                    sx={{
+                      minHeight: 44,
+                      borderRadius: 999,
+                      borderColor: alpha(theme.palette.success.main, 0.35),
+                      color: 'success.dark',
+                      bgcolor: alpha(theme.palette.success.main, 0.08),
+                    }}
+                  >
+                    Google Keep
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<Add />}
+                    onClick={() => {
+                      resetForm();
+                      setShowCreateDialog(true);
+                    }}
+                    sx={{
+                      minHeight: 46,
+                      px: 2.25,
+                      borderRadius: 999,
+                      background: `linear-gradient(135deg, ${config.color} 0%, ${alpha(config.color, 0.78)} 100%)`,
+                      boxShadow: `0 14px 30px ${alpha(config.color, 0.28)}`,
+                    }}
+                  >
+                    Nytt logginnslag
+                  </Button>
+                </Box>
+              </Box>
+            </Grid>
+          </Grid>
         </CardContent>
       </MuiCard>
+
+      <Grid container spacing={3}>
+        <Grid xs={12} xl={8.2}>
+          <Box sx={{ display: 'grid', gap: 3 }}>
+            <Grid container spacing={2.25}>
+              {[
+                {
+                  title: 'Totale dager',
+                  value: totalDays,
+                  meta: latestEntry ? `Sist aktiv ${new Date(latestEntry.date).toLocaleDateString('nb-NO')}` : 'Ingen aktivitet ennå',
+                  icon: <CalendarToday sx={{ fontSize: 24 }} />,
+                  gradient: 'linear-gradient(135deg, #1f8f5f 0%, #57c785 100%)',
+                },
+                {
+                  title: 'Tidsbruk',
+                  value: formatTime(totalTimeSpent),
+                  meta: `${totalEntries} innslag registrert`,
+                  icon: <AccessTime sx={{ fontSize: 24 }} />,
+                  gradient: 'linear-gradient(135deg, #1976d2 0%, #4dabf5 100%)',
+                },
+                {
+                  title: 'Snitt per dag',
+                  value: formatTime(averageTimePerDay),
+                  meta: categoryBreakdown[0] ? `${categoryBreakdown[0].label} dominerer` : 'Bygg opp mer historikk',
+                  icon: <TrendingUp sx={{ fontSize: 24 }} />,
+                  gradient: 'linear-gradient(135deg, #ff8a00 0%, #ffb347 100%)',
+                },
+                {
+                  title: 'Kategorier',
+                  value: categoriesUsed,
+                  meta: categoryBreakdown.length > 0 ? `${categoryBreakdown.length} aktive typer` : 'Kun én kategori så langt',
+                  icon: <Assessment sx={{ fontSize: 24 }} />,
+                  gradient: 'linear-gradient(135deg, #7b3ff2 0%, #a972ff 100%)',
+                },
+              ].map((stat) => (
+                <Grid xs={12} sm={6} key={stat.title}>
+                  <MuiCard
+                    sx={{
+                      height: '100%',
+                      minHeight: 218,
+                      borderRadius: 4,
+                      overflow: 'hidden',
+                      color: 'common.white',
+                      background: stat.gradient,
+                      boxShadow: '0 18px 40px rgba(15, 23, 42, 0.14)',
+                    }}
+                  >
+                    <CardContent
+                      sx={{
+                        p: { xs: 2.5, md: 3.25 },
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2.5 }}>
+                        <Box>
+                          <Typography variant="body1" sx={{ opacity: 0.9, fontWeight: 500 }}>
+                            {stat.title}
+                          </Typography>
+                          <Typography
+                            variant="h2"
+                            sx={{
+                              mt: 2.25,
+                              mb: 2.5,
+                              fontWeight: 800,
+                              letterSpacing: '-0.06em',
+                              lineHeight: 0.94,
+                              fontSize: { xs: '3rem', md: '3.6rem' },
+                            }}
+                          >
+                            {stat.value}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              opacity: 0.88,
+                              display: 'block',
+                              maxWidth: 260,
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {stat.meta}
+                          </Typography>
+                        </Box>
+                        <Box
+                          sx={{
+                            width: 62,
+                            height: 62,
+                            borderRadius: 4,
+                            display: 'grid',
+                            placeItems: 'center',
+                            bgcolor: alpha(theme.palette.common.white, 0.14),
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Box sx={{ transform: 'scale(1.15)' }}>{stat.icon}</Box>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </MuiCard>
+                </Grid>
+              ))}
+            </Grid>
+
+            <MuiCard
+              sx={{
+                borderRadius: 4,
+                border: `1px solid ${alpha(config.color, 0.14)}`,
+                boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
+              }}
+            >
+              <CardContent sx={{ p: { xs: 2, md: 2.75 } }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: { xs: 'flex-start', md: 'center' },
+                    flexDirection: { xs: 'column', md: 'row' },
+                    gap: 1.5,
+                    mb: 2.5,
+                  }}
+                >
+                  <Box>
+                    <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.04em' }}>
+                      Arbeidslogg
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      En samlet tidslinje over arbeid, refleksjoner og neste steg for dette prosjektet.
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                    <Chip
+                      label={`${totalEntries} oppføringer`}
+                      sx={{ bgcolor: alpha(config.color, 0.12), color: config.color }}
+                    />
+                    {latestEntry && (
+                      <Chip
+                        label={`Sist oppdatert ${new Date(latestEntry.date).toLocaleDateString('nb-NO', {
+                          day: 'numeric',
+                          month: 'short',
+                        })}`}
+                        sx={{ bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.dark' }}
+                      />
+                    )}
+                  </Stack>
+                </Box>
+
+                {isLoading ? (
+                  <LinearProgress sx={{ borderRadius: 999, height: 8 }} />
+                ) : worklogEntries.length === 0 ? (
+                  <Paper
+                    sx={{
+                      p: { xs: 3, md: 4 },
+                      textAlign: 'center',
+                      borderRadius: 3,
+                      bgcolor: alpha(theme.palette.grey[100], 0.72),
+                      border: `1px dashed ${alpha(config.color, 0.28)}`,
+                    }}
+                  >
+                    <IconComponent sx={{ fontSize: 56, color: alpha(config.color, 0.54), mb: 1.5 }} />
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                      Ingen logginnslag ennå
+                    </Typography>
+                    <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: 420, mx: 'auto' }}>
+                      Start med å dokumentere dagens arbeid, refleksjon eller leveranse. Da bygges tidslinje og innsikt automatisk.
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      startIcon={<Add />}
+                      onClick={() => {
+                        resetForm();
+                        setShowCreateDialog(true);
+                      }}
+                      sx={{
+                        mt: 2.5,
+                        borderRadius: 999,
+                        background: `linear-gradient(135deg, ${config.color} 0%, ${alpha(config.color, 0.78)} 100%)`,
+                      }}
+                    >
+                      Opprett første logginnslag
+                    </Button>
+                  </Paper>
+                ) : (
+                  <Box sx={{ display: 'grid', gap: 1.5 }}>
+                    {worklogEntries.map((entry: WorklogEntry) => {
+                      const categoryInfo = getCategoryInfo(entry.category);
+                      const moodInfo = getMoodInfo(entry.mood || '');
+
+                      return (
+                        <Paper
+                          key={entry.id}
+                          elevation={0}
+                          sx={{
+                            p: 2.25,
+                            borderRadius: 3,
+                            border: `1px solid ${alpha(config.color, 0.12)}`,
+                            position: 'relative',
+                            overflow: 'hidden',
+                            bgcolor: alpha(theme.palette.background.paper, 0.96),
+                            boxShadow: '0 10px 30px rgba(15, 23, 42, 0.05)',
+                            '&::before': {
+                              content: '""',
+                              position: 'absolute',
+                              top: 18,
+                              left: 0,
+                              width: 4,
+                              height: 'calc(100% - 36px)',
+                              borderRadius: '0 999px 999px 0',
+                              bgcolor: config.color,
+                            },
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: { xs: 'flex-start', md: 'center' },
+                              justifyContent: 'space-between',
+                              gap: 2,
+                              flexDirection: { xs: 'column', md: 'row' },
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', gap: 2, minWidth: 0, width: '100%' }}>
+                              <Avatar
+                                sx={{
+                                  bgcolor: alpha(config.color, 0.14),
+                                  color: config.color,
+                                  width: 48,
+                                  height: 48,
+                                  fontWeight: 800,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {entry.day}
+                              </Avatar>
+
+                              <Box sx={{ minWidth: 0, flex: 1 }}>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+                                  <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '-0.03em' }}>
+                                    {entry.title}
+                                  </Typography>
+                                  <Chip
+                                    icon={React.createElement(categoryInfo.icon, { style: { fontSize: '16px' } })}
+                                    label={categoryInfo.label}
+                                    size="small"
+                                    sx={{ bgcolor: alpha(config.color, 0.08), color: config.color }}
+                                  />
+                                  {moodInfo && (
+                                    <Chip
+                                      label={`${moodInfo.icon} ${moodInfo.label}`}
+                                      size="small"
+                                      sx={{ bgcolor: alpha(moodInfo.color, 0.16), color: moodInfo.color }}
+                                    />
+                                  )}
+                                  {!!entry.timeSpent && (
+                                    <Chip
+                                      label={formatTime(entry.timeSpent)}
+                                      size="small"
+                                      icon={<AccessTime />}
+                                      sx={{ bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.dark' }}
+                                    />
+                                  )}
+                                </Box>
+
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+                                  {new Date(entry.date).toLocaleDateString('nb-NO', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </Typography>
+
+                                {entry.description && (
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
+                                      mt: 1.5,
+                                      color: 'text.primary',
+                                      lineHeight: 1.65,
+                                      maxWidth: 820,
+                                    }}
+                                  >
+                                    {entry.description}
+                                  </Typography>
+                                )}
+
+                                {entry.nextSteps && (
+                                  <Paper
+                                    elevation={0}
+                                    sx={{
+                                      mt: 1.5,
+                                      p: 1.5,
+                                      borderRadius: 2.5,
+                                      bgcolor: alpha(theme.palette.info.main, 0.08),
+                                      border: `1px solid ${alpha(theme.palette.info.main, 0.14)}`,
+                                    }}
+                                  >
+                                    <Typography variant="caption" sx={{ color: 'info.dark', fontWeight: 700, letterSpacing: '0.08em' }}>
+                                      NESTE STEG
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>
+                                      {entry.nextSteps}
+                                    </Typography>
+                                  </Paper>
+                                )}
+                              </Box>
+                            </Box>
+
+                            <Stack
+                              direction="row"
+                              spacing={0.5}
+                              sx={{
+                                flexWrap: 'wrap',
+                                justifyContent: { xs: 'flex-start', md: 'flex-end' },
+                                width: { xs: '100%', md: 'auto' },
+                              }}
+                            >
+                              <Tooltip title="Last opp filer">
+                                <IconButton onClick={() => handleFileOperations(entry, 'upload')} size="small">
+                                  <CloudUpload fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Last ned filer">
+                                <IconButton onClick={() => handleFileOperations(entry, 'download')} size="small">
+                                  <CloudDownload fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Eksporter oppføring">
+                                <IconButton
+                                  onClick={() => {
+                                    const exportData = JSON.stringify(entry, null, 2);
+                                    navigator.clipboard.writeText(exportData);
+                                    showSuccessToast('Oppføring kopiert til utklippstavle');
+                                  }}
+                                  size="small"
+                                >
+                                  <ImportExport fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              {entry.googleKeepNoteId && (
+                                <Tooltip title="Del via Google Keep">
+                                  <IconButton
+                                    onClick={() => {
+                                      setSelectedWorklogId(entry.id.toString());
+                                      setShowCollaborators(true);
+                                    }}
+                                    size="small"
+                                    color="primary"
+                                  >
+                                    <PersonAdd />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              <Tooltip title="Rediger">
+                                <IconButton onClick={() => handleEdit(entry)} size="small" color="primary">
+                                  <Edit />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Slett">
+                                <IconButton onClick={() => deleteEntryMutation.mutate(entry.id)} size="small" color="error">
+                                  <Delete />
+                                </IconButton>
+                              </Tooltip>
+                            </Stack>
+                          </Box>
+                        </Paper>
+                      );
+                    })}
+                  </Box>
+                )}
+              </CardContent>
+            </MuiCard>
+          </Box>
+        </Grid>
+
+        <Grid xs={12} xl={3.8}>
+          <Box sx={{ display: 'grid', gap: 2.5 }}>
+            <MuiCard
+              sx={{
+                borderRadius: 4,
+                border: `1px solid ${alpha(config.color, 0.14)}`,
+                boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
+              }}
+            >
+              <CardContent sx={{ p: 2.25 }}>
+                <Typography variant="overline" sx={{ fontWeight: 700, color: config.color, letterSpacing: '0.14em' }}>
+                  Dagens refleksjon
+                </Typography>
+                <Typography variant="h6" sx={{ mt: 0.75, fontWeight: 700 }}>
+                  {getTodaysSuggestion()}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Bruk dette som utgangspunkt for et ryddig logginnslag når dagen avsluttes.
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+                  <Button
+                    variant="contained"
+                    onClick={() => {
+                      resetForm();
+                      getRandomPrompt();
+                      setShowCreateDialog(true);
+                    }}
+                    sx={{
+                      borderRadius: 999,
+                      bgcolor: config.color,
+                      '&:hover': { bgcolor: alpha(config.color, 0.88) },
+                    }}
+                  >
+                    Svar nå
+                  </Button>
+                  <Button
+                    variant="text"
+                    onClick={getRandomPrompt}
+                    sx={{ borderRadius: 999, color: config.color }}
+                  >
+                    Nytt spørsmål
+                  </Button>
+                </Stack>
+              </CardContent>
+            </MuiCard>
+
+            <MuiCard
+              sx={{
+                borderRadius: 4,
+                border: `1px solid ${alpha(config.color, 0.14)}`,
+                boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
+              }}
+            >
+              <CardContent sx={{ p: 2.25 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                  Synk og samarbeid
+                </Typography>
+
+                <Stack spacing={1.25}>
+                  {[
+                    {
+                      title: 'Realtime',
+                      description: isConnected ? 'Endringer pushes live mellom samarbeidspartnere.' : 'Kjører lokalt uten live-synk akkurat nå.',
+                      status: isConnected ? 'Aktiv' : 'Offline',
+                    },
+                    {
+                      title: 'Google Keep',
+                      description: keepSyncStatus.connected
+                        ? `${keepSyncStatus.syncedEntries} oppføringer er synkronisert.`
+                        : 'Koble til for deling, mobilnotater og enkle påminnelser.',
+                      status: keepSyncStatus.connected ? 'Koblet' : 'Ikke koblet',
+                    },
+                    {
+                      title: 'Push-varsler',
+                      description: pushEnabled ? 'Push er aktivt for relevante worklog-hendelser.' : 'Aktiver varsler for oppdateringer og samarbeid.',
+                      status: pushEnabled ? 'På' : 'Av',
+                    },
+                  ].map((item) => (
+                    <Paper
+                      key={item.title}
+                      elevation={0}
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 2.5,
+                        bgcolor: alpha(theme.palette.background.default, 0.72),
+                        border: `1px solid ${alpha(config.color, 0.1)}`,
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          {item.title}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: config.color, fontWeight: 700 }}>
+                          {item.status}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        {item.description}
+                      </Typography>
+                    </Paper>
+                  ))}
+                </Stack>
+              </CardContent>
+            </MuiCard>
+
+            <MuiCard
+              sx={{
+                borderRadius: 4,
+                border: `1px solid ${alpha(config.color, 0.14)}`,
+                boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
+              }}
+            >
+              <CardContent sx={{ p: 2.25 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                  Arbeidsinnsikter
+                </Typography>
+                <TextField
+                  label="Arbeidslokasjon"
+                  fullWidth
+                  value={workLocation}
+                  onChange={(e) => setWorkLocation(e.target.value)}
+                  onBlur={(e) => handleLocationLookup(e.target.value)}
+                  placeholder="Oslo, Bergen, Trondheim..."
+                  helperText="Legg til lokasjon for vær og reisekostnader."
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => fetchWorklogInsights(workLocation)}
+                  disabled={insightsLoading || !workLocation.trim()}
+                  fullWidth
+                  startIcon={insightsLoading ? <CircularProgress size={18} color="inherit" /> : <Assessment />}
+                  sx={{
+                    mt: 1.5,
+                    borderRadius: 999,
+                    background: `linear-gradient(135deg, ${config.color} 0%, ${alpha(config.color, 0.8)} 100%)`,
+                  }}
+                >
+                  {insightsLoading ? 'Henter innsikt...' : 'Oppdater innsikt'}
+                </Button>
+
+                {worklogInsights ? (
+                  <Stack spacing={1.25} sx={{ mt: 2 }}>
+                    {worklogInsights.weather && (
+                      <Paper
+                        elevation={0}
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 2.5,
+                          bgcolor: alpha(theme.palette.info.main, 0.08),
+                          border: `1px solid ${alpha(theme.palette.info.main, 0.14)}`,
+                        }}
+                      >
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          Vær akkurat nå
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                          {worklogInsights.weather.location}
+                        </Typography>
+                        <Typography variant="h6" sx={{ mt: 0.5, color: 'info.dark', fontWeight: 800 }}>
+                          {worklogInsights.weather.temperature}°C
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Luftfuktighet {worklogInsights.weather.humidity}% • Vind {worklogInsights.weather.windSpeed} m/s
+                        </Typography>
+                      </Paper>
+                    )}
+
+                    {worklogInsights.travelCosts && (
+                      <Paper
+                        elevation={0}
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 2.5,
+                          bgcolor: alpha(theme.palette.warning.main, 0.08),
+                          border: `1px solid ${alpha(theme.palette.warning.main, 0.14)}`,
+                        }}
+                      >
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          Estimert reisekostnad
+                        </Typography>
+                        <Typography variant="h6" sx={{ mt: 0.5, color: 'warning.dark', fontWeight: 800 }}>
+                          {formatTravelCost(worklogInsights.travelCosts.breakdown?.totalCost || 0)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Basert på {worklogInsights.travelCosts.breakdown?.kilometers || 0} km tur/retur
+                        </Typography>
+                      </Paper>
+                    )}
+
+                    {worklogInsights.forecast?.forecast?.length > 0 && (
+                      <Box>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                          Neste tre dager
+                        </Typography>
+                        <Grid container spacing={1}>
+                          {worklogInsights.forecast.forecast.slice(0, 3).map((day: any, index: number) => (
+                            <Grid xs={4} key={index}>
+                              <Paper
+                                elevation={0}
+                                sx={{
+                                  p: 1.2,
+                                  textAlign: 'center',
+                                  borderRadius: 2,
+                                  bgcolor: alpha(theme.palette.background.default, 0.82),
+                                  border: `1px solid ${alpha(config.color, 0.1)}`,
+                                }}
+                              >
+                                <Typography variant="caption" color="text.secondary">
+                                  {new Date(day.date).toLocaleDateString('nb-NO', { weekday: 'short' })}
+                                </Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 700, mt: 0.25 }}>
+                                  {day.temperature}°C
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {day.precipitation} mm
+                                </Typography>
+                              </Paper>
+                            </Grid>
+                          ))}
+                        </Grid>
+                      </Box>
+                    )}
+                  </Stack>
+                ) : (
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      mt: 2,
+                      p: 1.75,
+                      borderRadius: 2.5,
+                      bgcolor: alpha(theme.palette.grey[100], 0.76),
+                      border: `1px dashed ${alpha(config.color, 0.2)}`,
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      Legg inn lokasjon for å hente vær, reisegrunnlag og en enklere planlegging av arbeidsdagen.
+                    </Typography>
+                  </Paper>
+                )}
+              </CardContent>
+            </MuiCard>
+
+            {categoryBreakdown.length > 0 && (
+              <MuiCard
+                sx={{
+                  borderRadius: 4,
+                  border: `1px solid ${alpha(config.color, 0.14)}`,
+                  boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
+                }}
+              >
+                <CardContent sx={{ p: 2.25 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                    Fokusområder
+                  </Typography>
+                  <Stack spacing={1}>
+                    {categoryBreakdown.map((category) => (
+                      <Box key={category.value}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {category.label}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {category.count} innslag
+                          </Typography>
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={Math.max((category.count / Math.max(totalEntries, 1)) * 100, 6)}
+                          sx={{
+                            height: 8,
+                            borderRadius: 999,
+                            bgcolor: alpha(config.color, 0.1),
+                            '& .MuiLinearProgress-bar': {
+                              borderRadius: 999,
+                              bgcolor: config.color,
+                            },
+                          }}
+                        />
+                      </Box>
+                    ))}
+                  </Stack>
+                </CardContent>
+              </MuiCard>
+            )}
+          </Box>
+        </Grid>
+      </Grid>
 
       {/* Create/Edit Dialog */}
       <Dialog 
@@ -1454,34 +2465,64 @@ export default function UniversalWorklog({
         onClose={() => setShowCreateDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
+        scroll="paper"
+        PaperProps={{
+          sx: {
+            borderRadius: isMobile ? 0 : 4,
+            backgroundImage: `linear-gradient(180deg, ${alpha(config.color, 0.08)} 0%, ${theme.palette.background.paper} 28%)`,
+          },
+        }}
       >
-        <DialogTitle>
-          {editingEntry ? 'Rediger Logg-innslag' : 'Nytt Logg-innslag'}
+        <DialogTitle
+          sx={{
+            px: { xs: 2, md: 3 },
+            pt: { xs: 2.5, md: 3 },
+            pb: 2,
+          }}
+        >
+          <Typography variant="overline" sx={{ color: config.color, fontWeight: 700, letterSpacing: '0.14em' }}>
+            {editingEntry ? 'Rediger oppføring' : 'Nytt logginnslag'}
+          </Typography>
+          <Typography variant="h4" sx={{ mt: 0.75, fontWeight: 800, letterSpacing: '-0.04em' }}>
+            {editingEntry ? 'Oppdater worklog' : 'Capture work'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+            Dokumenter arbeid, læring og neste steg i samme flyt. Denne oppføringen kobles direkte til prosjektet ditt.
+          </Typography>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
           {/* Reflection Prompt */}
           {showPrompts && (
-            <MuiCard sx={{ mb: 3, bgcolor: 'info.light', color: 'info.contrastText' }}>
+            <MuiCard
+              sx={{
+                mb: 3,
+                borderRadius: 3,
+                bgcolor: alpha(theme.palette.info.main, 0.1),
+                color: 'text.primary',
+                border: `1px solid ${alpha(theme.palette.info.main, 0.16)}`,
+              }}
+            >
               <CardContent>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center' }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center' }}>
                   <Mood sx={{ mr: 1 }} />
                   Refleksjonsspørsmål
                 </Typography>
-                <Typography variant="body1" sx={{ mb: 2 }}>
+                <Typography variant="body1" sx={{ mb: 2, color: 'text.primary' }}>
                   {dailyPrompts[currentPromptIndex]}
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <Button 
                     size="small" 
                     onClick={() => setCurrentPromptIndex((prev) => (prev + 1) % dailyPrompts.length)}
-                    sx={{ color: 'info.contrastText' }}
+                    sx={{ color: 'info.dark' }}
                   >
                     Neste spørsmål
                   </Button>
                   <Button 
                     size="small" 
                     onClick={() => setShowPrompts(false)}
-                    sx={{ color: 'info.contrastText' }}
+                    sx={{ color: 'text.secondary' }}
                   >
                     Skjul
                   </Button>
@@ -1490,7 +2531,7 @@ export default function UniversalWorklog({
             </MuiCard>
           )}
 
-          <Grid container spacing={3} sx={{ mt: 1 }}>
+          <Grid container spacing={2.25} sx={{ mt: 0.5 }}>
             <Grid xs={12} sm={6}>
               <TextField
                 label="Dag nummer"
@@ -1584,14 +2625,26 @@ export default function UniversalWorklog({
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowCreateDialog(false)}>
+        <DialogActions
+          sx={{
+            px: { xs: 2, md: 3 },
+            py: { xs: 1.5, md: 2 },
+            borderTop: `1px solid ${alpha(config.color, 0.08)}`,
+            justifyContent: 'space-between',
+          }}
+        >
+          <Button onClick={() => setShowCreateDialog(false)} sx={{ borderRadius: 999 }}>
             Avbryt
           </Button>
           <Button 
             onClick={handleSubmit}
             variant="contained"
             disabled={!formData.title.trim() || createEntryMutation.isPending || updateEntryMutation.isPending}
+            sx={{
+              borderRadius: 999,
+              px: 2.5,
+              background: `linear-gradient(135deg, ${config.color} 0%, ${alpha(config.color, 0.8)} 100%)`,
+            }}
           >
             {editingEntry ? 'Oppdater' : 'Lagre'}
           </Button>
@@ -1604,41 +2657,79 @@ export default function UniversalWorklog({
         onClose={() => setShowCollaborators(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
+        scroll="paper"
+        PaperProps={{
+          sx: {
+            borderRadius: isMobile ? 0 : 4,
+            backgroundImage: `linear-gradient(180deg, ${alpha(config.color, 0.08)} 0%, ${theme.palette.background.paper} 24%)`,
+          },
+        }}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ px: { xs: 2, md: 3 }, pt: { xs: 2.5, md: 3 }, pb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Share />
-            <Typography variant="h6">Share Worklog Entry</Typography>
+            <Share sx={{ color: config.color }} />
+            <Box>
+              <Typography variant="overline" sx={{ color: config.color, fontWeight: 700, letterSpacing: '0.14em' }}>
+                Samarbeid
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.04em' }}>
+                Del worklog-oppføring
+              </Typography>
+            </Box>
           </Box>
         </DialogTitle>
-        <DialogContent>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Add collaborators via Google Keep. They'll be able to view and edit this entry in their Google Keep app.
+        <DialogContent sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
+          <Alert severity="info" sx={{ mb: 2, borderRadius: 3 }}>
+            Legg til samarbeidspartnere via Google Keep. De kan lese og oppdatere oppføringen i sin egen Keep-app.
           </Alert>
           
           <TextField
-            label="Collaborator Emails"
+            label="E-postadresser"
             fullWidth
             multiline
             rows={3}
             value={collaboratorEmails}
             onChange={(e) => setCollaboratorEmails(e.target.value)}
-            placeholder="Enter email addresses (one per line)&#10;emma@example.com&#10;jonas@example.com"
-            helperText="Add team members, assistants, or clients who should see this worklog entry in Google Keep"
+            placeholder={'emma@example.com\njonas@example.com'}
+            helperText="Én adresse per linje. Perfekt for team, assistenter eller kunder."
             sx={{ mb: 2 }}
           />
 
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            <strong>Benefits of Google Keep collaboration:</strong>
-            <br />• Collaborators can view the worklog on their phones
-            <br />• They can check off action items in real-time
-            <br />• Changes sync automatically
-            <br />• Perfect for team coordination
-          </Typography>
+          <Stack spacing={1}>
+            {[
+              'Se worklog på mobil umiddelbart',
+              'Check av action points i sanntid',
+              'Endringer synkroniseres automatisk',
+              'Enkelt samarbeid uten ekstra verktøy',
+            ].map((benefit) => (
+              <Paper
+                key={benefit}
+                elevation={0}
+                sx={{
+                  p: 1.25,
+                  borderRadius: 2.5,
+                  bgcolor: alpha(config.color, 0.06),
+                  border: `1px solid ${alpha(config.color, 0.1)}`,
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  {benefit}
+                </Typography>
+              </Paper>
+            ))}
+          </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowCollaborators(false)}>
-            Cancel
+        <DialogActions
+          sx={{
+            px: { xs: 2, md: 3 },
+            py: { xs: 1.5, md: 2 },
+            borderTop: `1px solid ${alpha(config.color, 0.08)}`,
+            justifyContent: 'space-between',
+          }}
+        >
+          <Button onClick={() => setShowCollaborators(false)} sx={{ borderRadius: 999 }}>
+            Avbryt
           </Button>
           <Button 
             onClick={async () => {
@@ -1666,9 +2757,13 @@ export default function UniversalWorklog({
             variant="contained"
             disabled={addingCollaborators || !collaboratorEmails.trim()}
             startIcon={<PersonAdd />}
-            sx={{ bgcolor: config.color }}
+            sx={{
+              borderRadius: 999,
+              px: 2.5,
+              background: `linear-gradient(135deg, ${config.color} 0%, ${alpha(config.color, 0.8)} 100%)`,
+            }}
           >
-            {addingCollaborators ? 'Adding...' : 'Add Collaborators'}
+            {addingCollaborators ? 'Legger til...' : 'Legg til'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1693,29 +2788,69 @@ export default function UniversalWorklog({
 
       {/* Push Notification Settings Dialog */}
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Push-varsler innstillinger</DialogTitle>
-          <DialogContent>
+        <Dialog
+          open={pushSettingsOpen}
+          onClose={() => setPushSettingsOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          fullScreen={isMobile}
+          PaperProps={{
+            sx: {
+              borderRadius: isMobile ? 0 : 4,
+              backgroundImage: `linear-gradient(180deg, ${alpha(config.color, 0.08)} 0%, ${theme.palette.background.paper} 24%)`,
+            },
+          }}
+        >
+          <DialogTitle sx={{ px: { xs: 2, md: 3 }, pt: { xs: 2.5, md: 3 }, pb: 1.5 }}>
+            <Typography variant="overline" sx={{ color: config.color, fontWeight: 700, letterSpacing: '0.14em' }}>
+              Notifikasjoner
+            </Typography>
+            <Typography variant="h5" sx={{ mt: 0.5, fontWeight: 800, letterSpacing: '-0.04em' }}>
+              Push-varsler
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
             <Box sx={{ mt: 2 }}>
               <PushNotificationSettings userId={currentUserId} showDescription={false} />
             </Box>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+          <DialogActions sx={{ px: { xs: 2, md: 3 }, py: 2, borderTop: `1px solid ${alpha(config.color, 0.08)}` }}>
+            <Button onClick={() => setPushSettingsOpen(false)} sx={{ borderRadius: 999 }}>
+              Lukk
+            </Button>
           </DialogActions>
         </Dialog>
       )}
 
       {/* Google Keep Sync Dialog */}
-      <Dialog open={showKeepSync} onClose={() => setShowKeepSync(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Google sx={{ color: '#4285f4' }} />
-          Google Keep Synkronisering
+      <Dialog
+        open={showKeepSync}
+        onClose={() => setShowKeepSync(false)}
+        maxWidth="sm"
+        fullWidth
+        fullScreen={isMobile}
+        PaperProps={{
+          sx: {
+            borderRadius: isMobile ? 0 : 4,
+            backgroundImage: `linear-gradient(180deg, ${alpha('#4285f4', 0.08)} 0%, ${theme.palette.background.paper} 26%)`,
+          },
+        }}
+      >
+        <DialogTitle sx={{ px: { xs: 2, md: 3 }, pt: { xs: 2.5, md: 3 }, pb: 1.5 }}>
+          <Typography variant="overline" sx={{ color: '#4285f4', fontWeight: 700, letterSpacing: '0.14em' }}>
+            Google Workspace
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+            <Google sx={{ color: '#4285f4' }} />
+            <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.04em' }}>
+              Google Keep synkronisering
+            </Typography>
+          </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
           <Alert 
             severity={keepSyncStatus.connected ? 'success' : 'info'} 
-            sx={{ mb: 2 }}
+            sx={{ mb: 2, borderRadius: 3 }}
             icon={keepSyncStatus.connected ? <CloudSync /> : <Sync />}
           >
             {keepSyncStatus.connected 
@@ -1729,18 +2864,41 @@ export default function UniversalWorklog({
             </Typography>
           )}
           
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Med Google Keep-synkronisering kan du:
-          </Typography>
-          <Box component="ul" sx={{ pl: 2, mb: 2 }}>
-            <li>Se arbeidslogg-notater på mobilen</li>
-            <li>Dele notater med samarbeidspartnere</li>
-            <li>Få påminnelser om oppgaver</li>
-            <li>Jobbe offline og synkronisere senere</li>
-          </Box>
+          <Stack spacing={1}>
+            {[
+              'Se arbeidslogg-notater på mobilen',
+              'Dele notater med samarbeidspartnere',
+              'Få påminnelser om oppgaver',
+              'Jobbe offline og synkronisere senere',
+            ].map((item) => (
+              <Paper
+                key={item}
+                elevation={0}
+                sx={{
+                  p: 1.25,
+                  borderRadius: 2.5,
+                  bgcolor: alpha('#4285f4', 0.06),
+                  border: `1px solid ${alpha('#4285f4', 0.1)}`,
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  {item}
+                </Typography>
+              </Paper>
+            ))}
+          </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowKeepSync(false)}>Lukk</Button>
+        <DialogActions
+          sx={{
+            px: { xs: 2, md: 3 },
+            py: { xs: 1.5, md: 2 },
+            borderTop: `1px solid ${alpha('#4285f4', 0.08)}`,
+            justifyContent: 'space-between',
+          }}
+        >
+          <Button onClick={() => setShowKeepSync(false)} sx={{ borderRadius: 999 }}>
+            Lukk
+          </Button>
           {!keepSyncStatus.connected && (
             <Button 
               variant="contained"
@@ -1748,7 +2906,12 @@ export default function UniversalWorklog({
               onClick={() => {
                 window.open('/api/auth/google/keep', '_blank');
               }}
-              sx={{ bgcolor: '#4285f4', '&:hover': { bgcolor: '#3367d6' } }}
+              sx={{
+                borderRadius: 999,
+                px: 2.5,
+                bgcolor: '#4285f4',
+                '&:hover': { bgcolor: '#3367d6' },
+              }}
             >
               Koble til Google Keep
             </Button>

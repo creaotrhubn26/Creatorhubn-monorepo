@@ -10,11 +10,10 @@
  * Uses database persistence via API with localStorage fallback
  */
 
-import type { Storyboard} from '../../state/storyboardStore';
-import { StoryboardFrame } from '../../state/storyboardStore';
+import type { Storyboard } from '../../state/storyboardStore';
 import { logger } from '../services/logger';
 
-const log = logger.module('Storyboard, ');
+const log = logger.module('Storyboard');
 import {
   commentsApi,
   versionsApi,
@@ -182,7 +181,7 @@ export class StoryboardCollaborationService {
     activeCollaborators: [],
   };
   private eventHandlers: CollaborationEventHandler[] = [];
-  private autoSaveInterval: NodeJS.Timer | null = null;
+  private autoSaveInterval: ReturnType<typeof setInterval> | null = null;
   private lastAutoSaveVersion: number = 0;
 
   // =========================================================================
@@ -425,8 +424,8 @@ export class StoryboardCollaborationService {
       const comment = this.findComment(commentId);
       if (comment) {
         comment.status = 'open';
-        comment.resolvedAt = undefined;
-        comment.resolvedBy = undefined;
+        comment.resolvedAt = dbComment.resolvedAt ?? undefined;
+        comment.resolvedBy = dbComment.resolvedBy ?? undefined;
       }
       return comment;
     } catch (error) {
@@ -708,9 +707,10 @@ export class StoryboardCollaborationService {
   ): Promise<TeamMember | null> {
     try {
       const dbMember = await teamApi.updatePermission(memberId, permission);
-      const member = this.state.teamMembers.find(m => m.id === memberId);
+      const member = this.state.teamMembers.find(m => m.id === memberId) ?? null;
       if (member) {
-        member.permission = permission;
+        member.permission = dbMember.permission as PermissionLevel;
+        member.lastActiveAt = dbMember.lastActiveAt;
       }
       return member;
     } catch (error) {
@@ -953,4 +953,3 @@ export class StoryboardCollaborationService {
 export const storyboardCollaborationService = new StoryboardCollaborationService();
 
 export default storyboardCollaborationService;
-

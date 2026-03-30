@@ -108,6 +108,19 @@ export interface CacheStats {
   visibleObjects: number; // Number of visible objects (rendered)
 }
 
+type MaterialWithTextureMaps = THREE.Material & {
+  map?: THREE.Texture | null;
+  normalMap?: THREE.Texture | null;
+  roughnessMap?: THREE.Texture | null;
+  metalnessMap?: THREE.Texture | null;
+  aoMap?: THREE.Texture | null;
+};
+
+interface TextureImageDimensions {
+  width: number;
+  height: number;
+}
+
 // ============================================================================
 // Asset Loading Service
 // ============================================================================
@@ -115,7 +128,7 @@ export interface CacheStats {
 export class AssetLoadingService {
   // Loaders
   private gltfLoader: GLTFLoader;
-  private dracoLoader: DRACOLoader;
+  private dracoLoader: DRACOLoader | null = null;
 
   // Caches
   private modelCache: Map<string, THREE.Group> = new Map();
@@ -161,6 +174,48 @@ export class AssetLoadingService {
       this.dracoLoader.setDecoderPath('/draco/'); // Adjust path as needed
       this.gltfLoader.setDRACOLoader(this.dracoLoader);
     }
+  }
+
+  private cloneMaterial(
+    material: THREE.Material | THREE.Material[],
+  ): THREE.Material | THREE.Material[] {
+    return Array.isArray(material)
+      ? material.map((entry) => entry.clone())
+      : material.clone();
+  }
+
+  private getMaterialTextures(material: THREE.Material): THREE.Texture[] {
+    const materialWithTextures = material as MaterialWithTextureMaps;
+    const textures = [
+      materialWithTextures.map,
+      materialWithTextures.normalMap,
+      materialWithTextures.roughnessMap,
+      materialWithTextures.metalnessMap,
+      materialWithTextures.aoMap,
+    ];
+
+    return textures.filter((texture): texture is THREE.Texture => texture instanceof THREE.Texture);
+  }
+
+  private getTextureImageDimensions(texture: THREE.Texture): TextureImageDimensions | null {
+    const image = texture.image;
+
+    if (typeof image !== 'object' || image === null) {
+      return null;
+    }
+
+    const maybeDimensions = image as Partial<TextureImageDimensions>;
+    if (
+      typeof maybeDimensions.width === 'number' &&
+      typeof maybeDimensions.height === 'number'
+    ) {
+      return {
+        width: maybeDimensions.width,
+        height: maybeDimensions.height,
+      };
+    }
+
+    return null;
   }
 
   /**
@@ -468,20 +523,8 @@ export class AssetLoadingService {
         const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
 
         materials.forEach((material) => {
-          if (material && (material as any).map) {
-            textures.add((material as any).map);
-          }
-          if (material && (material as any).normalMap) {
-            textures.add((material as any).normalMap);
-          }
-          if (material && (material as any).roughnessMap) {
-            textures.add((material as any).roughnessMap);
-          }
-          if (material && (material as any).metalnessMap) {
-            textures.add((material as any).metalnessMap);
-          }
-          if (material && (material as any).aoMap) {
-            textures.add((material as any).aoMap);
+          if (material) {
+            this.getMaterialTextures(material).forEach((texture) => textures.add(texture));
           }
         });
       }
@@ -512,7 +555,7 @@ export class AssetLoadingService {
     // Reuse geometry (instancing), clone material (for customization)
     const mesh = new THREE.Mesh(
       originalMesh.geometry, // Reuse geometry
-      options.shareMaterials ? originalMesh.material : originalMesh.material.clone()
+      options.shareMaterials ? originalMesh.material : this.cloneMaterial(originalMesh.material)
     );
 
     mesh.castShadow = options.castShadow !== false;
@@ -559,7 +602,7 @@ export class AssetLoadingService {
         // Reuse geometry, clone material
         const mesh = new THREE.Mesh(
           originalMesh.geometry, // Reuse
-          originalMesh.material.clone() // Clone for customization
+          this.cloneMaterial(originalMesh.material) // Clone for customization
         );
 
         mesh.name = originalMesh.name;
@@ -644,11 +687,12 @@ export class AssetLoadingService {
    * Compress texture for better memory usage
    */
   private compressTexture(texture: THREE.Texture): void {
-    if (!texture.image) return;
+    const imageDimensions = this.getTextureImageDimensions(texture);
+    if (!imageDimensions) return;
 
     // Reduce texture size if too large
     const maxSize = 2048;
-    if (texture.image.width > maxSize || texture.image.height > maxSize) {
+    if (imageDimensions.width > maxSize || imageDimensions.height > maxSize) {
       texture.minFilter = THREE.LinearMipmapLinearFilter;
       texture.magFilter = THREE.LinearFilter;
       texture.generateMipmaps = true;
@@ -711,9 +755,9 @@ export class AssetLoadingService {
         const mesh = child as THREE.Mesh;
         const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         materials.forEach((material) => {
-          if (material && (material as any).map) textures.add((material as any).map);
-          if (material && (material as any).normalMap) textures.add((material as any).normalMap);
-          if (material && (material as any).roughnessMap) textures.add((material as any).roughnessMap);
+          if (material) {
+            this.getMaterialTextures(material).forEach((texture) => textures.add(texture));
+          }
         });
       }
     });
@@ -738,12 +782,16 @@ export class AssetLoadingService {
         // Texture memory (rough estimate)
         const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         materials.forEach((material) => {
-          if (material && (material as any).map) {
-            const tex = (material as any).map;
-            if (tex.image) {
-              bytes += tex.image.width * tex.image.height * 4; // RGBA
-            }
+          if (!material) {
+            return;
           }
+
+          this.getMaterialTextures(material).forEach((texture) => {
+            const imageDimensions = this.getTextureImageDimensions(texture);
+            if (imageDimensions) {
+              bytes += imageDimensions.width * imageDimensions.height * 4; // RGBA
+            }
+          });
         });
       }
     });
@@ -857,7 +905,9 @@ export class AssetLoadingService {
 
             // This is a very basic simplification
             // For production, use libraries like three-mesh-bvh or simplify-js
-            log.debug(`Simplified mesh from ${positions.count} to ~${newCount} vertices`);
+            log.debug(`Simplified mesh from ${positions.count} to ~${newCount} vertices`, {
+              samplingStep: step,
+            });
           }
 
           mesh.geometry = geometry;
@@ -1458,4 +1508,3 @@ export class AssetLoadingService {
 // ============================================================================
 
 export const assetLoadingService = new AssetLoadingService();
-

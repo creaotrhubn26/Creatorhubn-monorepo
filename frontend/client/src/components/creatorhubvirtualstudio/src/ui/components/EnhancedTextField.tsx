@@ -9,9 +9,9 @@ import { TextField } from '@mui/material';
 import type { TextFieldProps } from '@mui/material/TextField';
 import { colors, borderRadius, transitions } from '../../styles/designTokens';
 
-export interface EnhancedTextFieldProps extends TextFieldProps {
+export type EnhancedTextFieldProps = TextFieldProps & {
   // Additional props can be added here
-}
+};
 
 export const EnhancedTextField: React.FC<EnhancedTextFieldProps> = ({
   sx,
@@ -58,5 +58,4 @@ export const EnhancedTextField: React.FC<EnhancedTextFieldProps> = ({
     />
   );
 };
-
 

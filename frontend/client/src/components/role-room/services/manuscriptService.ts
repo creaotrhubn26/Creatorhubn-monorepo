@@ -1912,7 +1912,7 @@ class ManuscriptService {
   /**
    * Update a manuscript
    */
-  async updateManuscript(manuscript: Manuscript): Promise<Manuscript> {
+  async updateManuscript(manuscript: Manuscript, signal?: AbortSignal): Promise<Manuscript> {
     manuscript.updatedAt = new Date().toISOString();
     
     const isDbAvailable = await checkDatabaseAvailability();
@@ -1923,6 +1923,7 @@ class ManuscriptService {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(manuscript),
+          signal,
         });
         
         if (!response.ok) {
