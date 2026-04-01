@@ -46,6 +46,10 @@ import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
 import AcademyLeftSidebar from "./AcademyLeftSidebar";
 import AcademyStudentSidebar from "./AcademyStudentSidebar";
+import {
+  buildAcademyStudentNextAction,
+  describeAcademyStudentAssignmentStatus,
+} from "./academyStudentExperience";
 
 interface AcademyAssignmentsStudioProps {
   courseId?: string;
@@ -1809,6 +1813,102 @@ function AcademyAssignmentsStudio({
       ),
     [buildStudentRoute, selectedAssignmentLessonId],
   );
+  const studentAssignmentsNeedingAttention = useMemo(() => {
+    const now = Date.now();
+    const nextWeek = now + 7 * 86400000;
+    return studentVisibleAssignments.filter((assignment) => {
+      if (assignment.status === "overdue") return true;
+      const dueAt = new Date(String(assignment.dueDate || "")).getTime();
+      return Number.isFinite(dueAt) && dueAt >= now && dueAt <= nextWeek;
+    }).length;
+  }, [studentVisibleAssignments]);
+  const studentNextAction = useMemo(
+    () =>
+      buildAcademyStudentNextAction({
+        tt,
+        courseTitle: activeCourse?.title,
+        lessonTitle: studentSelectedAssignment?.title,
+        pendingAssignments: studentVisibleAssignments.length,
+        dueSoonAssignments: studentAssignmentsNeedingAttention,
+        feedbackCount: feedbackItems.length,
+        progressPercent: studentProgressStats.progressPercent,
+        resourceCount: visibleAssignments.length > 0 ? 1 : 0,
+        isNewStudent: studentProgressStats.progressPercent <= 0,
+      }),
+    [
+      activeCourse?.title,
+      feedbackItems.length,
+      studentAssignmentsNeedingAttention,
+      studentProgressStats.progressPercent,
+      studentSelectedAssignment?.title,
+      studentVisibleAssignments.length,
+      tt,
+      visibleAssignments.length,
+    ],
+  );
+  const studentSidebarNextActionRoute =
+    studentNextAction.id === "feedback"
+      ? `/academy/settings?tab=messages${studentSelectedAssignment ? `&assignmentId=${encodeURIComponent(studentSelectedAssignment.id)}` : ""}`
+      : studentNextAction.id === "resources"
+        ? studentResourcesRoute
+        : studentPlayerRoute;
+  const studentSidebarNextActionLabel =
+    studentNextAction.id === "feedback"
+      ? tt("Åpne dialog", "Open messages")
+      : studentNextAction.id === "resources"
+        ? tt("Se ressurser", "View resources")
+        : tt("Arbeid i spiller", "Work in player");
+  const selectedAssignmentStatusMeta = useMemo(
+    () =>
+      studentSelectedAssignment
+        ? describeAcademyStudentAssignmentStatus(studentSelectedAssignment.status, tt)
+        : null,
+    [studentSelectedAssignment, tt],
+  );
+  const selectedAssignmentCriteria = useMemo(() => {
+    if (!studentSelectedAssignment) return [];
+    return [
+      tt(
+        `Vis konkret forbedring i ${studentSelectedAssignment.skillTitle || tt("denne ferdigheten", "this skill")}.`,
+        `Show concrete improvement in ${studentSelectedAssignment.skillTitle || "this skill"}.`,
+      ),
+      studentSelectedAssignment.feedbackRequired
+        ? tt(
+            "Knytt refleksjonen til valgene du tok og resultatet du fikk.",
+            "Tie the reflection to the choices you made and the result you achieved.",
+          )
+        : tt(
+            "Forklar kort hvorfor du løste oppgaven slik du gjorde.",
+            "Briefly explain why you solved the assignment the way you did.",
+          ),
+      studentSelectedAssignment.retryEnabled
+        ? tt(
+            "Lever noe som er lett å justere etter instruktørens feedback.",
+            "Submit something that is easy to iterate on after instructor feedback.",
+          )
+        : tt(
+            "Lever en tydelig versjon som kan vurderes uten ekstra kontekst.",
+            "Submit a clear version that can be reviewed without extra context.",
+          ),
+    ];
+  }, [studentSelectedAssignment, tt]);
+  const strongSubmissionExample = useMemo(() => {
+    if (!studentSelectedAssignment) return [];
+    return [
+      tt(
+        "En kort levering med tydelig før/etter-effekt slår ofte en lang, uklar levering.",
+        "A short submission with a clear before/after effect usually beats a long, unclear one.",
+      ),
+      tt(
+        `Bruk ${studentSelectedAssignment.skillTitle || tt("ressursene", "the resources")} som støtte, ikke som hovedleveranse.`,
+        `Use ${studentSelectedAssignment.skillTitle || "the resources"} as support, not as the main submission.`,
+      ),
+      tt(
+        "Legg ved en refleksjon som forklarer hva du endret og hvorfor det fungerer bedre.",
+        "Include a reflection that explains what you changed and why it works better.",
+      ),
+    ];
+  }, [studentSelectedAssignment, tt]);
 
   if (isStudentMode) {
     return (
@@ -1850,11 +1950,16 @@ function AcademyAssignmentsStudio({
             studentName={studentName}
             activeCourseId={activeCourse?.id ? String(activeCourse.id) : null}
             activeCourseTitle={activeCourse?.title || undefined}
+            instructorName={activeCourse?.instructor?.name || undefined}
             progressPercent={studentProgressStats.progressPercent}
             completedLessons={studentProgressStats.completedLessons}
             totalLessons={studentProgressStats.totalLessons}
             returnTo={studentBaseReturnTo}
             continueRoute={studentPlayerRoute}
+            nextActionTitle={studentNextAction.title}
+            nextActionDetail={studentNextAction.detail}
+            nextActionRoute={studentSidebarNextActionRoute}
+            nextActionLabel={studentSidebarNextActionLabel}
           />
 
           <Box
@@ -2054,9 +2159,12 @@ function AcademyAssignmentsStudio({
                           <Stack spacing={0.55}>
                             <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
                               <Chip
-                                label={statusLabel(assignment.status)}
+                                label={describeAcademyStudentAssignmentStatus(assignment.status, tt).label}
                                 size="small"
-                                sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#edf0f7" }}
+                                sx={{
+                                  bgcolor: describeAcademyStudentAssignmentStatus(assignment.status, tt).chipBg,
+                                  color: describeAcademyStudentAssignmentStatus(assignment.status, tt).chipColor,
+                                }}
                               />
                               <Chip
                                 label={assignmentTypeLabel(assignment.assignmentType)}
@@ -2119,10 +2227,28 @@ function AcademyAssignmentsStudio({
                         sx={{ bgcolor: "rgba(248,179,33,0.16)", color: "#f8d56f" }}
                       />
                       <Chip
-                        label={`${formatMinuteSecond(studentSelectedAssignment.triggerAt)}-${formatMinuteSecond(studentSelectedAssignment.endAt)}`}
-                        sx={{ bgcolor: "rgba(120,187,255,0.14)", color: "#d8ecff" }}
+                        label={selectedAssignmentStatusMeta?.label || statusLabel(studentSelectedAssignment.status)}
+                        sx={{
+                          bgcolor: selectedAssignmentStatusMeta?.chipBg || "rgba(120,187,255,0.14)",
+                          color: selectedAssignmentStatusMeta?.chipColor || "#d8ecff",
+                        }}
                       />
                     </Stack>
+
+                    <Box sx={{ ...panelSx, p: 1, borderColor: "rgba(255,255,255,0.1)" }}>
+                      <Typography sx={{ fontSize: 13, color: "rgba(237,240,247,0.62)" }}>
+                        {tt("Neste handling", "Next action")}
+                      </Typography>
+                      <Typography sx={{ mt: 0.35, fontWeight: 700 }}>
+                        {selectedAssignmentStatusMeta?.label || tt("Pågår", "In progress")}
+                      </Typography>
+                      <Typography sx={{ mt: 0.35, lineHeight: 1.5, color: "rgba(237,240,247,0.74)" }}>
+                        {selectedAssignmentStatusMeta?.detail}
+                      </Typography>
+                      <Typography sx={{ mt: 0.55, fontSize: 12, color: "rgba(237,240,247,0.58)" }}>
+                        {tt("Frist", "Due")}: {formatDateRange(studentSelectedAssignment.startDate, studentSelectedAssignment.dueDate, dateLocale)}
+                      </Typography>
+                    </Box>
 
                     <Box sx={{ ...panelSx, p: 1, borderColor: "rgba(255,255,255,0.1)" }}>
                       <Typography sx={{ fontSize: 13, color: "rgba(237,240,247,0.62)" }}>
@@ -2140,6 +2266,46 @@ function AcademyAssignmentsStudio({
                       <Typography sx={{ mt: 0.35, lineHeight: 1.5 }}>
                         {studentSelectedAssignment.reflectionPrompt}
                       </Typography>
+                    </Box>
+
+                    <Box sx={{ ...panelSx, p: 1, borderColor: "rgba(255,255,255,0.1)" }}>
+                      <Typography sx={{ fontSize: 13, color: "rgba(237,240,247,0.62)" }}>
+                        {tt("Slik blir du vurdert", "How you will be assessed")}
+                      </Typography>
+                      <Stack spacing={0.65} sx={{ mt: 0.7 }}>
+                        {selectedAssignmentCriteria.map((item) => (
+                          <Box
+                            key={item}
+                            sx={{
+                              borderRadius: 1,
+                              border: "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+                              bgcolor: "rgba(10,14,22,0.64)",
+                              px: 0.8,
+                              py: 0.75,
+                            }}
+                          >
+                            <Typography sx={{ fontSize: 13, color: "rgba(237,240,247,0.82)" }}>
+                              {item}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </Box>
+
+                    <Box sx={{ ...panelSx, p: 1, borderColor: "rgba(255,255,255,0.1)" }}>
+                      <Typography sx={{ fontSize: 13, color: "rgba(237,240,247,0.62)" }}>
+                        {tt("Eksempel på sterk levering", "Example of a strong submission")}
+                      </Typography>
+                      <Stack spacing={0.65} sx={{ mt: 0.7 }}>
+                        {strongSubmissionExample.map((item) => (
+                          <Typography
+                            key={item}
+                            sx={{ fontSize: 13, color: "rgba(237,240,247,0.78)", lineHeight: 1.5 }}
+                          >
+                            {item}
+                          </Typography>
+                        ))}
+                      </Stack>
                     </Box>
 
                     <Stack spacing={0.7}>

@@ -211,14 +211,19 @@ export default function ShowcaseAdmin() {
       <Box sx={{ 
         minHeight: '100vh', 
         position: 'relative',
-        bgcolor: muiTheme.palette.mode === 'dark' ? '#0a0a0a' : '#fafafa',
+        bgcolor: '#06080d',
+        color: '#edf0f7',
+        fontFamily: '"Manrope", "Barlow", "Segoe UI", sans-serif',
+        background:
+          'radial-gradient(circle at 74% 12%, rgba(248,179,33,0.18), rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, rgba(82,121,204,0.12), rgba(6,8,14,0) 44%), linear-gradient(135deg, #06080d 0%, #090d16 52%, #120d08 100%)',
       }}>
         
         {/* Header Section */}
         <Box
           sx={{
-            background: `linear-gradient(135deg, ${alpha(theming.colors.primary, 0.08)} 0%, ${alpha(theming.colors.secondary, 0.05)} 100%)`,
-            borderBottom: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+            background:
+              'linear-gradient(180deg, rgba(13,16,25,0.95), rgba(10,13,20,0.9))',
+            borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
             px: { xs: 2, md: 4 },
             py: 3,
           }}
@@ -244,7 +249,9 @@ export default function ShowcaseAdmin() {
                     variant="h4" 
                     sx={{ 
                       fontWeight: 700,
-                      background: `linear-gradient(135deg, ${theming.colors.primary} 0%, ${theming.colors.secondary} 100%)`,
+                      fontFamily: 'Barlow Condensed, sans-serif',
+                      letterSpacing: '0.04em',
+                      background: 'linear-gradient(135deg, #f8d27a 0%, #f5a623 100%)',
                       backgroundClip: 'text',
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
@@ -252,7 +259,7 @@ export default function ShowcaseAdmin() {
                   >
                     Showcase Admin
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.64)' }}>
                     Administrer ditt portfolio og showcase
                   </Typography>
                 </Box>
@@ -351,8 +358,9 @@ export default function ShowcaseAdmin() {
           sx={{
             px: { xs: 2, md: 4 },
             py: 2,
-            borderBottom: `1px solid ${alpha(theming.colors.primary, 0.08)}`,
-            bgcolor: muiTheme.palette.background.paper,
+            borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
+            bgcolor: 'rgba(11,15,24,0.82)',
+            backdropFilter: 'blur(20px)',
           }}
         >
           <Box sx={{ maxWidth: 1400, mx: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>

@@ -460,6 +460,9 @@ export const PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS: Record<ProducerClientCo
 export const PRODUCER_WORKSPACE_SURFACE_LABELS: Record<ProducerWorkspaceSurfaceKey, string> = {
   brief: 'Brief',
   materials: 'Materiale',
+  storyboard: 'Storyboard',
+  manuscript: 'Manus',
+  shotlist: 'Shotlist',
   brand: 'Merkevareguide',
   accounts: 'Kontotilgang',
   delivery: 'Leveringsrutine',
@@ -514,6 +517,9 @@ export const PRODUCER_WORKSPACE_PAGE_PLACEMENT_LABELS: Record<ProducerWorkspaceP
 export const PRODUCER_WORKSPACE_SURFACE_COLORS: Record<ProducerWorkspaceSurfaceKey, string> = {
   brief: '#38bdf8',
   materials: '#fbbf24',
+  storyboard: '#fb7185',
+  manuscript: '#818cf8',
+  shotlist: '#22d3ee',
   brand: '#a855f7',
   accounts: '#14b8a6',
   delivery: '#22c55e',
@@ -1248,6 +1254,20 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
       layout: 'split',
     },
   );
+  const editorialSection = createProducerWorkspaceSection(
+    'Storyboard og manus',
+    [
+      createProducerWorkspacePage('storyboard', { id: 'workspace-page-storyboard', pinned: true, order: 0 }),
+      createProducerWorkspacePage('manuscript', { id: 'workspace-page-manuscript', pinned: true, order: 1 }),
+      createProducerWorkspacePage('shotlist', { id: 'workspace-page-shotlist', pinned: true, order: 2 }),
+    ],
+    {
+      id: 'workspace-section-editorial',
+      color: '#818cf8',
+      order: 1,
+      layout: 'focus',
+    },
+  );
   const deliverySection = createProducerWorkspaceSection(
     'Retning, tilgang og levering',
     [
@@ -1258,7 +1278,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     {
       id: 'workspace-section-delivery',
       color: '#a855f7',
-      order: 1,
+      order: 2,
       layout: 'focus',
     },
   );
@@ -1270,7 +1290,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     {
       id: 'workspace-section-meetings',
       color: '#f97316',
-      order: 2,
+      order: 3,
       layout: 'focus',
     },
   );
@@ -1281,7 +1301,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     navigationPinned: true,
     activeSectionId: foundationSection.id,
     activePageId: foundationSection.pages[0]?.id,
-    sections: [foundationSection, deliverySection, meetingsSection],
+    sections: [foundationSection, editorialSection, deliverySection, meetingsSection],
   };
 };
 
@@ -1305,6 +1325,9 @@ const normalizeProducerWorkspacePage = (value: unknown, index: number): Producer
 
   const surface = record.surface;
   const normalizedSurface: ProducerWorkspaceSurfaceKey = surface === 'materials'
+    || surface === 'storyboard'
+    || surface === 'manuscript'
+    || surface === 'shotlist'
     || surface === 'brand'
     || surface === 'accounts'
     || surface === 'delivery'

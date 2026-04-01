@@ -85,68 +85,148 @@ async function downloadBlob(url: string, filename: string): Promise<void> {
   document.body.removeChild(link);
 }
 
+function buildLightroomUrl(pathname: string, userId?: string | null): string {
+  const normalizedUserId = typeof userId === 'string' && userId.trim().length > 0 ? userId.trim() : null;
+  if (!normalizedUserId) {
+    return pathname;
+  }
+
+  const separator = pathname.includes('?') ? '&' : '?';
+  return `${pathname}${separator}userId=${encodeURIComponent(normalizedUserId)}`;
+}
+
 function getStoredAuthUser(): { id: string | null; email: string | null } {
   try {
     const storedUserRaw = localStorage.getItem('creatorhub_auth_user');
     const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
     const idCandidate = storedUser?.id || storedUser?.userId || localStorage.getItem('userId') || null;
     const emailCandidate = storedUser?.email || storedUser?.userEmail || null;
-
-    return {
+    const resolvedUser = {
       id: typeof idCandidate === 'string' && idCandidate.trim().length > 0 ? idCandidate.trim() : null,
       email: typeof emailCandidate === 'string' && emailCandidate.trim().length > 0
         ? emailCandidate.trim().toLowerCase()
         : null,
     };
+
+    if (resolvedUser.id || resolvedUser.email) {
+      return resolvedUser;
+    }
+
+    return getDevFallbackAuthUser();
   } catch {
-    return { id: null, email: null };
+    return getDevFallbackAuthUser();
   }
 }
 
+function getDevFallbackAuthUser(): { id: string | null; email: string | null } {
+  const isDevelopment = typeof window !== 'undefined'
+    && (import.meta.env.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  if (!isDevelopment) {
+    return { id: null, email: null };
+  }
+
+  return {
+    id: 'local-admin',
+    email: 'admin@local.dev',
+  };
+}
+
+function resolveRequestedUserId(userId?: string | null): string | null {
+  const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
+  if (normalizedUserId && normalizedUserId.toLowerCase() !== 'guest') {
+    return normalizedUserId;
+  }
+
+  const storedAuthUser = getStoredAuthUser();
+  return storedAuthUser.id;
+}
+
 export const lightroomIntegrationService = {
-  async getStatus(): Promise<LightroomIntegrationStatus> {
-    return apiRequest('/api/lightroom/status') as Promise<LightroomIntegrationStatus>;
+  async getStatus(userId?: string): Promise<LightroomIntegrationStatus> {
+    try {
+      return await apiRequest(buildLightroomUrl('/api/lightroom/status', resolveRequestedUserId(userId))) as LightroomIntegrationStatus;
+    } catch (error) {
+      const status = typeof error === 'object' && error !== null && 'status' in error
+        ? (error as { status?: unknown }).status
+        : undefined;
+      if (status === 401) {
+        return {
+          connected: false,
+          pluginVersion: '1.0.0',
+          tokenPreview: null,
+          workspaceConnected: false,
+          googleEmail: null,
+          storedScopes: [],
+          workspaceError: 'Brukeridentitet mangler.',
+          workspaceSource: null,
+          workspaceWarning: 'Logg inn eller velg bruker før Lightroom kobles til.',
+          driveRootFolderId: null,
+          driveRootFolderName: null,
+          driveRootFolderUrl: null,
+          lastSyncAt: null,
+          lastShowcaseItemId: null,
+          lastDriveFileId: null,
+          lastError: null,
+          syncStatus: 'idle',
+          configuration: {},
+          packageDownloadUrl: '/api/lightroom/download-plugin',
+          apiBaseUrl: window.location.origin,
+          recentRuns: [],
+        };
+      }
+
+      throw error;
+    }
   },
 
-  async rotateToken(): Promise<LightroomTokenResponse> {
+  async rotateToken(userId?: string): Promise<LightroomTokenResponse> {
+    const resolvedUserId = resolveRequestedUserId(userId);
     return apiRequest('/api/lightroom/token', {
       method: 'POST',
-      body: { rotate: true },
+      body: { rotate: true, userId: resolvedUserId },
     }) as Promise<LightroomTokenResponse>;
   },
 
-  async ensureToken(): Promise<LightroomTokenResponse> {
+  async ensureToken(userId?: string): Promise<LightroomTokenResponse> {
+    const resolvedUserId = resolveRequestedUserId(userId);
     return apiRequest('/api/lightroom/token', {
       method: 'POST',
-      body: { rotate: false },
+      body: { rotate: false, userId: resolvedUserId },
     }) as Promise<LightroomTokenResponse>;
   },
 
-  async downloadPluginPackage(rotate = false): Promise<void> {
+  async downloadPluginPackage(rotate = false, userId?: string): Promise<void> {
     const suffix = rotate ? '?rotate=true' : '';
     await downloadBlob(
-      `/api/lightroom/download-plugin${suffix}`,
+      buildLightroomUrl(`/api/lightroom/download-plugin${suffix}`, resolveRequestedUserId(userId)),
       'CreatorHubNorge-Lightroom-Plugin.zip',
     );
   },
 
-  async runSmokeExport(): Promise<LightroomExportResult> {
+  async runSmokeExport(userId?: string): Promise<LightroomExportResult> {
+    const resolvedUserId = resolveRequestedUserId(userId);
     return apiRequest('/api/lightroom/smoke-export', {
       method: 'POST',
-      body: {},
+      body: { userId: resolvedUserId },
     }) as Promise<LightroomExportResult>;
   },
 
-  async startGoogleWorkspaceReconnect(): Promise<void> {
+  async startGoogleWorkspaceReconnect(userId?: string): Promise<void> {
     const authUser = getStoredAuthUser();
+    const resolvedUserId = resolveRequestedUserId(userId);
+    const targetConnectionEmail =
+      authUser.email && !authUser.email.endsWith('@local.dev')
+        ? authUser.email
+        : null;
     const response = await apiRequest('/api/role-room/google/oauth/start', {
       method: 'POST',
       body: {
         mode: 'link',
         browserOrigin: window.location.origin,
         returnPath: `${window.location.pathname}${window.location.search}`,
-        targetConnectionUserId: authUser.id,
-        targetConnectionEmail: authUser.email,
+        targetConnectionUserId: resolvedUserId,
+        targetConnectionEmail,
       },
     }) as { authorizationUrl?: string };
 

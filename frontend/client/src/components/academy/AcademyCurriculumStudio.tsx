@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Avatar,
   Box,
@@ -27,21 +28,26 @@ import {
   ArrowUpward,
   AutoAwesome,
   CheckCircleOutline,
+  ContentCopy,
   DeleteOutline,
   HourglassTop,
   LockOpen,
   LockOutlined,
   MailOutline,
   NotificationsNone,
+  OpenInNew,
   Publish,
   Refresh,
   Save,
+  Videocam,
   VisibilityOff,
 } from "@mui/icons-material";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import {
   useAcademy,
+  type AcademyGoogleProductionSceneDraft,
+  type AcademyGoogleProductionWorkflow,
   type Course,
   type PedagogicalAnnotationSuggestion,
   type PedagogicalArchitecture,
@@ -58,6 +64,29 @@ import { withUniversalIntegration } from "@/integration/UniversalIntegrationHOC"
 import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
 import AcademyLeftSidebar from "./AcademyLeftSidebar";
+import {
+  type AcademyVidsPresenterScene,
+  academyVidsRecordingModeLabel,
+  buildAcademyVidsPresenterPlan,
+  buildAcademyVidsPresenterPlanFromScenes,
+} from "./academyVidsPresenterPlan";
+import { academyGoogleVidsService } from "@/services/academyGoogleVidsService";
+import {
+  NOTEBOOK_LM_HOME_URL,
+  academyNotebookLmService,
+} from "@/services/academyNotebookLmService";
+import {
+  academyGoogleWorkspaceService,
+  type AcademyGoogleDriveFileItem,
+} from "@/services/academyGoogleWorkspaceService";
+import {
+  buildGoogleDriveMediaAssetId,
+  probeVideoDurationSeconds,
+} from "./academyVideoSourceUtils";
+import {
+  buildUrlMediaFingerprint,
+  normalizeMediaVersion,
+} from "@/utils/academyMediaLinkUtils";
 
 interface AcademyCurriculumStudioProps {
   courseId?: string;
@@ -962,6 +991,199 @@ interface AssignmentTemplateStudioState {
 type CourseWithAssignmentStudio = Course & {
   assignmentStudio?: AssignmentTemplateStudioState;
 };
+
+type AcademyCurriculumProductionScene = AcademyGoogleProductionSceneDraft;
+
+interface AcademyCurriculumDriveExportCandidate
+  extends AcademyGoogleDriveFileItem {
+  playbackUrl: string;
+  externalUrl: string;
+}
+
+const GOOGLE_DRIVE_VIDEO_EXTENSIONS = new Set([
+  "mp4",
+  "mov",
+  "m4v",
+  "webm",
+  "ogg",
+  "m3u8",
+]);
+
+const normalizeProductionSceneStatus = (
+  value: unknown,
+): AcademyGoogleProductionSceneDraft["status"] => {
+  const normalized = String(value || "").trim();
+  return normalized === "recording" ||
+    normalized === "ready" ||
+    normalized === "done" ||
+    normalized === "planned"
+    ? normalized
+    : "planned";
+};
+
+const normalizeProductionRecordingMode = (
+  value: unknown,
+  fallback: AcademyVidsPresenterScene["recordingMode"] = "camera",
+): AcademyVidsPresenterScene["recordingMode"] => {
+  const normalized = String(value || "").trim();
+  return normalized === "camera" ||
+    normalized === "camera-and-screen" ||
+    normalized === "screen" ||
+    normalized === "voiceover"
+    ? normalized
+    : fallback;
+};
+
+const normalizeProductionSceneDraft = (
+  value: Partial<AcademyCurriculumProductionScene> | null | undefined,
+  fallback: AcademyVidsPresenterScene,
+): AcademyCurriculumProductionScene => ({
+  id: String(value?.id || fallback.id || "").trim() || fallback.id,
+  title: String(value?.title || fallback.title || "").trim() || fallback.title,
+  objective:
+    String(value?.objective || fallback.objective || "").trim() ||
+    fallback.objective,
+  recordingMode: normalizeProductionRecordingMode(
+    value?.recordingMode,
+    fallback.recordingMode,
+  ),
+  durationMinutes: Math.max(
+    0.5,
+    Number.isFinite(Number(value?.durationMinutes))
+      ? Number(value?.durationMinutes)
+      : Number(fallback.durationMinutes || 0.75) || 0.75,
+  ),
+  visualCue:
+    String(value?.visualCue || fallback.visualCue || "").trim() ||
+    fallback.visualCue,
+  whyThisMode:
+    String(value?.whyThisMode || fallback.whyThisMode || "").trim() ||
+    fallback.whyThisMode,
+  teleprompterScript:
+    String(value?.teleprompterScript || fallback.teleprompterScript || "")
+      .trim() || fallback.teleprompterScript,
+  notes: String(value?.notes || "").trim() || undefined,
+  status: normalizeProductionSceneStatus(value?.status),
+});
+
+const mergeGoogleProductionWorkflowDraft = (
+  workflow: AcademyGoogleProductionWorkflow | null | undefined,
+  fallbackScenes: AcademyVidsPresenterScene[],
+): AcademyGoogleProductionWorkflow => {
+  const workflowScenes = Array.isArray(workflow?.sceneDrafts)
+    ? workflow.sceneDrafts
+    : [];
+  const nextSceneDrafts = fallbackScenes.map((scene) =>
+    normalizeProductionSceneDraft(
+      workflowScenes.find(
+        (candidate) => String(candidate?.id || "").trim() === scene.id,
+      ),
+      scene,
+    ),
+  );
+
+  return {
+    ...(workflow || {}),
+    googleRequired: true,
+    googleConnectedEmail:
+      String(workflow?.googleConnectedEmail || "").trim() || undefined,
+    sceneDrafts: nextSceneDrafts,
+    recordingStartedAt:
+      String(workflow?.recordingStartedAt || "").trim() || undefined,
+    recordingCompletedAt:
+      String(workflow?.recordingCompletedAt || "").trim() || undefined,
+    ctaApprovedAt: String(workflow?.ctaApprovedAt || "").trim() || undefined,
+    proofApprovedAt:
+      String(workflow?.proofApprovedAt || "").trim() || undefined,
+    runtimeApprovedAt:
+      String(workflow?.runtimeApprovedAt || "").trim() || undefined,
+    lastVidsSyncAt:
+      String(workflow?.lastVidsSyncAt || "").trim() || undefined,
+    lastNotebookLmSyncAt:
+      String(workflow?.lastNotebookLmSyncAt || "").trim() || undefined,
+    driveExportFileId:
+      String(workflow?.driveExportFileId || "").trim() || undefined,
+    driveExportName:
+      String(workflow?.driveExportName || "").trim() || undefined,
+    driveExportMimeType:
+      String(workflow?.driveExportMimeType || "").trim() || undefined,
+    driveExportUrl: String(workflow?.driveExportUrl || "").trim() || undefined,
+    driveExportPlaybackUrl:
+      String(workflow?.driveExportPlaybackUrl || "").trim() || undefined,
+    driveExportVersion: Number.isFinite(Number(workflow?.driveExportVersion))
+      ? Number(workflow?.driveExportVersion)
+      : undefined,
+    driveExportModifiedAt:
+      String(workflow?.driveExportModifiedAt || "").trim() || undefined,
+    videoBoundAt: String(workflow?.videoBoundAt || "").trim() || undefined,
+    updatedAt: String(workflow?.updatedAt || "").trim() || undefined,
+  };
+};
+
+const buildDrivePlaybackUrl = (
+  file: Pick<AcademyGoogleDriveFileItem, "id" | "webContentLink">,
+): string => {
+  const contentLink = String(file.webContentLink || "").trim();
+  if (contentLink) {
+    return contentLink;
+  }
+
+  const fileId = String(file.id || "").trim();
+  return fileId
+    ? `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`
+    : "";
+};
+
+const isDriveExportVideo = (
+  file: Pick<AcademyGoogleDriveFileItem, "mimeType" | "fileExtension">,
+): boolean => {
+  const mimeType = String(file.mimeType || "").trim().toLowerCase();
+  if (mimeType.startsWith("video/")) {
+    return true;
+  }
+
+  const extension = String(file.fileExtension || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\./, "");
+  return GOOGLE_DRIVE_VIDEO_EXTENSIONS.has(extension);
+};
+
+const mapDriveExportCandidate = (
+  file: AcademyGoogleDriveFileItem,
+): AcademyCurriculumDriveExportCandidate => ({
+  ...file,
+  playbackUrl: buildDrivePlaybackUrl(file),
+  externalUrl:
+    String(file.webViewLink || "").trim() ||
+    String(file.webContentLink || "").trim(),
+});
+
+const buildCustomProductionScene = (
+  useNorwegian: boolean,
+  index: number,
+): AcademyCurriculumProductionScene => ({
+  id: `custom-scene-${Date.now()}-${index + 1}`,
+  title: useNorwegian ? `Ekstra scene ${index + 1}` : `Extra scene ${index + 1}`,
+  objective: useNorwegian
+    ? "Beskriv hva denne scenen skal lære bort."
+    : "Describe what this scene should teach.",
+  recordingMode: "camera",
+  durationMinutes: 1,
+  visualCue: useNorwegian
+    ? "Forklar hva seeren skal se samtidig med opptaket."
+    : "Explain what the viewer should see during the recording.",
+  whyThisMode: useNorwegian
+    ? "Bruk kamera hvis du vil bygge tillit og holde instruktoeren i fokus."
+    : "Use camera when you want to keep the instructor front and center.",
+  teleprompterScript: useNorwegian
+    ? "Skriv et kort manus som hoeres naturlig ut naar det leses hoeyt."
+    : "Write a short script that sounds natural when spoken aloud.",
+  status: "planned",
+});
+
+const hasWorkflowTimestamp = (value: unknown): boolean =>
+  typeof value === "string" && value.trim().length > 0;
 
 const curriculumProjectTemplates: CurriculumProjectTemplate[] = [
   {
@@ -1920,6 +2142,7 @@ function AcademyCurriculumStudio({
   onCancel,
 }: AcademyCurriculumStudioProps) {
   const [location, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const {
     state,
     getCourse,
@@ -1948,6 +2171,13 @@ function AcademyCurriculumStudio({
   >([]);
   const [selectedCurriculumVersionId, setSelectedCurriculumVersionId] =
     useState("");
+  const [googleProductionWorkflowDraft, setGoogleProductionWorkflowDraft] =
+    useState<AcademyGoogleProductionWorkflow>({
+      googleRequired: true,
+      sceneDrafts: [],
+    });
+  const [googleProductionWorkflowSaving, setGoogleProductionWorkflowSaving] =
+    useState(false);
 
   const [architectureDraft, setArchitectureDraft] =
     useState<PedagogicalArchitecture>(emptyArchitecture);
@@ -2021,6 +2251,7 @@ function AcademyCurriculumStudio({
   const competencyNameInputRef = useRef<HTMLInputElement | null>(null);
   const curriculumHydratedSignatureRef = useRef("");
   const curriculumSkipAutosaveRef = useRef(false);
+  const googleProductionWorkflowCourseRef = useRef("");
   const routeSearch =
     typeof window !== "undefined" ? window.location.search : "";
   const routeQuery = useMemo(
@@ -3521,6 +3752,989 @@ function AcademyCurriculumStudio({
     tt,
   ]);
 
+  const vidsPresenterPlanInput = useMemo(
+    () => ({
+      courseTitle:
+        String(activeCourse?.title || "").trim() || foundationSummary.title,
+      purpose: architectureDraft.purpose,
+      audience: architectureDraft.audience,
+      transformation: architectureDraft.transformation,
+      competencies: competencyItems,
+      skills: skillItems,
+      problemsSolved: problemItems,
+      learningJourney: architectureDraft.learningJourney,
+      practiceDesign: architectureDraft.practiceDesign,
+      proofOfLearning: architectureDraft.proofOfLearning,
+    }),
+    [
+      activeCourse?.title,
+      architectureDraft.audience,
+      architectureDraft.learningJourney,
+      architectureDraft.practiceDesign,
+      architectureDraft.proofOfLearning,
+      architectureDraft.purpose,
+      architectureDraft.transformation,
+      competencyItems,
+      foundationSummary.title,
+      problemItems,
+      skillItems,
+    ],
+  );
+
+  const generatedVidsPresenterPlan = useMemo(
+    () =>
+      buildAcademyVidsPresenterPlan(vidsPresenterPlanInput, {
+        useNorwegian: isNorwegian,
+      }),
+    [isNorwegian, vidsPresenterPlanInput],
+  );
+
+  const googleProductionWorkflowSeed = useMemo(
+    () =>
+      mergeGoogleProductionWorkflowDraft(
+        activeCourse?.googleProductionWorkflow,
+        generatedVidsPresenterPlan.scenes,
+      ),
+    [activeCourse?.googleProductionWorkflow, generatedVidsPresenterPlan.scenes],
+  );
+
+  useEffect(() => {
+    const nextCourseId = String(activeCourse?.id || "");
+    setGoogleProductionWorkflowDraft((previous) => {
+      if (googleProductionWorkflowCourseRef.current !== nextCourseId) {
+        googleProductionWorkflowCourseRef.current = nextCourseId;
+        return googleProductionWorkflowSeed;
+      }
+
+      return mergeGoogleProductionWorkflowDraft(
+        previous,
+        generatedVidsPresenterPlan.scenes,
+      );
+    });
+  }, [
+    activeCourse?.id,
+    generatedVidsPresenterPlan.scenes,
+    googleProductionWorkflowSeed,
+  ]);
+
+  const productionSceneDrafts = useMemo(() => {
+    const draftScenes = Array.isArray(googleProductionWorkflowDraft.sceneDrafts)
+      ? googleProductionWorkflowDraft.sceneDrafts
+      : [];
+    return draftScenes.length > 0
+      ? draftScenes
+      : googleProductionWorkflowSeed.sceneDrafts || [];
+  }, [googleProductionWorkflowDraft.sceneDrafts, googleProductionWorkflowSeed.sceneDrafts]);
+
+  const vidsPresenterPlan = useMemo(
+    () =>
+      buildAcademyVidsPresenterPlanFromScenes(
+        vidsPresenterPlanInput,
+        productionSceneDrafts.map((scene) => ({
+          id: scene.id,
+          title: scene.title,
+          objective: scene.objective,
+          recordingMode: scene.recordingMode,
+          durationMinutes: scene.durationMinutes,
+          visualCue: scene.visualCue,
+          whyThisMode: scene.whyThisMode,
+          teleprompterScript: scene.teleprompterScript,
+        })),
+        { useNorwegian: isNorwegian },
+      ),
+    [isNorwegian, productionSceneDrafts, vidsPresenterPlanInput],
+  );
+
+  const googleWorkspaceStatusQuery = useQuery({
+    queryKey: ["academy-google-workspace-status"],
+    queryFn: () => academyGoogleWorkspaceService.getStatus(),
+  });
+
+  const googleWorkspaceStatus = googleWorkspaceStatusQuery.data;
+  const googleWorkspaceConnected =
+    academyGoogleWorkspaceService.hasActiveConnection(googleWorkspaceStatus);
+  const googleWorkspaceDriveReady =
+    academyGoogleWorkspaceService.hasDriveAccess(googleWorkspaceStatus);
+  const googleWorkspaceDocsReady =
+    academyGoogleWorkspaceService.hasDocsAccess(googleWorkspaceStatus);
+  const googleWorkflowReady =
+    googleWorkspaceConnected &&
+    googleWorkspaceDriveReady &&
+    googleWorkspaceDocsReady;
+  const googleWorkspaceEmail =
+    String(googleWorkspaceStatus?.connection?.googleEmail || "").trim() ||
+    undefined;
+
+  const googleWorkspaceConnectMutation = useMutation({
+    mutationFn: async () => {
+      const fallbackPath =
+        activeCourse?.id &&
+        typeof window === "undefined"
+          ? `/academy/curriculum?courseId=${encodeURIComponent(String(activeCourse.id))}`
+          : undefined;
+      await academyGoogleWorkspaceService.startConnect(fallbackPath);
+    },
+    onError: (error) => {
+      setSaveMessage(
+        error instanceof Error
+          ? error.message
+          : tt(
+              "Kunne ikke starte Google-innloggingen.",
+              "Could not start the Google sign-in flow.",
+            ),
+      );
+    },
+  });
+
+  const googleVidsWorkspaceSnapshot = useMemo(
+    () =>
+      activeCourse?.id
+        ? {
+            courseId: String(activeCourse.id),
+            title:
+              String(activeCourse.title || "").trim() || foundationSummary.title,
+            subtitle: vidsPresenterPlan.subtitle,
+            purpose: String(architectureDraft.purpose || "").trim() || null,
+            audience: String(architectureDraft.audience || "").trim() || null,
+            transformation:
+              String(architectureDraft.transformation || "").trim() || null,
+            competencies: normalizeList(competencyItems),
+            skills: normalizeList(skillItems),
+            problemsSolved: normalizeList(problemItems),
+            learningJourney:
+              String(architectureDraft.learningJourney || "").trim() || null,
+            practiceDesign:
+              String(architectureDraft.practiceDesign || "").trim() || null,
+            proofOfLearning:
+              String(architectureDraft.proofOfLearning || "").trim() || null,
+            readiness: vidsPresenterPlan.readiness,
+            primaryMode: vidsPresenterPlan.primaryMode,
+            totalDurationMinutes: vidsPresenterPlan.totalDurationMinutes,
+            missingFields: vidsPresenterPlan.missingFields,
+            setupChecklist: vidsPresenterPlan.setupChecklist,
+            productionNotes: vidsPresenterPlan.productionNotes,
+            starterPrompt: vidsPresenterPlan.starterPrompt,
+            brief: vidsPresenterPlan.brief,
+            teleprompterScript: vidsPresenterPlan.teleprompterScript,
+            scenes: vidsPresenterPlan.scenes,
+            locale: isNorwegian ? "no" : "en",
+          }
+        : null,
+    [
+      activeCourse?.id,
+      activeCourse?.title,
+      architectureDraft.audience,
+      architectureDraft.learningJourney,
+      architectureDraft.practiceDesign,
+      architectureDraft.proofOfLearning,
+      architectureDraft.purpose,
+      architectureDraft.transformation,
+      competencyItems,
+      foundationSummary.title,
+      isNorwegian,
+      problemItems,
+      skillItems,
+      vidsPresenterPlan,
+    ],
+  );
+
+  const googleVidsStatusQueryKey = useMemo(
+    () =>
+      [
+        "academy-google-vids-status",
+        String(activeCourse?.id || ""),
+        String(activeCourse?.title || ""),
+      ] as const,
+    [activeCourse?.id, activeCourse?.title],
+  );
+
+  const persistGoogleProductionWorkflow = useCallback(
+    async (
+      workflow: AcademyGoogleProductionWorkflow,
+      successMessage?: string,
+    ): Promise<AcademyGoogleProductionWorkflow> => {
+      const normalizedWorkflow = mergeGoogleProductionWorkflowDraft(
+        {
+          ...workflow,
+          googleRequired: true,
+          googleConnectedEmail:
+            googleWorkspaceEmail ||
+            String(workflow.googleConnectedEmail || "").trim() ||
+            undefined,
+          updatedAt: new Date().toISOString(),
+        },
+        generatedVidsPresenterPlan.scenes,
+      );
+      setGoogleProductionWorkflowDraft(normalizedWorkflow);
+
+      if (!activeCourse?.id) {
+        if (successMessage) {
+          setSaveMessage(successMessage);
+        }
+        return normalizedWorkflow;
+      }
+
+      const nowIso = new Date().toISOString();
+      const nextCourse: Course = {
+        ...activeCourse,
+        googleProductionWorkflow: {
+          ...normalizedWorkflow,
+          updatedAt: nowIso,
+        },
+        updatedAt: nowIso,
+      };
+
+      await updateCourse(nextCourse);
+      setCurrentCourse(nextCourse);
+      if (successMessage) {
+        setSaveMessage(successMessage);
+      }
+      return nextCourse.googleProductionWorkflow || normalizedWorkflow;
+    },
+    [
+      activeCourse,
+      generatedVidsPresenterPlan.scenes,
+      googleWorkspaceEmail,
+      setCurrentCourse,
+      updateCourse,
+    ],
+  );
+
+  const googleVidsStatusQuery = useQuery({
+    queryKey: googleVidsStatusQueryKey,
+    enabled: Boolean(activeCourse?.id),
+    queryFn: () =>
+      academyGoogleVidsService.getStatus({
+        courseId: String(activeCourse?.id || ""),
+        courseTitle: String(activeCourse?.title || "").trim() || undefined,
+      }),
+  });
+
+  const googleVidsSyncMutation = useMutation({
+    mutationFn: async () => {
+      if (!googleWorkflowReady) {
+        throw new Error(
+          tt(
+            "Logg inn med Google-kontoen din før du synker Vids-dokumentene.",
+            "Sign in with your Google account before syncing the Vids documents.",
+          ),
+        );
+      }
+      if (!googleVidsWorkspaceSnapshot) {
+        throw new Error(
+          tt(
+            "Fant ikke kursutkast for Google Vids-synk.",
+            "Could not build a course draft for Google Vids sync.",
+          ),
+        );
+      }
+
+      return academyGoogleVidsService.sync({
+        courseId: googleVidsWorkspaceSnapshot.courseId,
+        courseTitle: googleVidsWorkspaceSnapshot.title,
+        snapshot: googleVidsWorkspaceSnapshot,
+      });
+    },
+    onSuccess: async (status) => {
+      queryClient.setQueryData(googleVidsStatusQueryKey, status);
+      void queryClient.invalidateQueries({
+        queryKey: ["academy-google-vids-status"],
+      });
+      await persistGoogleProductionWorkflow({
+        ...googleProductionWorkflowDraft,
+        googleRequired: true,
+        googleConnectedEmail:
+          status.googleEmail || googleWorkspaceEmail || undefined,
+        lastVidsSyncAt:
+          status.workspace?.lastSyncedAt || new Date().toISOString(),
+      });
+      setSaveMessage(
+        tt(
+          "Google Vids-brief og teleprompter synket til Drive.",
+          "Google Vids brief and teleprompter synced to Drive.",
+        ),
+      );
+      analytics.trackEvent("academy_google_vids_workspace_synced", {
+        courseId: activeCourse?.id || null,
+        sceneCount: status.workspace?.sceneCount || vidsPresenterPlan.scenes.length,
+        timestamp: Date.now(),
+      });
+    },
+    onError: (error) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : tt(
+              "Kunne ikke synke Google Vids-dokumentene akkurat naa.",
+              "Could not sync the Google Vids documents right now.",
+            );
+      setSaveMessage(message);
+      debugging.logIntegration(
+        "error",
+        "Academy Google Vids workspace sync failed",
+        {
+          message,
+          courseId: activeCourse?.id || null,
+        },
+      );
+    },
+  });
+
+  const googleVidsStatus = googleVidsStatusQuery.data;
+  const googleVidsWorkspace = googleVidsStatus?.workspace || null;
+
+  const copyTextToClipboard = useCallback(
+    async (value: string, successMessage: string) => {
+      const normalizedValue = String(value || "").trim();
+      if (!normalizedValue) {
+        setSaveMessage(
+          tt(
+            "Det er ikke noe klart innhold å kopiere ennå.",
+            "There is no ready content to copy yet.",
+          ),
+        );
+        return;
+      }
+
+      try {
+        if (
+          typeof navigator === "undefined" ||
+          !navigator.clipboard ||
+          typeof navigator.clipboard.writeText !== "function"
+        ) {
+          throw new Error("Clipboard unavailable");
+        }
+
+        await navigator.clipboard.writeText(normalizedValue);
+        setSaveMessage(successMessage);
+      } catch {
+        setSaveMessage(
+          tt(
+            "Kunne ikke kopiere til utklippstavlen automatisk.",
+            "Could not copy to the clipboard automatically.",
+          ),
+        );
+      }
+    },
+    [tt],
+  );
+
+  const openGoogleVidsComposer = useCallback(() => {
+    if (!googleWorkflowReady) {
+      googleWorkspaceConnectMutation.mutate();
+      return;
+    }
+    academyGoogleVidsService.openGoogleVids(googleVidsStatus?.vidsUrl);
+  }, [
+    googleVidsStatus?.vidsUrl,
+    googleWorkflowReady,
+    googleWorkspaceConnectMutation,
+  ]);
+
+  const openGoogleVidsWorkspaceUrl = useCallback((url?: string | null) => {
+    academyGoogleVidsService.openExternalUrl(url);
+  }, []);
+
+  const saveGoogleProductionWorkflow = useCallback(async () => {
+    if (!activeCourse?.id) {
+      setSaveMessage(
+        tt(
+          "Opprett eller velg et kurs før du lagrer opptaksplanen.",
+          "Create or select a course before saving the recording plan.",
+        ),
+      );
+      return;
+    }
+
+    setGoogleProductionWorkflowSaving(true);
+    try {
+      await persistGoogleProductionWorkflow(
+        googleProductionWorkflowDraft,
+        tt("Opptaksplan lagret.", "Recording plan saved."),
+      );
+    } catch (error) {
+      setSaveMessage(
+        error instanceof Error
+          ? error.message
+          : tt(
+              "Kunne ikke lagre opptaksplanen.",
+              "Could not save the recording plan.",
+            ),
+      );
+    } finally {
+      setGoogleProductionWorkflowSaving(false);
+    }
+  }, [
+    activeCourse?.id,
+    googleProductionWorkflowDraft,
+    persistGoogleProductionWorkflow,
+    tt,
+  ]);
+
+  const updateProductionSceneDraft = useCallback(
+    (
+      sceneId: string,
+      field:
+        | "title"
+        | "objective"
+        | "recordingMode"
+        | "durationMinutes"
+        | "visualCue"
+        | "whyThisMode"
+        | "teleprompterScript"
+        | "notes"
+        | "status",
+      value: string,
+    ) => {
+      setGoogleProductionWorkflowDraft((previous) => {
+        const sceneDrafts = Array.isArray(previous.sceneDrafts)
+          ? previous.sceneDrafts
+          : [];
+        return {
+          ...previous,
+          sceneDrafts: sceneDrafts.map((scene) =>
+            scene.id !== sceneId
+              ? scene
+              : {
+                  ...scene,
+                  [field]:
+                    field === "durationMinutes"
+                      ? Math.max(0.5, Number(value || scene.durationMinutes) || 0.5)
+                      : field === "recordingMode"
+                        ? normalizeProductionRecordingMode(
+                            value,
+                            scene.recordingMode,
+                          )
+                        : field === "status"
+                          ? normalizeProductionSceneStatus(value)
+                          : value,
+                },
+          ),
+        };
+      });
+      setCurriculumAutosaveState("unsaved");
+    },
+    [],
+  );
+
+  const moveProductionScene = useCallback((sceneId: string, direction: -1 | 1) => {
+    setGoogleProductionWorkflowDraft((previous) => {
+      const sceneDrafts = Array.isArray(previous.sceneDrafts)
+        ? [...previous.sceneDrafts]
+        : [];
+      const currentIndex = sceneDrafts.findIndex((scene) => scene.id === sceneId);
+      if (currentIndex < 0) {
+        return previous;
+      }
+      const nextIndex = currentIndex + direction;
+      if (nextIndex < 0 || nextIndex >= sceneDrafts.length) {
+        return previous;
+      }
+      const [scene] = sceneDrafts.splice(currentIndex, 1);
+      sceneDrafts.splice(nextIndex, 0, scene);
+      return {
+        ...previous,
+        sceneDrafts,
+      };
+    });
+    setCurriculumAutosaveState("unsaved");
+  }, []);
+
+  const addProductionScene = useCallback(() => {
+    setGoogleProductionWorkflowDraft((previous) => ({
+      ...previous,
+      sceneDrafts: [
+        ...(Array.isArray(previous.sceneDrafts) ? previous.sceneDrafts : []),
+        buildCustomProductionScene(
+          isNorwegian,
+          Array.isArray(previous.sceneDrafts) ? previous.sceneDrafts.length : 0,
+        ),
+      ],
+    }));
+    setCurriculumAutosaveState("unsaved");
+  }, [isNorwegian]);
+
+  const removeProductionScene = useCallback((sceneId: string) => {
+    setGoogleProductionWorkflowDraft((previous) => ({
+      ...previous,
+      sceneDrafts: (Array.isArray(previous.sceneDrafts)
+        ? previous.sceneDrafts
+        : []
+      ).filter((scene) => scene.id !== sceneId),
+    }));
+    setCurriculumAutosaveState("unsaved");
+  }, []);
+
+  const toggleProductionMilestone = useCallback(
+    (
+      field:
+        | "recordingStartedAt"
+        | "recordingCompletedAt"
+        | "ctaApprovedAt"
+        | "proofApprovedAt"
+        | "runtimeApprovedAt",
+      checked: boolean,
+    ) => {
+      setGoogleProductionWorkflowDraft((previous) => ({
+        ...previous,
+        [field]: checked ? new Date().toISOString() : undefined,
+      }));
+      setCurriculumAutosaveState("unsaved");
+    },
+    [],
+  );
+
+  const currentNormalizedArchitecture = useMemo(
+    () =>
+      normalizeArchitecture({
+        ...architectureDraft,
+        problemsSolved: problemItems,
+        competencies: competencyItems,
+        skills: skillItems,
+        transformations: transformationItems,
+      }),
+    [
+      architectureDraft,
+      competencyItems,
+      problemItems,
+      skillItems,
+      transformationItems,
+    ],
+  );
+
+  const derivedLearningOutcomes = useMemo(
+    () =>
+      buildDerivedLearningOutcomes(
+        currentNormalizedArchitecture,
+        activeCourse?.learningOutcomes || [],
+      ),
+    [activeCourse?.learningOutcomes, currentNormalizedArchitecture],
+  );
+
+  const buildNotebookLmCourseSnapshot = useCallback(() => {
+    if (!activeCourse?.id) {
+      return null;
+    }
+
+    const courseResources = Array.isArray(activeCourse.resources)
+      ? activeCourse.resources
+          .map((resource) => ({
+            id: String(resource.id || "").trim(),
+            title: String(resource.title || "").trim(),
+            type: String(resource.type || "link").trim() || "link",
+            url: String(resource.url || "").trim() || undefined,
+            description: String(resource.description || "").trim() || undefined,
+            videoSourceType: resource.videoSourceType || undefined,
+            googleDriveWebViewLink:
+              String(resource.googleDriveWebViewLink || "").trim() || undefined,
+            googleDrivePlaybackUrl:
+              String(resource.googleDrivePlaybackUrl || "").trim() || undefined,
+          }))
+          .filter((resource) => Boolean(resource.id && resource.title))
+      : [];
+
+    const workspaceResources = [
+      googleVidsWorkspace?.briefDocumentUrl
+        ? {
+            id: "google-vids-brief",
+            title: tt("Google Vids brief", "Google Vids brief"),
+            type: "link",
+            url: googleVidsWorkspace.briefDocumentUrl,
+            description: tt(
+              "Brief-dokumentet som brukes til a starte Google Vids-opptaket.",
+              "The brief document used to start the Google Vids recording flow.",
+            ),
+          }
+        : null,
+      googleVidsWorkspace?.teleprompterDocumentUrl
+        ? {
+            id: "google-vids-teleprompter",
+            title: tt("Teleprompter-manus", "Teleprompter script"),
+            type: "link",
+            url: googleVidsWorkspace.teleprompterDocumentUrl,
+            description: tt(
+              "Scene-for-scene manus for Record myself i Google Vids.",
+              "Scene-by-scene script for Record myself in Google Vids.",
+            ),
+          }
+        : null,
+    ].filter((resource): resource is NonNullable<typeof resource> => Boolean(resource));
+
+    const existingLessons = Array.isArray(activeCourse.lessons)
+      ? activeCourse.lessons
+          .map((lesson) => ({
+            id: String(lesson.id || "").trim(),
+            title: String(lesson.title || "").trim(),
+            description: String(lesson.description || "").trim() || undefined,
+            duration: Number(lesson.duration || 0) || undefined,
+            order: Number(lesson.order || 0) || 0,
+            isPreview: Boolean(lesson.isPreview),
+            videoUrl: String(lesson.videoUrl || "").trim() || undefined,
+            videoSourceType: lesson.videoSourceType || undefined,
+            googleDriveWebViewLink:
+              String(lesson.googleDriveWebViewLink || "").trim() || undefined,
+            googleDrivePlaybackUrl:
+              String(lesson.googleDrivePlaybackUrl || "").trim() || undefined,
+            resources: Array.isArray(lesson.resources)
+              ? lesson.resources
+                  .map((resource) => ({
+                    id: String(resource.id || "").trim(),
+                    title: String(resource.title || "").trim(),
+                    type: String(resource.type || "link").trim() || "link",
+                    url: String(resource.url || "").trim() || undefined,
+                    description:
+                      String(resource.description || "").trim() || undefined,
+                    videoSourceType: resource.videoSourceType || undefined,
+                    googleDriveWebViewLink:
+                      String(resource.googleDriveWebViewLink || "").trim() ||
+                      undefined,
+                    googleDrivePlaybackUrl:
+                      String(resource.googleDrivePlaybackUrl || "").trim() ||
+                      undefined,
+                  }))
+                  .filter((resource) => Boolean(resource.id && resource.title))
+              : [],
+          }))
+          .filter((lesson) => Boolean(lesson.id && lesson.title))
+      : [];
+
+    const sceneLessons =
+      existingLessons.length > 0
+        ? existingLessons
+        : productionSceneDrafts.map((scene, index) => ({
+            id: `vids-scene-${scene.id}`,
+            title: scene.title,
+            description: [scene.objective, scene.visualCue, scene.teleprompterScript]
+              .filter(Boolean)
+              .join("\n\n"),
+            duration: Math.round(Number(scene.durationMinutes || 0) * 60) || undefined,
+            order: index,
+            isPreview: index === 0,
+            videoUrl: undefined,
+            videoSourceType: undefined,
+            googleDriveWebViewLink: undefined,
+            googleDrivePlaybackUrl: undefined,
+            resources: [],
+          }));
+
+    return {
+      courseId: String(activeCourse.id),
+      title:
+        String(activeCourse.title || "").trim() || foundationSummary.title,
+      description:
+        String(activeCourse.description || currentNormalizedArchitecture.purpose || "")
+          .trim() || undefined,
+      duration: Number(activeCourse.duration || 0) || undefined,
+      level: String(activeCourse.level || "").trim() || undefined,
+      category: String(activeCourse.category || "").trim() || undefined,
+      tags: normalizeList(activeCourse.tags),
+      prerequisites: normalizeList(activeCourse.prerequisites),
+      learningOutcomes: derivedLearningOutcomes,
+      instructorName: String(activeCourse.instructor?.name || "").trim() || undefined,
+      videoUrl: String(activeCourse.videoUrl || "").trim() || undefined,
+      videoSourceType: activeCourse.videoSourceType || undefined,
+      googleDriveWebViewLink:
+        String(activeCourse.googleDriveWebViewLink || "").trim() || undefined,
+      googleDrivePlaybackUrl:
+        String(activeCourse.googleDrivePlaybackUrl || "").trim() || undefined,
+      resources: [...courseResources, ...workspaceResources],
+      lessons: sceneLessons,
+      focusLessonId: sceneLessons[0]?.id || undefined,
+    };
+  }, [
+    activeCourse,
+    currentNormalizedArchitecture.purpose,
+    derivedLearningOutcomes,
+    foundationSummary.title,
+    googleVidsWorkspace?.briefDocumentUrl,
+    googleVidsWorkspace?.teleprompterDocumentUrl,
+    productionSceneDrafts,
+    tt,
+  ]);
+
+  const notebookLmStatusQueryKey = useMemo(
+    () =>
+      [
+        "academy-notebooklm-status",
+        String(activeCourse?.id || ""),
+        String(activeCourse?.title || ""),
+      ] as const,
+    [activeCourse?.id, activeCourse?.title],
+  );
+
+  const notebookLmStatusQuery = useQuery({
+    queryKey: notebookLmStatusQueryKey,
+    enabled: Boolean(activeCourse?.id),
+    queryFn: () =>
+      academyNotebookLmService.getStatus({
+        courseId: String(activeCourse?.id || ""),
+        courseTitle: String(activeCourse?.title || "").trim() || undefined,
+      }),
+  });
+
+  const notebookLmSyncMutation = useMutation({
+    mutationFn: async () => {
+      if (!googleWorkflowReady) {
+        throw new Error(
+          tt(
+            "Logg inn med Google-kontoen din før du synker NotebookLM-kildene.",
+            "Sign in with your Google account before syncing NotebookLM sources.",
+          ),
+        );
+      }
+
+      const snapshot = buildNotebookLmCourseSnapshot();
+      if (!snapshot) {
+        throw new Error(
+          tt(
+            "Fant ikke kursutkast for NotebookLM-synk.",
+            "Could not build a course draft for NotebookLM sync.",
+          ),
+        );
+      }
+
+      return academyNotebookLmService.sync({
+        courseId: snapshot.courseId,
+        courseTitle: snapshot.title,
+        snapshot,
+      });
+    },
+    onSuccess: async (status) => {
+      queryClient.setQueryData(notebookLmStatusQueryKey, status);
+      void queryClient.invalidateQueries({
+        queryKey: ["academy-notebooklm-status"],
+      });
+      await persistGoogleProductionWorkflow({
+        ...googleProductionWorkflowDraft,
+        googleRequired: true,
+        googleConnectedEmail:
+          status.googleEmail || googleWorkspaceEmail || undefined,
+        lastNotebookLmSyncAt:
+          status.workspace?.lastSyncedAt || new Date().toISOString(),
+      });
+      setSaveMessage(
+        tt(
+          "NotebookLM-kilder synket fra kursgrunnlaget.",
+          "NotebookLM sources synced from the course foundation.",
+        ),
+      );
+      analytics.trackEvent("academy_curriculum_notebooklm_workspace_synced", {
+        courseId: activeCourse?.id || null,
+        sourceDocumentCount: status.sourceDocumentCount,
+        timestamp: Date.now(),
+      });
+    },
+    onError: (error) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : tt(
+              "Kunne ikke synke NotebookLM-kildene akkurat naa.",
+              "Could not sync NotebookLM sources right now.",
+            );
+      setSaveMessage(message);
+      debugging.logIntegration(
+        "error",
+        "Academy curriculum NotebookLM workspace sync failed",
+        {
+          message,
+          courseId: activeCourse?.id || null,
+        },
+      );
+    },
+  });
+
+  const notebookLmStatus = notebookLmStatusQuery.data;
+  const notebookLmWorkspace = notebookLmStatus?.workspace || null;
+  const notebookLmCourseSummary =
+    notebookLmStatus?.courseSummary || notebookLmWorkspace?.courseSummary || null;
+  const notebookLmSourceDocuments = notebookLmStatus?.sourceDocuments || [];
+  const notebookLmOpenUrl =
+    String(
+      notebookLmWorkspace?.metadata?.notebookLmUrl ||
+        notebookLmStatus?.notebookLmUrl ||
+        NOTEBOOK_LM_HOME_URL,
+    ).trim() || NOTEBOOK_LM_HOME_URL;
+
+  const googleDriveExportQuery = useQuery({
+    queryKey: [
+      "academy-google-vids-drive-exports",
+      String(googleVidsWorkspace?.driveFolderId || ""),
+    ],
+    enabled: Boolean(googleWorkflowReady && googleVidsWorkspace?.driveFolderId),
+    queryFn: async () => {
+      const response = await academyGoogleWorkspaceService.listDriveFiles({
+        folderId: googleVidsWorkspace?.driveFolderId || undefined,
+        pageSize: 60,
+      });
+      return (Array.isArray(response.files) ? response.files : [])
+        .filter((file) => isDriveExportVideo(file))
+        .map((file) => mapDriveExportCandidate(file))
+        .sort(
+          (left, right) =>
+            Date.parse(String(right.modifiedTime || "")) -
+            Date.parse(String(left.modifiedTime || "")),
+        );
+    },
+  });
+
+  const googleDriveExportCandidates = googleDriveExportQuery.data || [];
+
+  const bindDriveExportMutation = useMutation({
+    mutationFn: async (file: AcademyCurriculumDriveExportCandidate) => {
+      if (!activeCourse?.id) {
+        throw new Error(
+          tt(
+            "Velg et kurs før du kobler eksporten tilbake.",
+            "Select a course before binding the export back.",
+          ),
+        );
+      }
+
+      const sharedFile = await academyGoogleWorkspaceService
+        .shareDriveFile(file.id, {
+          shareMode: "link",
+          ensureAccessible: true,
+        })
+        .catch(() => null);
+      const resolvedFile = sharedFile || file;
+      const playbackUrl =
+        buildDrivePlaybackUrl(resolvedFile) || String(file.playbackUrl || "").trim();
+      if (!playbackUrl) {
+        throw new Error(
+          tt(
+            "Fant ikke en spillbar MP4-lenke for denne eksporten.",
+            "Could not resolve a playable MP4 link for this export.",
+          ),
+        );
+      }
+
+      const nowIso = new Date().toISOString();
+      const resolvedDuration = await probeVideoDurationSeconds(playbackUrl).catch(
+        () => null,
+      );
+      const nextWorkflow = mergeGoogleProductionWorkflowDraft(
+        {
+          ...googleProductionWorkflowDraft,
+          googleRequired: true,
+          googleConnectedEmail: googleWorkspaceEmail || undefined,
+          driveExportFileId: file.id,
+          driveExportName:
+            String(resolvedFile.name || file.name || "").trim() || undefined,
+          driveExportMimeType:
+            String(resolvedFile.mimeType || file.mimeType || "").trim() ||
+            undefined,
+          driveExportUrl:
+            String(resolvedFile.webViewLink || file.externalUrl || "").trim() ||
+            undefined,
+          driveExportPlaybackUrl: playbackUrl,
+          driveExportVersion: normalizeMediaVersion(
+            resolvedFile.version,
+            normalizeMediaVersion(file.version, 1),
+          ),
+          driveExportModifiedAt:
+            String(resolvedFile.modifiedTime || file.modifiedTime || "").trim() ||
+            undefined,
+          videoBoundAt: nowIso,
+        },
+        generatedVidsPresenterPlan.scenes,
+      );
+
+      const nextCourse: Course = {
+        ...activeCourse,
+        videoUrl: playbackUrl,
+        videoSourceType: "google-drive-video",
+        googleDriveFileId: file.id,
+        googleDriveMimeType:
+          String(resolvedFile.mimeType || file.mimeType || "").trim() ||
+          undefined,
+        googleDriveWebViewLink:
+          String(resolvedFile.webViewLink || file.externalUrl || "").trim() ||
+          undefined,
+        googleDrivePlaybackUrl: playbackUrl,
+        linkedVideoAssetId: buildGoogleDriveMediaAssetId(file.id),
+        linkedVideoAssetVersion: normalizeMediaVersion(
+          resolvedFile.version,
+          normalizeMediaVersion(file.version, 1),
+        ),
+        linkedVideoAssetName:
+          String(resolvedFile.name || file.name || "").trim() || undefined,
+        linkedVideoUpdatedAt: nowIso,
+        linkedVideoFingerprint:
+          buildUrlMediaFingerprint(playbackUrl) || undefined,
+        linkedVideoPosterUrl:
+          String(resolvedFile.thumbnailLink || file.thumbnailLink || "").trim() ||
+          undefined,
+        duration: resolvedDuration || activeCourse.duration,
+        googleProductionWorkflow: {
+          ...nextWorkflow,
+          updatedAt: nowIso,
+        },
+        updatedAt: nowIso,
+      };
+
+      await updateCourse(nextCourse);
+      setCurrentCourse(nextCourse);
+      setGoogleProductionWorkflowDraft(nextWorkflow);
+      return nextCourse;
+    },
+    onSuccess: (course) => {
+      setSaveMessage(
+        tt(
+          "Drive-eksport koblet tilbake som kursvideo.",
+          "Drive export linked back as the course video.",
+        ),
+      );
+      analytics.trackEvent("academy_curriculum_drive_export_bound", {
+        courseId: course.id,
+        driveFileId: course.googleDriveFileId || null,
+        timestamp: Date.now(),
+      });
+    },
+    onError: (error) => {
+      setSaveMessage(
+        error instanceof Error
+          ? error.message
+          : tt(
+              "Kunne ikke koble Drive-eksporten tilbake.",
+              "Could not bind the Drive export back.",
+            ),
+      );
+    },
+  });
+
+  const completedProductionSceneCount = productionSceneDrafts.filter(
+    (scene) => scene.status === "done",
+  ).length;
+  const activeBoundDriveFileId =
+    String(
+      activeCourse?.googleDriveFileId ||
+        googleProductionWorkflowDraft.driveExportFileId ||
+        "",
+    ).trim() || null;
+  const hasBoundCourseVideo =
+    activeCourse?.videoSourceType === "google-drive-video" &&
+    Boolean(activeBoundDriveFileId);
+
+  const openMediaStudioForCourseVideo = useCallback(() => {
+    const query = new URLSearchParams();
+    if (activeCourse?.id) {
+      query.set("courseId", String(activeCourse.id));
+      query.set("bind", "course");
+    }
+    query.set("source", "google-drive");
+    query.set(
+      "returnTo",
+      typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}`
+        : activeCourse?.id
+          ? `/academy/curriculum?courseId=${encodeURIComponent(String(activeCourse.id))}`
+          : "/academy/curriculum",
+    );
+    const suffix = query.toString();
+    setLocation(suffix ? `/academy/media?${suffix}` : "/academy/media");
+  }, [activeCourse?.id, setLocation]);
+
   const updateArchitectureField = useCallback(
     (
       field:
@@ -4375,6 +5589,20 @@ function AcademyCurriculumStudio({
                   activeCourse.curriculumProjectTemplateId ||
                   "",
               ).trim() || undefined,
+            googleProductionWorkflow: mergeGoogleProductionWorkflowDraft(
+              {
+                ...googleProductionWorkflowDraft,
+                googleRequired: true,
+                googleConnectedEmail:
+                  googleWorkspaceEmail ||
+                  String(
+                    googleProductionWorkflowDraft.googleConnectedEmail || "",
+                  ).trim() ||
+                  undefined,
+                updatedAt: saveTimestamp,
+              },
+              generatedVidsPresenterPlan.scenes,
+            ),
             assignmentStudio: nextAssignmentStudio,
             isPublished: publish ? true : activeCourse.isPublished,
             updatedAt: saveTimestamp,
@@ -4999,6 +6227,1333 @@ function AcademyCurriculumStudio({
                       ))}
                     </Stack>
                   </Stack>
+                </Box>
+
+                <Box sx={{ ...panelSx, p: 1.1 }}>
+                  <Stack
+                    direction={{ xs: "column", md: "row" }}
+                    spacing={0.9}
+                    alignItems={{ xs: "stretch", md: "flex-start" }}
+                    justifyContent="space-between"
+                  >
+                    <Box sx={{ minWidth: 0 }}>
+                      <Stack
+                        direction="row"
+                        spacing={0.7}
+                        alignItems="center"
+                        useFlexGap
+                        flexWrap="wrap"
+                      >
+                        <Videocam
+                          sx={{ fontSize: 18, color: "rgba(248,179,33,0.9)" }}
+                        />
+                        <Typography sx={sectionLabelSx}>
+                          Google Vids opptaksplan
+                        </Typography>
+                      </Stack>
+                      <Typography
+                        sx={{
+                          mt: 0.65,
+                          color: "rgba(237,240,247,0.78)",
+                          fontSize: 13,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {tt(
+                          "Dette er en presenter-led plan som bruker Record myself i Google Vids. CreatorHub bygger sceneplan, opptaksmodus og teleprompter-manus fra kursgrunnlaget.",
+                          "This is a presenter-led plan that uses Record myself in Google Vids. CreatorHub builds the scene plan, recording mode, and teleprompter script from the course foundation.",
+                        )}
+                      </Typography>
+                    </Box>
+                    <Stack
+                      direction="row"
+                      spacing={0.6}
+                      useFlexGap
+                      flexWrap="wrap"
+                    >
+                      <Chip
+                        size="small"
+                        label={`${vidsPresenterPlan.readiness}% ${tt(
+                          "klar",
+                          "ready",
+                        )}`}
+                        sx={{
+                          color: "#0f0f0f",
+                          bgcolor: "rgba(248,179,33,0.9)",
+                          fontWeight: 700,
+                        }}
+                      />
+                      <Chip
+                        size="small"
+                        label={academyVidsRecordingModeLabel(
+                          vidsPresenterPlan.primaryMode,
+                          isNorwegian,
+                        )}
+                        sx={{
+                          color: "#edf0f7",
+                          bgcolor: "rgba(115,160,255,0.16)",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(115,160,255,0.24)",
+                        }}
+                      />
+                    </Stack>
+                  </Stack>
+
+                  <Box
+                    sx={{
+                      mt: 1,
+                      display: "grid",
+                      gap: 0.75,
+                      gridTemplateColumns: {
+                        xs: "1fr",
+                        sm: "repeat(3, minmax(0, 1fr))",
+                      },
+                    }}
+                  >
+                    {[
+                      {
+                        label: tt("Scener", "Scenes"),
+                        value: String(vidsPresenterPlan.scenes.length),
+                        helper: tt(
+                          "Korte takes for Vids",
+                          "Short takes for Vids",
+                        ),
+                      },
+                      {
+                        label: tt("Estimert lengde", "Estimated runtime"),
+                        value: `${vidsPresenterPlan.totalDurationMinutes.toFixed(1)} ${tt(
+                          "min",
+                          "min",
+                        )}`,
+                        helper: tt(
+                          "Presenter-led opptak",
+                          "Presenter-led recording",
+                        ),
+                      },
+                      {
+                        label: tt("Vids-modus", "Vids mode"),
+                        value: academyVidsRecordingModeLabel(
+                          vidsPresenterPlan.primaryMode,
+                          isNorwegian,
+                        ),
+                        helper: tt(
+                          "Record myself som standard",
+                          "Record myself as default",
+                        ),
+                      },
+                    ].map((item) => (
+                      <Box
+                        key={item.label}
+                        sx={{
+                          borderRadius: 1,
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                          bgcolor: "rgba(255,255,255,0.03)",
+                          px: 0.85,
+                          py: 0.8,
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontSize: 11,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            color: "rgba(237,240,247,0.54)",
+                          }}
+                        >
+                          {item.label}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            mt: 0.45,
+                            fontSize: 18,
+                            fontWeight: 700,
+                            color: "#f7f8fb",
+                          }}
+                        >
+                          {item.value}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            mt: 0.2,
+                            fontSize: 11.5,
+                            color: "rgba(237,240,247,0.58)",
+                          }}
+                        >
+                          {item.helper}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+
+                  {vidsPresenterPlan.missingFields.length > 0 ? (
+                    <Box
+                      sx={{
+                        mt: 0.95,
+                        px: 0.9,
+                        py: 0.8,
+                        borderRadius: 1,
+                        border:
+                          "var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.24)",
+                        bgcolor: "rgba(248,179,33,0.08)",
+                      }}
+                    >
+                      <Typography
+                        sx={{
+                          fontSize: 12.5,
+                          color: "rgba(237,240,247,0.82)",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {tt(
+                          "Fyll spesielt ut disse feltene for a skjerpe manus og opptaksplan:",
+                          "Fill these fields next to sharpen the script and recording plan:",
+                        )}{" "}
+                        {vidsPresenterPlan.missingFields.join(", ")}
+                      </Typography>
+                    </Box>
+                  ) : null}
+
+                  <Box
+                    sx={{
+                      mt: 0.95,
+                      px: 0.9,
+                      py: 0.85,
+                      borderRadius: 1,
+                      border:
+                        "var(--academy-hairline-width, 1px) solid rgba(115,160,255,0.2)",
+                      bgcolor: "rgba(115,160,255,0.08)",
+                    }}
+                  >
+                    <Stack
+                      direction={{ xs: "column", md: "row" }}
+                      spacing={0.8}
+                      justifyContent="space-between"
+                      alignItems={{ xs: "flex-start", md: "center" }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography
+                          sx={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            color: "rgba(237,240,247,0.58)",
+                          }}
+                        >
+                          {tt("Google-konto kreves", "Google sign-in required")}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            mt: 0.35,
+                            fontSize: 13,
+                            lineHeight: 1.5,
+                            color: "rgba(237,240,247,0.84)",
+                          }}
+                        >
+                          {googleWorkspaceStatusQuery.isLoading
+                            ? tt(
+                                "Verifiserer Google Workspace-tilkoblingen din.",
+                                "Verifying your Google Workspace connection.",
+                              )
+                            : !googleWorkflowReady
+                              ? tt(
+                                  "Du må logge inn med Google-kontoen din for å skrive Vids-dokumenter til Drive, åpne Google Vids og synke NotebookLM.",
+                                  "You must sign in with your Google account to write Vids documents to Drive, open Google Vids, and sync NotebookLM.",
+                                )
+                              : googleVidsStatus?.reason ||
+                                tt(
+                                  "Google er koblet til. Nå kan du synke brief, redigere scener, eksportere MP4 og sende kurset til NotebookLM.",
+                                  "Google is connected. You can now sync the brief, edit scenes, export the MP4, and send the course to NotebookLM.",
+                                )}
+                        </Typography>
+                        {googleWorkspaceEmail ? (
+                          <Typography
+                            sx={{
+                              mt: 0.4,
+                              fontSize: 12,
+                              color: "rgba(237,240,247,0.62)",
+                            }}
+                          >
+                            {tt("Google-konto", "Google account")}:{" "}
+                            {googleWorkspaceEmail}
+                          </Typography>
+                        ) : null}
+                        {googleVidsWorkspace?.lastSyncedAt ? (
+                          <Typography
+                            sx={{
+                              mt: 0.18,
+                              fontSize: 12,
+                              color: "rgba(237,240,247,0.62)",
+                            }}
+                          >
+                            {tt("Sist Vids-sync", "Last Vids sync")}:{" "}
+                            {new Date(
+                              googleVidsWorkspace.lastSyncedAt,
+                            ).toLocaleString(isNorwegian ? "nb-NO" : "en-US")}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <Stack
+                        direction="row"
+                        spacing={0.6}
+                        useFlexGap
+                        flexWrap="wrap"
+                      >
+                        <Chip
+                          size="small"
+                          label={
+                            googleWorkspaceConnected
+                              ? tt("Google tilkoblet", "Google connected")
+                              : tt("Google mangler", "Google not connected")
+                          }
+                          sx={{
+                            color: "#edf0f7",
+                            bgcolor: googleWorkspaceConnected
+                              ? "rgba(79,201,150,0.16)"
+                              : "rgba(255,255,255,0.06)",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label={
+                            googleWorkspaceDriveReady
+                              ? tt("Drive-scope klar", "Drive scope ready")
+                              : tt("Drive-scope mangler", "Drive scope missing")
+                          }
+                          sx={{
+                            color: "#edf0f7",
+                            bgcolor: googleWorkspaceDriveReady
+                              ? "rgba(79,201,150,0.16)"
+                              : "rgba(255,255,255,0.06)",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label={
+                            googleWorkspaceDocsReady
+                              ? tt("Docs-scope klar", "Docs scope ready")
+                              : tt("Docs-scope mangler", "Docs scope missing")
+                          }
+                          sx={{
+                            color: "#edf0f7",
+                            bgcolor: googleWorkspaceDocsReady
+                              ? "rgba(79,201,150,0.16)"
+                              : "rgba(255,255,255,0.06)",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label={
+                            googleVidsWorkspace
+                              ? tt("Drive docs klare", "Drive docs ready")
+                              : tt("Ingen docs ennå", "No docs yet")
+                          }
+                          sx={{
+                            color: "#edf0f7",
+                            bgcolor: googleVidsWorkspace
+                              ? "rgba(248,179,33,0.16)"
+                              : "rgba(255,255,255,0.06)",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                          }}
+                        />
+                      </Stack>
+                    </Stack>
+                  </Box>
+
+                  <Stack
+                    direction={{ xs: "column", md: "row" }}
+                    spacing={0.7}
+                    useFlexGap
+                    flexWrap="wrap"
+                    sx={{ mt: 1 }}
+                  >
+                    {!googleWorkflowReady ? (
+                      <Button
+                        startIcon={<LockOpen fontSize="small" />}
+                        onClick={() => googleWorkspaceConnectMutation.mutate()}
+                        disabled={googleWorkspaceConnectMutation.isPending}
+                        sx={{
+                          textTransform: "none",
+                          color: "#0f0f0f",
+                          background:
+                            "linear-gradient(180deg, #7af0b1, #44c886)",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {googleWorkspaceConnectMutation.isPending
+                          ? tt("Starter Google-login...", "Starting Google sign-in...")
+                          : tt("Logg inn med Google", "Sign in with Google")}
+                      </Button>
+                    ) : null}
+                    <Button
+                      startIcon={<Publish fontSize="small" />}
+                      onClick={() => googleVidsSyncMutation.mutate()}
+                      disabled={
+                        !googleWorkflowReady ||
+                        !googleVidsWorkspaceSnapshot ||
+                        googleVidsSyncMutation.isPending
+                      }
+                      sx={{
+                        textTransform: "none",
+                        color: "#0f0f0f",
+                        background:
+                          "linear-gradient(180deg, #7af0b1, #44c886)",
+                        fontWeight: 700,
+                        "&.Mui-disabled": {
+                          color: "rgba(15,15,15,0.45)",
+                          background: "rgba(122,240,177,0.24)",
+                        },
+                      }}
+                    >
+                      {googleVidsSyncMutation.isPending
+                        ? tt("Synker til Drive...", "Syncing to Drive...")
+                        : googleVidsWorkspace
+                          ? tt("Oppdater Drive docs", "Update Drive docs")
+                          : tt("Synk brief til Drive", "Sync brief to Drive")}
+                    </Button>
+                    <Button
+                      startIcon={<Save fontSize="small" />}
+                      onClick={() => void saveGoogleProductionWorkflow()}
+                      disabled={googleProductionWorkflowSaving}
+                      sx={{
+                        textTransform: "none",
+                        color: "#edf0f7",
+                        border:
+                          "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                      }}
+                    >
+                      {googleProductionWorkflowSaving
+                        ? tt("Lagrer plan...", "Saving plan...")
+                        : tt("Lagre opptaksplan", "Save recording plan")}
+                    </Button>
+                    <Button
+                      startIcon={<OpenInNew fontSize="small" />}
+                      onClick={openGoogleVidsComposer}
+                      disabled={!googleWorkflowReady}
+                      sx={{
+                        textTransform: "none",
+                        color: "#0f0f0f",
+                        background:
+                          "linear-gradient(180deg, #ffd44e, #f2a616)",
+                        fontWeight: 700,
+                        "&.Mui-disabled": {
+                          color: "rgba(15,15,15,0.45)",
+                          background: "rgba(255,212,78,0.24)",
+                        },
+                      }}
+                    >
+                      {tt("Aapne Google Vids", "Open Google Vids")}
+                    </Button>
+                    {googleVidsWorkspace?.briefDocumentUrl ? (
+                      <Button
+                        startIcon={<OpenInNew fontSize="small" />}
+                        onClick={() =>
+                          openGoogleVidsWorkspaceUrl(
+                            googleVidsWorkspace.briefDocumentUrl,
+                          )
+                        }
+                        sx={{
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Aapne brief-doc", "Open brief doc")}
+                      </Button>
+                    ) : null}
+                    {googleVidsWorkspace?.teleprompterDocumentUrl ? (
+                      <Button
+                        startIcon={<OpenInNew fontSize="small" />}
+                        onClick={() =>
+                          openGoogleVidsWorkspaceUrl(
+                            googleVidsWorkspace.teleprompterDocumentUrl,
+                          )
+                        }
+                        sx={{
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Aapne teleprompter-doc", "Open teleprompter doc")}
+                      </Button>
+                    ) : null}
+                    {googleVidsWorkspace?.driveFolderUrl ? (
+                      <Button
+                        startIcon={<OpenInNew fontSize="small" />}
+                        onClick={() =>
+                          openGoogleVidsWorkspaceUrl(
+                            googleVidsWorkspace.driveFolderUrl,
+                          )
+                        }
+                        sx={{
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Aapne Drive-mappe", "Open Drive folder")}
+                      </Button>
+                    ) : null}
+                    <Button
+                      startIcon={<ContentCopy fontSize="small" />}
+                      onClick={() =>
+                        void copyTextToClipboard(
+                          vidsPresenterPlan.brief,
+                          tt(
+                            "Vids-brief kopiert til utklippstavlen.",
+                            "Vids brief copied to the clipboard.",
+                          ),
+                        )
+                      }
+                      sx={{
+                        textTransform: "none",
+                        color: "#edf0f7",
+                        border:
+                          "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                      }}
+                    >
+                      {tt("Kopier Vids-brief", "Copy Vids brief")}
+                    </Button>
+                    <Button
+                      startIcon={<ContentCopy fontSize="small" />}
+                      onClick={() =>
+                        void copyTextToClipboard(
+                          vidsPresenterPlan.teleprompterScript,
+                          tt(
+                            "Teleprompter-manus kopiert til utklippstavlen.",
+                            "Teleprompter script copied to the clipboard.",
+                          ),
+                        )
+                      }
+                      sx={{
+                        textTransform: "none",
+                        color: "#edf0f7",
+                        border:
+                          "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                      }}
+                    >
+                      {tt("Kopier teleprompter", "Copy teleprompter script")}
+                    </Button>
+                    <Button
+                      startIcon={<ContentCopy fontSize="small" />}
+                      onClick={() =>
+                        void copyTextToClipboard(
+                          vidsPresenterPlan.starterPrompt,
+                          tt(
+                            "Starter prompt kopiert til utklippstavlen.",
+                            "Starter prompt copied to the clipboard.",
+                          ),
+                        )
+                      }
+                      sx={{
+                        textTransform: "none",
+                        color: "#edf0f7",
+                        border:
+                          "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                      }}
+                    >
+                      {tt("Kopier starter prompt", "Copy starter prompt")}
+                    </Button>
+                  </Stack>
+
+                  <Box
+                    sx={{
+                      mt: 1,
+                      px: 0.95,
+                      py: 0.9,
+                      borderRadius: 1,
+                      border:
+                        "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                      bgcolor: "rgba(255,255,255,0.03)",
+                    }}
+                  >
+                    <Stack
+                      direction={{ xs: "column", md: "row" }}
+                      spacing={0.8}
+                      justifyContent="space-between"
+                      alignItems={{ xs: "flex-start", md: "center" }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={sectionLabelSx}>
+                          {tt("NotebookLM Studio", "NotebookLM Studio")}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            mt: 0.4,
+                            fontSize: 12.5,
+                            lineHeight: 1.5,
+                            color: "rgba(237,240,247,0.76)",
+                          }}
+                        >
+                          {notebookLmStatus?.reason ||
+                            tt(
+                              "Bruk NotebookLM til å lage FAQ, study guide og lydoppsummeringer fra kursgrunnlaget og sceneplanen.",
+                              "Use NotebookLM to create FAQs, study guides, and audio summaries from the course foundation and scene plan.",
+                            )}
+                        </Typography>
+                        {notebookLmWorkspace?.lastSyncedAt ? (
+                          <Typography
+                            sx={{
+                              mt: 0.18,
+                              fontSize: 12,
+                              color: "rgba(237,240,247,0.62)",
+                            }}
+                          >
+                            {tt("Sist NotebookLM-sync", "Last NotebookLM sync")}:{" "}
+                            {new Date(
+                              notebookLmWorkspace.lastSyncedAt,
+                            ).toLocaleString(isNorwegian ? "nb-NO" : "en-US")}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <Stack
+                        direction="row"
+                        spacing={0.6}
+                        useFlexGap
+                        flexWrap="wrap"
+                      >
+                        <Chip
+                          size="small"
+                          label={
+                            notebookLmWorkspace
+                              ? tt("NotebookLM klart", "NotebookLM ready")
+                              : tt("Ikke synket ennå", "Not synced yet")
+                          }
+                          sx={{
+                            color: "#edf0f7",
+                            bgcolor: notebookLmWorkspace
+                              ? "rgba(248,179,33,0.16)"
+                              : "rgba(255,255,255,0.06)",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                          }}
+                        />
+                        {notebookLmCourseSummary ? (
+                          <Chip
+                            size="small"
+                            label={`${notebookLmSourceDocuments.length} ${tt("kilder", "sources")}`}
+                            sx={{
+                              color: "#edf0f7",
+                              bgcolor: "rgba(115,160,255,0.16)",
+                              border:
+                                "var(--academy-hairline-width, 1px) solid rgba(115,160,255,0.24)",
+                            }}
+                          />
+                        ) : null}
+                      </Stack>
+                    </Stack>
+                    <Stack
+                      direction={{ xs: "column", md: "row" }}
+                      spacing={0.7}
+                      useFlexGap
+                      flexWrap="wrap"
+                      sx={{ mt: 0.9 }}
+                    >
+                      <Button
+                        startIcon={<Publish fontSize="small" />}
+                        onClick={() => notebookLmSyncMutation.mutate()}
+                        disabled={
+                          !googleWorkflowReady || notebookLmSyncMutation.isPending
+                        }
+                        sx={{
+                          textTransform: "none",
+                          color: "#0f0f0f",
+                          background:
+                            "linear-gradient(180deg, #7af0b1, #44c886)",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {notebookLmSyncMutation.isPending
+                          ? tt("Synker NotebookLM...", "Syncing NotebookLM...")
+                          : notebookLmWorkspace
+                            ? tt("Oppdater NotebookLM", "Update NotebookLM")
+                            : tt("Synk til NotebookLM", "Sync to NotebookLM")}
+                      </Button>
+                      <Button
+                        startIcon={<OpenInNew fontSize="small" />}
+                        onClick={() => openGoogleVidsWorkspaceUrl(notebookLmOpenUrl)}
+                        disabled={!googleWorkflowReady}
+                        sx={{
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Aapne NotebookLM", "Open NotebookLM")}
+                      </Button>
+                      {notebookLmWorkspace?.workspaceDocumentUrl ? (
+                        <Button
+                          startIcon={<OpenInNew fontSize="small" />}
+                          onClick={() =>
+                            openGoogleVidsWorkspaceUrl(
+                              notebookLmWorkspace.workspaceDocumentUrl,
+                            )
+                          }
+                          sx={{
+                            textTransform: "none",
+                            color: "#edf0f7",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                          }}
+                        >
+                          {tt("Aapne oversiktsdoc", "Open overview doc")}
+                        </Button>
+                      ) : null}
+                      {notebookLmWorkspace?.driveFolderUrl ? (
+                        <Button
+                          startIcon={<OpenInNew fontSize="small" />}
+                          onClick={() =>
+                            openGoogleVidsWorkspaceUrl(
+                              notebookLmWorkspace.driveFolderUrl,
+                            )
+                          }
+                          sx={{
+                            textTransform: "none",
+                            color: "#edf0f7",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                          }}
+                        >
+                          {tt("Aapne NotebookLM-mappe", "Open NotebookLM folder")}
+                        </Button>
+                      ) : null}
+                    </Stack>
+                    {notebookLmSourceDocuments.length > 0 ? (
+                      <Stack spacing={0.45} sx={{ mt: 0.9 }}>
+                        {notebookLmSourceDocuments.slice(0, 4).map((document) => (
+                          <Typography
+                            key={document.id}
+                            sx={{
+                              fontSize: 12.25,
+                              color: "rgba(237,240,247,0.68)",
+                            }}
+                          >
+                            {`${document.order + 1}. ${document.title}`}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    ) : null}
+                  </Box>
+
+                  <Box
+                    sx={{
+                      mt: 1,
+                      px: 0.95,
+                      py: 0.9,
+                      borderRadius: 1,
+                      border:
+                        "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                      bgcolor: "rgba(255,255,255,0.03)",
+                    }}
+                  >
+                    <Stack
+                      direction={{ xs: "column", md: "row" }}
+                      spacing={0.8}
+                      justifyContent="space-between"
+                      alignItems={{ xs: "flex-start", md: "center" }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={sectionLabelSx}>
+                          {tt("Drive-eksporter tilbake til kurs", "Drive exports back to the course")}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            mt: 0.4,
+                            fontSize: 12.5,
+                            lineHeight: 1.5,
+                            color: "rgba(237,240,247,0.76)",
+                          }}
+                        >
+                          {googleDriveExportQuery.isLoading
+                            ? tt(
+                                "Henter nylige videoeksporter fra Vids-mappen.",
+                                "Loading recent video exports from the Vids folder.",
+                              )
+                            : googleDriveExportCandidates.length > 0
+                              ? tt(
+                                  "Velg en MP4 eller annen spillbar Drive-video og bind den direkte som kursvideo.",
+                                  "Pick an MP4 or other playable Drive video and bind it directly as the course video.",
+                                )
+                              : tt(
+                                  "Ingen videoeksporter funnet ennå. Eksporter ferdig video fra Google Vids til den samme Drive-mappen først.",
+                                  "No video exports found yet. Export the finished video from Google Vids to the same Drive folder first.",
+                                )}
+                        </Typography>
+                      </Box>
+                      <Stack
+                        direction="row"
+                        spacing={0.6}
+                        useFlexGap
+                        flexWrap="wrap"
+                      >
+                        <Chip
+                          size="small"
+                          label={
+                            hasBoundCourseVideo
+                              ? tt("Kursvideo koblet", "Course video linked")
+                              : tt("Kursvideo mangler", "Course video missing")
+                          }
+                          sx={{
+                            color: "#edf0f7",
+                            bgcolor: hasBoundCourseVideo
+                              ? "rgba(79,201,150,0.16)"
+                              : "rgba(255,255,255,0.06)",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label={`${completedProductionSceneCount}/${productionSceneDrafts.length} ${tt("scener markert ferdig", "scenes marked done")}`}
+                          sx={{
+                            color: "#edf0f7",
+                            bgcolor: "rgba(115,160,255,0.16)",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(115,160,255,0.24)",
+                          }}
+                        />
+                      </Stack>
+                    </Stack>
+                    <Stack spacing={0.65} sx={{ mt: 0.9 }}>
+                      {googleDriveExportCandidates.slice(0, 5).map((file) => {
+                        const isBound = activeBoundDriveFileId === file.id;
+                        return (
+                          <Box
+                            key={file.id}
+                            sx={{
+                              px: 0.85,
+                              py: 0.8,
+                              borderRadius: 1,
+                              border:
+                                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                              bgcolor: isBound
+                                ? "rgba(79,201,150,0.08)"
+                                : "rgba(9,12,19,0.56)",
+                            }}
+                          >
+                            <Stack
+                              direction={{ xs: "column", md: "row" }}
+                              spacing={0.8}
+                              justifyContent="space-between"
+                              alignItems={{ xs: "flex-start", md: "center" }}
+                            >
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>
+                                  {file.name}
+                                </Typography>
+                                <Typography
+                                  sx={{
+                                    mt: 0.2,
+                                    fontSize: 12,
+                                    color: "rgba(237,240,247,0.64)",
+                                  }}
+                                >
+                                  {file.modifiedTime
+                                    ? `${tt("Oppdatert", "Updated")} ${new Date(
+                                        file.modifiedTime,
+                                      ).toLocaleString(
+                                        isNorwegian ? "nb-NO" : "en-US",
+                                      )}`
+                                    : tt(
+                                        "Tidspunkt mangler fra Drive.",
+                                        "Drive timestamp unavailable.",
+                                      )}
+                                </Typography>
+                              </Box>
+                              <Stack
+                                direction="row"
+                                spacing={0.6}
+                                useFlexGap
+                                flexWrap="wrap"
+                              >
+                                {file.externalUrl ? (
+                                  <Button
+                                    startIcon={<OpenInNew fontSize="small" />}
+                                    onClick={() =>
+                                      openGoogleVidsWorkspaceUrl(file.externalUrl)
+                                    }
+                                    sx={{
+                                      textTransform: "none",
+                                      color: "#edf0f7",
+                                      border:
+                                        "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                                    }}
+                                  >
+                                    {tt("Aapne i Drive", "Open in Drive")}
+                                  </Button>
+                                ) : null}
+                                <Button
+                                  startIcon={<Publish fontSize="small" />}
+                                  onClick={() => bindDriveExportMutation.mutate(file)}
+                                  disabled={bindDriveExportMutation.isPending}
+                                  sx={{
+                                    textTransform: "none",
+                                    color: "#0f0f0f",
+                                    background: isBound
+                                      ? "linear-gradient(180deg, #8dd8ff, #5fb4df)"
+                                      : "linear-gradient(180deg, #ffd44e, #f2a616)",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {bindDriveExportMutation.isPending
+                                    ? tt("Kobler...", "Binding...")
+                                    : isBound
+                                      ? tt("Allerede koblet", "Already linked")
+                                      : tt("Koble som kursvideo", "Bind as course video")}
+                                </Button>
+                              </Stack>
+                            </Stack>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                    <Stack
+                      direction={{ xs: "column", md: "row" }}
+                      spacing={0.7}
+                      useFlexGap
+                      flexWrap="wrap"
+                      sx={{ mt: 0.9 }}
+                    >
+                      <Button
+                        onClick={() => void googleDriveExportQuery.refetch()}
+                        startIcon={<Refresh fontSize="small" />}
+                        sx={{
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Oppdater eksportliste", "Refresh export list")}
+                      </Button>
+                      <Button
+                        onClick={openMediaStudioForCourseVideo}
+                        sx={{
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Aapne Media Studio", "Open Media Studio")}
+                      </Button>
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      mt: 1,
+                      borderRadius: 1,
+                      border:
+                        "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                      bgcolor: "rgba(255,255,255,0.03)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        px: 0.9,
+                        py: 0.75,
+                        borderBottom:
+                          "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+                        bgcolor: "rgba(255,255,255,0.02)",
+                      }}
+                    >
+                      <Stack
+                        direction={{ xs: "column", md: "row" }}
+                        spacing={0.7}
+                        justifyContent="space-between"
+                        alignItems={{ xs: "flex-start", md: "center" }}
+                      >
+                        <Typography
+                          sx={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            color: "rgba(237,240,247,0.56)",
+                          }}
+                        >
+                          {tt("Scene-editor for Google Vids", "Scene editor for Google Vids")}
+                        </Typography>
+                        <Button
+                          size="small"
+                          startIcon={<Add fontSize="small" />}
+                          onClick={addProductionScene}
+                          sx={{
+                            textTransform: "none",
+                            color: "#edf0f7",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                          }}
+                        >
+                          {tt("Legg til scene", "Add scene")}
+                        </Button>
+                      </Stack>
+                    </Box>
+                    <Stack spacing={0}>
+                      {productionSceneDrafts.map((scene, index) => (
+                        <Box
+                          key={scene.id}
+                          sx={{
+                            px: 0.9,
+                            py: 0.95,
+                            borderTop:
+                              index === 0
+                                ? "none"
+                                : "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.06)",
+                          }}
+                        >
+                          <Stack
+                            direction={{ xs: "column", md: "row" }}
+                            spacing={0.75}
+                            justifyContent="space-between"
+                            alignItems={{ xs: "stretch", md: "center" }}
+                          >
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label={tt("Scenetittel", "Scene title")}
+                              value={scene.title}
+                              onChange={(event) =>
+                                updateProductionSceneDraft(
+                                  scene.id,
+                                  "title",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                            <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">
+                              <IconButton
+                                size="small"
+                                onClick={() => moveProductionScene(scene.id, -1)}
+                                disabled={index === 0}
+                                sx={{ color: "#edf0f7" }}
+                              >
+                                <ArrowUpward fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={() => moveProductionScene(scene.id, 1)}
+                                disabled={index === productionSceneDrafts.length - 1}
+                                sx={{ color: "#edf0f7" }}
+                              >
+                                <ArrowDownward fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={() => removeProductionScene(scene.id)}
+                                disabled={productionSceneDrafts.length <= 1}
+                                sx={{ color: "#f8d56f" }}
+                              >
+                                <DeleteOutline fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                          </Stack>
+                          <Stack
+                            direction={{ xs: "column", md: "row" }}
+                            spacing={0.75}
+                            sx={{ mt: 0.8 }}
+                          >
+                            <TextField
+                              fullWidth
+                              size="small"
+                              multiline
+                              minRows={2}
+                              label={tt("Læringsmål", "Learning objective")}
+                              value={scene.objective}
+                              onChange={(event) =>
+                                updateProductionSceneDraft(
+                                  scene.id,
+                                  "objective",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                            <TextField
+                              fullWidth
+                              size="small"
+                              multiline
+                              minRows={2}
+                              label={tt("Visuell cue", "Visual cue")}
+                              value={scene.visualCue}
+                              onChange={(event) =>
+                                updateProductionSceneDraft(
+                                  scene.id,
+                                  "visualCue",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </Stack>
+                          <Stack
+                            direction={{ xs: "column", md: "row" }}
+                            spacing={0.75}
+                            sx={{ mt: 0.8 }}
+                          >
+                            <Box sx={{ minWidth: { md: 210 } }}>
+                              <Typography
+                                sx={{
+                                  mb: 0.35,
+                                  fontSize: 11,
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.08em",
+                                  color: "rgba(237,240,247,0.52)",
+                                }}
+                              >
+                                {tt("Opptaksmodus", "Recording mode")}
+                              </Typography>
+                              <Select
+                                fullWidth
+                                size="small"
+                                value={scene.recordingMode}
+                                onChange={(event) =>
+                                  updateProductionSceneDraft(
+                                    scene.id,
+                                    "recordingMode",
+                                    String(event.target.value),
+                                  )
+                                }
+                              >
+                                {["camera", "camera-and-screen", "screen", "voiceover"].map(
+                                  (mode) => (
+                                    <MenuItem key={mode} value={mode}>
+                                      {academyVidsRecordingModeLabel(
+                                        mode as AcademyVidsPresenterScene["recordingMode"],
+                                        isNorwegian,
+                                      )}
+                                    </MenuItem>
+                                  ),
+                                )}
+                              </Select>
+                            </Box>
+                            <TextField
+                              size="small"
+                              type="number"
+                              label={tt("Minutter", "Minutes")}
+                              value={scene.durationMinutes}
+                              onChange={(event) =>
+                                updateProductionSceneDraft(
+                                  scene.id,
+                                  "durationMinutes",
+                                  event.target.value,
+                                )
+                              }
+                              inputProps={{ min: 0.5, step: 0.25 }}
+                              sx={{ width: { xs: "100%", md: 140 } }}
+                            />
+                            <Box sx={{ minWidth: { md: 190 } }}>
+                              <Typography
+                                sx={{
+                                  mb: 0.35,
+                                  fontSize: 11,
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.08em",
+                                  color: "rgba(237,240,247,0.52)",
+                                }}
+                              >
+                                {tt("Scene-status", "Scene status")}
+                              </Typography>
+                              <Select
+                                fullWidth
+                                size="small"
+                                value={scene.status || "planned"}
+                                onChange={(event) =>
+                                  updateProductionSceneDraft(
+                                    scene.id,
+                                    "status",
+                                    String(event.target.value),
+                                  )
+                                }
+                              >
+                                <MenuItem value="planned">{tt("Planlagt", "Planned")}</MenuItem>
+                                <MenuItem value="recording">{tt("Taes opp", "Recording")}</MenuItem>
+                                <MenuItem value="ready">{tt("Klar for eksport", "Ready for export")}</MenuItem>
+                                <MenuItem value="done">{tt("Ferdig", "Done")}</MenuItem>
+                              </Select>
+                            </Box>
+                          </Stack>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            multiline
+                            minRows={3}
+                            label={tt("Teleprompter-manus", "Teleprompter script")}
+                            value={scene.teleprompterScript}
+                            onChange={(event) =>
+                              updateProductionSceneDraft(
+                                scene.id,
+                                "teleprompterScript",
+                                event.target.value,
+                              )
+                            }
+                            sx={{ mt: 0.8 }}
+                          />
+                          <TextField
+                            fullWidth
+                            size="small"
+                            multiline
+                            minRows={2}
+                            label={tt("Produsentnotat", "Producer note")}
+                            value={scene.notes || ""}
+                            onChange={(event) =>
+                              updateProductionSceneDraft(
+                                scene.id,
+                                "notes",
+                                event.target.value,
+                              )
+                            }
+                            sx={{ mt: 0.8 }}
+                          />
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      mt: 1,
+                      display: "grid",
+                      gap: 0.8,
+                      gridTemplateColumns: {
+                        xs: "1fr",
+                        md: "repeat(2, minmax(0, 1fr))",
+                      },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        borderRadius: 1,
+                        border:
+                          "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                        bgcolor: "rgba(255,255,255,0.03)",
+                        px: 0.9,
+                        py: 0.85,
+                      }}
+                    >
+                      <Typography sx={sectionLabelSx}>
+                        {tt("Produksjonsflyt", "Production workflow")}
+                      </Typography>
+                      <Stack spacing={0.15} sx={{ mt: 0.7 }}>
+                        {[
+                          {
+                            key: "recordingStartedAt",
+                            label: tt("Opptak er startet", "Recording has started"),
+                          },
+                          {
+                            key: "recordingCompletedAt",
+                            label: tt("Alle opptak er ferdige", "All recording is complete"),
+                          },
+                          {
+                            key: "ctaApprovedAt",
+                            label: tt("CTA er kvalitetssikret", "CTA has been checked"),
+                          },
+                          {
+                            key: "proofApprovedAt",
+                            label: tt("Proof of learning er med", "Proof of learning is included"),
+                          },
+                          {
+                            key: "runtimeApprovedAt",
+                            label: tt("Total lengde er godkjent", "Total runtime is approved"),
+                          },
+                        ].map((item) => (
+                          <Stack
+                            key={item.key}
+                            direction="row"
+                            spacing={0.8}
+                            alignItems="center"
+                            justifyContent="space-between"
+                            sx={{
+                              px: 0.1,
+                              py: 0.2,
+                            }}
+                          >
+                            <Typography
+                              sx={{
+                                fontSize: 12.5,
+                                color: "rgba(237,240,247,0.78)",
+                              }}
+                            >
+                              {item.label}
+                            </Typography>
+                            <Switch
+                              checked={hasWorkflowTimestamp(
+                                googleProductionWorkflowDraft[
+                                  item.key as keyof AcademyGoogleProductionWorkflow
+                                ],
+                              )}
+                              onChange={(event) =>
+                                toggleProductionMilestone(
+                                  item.key as
+                                    | "recordingStartedAt"
+                                    | "recordingCompletedAt"
+                                    | "ctaApprovedAt"
+                                    | "proofApprovedAt"
+                                    | "runtimeApprovedAt",
+                                  event.target.checked,
+                                )
+                              }
+                            />
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </Box>
+                    <Box
+                      sx={{
+                        borderRadius: 1,
+                        border:
+                          "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                        bgcolor: "rgba(255,255,255,0.03)",
+                        px: 0.9,
+                        py: 0.85,
+                      }}
+                    >
+                      <Typography sx={sectionLabelSx}>
+                        {tt("Opptakscheckliste", "Recording checklist")}
+                      </Typography>
+                      <Stack spacing={0.5} sx={{ mt: 0.7 }}>
+                        {vidsPresenterPlan.setupChecklist.map((item) => (
+                          <Typography
+                            key={item}
+                            sx={{
+                              fontSize: 12.5,
+                              color: "rgba(237,240,247,0.76)",
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {`• ${item}`}
+                          </Typography>
+                        ))}
+                      </Stack>
+                      <Typography
+                        sx={{
+                          mt: 0.9,
+                          fontSize: 12.5,
+                          color: "rgba(248,213,111,0.86)",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {tt(
+                          "Produksjonsnotater:",
+                          "Production notes:",
+                        )}{" "}
+                        {vidsPresenterPlan.productionNotes.join(" ")}
+                      </Typography>
+                    </Box>
+                  </Box>
                 </Box>
 
                 <Box ref={competencyComposerRef} sx={{ ...panelSx, p: 1.2 }}>

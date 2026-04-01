@@ -152,6 +152,8 @@ export interface ShotListCardProps {
   onDelete: (shotListId: string) => void;
   onExport: (shotListId: string) => void;
   onOpenStoryboard?: (shotListId: string) => void;
+  onOpenStoryboardFrame?: (shotListId: string, frameId?: string) => void;
+  onOpenStoryboardMissingFrame?: (shotListId: string, frameId?: string) => void;
   /** @dnd-kit drag handle — pass through from SortableContext if in sort mode */
   dragHandleProps?: Record<string, unknown>;
   isDragging?: boolean;
@@ -170,6 +172,8 @@ export function ShotListCard({
   onDelete,
   onExport,
   onOpenStoryboard,
+  onOpenStoryboardFrame,
+  onOpenStoryboardMissingFrame,
   dragHandleProps,
   isDragging = false,
 }: ShotListCardProps) {
@@ -204,6 +208,7 @@ export function ShotListCard({
   return (
     <Card
       ref={setDropRef}
+      data-testid={`shotlist-card-${sm.shotListId}`}
       elevation={isDragging ? 8 : isOver ? 4 : 1}
       sx={{
         position: 'relative',
@@ -419,12 +424,19 @@ export function ShotListCard({
                   <Chip
                     size="small"
                     label={`${coverage.missingFrames} mangler shot`}
+                    onClick={coverage.missingFrameIds.length > 0
+                      ? (event) => {
+                          event.stopPropagation();
+                          onOpenStoryboardMissingFrame?.(sm.shotListId, coverage.missingFrameIds[0]);
+                        }
+                      : undefined}
                     sx={{
                       height: 20,
                       fontSize: '0.64rem',
                       bgcolor: 'rgba(245,158,11,0.12)',
                       color: '#fbbf24',
                       border: '1px solid rgba(245,158,11,0.24)',
+                      cursor: coverage.missingFrameIds.length > 0 && onOpenStoryboardMissingFrame ? 'pointer' : 'default',
                     }}
                   />
                 </Tooltip>
@@ -439,6 +451,44 @@ export function ShotListCard({
                     bgcolor: 'rgba(233,30,99,0.12)',
                     color: '#f9a8d4',
                     border: '1px solid rgba(233,30,99,0.2)',
+                  }}
+                  />
+              )}
+              {coverage.coveredFrameIds.length > 0 && (
+                <Chip
+                  size="small"
+                  label="Åpne linked frame"
+                  data-testid={`shotlist-open-linked-frame-${sm.shotListId}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenStoryboardFrame?.(sm.shotListId, coverage.coveredFrameIds[0]);
+                  }}
+                  sx={{
+                    height: 20,
+                    fontSize: '0.64rem',
+                    bgcolor: 'rgba(16,185,129,0.12)',
+                    color: '#a7f3d0',
+                    border: '1px solid rgba(16,185,129,0.24)',
+                    cursor: onOpenStoryboardFrame ? 'pointer' : 'default',
+                  }}
+                />
+              )}
+              {coverage.missingFrameIds.length > 0 && (
+                <Chip
+                  size="small"
+                  label="Åpne manglende frame"
+                  data-testid={`shotlist-open-missing-frame-${sm.shotListId}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenStoryboardMissingFrame?.(sm.shotListId, coverage.missingFrameIds[0]);
+                  }}
+                  sx={{
+                    height: 20,
+                    fontSize: '0.64rem',
+                    bgcolor: 'rgba(245,158,11,0.12)',
+                    color: '#fde68a',
+                    border: '1px solid rgba(245,158,11,0.24)',
+                    cursor: onOpenStoryboardMissingFrame ? 'pointer' : 'default',
                   }}
                 />
               )}
@@ -547,6 +597,16 @@ export function ShotListCard({
         {onOpenStoryboard && (
           <MenuItem onClick={() => { onOpenStoryboard(sm.shotListId); closeMenu(); }} dense>
             <StoryboardIcon sx={{ fontSize: 16, mr: 1 }} /> Open storyboard
+          </MenuItem>
+        )}
+        {onOpenStoryboardFrame && coverage.coveredFrameIds.length > 0 && (
+          <MenuItem onClick={() => { onOpenStoryboardFrame(sm.shotListId, coverage.coveredFrameIds[0]); closeMenu(); }} dense>
+            <StoryboardIcon sx={{ fontSize: 16, mr: 1 }} /> Open linked frame
+          </MenuItem>
+        )}
+        {onOpenStoryboardMissingFrame && coverage.missingFrameIds.length > 0 && (
+          <MenuItem onClick={() => { onOpenStoryboardMissingFrame(sm.shotListId, coverage.missingFrameIds[0]); closeMenu(); }} dense>
+            <StoryboardIcon sx={{ fontSize: 16, mr: 1 }} /> Open missing frame
           </MenuItem>
         )}
         <Divider sx={{ my: 0.25, borderColor: 'rgba(255,255,255,0.08)' }} />

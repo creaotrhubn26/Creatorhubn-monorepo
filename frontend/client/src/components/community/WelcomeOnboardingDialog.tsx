@@ -25,6 +25,7 @@ import {
   ListItemText,
   Paper,
   Alert,
+  IconButton,
 } from '@mui/material';
 import {
   WavingHand as Waving,
@@ -33,11 +34,25 @@ import {
   Gavel as Rule,
   EmojiEvents,
   CheckCircle,
+  Close,
 } from '@mui/icons-material';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import {
+  COMMUNITY_DIALOG_ACTIONS_SX,
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_MUTED,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_PRIMARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SECONDARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SURFACE_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 interface WelcomeOnboardingDialogProps {
   open: boolean;
@@ -171,12 +186,12 @@ export default function WelcomeOnboardingDialog({
       ),
     },
     {
-      label: 'Badges & Progresjon',
+      label: 'Merker & progresjon',
       icon: <EmojiEvents />,
       content: (
         <Box>
           <Typography variant="body2" gutterBottom>
-            Tjen badges ved å være aktiv i community:
+            Tjen merker ved å være aktiv i community:
           </Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
             <Chip label="🎉 Første Melding" size="small" color="success" />
@@ -186,7 +201,7 @@ export default function WelcomeOnboardingDialog({
             <Chip label="🏆 Toppbidragsyter" size="small" sx={{ bgcolor: '#FFD700', color: 'black' }} />
           </Box>
           <Alert severity="success" sx={{ mt: 2 }}>
-            💡 Send din første melding for å tjene"Første Melding" badge!
+            💡 Send din første melding for å tjene merket "Første melding"!
           </Alert>
         </Box>
       ),
@@ -248,39 +263,125 @@ export default function WelcomeOnboardingDialog({
   };
 
   return (
-    <Dialog open={open} onClose={handleSkip} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {steps[activeStep].icon}
-          <Typography variant="h6">Velkommen til CreatorHub Norge</Typography>
+    <Dialog
+      open={open}
+      onClose={handleSkip}
+      maxWidth="sm"
+      fullWidth
+      sx={COMMUNITY_DIALOG_SX}
+      PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+    >
+      <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Chip
+              label="Hurtigstart"
+              size="small"
+              sx={{
+                bgcolor: 'rgba(245, 166, 35, 0.14)',
+                color: '#ffd27a',
+                border: '1px solid rgba(245, 166, 35, 0.24)',
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}
+            />
+            <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.02em', color: COMMUNITY_DIALOG_TEXT }}>
+              Velkommen til CreatorHub Norge
+            </Typography>
+          </Box>
+          <IconButton onClick={handleSkip} size="small" sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
+            <Close />
+          </IconButton>
         </Box>
       </DialogTitle>
-      <DialogContent>
+      <DialogContent
+        sx={{
+          ...COMMUNITY_DIALOG_CONTENT_SX,
+          '& .MuiStepConnector-line': {
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderLeftWidth: 2,
+          },
+          '& .MuiStepContent-root': {
+            borderLeftColor: 'rgba(255,255,255,0.1)',
+            ml: 1.1,
+            pl: 3,
+          },
+        }}
+      >
         <Stepper activeStep={activeStep} orientation="vertical">
           {steps.map((step, index) => (
             <Step key={step.label}>
-              <StepLabel>{step.label}</StepLabel>
+              <StepLabel
+                StepIconComponent={() => (
+                  <Box
+                    sx={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: '50%',
+                      display: 'grid',
+                      placeItems: 'center',
+                      background:
+                        activeStep === index
+                          ? 'linear-gradient(135deg, #f5a623 0%, #ffd27a 100%)'
+                          : index < activeStep
+                            ? 'linear-gradient(135deg, #78d6a3 0%, #9af0c1 100%)'
+                            : 'rgba(255,255,255,0.05)',
+                      color: activeStep <= index ? COMMUNITY_DIALOG_TEXT : '#05070b',
+                      border: activeStep <= index ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                    }}
+                  >
+                    {step.icon}
+                  </Box>
+                )}
+              >
+                <Typography sx={{ fontWeight: 700, color: COMMUNITY_DIALOG_TEXT }}>
+                  {step.label}
+                </Typography>
+              </StepLabel>
               <StepContent>
-                {step.content}
+                <Box
+                  sx={{
+                    py: 1.5,
+                    '& .MuiTypography-body2': { color: COMMUNITY_DIALOG_MUTED },
+                    '& .MuiPaper-root': COMMUNITY_DIALOG_SURFACE_SX,
+                    '& .MuiAlert-root': {
+                      borderRadius: 3,
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    },
+                  }}
+                >
+                  {step.content}
+                </Box>
               </StepContent>
             </Step>
           ))}
         </Stepper>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={handleSkip} color="inherit">
+      <DialogActions sx={{ ...COMMUNITY_DIALOG_ACTIONS_SX, justifyContent: 'space-between' }}>
+        <Button onClick={handleSkip} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
           Hopp over
         </Button>
-        {activeStep > 0 && (
-          <Button onClick={handleBack}>
-            Tilbake
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {activeStep > 0 && (
+            <Button onClick={handleBack} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
+              Tilbake
+            </Button>
+          )}
+          <Button onClick={handleNext} variant="contained" sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}>
+            {activeStep === steps.length - 1 ? 'Kom i gang!' : 'Neste'}
           </Button>
-        )}
-        <Button onClick={handleNext} variant="contained">
-          {activeStep === steps.length - 1 ? 'Kom i gang!' : 'Neste'}
-        </Button>
+        </Box>
       </DialogActions>
     </Dialog>
   );
 }
-

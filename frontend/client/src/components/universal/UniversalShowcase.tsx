@@ -291,6 +291,264 @@ const timecodeToSeconds = (timecode: string): number => {
   return hours * 3600 + minutes * 60 + seconds + frames / fps;
 };
 
+const parseNumericValue = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+type ShowcasePricingPackage = {
+  id: string;
+  price: number;
+  savings?: number;
+  images?: number;
+  minutes?: number;
+  tracks?: number;
+};
+
+const getFallbackShowcasePricingData = (profession: ProfessionType) => {
+  const pricingByProfession: Record<
+    'photographer' | 'videographer' | 'music_producer',
+    {
+      perImage: number;
+      contractedBase: number;
+      packages: ShowcasePricingPackage[];
+    }
+  > = {
+    photographer: {
+      perImage: 150,
+      contractedBase: 50,
+      packages: [
+        { id: 'photo-50', images: 50, price: 6000, savings: 1500 },
+        { id: 'photo-100', images: 100, price: 10000, savings: 5000 },
+        { id: 'photo-300', images: 300, price: 25000, savings: 20000 },
+      ],
+    },
+    videographer: {
+      perImage: 100,
+      contractedBase: 30,
+      packages: [
+        { id: 'video-highlight', minutes: 3, price: 4500, savings: 500 },
+        { id: 'video-story', minutes: 8, price: 8000, savings: 1500 },
+        { id: 'video-full-day', minutes: 15, price: 12000, savings: 3000 },
+      ],
+    },
+    music_producer: {
+      perImage: 800,
+      contractedBase: 3,
+      packages: [
+        { id: 'music-single', tracks: 1, price: 2500, savings: 500 },
+        { id: 'music-ep', tracks: 4, price: 8000, savings: 2000 },
+        { id: 'music-album', tracks: 10, price: 15000, savings: 5000 },
+      ],
+    },
+  };
+
+  const pricing =
+    pricingByProfession[profession as keyof typeof pricingByProfession] ||
+    pricingByProfession.photographer;
+
+  return {
+    pricing,
+    projectPricing: {
+      contracted_images: pricing.contractedBase,
+      per_image: pricing.perImage,
+    },
+  };
+};
+
+const getFallbackEnhancementPresets = () => ({
+  portrait: {
+    description: 'Mykere hudtoner, balansert kontrast og lett skarphet for portretter.',
+    options: {
+      brightness: 4,
+      contrast: 1.05,
+      saturation: 6,
+      sharpening: 1.1,
+      noiseReduction: true,
+      autoTone: true,
+    },
+  },
+  wedding: {
+    description: 'Varmere hvitbalanse og mer glod for bryllupsbilder.',
+    options: {
+      brightness: 6,
+      contrast: 1.08,
+      saturation: 8,
+      sharpening: 1.05,
+      noiseReduction: true,
+      autoTone: true,
+    },
+  },
+  landscape: {
+    description: 'Mer dybde, klarhet og farger for landskap og miljo.',
+    options: {
+      brightness: 2,
+      contrast: 1.12,
+      saturation: 10,
+      sharpening: 1.2,
+      noiseReduction: false,
+      autoTone: true,
+    },
+  },
+  product: {
+    description: 'Renere kontrast og noytral fargebalanse for produkter.',
+    options: {
+      brightness: 3,
+      contrast: 1.14,
+      saturation: 2,
+      sharpening: 1.22,
+      noiseReduction: true,
+      autoTone: false,
+    },
+  },
+  event: {
+    description: 'Lofter eksponering og bevarer stemningen i dokumentariske eventbilder.',
+    options: {
+      brightness: 5,
+      contrast: 1.06,
+      saturation: 5,
+      sharpening: 1.08,
+      noiseReduction: true,
+      autoTone: true,
+    },
+  },
+  custom: {
+    description: 'Manuelle justeringer for prosjekter som trenger en spesifikk look.',
+    options: null,
+  },
+});
+
+const deriveDayCategoriesFromShowcases = (
+  showcases: Array<{
+    id?: string;
+    title?: string;
+    category?: string;
+    tags?: string[];
+    duration?: number;
+  }>
+) => {
+  const groupedCategories = new Map<
+    string,
+    Map<number, { id: string; dayNumber: number; itemCount: number; durationSeconds: number }>
+  >();
+  const dayPatterns = [
+    /^(.*?)[\s:|-]*(?:dag|day)\s*(\d+)\b/i,
+    /^(?:dag|day)\s*(\d+)[\s:|-]*(.*)$/i,
+  ];
+
+  for (const showcase of showcases) {
+    const candidates = [showcase.category, showcase.title, ...(showcase.tags || [])].filter(
+      (value): value is string => Boolean(value && value.trim())
+    );
+
+    for (const candidate of candidates) {
+      let baseCategory = '';
+      let dayNumber = 0;
+
+      for (const pattern of dayPatterns) {
+        const match = candidate.match(pattern);
+        if (!match) continue;
+
+        if (pattern === dayPatterns[0]) {
+          baseCategory = match[1]?.trim() || 'Prosjekt';
+          dayNumber = Number(match[2] || 0);
+        } else {
+          dayNumber = Number(match[1] || 0);
+          baseCategory = match[2]?.trim() || 'Prosjekt';
+        }
+        break;
+      }
+
+      if (!dayNumber) continue;
+
+      const normalizedBaseCategory = baseCategory.replace(/\s+/g, ' ').trim() || 'Prosjekt';
+      const daysForCategory =
+        groupedCategories.get(normalizedBaseCategory) ||
+        new Map<number, { id: string; dayNumber: number; itemCount: number; durationSeconds: number }>();
+      const existingDay = daysForCategory.get(dayNumber) || {
+        id: `${normalizedBaseCategory.toLowerCase().replace(/[^a-z0-9]+/gi, '-')}-day-${dayNumber}`,
+        dayNumber,
+        itemCount: 0,
+        durationSeconds: 0,
+      };
+
+      existingDay.itemCount += 1;
+      existingDay.durationSeconds += Number(showcase.duration || 0);
+      daysForCategory.set(dayNumber, existingDay);
+      groupedCategories.set(normalizedBaseCategory, daysForCategory);
+      break;
+    }
+  }
+
+  return Array.from(groupedCategories.entries())
+    .map(([baseCategory, dayMap]) => ({
+      baseCategory,
+      days: Array.from(dayMap.values())
+        .sort((left, right) => left.dayNumber - right.dayNumber)
+        .map((day) => ({
+          id: day.id,
+          name: `Dag ${day.dayNumber}`,
+          hours:
+            day.durationSeconds > 0
+              ? Math.max(1, Math.round(day.durationSeconds / 3600))
+              : Math.max(1, day.itemCount),
+        })),
+    }))
+    .sort((left, right) => left.baseCategory.localeCompare(right.baseCategory, 'nb'));
+};
+
+type VideoJobType =
+  | 'render'
+  | 'watermark'
+  | 'proxy'
+  | 'multicam-sync'
+  | 'streaming'
+  | 'subtitle';
+
+type ProxyQuality = '480p-h264' | '720p-h264' | '720p-prores' | '1080p-h264';
+type MulticamAudioSource = 'camera1' | 'camera2' | 'external' | 'auto';
+type StreamingProtocol = 'hls' | 'dash' | 'webrtc';
+type StreamingBitrateProfile = '4k' | '1080p' | '720p';
+
+const weddingPackageOptions = [
+  'highlight',
+  'feature',
+  'ceremony',
+  'speeches',
+  'teaser',
+] as const;
+
+type WeddingPackageOption = (typeof weddingPackageOptions)[number];
+
+const weddingPackageLabels: Record<WeddingPackageOption, string> = {
+  highlight: 'Highlight Reel',
+  feature: 'Feature Film',
+  ceremony: 'Seremoni Full',
+  speeches: 'Taler & Takk',
+  teaser: 'Teaser / Trailer',
+};
+
+interface VideoSequenceRecord {
+  id: string;
+  sequenceName: string;
+  chapters: string[];
+  version: string;
+  createdAt?: string;
+}
+
+interface VideoTimecodedCommentRecord {
+  id: string;
+  timecode: number;
+  comment: string;
+  version: string;
+}
+
 const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   profession,
   userId,
@@ -701,6 +959,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [batchMode, setBatchMode] = useState(false);
   const [selectedBatchItems, setSelectedBatchItems] = useState<Set<string>>(new Set());
+  const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [_searchQuery, setSearchQuery] = useState<SearchQuery>({});
   const [categories, setCategories] = useState<ShowcaseCategory[]>([]);
   const [sets, setSets] = useState<ShowcaseSet[]>([]);
@@ -738,19 +997,21 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const showcasePublishingAccess = features.checkFeatureAccess('showcase-publishing');
   const showcaseAnalyticsAccess = features.checkFeatureAccess('showcase-analytics');
 
-  const { data: evendiBookings = [] } = useQuery<EvendiBooking[]>({
+  const { data: evendiBookingsData } = useQuery<EvendiBooking[]>({
     queryKey: evendiQueryKeys.bookings(),
     queryFn: () => getEvendiBookings(),
-    enabled: !!user?.id,
+    enabled: !clientMode && !!effectiveUserId,
     staleTime: 60_000,
   });
 
   const { data: evendiAnalytics } = useQuery<EvendiAnalyticsSummary>({
     queryKey: evendiQueryKeys.analytics(),
     queryFn: () => getEvendiAnalyticsSummary(),
-    enabled: !!user?.id,
+    enabled: !clientMode && !!effectiveUserId,
     staleTime: 60_000,
   });
+
+  const evendiBookings = useMemo(() => evendiBookingsData ?? [], [evendiBookingsData]);
 
   const evendiSummary = useMemo(() => {
     const fallbackTotal = evendiBookings.length;
@@ -975,10 +1236,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [selectedSequence, setSelectedSequence] = useState<string | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<string | null>(null);
   const [videoVersion, setVideoVersion] = useState<'R1' | 'R2' | 'R3' | 'Final'>('R1');
-  const [timecodedComments, setTimecodedComments] = useState<any[]>([]);
+  const [timecodedComments, setTimecodedComments] = useState<VideoTimecodedCommentRecord[]>([]);
+  const [videoSequences, setVideoSequences] = useState<VideoSequenceRecord[]>([]);
   const [selectedLUT, setSelectedLUT] = useState<string>('rec709');
   const [selectedAudioFormat, setSelectedAudioFormat] = useState<string>('master');
   const [showVideoEditor, setShowVideoEditor] = useState(false);
+  const [showAdvancedVideoSuite, setShowAdvancedVideoSuite] = useState(false);
+  const [showAdvancedPhotoSuite, setShowAdvancedPhotoSuite] = useState(false);
   const [showSequenceManager, setShowSequenceManager] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
@@ -995,9 +1259,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [showWeddingPackages, setShowWeddingPackages] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<'4k-master' | 'web-h264' | 'social-vertical' | 'custom'>('web-h264');
-  const [selectedWeddingPackage, setSelectedWeddingPackage] = useState<'highlight' | 'feature' | 'ceremony' | 'speeches' | 'teaser'>('highlight');
+  const [selectedWeddingPackage, setSelectedWeddingPackage] = useState<WeddingPackageOption>('highlight');
   const [isProcessingVideo, setIsProcessingVideo] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
+  const [proxyQuality, setProxyQuality] = useState<ProxyQuality>('720p-prores');
+  const [keepOriginalProxyFiles, setKeepOriginalProxyFiles] = useState(true);
+  const [multicamMasterSource, setMulticamMasterSource] = useState<MulticamAudioSource>('camera1');
+  const [multicamSyncPrecision, setMulticamSyncPrecision] = useState(95);
+  const [chapterMinimumSeconds, setChapterMinimumSeconds] = useState(30);
+  const [streamingProtocol, setStreamingProtocol] = useState<StreamingProtocol>('hls');
+  const [streamingBitrateProfiles, setStreamingBitrateProfiles] = useState<StreamingBitrateProfile[]>(['4k', '1080p', '720p']);
+  const [newSequenceName, setNewSequenceName] = useState('Ny sekvens');
+  const [newChapterTitle, setNewChapterTitle] = useState('');
+  const [newCollectionName, setNewCollectionName] = useState('');
 
   // Google Photos Integration States
   const [googlePhotosConnected, setGooglePhotosConnected] = useState(false);
@@ -1288,12 +1562,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
   const queryClient = useQueryClient();
 
-  // Theme settings for elegant dark design
+  // Theme settings aligned with the Academy visual shell
   const isDark = true; // Always use dark theme for professional look
-  const _bgColor = '#1a1a1a';
-  const cardBg = '#2a2a2a';
-  const textPrimary = '#ffffff';
-  const textSecondary = '#b0b0b0';
+  const academyAccent = '#f5a623';
+  const academyCoolAccent = '#5279cc';
+  const academySurface = 'rgba(11, 15, 24, 0.84)';
+  const academySurfaceElevated = 'rgba(8, 11, 18, 0.92)';
+  const academyHeaderBackground =
+    'linear-gradient(180deg, rgba(13,16,25,0.95), rgba(10,13,20,0.9))';
+  const academyBorder = 'rgba(255,255,255,0.08)';
+  const _bgColor = '#06080d';
+  const cardBg = academySurface;
+  const textPrimary = '#edf0f7';
+  const textSecondary = 'rgba(237,240,247,0.64)';
   // Dynamic accent color based on settings (memoized for performance and auto-scalability)
   const accentColor = useMemo(() => {
     if ((showcaseSettings.accentColorMode as string) === 'custom') {
@@ -1302,11 +1583,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       const colors = ['#ff6b35','#e53e3e','#9f7aea','#38b2ac','#f6ad55','#68d391'];
       return colors[Math.floor(Math.random() * colors.length)];
     } else {
-      // Auto - profession-based (using dynamic profession colors for auto-scalability)
-      const professionColor = getUserProfessionColor(profession);
-      return professionColor || '#38b2ac'; // fallback color
+      return academyAccent;
     }
-  }, [showcaseSettings.accentColorMode, showcaseSettings.customAccentColor, profession, getUserProfessionColor]);
+  }, [showcaseSettings.accentColorMode, showcaseSettings.customAccentColor]);
 
   // Handle project selection for showcase
   const handleProjectSelected = async (project: { id: number; title: string; description?: string; category: string; profession: string; status: string; driveUrl?: string; driveFolderId?: string }) => {
@@ -1349,19 +1628,17 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 }
 };
 
-  // Google Photos Connection Check - Skip in client mode (no auth)
+  // Google Photos Connection Check - owner/admin flows only
   const { data: googlePhotosStatus, isLoading: googlePhotosStatusLoading } = useQuery({
-    queryKey: ['/api/google-photos/test-connection', ],
+    queryKey: ['/api/google-photos/test-connection', effectiveUserId],
     queryFn: async () => {
       const response = await fetch('/api/google-photos/test-connection', {
-        headers: {
-          'X-Google-Impersonation' : 'true','X-User-Email': user?.email || ','
-        }
+        credentials: 'include',
       });
       if (!response.ok) return { success: false };
       return response.json();
 },
-    enabled: !clientMode && !!user?.email  // Only check Google Photos for authenticated non-client users
+    enabled: !clientMode && !!effectiveUserId
 });
 
   // Update Google Photos connection status when data changes
@@ -2224,7 +2501,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 }, [enableRealTimeSync, collaborationSessionId, onItemUpdate, onItemSelect]);
 
   // Fetch Google Photos Albums
-  const { data: googlePhotosAlbumsData = [], isLoading: googlePhotosAlbumsLoading } = useQuery({
+  const { data: googlePhotosAlbumsData, isLoading: googlePhotosAlbumsLoading } = useQuery({
     queryKey: ['/api/google-photos/albums'],
     queryFn: async () => {
       const response = await fetch('/api/google-photos/albums', {
@@ -2233,20 +2510,26 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         }
       });
       if (!response.ok) return [];
-      return response.json();
+      const data = await response.json();
+      return Array.isArray(data) ? data : (Array.isArray(data.albums) ? data.albums : []);
 },
     enabled: googlePhotosConnected
 });
 
+  const googlePhotosAlbumsQueryData = useMemo(
+    () => googlePhotosAlbumsData ?? [],
+    [googlePhotosAlbumsData],
+  );
+
   // Update Google Photos albums when data changes
   useEffect(() => {
     if (googlePhotosAlbumsData) {
-      setGooglePhotosAlbums(googlePhotosAlbumsData);
+      setGooglePhotosAlbums(googlePhotosAlbumsQueryData);
     }
-  }, [googlePhotosAlbumsData]);
+  }, [googlePhotosAlbumsData, googlePhotosAlbumsQueryData]);
 
   // Fetch Google Photos Items from Selected Album
-  const { data: googlePhotosAlbumItems = [], isLoading: googlePhotosItemsLoading } = useQuery({
+  const { data: googlePhotosAlbumItemsData, isLoading: googlePhotosItemsLoading } = useQuery({
     queryKey: [`/api/google-photos/albums/${selectedGoogleAlbum}/photos`],
     queryFn: async () => {
       if (!selectedGoogleAlbum) return [];
@@ -2256,20 +2539,28 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         }
       });
       if (!response.ok) return [];
-      return response.json();
+      const data = await response.json();
+      return Array.isArray(data) ? data : (Array.isArray(data.photos) ? data.photos : []);
 },
     enabled: !!(googlePhotosConnected && selectedGoogleAlbum)
 });
 
+  const googlePhotosAlbumItems = useMemo(
+    () => googlePhotosAlbumItemsData ?? [],
+    [googlePhotosAlbumItemsData],
+  );
+
   // Update Google Photos items when data changes
   useEffect(() => {
-    if (googlePhotosAlbumItems) {
+    if (googlePhotosAlbumItemsData) {
       setGooglePhotosItems(googlePhotosAlbumItems);
+    } else if (!selectedGoogleAlbum) {
+      setGooglePhotosItems([]);
     }
-  }, [googlePhotosAlbumItems]);
+  }, [googlePhotosAlbumItems, googlePhotosAlbumItemsData, selectedGoogleAlbum]);
 
   // Fetch showcase items from existing showcase system
-  const { data: showcases = [], isLoading: showcasesLoading, error: showcasesError, refetch } = useQuery({
+  const { data: showcasesData, isLoading: showcasesLoading, error: showcasesError, refetch } = useQuery({
     queryKey: [`/api/showcase/profession/${profession}`, effectiveUserId, sessionIdd],
     queryFn: async () => {
       console.log('[UniversalShowcase] Fetching showcases', { profession, effectiveUserId, sessionIdd });
@@ -2295,6 +2586,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     enabled: !!effectiveUserId
   });
 
+  const showcases = useMemo(() => showcasesData ?? [], [showcasesData]);
+
   // Fetch business info for copyright
   const { data: businessInfo } = useQuery({
     queryKey: ['/api/branding/business-info', effectiveUserId, profession],
@@ -2317,7 +2610,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     staleTime: 5 * 60 * 1000, // 5 minutes
 });
 
-  const apiCategories = categoriesData?.categories || [];
+  const apiCategories = Array.isArray(categoriesData)
+    ? categoriesData
+    : (categoriesData?.categories || []);
 
   // Fetch client session data if in client mode (includes projectState)
   const { data: clientSession, isLoading: sessionLoading } = useQuery({
@@ -2336,7 +2631,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const projectState = (clientSession?.projectState || clientSession?.project_state || 'in_review') as 'delivered' | 'in_review';
 
   // Fetch client's existing selections
-  const { data: existingSelections = [], refetch: refetchSelections } = useQuery({
+  const { data: existingSelectionsData, refetch: refetchSelections } = useQuery({
     queryKey: [`/api/showcase/client-selections/${sessionIdd}`, clientEmail],
     queryFn: async () => {
       const response = await fetch(`/api/showcase/client-selections/${sessionIdd}?clientEmail=${clientEmail}`);
@@ -2346,7 +2641,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       return response.json();
 },
     enabled: !!(clientMode && sessionIdd && clientEmail)
-});
+	});
+
+  const existingSelections = useMemo(
+    () => existingSelectionsData ?? [],
+    [existingSelectionsData],
+  );
 
   // FASE 1: Fetch proofing session data for deadline and selection limits
   const { data: proofingSessionData, refetch: _refetchProofingSession } = useQuery({
@@ -2379,7 +2679,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 });
 },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/showcase', ],});
+      queryClient.invalidateQueries({ queryKey: [`/api/showcase/profession/${profession}`] });
 }
 });
 
@@ -2400,7 +2700,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 });
 },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/showcase', ],});
+      queryClient.invalidateQueries({ queryKey: [`/api/showcase/profession/${profession}`] });
 }
 });
 
@@ -2422,7 +2722,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/showcase/client-session/${sessionIdd}`, clientEmail] });
-      queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+      queryClient.invalidateQueries({ queryKey: [`/api/showcase/profession/${profession}`] });
       addNotification({
         type: 'success',
         message: 'Project state updated successfully',
@@ -2615,7 +2915,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 };
 
   // Handle command palette commands
-  const handleCommand = useCallback((command: string) => {
+  const handleCommand = (command: string) => {
     switch (command) {
       case 'new-collection':
         setShowCreateCollection(true);
@@ -2639,19 +2939,18 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         findDuplicates();
         break;
       case 'batch-archive':
-        if (selectedBatchItems.size > 0) {
-          // Archive selected items
-          // Archiving items
+        if (activeSelectionIds.length > 0) {
+          void executeBulkOperation('archive', activeSelectionIds);
         }
         break;
       case 'batch-download':
-        if (selectedBatchItems.size > 0) {
-          // Download selected items
-          // Downloading items
+        if (activeSelectionIds.length > 0) {
+          void executeBulkOperation('bulk-download', activeSelectionIds);
         }
         break;
       case 'batch-move':
-        if (selectedBatchItems.size > 0) {
+        if (activeSelectionIds.length > 0) {
+          syncSelectionFromIds(activeSelectionIds);
           setShowMoveDialog(true);
         }
         break;
@@ -2710,9 +3009,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       case 'bulk-upload':
         setShowBulkFolderUpload(true);
         break;
-      default: // Command not implemented
+      default:
+        showInfoToast(`Kommandoen "${command}" er ikke koblet til en konkret handling enda.`);
     }
-}, [selectedBatchItems, profession, selectedItem, exportVideoWithPreset]);
+  };
 
   // Undo/Redo functionality
   const handleUndo = useCallback(() => {
@@ -2744,29 +3044,646 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 }));
 
   // Transform showcases into profession-specific items - only use real data
-  const transformedShowcaseItems = showcases.map((showcase: { id: string; title: string; url: string; type: string; createdAt: string; thumbnailUrl?: string; fileUrl?: string; description?: string; clientName?: string; category?: string; isFeatured?: boolean; viewCount?: number; likeCount?: number; downloadCount?: number; tags?: string[]; brandLogoUrl?: string }) => ({
-    id: showcase.id,
-    title: showcase.title,
-    fileType: profession === 'photographer' || profession === 'enterprise' ? 'photo' : profession === 'videographer' ? 'video' : profession === 'music_producer' ? 'audio' : 'document',
-    thumbnailUrl: showcase.thumbnailUrl,
-    fileUrl: showcase.fileUrl,
-    description: showcase.description,
-    clientName: showcase.clientName,
-    category: showcase.category,
-    createdAt: showcase.createdAt,
-    isFeatured: showcase.isFeatured,
-    stats: {
-      views: showcase.viewCount,
-      likes: showcase.likeCount || 0,
-      downloads: showcase.downloadCount || 0 },
-    tags: showcase.tags || [],
-    brandLogoUrl: showcase.brandLogoUrl
-}));
+  const transformedShowcaseItems = showcases.map((
+    showcase: ShowcaseItem &
+      Record<string, unknown> & {
+        viewCount?: number;
+        likeCount?: number;
+        downloadCount?: number;
+        thumbnailUrl?: string;
+        fileUrl?: string;
+        url?: string;
+        isFeatured?: boolean;
+      },
+  ) => {
+    const fileType =
+      showcase.fileType ||
+      (profession === 'photographer' || profession === 'enterprise'
+        ? 'photo'
+        : profession === 'videographer'
+          ? 'video'
+          : profession === 'music_producer'
+            ? 'audio'
+            : 'document');
+
+    return {
+      ...showcase,
+      id: showcase.id,
+      title: showcase.title,
+      fileType,
+      type: showcase.type || fileType,
+      thumbnailUrl: showcase.thumbnailUrl,
+      fileUrl: showcase.fileUrl || showcase.url,
+      description: showcase.description,
+      clientName: showcase.clientName,
+      category: showcase.category,
+      createdAt: showcase.createdAt,
+      isFeatured: showcase.isFeatured,
+      stats: {
+        views: showcase.viewCount ?? showcase.stats?.views,
+        likes: showcase.likeCount ?? showcase.stats?.likes ?? 0,
+        downloads: showcase.downloadCount ?? showcase.stats?.downloads ?? 0,
+      },
+      tags: showcase.tags || [],
+      brandLogoUrl: showcase.brandLogoUrl,
+    };
+  });
 
   // Combine showcase items with Google Photos items
   const items: ShowcaseItem[] = useMemo(() => {
     return [...transformedShowcaseItems, ...(googlePhotosConnected ? googlePhotosShowcaseItems : [])];
-}, [transformedShowcaseItems, googlePhotosConnected, googlePhotosShowcaseItems]);
+  }, [transformedShowcaseItems, googlePhotosConnected, googlePhotosShowcaseItems]);
+
+  const activeSelectionIds = useMemo(() => {
+    if (selectedImages.size > 0) {
+      return Array.from(selectedImages);
+    }
+    if (selectedBatchItems.size > 0) {
+      return Array.from(selectedBatchItems);
+    }
+    return [];
+  }, [selectedBatchItems, selectedImages]);
+
+  const activeSelectionIdSet = useMemo(
+    () => new Set(activeSelectionIds),
+    [activeSelectionIds],
+  );
+
+  const selectedItemsForActions = useMemo(
+    () => items.filter((item) => activeSelectionIdSet.has(item.id)),
+    [activeSelectionIdSet, items],
+  );
+
+  const selectedManagedItems = useMemo(
+    () =>
+      selectedItemsForActions.filter(
+        (item) => !item.id.startsWith('google-photos-'),
+      ),
+    [selectedItemsForActions],
+  );
+
+  const selectedPhotoItems = useMemo(
+    () => selectedItemsForActions.filter((item) => item.fileType === 'photo'),
+    [selectedItemsForActions],
+  );
+
+  const selectedVideoItems = useMemo(
+    () => selectedItemsForActions.filter((item) => item.fileType === 'video'),
+    [selectedItemsForActions],
+  );
+
+  const selectedVideoIds = useMemo(
+    () => selectedVideoItems.map((item) => item.id),
+    [selectedVideoItems],
+  );
+
+  const selectedPrimaryVideo = useMemo(
+    () => (selectedItem?.fileType === 'video' ? selectedItem : selectedVideoItems[0] || null),
+    [selectedItem, selectedVideoItems],
+  );
+
+  const selectedPrimaryVideoUrl = selectedPrimaryVideo?.fileUrl || selectedPrimaryVideo?.thumbnailUrl || '';
+
+  const selectedSequenceRecord = useMemo(
+    () => videoSequences.find((sequence) => sequence.id === selectedSequence) || null,
+    [selectedSequence, videoSequences],
+  );
+
+  const selectedSequenceChapters = selectedSequenceRecord?.chapters || [];
+
+  const videoDurationSummary = useMemo(() => {
+    const totalSeconds = selectedVideoItems.reduce(
+      (sum, item) => sum + (item.duration || 0),
+      0,
+    );
+    return {
+      totalSeconds,
+      formatted:
+        totalSeconds > 0
+          ? `${Math.floor(totalSeconds / 60)} min`
+          : 'Ingen varighet registrert',
+    };
+  }, [selectedVideoItems]);
+
+  const averageFrameRate = useMemo(() => {
+    const frameRates = selectedVideoItems
+      .map((item) => {
+        const itemRecord = item as ShowcaseItem & Record<string, unknown>;
+        const metadata =
+          typeof itemRecord.metadata === 'object' && itemRecord.metadata !== null
+            ? (itemRecord.metadata as Record<string, unknown>)
+            : null;
+
+        return (
+          parseNumericValue(metadata?.frameRate) ||
+          parseNumericValue(metadata?.fps) ||
+          parseNumericValue(itemRecord.frameRate) ||
+          parseNumericValue(itemRecord.fps)
+        );
+      })
+      .filter((value): value is number => value !== null);
+
+    if (frameRates.length === 0) {
+      return null;
+    }
+
+    return frameRates.reduce((sum, value) => sum + value, 0) / frameRates.length;
+  }, [selectedVideoItems]);
+
+  const metadataCoverage = useMemo(() => {
+    if (selectedManagedItems.length === 0) {
+      return 0;
+    }
+
+    const enrichedItems = selectedManagedItems.filter(
+      (item) =>
+        Boolean(item.description?.trim()) ||
+        Boolean(item.category?.trim()) ||
+        Boolean(item.tags?.length),
+    );
+
+    return Math.round((enrichedItems.length / selectedManagedItems.length) * 100);
+  }, [selectedManagedItems]);
+
+  const autoCurationPreviewGroups = useMemo(() => {
+    const grouped = new Map<string, number>();
+
+    for (const item of selectedManagedItems) {
+      const bucket =
+        item.category ||
+        item.projectType ||
+        weddingPackageLabels[selectedWeddingPackage] ||
+        item.fileType;
+      grouped.set(bucket, (grouped.get(bucket) || 0) + 1);
+    }
+
+    return Array.from(grouped.entries())
+      .slice(0, 3)
+      .map(([name, count]) => ({ name, count }));
+  }, [selectedManagedItems, selectedWeddingPackage]);
+
+  const versionComparisonEntries = useMemo(() => {
+    return timecodedComments.map((comment) => ({
+      id: comment.id,
+      status:
+        comment.version === 'Final'
+          ? 'resolved'
+          : comment.version === videoVersion
+            ? 'open'
+            : 'in_progress',
+      primary: `${Math.round(comment.timecode)}s - ${comment.comment}`,
+      secondary: `Versjon ${comment.version}`,
+    }));
+  }, [timecodedComments, videoVersion]);
+
+  const syncSelectionFromIds = useCallback((itemIds: string[]) => {
+    const nextSelection = new Set(itemIds);
+    setSelectedImages(nextSelection);
+    setSelectedBatchItems(nextSelection);
+    setBatchMode(itemIds.length > 0);
+  }, []);
+
+  const downloadJsonArtifact = useCallback((fileName: string, payload: unknown) => {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  }, []);
+
+  const appendLocalCollection = useCallback((
+    collectionId: string,
+    name: string,
+    itemIds: string[],
+    description = '',
+  ) => {
+    const now = new Date();
+    const nextCollection: ShowcaseCollection = {
+      id: collectionId,
+      name,
+      description,
+      items: itemIds,
+      visibility: 'private',
+      dynamic: false,
+      tags: [],
+      collaborators: [],
+      createdAt: now,
+      updatedAt: now,
+      createdBy: effectiveUserId || 'system',
+      version: 1,
+    };
+
+    setCollections((prev) => [
+      nextCollection,
+      ...prev.filter((collection) => collection.id !== collectionId),
+    ]);
+  }, [effectiveUserId]);
+
+  const createCollectionFromSelection = useCallback(async (
+    name: string,
+    itemIds: string[],
+    description = '',
+  ) => {
+    if (!effectiveUserId) {
+      showWarningToast('Bruker mangler for å opprette samling.');
+      return null;
+    }
+
+    const response = (await apiRequest('/api/showcase/collections', {
+      method: 'POST',
+      body: {
+        name,
+        description,
+        items: itemIds,
+        userId: effectiveUserId,
+        profession,
+        visibility: 'private',
+      },
+    })) as {
+      id?: string;
+      collection?: { id?: string; name?: string; description?: string; items?: string[] };
+    };
+
+    const collectionId = response.collection?.id || response.id;
+    if (!collectionId) {
+      throw new Error('Collection creation did not return an id');
+    }
+
+    appendLocalCollection(
+      collectionId,
+      response.collection?.name || name,
+      response.collection?.items || itemIds,
+      response.collection?.description || description,
+    );
+
+    await queryClient.invalidateQueries({ queryKey: ['/api/showcase/collections'] });
+    return collectionId;
+  }, [
+    appendLocalCollection,
+    effectiveUserId,
+    profession,
+    queryClient,
+    showWarningToast,
+  ]);
+
+  const submitVideoJob = useCallback(async (
+    jobType: VideoJobType,
+    payload: Record<string, unknown>,
+  ) => {
+    if (selectedVideoIds.length === 0) {
+      throw new Error('Velg videoer først');
+    }
+
+    const primaryVideoId = selectedItem?.fileType === 'video'
+      ? selectedItem.id
+      : selectedVideoIds[0];
+
+    return (await apiRequest('/api/video/export', {
+      method: 'POST',
+      body: {
+        jobType,
+        itemIds: selectedVideoIds,
+        videoId: primaryVideoId,
+        version: videoVersion,
+        lut: selectedLUT,
+        audioTrack: selectedAudioFormat,
+        ...payload,
+      },
+    })) as { jobId?: string; status?: string };
+  }, [
+    selectedAudioFormat,
+    selectedItem,
+    selectedLUT,
+    selectedVideoIds,
+    videoVersion,
+  ]);
+
+  const runAutoTagging = useCallback(async () => {
+    if (selectedManagedItems.length === 0) {
+      showWarningToast('Velg minst ett CreatorHub-element for auto-tagging.');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      for (const item of selectedManagedItems) {
+        const nextTags = Array.from(
+          new Set(
+            [
+              profession,
+              item.fileType,
+              item.category,
+              item.projectType,
+              ...(item.tags || []),
+              ...String(item.title || '')
+                .toLowerCase()
+                .split(/[^a-zA-Z0-9æøåÆØÅ]+/)
+                .filter((token) => token.length >= 3),
+            ]
+              .map((token) => String(token || '').trim().toLowerCase())
+              .filter(Boolean),
+          ),
+        ).slice(0, 12);
+
+        await apiRequest(`/api/showcase/update-metadata/${item.id}`, {
+          method: 'PUT',
+          body: { tags: nextTags },
+        });
+
+        setAiAnalysisResults((prev) => {
+          const next = new Map(prev);
+          next.set(item.id, {
+            tags: nextTags,
+            updatedAt: new Date().toISOString(),
+          });
+          return next;
+        });
+      }
+
+      showSuccessToast(`Auto-tagging fullfort for ${selectedManagedItems.length} elementer.`);
+      setShowAutoTagDialog(false);
+      refetch();
+    } catch (error) {
+      console.error('Auto-tagging failed:', error);
+      showErrorToast('Kunne ikke fullfore auto-tagging.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [
+    profession,
+    refetch,
+    selectedManagedItems,
+    showErrorToast,
+    showSuccessToast,
+    showWarningToast,
+  ]);
+
+  const runAutoCuration = useCallback(async () => {
+    if (selectedManagedItems.length === 0) {
+      showWarningToast('Velg minst ett CreatorHub-element for auto-kuratering.');
+      return;
+    }
+
+    const groupedItems = new Map<string, string[]>();
+    for (const item of selectedManagedItems) {
+      const bucket =
+        item.category ||
+        item.projectType ||
+        weddingPackageLabels[selectedWeddingPackage] ||
+        item.fileType;
+      const nextBucket = groupedItems.get(bucket) || [];
+      nextBucket.push(item.id);
+      groupedItems.set(bucket, nextBucket);
+    }
+
+    const groupsToCreate = Array.from(groupedItems.entries()).slice(0, 3);
+    try {
+      for (const [groupName, itemIds] of groupsToCreate) {
+        await createCollectionFromSelection(
+          groupName,
+          itemIds,
+          `Auto-kuratert samling for ${groupName}`,
+        );
+      }
+      showSuccessToast(`Opprettet ${groupsToCreate.length} kuraterte samlinger.`);
+      setShowAutoCurateDialog(false);
+    } catch (error) {
+      console.error('Auto-curation failed:', error);
+      showErrorToast('Kunne ikke opprette kuraterte samlinger.');
+    }
+  }, [
+    createCollectionFromSelection,
+    selectedManagedItems,
+    selectedWeddingPackage,
+    showErrorToast,
+    showSuccessToast,
+    showWarningToast,
+  ]);
+
+  const applyWeddingPackageOrganization = useCallback(async () => {
+    if (selectedManagedItems.length === 0) {
+      showWarningToast('Velg videoer eller bilder for a organisere i bryllupspakke.');
+      return;
+    }
+
+    const packageLabel = weddingPackageLabels[selectedWeddingPackage];
+    const packageTag = packageLabel.toLowerCase().replace(/\s+/g, '-');
+
+    try {
+      for (const item of selectedManagedItems) {
+        const nextTags = Array.from(
+          new Set([...(item.tags || []), 'wedding', selectedWeddingPackage, packageTag]),
+        );
+        await apiRequest(`/api/showcase/update-metadata/${item.id}`, {
+          method: 'PUT',
+          body: {
+            category: packageLabel,
+            tags: nextTags,
+            projectType: 'wedding',
+          },
+        });
+      }
+
+      showSuccessToast(`Valgte elementer ble organisert i ${packageLabel}.`);
+      setShowWeddingPackages(false);
+      refetch();
+    } catch (error) {
+      console.error('Wedding package organization failed:', error);
+      showErrorToast('Kunne ikke organisere bryllupspakken.');
+    }
+  }, [
+    refetch,
+    selectedManagedItems,
+    selectedWeddingPackage,
+    showErrorToast,
+    showSuccessToast,
+    showWarningToast,
+  ]);
+
+  const openResolveHandoff = useCallback(() => {
+    if (selectedVideoIds.length === 0) {
+      showWarningToast('Velg videoer for a lage Resolve-handoff.');
+      return;
+    }
+
+    downloadJsonArtifact(
+      `resolve-handoff-${selectedItem?.id || Date.now()}.json`,
+      {
+        generatedAt: new Date().toISOString(),
+        videoVersion,
+        selectedLUT,
+        selectedAudioFormat,
+        selectedSequence,
+        selectedChapter,
+        itemIds: selectedVideoIds,
+        timecodedComments,
+      },
+    );
+    showSuccessToast('Resolve-handoff eksportert som JSON.');
+  }, [
+    downloadJsonArtifact,
+    selectedAudioFormat,
+    selectedChapter,
+    selectedItem,
+    selectedLUT,
+    selectedSequence,
+    selectedVideoIds,
+    showSuccessToast,
+    showWarningToast,
+    timecodedComments,
+    videoVersion,
+  ]);
+
+  const exportVersionComparisonReport = useCallback(() => {
+    if (selectedVideoIds.length === 0) {
+      showWarningToast('Velg videoer for a eksportere versjonssammenligning.');
+      return;
+    }
+
+    downloadJsonArtifact(
+      `version-comparison-${selectedItem?.id || Date.now()}.json`,
+      {
+        generatedAt: new Date().toISOString(),
+        baseVersion: videoVersion,
+        compareAgainst: 'Final',
+        itemIds: selectedVideoIds,
+        comments: timecodedComments,
+      },
+    );
+    setShowVersionComparison(false);
+    showSuccessToast('Versjonssammenligning eksportert.');
+  }, [
+    downloadJsonArtifact,
+    selectedItem,
+    selectedVideoIds,
+    setShowVersionComparison,
+    showSuccessToast,
+    showWarningToast,
+    timecodedComments,
+    videoVersion,
+  ]);
+
+  const openMoveSelectionDialog = useCallback(() => {
+    if (activeSelectionIds.length === 0) {
+      showWarningToast('Velg elementer for a flytte dem.');
+      return;
+    }
+
+    syncSelectionFromIds(activeSelectionIds);
+    setCopyMoveAction('move');
+    setShowMoveDialog(false);
+    setShowCopyMoveDialog(true);
+  }, [activeSelectionIds, showWarningToast, syncSelectionFromIds]);
+
+  const createCollectionFromDialog = useCallback(async () => {
+    const trimmedName = newCollectionName.trim();
+    if (!trimmedName) {
+      showWarningToast('Skriv inn et navn for samlingen.');
+      return;
+    }
+
+    if (selectedManagedItems.length === 0) {
+      showWarningToast('Velg minst ett CreatorHub-element for å opprette samlingen.');
+      return;
+    }
+
+    try {
+      const managedSelectionIds = selectedManagedItems.map((item) => item.id);
+      await createCollectionFromSelection(
+        trimmedName,
+        managedSelectionIds,
+        `Opprettet fra showcase-utvalg i ${profession}`,
+      );
+      setNewCollectionName('');
+      setShowCreateCollection(false);
+      showSuccessToast(`Samlingen "${trimmedName}" ble opprettet.`);
+    } catch (error) {
+      console.error('Collection creation failed:', error);
+      showErrorToast('Kunne ikke opprette samlingen.');
+    }
+  }, [
+    createCollectionFromSelection,
+    newCollectionName,
+    profession,
+    selectedManagedItems,
+    showErrorToast,
+    showSuccessToast,
+    showWarningToast,
+  ]);
+
+  useEffect(() => {
+    if (selectedPrimaryVideo?.id && selectedPrimaryVideo.fileType === 'video') {
+      let cancelled = false;
+
+      const loadVideoWorkspaceData = async () => {
+        try {
+          const [commentsResponse, sequencesResponse] = await Promise.all([
+            fetch(`/api/video/timecoded-comments/${selectedPrimaryVideo.id}`),
+            fetch(`/api/video/sequences/${selectedPrimaryVideo.id}`),
+          ]);
+
+          if (!commentsResponse.ok || !sequencesResponse.ok) {
+            throw new Error('Failed to load video workspace data');
+          }
+
+          const comments = (await commentsResponse.json()) as VideoTimecodedCommentRecord[];
+          const sequences = (await sequencesResponse.json()) as VideoSequenceRecord[];
+
+          if (cancelled) {
+            return;
+          }
+
+          setTimecodedComments(comments);
+          setVideoSequences(sequences);
+          setSelectedSequence((currentSequence) => {
+            const nextSequence =
+              (currentSequence &&
+                sequences.find((sequence) => sequence.id === currentSequence)) ||
+              sequences[0] ||
+              null;
+
+            setSelectedChapter((currentChapter) => {
+              if (!nextSequence) {
+                return null;
+              }
+              if (currentChapter && nextSequence.chapters.includes(currentChapter)) {
+                return currentChapter;
+              }
+              return nextSequence.chapters[0] || null;
+            });
+
+            return nextSequence?.id || null;
+          });
+        } catch (error) {
+          console.error('Failed to load video workspace data:', error);
+          if (!cancelled) {
+            setTimecodedComments([]);
+            setVideoSequences([]);
+            setSelectedSequence(null);
+            setSelectedChapter(null);
+          }
+        }
+      };
+
+      void loadVideoWorkspaceData();
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setTimecodedComments([]);
+    setVideoSequences([]);
+    setSelectedSequence(null);
+    setSelectedChapter(null);
+    return undefined;
+  }, [selectedPrimaryVideo]);
 
   // Find duplicate items based on checksum/similarity hash
   const findDuplicates = useCallback(() => {
@@ -2807,38 +3724,63 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     }
 }, [existingSelections, clientSession, proofingSessionData]);
 
-  // Fetch day categories for multi-day projects - SEPARATE from client selections to prevent infinite loops
-  const dayCategoriesFetchedRef = React.useRef<string | null>(null);
-  const dayCategoriesFetchingRef = React.useRef<boolean>(false);
+  // Load server-side day groupings derived from showcase metadata and project links.
   useEffect(() => {
-    const cacheKey = `${userId}-${profession}`;
-    // Only fetch once per userId/profession combination - also check if currently fetching
-    if (!userId || !profession || dayCategoriesFetchedRef.current === cacheKey || dayCategoriesFetchingRef.current) return;
+    let isCancelled = false;
 
-    // Mark as fetching BEFORE the async call to prevent duplicate fetches
-    dayCategoriesFetchingRef.current = true;
-
-    const fetchDayCategories = async () => {
-      try {
-        const response = await fetch(`/api/showcase/day-categories?userId=${userId}&profession=${profession}`, {
-          credentials: 'include'
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setDayCategories(data.dayCategories || []);
-          setShowMultiDayView(data.dayCategories && data.dayCategories.length > 0);
-          dayCategoriesFetchedRef.current = cacheKey;
+    const loadDayCategories = async () => {
+      if (!effectiveUserId || clientMode) {
+        if (!isCancelled) {
+          setDayCategories([]);
+          setShowMultiDayView(false);
         }
-      } catch (_error) {
-        // Error fetching day categories - handled by error boundary
-      } finally {
-        dayCategoriesFetchingRef.current = false;
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `/api/showcase/day-categories?userId=${encodeURIComponent(effectiveUserId)}&profession=${encodeURIComponent(profession)}`,
+          { credentials: 'include' },
+        );
+        if (!response.ok) {
+          throw new Error('Failed to load day categories');
+        }
+        const data = await response.json();
+        if (!isCancelled) {
+          const derivedCategories = deriveDayCategoriesFromShowcases(showcases);
+          const serverCategories = Array.isArray(data.dayCategories) ? data.dayCategories : [];
+          const nextCategories = serverCategories.map((category: any) => {
+            const derivedMatch = derivedCategories.find(
+              (derived: any) => derived.name === category.name,
+            );
+            return derivedMatch
+              ? {
+                  ...derivedMatch,
+                  ...category,
+                  itemIds: category.itemIds || derivedMatch.itemIds,
+                  itemCount: category.itemCount || derivedMatch.itemCount,
+                  projectIds: category.projectIds || derivedMatch.projectIds,
+                }
+              : category;
+          });
+          setDayCategories(nextCategories);
+          setShowMultiDayView(nextCategories.length > 0);
+        }
+      } catch (error) {
+        console.error('Failed to load showcase day categories:', error);
+        if (!isCancelled) {
+          setDayCategories([]);
+          setShowMultiDayView(false);
+        }
       }
     };
 
-    fetchDayCategories();
-}, [userId, profession]);
+    void loadDayCategories();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [clientMode, effectiveUserId, profession, showcases]);
 
 
 
@@ -2884,11 +3826,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       
       if (!response.ok) throw new Error('Synkronisering med Google Photos feilet');
       
-      const _result = await response.json();
-      // Google Photos synchronized successfully
-      
-      // Refresh showcase data
-      window.location.reload();
+      await response.json();
+      await queryClient.invalidateQueries({ queryKey: [`/api/showcase/profession/${profession}`] });
+      await refetch();
       
 } catch (error) {
       console.error('Google Photos sync error:', error);
@@ -2917,8 +3857,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       
       if (!response.ok) throw new Error('Import fra Google Photos feilet');
       
-      const _result = await response.json();
-      // Images imported from Google Photos successfully  // Refresh data window.location.reload();
+      await response.json();
+      await queryClient.invalidateQueries({ queryKey: [`/api/showcase/profession/${profession}`] });
+      await refetch();
       
 } catch (error) {
       console.error('Google Photos import error:', error);
@@ -3225,7 +4166,6 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 };
   
   // Pricing integration state
-  const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [pricingData, setPricingData] = useState<any>(null);
   const [showPricing, setShowPricing] = useState(false);
   
@@ -3301,43 +4241,97 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   
   // Load pricing data based on profession
   useEffect(() => {
+    let isCancelled = false;
+
     const loadPricingData = async () => {
       try {
-        const response = await fetch(`/api/showcase/pricing/${profession}`, {
-          credentials: 'include'
-  });
-        if (response.ok) {
-          const pricing = await response.json();
-          setPricingData(pricing);
-    }
-  } catch (error) {
-        console.error('Could not load pricing data:', error);
-  }
-};
-    
-    loadPricingData();
-}, [profession]);
+        const params = new URLSearchParams({ profession });
+        if (effectiveUserId) {
+          params.set('userId', effectiveUserId);
+        }
+        const response = await fetch(`/api/showcase/pricing?${params.toString()}`, {
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          throw new Error('Failed to load showcase pricing');
+        }
+        const data = await response.json();
+        if (!isCancelled) {
+          const defaultPricing = getFallbackShowcasePricingData(profession);
+          setPricingData({
+            ...defaultPricing,
+            ...data,
+            pricing: {
+              ...defaultPricing.pricing,
+              ...(data?.pricing || {}),
+              packages:
+                Array.isArray(data?.pricing?.packages) && data.pricing.packages.length > 0
+                  ? data.pricing.packages
+                  : defaultPricing.pricing.packages,
+            },
+            projectPricing: {
+              ...defaultPricing.projectPricing,
+              ...(data?.projectPricing || {}),
+            },
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load showcase pricing:', error);
+        if (!isCancelled) {
+          setPricingData(null);
+        }
+      }
+    };
+
+    void loadPricingData();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [effectiveUserId, profession]);
 
   // Load enhancement presets
   useEffect(() => {
+    let isCancelled = false;
+
     const loadEnhancementPresets = async () => {
       try {
         const response = await fetch('/api/showcase/enhancement-presets', {
-          credentials: 'include'
-  });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.presets) {
-            setEnhancementPresets(data.presets);
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          throw new Error('Failed to load enhancement presets');
+        }
+        const data = await response.json();
+        const defaultPresets = getFallbackEnhancementPresets();
+        const presets =
+          data && typeof data === 'object' && !Array.isArray(data)
+            ? { ...defaultPresets, ...data }
+            : defaultPresets;
+        if (!isCancelled) {
+          setEnhancementPresets(presets);
+          setSelectedPhotoPreset((currentPreset) => {
+            if (presets[currentPreset]) {
+              return currentPreset;
+            }
+            const firstPreset = Object.keys(presets)[0];
+            return firstPreset || currentPreset;
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load enhancement presets:', error);
+        if (!isCancelled) {
+          setEnhancementPresets({});
+        }
       }
-    }
-  } catch (error) {
-        console.error('Could not load enhancement presets:', error);
-  }
-};
-    
-    loadEnhancementPresets();
-}, []);
+    };
+
+    void loadEnhancementPresets();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [profession]);
 
   // NOTE: Day categories loading is already handled in the useEffect above (around line 3534)
   // that handles existingSelections, clientSession, proofingSessionData - removed duplicate to prevent infinite loops
@@ -3787,38 +4781,163 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 };
 
   // Video processing helper for render/watermark jobs
-  const startVideoProcessing = useCallback((jobType: 'render' | 'watermark') => {
+  const startVideoProcessing = useCallback(async (jobType: 'render' | 'watermark') => {
     if (isProcessingVideo) return;
-
-    const targetIds = selectedBatchItems.size > 0 ? Array.from(selectedBatchItems) : Array.from(selectedImages);
-    if (targetIds.length === 0) {
+    if (selectedVideoIds.length === 0) {
       showWarningToast('Velg videoer først');
       return;
     }
 
     setIsProcessingVideo(true);
-    setProcessingProgress(0);
+    setProcessingProgress(15);
 
-    const total = targetIds.length;
-    const interval = window.setInterval(() => {
-      setProcessingProgress((prev) => {
-        const next = Math.min(prev + 5, 100);
-        if (next >= 100) {
-          window.clearInterval(interval);
-          setIsProcessingVideo(false);
-
-          if (jobType === 'render') {
-            addNotification({ message: `Render-jobb startet for ${total} video${total !== 1 ? 'er' : ''}`, type: 'success' });
-            setShowRenderPresets(false);
-          } else {
-            addNotification({ message: `Vannmerke jobb startet for ${total} video${total !== 1 ? 'er' : ''}`, type: 'success' });
-            setShowVideoWatermarkDialog(false);
-          }
-        }
-        return next;
+    try {
+      const response = await submitVideoJob(jobType, {
+        preset: selectedPreset,
+        watermarkType: jobType === 'watermark' ? watermarkType : undefined,
+        watermarkText: jobType === 'watermark' ? watermarkText : undefined,
+        watermarkPosition: jobType === 'watermark' ? watermarkPosition : undefined,
+        watermarkOpacity: jobType === 'watermark' ? watermarkOpacity : undefined,
       });
-    }, 200);
-  }, [addNotification, isProcessingVideo, selectedBatchItems, selectedImages, showWarningToast, setShowRenderPresets, setShowVideoWatermarkDialog]);
+
+      setProcessingProgress(100);
+      addNotification({
+        message: `${jobType === 'render' ? 'Render' : 'Vannmerke'}-jobb startet for ${selectedVideoIds.length} video${selectedVideoIds.length !== 1 ? 'er' : ''}${response.jobId ? ` (${response.jobId})` : ''}`,
+        type: 'success',
+      });
+
+      if (jobType === 'render') {
+        setShowRenderPresets(false);
+      } else {
+        setShowVideoWatermarkDialog(false);
+      }
+    } catch (error) {
+      console.error('Video processing job failed:', error);
+      showErrorToast(`Kunne ikke starte ${jobType === 'render' ? 'rendering' : 'vannmerking'}.`);
+    } finally {
+      window.setTimeout(() => {
+        setIsProcessingVideo(false);
+        setProcessingProgress(0);
+      }, 300);
+    }
+  }, [
+    addNotification,
+    isProcessingVideo,
+    selectedPreset,
+    selectedVideoIds,
+    showErrorToast,
+    showWarningToast,
+    submitVideoJob,
+    watermarkOpacity,
+    watermarkPosition,
+    watermarkText,
+    watermarkType,
+  ]);
+
+  const startProxyGeneration = useCallback(async () => {
+    try {
+      const response = await submitVideoJob('proxy', {
+        proxyQuality,
+        keepOriginalProxyFiles,
+      });
+      setShowProxyGenerator(false);
+      showSuccessToast(`Proxy-generering startet${response.jobId ? ` (${response.jobId})` : ''}.`);
+    } catch (error) {
+      console.error('Proxy generation failed:', error);
+      showErrorToast('Kunne ikke starte proxy-generering.');
+    }
+  }, [
+    keepOriginalProxyFiles,
+    proxyQuality,
+    showErrorToast,
+    showSuccessToast,
+    submitVideoJob,
+  ]);
+
+  const startMulticamSyncJob = useCallback(async () => {
+    try {
+      const response = await submitVideoJob('multicam-sync', {
+        masterAudioSource: multicamMasterSource,
+        syncPrecision: multicamSyncPrecision,
+      });
+      setShowMulticamSync(false);
+      showSuccessToast(`Multicam-sync startet${response.jobId ? ` (${response.jobId})` : ''}.`);
+    } catch (error) {
+      console.error('Multicam sync failed:', error);
+      showErrorToast('Kunne ikke starte multicam-sync.');
+    }
+  }, [
+    multicamMasterSource,
+    multicamSyncPrecision,
+    showErrorToast,
+    showSuccessToast,
+    submitVideoJob,
+  ]);
+
+  const createChapterMarkers = async () => {
+    const baseLabel = weddingPackageLabels[selectedWeddingPackage];
+    const chapterSeed = timecodedComments.length > 0
+      ? timecodedComments
+          .filter((comment) => comment.timecode >= chapterMinimumSeconds)
+          .map((comment) => `${Math.round(comment.timecode)}s - ${comment.comment}`)
+      : [
+          `${baseLabel} intro`,
+          `${baseLabel} hoveddel`,
+          `${baseLabel} avslutning`,
+        ];
+
+    const uniqueChapters = Array.from(new Set(chapterSeed)).slice(0, 8);
+    const sequence = await createVideoSequence(
+      `${baseLabel} - ${videoVersion}`,
+      uniqueChapters,
+    );
+
+    if (sequence) {
+      setShowChapterMarker(false);
+      setShowChapterDialog(false);
+      showSuccessToast(`Kapittelmarkorer opprettet for ${baseLabel}.`);
+    }
+  };
+
+  const requestSubtitleGeneration = useCallback(async () => {
+    try {
+      const response = await submitVideoJob('subtitle', {
+        language: 'nb-NO',
+        subtitleFormat: 'srt',
+        chapterCount: videoSequences.length,
+      });
+      setShowSubtitleDialog(false);
+      showSuccessToast(`Undertekst-jobb startet${response.jobId ? ` (${response.jobId})` : ''}.`);
+    } catch (error) {
+      console.error('Subtitle generation failed:', error);
+      showErrorToast('Kunne ikke starte undertekst-generering.');
+    }
+  }, [
+    showErrorToast,
+    showSuccessToast,
+    submitVideoJob,
+    videoSequences.length,
+  ]);
+
+  const configureStreamingJob = useCallback(async () => {
+    try {
+      const response = await submitVideoJob('streaming', {
+        streamingProtocol,
+        bitrateProfiles: streamingBitrateProfiles,
+      });
+      setShowStreamingSetup(false);
+      showSuccessToast(`Streaming-jobb startet${response.jobId ? ` (${response.jobId})` : ''}.`);
+    } catch (error) {
+      console.error('Streaming setup failed:', error);
+      showErrorToast('Kunne ikke konfigurere streaming.');
+    }
+  }, [
+    showErrorToast,
+    showSuccessToast,
+    streamingBitrateProfiles,
+    streamingProtocol,
+    submitVideoJob,
+  ]);
 
   const _openMetadataEditor = () => {
     if (selectedImages.size === 0) {
@@ -3885,11 +5004,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   };
 
   const applyBulkMetadata = async () => {
+    if (activeSelectionIds.length === 0) {
+      showWarningToast('Velg bilder først');
+      return;
+    }
+
     setIsProcessingBulkOperation(true);
     setBulkOperationProgress(0);
 
     try {
-      const imageIds = Array.from(selectedImages);
+      const imageIds = activeSelectionIds;
       const totalImages = imageIds.length;
       
       for (let i = 0; i < totalImages; i++) {
@@ -3924,6 +5048,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       showSuccessToast(`Metadata og visningsinnstillinger oppdatert for ${totalImages} bilder!`);
       setShowMetadataEditor(false);
       setSelectedImages(new Set());
+      setSelectedBatchItems(new Set());
       refetch();
     } catch (error) {
       console.error('Bulk metadata update failed:', error);
@@ -3934,13 +5059,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     }
   };
 
-  const executeBulkOperation = async (operation: string) => {
-    if (selectedImages.size === 0) {
+  const executeBulkOperation = async (operation: string, overrideIds?: string[]) => {
+    const imageIds = overrideIds ?? activeSelectionIds;
+    if (imageIds.length === 0) {
       showWarningToast('Velg bilder først');
       return;
     }
-
-    const imageIds = Array.from(selectedImages);
     
     try {
       switch (operation) {
@@ -4008,6 +5132,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
       showSuccessToast(`${imageIds.length} bilder ${operationNames[operation]}!`);
       setSelectedImages(new Set());
+      setSelectedBatchItems(new Set());
 
       if (['archive','delete'].includes(operation)) {
         refetch();
@@ -4025,8 +5150,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     setEnhancementProgress(0);
     
     try {
-      const preset = enhancementPresets[selectedPreset];
-      const enhancementOptions = selectedPreset === 'custom' 
+      const preset = enhancementPresets[selectedPhotoPreset];
+      const enhancementOptions = selectedPhotoPreset === 'custom' 
         ? customEnhancementOptions 
         : preset?.options;
       
@@ -4037,20 +5162,22 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         body: JSON.stringify({
           operation: 'bulk-photo-enhance',
           itemIds: Array.from(selectedImages),
+          preset: selectedPhotoPreset,
           enhancementOptions,
           profession,
-          userId: 'demo-user' // This should come from authenticated user
+          userId: effectiveUserId
   })
   });
 
       if (response.ok) {
-        const _result = await response.json();
-        // Enhancement completed successfully
+        await response.json();
         setEnhancementProgress(100);
         setShowPhotoEnhancer(false);
         setSelectedImages(new Set());
-        // Trigger a refresh of the showcase
-        window.location.reload();
+        setSelectedBatchItems(new Set());
+        await queryClient.invalidateQueries({ queryKey: [`/api/showcase/profession/${profession}`] });
+        refetch();
+        showSuccessToast(`Forbedring startet for ${activeSelectionIds.length} bilder.`);
   } else {
         throw new Error('Enhancement failed');
   }
@@ -4065,6 +5192,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
   // Video-specific functions for videographer profession
   const addTimecodedComment = async (timecode: number, comment: string) => {
+    if (!selectedItem?.id || !comment.trim()) {
+      return;
+    }
+
     try {
       const response = await fetch('/api/video/timecoded-comments', {
       method: 'POST',
@@ -4081,14 +5212,24 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
       if (!response.ok) throw new Error('Failed to add timecoded comment');
       
-      const newComment = await response.json();
+      const newComment = (await response.json()) as {
+        id: string;
+        timecode: number;
+        comment: string;
+        version: string;
+      };
       setTimecodedComments(prev => [...prev, newComment]);
 } catch (error) {
       console.error('Error adding timecoded comment:', error);
-}
-};
+    }
+  };
 
   const createVideoSequence = async (sequenceName: string, chapters: string[]) => {
+    if (!selectedItem?.id) {
+      showWarningToast('Velg en video for a opprette sekvenser.');
+      return null;
+    }
+
     try {
       const response = await fetch('/api/video/sequences', {
       method: 'POST',
@@ -4104,14 +5245,26 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
       if (!response.ok) throw new Error('Failed to create video sequence');
       
-      const _sequence = await response.json();
-      // Video sequence created successfully
+      const sequence = (await response.json()) as VideoSequenceRecord;
+      setVideoSequences((prev) => [...prev, sequence]);
+      setSelectedSequence(sequence.id);
+      if (chapters.length > 0) {
+        setSelectedChapter(chapters[0]);
+      }
+      return sequence;
 } catch (error) {
       console.error('Error creating video sequence:', error);
-}
-};
+      showErrorToast('Kunne ikke opprette videosekvens.');
+      return null;
+	}
+  };
 
   const generateVideoThumbnails = async (videoId: string) => {
+    if (!videoId) {
+      showWarningToast('Velg en video for a generere thumbnails.');
+      return;
+    }
+
     try {
       const response = await fetch('/api/video/generate-thumbnails', {
       method: 'POST',
@@ -4126,8 +5279,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
       if (!response.ok) throw new Error('Failed to generate thumbnails');
       
-      const _thumbnails = await response.json();
-      // Thumbnails generated successfully
+      const result = (await response.json()) as {
+        thumbnails?: Array<{ url: string }>;
+      };
+      const firstThumbnail = result.thumbnails?.[0]?.url;
+      if (firstThumbnail && selectedItem?.id === videoId) {
+        setSelectedItem((prev) => (prev ? { ...prev, thumbnailUrl: firstThumbnail } : prev));
+      }
       showSuccessToast('Thumbnails generert! Du kan nå velge den beste.');
     } catch (error) {
       console.error('Error generating thumbnails:', error);
@@ -4171,7 +5329,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
 
   // Fetch comments for selected showcase
-  const { data: _comments = [], isLoading: _commentsLoading } = useQuery({
+  const { data: _commentsData, isLoading: _commentsLoading } = useQuery({
     queryKey: [`/api/showcase/${selectedItem?.id}/comments`],
     queryFn: async () => {
       if (!selectedItem?.id) return [];
@@ -4343,9 +5501,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
     const commentData = {
       showcaseItemId: selectedItem.id,
-      userId,
+      userId: effectiveUserId,
       userName: 'Daniel CreatorHub',
-      userEmail: 'user?.id || user?.email || "unknown-user"',
+      userEmail: user?.email || '',
       comment: newComment,
       commentType: 'general',
       isPrivate: false,
@@ -6278,13 +7436,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       ref={scrollContainerRef}
       sx={{ 
         minHeight: '100vh',
-        bgcolor: '#0f1419',
-        background: 'linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #2a1810 100%)',
+        bgcolor: '#06080d',
+        background: `radial-gradient(circle at 74% 12%, ${alpha(accentColor, 0.22)}, rgba(5,8,13,0) 42%), radial-gradient(circle at 16% 74%, ${alpha(academyCoolAccent, 0.14)}, rgba(6,8,14,0) 44%), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0) 32%), linear-gradient(135deg, #06080d 0%, #090d16 52%, #120d08 100%)`,
         color: textPrimary,
         display: 'flex',
         position: 'relative',
-        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+        fontFamily: '"Manrope", "Barlow", "Segoe UI", sans-serif',
         overflowY: 'auto',
+        '--showcase-surface': academySurface,
+        '--showcase-surface-elevated': academySurfaceElevated,
+        '--showcase-border': academyBorder,
         // Apply profession-specific styling
         '& .showcase-header': {
           background: `linear-gradient(135deg, ${professionTheme?.primaryColor || customTheme.palette.primary.main}20, ${professionTheme?.secondaryColor || customTheme.palette.secondary.main}20)`,
@@ -6369,15 +7530,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'radial-gradient(circle at 20% 8%, rgba(255, 107, 53, 0.1) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(247, 147, 30, 0.08) 0%, transparent 50%)',
+        background: `radial-gradient(circle at 20% 8%, ${alpha(accentColor, 0.14)} 0%, transparent 50%), radial-gradient(circle at 80% 20%, ${alpha(academyCoolAccent, 0.1)} 0%, transparent 50%)`,
         pointerEvents: 'none'
       }} />
 
       {/* Advanced Professional Sidebar — reference-matched */}
       <Box sx={{ 
-        width: sidebarOpen ? 200 : 72,
-        bgcolor: 'rgba(15, 20, 25, 0.98)',
-        borderRight: '1px solid rgba(255, 255, 255, 0.06)',
+        width: sidebarOpen ? 232 : 84,
+        background: academyHeaderBackground,
+        borderRight: `var(--academy-hairline-width, 1px) solid ${academyBorder}`,
         transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
         display: 'flex',
         flexDirection: 'column',
@@ -6385,6 +7546,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         height: '100vh',
         zIndex: 12,
         overflow: 'hidden',
+        boxShadow: '20px 0 48px rgba(3,5,10,0.34)',
+        backdropFilter: 'blur(24px)',
       }}>
         {/* Sidebar Header — brand dots + collapse */}
         <Box sx={{ 
@@ -6396,10 +7559,45 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           minHeight: 64,
         }}>
           {sidebarOpen && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: accentColor }} />
-                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: accentColor, opacity: 0.35 }} />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+              <Box
+                sx={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: '8px',
+                  background:
+                    'linear-gradient(135deg, #f5a623 0%, #f59e0b 65%, #d97706 100%)',
+                  boxShadow: '0 0 18px rgba(245,166,35,0.35)',
+                  flexShrink: 0,
+                }}
+              />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography
+                  sx={{
+                    fontFamily: 'Barlow Condensed, sans-serif',
+                    letterSpacing: '0.08em',
+                    fontWeight: 700,
+                    fontSize: '0.95rem',
+                    color: textPrimary,
+                    lineHeight: 1,
+                  }}
+                >
+                  CREATORHUB{' '}
+                  <Box component="span" sx={{ opacity: 0.72 }}>
+                    SHOWCASE
+                  </Box>
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: 11,
+                    color: textSecondary,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  Portfolio workspace
+                </Typography>
               </Box>
             </Box>
           )}
@@ -6439,9 +7637,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     borderRadius: '8px',
                     cursor: 'pointer',
                     justifyContent: sidebarOpen ? 'flex-start' : 'center',
-                    bgcolor: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                    bgcolor: isActive ? alpha(accentColor, 0.1) : 'transparent',
                     color: isActive ? accentColor : 'rgba(255,255,255,0.6)',
-                    '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fff' },
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: textPrimary },
                     transition: 'all 0.15s ease',
                   }}
                 >
@@ -6518,16 +7716,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             p: 2,
             borderRadius: '12px',
             bgcolor: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255,255,255,0.06)',
+            border: `var(--academy-hairline-width, 1px) solid ${academyBorder}`,
           }}>
             <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, fontSize: '0.82rem', mb: 0.5 }}>
-              Get 3 months of
+              CreatorHub Academy
             </Typography>
             <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, fontSize: '0.82rem', mb: 0.5 }}>
-              Premium for free
+              shares this design shell
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem', display: 'block', mb: 1.5, lineHeight: 1.4 }}>
-              Enjoy ad-free content, offline watching, and more
+              Showcase now follows the same visual language, spacing, and typography.
             </Typography>
             <Button
               variant="outlined"
@@ -6595,7 +7793,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         flex: 1,
         display: 'flex', 
         flexDirection: 'column',
-        marginLeft: sidebarOpen ? '200px' : '72px',
+        marginLeft: sidebarOpen ? '232px' : '84px',
         marginTop: clientMode ? '200px' : (selectedImages.size > 0 ? '70px' : '0'),
         transition: 'margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         position: 'relative',
@@ -6607,8 +7805,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           justifyContent: 'space-between',
           px: 3,
           py: 1.5,
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-          bgcolor: 'rgba(15, 20, 25, 0.98)',
+          borderBottom: `var(--academy-hairline-width, 1px) solid ${academyBorder}`,
+          background: academyHeaderBackground,
           backdropFilter: 'blur(20px)',
           position: 'sticky',
           top: 0,
@@ -6616,14 +7814,38 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           minHeight: 64,
         }}>
           {/* Left: Brand */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 160 }}>
-            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: accentColor }} />
-              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: accentColor, opacity: 0.4 }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 220 }}>
+            <Box
+              sx={{
+                width: 34,
+                height: 34,
+                borderRadius: '10px',
+                background:
+                  'linear-gradient(135deg, #f5a623 0%, #f59e0b 65%, #d97706 100%)',
+                boxShadow: '0 0 22px rgba(245,166,35,0.35)',
+                flexShrink: 0,
+              }}
+            />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                sx={{
+                  fontFamily: 'Barlow Condensed, sans-serif',
+                  letterSpacing: '0.08em',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  lineHeight: 1,
+                  color: textPrimary,
+                }}
+              >
+                CREATORHUB{' '}
+                <Box component="span" sx={{ opacity: 0.72 }}>
+                  SHOWCASE
+                </Box>
+              </Typography>
+              <Typography sx={{ fontSize: 11, color: textSecondary }}>
+                Portfolio studio
+              </Typography>
             </Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
-              Browse
-            </Typography>
           </Box>
 
           {/* Center: Search */}
@@ -6640,24 +7862,27 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  placeholder="Search"
+                  placeholder="Sok showcase, prosjekt, kategori..."
                   variant="outlined"
                   size="small"
                   sx={{
                     '& .MuiOutlinedInput-root': {
-                      color: '#fff',
-                      bgcolor: 'rgba(255, 255, 255, 0.06)',
-                      borderRadius: '24px',
+                      color: textPrimary,
+                      bgcolor: 'rgba(11, 15, 24, 0.85)',
+                      borderRadius: '10px',
                       fontSize: '0.9rem',
                       height: 40,
-                      '& fieldset': { borderColor: 'transparent' },
-                      '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.12)' },
-                      '&.Mui-focused fieldset': { borderColor: `${accentColor}60` },
+                      fontFamily: 'Rajdhani, sans-serif',
+                      '& fieldset': { borderColor: alpha(accentColor, 0.24) },
+                      '&:hover fieldset': { borderColor: alpha(accentColor, 0.42) },
+                      '&.Mui-focused fieldset': { borderColor: accentColor },
                     }
                   }}
                   InputProps={{
                     ...params.InputProps,
-                    startAdornment: <Search sx={{ color: 'rgba(255,255,255,0.35)', mr: 1, fontSize: 20 }} />
+                    startAdornment: (
+                      <Search sx={{ color: textSecondary, mr: 1, fontSize: 20 }} />
+                    ),
                   }}
                 />
               )}
@@ -6682,38 +7907,38 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             )}
             {(isOwner || adminMode) && showcaseCreationAccess?.hasAccess && (
               <Button
-                variant="outlined"
+                variant="contained"
                 size="small"
                 startIcon={<Add sx={{ fontSize: 18 }} />}
                 onClick={() => setProjectSelectorOpen(true)}
                 sx={{
-                  borderColor: accentColor,
-                  color: accentColor,
-                  borderRadius: '20px',
-                  textTransform: 'uppercase',
+                  color: '#1e1306',
+                  borderRadius: '8px',
+                  textTransform: 'none',
+                  fontFamily: 'Rajdhani, sans-serif',
                   fontWeight: 700,
-                  fontSize: '0.75rem',
-                  px: 2.5,
+                  fontSize: '0.9rem',
+                  px: 2.2,
                   py: 0.75,
-                  letterSpacing: '0.06em',
                   whiteSpace: 'nowrap',
+                  background: 'linear-gradient(180deg, #ffc64d 0%, #f5a623 100%)',
+                  boxShadow: '0 8px 24px rgba(245,166,35,0.28)',
                   '&:hover': {
-                    borderColor: accentColor,
-                    bgcolor: `${accentColor}12`,
+                    background: 'linear-gradient(180deg, #ffcf67 0%, #f5a623 100%)',
                   },
                 }}
               >
-                Add Photo
+                Nytt element
               </Button>
             )}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 1 }}>
               <Avatar sx={{
                 width: 36,
                 height: 36,
-                bgcolor: config.primaryColor,
+                bgcolor: '#213047',
                 fontSize: '0.85rem',
                 fontWeight: 600,
-                border: '2px solid rgba(255,255,255,0.12)',
+                border: '2px solid rgba(245,166,35,0.55)',
               }}>
                 D
               </Avatar>
@@ -6734,12 +7959,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         <Box sx={{ 
           textAlign: 'center', 
           p: 2, 
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)', 
+          borderBottom: `var(--academy-hairline-width, 1px) solid ${academyBorder}`, 
           display: 'flex', 
           gap: 2, 
           flexWrap: 'wrap',
           justifyContent: 'center',
-          bgcolor: 'rgba(15, 20, 25, 0.95)',
+          background: 'linear-gradient(180deg, rgba(13,16,25,0.9), rgba(7,10,16,0.94))',
         }}>
           {/* Synced Project/Client Indicator */}
           {(syncedProject || syncedClient) && (
@@ -6841,17 +8066,18 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             startIcon={<AcademyIcon />}
             onClick={() => setShowAcademy(true)}
             sx={{ 
-              bgcolor: '#ff8c00',
-              color: 'white',
+              color: '#1e1306',
               px: 4,
               py: 1.5,
               fontSize: '1.1rem',
               fontWeight: 600,
               borderRadius: 3,
-              boxShadow: '0 4px 15px rgba(255, 152, 0, 0.3)','&:hover': { 
-                bgcolor: '#f57c00',
+              fontFamily: 'Rajdhani, sans-serif',
+              background: 'linear-gradient(180deg, #ffc64d 0%, #f5a623 100%)',
+              boxShadow: '0 8px 24px rgba(245,166,35,0.28)','&:hover': { 
+                background: 'linear-gradient(180deg, #ffcf67 0%, #f5a623 100%)',
                 transform: 'translateY(-2px)',
-                boxShadow: '0 6px 20px rgba(255, 152, 0, 0.4)'
+                boxShadow: '0 10px 26px rgba(245,166,35,0.34)'
               }
             }}
           >
@@ -6862,17 +8088,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             startIcon={<DashboardIcon />}
             onClick={() => setShowDashboard(true)}
             sx={{ 
-              bgcolor: '#4caf50',
-              color: 'white',
+              bgcolor: alpha(academyCoolAccent, 0.18),
+              color: textPrimary,
               px: 4,
               py: 1.5,
               fontSize: '1.1rem',
               fontWeight: 600,
               borderRadius: 3,
-              boxShadow: '0 4px 15px rgba(6, 175, 80, 0.3)','&:hover': { 
-              bgcolor: '#388e3c',
+              fontFamily: 'Rajdhani, sans-serif',
+              border: `1px solid ${alpha(academyCoolAccent, 0.45)}`,
+              boxShadow: '0 8px 24px rgba(82,121,204,0.18)','&:hover': { 
+              bgcolor: alpha(academyCoolAccent, 0.24),
               transform: 'translateY(-2px)',
-              boxShadow: '0 6px 20px rgba(56, 142, 60, 0.4)'
+              boxShadow: '0 10px 26px rgba(82,121,204,0.24)'
               }
             }}
           >
@@ -6883,11 +8111,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         {/* Professional Header Bar */}
         <Box sx={{ 
           p: 3,
-          borderBottom: '1px solid rgba(255, 107, 53, 0.15)',
+          borderBottom: `var(--academy-hairline-width, 1px) solid ${academyBorder}`,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'linear-gradient(135deg, rgba(255, 107, 53, 0.05) 0%, rgba(247, 147, 30, 0.02) 100%)',
+          background: 'linear-gradient(180deg, rgba(10,13,20,0.82), rgba(8,11,18,0.92))',
           backdropFilter: 'blur(10px)'
         }}>
           <Box>
@@ -8366,7 +9594,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </Typography>
               <Button 
                 variant="outlined" 
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  void refetch();
+                }}
                 sx={{ 
                   borderColor: '#ff8c00',
                   color: '#ff8c00','&:hover': {
@@ -8734,15 +9964,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 </Select>
               </FormControl>
               
-              {enhancementPresets[selectedPreset] && (
+              {enhancementPresets[selectedPhotoPreset] && (
                 <Typography variant="body2" color="text.secondary">
-                  {enhancementPresets[selectedPreset].description}
+                  {enhancementPresets[selectedPhotoPreset].description}
                 </Typography>
               )}
             </Paper>
             
             {/* Custom Enhancement Options - Only visible when custom is selected */}
-            {selectedPreset === 'custom' && (
+            {selectedPhotoPreset === 'custom' && (
               <Paper sx={{ p: 2, mb: 3 }}>
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Tune />
@@ -10098,8 +11328,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel>Forbedringspreset</InputLabel>
             <Select 
-              value={selectedPreset}
-              onChange={(e) => setSelectedPreset((e.target as HTMLSelectElement).value as '4k-master' | 'web-h264' | 'social-vertical' | 'custom')}
+              value={selectedPhotoPreset}
+              onChange={(e) => setSelectedPhotoPreset(e.target.value)}
             >
               <MenuItem value="portrait">Portrett</MenuItem>
               <MenuItem value="landscape">Landskap</MenuItem>
@@ -10109,7 +11339,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Select>
           </FormControl>
 
-          {selectedPreset === 'custom' && (
+          {selectedPhotoPreset === 'custom' && (
             <Box sx={{ mb: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>Tilpassede innstillinger: </Typography>
               <TextField
@@ -10142,6 +11372,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           )}
 
           <Stack direction="row" spacing={2} justifyContent="flex-end">
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setShowPhotoEditor(false);
+                setShowAdvancedPhotoSuite(true);
+              }}
+            >
+              Åpne Photo Suite
+            </Button>
             <Button onClick={() => setShowPhotoEditor(false)}>
               Avbryt
             </Button>
@@ -10329,8 +11568,35 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </Typography>
           
           <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-            Valgte videoer: {selectedImages.size}
+            Valgte videoer: {selectedVideoIds.length}
           </Typography>
+
+          {selectedPrimaryVideoUrl ? (
+            <Box
+              component="video"
+              src={selectedPrimaryVideoUrl}
+              controls
+              onLoadedMetadata={(event: React.SyntheticEvent<HTMLVideoElement>) => {
+                setVideoDuration(event.currentTarget.duration || 0);
+              }}
+              onTimeUpdate={(event: React.SyntheticEvent<HTMLVideoElement>) => {
+                setVideoCurrentTime(event.currentTarget.currentTime || 0);
+              }}
+              sx={{
+                width: '100%',
+                maxHeight: 360,
+                borderRadius: 2,
+                mb: 3,
+                bgcolor: '#000',
+              }}
+            />
+          ) : (
+            <Paper sx={{ p: 3, mb: 3, bgcolor: 'rgba(0,0,0,0.04)' }}>
+              <Typography variant="body2" color="text.secondary">
+                Velg en video med forhåndsvisning for å redigere den i showcase-editoren.
+              </Typography>
+            </Paper>
+          )}
 
           {/* Video Duration and Playback Controls */}
           {videoDuration > 0 && (
@@ -10344,10 +11610,6 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   value={videoCurrentTime}
                   max={videoDuration}
                   onChange={(_, value) => setVideoCurrentTime(value as number)}
-                  onLoadedMetadata={(e: any) => {
-                    const duration = e.target?.duration || 0;
-                    setVideoDuration(duration);
-                  }}
                   sx={{ flex: 1 }}
                   valueLabelDisplay="auto"
                   valueLabelFormat={(value) => `${Math.floor(value)}s`}
@@ -10365,12 +11627,24 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 <InputLabel>Sekvens</InputLabel>
                 <Select 
                   value={selectedSequence || ''}
-                  onChange={(e) => setSelectedSequence(e.target.value)}
+                  onChange={(e) => {
+                    const nextSequenceId = e.target.value;
+                    setSelectedSequence(nextSequenceId || null);
+                    const nextSequence = videoSequences.find((sequence) => sequence.id === nextSequenceId);
+                    setSelectedChapter(nextSequence?.chapters[0] || null);
+                  }}
                 >
-                  <MenuItem value="sequence1">Intro Sekvens</MenuItem>
-                  <MenuItem value="sequence2">Hovedinnhold</MenuItem>
-                  <MenuItem value="sequence3">Avslutning</MenuItem>
-                  <MenuItem value="new"><AddCircle sx={{ fontSize:  16, mr:  1 }} />Ny sekvens</MenuItem>
+                  {videoSequences.length > 0 ? (
+                    videoSequences.map((sequence) => (
+                      <MenuItem key={sequence.id} value={sequence.id}>
+                        {sequence.sequenceName}
+                      </MenuItem>
+                    ))
+                  ) : (
+                    <MenuItem value="" disabled>
+                      Opprett en sekvens først
+                    </MenuItem>
+                  )}
                 </Select>
               </FormControl>
             </Box>
@@ -10379,12 +11653,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 <InputLabel>Kapittel</InputLabel>
                 <Select 
                   value={selectedChapter || ''}
-                  onChange={(e) => setSelectedChapter(e.target.value)}
+                  onChange={(e) => setSelectedChapter(e.target.value || null)}
                 >
-                  <MenuItem value="chapter1">Kapittel 1</MenuItem>
-                  <MenuItem value="chapter2">Kapittel 2</MenuItem>
-                  <MenuItem value="chapter3">Kapittel 3</MenuItem>
-                  <MenuItem value="new"><AddCircle sx={{ fontSize:  16, mr:  1 }} />Nytt kapittel</MenuItem>
+                  {selectedSequenceChapters.length > 0 ? (
+                    selectedSequenceChapters.map((chapter) => (
+                      <MenuItem key={chapter} value={chapter}>
+                        {chapter}
+                      </MenuItem>
+                    ))
+                  ) : (
+                    <MenuItem value="" disabled>
+                      Velg en sekvens med kapitler
+                    </MenuItem>
+                  )}
                 </Select>
               </FormControl>
             </Box>
@@ -10429,9 +11710,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           {timecodedComments.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>Eksisterende kommentarer: </Typography>
-              {timecodedComments.map((comment, index) => (
+              {timecodedComments.map((comment) => (
                 <Chip 
-                  key={index}
+                  key={comment.id}
                   label={`${comment.timecode}s: ${comment.comment}`}
                   size="small"
                   sx={{ mr: 1, mb: 1 }}
@@ -10441,12 +11722,22 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           )}
         </DialogContent>
         <DialogActions>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setShowVideoEditor(false);
+              setShowAdvancedVideoSuite(true);
+            }}
+          >
+            Åpne Video Suite
+          </Button>
           <Button onClick={() => setShowVideoEditor(false)}>
             Lukk
           </Button>
           <Button variant="contained" 
             startIcon={<MovieCreation />}
             sx={{ bgcolor: '#E74C3C' }}
+            onClick={openResolveHandoff}
           >
             Åpne i DaVinci Resolve
           </Button>
@@ -10475,22 +11766,57 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 Sekvenser
               </Typography>
               <List>
-                <ListItem>
-                  <ListItemText primary="Intro Sekvens" secondary="0: 00 - 0:30" />
-                  <IconButton><Edit /></IconButton>
-                </ListItem>
-                <ListItem>
-                  <ListItemText primary="Hovedinnhold" secondary="0: 30 - 5:00" />
-                  <IconButton><Edit /></IconButton>
-                </ListItem>
-                <ListItem>
-                  <ListItemText primary="Avslutning" secondary="5: 00 - 5:30" />
-                  <IconButton><Edit /></IconButton>
-                </ListItem>
+                {videoSequences.length > 0 ? (
+                  videoSequences.map((sequence) => (
+                    <ListItem
+                      key={sequence.id}
+                      secondaryAction={
+                        <IconButton
+                          edge="end"
+                          onClick={() => {
+                            setSelectedSequence(sequence.id);
+                            setSelectedChapter(sequence.chapters[0] || null);
+                          }}
+                        >
+                          <Edit />
+                        </IconButton>
+                      }
+                    >
+                      <ListItemText
+                        primary={sequence.sequenceName}
+                        secondary={`${sequence.chapters.length} kapittel${sequence.chapters.length !== 1 ? 'er' : ''} • ${sequence.version}`}
+                      />
+                    </ListItem>
+                  ))
+                ) : (
+                  <ListItem>
+                    <ListItemText
+                      primary="Ingen sekvenser ennå"
+                      secondary="Opprett første sekvens for valgt video"
+                    />
+                  </ListItem>
+                )}
               </List>
+              <TextField
+                fullWidth
+                size="small"
+                label="Sekvensnavn"
+                value={newSequenceName}
+                onChange={(event) => setNewSequenceName(event.target.value)}
+                sx={{ mb: 1 }}
+              />
               <Button 
                 startIcon={<Add />}
-                onClick={() => createVideoSequence('Ny sekvens', [])}
+                onClick={async () => {
+                  const sequence = await createVideoSequence(
+                    newSequenceName.trim() || 'Ny sekvens',
+                    newChapterTitle.trim() ? [newChapterTitle.trim()] : [],
+                  );
+                  if (sequence) {
+                    setNewSequenceName('Ny sekvens');
+                    setNewChapterTitle('');
+                  }
+                }}
                 sx={{ mt: 1 }}
               >
                 Legg til sekvens
@@ -10501,16 +11827,62 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 Kapitler i valgt sekvens
               </Typography>
               <List>
-                <ListItem>
-                  <ListItemText primary="Kapittel 1" secondary="Scene setup" />
-                  <IconButton><Edit /></IconButton>
-                </ListItem>
-                <ListItem>
-                  <ListItemText primary="Kapittel 2" secondary="Main action" />
-                  <IconButton><Edit /></IconButton>
-                </ListItem>
+                {selectedSequenceRecord ? (
+                  selectedSequenceRecord.chapters.map((chapter) => (
+                    <ListItem
+                      key={chapter}
+                      secondaryAction={
+                        <IconButton edge="end" onClick={() => setSelectedChapter(chapter)}>
+                          <Edit />
+                        </IconButton>
+                      }
+                    >
+                      <ListItemText
+                        primary={chapter}
+                        secondary={chapter === selectedChapter ? 'Valgt kapittel' : 'Klikk for å aktivere'}
+                      />
+                    </ListItem>
+                  ))
+                ) : (
+                  <ListItem>
+                    <ListItemText
+                      primary="Ingen kapitler tilgjengelig"
+                      secondary="Velg eller opprett en sekvens først"
+                    />
+                  </ListItem>
+                )}
               </List>
-              <Button startIcon={<Add />} sx={{ mt: 1 }}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Nytt kapittel"
+                value={newChapterTitle}
+                onChange={(event) => setNewChapterTitle(event.target.value)}
+                sx={{ mb: 1 }}
+              />
+              <Button
+                startIcon={<Add />}
+                sx={{ mt: 1 }}
+                onClick={() => {
+                  if (!newChapterTitle.trim() || !selectedSequence) {
+                    showWarningToast('Velg sekvens og skriv inn kapittelnavn.');
+                    return;
+                  }
+
+                  setVideoSequences((prev) =>
+                    prev.map((sequence) =>
+                      sequence.id === selectedSequence
+                        ? {
+                            ...sequence,
+                            chapters: [...sequence.chapters, newChapterTitle.trim()],
+                          }
+                        : sequence,
+                    ),
+                  );
+                  setSelectedChapter(newChapterTitle.trim());
+                  setNewChapterTitle('');
+                }}
+              >
                 Legg til kapittel
               </Button>
             </Box>
@@ -10520,7 +11892,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Button onClick={() => setShowSequenceManager(false)}>
             Lukk
           </Button>
-          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: '#E74C3C' }}
+            onClick={() => {
+              downloadJsonArtifact(`video-structure-${selectedItem?.id || Date.now()}.json`, {
+                generatedAt: new Date().toISOString(),
+                sequences: videoSequences,
+                selectedSequence,
+                selectedChapter,
+              });
+              showSuccessToast('Videostruktur eksportert.');
+            }}
+          >
             Lagre struktur
           </Button>
         </DialogActions>
@@ -10610,12 +11994,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         </DialogTitle>
         <DialogContent sx={{ p: 3 }}>
           <Typography variant="body1" sx={{ mb: 3 }}>
-            Generer lette proxy-filer for smidig redigering av {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ','}
+            Generer lette proxy-filer for smidig redigering av {selectedVideoIds.length} video{selectedVideoIds.length !== 1 ? 'er' : ','}
           </Typography>
           
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel>Proxy Kvalitet</InputLabel>
-            <Select value="720p-prores" label="Proxy Kvalitet">
+            <Select
+              value={proxyQuality}
+              onChange={(event) => setProxyQuality(event.target.value as ProxyQuality)}
+              label="Proxy Kvalitet"
+            >
               <MenuItem value="480p-h264">480p H.264 (Rask)</MenuItem>
               <MenuItem value="720p-h264">720p H.264 (Balansert)</MenuItem>
               <MenuItem value="720p-prores">720p ProRes Proxy (Anbefalt)</MenuItem>
@@ -10624,13 +12012,22 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </FormControl>
 
           <FormControlLabel
-            control={<Switch defaultChecked />}
+            control={
+              <Switch
+                checked={keepOriginalProxyFiles}
+                onChange={(event) => setKeepOriginalProxyFiles(event.target.checked)}
+              />
+            }
             label="Behold original filer"
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowProxyGenerator(false)}>Avbryt</Button>
-          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: '#E74C3C' }}
+            onClick={startProxyGeneration}
+          >
             Generer Proxy-filer
           </Button>
         </DialogActions>
@@ -10644,12 +12041,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         </DialogTitle>
         <DialogContent sx={{ p: 3 }}>
           <Typography variant="body1" sx={{ mb: 3 }}>
-            Synkroniser {selectedImages.size} kamera{selectedImages.size !== 1 ? 'er' : ', '} basert på audio waveform matching
+            Synkroniser {selectedVideoIds.length} kamera{selectedVideoIds.length !== 1 ? 'er' : ', '} basert på audio waveform matching
           </Typography>
           
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel>Master Audio Kilde</InputLabel>
-            <Select value="camera1" label="Master Audio Kilde">
+            <Select
+              value={multicamMasterSource}
+              onChange={(event) => setMulticamMasterSource(event.target.value as MulticamAudioSource)}
+              label="Master Audio Kilde"
+            >
               <MenuItem value="camera1">Kamera 1</MenuItem>
               <MenuItem value="camera2">Kamera 2</MenuItem>
               <MenuItem value="external">Ekstern opptaker</MenuItem>
@@ -10658,20 +12059,25 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </FormControl>
 
           <Box sx={{ mb:  2 }}>
-            <Typography gutterBottom>Sync Presisjon</Typography>
-            <Slider
-              defaultValue={95}
-              min={80}
-              max={100}
-              step={1}
-              valueLabelDisplay="auto"
-              valueLabelFormat={(value) => `${value}%`}
+              <Typography gutterBottom>Sync Presisjon</Typography>
+              <Slider
+                value={multicamSyncPrecision}
+                onChange={(_, value) => setMulticamSyncPrecision(value as number)}
+                min={80}
+                max={100}
+                step={1}
+                valueLabelDisplay="auto"
+                valueLabelFormat={(value) => `${value}%`}
             />
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowMulticamSync(false)}>Avbryt</Button>
-          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: '#E74C3C' }}
+            onClick={startMulticamSyncJob}
+          >
             Synkroniser Cameras
           </Button>
         </DialogActions>
@@ -10685,12 +12091,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         </DialogTitle>
         <DialogContent sx={{ p: 3 }}>
           <Typography variant="body1" sx={{ mb: 3 }}>
-            Lag automatiske kapittelmarkører for {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ', '}
+            Lag automatiske kapittelmarkører for {selectedVideoIds.length} video{selectedVideoIds.length !== 1 ? 'er' : ', '}
           </Typography>
           
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel>Bryllup Kategori</InputLabel>
-            <Select value={selectedWeddingPackage} onChange={(e) => setSelectedWeddingPackage(e.target.value as any)} label="Bryllup Kategori">
+            <Select
+              value={selectedWeddingPackage}
+              onChange={(event) => setSelectedWeddingPackage(event.target.value as WeddingPackageOption)}
+              label="Bryllup Kategori"
+            >
               <MenuItem value="highlight">Highlight Reel</MenuItem>
               <MenuItem value="feature">Feature Film</MenuItem>
               <MenuItem value="ceremony">Seremoni full</MenuItem>
@@ -10702,7 +12112,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Box sx={{ mb:  2 }}>
             <Typography gutterBottom>Minimum kapittel-lengde (sekunder)</Typography>
             <Slider
-              defaultValue={30}
+              value={chapterMinimumSeconds}
+              onChange={(_, value) => setChapterMinimumSeconds(value as number)}
               min={10}
               max={120}
               step={10}
@@ -10711,14 +12122,18 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 { value:  10, label: '10s',},
                 { value:  30, label: '30s',},
                 { value:  60, label: '1m',},
-                { value: 10, label: '2m',}
+                { value: 120, label: '2m',}
               ]}
             />
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowChapterMarker(false)}>Avbryt</Button>
-          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: '#E74C3C' }}
+            onClick={createChapterMarkers}
+          >
             Opprett Kapitler
           </Button>
         </DialogActions>
@@ -10734,22 +12149,78 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
             <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
               <Typography variant="h6" gutterBottom>Versjon A - {videoVersion}</Typography>
-              <Box sx={{ bgcolor: '#000', aspectRatio: '16/9', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Typography color="white">Video Player A</Typography>
-              </Box>
+              {selectedPrimaryVideoUrl ? (
+                <Box
+                  component="video"
+                  src={selectedPrimaryVideoUrl}
+                  controls
+                  sx={{ width: '100%', bgcolor: '#000', aspectRatio: '16/9', borderRadius: 1 }}
+                />
+              ) : (
+                <Box sx={{ bgcolor: '#000', aspectRatio: '16/9', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography color="white">Ingen videoforhandsvisning tilgjengelig</Typography>
+                </Box>
+              )}
               <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                <Button size="small" variant="outlined">Frame-kommentar</Button>
-                <Button size="small" variant="outlined">@Mention</Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    setVideoVersion('R1');
+                    setShowVideoEditor(true);
+                    setShowVersionComparison(false);
+                  }}
+                >
+                  Frame-kommentar
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    setShowComments(true);
+                    setShowVersionComparison(false);
+                  }}
+                >
+                  @Mention
+                </Button>
               </Stack>
             </Box>
             <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
               <Typography variant="h6" gutterBottom>Versjon B - Final</Typography>
-              <Box sx={{ bgcolor: '#000', aspectRatio: '16/9', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Typography color="white">Video Player B</Typography>
-              </Box>
+              {selectedPrimaryVideoUrl ? (
+                <Box
+                  component="video"
+                  src={selectedPrimaryVideoUrl}
+                  controls
+                  sx={{ width: '100%', bgcolor: '#000', aspectRatio: '16/9', borderRadius: 1 }}
+                />
+              ) : (
+                <Box sx={{ bgcolor: '#000', aspectRatio: '16/9', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography color="white">Ingen videoforhandsvisning tilgjengelig</Typography>
+                </Box>
+              )}
               <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                <Button size="small" variant="outlined">Frame-kommentar</Button>
-                <Button size="small" variant="outlined">@Mention</Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    setVideoVersion('Final');
+                    setShowVideoEditor(true);
+                    setShowVersionComparison(false);
+                  }}
+                >
+                  Frame-kommentar
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    setShowComments(true);
+                    setShowVersionComparison(false);
+                  }}
+                >
+                  @Mention
+                </Button>
               </Stack>
             </Box>
           </Box>
@@ -10757,24 +12228,48 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Box sx={{ mt: 3 }}>
             <Typography variant="h6" gutterBottom>Endringsrunder</Typography>
             <List>
-              <ListItem>
-                <Chip label="Åpen" color="error" size="small" sx={{ mr: 1 }} />
-                <ListItemText primary="Juster fargebalanse ved 2: 15" secondary="@daniel - Fra klient feedback" />
-              </ListItem>
-              <ListItem>
-                <Chip label="Under arbeid" color="warning" size="small" sx={{ mr: 1 }} />
-                <ListItemText primary="Kortere intro sekvens" secondary="@fotograf - Reduser til 10 sekunder" />
-              </ListItem>
-              <ListItem>
-                <Chip label="Løst" color="success" size="small" sx={{ mr: 1 }} />
-                <ListItemText primary="Legg til musikk fade-out" secondary="Fullført i R3" />
-              </ListItem>
+              {versionComparisonEntries.length > 0 ? (
+                versionComparisonEntries.map((entry) => (
+                  <ListItem key={entry.id}>
+                    <Chip
+                      label={
+                        entry.status === 'resolved'
+                          ? 'Løst'
+                          : entry.status === 'open'
+                            ? 'Åpen'
+                            : 'Under arbeid'
+                      }
+                      color={
+                        entry.status === 'resolved'
+                          ? 'success'
+                          : entry.status === 'open'
+                            ? 'error'
+                            : 'warning'
+                      }
+                      size="small"
+                      sx={{ mr: 1 }}
+                    />
+                    <ListItemText primary={entry.primary} secondary={entry.secondary} />
+                  </ListItem>
+                ))
+              ) : (
+                <ListItem>
+                  <ListItemText
+                    primary="Ingen endringsrunder registrert"
+                    secondary="Legg til tidskodede kommentarer for å bygge sammenligningshistorikk"
+                  />
+                </ListItem>
+              )}
             </List>
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowVersionComparison(false)}>Lukk</Button>
-          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: '#E74C3C' }}
+            onClick={exportVersionComparisonReport}
+          >
             Eksporter Sammenligning
           </Button>
         </DialogActions>
@@ -10929,12 +12424,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         </DialogTitle>
         <DialogContent sx={{ p: 3 }}>
           <Typography variant="body1" sx={{ mb: 3 }}>
-            Konfigurer streaming for {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ', '}
+            Konfigurer streaming for {selectedVideoIds.length} video{selectedVideoIds.length !== 1 ? 'er' : ', '}
           </Typography>
           
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel>Streaming Protocol</InputLabel>
-            <Select defaultValue="hls" label="Streaming Protocol">
+            <Select
+              value={streamingProtocol}
+              onChange={(event) => setStreamingProtocol(event.target.value as StreamingProtocol)}
+              label="Streaming Protocol"
+            >
               <MenuItem value="hls">HLS (HTTP Live Streaming)</MenuItem>
               <MenuItem value="dash">DASH (Dynamic Adaptive Streaming)</MenuItem>
               <MenuItem value="webrtc">WebRTC (Sanntid)</MenuItem>
@@ -10944,22 +12443,53 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Typography variant="h6" sx={{ mb: 2 }}>Adaptive Bitrate Ladder</Typography>
           <List>
             <ListItem>
-              <Checkbox defaultChecked />
+              <Checkbox
+                checked={streamingBitrateProfiles.includes('4k')}
+                onChange={(event) =>
+                  setStreamingBitrateProfiles((prev) =>
+                    event.target.checked
+                      ? Array.from(new Set([...prev, '4k']))
+                      : prev.filter((profile) => profile !== '4k'),
+                  )
+                }
+              />
               <ListItemText primary="4K - 25 Mbps" secondary="For høyhastighets forbindelser" />
             </ListItem>
             <ListItem>
-              <Checkbox defaultChecked />
+              <Checkbox
+                checked={streamingBitrateProfiles.includes('1080p')}
+                onChange={(event) =>
+                  setStreamingBitrateProfiles((prev) =>
+                    event.target.checked
+                      ? Array.from(new Set([...prev, '1080p']))
+                      : prev.filter((profile) => profile !== '1080p'),
+                  )
+                }
+              />
               <ListItemText primary="1080p - 8 Mbps" secondary="Standard HD streaming" />
             </ListItem>
             <ListItem>
-              <Checkbox defaultChecked />
+              <Checkbox
+                checked={streamingBitrateProfiles.includes('720p')}
+                onChange={(event) =>
+                  setStreamingBitrateProfiles((prev) =>
+                    event.target.checked
+                      ? Array.from(new Set([...prev, '720p']))
+                      : prev.filter((profile) => profile !== '720p'),
+                  )
+                }
+              />
               <ListItemText primary="720p - 3 Mbps" secondary="For mobile enheter" />
             </ListItem>
           </List>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowStreamingSetup(false)}>Avbryt</Button>
-          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: '#E74C3C' }}
+            onClick={configureStreamingJob}
+          >
             Konfigurer Streaming
           </Button>
         </DialogActions>
@@ -10973,70 +12503,70 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         </DialogTitle>
         <DialogContent sx={{ p: 3 }}>
           <Typography variant="body1" sx={{ mb: 3 }}>
-            Organiser {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ', '} i bryllup-spesifikke kategorier
+            Organiser {selectedManagedItems.length} element{selectedManagedItems.length !== 1 ? 'er' : ''} i bryllup-spesifikke kategorier
           </Typography>
           
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
-              <Paper sx={{ p: 2, mb: 2 }}>
-                <Typography variant="h6" gutterBottom>Highlight Reel</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  3-5 minutters sammendrag av høydepunktene
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                  <Chip label="Musikk" size="small" />
-                  <Chip label="Fast tempo" size="small" />
-                  <Chip label="Følelser" size="small" />
-                </Stack>
-              </Paper>
+          <RadioGroup
+            value={selectedWeddingPackage}
+            onChange={(event) => setSelectedWeddingPackage(event.target.value as WeddingPackageOption)}
+          >
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+              {weddingPackageOptions.map((option) => (
+                <Box key={option} sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
+                  <Paper
+                    onClick={() => setSelectedWeddingPackage(option)}
+                    sx={{
+                      p: 2,
+                      mb: 2,
+                      cursor: 'pointer',
+                      border: selectedWeddingPackage === option ? '2px solid #E74C3C' : '1px solid rgba(0,0,0,0.08)',
+                      bgcolor: selectedWeddingPackage === option ? 'rgba(231,76,60,0.08)' : undefined,
+                    }}
+                  >
+                    <FormControlLabel
+                      value={option}
+                      control={<Radio />}
+                      label={weddingPackageLabels[option]}
+                      sx={{ mb: 1 }}
+                    />
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      {option === 'highlight'
+                        ? '3-5 minutters sammendrag av høydepunktene'
+                        : option === 'feature'
+                          ? '15-30 minutters dokumentarisk film'
+                          : option === 'ceremony'
+                            ? 'Komplett seremoni uten redigering'
+                            : option === 'speeches'
+                              ? 'Alle taler og takk separat'
+                              : 'Kort trailer for deling og teaser'}
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                      {(option === 'highlight'
+                        ? ['Musikk', 'Fast tempo', 'Folelser']
+                        : option === 'feature'
+                          ? ['Fortelling', 'Taler', 'Seremoni']
+                          : option === 'ceremony'
+                            ? ['Uklippt', 'Arkiv', 'Familie']
+                            : option === 'speeches'
+                              ? ['Audio focus', 'Undertekster', 'Chaptered']
+                              : ['Kortformat', 'Delbar', 'SoMe'])
+                        .map((label) => (
+                          <Chip key={label} label={label} size="small" />
+                        ))}
+                    </Stack>
+                  </Paper>
+                </Box>
+              ))}
             </Box>
-
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
-              <Paper sx={{ p: 2, mb: 2 }}>
-                <Typography variant="h6" gutterBottom>Feature Film</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  15-30 minutters dokumentarisk film
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                  <Chip label="Fortelling" size="small" />
-                  <Chip label="Taler" size="small" />
-                  <Chip label="Seremoni" size="small" />
-                </Stack>
-              </Paper>
-            </Box>
-
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
-              <Paper sx={{ p: 2, mb: 2 }}>
-                <Typography variant="h6" gutterBottom>Seremoni Full</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Komplett seremoni uten redigering
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                  <Chip label="Uklippt" size="small" />
-                  <Chip label="Arkiv" size="small" />
-                  <Chip label="Familie" size="small" />
-                </Stack>
-              </Paper>
-            </Box>
-
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
-              <Paper sx={{ p: 2, mb: 2 }}>
-                <Typography variant="h6" gutterBottom>Taler & Takk</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Alle taler og takk separat
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                  <Chip label="Audio focus" size="small" />
-                  <Chip label="Undertekster" size="small" />
-                  <Chip label="Chaptered" size="small" />
-                </Stack>
-              </Paper>
-            </Box>
-          </Box>
+          </RadioGroup>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowWeddingPackages(false)}>Lukk</Button>
-          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: '#E74C3C' }}
+            onClick={applyWeddingPackageOrganization}
+          >
             Organiser i Pakker
           </Button>
         </DialogActions>
@@ -11053,7 +12583,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
               <Paper sx={{ p: 2, textAlign: 'center' }}>
                 <Typography variant="h4" color="primary">
-                  {selectedImages.size}
+                  {selectedVideoIds.length}
                 </Typography>
                 <Typography variant="body2">Videoer analysert</Typography>
               </Paper>
@@ -11061,7 +12591,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
               <Paper sx={{ p: 2, textAlign: 'center' }}>
                 <Typography variant="h4" color="success.main">
-                  142 min
+                  {videoDurationSummary.formatted}
                 </Typography>
                 <Typography variant="body2">Total lengde</Typography>
               </Paper>
@@ -11069,7 +12599,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
               <Paper sx={{ p: 2, textAlign: 'center' }}>
                 <Typography variant="h4" color="warning.main">
-                  23.98 fps
+                  {averageFrameRate ? `${averageFrameRate.toFixed(2)} fps` : 'Ingen FPS-data'}
                 </Typography>
                 <Typography variant="body2">Gjennomsnittlig framerate</Typography>
               </Paper>
@@ -11169,30 +12699,58 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <List>
             <ListItem>
               <ListItemText 
-                primary="Audio Nivåer" 
-                secondary="Gjennomsnitt: -18 LUFS (Optimal for broadcast)"
+                primary="Metadata-dekning" 
+                secondary={`${metadataCoverage}% av valgt materiale har kategori, beskrivelse eller tags`}
               />
-              <Chip label="✓ OK" color="success" size="small" />
+              <Chip
+                label={metadataCoverage >= 80 ? 'Sterk' : metadataCoverage >= 50 ? 'OK' : 'Mangelfull'}
+                color={metadataCoverage >= 80 ? 'success' : metadataCoverage >= 50 ? 'warning' : 'error'}
+                size="small"
+              />
             </ListItem>
             <ListItem>
               <ListItemText 
-                primary="Fargeområde" 
-                secondary="Rec.709 (100% coverage)"
+                primary="Sekvensdekning" 
+                secondary={`${videoSequences.length} sekvens${videoSequences.length !== 1 ? 'er' : ''} og ${videoSequences.reduce((sum, sequence) => sum + sequence.chapters.length, 0)} kapittel registrert`}
               />
-              <Chip label="✓ OK" color="success" size="small" />
+              <Chip
+                label={videoSequences.length > 0 ? 'Klar' : 'Tom'}
+                color={videoSequences.length > 0 ? 'success' : 'warning'}
+                size="small"
+              />
             </ListItem>
             <ListItem>
               <ListItemText 
-                primary="Stabilitet" 
-                secondary="Gjennomsnittlig shake: 2.1px (Lav)"
+                primary="Kommentarflyt" 
+                secondary={`${timecodedComments.length} tidskodede kommentar${timecodedComments.length !== 1 ? 'er' : ''} for gjennomgang og revisjon`}
               />
-              <Chip label="✓ Stabil" color="success" size="small" />
+              <Chip
+                label={timecodedComments.length > 0 ? 'Aktiv' : 'Ingen'}
+                color={timecodedComments.length > 0 ? 'info' : 'default'}
+                size="small"
+              />
             </ListItem>
           </List>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowAnalytics(false)}>Lukk</Button>
-          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: '#E74C3C' }}
+            onClick={() => {
+              downloadJsonArtifact(`video-analytics-${selectedPrimaryVideo?.id || Date.now()}.json`, {
+                generatedAt: new Date().toISOString(),
+                selection: selectedVideoIds,
+                totalDurationSeconds: videoDurationSummary.totalSeconds,
+                averageFrameRate,
+                metadataCoverage,
+                sequenceCount: videoSequences.length,
+                chapterCount: videoSequences.reduce((sum, sequence) => sum + sequence.chapters.length, 0),
+                commentCount: timecodedComments.length,
+                evendiSummary,
+              });
+            }}
+          >
             Eksporter Rapport
           </Button>
         </DialogActions>
@@ -11215,27 +12773,32 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       )}
 
       {/* CreatorHub Video Suite Dialog */}
-      {showVideoEditor && profession === 'videographer' && (
+      {showAdvancedVideoSuite && profession === 'videographer' && (
         <React.Suspense fallback={<div>Laster CreatorHub Video Suite...</div>}>
           <VideographerVideoSuite
-            selectedVideoFiles={Array.from(selectedImages).filter(img => 
-              img.endsWith('.mp4') || img.endsWith('.mov') || img.endsWith('.avi') || 
-              img.endsWith('.mkv') || img.endsWith('.webm')
-            )}
-            onClose={() => setShowVideoEditor(false)}
+            selectedVideoFiles={selectedVideoItems.map((item) => ({
+              id: item.id,
+              name: item.title,
+              url: item.fileUrl || item.thumbnailUrl,
+              thumbnailUrl: item.thumbnailUrl,
+              duration: item.duration,
+            }))}
+            onClose={() => setShowAdvancedVideoSuite(false)}
           />
         </React.Suspense>
       )}
 
       {/* CreatorHub Photo Suite Dialog */}
-      {showVideoEditor && profession === 'photographer' && (
+      {showAdvancedPhotoSuite && profession === 'photographer' && (
         <React.Suspense fallback={<div>Laster CreatorHub Photo Suite...</div>}>
           <PhotographerPhotoSuite
-            selectedPhotoFiles={Array.from(selectedImages).filter(img => 
-              img.endsWith('.jpg') || img.endsWith('.jpeg') || img.endsWith('.png') || 
-              img.endsWith('.webp') || img.endsWith('.tiff') || img.endsWith('.raw')
-            )}
-            onClose={() => setShowVideoEditor(false)}
+            selectedPhotoFiles={selectedPhotoItems.map((item) => ({
+              id: item.id,
+              name: item.title,
+              url: item.fileUrl || item.thumbnailUrl,
+              thumbnailUrl: item.thumbnailUrl,
+            }))}
+            onClose={() => setShowAdvancedPhotoSuite(false)}
             selectedProject={selectedProject}
           />
         </React.Suspense>
@@ -12509,19 +14072,21 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         >
           <DialogTitle>AI Auto-Tagging</DialogTitle>
           <DialogContent>
-            <Typography>Analyzing {selectedBatchItems.size || 'selected'} items for automatic tagging...</Typography>
-            <CircularProgress sx={{ mt: 2 }} />
+            <Typography>
+              AI analyserer {selectedManagedItems.length} CreatorHub-element{selectedManagedItems.length !== 1 ? 'er' : ''} for automatisk tagging.
+            </Typography>
+            {isAnalyzing && <CircularProgress sx={{ mt: 2 }} />}
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setShowAutoTagDialog(false)}>Cancel</Button>
             <Button 
               variant="contained"
               onClick={() => {
-                addNotification({ message: 'Auto-tagging completed', type: 'success' });
-                setShowAutoTagDialog(false);
+                void runAutoTagging();
               }}
+              disabled={selectedManagedItems.length === 0 || isAnalyzing}
             >
-              Apply Tags
+              {isAnalyzing ? 'Tagger...' : 'Apply Tags'}
             </Button>
           </DialogActions>
         </Dialog>
@@ -12537,12 +14102,18 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         >
           <DialogTitle>AI Auto-Curation</DialogTitle>
           <DialogContent>
-            <Typography>Creating smart collections based on content analysis...</Typography>
+            <Typography>Oppretter samlinger basert på valgt innhold og eksisterende metadata.</Typography>
             <Box sx={{ mt: 2 }}>
               <Typography variant="body2">Collections to create:</Typography>
-              <Chip label="Best Portraits" sx={{ m: 0.5 }} />
-              <Chip label="Landscape Highlights" sx={{ m: 0.5 }} />
-              <Chip label="Action Shots" sx={{ m: 0.5 }} />
+              {autoCurationPreviewGroups.length > 0 ? (
+                autoCurationPreviewGroups.map((group) => (
+                  <Chip key={group.name} label={`${group.name} (${group.count})`} sx={{ m: 0.5 }} />
+                ))
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Velg CreatorHub-elementer for å generere kuraterte samlinger.
+                </Typography>
+              )}
             </Box>
           </DialogContent>
           <DialogActions>
@@ -12550,15 +14121,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             <Button 
               variant="contained"
               onClick={() => {
-                setCollections(prev => [
-                  ...prev,
-                  { id: 'ai-portraits', name: 'Best Portraits', items: [] },
-                  { id: 'ai-landscape', name: 'Landscape Highlights', items: [] },
-                  { id: 'ai-action', name: 'Action Shots', items: [] }
-                ] as any);
-                addNotification({ message: 'Smart collections created', type: 'success' });
-                setShowAutoCurateDialog(false);
+                void runAutoCuration();
               }}
+              disabled={autoCurationPreviewGroups.length === 0}
             >
               Create Collections
             </Button>
@@ -12576,10 +14141,24 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         >
           <DialogTitle>Add Chapter Markers</DialogTitle>
           <DialogContent>
-            <Typography>Automatically detect and add chapter markers to video...</Typography>
+            <Typography sx={{ mb: 2 }}>
+              Opprett kapittelmarkører basert på tidskodede kommentarer og valgt bryllupspakke.
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Aktiv pakke: {weddingPackageLabels[selectedWeddingPackage]} • Minimumslengde: {chapterMinimumSeconds}s
+            </Typography>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setShowChapterDialog(false)}>Close</Button>
+            <Button
+              variant="contained"
+              onClick={() => {
+                void createChapterMarkers();
+              }}
+              disabled={selectedVideoIds.length === 0}
+            >
+              Opprett kapitler
+            </Button>
           </DialogActions>
         </Dialog>
       )}
@@ -12594,11 +14173,22 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         >
           <DialogTitle>Generate Subtitles</DialogTitle>
           <DialogContent>
-            <Typography>AI subtitle generation in progress...</Typography>
-            <LinearProgress sx={{ mt: 2 }} />
+            <Typography sx={{ mb: 2 }}>
+              Start AI-undertekster for {selectedVideoIds.length} video{selectedVideoIds.length !== 1 ? 'er' : ''}.
+            </Typography>
+            {isProcessingVideo && <LinearProgress sx={{ mt: 2 }} />}
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setShowSubtitleDialog(false)}>Close</Button>
+            <Button
+              variant="contained"
+              onClick={() => {
+                void requestSubtitleGeneration();
+              }}
+              disabled={selectedVideoIds.length === 0}
+            >
+              Start undertekster
+            </Button>
           </DialogActions>
         </Dialog>
       )}
@@ -12613,11 +14203,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         >
           <DialogTitle>Move Items</DialogTitle>
           <DialogContent>
-            <Typography>Select destination for {selectedBatchItems.size} items</Typography>
+            <Typography>
+              Klargjor flytting for {activeSelectionIds.length} element{activeSelectionIds.length !== 1 ? 'er' : ''}.
+            </Typography>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setShowMoveDialog(false)}>Cancel</Button>
-            <Button variant="contained">Move</Button>
+            <Button
+              variant="contained"
+              onClick={openMoveSelectionDialog}
+              disabled={activeSelectionIds.length === 0}
+            >
+              Move
+            </Button>
           </DialogActions>
         </Dialog>
       )}
@@ -12636,24 +14234,28 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               fullWidth
               label="Collection Name"
               variant="outlined"
+              value={newCollectionName}
+              onChange={(event) => setNewCollectionName(event.target.value)}
               sx={{ mt: 2 }}
-              onKeyPress={(e) => {
+              onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  const name = (e.target as HTMLInputElement).value;
-                  setCollections(prev => [...prev, { 
-                    id: `col-${Date.now()}`, 
-                    name, 
-                    items: Array.from(selectedBatchItems) 
-                  }] as any);
-                  addNotification({ message: `Collection "${name}" created`, type: 'success' });
-                  setShowCreateCollection(false);
+                  e.preventDefault();
+                  void createCollectionFromDialog();
                 }
               }}
             />
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setShowCreateCollection(false)}>Cancel</Button>
-            <Button variant="contained">Create</Button>
+            <Button
+              variant="contained"
+              onClick={() => {
+                void createCollectionFromDialog();
+              }}
+              disabled={!newCollectionName.trim() || selectedManagedItems.length === 0}
+            >
+              Create
+            </Button>
           </DialogActions>
         </Dialog>
       )}

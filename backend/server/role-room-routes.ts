@@ -314,6 +314,7 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'email',
   'profile',
   'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/contacts',
@@ -351,6 +352,11 @@ const roleRoomLinkedInTransferStore = new Map<string, RoleRoomLinkedInTransferPa
 
 function readStringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeEmailValue(value: unknown): string | null {
+  const email = readStringValue(value);
+  return email ? email.toLowerCase() : null;
 }
 
 function readBooleanValue(value: unknown): boolean | null {
@@ -904,6 +910,14 @@ function isEphemeralRoleRoomDevUserId(userId: string | null | undefined): boolea
   return userId === 'dev-local-user' || userId.startsWith('dev-');
 }
 
+function isRoleRoomLocalDevelopmentUserId(userId: string | null | undefined): boolean {
+  if (!isRoleRoomDevBypassEnabled() || typeof userId !== 'string') {
+    return false;
+  }
+
+  return userId === 'local-admin' || isEphemeralRoleRoomDevUserId(userId);
+}
+
 // ── API Key Middleware ───────────────────────────────────────
 
 /**
@@ -1319,45 +1333,110 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const expiryDate = typeof tokenBundle.expiryDate === 'number' && Number.isFinite(tokenBundle.expiryDate)
       ? new Date(tokenBundle.expiryDate).toISOString()
       : null;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    const result = await pool.query<RoleRoomGoogleConnectionRow>(
-      `INSERT INTO role_room_google_connections (
-        id, user_id, role_room_email, google_email, google_subject,
-        access_token_encrypted, refresh_token_encrypted, expiry_date, scopes,
-        connection_state, last_error, profile, created_at, updated_at, last_used_at
-      ) VALUES (
-        $1, $2, $3, $4, $5,
-        $6, $7, $8, $9::jsonb,
-        'connected', NULL, $10::jsonb, NOW(), NOW(), NOW()
-      )
-      ON CONFLICT (user_id) DO UPDATE SET
-        role_room_email = EXCLUDED.role_room_email,
-        google_email = EXCLUDED.google_email,
-        google_subject = EXCLUDED.google_subject,
-        access_token_encrypted = COALESCE(EXCLUDED.access_token_encrypted, role_room_google_connections.access_token_encrypted),
-        refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_google_connections.refresh_token_encrypted),
-        expiry_date = COALESCE(EXCLUDED.expiry_date, role_room_google_connections.expiry_date),
-        scopes = EXCLUDED.scopes,
-        connection_state = 'connected',
-        last_error = NULL,
-        profile = EXCLUDED.profile,
-        updated_at = NOW(),
-        last_used_at = NOW()
-      RETURNING *`,
-      [
-        crypto.randomUUID(),
-        userId,
-        roleRoomEmail,
-        googleProfile.email,
-        googleProfile.subject,
-        accessTokenEncrypted,
-        refreshTokenEncrypted,
-        expiryDate,
-        JSON.stringify(tokenBundle.scopes ?? []),
-        JSON.stringify(googleProfile.profile),
-      ],
-    );
-    return result.rows[0];
+      const existingByUserResult = await client.query<RoleRoomGoogleConnectionRow>(
+        `SELECT * FROM role_room_google_connections WHERE user_id = $1 LIMIT 1`,
+        [userId],
+      );
+      const existingByUser = existingByUserResult.rows[0] ?? null;
+
+      const existingBySubjectResult = await client.query<RoleRoomGoogleConnectionRow>(
+        `SELECT * FROM role_room_google_connections WHERE google_subject = $1 LIMIT 1`,
+        [googleProfile.subject],
+      );
+      const existingBySubject = existingBySubjectResult.rows[0] ?? null;
+
+      if (existingBySubject && existingByUser && existingBySubject.id !== existingByUser.id) {
+        await client.query(
+          `DELETE FROM role_room_google_connections WHERE id = $1`,
+          [existingByUser.id],
+        );
+      }
+
+      if (existingBySubject) {
+        const updateResult = await client.query<RoleRoomGoogleConnectionRow>(
+          `UPDATE role_room_google_connections
+           SET user_id = $2,
+               role_room_email = $3,
+               google_email = $4,
+               google_subject = $5,
+               access_token_encrypted = COALESCE($6, access_token_encrypted),
+               refresh_token_encrypted = COALESCE($7, refresh_token_encrypted),
+               expiry_date = COALESCE($8, expiry_date),
+               scopes = $9::jsonb,
+               connection_state = 'connected',
+               last_error = NULL,
+               profile = $10::jsonb,
+               updated_at = NOW(),
+               last_used_at = NOW()
+           WHERE id = $1
+           RETURNING *`,
+          [
+            existingBySubject.id,
+            userId,
+            roleRoomEmail,
+            googleProfile.email,
+            googleProfile.subject,
+            accessTokenEncrypted,
+            refreshTokenEncrypted,
+            expiryDate,
+            JSON.stringify(tokenBundle.scopes ?? []),
+            JSON.stringify(googleProfile.profile),
+          ],
+        );
+        await client.query('COMMIT');
+        return updateResult.rows[0];
+      }
+
+      const result = await client.query<RoleRoomGoogleConnectionRow>(
+        `INSERT INTO role_room_google_connections (
+          id, user_id, role_room_email, google_email, google_subject,
+          access_token_encrypted, refresh_token_encrypted, expiry_date, scopes,
+          connection_state, last_error, profile, created_at, updated_at, last_used_at
+        ) VALUES (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8, $9::jsonb,
+          'connected', NULL, $10::jsonb, NOW(), NOW(), NOW()
+        )
+        ON CONFLICT (user_id) DO UPDATE SET
+          role_room_email = EXCLUDED.role_room_email,
+          google_email = EXCLUDED.google_email,
+          google_subject = EXCLUDED.google_subject,
+          access_token_encrypted = COALESCE(EXCLUDED.access_token_encrypted, role_room_google_connections.access_token_encrypted),
+          refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_google_connections.refresh_token_encrypted),
+          expiry_date = COALESCE(EXCLUDED.expiry_date, role_room_google_connections.expiry_date),
+          scopes = EXCLUDED.scopes,
+          connection_state = 'connected',
+          last_error = NULL,
+          profile = EXCLUDED.profile,
+          updated_at = NOW(),
+          last_used_at = NOW()
+        RETURNING *`,
+        [
+          crypto.randomUUID(),
+          userId,
+          roleRoomEmail,
+          googleProfile.email,
+          googleProfile.subject,
+          accessTokenEncrypted,
+          refreshTokenEncrypted,
+          expiryDate,
+          JSON.stringify(tokenBundle.scopes ?? []),
+          JSON.stringify(googleProfile.profile),
+        ],
+      );
+
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async function upsertRoleRoomLinkedInConnection(
@@ -1756,17 +1835,65 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!(await ensureRoleRoomGoogleTables())) {
       return null;
     }
-    const result = await pool.query<RoleRoomGoogleConnectionRow>(
-      `UPDATE role_room_google_connections
-       SET user_id = $2,
-           role_room_email = $3,
-           updated_at = NOW(),
-           last_used_at = NOW()
-       WHERE id = $1
-       RETURNING *`,
-      [connectionId, userId, roleRoomEmail],
-    );
-    return result.rows[0] ?? null;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `DELETE FROM role_room_google_connections
+         WHERE user_id = $2
+           AND id <> $1`,
+        [connectionId, userId],
+      );
+
+      const result = await client.query<RoleRoomGoogleConnectionRow>(
+        `UPDATE role_room_google_connections
+         SET user_id = $2,
+             role_room_email = $3,
+             updated_at = NOW(),
+             last_used_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [connectionId, userId, roleRoomEmail],
+      );
+      await client.query('COMMIT');
+      return result.rows[0] ?? null;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  function matchesExistingRoleRoomGoogleConnectionOwner(
+    connection: RoleRoomGoogleConnectionRow,
+    options: {
+      userIds?: Array<string | null | undefined>;
+      emails?: Array<string | null | undefined>;
+    },
+  ): boolean {
+    const candidateUserIds = (options.userIds ?? [])
+      .map((value) => readStringValue(value))
+      .filter((value): value is string => Boolean(value));
+
+    if (candidateUserIds.includes(connection.user_id)) {
+      return true;
+    }
+
+    const candidateEmails = (options.emails ?? [])
+      .map((value) => normalizeEmailValue(value))
+      .filter((value): value is string => Boolean(value));
+
+    if (candidateEmails.length === 0) {
+      return false;
+    }
+
+    const existingEmails = [
+      normalizeEmailValue(connection.role_room_email),
+      normalizeEmailValue(connection.google_email),
+    ].filter((value): value is string => Boolean(value));
+
+    return existingEmails.some((email) => candidateEmails.includes(email));
   }
 
   async function getRoleRoomGoogleArtifactsByProject(projectId: string): Promise<RoleRoomGoogleArtifactRow[]> {
@@ -3945,11 +4072,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       if (
         existingSubjectConnection
         && oauthState.mode === 'link'
-        && existingSubjectConnection.user_id !== oauthState.createdByUserId
-        && existingSubjectConnection.user_id !== oauthState.targetConnectionUserId
+        && !matchesExistingRoleRoomGoogleConnectionOwner(existingSubjectConnection, {
+          userIds: [oauthState.createdByUserId, oauthState.targetConnectionUserId],
+          emails: [oauthState.createdByEmail, oauthState.targetConnectionEmail],
+        })
         && !(
-          oauthState.createdByUserId
-          && isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+          isRoleRoomLocalDevelopmentUserId(oauthState.createdByUserId)
+          || isRoleRoomLocalDevelopmentUserId(oauthState.targetConnectionUserId)
+          || isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
         )
       ) {
         redirectWithError(oauthState.returnPath, 'Denne Google-kontoen er allerede koblet til en annen bruker', oauthState.browserOrigin);
@@ -3977,6 +4107,21 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             resolvedUser.email,
             resolvedUser.autoAssignProjectRole ?? resolvedUser.role,
             resolvedUser.userId,
+          );
+        }
+
+        if (
+          existingSubjectConnection
+          && existingSubjectConnection.user_id !== resolvedUser.userId
+          && matchesExistingRoleRoomGoogleConnectionOwner(existingSubjectConnection, {
+            userIds: [resolvedUser.userId],
+            emails: [resolvedUser.email],
+          })
+        ) {
+          await reassignRoleRoomGoogleConnectionOwner(
+            existingSubjectConnection.id,
+            resolvedUser.userId,
+            resolvedUser.email,
           );
         }
 
@@ -4064,7 +4209,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       if (
         existingSubjectConnection
         && existingSubjectConnection.user_id !== linkTargetUserId
-        && isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+        && (
+          isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+          || matchesExistingRoleRoomGoogleConnectionOwner(existingSubjectConnection, {
+            userIds: [linkTargetUserId, oauthState.createdByUserId, oauthState.targetConnectionUserId],
+            emails: [linkTargetEmail, oauthState.createdByEmail, oauthState.targetConnectionEmail],
+          })
+        )
       ) {
         await reassignRoleRoomGoogleConnectionOwner(existingSubjectConnection.id, linkTargetUserId, linkTargetEmail);
       }
@@ -4181,7 +4332,16 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       if (
         existingSubjectConnection
         && existingSubjectConnection.user_id !== userId
-        && !isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+        && !matchesExistingRoleRoomGoogleConnectionOwner(existingSubjectConnection, {
+          userIds: [userId, payloadUserId, targetConnectionUserId],
+          emails: [roleRoomEmail, targetConnectionEmail, payload.createdByEmail],
+        })
+        && !(
+          isRoleRoomLocalDevelopmentUserId(userId)
+          || isRoleRoomLocalDevelopmentUserId(payloadUserId)
+          || isRoleRoomLocalDevelopmentUserId(targetConnectionUserId)
+          || isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+        )
       ) {
         res.status(409).json({ error: 'Denne Google-kontoen er allerede koblet til en annen bruker' });
         return;
@@ -4190,7 +4350,16 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       if (
         existingSubjectConnection
         && existingSubjectConnection.user_id !== userId
-        && isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+        && (
+          isRoleRoomLocalDevelopmentUserId(userId)
+          || isRoleRoomLocalDevelopmentUserId(payloadUserId)
+          || isRoleRoomLocalDevelopmentUserId(targetConnectionUserId)
+          || isEphemeralRoleRoomDevUserId(existingSubjectConnection.user_id)
+          || matchesExistingRoleRoomGoogleConnectionOwner(existingSubjectConnection, {
+            userIds: [userId, payloadUserId, targetConnectionUserId],
+            emails: [roleRoomEmail, targetConnectionEmail, payload.createdByEmail],
+          })
+        )
       ) {
         await reassignRoleRoomGoogleConnectionOwner(existingSubjectConnection.id, userId, roleRoomEmail);
       }

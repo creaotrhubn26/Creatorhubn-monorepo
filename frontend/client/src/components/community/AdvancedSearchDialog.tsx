@@ -49,6 +49,17 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { nb } from 'date-fns/locale';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_FIELD_SX,
+  COMMUNITY_DIALOG_MUTED,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 interface SearchFilters {
   scope: 'all' | 'channel' | 'thread';
@@ -102,6 +113,7 @@ interface BookmarkRecord {
 interface AdvancedSearchDialogProps {
   open: boolean;
   onClose: () => void;
+  currentUserId: string;
   defaultScope?: 'all' | 'channel' | 'thread';
   defaultScopeId?: string;
   defaultScopeName?: string;
@@ -115,6 +127,7 @@ interface AdvancedSearchDialogProps {
 export default function AdvancedSearchDialog({
   open,
   onClose,
+  currentUserId,
   defaultScope = 'all',
   defaultScopeId,
   defaultScopeName,
@@ -202,14 +215,21 @@ export default function AdvancedSearchDialog({
   };
 
   const handleSelectResult = (result: SearchResult) => {
-    if (result.type === 'message' && onSelectMessage) {
-      onSelectMessage(result.id, result.channelId || ', ');
-    } else if (result.type === 'thread' && onSelectThread) {
-      onSelectThread(result.id, result.channelId || ', ');
-    } else if (result.type === 'user' && onSelectUser) {
-      onSelectUser(result.id);
+    if (result.type === 'message' && onSelectMessage && result.channelId) {
+      onSelectMessage(result.id, result.channelId);
+      onClose();
+      return;
     }
-    onClose();
+    if (result.type === 'thread' && onSelectThread && result.channelId) {
+      onSelectThread(result.id, result.channelId);
+      onClose();
+      return;
+    }
+    if (result.type === 'user' && onSelectUser) {
+      onSelectUser(result.id);
+      onClose();
+      return;
+    }
   };
 
   const renderResultIcon = (result: SearchResult) => {
@@ -220,14 +240,23 @@ export default function AdvancedSearchDialog({
   };
 
   const renderResult = (result: SearchResult) => {
+    const isBookmarkable = result.type === 'message' || result.type === 'thread';
+
     return (
       <Paper
         key={result.id}
         sx={{
+          ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
           mb: 2,
-          p: 2, '&:hover': { bgcolor: 'action.hover', cursor: 'pointer' },
-          border: 1,
-          borderColor: 'divider'}}
+          p: 2,
+          cursor: 'pointer',
+          transition: 'transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease',
+          '&:hover': {
+            transform: 'translateY(-1px)',
+            borderColor: 'rgba(245, 166, 35, 0.2)',
+            bgcolor: 'rgba(255,255,255,0.05)',
+          },
+        }}
         onClick={() => handleSelectResult(result)}
       >
         {/* Header: Channel + Metadata */}
@@ -256,7 +285,7 @@ export default function AdvancedSearchDialog({
               </Tooltip>
             )}
           </Box>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
             {result.timestamp &&
               formatDistanceToNow(new Date(result.timestamp), {
                 addSuffix: true,
@@ -267,7 +296,7 @@ export default function AdvancedSearchDialog({
 
         {/* Thread Title or Content Snippet */}
         {result.threadTitle && (
-          <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+          <Typography variant="subtitle1" fontWeight={700} gutterBottom sx={{ color: COMMUNITY_DIALOG_TEXT }}>
             {result.threadTitle}
           </Typography>
         )}
@@ -276,13 +305,12 @@ export default function AdvancedSearchDialog({
         {result.highlightedSnippet ? (
           <Typography
             variant="body2"
-            color="text.secondary"
-            sx={{ mb: 1 }}
+            sx={{ mb: 1, color: COMMUNITY_DIALOG_MUTED }}
             dangerouslySetInnerHTML={{ __html: result.highlightedSnippet }}
           />
         ) : (
           result.snippet && (
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }} noWrap>
+            <Typography variant="body2" sx={{ mb: 1, color: COMMUNITY_DIALOG_MUTED }} noWrap>
               {result.snippet}
             </Typography>
           )
@@ -294,7 +322,7 @@ export default function AdvancedSearchDialog({
             <Avatar src={result.userAvatar} sx={{ width: 24, height: 24 }}>
               {result.userName?.[0]}
             </Avatar>
-            <Typography variant="caption" fontWeight={500}>
+            <Typography variant="caption" fontWeight={600} sx={{ color: COMMUNITY_DIALOG_TEXT }}>
               {result.userName}
             </Typography>
             {result.userRole && (
@@ -319,7 +347,7 @@ export default function AdvancedSearchDialog({
                 </IconButton>
               </Tooltip>
             )}
-            {onSaveResult && (
+            {onSaveResult && isBookmarkable && (
               <Tooltip title={bookmarkedIds.has(result.id) ? 'Fjern bokmerke' : 'Lagre'}>
                 <IconButton
                   size="small"
@@ -337,7 +365,7 @@ export default function AdvancedSearchDialog({
                         await apiRequest('/api/community/bookmarks', {
                           method: 'POST',
                           body: JSON.stringify({
-                            userId: result.id, // TODO: Get actual userId from context
+                            userId: currentUserId,
                             messageId: result.id
                           }),
                         });
@@ -366,7 +394,7 @@ export default function AdvancedSearchDialog({
 
         {/* Match Reason */}
         {result.matchReason && (
-          <Typography variant="caption" color="primary" sx={{ mt: 1, display: 'block' }}>
+          <Typography variant="caption" sx={{ mt: 1, display: 'block', color: '#ffd27a' }}>
             💡 {result.matchReason}
           </Typography>
         )}
@@ -375,20 +403,29 @@ export default function AdvancedSearchDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      sx={COMMUNITY_DIALOG_SX}
+      PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+    >
+      <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <SearchIcon />
-            <Typography variant="h6">Søk i CreatorHub Norge</Typography>
+            <SearchIcon sx={{ color: '#ffd27a' }} />
+            <Typography variant="h6" sx={{ fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
+              Søk i CreatorHub Norge
+            </Typography>
           </Box>
-          <IconButton onClick={onClose} size="small">
+          <IconButton onClick={onClose} size="small" sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
             <Close />
           </IconButton>
         </Box>
       </DialogTitle>
 
-      <DialogContent>
+      <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX}>
         {/* Search Input */}
         <TextField
           fullWidth
@@ -413,7 +450,7 @@ export default function AdvancedSearchDialog({
                 </Tooltip>
               </InputAdornment>
             )}}
-          sx={{ mb: 2 }}
+          sx={{ ...COMMUNITY_DIALOG_FIELD_SX, mb: 2 }}
         />
 
         {/* Scope Indicator */}
@@ -430,13 +467,13 @@ export default function AdvancedSearchDialog({
 
         {/* Filters Panel */}
         {showFilters && (
-          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Paper sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, p: 2, mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
               Filtre
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
               {/* Type Filter */}
-              <FormControl size="small" sx={{ minWidth: 150 }}>
+              <FormControl size="small" sx={{ minWidth: 150, ...COMMUNITY_DIALOG_FIELD_SX }}>
                 <InputLabel>Type</InputLabel>
                 <Select
                   value={filters.type}
@@ -452,7 +489,7 @@ export default function AdvancedSearchDialog({
               </FormControl>
 
               {/* Date Range */}
-              <FormControl size="small" sx={{ minWidth: 150 }}>
+              <FormControl size="small" sx={{ minWidth: 150, ...COMMUNITY_DIALOG_FIELD_SX }}>
                 <InputLabel>Tidsperiode</InputLabel>
                 <Select
                   value={filters.dateRange}
@@ -468,7 +505,7 @@ export default function AdvancedSearchDialog({
               </FormControl>
 
               {/* Sort By */}
-              <FormControl size="small" sx={{ minWidth: 150 }}>
+              <FormControl size="small" sx={{ minWidth: 150, ...COMMUNITY_DIALOG_FIELD_SX }}>
                 <InputLabel>Sorter etter</InputLabel>
                 <Select
                   value={filters.sortBy}
@@ -505,24 +542,24 @@ export default function AdvancedSearchDialog({
         {/* Results */}
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress />
+            <CircularProgress sx={{ color: '#f5a623' }} />
           </Box>
         ) : results.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <SearchIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-            <Typography variant="h6" color="text.secondary" gutterBottom>
+          <Box sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, textAlign: 'center', py: 4 }}>
+            <SearchIcon sx={{ fontSize: 60, color: COMMUNITY_DIALOG_MUTED, mb: 2 }} />
+            <Typography variant="h6" sx={{ color: COMMUNITY_DIALOG_MUTED }} gutterBottom>
               {searchQuery.trim().length < 2
                 ? 'Skriv minst 2 tegn for å søke' : 'Ingen resultater funnet'}
             </Typography>
             {searchQuery.trim().length >= 2 && (
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                 Prøv å justere søkeordene eller filtrene dine
               </Typography>
             )}
           </Box>
         ) : (
           <Box>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 2, color: COMMUNITY_DIALOG_MUTED }}>
               {results.length} resultat{results.length !== 1 ? 'er' :','}
             </Typography>
             {results.map((result) => renderResult(result))}
@@ -532,4 +569,3 @@ export default function AdvancedSearchDialog({
     </Dialog>
   );
 }
-

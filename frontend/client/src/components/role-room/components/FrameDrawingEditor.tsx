@@ -27,6 +27,7 @@ import {
   Alert,
   Slider,
   LinearProgress,
+  Switch,
 } from '@mui/material';
 import {
   Save,
@@ -180,6 +181,8 @@ import {
   type StoryboardDocumentAppliedTransform,
   type StoryboardDocumentAspectRatio,
   type StoryboardDocumentBoardPolishFinish,
+  type StoryboardDocumentBoardPolishEffectLayerId,
+  type StoryboardDocumentBoardPolishEffectRegion,
   type StoryboardDocumentBoardPolishMode,
   type StoryboardDocumentBoardPolishState,
   type StoryboardDocumentBoardPolishTone,
@@ -215,6 +218,24 @@ import {
   type StoryboardFrame,
 } from '../state/storyboardStore';
 import type { DrawingLayer } from './drawing/LayersPanel';
+import {
+  BOARD_POLISH_EFFECT_REGION_PRESETS,
+  createBoardPolishEffectLayerStates,
+  createBoardPolishEffectRegions,
+  createBoardPolishDraftState,
+  getBoardPolishCanvasFilter,
+  getBoardPolishEffectLayers,
+  getBoardPolishEffectRegionMap,
+  getBoardPolishStyleSummary,
+  STUDIO_BOARD_POLISH_DEFAULTS,
+  STUDIO_BOARD_POLISH_FINISH_CONFIG,
+  STUDIO_BOARD_POLISH_FINISHES,
+  STUDIO_BOARD_POLISH_TONE_CONFIG,
+  STUDIO_BOARD_POLISH_TONES,
+  STUDIO_BOARD_POLISH_WEATHER_CONFIG,
+  STUDIO_BOARD_POLISH_WEATHER_OPTIONS,
+  type BoardPolishDraftState,
+} from '../utils/storyboardBoardPolish';
 
 // =============================================================================
 // Types
@@ -248,8 +269,6 @@ interface ViewportSize {
   width: number;
   height: number;
 }
-
-type BoardPolishDraftState = Omit<StoryboardDocumentBoardPolishState, 'updatedAt'>;
 
 const MOTION_RIG_WARP_CORNERS: StoryboardDocumentCornerWarpCorner[] = ['nw', 'ne', 'se', 'sw'];
 const SPATIAL_MAP_NUDGE_X = 24;
@@ -357,18 +376,6 @@ const STUDIO_FONT_PRESETS = ['Grotesk', 'Mono', 'Display'] as const;
 const STUDIO_CROP_PRESETS = ['Center', 'Thirds', 'Safe Margin'] as const;
 const STUDIO_CANVAS_RESOLUTION_PRESETS = ['HD', '2K', '4K'] as const;
 const STUDIO_TEXT_ALIGNMENTS = ['Left', 'Center', 'Right'] as const;
-const STUDIO_BOARD_POLISH_TONES: StoryboardDocumentBoardPolishTone[] = ['neutral', 'noir', 'amber'];
-const STUDIO_BOARD_POLISH_FINISHES: StoryboardDocumentBoardPolishFinish[] = ['clean', 'hatch', 'marker'];
-const STUDIO_BOARD_POLISH_WEATHER_OPTIONS: StoryboardDocumentBoardPolishWeather[] = ['none', 'mist', 'rain'];
-const STUDIO_BOARD_POLISH_DEFAULTS: BoardPolishDraftState = {
-  mode: 'edit',
-  tone: 'noir',
-  finish: 'clean',
-  weather: 'none',
-  atmosphere: 0.36,
-  lineBoost: 0.42,
-  vignette: 0.54,
-};
 const REFERENCE_STUDY_FOCUS_MODES = ['composition', 'placement', 'economy'] as const;
 const TIMELINE_PREVIEW_FRAME_COUNT = 8;
 const STUDIO_VISUALLY_HIDDEN_SX = {
@@ -443,76 +450,6 @@ const STUDIO_SHOT_META = [
   ['Eyeline', 'Dead center'],
   ['Rhythm', 'Push in'],
 ] as const;
-const STUDIO_BOARD_POLISH_TONE_CONFIG: Record<StoryboardDocumentBoardPolishTone, {
-  label: string;
-  shellBackground: string;
-  canvasFilter: string;
-  vignetteColor: string;
-  grainOpacity: number;
-}> = {
-  neutral: {
-    label: 'Neutral',
-    shellBackground: 'radial-gradient(circle at top, rgba(255,255,255,0.03), transparent 42%), linear-gradient(180deg, rgba(3,7,18,0.98), rgba(2,4,9,0.98))',
-    canvasFilter: 'contrast(1.06) brightness(1.02)',
-    vignetteColor: 'rgba(2,6,23,0.68)',
-    grainOpacity: 0.12,
-  },
-  noir: {
-    label: 'Noir',
-    shellBackground: 'radial-gradient(circle at top, rgba(245,158,11,0.04), transparent 38%), linear-gradient(180deg, rgba(3,6,16,0.99), rgba(1,3,8,1))',
-    canvasFilter: 'contrast(1.16) brightness(1.03) saturate(0.88) drop-shadow(0 0 1px rgba(248,250,252,0.36))',
-    vignetteColor: 'rgba(2,6,23,0.82)',
-    grainOpacity: 0.16,
-  },
-  amber: {
-    label: 'Amber',
-    shellBackground: 'radial-gradient(circle at top, rgba(251,191,36,0.06), transparent 40%), linear-gradient(180deg, rgba(12,10,7,0.98), rgba(4,4,6,1))',
-    canvasFilter: 'contrast(1.12) brightness(1.04) saturate(1.06) sepia(0.08) drop-shadow(0 0 1px rgba(251,191,36,0.22))',
-    vignetteColor: 'rgba(22,16,7,0.76)',
-    grainOpacity: 0.18,
-  },
-};
-const STUDIO_BOARD_POLISH_FINISH_CONFIG: Record<StoryboardDocumentBoardPolishFinish, {
-  label: string;
-  summary: string;
-}> = {
-  clean: {
-    label: 'Clean',
-    summary: 'Tight grain with a cleaner presentation read.',
-  },
-  hatch: {
-    label: 'Hatch',
-    summary: 'Crosshatch finish that pushes value structure and noir texture.',
-  },
-  marker: {
-    label: 'Marker',
-    summary: 'Broad wash bands that mimic marker passes and dry-brush buildup.',
-  },
-};
-const STUDIO_BOARD_POLISH_WEATHER_CONFIG: Record<StoryboardDocumentBoardPolishWeather, {
-  label: string;
-  summary: string;
-}> = {
-  none: {
-    label: 'Clear',
-    summary: 'Keeps the board read clean and dry.',
-  },
-  mist: {
-    label: 'Mist',
-    summary: 'Adds a suspended haze layer for depth and light bloom.',
-  },
-  rain: {
-    label: 'Rain',
-    summary: 'Adds a rain pass that strengthens glare, silhouette, and pavement read.',
-  },
-};
-
-const createBoardPolishDraftState = (
-  value: Partial<BoardPolishDraftState> & Pick<BoardPolishDraftState, 'mode' | 'tone' | 'lineBoost' | 'vignette'>,
-): BoardPolishDraftState => ({
-  ...STUDIO_BOARD_POLISH_DEFAULTS,
-  ...value,
-});
 
 function isBrushType(value: string): value is BrushType {
   return (STANDARD_BRUSH_OPTIONS as string[]).includes(value);
@@ -558,6 +495,9 @@ function toTestIdFragment(value: string): string {
 }
 
 function getStudioLayerIcon(layerType: StoryboardDocumentRenderableLayer['type']) {
+  if (layerType === 'effect') {
+    return FlashOn;
+  }
   if (layerType === 'group') {
     return ViewSidebar;
   }
@@ -3269,6 +3209,79 @@ const getNextShapeScaffoldFrameFromInteraction = (
   });
 };
 
+type BoardPolishEffectRegionInteractionMode = 'move' | 'resize-nw' | 'resize-ne' | 'resize-se' | 'resize-sw';
+
+interface BoardPolishEffectRegionInteractionState {
+  effectId: StoryboardDocumentBoardPolishEffectLayerId;
+  pointerId: number;
+  mode: BoardPolishEffectRegionInteractionMode;
+  originClientX: number;
+  originClientY: number;
+  containerWidth: number;
+  containerHeight: number;
+  originRegion: StoryboardDocumentBoardPolishEffectRegion;
+}
+
+const clampBoardPolishEffectRegion = (
+  region: StoryboardDocumentBoardPolishEffectRegion,
+): StoryboardDocumentBoardPolishEffectRegion => {
+  const minWidth = 0.08;
+  const minHeight = 0.08;
+  const widthRatio = Math.max(minWidth, Math.min(1, region.widthRatio));
+  const heightRatio = Math.max(minHeight, Math.min(1, region.heightRatio));
+  return {
+    ...region,
+    widthRatio,
+    heightRatio,
+    xRatio: Math.max(0, Math.min(1 - widthRatio, region.xRatio)),
+    yRatio: Math.max(0, Math.min(1 - heightRatio, region.yRatio)),
+    feather: Math.max(0, Math.min(0.48, region.feather)),
+  };
+};
+
+const getNextBoardPolishEffectRegionFromInteraction = (
+  originRegion: StoryboardDocumentBoardPolishEffectRegion,
+  mode: BoardPolishEffectRegionInteractionMode,
+  deltaXRatio: number,
+  deltaYRatio: number,
+): StoryboardDocumentBoardPolishEffectRegion => {
+  if (mode === 'move') {
+    return clampBoardPolishEffectRegion({
+      ...originRegion,
+      xRatio: originRegion.xRatio + deltaXRatio,
+      yRatio: originRegion.yRatio + deltaYRatio,
+    });
+  }
+
+  const minWidth = 0.08;
+  const minHeight = 0.08;
+  let left = originRegion.xRatio;
+  let top = originRegion.yRatio;
+  let right = originRegion.xRatio + originRegion.widthRatio;
+  let bottom = originRegion.yRatio + originRegion.heightRatio;
+
+  if (mode === 'resize-nw' || mode === 'resize-sw') {
+    left = Math.max(0, Math.min(right - minWidth, left + deltaXRatio));
+  }
+  if (mode === 'resize-ne' || mode === 'resize-se') {
+    right = Math.min(1, Math.max(left + minWidth, right + deltaXRatio));
+  }
+  if (mode === 'resize-nw' || mode === 'resize-ne') {
+    top = Math.max(0, Math.min(bottom - minHeight, top + deltaYRatio));
+  }
+  if (mode === 'resize-sw' || mode === 'resize-se') {
+    bottom = Math.min(1, Math.max(top + minHeight, bottom + deltaYRatio));
+  }
+
+  return clampBoardPolishEffectRegion({
+    ...originRegion,
+    xRatio: left,
+    yRatio: top,
+    widthRatio: right - left,
+    heightRatio: bottom - top,
+  });
+};
+
 // =============================================================================
 // Main Component
 // =============================================================================
@@ -3472,6 +3485,12 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   const [boardPolishVignette, setBoardPolishVignette] = useState(
     initialBoardPolishState?.vignette ?? STUDIO_BOARD_POLISH_DEFAULTS.vignette
   );
+  const [boardPolishEffectLayerStates, setBoardPolishEffectLayerStates] = useState(
+    createBoardPolishEffectLayerStates(initialBoardPolishState?.effectLayers ?? STUDIO_BOARD_POLISH_DEFAULTS.effectLayers)
+  );
+  const [boardPolishEffectRegions, setBoardPolishEffectRegions] = useState(
+    createBoardPolishEffectRegions(initialBoardPolishState?.effectRegions ?? STUDIO_BOARD_POLISH_DEFAULTS.effectRegions)
+  );
   const [selectedCinematicSceneKitId, setSelectedCinematicSceneKitId] = useState<CinematicSceneKitId | undefined>(undefined);
   const [transportPlaying, setTransportPlaying] = useState(false);
   const [timeLapsePlaying, setTimeLapsePlaying] = useState(false);
@@ -3531,6 +3550,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       atmosphere: Number(boardPolishAtmosphere.toFixed(3)),
       lineBoost: Number(boardPolishLineBoost.toFixed(3)),
       vignette: Number(boardPolishVignette.toFixed(3)),
+      effectLayers: createBoardPolishEffectLayerStates(boardPolishEffectLayerStates),
+      effectRegions: createBoardPolishEffectRegions(boardPolishEffectRegions),
     } satisfies Omit<BoardPolishPersistedState, 'updatedAt'>;
     const hasPersistedBoardPolishState = (
       normalizedState.mode !== STUDIO_BOARD_POLISH_DEFAULTS.mode
@@ -3540,12 +3561,16 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       || Math.abs(normalizedState.atmosphere - STUDIO_BOARD_POLISH_DEFAULTS.atmosphere) >= 0.001
       || Math.abs(normalizedState.lineBoost - STUDIO_BOARD_POLISH_DEFAULTS.lineBoost) >= 0.001
       || Math.abs(normalizedState.vignette - STUDIO_BOARD_POLISH_DEFAULTS.vignette) >= 0.001
+      || JSON.stringify(normalizedState.effectLayers) !== JSON.stringify(STUDIO_BOARD_POLISH_DEFAULTS.effectLayers)
+      || JSON.stringify(normalizedState.effectRegions) !== JSON.stringify(STUDIO_BOARD_POLISH_DEFAULTS.effectRegions)
     );
 
     return hasPersistedBoardPolishState ? normalizedState : null;
   }, [
     boardPolishAtmosphere,
     boardPolishFinish,
+    boardPolishEffectLayerStates,
+    boardPolishEffectRegions,
     boardPolishLineBoost,
     boardPolishMode,
     boardPolishTone,
@@ -3620,9 +3645,13 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   const [pressureValue, setPressureValue] = useState(device.hasPencilSupport ? 84 : 64);
   const flythroughProgressRef = useRef<HTMLDivElement | null>(null);
   const flythroughSeekStateRef = useRef<{ active: boolean; pointerId: number | null }>({ active: false, pointerId: null });
+  const boardPolishEffectOverlayRef = useRef<HTMLDivElement | null>(null);
+  const boardPolishEffectDraftRegionRef = useRef<StoryboardDocumentBoardPolishEffectRegion | null>(null);
   const shapeScaffoldOverlayRef = useRef<HTMLDivElement | null>(null);
   const shapeScaffoldOverlayBoxRef = useRef<HTMLDivElement | null>(null);
   const shapeScaffoldDraftFrameRef = useRef<StoryboardDocumentShapeScaffoldFrame | null>(null);
+  const [boardPolishEffectInteractionState, setBoardPolishEffectInteractionState] = useState<BoardPolishEffectRegionInteractionState | null>(null);
+  const [boardPolishEffectDraftRegion, setBoardPolishEffectDraftRegion] = useState<StoryboardDocumentBoardPolishEffectRegion | null>(null);
   const [shapeScaffoldInteractionState, setShapeScaffoldInteractionState] = useState<ShapeScaffoldInteractionState | null>(null);
   const [shapeScaffoldDraftFrame, setShapeScaffoldDraftFrame] = useState<StoryboardDocumentShapeScaffoldFrame | null>(null);
   const shapeScaffoldLibraryImportRef = useRef<HTMLInputElement | null>(null);
@@ -3651,8 +3680,13 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setProBrushType(initialBrushSettingsForEditor.type as ProBrushType);
     setBoardPolishMode(initialBoardPolishState?.mode ?? STUDIO_BOARD_POLISH_DEFAULTS.mode);
     setBoardPolishTone(initialBoardPolishState?.tone ?? STUDIO_BOARD_POLISH_DEFAULTS.tone);
+    setBoardPolishFinish(initialBoardPolishState?.finish ?? STUDIO_BOARD_POLISH_DEFAULTS.finish);
+    setBoardPolishWeather(initialBoardPolishState?.weather ?? STUDIO_BOARD_POLISH_DEFAULTS.weather);
+    setBoardPolishAtmosphere(initialBoardPolishState?.atmosphere ?? STUDIO_BOARD_POLISH_DEFAULTS.atmosphere);
     setBoardPolishLineBoost(initialBoardPolishState?.lineBoost ?? STUDIO_BOARD_POLISH_DEFAULTS.lineBoost);
     setBoardPolishVignette(initialBoardPolishState?.vignette ?? STUDIO_BOARD_POLISH_DEFAULTS.vignette);
+    setBoardPolishEffectLayerStates(createBoardPolishEffectLayerStates(initialBoardPolishState?.effectLayers ?? STUDIO_BOARD_POLISH_DEFAULTS.effectLayers));
+    setBoardPolishEffectRegions(createBoardPolishEffectRegions(initialBoardPolishState?.effectRegions ?? STUDIO_BOARD_POLISH_DEFAULTS.effectRegions));
     setSelectedCinematicSceneKitId(undefined);
     setTransportPlaying(false);
     setTimeLapsePlaying(false);
@@ -3692,6 +3726,11 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     initialActiveSheetId,
     initialBoardPolishState?.lineBoost,
     initialBoardPolishState?.mode,
+    initialBoardPolishState?.finish,
+    initialBoardPolishState?.weather,
+    initialBoardPolishState?.atmosphere,
+    initialBoardPolishState?.effectLayers,
+    initialBoardPolishState?.effectRegions,
     initialBoardPolishState?.tone,
     initialBoardPolishState?.vignette,
     initialBrushSettingsForEditor,
@@ -3757,6 +3796,35 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   const enableStudioChrome = proMode && !isThumbnailWorkflow && !device.isIPad && viewport.width >= 1280;
   const showWorkspaceChrome = enableStudioChrome || isTabletWorkspace;
   const boardPolishPresentationActive = boardPolishMode === 'present';
+  const boardPolishResolvedEffectRegions = useMemo(
+    () => createBoardPolishEffectRegions(
+      boardPolishEffectDraftRegion
+        ? boardPolishEffectRegions.map((region) => (region.id === boardPolishEffectDraftRegion.id ? boardPolishEffectDraftRegion : region))
+        : boardPolishEffectRegions,
+    ),
+    [boardPolishEffectDraftRegion, boardPolishEffectRegions],
+  );
+  const boardPolishDraftState = useMemo<BoardPolishDraftState>(() => createBoardPolishDraftState({
+    mode: boardPolishMode,
+    tone: boardPolishTone,
+    finish: boardPolishFinish,
+    weather: boardPolishWeather,
+    atmosphere: boardPolishAtmosphere,
+    lineBoost: boardPolishLineBoost,
+    vignette: boardPolishVignette,
+    effectLayers: boardPolishEffectLayerStates,
+    effectRegions: boardPolishResolvedEffectRegions,
+  }), [
+    boardPolishAtmosphere,
+    boardPolishEffectLayerStates,
+    boardPolishResolvedEffectRegions,
+    boardPolishFinish,
+    boardPolishLineBoost,
+    boardPolishMode,
+    boardPolishTone,
+    boardPolishVignette,
+    boardPolishWeather,
+  ]);
   const boardPolishToneConfig = STUDIO_BOARD_POLISH_TONE_CONFIG[boardPolishTone];
   const boardPolishFinishConfig = STUDIO_BOARD_POLISH_FINISH_CONFIG[boardPolishFinish];
   const boardPolishWeatherConfig = STUDIO_BOARD_POLISH_WEATHER_CONFIG[boardPolishWeather];
@@ -3771,76 +3839,38 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     : boardPolishDocumentSnapshot
       ? `armed · ${boardPolishToneConfig.label.toLowerCase()} · ${boardPolishFinishLabel}${boardPolishWeather === 'none' ? '' : ` · ${boardPolishWeatherLabel}`}`
       : 'edit · clean';
-  const boardPolishStyleSummary = `${boardPolishFinishConfig.label} finish · ${boardPolishWeatherConfig.label} weather · ${Math.round(boardPolishAtmosphere * 100)}% atmosphere`;
-  const boardPolishCanvasFilter = boardPolishPresentationActive
-    ? `${boardPolishToneConfig.canvasFilter} contrast(${(1.04 + (boardPolishLineBoost * 0.28) + (boardPolishFinish === 'hatch' ? 0.06 : boardPolishFinish === 'marker' ? 0.02 : 0) + (boardPolishAtmosphere * 0.05)).toFixed(2)}) brightness(${(1.01 + (boardPolishLineBoost * 0.06) + (boardPolishAtmosphere * 0.03) - (boardPolishFinish === 'hatch' ? 0.01 : 0)).toFixed(2)})`
-    : 'none';
-  const boardPolishVignetteOpacity = boardPolishPresentationActive
-    ? 0.18 + (boardPolishVignette * 0.5)
-    : 0;
-  const boardPolishOverlayBackground = useMemo(() => {
-    if (!boardPolishPresentationActive) {
-      return '';
-    }
-
-    const grainOpacity = boardPolishToneConfig.grainOpacity;
-    const atmosphereOpacity = 0.06 + (boardPolishAtmosphere * 0.18);
-    const finishOpacity = boardPolishFinish === 'marker'
-      ? 0.08 + (boardPolishAtmosphere * 0.12)
-      : 0.06 + (boardPolishAtmosphere * 0.14);
-    const weatherOpacity = boardPolishWeather === 'none'
-      ? 0
-      : boardPolishWeather === 'mist'
-        ? 0.1 + (boardPolishAtmosphere * 0.18)
-        : 0.14 + (boardPolishAtmosphere * 0.22);
-
-    const vignetteLayer = `radial-gradient(circle at center, transparent ${Math.max(42, 64 - (boardPolishVignette * 18))}%, ${alpha(boardPolishToneConfig.vignetteColor, boardPolishVignetteOpacity)} 100%)`;
-    const atmosphereLayers = [
-      `radial-gradient(circle at 50% 28%, rgba(255,255,255,${atmosphereOpacity.toFixed(3)}) 0%, rgba(255,255,255,${(atmosphereOpacity * 0.42).toFixed(3)}) 20%, transparent 56%)`,
-      `linear-gradient(180deg, rgba(255,255,255,${(atmosphereOpacity * 0.34).toFixed(3)}) 0%, transparent 46%, rgba(2,6,23,${(0.08 + (boardPolishAtmosphere * 0.08)).toFixed(3)}) 100%)`,
-    ];
-
-    const finishLayers = boardPolishFinish === 'hatch'
-      ? [
-          `repeating-linear-gradient(125deg, rgba(255,255,255,${(finishOpacity * 0.82).toFixed(3)}) 0 1px, transparent 1px 13px)`,
-          `repeating-linear-gradient(55deg, rgba(255,255,255,${(finishOpacity * 0.56).toFixed(3)}) 0 1px, transparent 1px 19px)`,
-        ]
-      : boardPolishFinish === 'marker'
-        ? [
-            `linear-gradient(180deg, rgba(255,255,255,${(finishOpacity * 0.5).toFixed(3)}) 0%, transparent 20%, rgba(255,255,255,${(finishOpacity * 0.18).toFixed(3)}) 48%, transparent 78%)`,
-            `repeating-linear-gradient(0deg, rgba(255,255,255,${(finishOpacity * 0.34).toFixed(3)}) 0 10px, transparent 10px 36px)`,
-            `repeating-linear-gradient(90deg, rgba(255,255,255,${(finishOpacity * 0.12).toFixed(3)}) 0 1px, transparent 1px 28px)`,
-          ]
-        : [
-            `repeating-linear-gradient(90deg, rgba(255,255,255,${grainOpacity.toFixed(3)}) 0 1px, transparent 1px 22px)`,
-            `repeating-linear-gradient(0deg, rgba(255,255,255,${(grainOpacity * 0.7).toFixed(3)}) 0 1px, transparent 1px 18px)`,
-          ];
-
-    const weatherLayers = boardPolishWeather === 'mist'
-      ? [
-          `radial-gradient(circle at 20% 62%, rgba(255,255,255,${weatherOpacity.toFixed(3)}) 0%, transparent 32%)`,
-          `radial-gradient(circle at 76% 42%, rgba(255,255,255,${(weatherOpacity * 0.78).toFixed(3)}) 0%, transparent 34%)`,
-          `radial-gradient(circle at 54% 72%, rgba(255,255,255,${(weatherOpacity * 0.56).toFixed(3)}) 0%, transparent 28%)`,
-        ]
-      : boardPolishWeather === 'rain'
-        ? [
-            `repeating-linear-gradient(102deg, rgba(255,255,255,${weatherOpacity.toFixed(3)}) 0 2px, transparent 2px 26px)`,
-            `repeating-linear-gradient(99deg, rgba(255,255,255,${(weatherOpacity * 0.45).toFixed(3)}) 0 1px, transparent 1px 18px)`,
-            `linear-gradient(180deg, rgba(255,255,255,${(weatherOpacity * 0.18).toFixed(3)}) 0%, transparent 32%, rgba(255,255,255,${(weatherOpacity * 0.08).toFixed(3)}) 100%)`,
-          ]
-        : [];
-
-    return [vignetteLayer, ...atmosphereLayers, ...weatherLayers, ...finishLayers].join(',');
-  }, [
-    boardPolishAtmosphere,
-    boardPolishFinish,
-    boardPolishPresentationActive,
-    boardPolishToneConfig,
-    boardPolishVignette,
-    boardPolishVignetteOpacity,
-    boardPolishWeather,
-  ]);
-  const boardPolishOverlayBlendMode = boardPolishFinish === 'marker' ? 'soft-light' : 'screen';
+  const boardPolishStyleSummary = getBoardPolishStyleSummary(boardPolishDraftState);
+  const boardPolishCanvasFilter = getBoardPolishCanvasFilter(boardPolishDraftState, boardPolishPresentationActive);
+  const boardPolishEffectLayerStateMap = useMemo(
+    () => boardPolishEffectLayerStates.reduce<Record<StoryboardDocumentBoardPolishEffectLayerId, { enabled: boolean; opacity: number }>>(
+      (result, layer) => {
+        result[layer.id] = {
+          enabled: layer.enabled,
+          opacity: layer.opacity,
+        };
+        return result;
+      },
+      {
+        atmosphere: { enabled: true, opacity: 1 },
+        weather: { enabled: true, opacity: 1 },
+        finish: { enabled: true, opacity: 1 },
+        vignette: { enabled: true, opacity: 1 },
+      },
+    ),
+    [boardPolishEffectLayerStates],
+  );
+  const boardPolishEffectRegionMap = useMemo(
+    () => getBoardPolishEffectRegionMap(boardPolishDraftState),
+    [boardPolishDraftState],
+  );
+  const boardPolishArmedEffectLayers = useMemo(
+    () => getBoardPolishEffectLayers(boardPolishDraftState, true, { includeDisabled: true }),
+    [boardPolishDraftState],
+  );
+  const boardPolishActiveEffectLayers = useMemo(
+    () => getBoardPolishEffectLayers(boardPolishDraftState, boardPolishPresentationActive),
+    [boardPolishDraftState, boardPolishPresentationActive],
+  );
   const tabletTouchButtonHeight = isTabletWorkspace ? 34 : 26;
   const tabletTouchSecondaryButtonHeight = isTabletWorkspace ? 32 : 24;
   const tabletTouchChipHeight = isTabletWorkspace ? 28 : 18;
@@ -3984,20 +4014,26 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       label: layer.name,
       opacity: `${Math.round(layer.opacity * 100)}%`,
       opacityValue: layer.opacity,
-      mode: formatBlendModeLabel(layer.blendMode),
+      mode: layer.type === 'effect' ? 'Board FX' : formatBlendModeLabel(layer.blendMode),
       tint: STUDIO_LAYER_TINTS[index % STUDIO_LAYER_TINTS.length],
       type: layer.type,
+      effectId: layer.effectId,
       depth: layer.depth,
       parentLayerId: layer.parentLayerId,
       locked: layer.locked,
       visible: layer.visible,
       active: layer.id === activeLayerId,
       containsActiveDescendant: activeAncestorIds.has(layer.id),
-      strokeCount: countDescendantStrokes(layer.id),
-      childCount: childIdsByParent.get(layer.id)?.length || 0,
-      isContainer: layer.type !== 'drawing',
+      strokeCount: layer.type === 'effect' ? 0 : countDescendantStrokes(layer.id),
+      childCount: layer.type === 'effect' ? 0 : (childIdsByParent.get(layer.id)?.length || 0),
+      isContainer: layer.type === 'group' || layer.type === 'transformation',
+      detail: layer.type === 'drawing'
+        ? formatBlendModeLabel(layer.blendMode)
+        : layer.type === 'effect'
+          ? `${layer.visible ? 'Enabled' : 'Muted'} · ${Math.round(layer.opacity * 100)}% effect · ${Math.round((boardPolishEffectRegionMap[layer.effectId || 'atmosphere']?.widthRatio || 1) * 100)}w`
+          : `${childIdsByParent.get(layer.id)?.length || 0} children · ${countDescendantStrokes(layer.id)} strokes`,
     }));
-  }, [activeLayerId, activeSheetLayerStack]);
+  }, [activeLayerId, activeSheetLayerStack, boardPolishEffectRegionMap]);
   const studioLayerCardMap = useMemo(
     () => new Map(studioLayerCards.map((layer) => [layer.id, layer])),
     [studioLayerCards]
@@ -4050,6 +4086,16 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   const selectedStudioLayer = studioLayerCardMap.get(selectedStudioLayerId || '')
     || studioLayerCardMap.get(activeLayerId || '')
     || studioLayerCards[0];
+  const selectedBoardPolishEffectLayerId = selectedStudioLayer?.type === 'effect'
+    ? selectedStudioLayer.effectId
+    : undefined;
+  const selectedBoardPolishEffectRegion = selectedBoardPolishEffectLayerId
+    ? (
+        boardPolishEffectDraftRegion?.id === selectedBoardPolishEffectLayerId
+          ? boardPolishEffectDraftRegion
+          : boardPolishEffectRegionMap[selectedBoardPolishEffectLayerId]
+      )
+    : undefined;
   const selectedLayerCards = useMemo(
     () => studioLayerCards.filter((layer) => selectedLayerIds.includes(layer.id)),
     [selectedLayerIds, studioLayerCards]
@@ -4058,12 +4104,16 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     if (selectedLayerCards.length < 2) {
       return false;
     }
+    if (selectedLayerCards.some((layer) => layer.type === 'effect')) {
+      return false;
+    }
     return new Set(selectedLayerCards.map((layer) => layer.parentLayerId || '__sheet__')).size === 1;
   }, [selectedLayerCards]);
   const canUngroupSelectedLayer = selectedStudioLayer?.type === 'group';
   const canDuplicateSelectedLayer = selectedStudioLayer?.type === 'drawing';
   const canMergeSelectedLayer = selectedStudioLayer?.type === 'drawing';
   const canDeleteSelectedLayer = selectedStudioLayer?.type === 'drawing';
+  const canAddMotionRigToSelectedLayer = selectedStudioLayer?.type !== 'effect';
   const activeMotionRig = useMemo(() => {
     const selectedTransformLayerId = selectedStudioLayer?.type === 'transformation'
       ? selectedStudioLayer.id
@@ -4343,6 +4393,11 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setShapeScaffoldDraftFrame(null);
     setShapeScaffoldInteractionState(null);
   }, [selectedShapeScaffoldId]);
+  useEffect(() => {
+    boardPolishEffectDraftRegionRef.current = null;
+    setBoardPolishEffectDraftRegion(null);
+    setBoardPolishEffectInteractionState(null);
+  }, [selectedBoardPolishEffectLayerId]);
   useEffect(() => {
     if (!referenceStudyReferenceId) {
       pendingReferenceStudyReferenceIdRef.current = undefined;
@@ -6745,6 +6800,107 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     };
   }, [applyShapeScaffoldOverlayPreviewFrame, commitDocumentUpdate, shapeScaffoldInteractionState]);
 
+  const handleBoardPolishEffectRegionPointerStart = useCallback((
+    event: ReactPointerEvent<HTMLElement>,
+    mode: BoardPolishEffectRegionInteractionMode,
+  ) => {
+    if (!selectedBoardPolishEffectLayerId || !selectedBoardPolishEffectRegion || !boardPolishEffectOverlayRef.current) {
+      return;
+    }
+    const rect = boardPolishEffectOverlayRef.current.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    boardPolishEffectDraftRegionRef.current = selectedBoardPolishEffectRegion;
+    setBoardPolishEffectDraftRegion(selectedBoardPolishEffectRegion);
+    setBoardPolishEffectInteractionState({
+      effectId: selectedBoardPolishEffectLayerId,
+      pointerId: event.pointerId,
+      mode,
+      originClientX: event.clientX,
+      originClientY: event.clientY,
+      containerWidth: rect.width,
+      containerHeight: rect.height,
+      originRegion: selectedBoardPolishEffectRegion,
+    });
+  }, [selectedBoardPolishEffectLayerId, selectedBoardPolishEffectRegion]);
+
+  useEffect(() => {
+    if (!boardPolishEffectInteractionState) {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== boardPolishEffectInteractionState.pointerId) {
+        return;
+      }
+      event.preventDefault();
+      const deltaXRatio = (event.clientX - boardPolishEffectInteractionState.originClientX) / Math.max(boardPolishEffectInteractionState.containerWidth, 1);
+      const deltaYRatio = (event.clientY - boardPolishEffectInteractionState.originClientY) / Math.max(boardPolishEffectInteractionState.containerHeight, 1);
+      const nextRegion = getNextBoardPolishEffectRegionFromInteraction(
+        boardPolishEffectInteractionState.originRegion,
+        boardPolishEffectInteractionState.mode,
+        deltaXRatio,
+        deltaYRatio,
+      );
+      boardPolishEffectDraftRegionRef.current = nextRegion;
+      setBoardPolishEffectDraftRegion(nextRegion);
+    };
+
+    const finishInteraction = (event: PointerEvent) => {
+      if (event.pointerId !== boardPolishEffectInteractionState.pointerId) {
+        return;
+      }
+      const committedRegion = boardPolishEffectDraftRegionRef.current;
+      if (committedRegion) {
+        const normalizedRegions = createBoardPolishEffectRegions(boardPolishEffectRegions.map((region) => (
+          region.id === boardPolishEffectInteractionState.effectId
+            ? committedRegion
+            : region
+        )));
+        setBoardPolishEffectRegions(normalizedRegions);
+        commitDocumentUpdate((prev) => updateStoryboardDrawingDocumentBoardPolish(prev, {
+          mode: boardPolishMode,
+          tone: boardPolishTone,
+          finish: boardPolishFinish,
+          weather: boardPolishWeather,
+          atmosphere: Number(boardPolishAtmosphere.toFixed(3)),
+          lineBoost: Number(boardPolishLineBoost.toFixed(3)),
+          vignette: Number(boardPolishVignette.toFixed(3)),
+          effectLayers: createBoardPolishEffectLayerStates(boardPolishEffectLayerStates),
+          effectRegions: normalizedRegions,
+        }));
+      }
+      boardPolishEffectDraftRegionRef.current = null;
+      setBoardPolishEffectDraftRegion(null);
+      setBoardPolishEffectInteractionState(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', finishInteraction);
+    window.addEventListener('pointercancel', finishInteraction);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', finishInteraction);
+      window.removeEventListener('pointercancel', finishInteraction);
+    };
+  }, [
+    boardPolishAtmosphere,
+    boardPolishEffectInteractionState,
+    boardPolishEffectLayerStates,
+    boardPolishEffectRegions,
+    boardPolishFinish,
+    boardPolishLineBoost,
+    boardPolishMode,
+    boardPolishTone,
+    boardPolishVignette,
+    boardPolishWeather,
+    commitDocumentUpdate,
+  ]);
+
   const handleToggleSelectedShapeScaffoldVisibility = useCallback(() => {
     if (!selectedShapeScaffold) {
       return;
@@ -7990,21 +8146,148 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     commitDocumentUpdate((prev) => addStoryboardDrawingDocumentLayer(prev, activeSheetId));
   }, [activeSheetId, commitDocumentUpdate]);
 
+  const commitBoardPolishEffectLayerStates = useCallback((
+    nextEffectLayers: BoardPolishDraftState['effectLayers'],
+  ) => {
+    const normalizedEffectLayers = createBoardPolishEffectLayerStates(nextEffectLayers);
+    setBoardPolishEffectLayerStates(normalizedEffectLayers);
+    commitDocumentUpdate((prev) => updateStoryboardDrawingDocumentBoardPolish(prev, {
+      mode: boardPolishMode,
+      tone: boardPolishTone,
+      finish: boardPolishFinish,
+      weather: boardPolishWeather,
+      atmosphere: Number(boardPolishAtmosphere.toFixed(3)),
+      lineBoost: Number(boardPolishLineBoost.toFixed(3)),
+      vignette: Number(boardPolishVignette.toFixed(3)),
+      effectLayers: normalizedEffectLayers,
+      effectRegions: createBoardPolishEffectRegions(boardPolishEffectRegions),
+    }));
+  }, [
+    boardPolishAtmosphere,
+    boardPolishEffectRegions,
+    boardPolishFinish,
+    boardPolishLineBoost,
+    boardPolishMode,
+    boardPolishTone,
+    boardPolishVignette,
+    boardPolishWeather,
+    commitDocumentUpdate,
+  ]);
+
+  const commitBoardPolishEffectRegions = useCallback((
+    nextEffectRegions: BoardPolishDraftState['effectRegions'],
+  ) => {
+    const normalizedEffectRegions = createBoardPolishEffectRegions(nextEffectRegions);
+    setBoardPolishEffectRegions(normalizedEffectRegions);
+    commitDocumentUpdate((prev) => updateStoryboardDrawingDocumentBoardPolish(prev, {
+      mode: boardPolishMode,
+      tone: boardPolishTone,
+      finish: boardPolishFinish,
+      weather: boardPolishWeather,
+      atmosphere: Number(boardPolishAtmosphere.toFixed(3)),
+      lineBoost: Number(boardPolishLineBoost.toFixed(3)),
+      vignette: Number(boardPolishVignette.toFixed(3)),
+      effectLayers: createBoardPolishEffectLayerStates(boardPolishEffectLayerStates),
+      effectRegions: normalizedEffectRegions,
+    }));
+  }, [
+    boardPolishAtmosphere,
+    boardPolishEffectLayerStates,
+    boardPolishFinish,
+    boardPolishLineBoost,
+    boardPolishMode,
+    boardPolishTone,
+    boardPolishVignette,
+    boardPolishWeather,
+    commitDocumentUpdate,
+  ]);
+
+  const handleToggleBoardPolishEffectLayer = useCallback((layerId: StoryboardDocumentBoardPolishEffectLayerId) => {
+    commitBoardPolishEffectLayerStates(boardPolishEffectLayerStates.map((layer) => (
+      layer.id === layerId
+        ? {
+            ...layer,
+            enabled: !layer.enabled,
+          }
+        : layer
+    )));
+  }, [boardPolishEffectLayerStates, commitBoardPolishEffectLayerStates]);
+
+  const handleSetBoardPolishEffectLayerOpacity = useCallback((
+    layerId: StoryboardDocumentBoardPolishEffectLayerId,
+    value: number,
+  ) => {
+    commitBoardPolishEffectLayerStates(boardPolishEffectLayerStates.map((layer) => (
+      layer.id === layerId
+        ? {
+            ...layer,
+            opacity: Math.max(0, Math.min(1, value)),
+          }
+        : layer
+    )));
+  }, [boardPolishEffectLayerStates, commitBoardPolishEffectLayerStates]);
+
+  const handleSetBoardPolishEffectRegion = useCallback((
+    effectId: StoryboardDocumentBoardPolishEffectLayerId,
+    region: StoryboardDocumentBoardPolishEffectRegion,
+  ) => {
+    commitBoardPolishEffectRegions(boardPolishEffectRegions.map((entry) => (
+      entry.id === effectId
+        ? clampBoardPolishEffectRegion(region)
+        : entry
+    )));
+  }, [boardPolishEffectRegions, commitBoardPolishEffectRegions]);
+
+  const handleApplyBoardPolishEffectRegionPreset = useCallback((
+    effectId: StoryboardDocumentBoardPolishEffectLayerId,
+    presetId: (typeof BOARD_POLISH_EFFECT_REGION_PRESETS)[number]['id'],
+  ) => {
+    const preset = BOARD_POLISH_EFFECT_REGION_PRESETS.find((entry) => entry.id === presetId);
+    if (!preset) {
+      return;
+    }
+    handleSetBoardPolishEffectRegion(effectId, {
+      id: effectId,
+      ...preset.region,
+    });
+  }, [handleSetBoardPolishEffectRegion]);
+
+  const handleSetBoardPolishEffectRegionFeather = useCallback((
+    effectId: StoryboardDocumentBoardPolishEffectLayerId,
+    feather: number,
+  ) => {
+    const region = boardPolishEffectRegions.find((entry) => entry.id === effectId);
+    if (!region) {
+      return;
+    }
+    handleSetBoardPolishEffectRegion(effectId, {
+      ...region,
+      feather: Math.max(0, Math.min(0.48, feather)),
+    });
+  }, [boardPolishEffectRegions, handleSetBoardPolishEffectRegion]);
+
   const handleDeleteLayer = useCallback((layerId: string) => {
     commitDocumentUpdate((prev) => removeStoryboardDrawingDocumentLayer(prev, activeSheetId, layerId));
   }, [activeSheetId, commitDocumentUpdate]);
 
   const handleToggleLayerVisibility = useCallback((layerId: string) => {
-    commitDocumentUpdate((prev) => {
-      const layer = getStoryboardDocumentSheetLayerStack(prev, activeSheetId).find((entry) => entry.id === layerId);
-      if (!layer) return prev;
-      return updateStoryboardDrawingDocumentLayer(prev, layerId, { visible: !layer.visible });
-    });
-  }, [activeSheetId, commitDocumentUpdate]);
+    const layer = activeSheetLayerStack.find((entry) => entry.id === layerId);
+    if (!layer) return;
+    if (layer.type === 'effect' && layer.effectId) {
+      handleToggleBoardPolishEffectLayer(layer.effectId);
+      return;
+    }
+    commitDocumentUpdate((prev) => updateStoryboardDrawingDocumentLayer(prev, layerId, { visible: !layer.visible }));
+  }, [activeSheetLayerStack, commitDocumentUpdate, handleToggleBoardPolishEffectLayer]);
 
   const handleChangeLayerOpacity = useCallback((layerId: string, opacity: number) => {
+    const layer = activeSheetLayerStack.find((entry) => entry.id === layerId);
+    if (layer?.type === 'effect' && layer.effectId) {
+      handleSetBoardPolishEffectLayerOpacity(layer.effectId, opacity);
+      return;
+    }
     commitDocumentUpdate((prev) => updateStoryboardDrawingDocumentLayer(prev, layerId, { opacity }));
-  }, [commitDocumentUpdate]);
+  }, [activeSheetLayerStack, commitDocumentUpdate, handleSetBoardPolishEffectLayerOpacity]);
 
   const handleGroupSelectedLayers = useCallback(() => {
     if (!canGroupSelectedLayers) return;
@@ -8020,7 +8303,9 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   }, [activeSheetId, commitDocumentUpdate, selectedStudioLayer]);
 
   const handleAddMotionRig = useCallback(() => {
-    const targetLayerId = selectedStudioLayer?.id || activeLayerId;
+    const targetLayerId = selectedStudioLayer?.type === 'effect'
+      ? activeLayerId
+      : (selectedStudioLayer?.id || activeLayerId);
     if (!targetLayerId) return;
     commitDocumentUpdate((prev) => addStoryboardDrawingDocumentTransformationLayer(prev, activeSheetId, [targetLayerId], {
       name: `${selectedStudioLayer?.label || 'Layer'} Motion`,
@@ -8369,6 +8654,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setBoardPolishAtmosphere(resolvedBoardPolish.atmosphere);
     setBoardPolishLineBoost(resolvedBoardPolish.lineBoost);
     setBoardPolishVignette(resolvedBoardPolish.vignette);
+    setBoardPolishEffectLayerStates(createBoardPolishEffectLayerStates(resolvedBoardPolish.effectLayers));
+    setBoardPolishEffectRegions(createBoardPolishEffectRegions(resolvedBoardPolish.effectRegions));
     setSelectedCinematicSceneKitId(kit.id);
     setSelectedBrushPackId(kit.brushPackId);
     setSelectedDeckTab(kit.deckTab);
@@ -8390,6 +8677,9 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       initialStrokes={strokes}
       underlayLayers={visibleLayerOverlays}
       activeStrokeTransforms={activeRenderableLayer?.appliedTransforms || []}
+      boardPolishState={boardPolishDraftState}
+      boardPolishPresentationActive={boardPolishPresentationActive}
+      boardPolishPreviewEffectId={boardPolishPresentationActive ? undefined : selectedBoardPolishEffectLayerId}
       layerState={{ layers: editorLayers, activeLayerId: activeLayerId || editorLayers[0]?.id || '' }}
       brushSettings={{
         type: proBrushType,
@@ -10602,15 +10892,129 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                         data-weather={boardPolishWeather}
                         data-atmosphere={boardPolishAtmosphere.toFixed(3)}
                         data-line-boost={boardPolishLineBoost.toFixed(3)}
+                        data-effect-count={String(boardPolishActiveEffectLayers.length)}
                         sx={{
                           position: 'absolute',
                           inset: 0,
                           pointerEvents: 'none',
                           borderRadius: 2.5,
-                          background: boardPolishOverlayBackground,
-                          mixBlendMode: boardPolishOverlayBlendMode,
                         }}
-                      />
+                      >
+                        {boardPolishActiveEffectLayers.map((layer) => (
+                          <Box
+                            key={layer.id}
+                            data-testid={`frame-editor-board-polish-effect-${layer.id}`}
+                            data-blend-mode={layer.mixBlendMode}
+                            data-opacity={layer.opacity.toFixed(3)}
+                            data-x-ratio={layer.region.xRatio.toFixed(4)}
+                            data-y-ratio={layer.region.yRatio.toFixed(4)}
+                            data-width-ratio={layer.region.widthRatio.toFixed(4)}
+                            data-height-ratio={layer.region.heightRatio.toFixed(4)}
+                            data-feather={layer.region.feather.toFixed(4)}
+                            sx={{
+                              position: 'absolute',
+                              left: `${layer.region.xRatio * 100}%`,
+                              top: `${layer.region.yRatio * 100}%`,
+                              width: `${layer.region.widthRatio * 100}%`,
+                              height: `${layer.region.heightRatio * 100}%`,
+                              borderRadius: 2.5,
+                              background: 'transparent',
+                              mixBlendMode: layer.mixBlendMode,
+                              opacity: 1,
+                            }}
+                          />
+                        ))}
+                      </Box>
+                    )}
+                    {!boardPolishPresentationActive && selectedBoardPolishEffectLayerId && selectedBoardPolishEffectRegion && (
+                      <Box
+                        ref={boardPolishEffectOverlayRef}
+                        data-testid="frame-editor-board-polish-effect-region-overlay-layer"
+                        sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 7 }}
+                      >
+                        <Box
+                          data-testid="frame-editor-board-polish-effect-region-overlay"
+                          data-effect-id={selectedBoardPolishEffectLayerId}
+                          data-x-ratio={selectedBoardPolishEffectRegion.xRatio.toFixed(4)}
+                          data-y-ratio={selectedBoardPolishEffectRegion.yRatio.toFixed(4)}
+                          data-width-ratio={selectedBoardPolishEffectRegion.widthRatio.toFixed(4)}
+                          data-height-ratio={selectedBoardPolishEffectRegion.heightRatio.toFixed(4)}
+                          data-feather={selectedBoardPolishEffectRegion.feather.toFixed(4)}
+                          sx={{
+                            position: 'absolute',
+                            left: `${selectedBoardPolishEffectRegion.xRatio * 100}%`,
+                            top: `${selectedBoardPolishEffectRegion.yRatio * 100}%`,
+                            width: `${selectedBoardPolishEffectRegion.widthRatio * 100}%`,
+                            height: `${selectedBoardPolishEffectRegion.heightRatio * 100}%`,
+                            pointerEvents: 'none',
+                            borderRadius: `${Math.max(10, selectedBoardPolishEffectRegion.feather * 56)}px`,
+                            border: '1.5px solid rgba(125,211,252,0.9)',
+                            background: 'linear-gradient(180deg, rgba(125,211,252,0.08), rgba(15,23,42,0.02))',
+                            boxShadow: '0 0 0 1px rgba(125,211,252,0.18) inset, 0 18px 30px rgba(2,6,23,0.28)',
+                            outline: boardPolishEffectInteractionState ? '2px solid rgba(125,211,252,0.28)' : 'none',
+                            outlineOffset: 2,
+                          }}
+                        >
+                          <Box
+                            data-testid="frame-editor-board-polish-effect-region-move-handle"
+                            onPointerDown={(event) => handleBoardPolishEffectRegionPointerStart(event, 'move')}
+                            sx={{
+                              position: 'absolute',
+                              left: 0,
+                              right: 0,
+                              top: 0,
+                              px: 0.75,
+                              py: 0.45,
+                              pointerEvents: 'auto',
+                              cursor: 'grab',
+                              borderTopLeftRadius: 'inherit',
+                              borderTopRightRadius: 'inherit',
+                              background: 'linear-gradient(180deg, rgba(14,165,233,0.22), rgba(2,6,23,0.04))',
+                              borderBottom: '1px solid rgba(125,211,252,0.18)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ color: '#e0f2fe', fontWeight: 700, letterSpacing: 0.45 }}>
+                              {selectedStudioLayer?.label || 'FX Region'}
+                            </Typography>
+                            <Chip
+                              size="small"
+                              label={`${Math.round(selectedBoardPolishEffectRegion.feather * 100)} feather`}
+                              sx={{
+                                height: 18,
+                                borderRadius: 999,
+                                bgcolor: 'rgba(255,255,255,0.08)',
+                                color: '#e0f2fe',
+                                '& .MuiChip-label': { px: 0.6, fontSize: '0.52rem', fontWeight: 700, letterSpacing: 0.35 },
+                              }}
+                            />
+                          </Box>
+                          {(['nw', 'ne', 'se', 'sw'] as const).map((corner) => (
+                            <Box
+                              key={corner}
+                              data-testid={`frame-editor-board-polish-effect-region-handle-${corner}`}
+                              onPointerDown={(event) => handleBoardPolishEffectRegionPointerStart(event, `resize-${corner}`)}
+                              sx={{
+                                position: 'absolute',
+                                width: 14,
+                                height: 14,
+                                borderRadius: '50%',
+                                border: '2px solid rgba(186,230,253,0.94)',
+                                bgcolor: '#0f172a',
+                                boxShadow: '0 0 0 1px rgba(14,165,233,0.24)',
+                                pointerEvents: 'auto',
+                                cursor: corner === 'nw' || corner === 'se' ? 'nwse-resize' : 'nesw-resize',
+                                ...(corner === 'nw' ? { left: -7, top: -7 } : {}),
+                                ...(corner === 'ne' ? { right: -7, top: -7 } : {}),
+                                ...(corner === 'se' ? { right: -7, bottom: -7 } : {}),
+                                ...(corner === 'sw' ? { left: -7, bottom: -7 } : {}),
+                              }}
+                            />
+                          ))}
+                        </Box>
+                      </Box>
                     )}
                     {!boardPolishPresentationActive && selectedShapeScaffold && selectedShapeScaffoldDisplayFrame && (
                       <Box
@@ -12264,6 +12668,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                   <Stack direction="row" spacing={0.6} alignItems="center">
                                     <IconButton
                                       size="small"
+                                      data-testid={`frame-editor-layer-visibility-${layerId}`}
                                       onClick={(event) => {
                                         event.stopPropagation();
                                         handleToggleLayerVisibility(layer.id);
@@ -12314,7 +12719,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                       letterSpacing: 0.35,
                                     }}
                                   >
-                                    {layer.type === 'drawing' ? layer.mode : `${layer.childCount} children · ${layer.strokeCount} strokes`}
+                                    {layer.detail}
                                   </Typography>
                                 </Stack>
                               </Stack>
@@ -12466,6 +12871,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                         Layer Opacity
                       </Typography>
                       <Slider
+                        data-testid="frame-editor-layer-opacity-slider"
                         size="small"
                         value={Math.round((selectedStudioLayer?.opacityValue || 0.74) * 100)}
                         onChangeCommitted={(_, value) => {
@@ -12484,6 +12890,103 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                           {Math.round((selectedStudioLayer?.opacityValue || 0.74) * 100)}%
                         </Typography>
                       </Stack>
+                      {selectedBoardPolishEffectLayerId && selectedBoardPolishEffectRegion && (
+                        <Paper
+                          data-testid="frame-editor-layer-effect-region-card"
+                          sx={{
+                            mt: 1,
+                            p: 0.9,
+                            borderRadius: 1.5,
+                            bgcolor: 'rgba(125,211,252,0.06)',
+                            border: '1px solid rgba(125,211,252,0.14)',
+                          }}
+                        >
+                          <Stack spacing={0.75}>
+                            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                              <Typography variant="caption" sx={{ color: '#e0f2fe', fontWeight: 700, letterSpacing: 0.45 }}>
+                                FX REGION
+                              </Typography>
+                              <Chip
+                                size="small"
+                                label={`${Math.round(selectedBoardPolishEffectRegion.widthRatio * 100)} × ${Math.round(selectedBoardPolishEffectRegion.heightRatio * 100)}`}
+                                sx={{
+                                  height: 18,
+                                  borderRadius: 999,
+                                  bgcolor: 'rgba(255,255,255,0.07)',
+                                  color: '#e0f2fe',
+                                  '& .MuiChip-label': { px: 0.6, fontSize: '0.52rem', fontWeight: 700, letterSpacing: 0.3 },
+                                }}
+                              />
+                            </Stack>
+                            <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.6)' }}>
+                              Drag masken direkte på canvas eller bruk raske presets for fokus, lower band og wide beams.
+                            </Typography>
+                            <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
+                              {BOARD_POLISH_EFFECT_REGION_PRESETS.map((preset) => (
+                                <Button
+                                  key={preset.id}
+                                  size="small"
+                                  data-testid={`frame-editor-layer-effect-region-preset-${preset.id}`}
+                                  onClick={() => handleApplyBoardPolishEffectRegionPreset(selectedBoardPolishEffectLayerId, preset.id)}
+                                  sx={{
+                                    minHeight: 24,
+                                    borderRadius: 999,
+                                    px: 0.9,
+                                    bgcolor: 'rgba(255,255,255,0.06)',
+                                    color: '#e0f2fe',
+                                    textTransform: 'none',
+                                  }}
+                                >
+                                  {preset.label}
+                                </Button>
+                              ))}
+                            </Stack>
+                            <Stack spacing={0.35}>
+                              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                                <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.66)', fontWeight: 600 }}>
+                                  Feather
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: '#e0f2fe', fontWeight: 700 }}>
+                                  {Math.round(selectedBoardPolishEffectRegion.feather * 100)}%
+                                </Typography>
+                              </Stack>
+                              <Slider
+                                data-testid="frame-editor-layer-effect-region-feather"
+                                size="small"
+                                min={0}
+                                max={0.48}
+                                step={0.01}
+                                value={selectedBoardPolishEffectRegion.feather}
+                                onChange={(_, value) => handleSetBoardPolishEffectRegionFeather(
+                                  selectedBoardPolishEffectLayerId,
+                                  Array.isArray(value) ? value[0] : value,
+                                )}
+                                sx={{ color: '#7dd3fc' }}
+                              />
+                            </Stack>
+                            <Stack direction="row" justifyContent="space-between" spacing={0.8}>
+                              <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.55)' }}>
+                                X {Math.round(selectedBoardPolishEffectRegion.xRatio * 100)} · Y {Math.round(selectedBoardPolishEffectRegion.yRatio * 100)}
+                              </Typography>
+                              <Button
+                                size="small"
+                                data-testid="frame-editor-layer-effect-region-reset"
+                                onClick={() => handleApplyBoardPolishEffectRegionPreset(selectedBoardPolishEffectLayerId, 'full')}
+                                sx={{
+                                  minHeight: 22,
+                                  borderRadius: 999,
+                                  px: 0.8,
+                                  bgcolor: 'rgba(255,255,255,0.05)',
+                                  color: '#e0f2fe',
+                                  textTransform: 'none',
+                                }}
+                              >
+                                Reset
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        </Paper>
+                      )}
                     </Paper>
                     <Paper
                       data-testid="frame-editor-motion-rig-card"
@@ -12709,6 +13212,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                           <Button
                             size="small"
                             onClick={handleAddMotionRig}
+                            disabled={!canAddMotionRigToSelectedLayer}
                             sx={{
                               justifyContent: 'space-between',
                               color: '#f8fafc',
@@ -16820,6 +17324,141 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                         <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.5)' }}>
                           {`${boardPolishFinishConfig.summary} ${boardPolishWeatherConfig.summary}`}
                         </Typography>
+                        <Paper
+                          data-testid="frame-editor-board-polish-fx-stack"
+                          sx={{
+                            p: 0.75,
+                            borderRadius: 1.2,
+                            bgcolor: 'rgba(255,255,255,0.024)',
+                            border: '1px solid rgba(255,255,255,0.05)',
+                          }}
+                        >
+                          <Stack spacing={0.55}>
+                            <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.72)', fontWeight: 700, letterSpacing: 0.55 }}>
+                              TONE / FX STACK
+                            </Typography>
+                            {boardPolishArmedEffectLayers.map((layer) => {
+                              const effectLayerState = boardPolishEffectLayerStateMap[layer.id];
+                              const effectLayerRecord = activeSheetLayerStack.find((entry) => entry.type === 'effect' && entry.effectId === layer.id);
+                              return (
+                              <Stack
+                                key={layer.id}
+                                data-testid={`frame-editor-board-polish-fx-stack-${layer.id}`}
+                                data-enabled={effectLayerState.enabled ? 'true' : 'false'}
+                                data-opacity={effectLayerState.opacity.toFixed(3)}
+                                sx={{
+                                  px: 0.75,
+                                  py: 0.55,
+                                  borderRadius: 1,
+                                  bgcolor: effectLayerState.enabled ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.018)',
+                                  border: '1px solid rgba(255,255,255,0.05)',
+                                }}
+                              >
+                                <Stack spacing={0.55}>
+                                  <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                                    <Stack spacing={0.18} sx={{ minWidth: 0 }}>
+                                      <Typography variant="caption" sx={{ color: '#f8fafc', fontWeight: 700, opacity: effectLayerState.enabled ? 1 : 0.72 }}>
+                                        {layer.label}
+                                      </Typography>
+                                      <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.55)' }}>
+                                        {layer.summary}
+                                      </Typography>
+                                    </Stack>
+                                    <Stack direction="row" alignItems="center" spacing={0.8}>
+                                      {effectLayerRecord && (
+                                        <Button
+                                          size="small"
+                                          data-testid={`frame-editor-board-polish-fx-edit-${layer.id}`}
+                                          onClick={() => {
+                                            setInspectorMode('layers');
+                                            setSelectedStudioLayerId(effectLayerRecord.id);
+                                          }}
+                                          sx={{
+                                            minHeight: 20,
+                                            borderRadius: 999,
+                                            px: 0.8,
+                                            bgcolor: 'rgba(125,211,252,0.12)',
+                                            color: '#e0f2fe',
+                                            textTransform: 'none',
+                                          }}
+                                        >
+                                          Mask
+                                        </Button>
+                                      )}
+                                      <Chip
+                                        size="small"
+                                        label={`${Math.round(effectLayerState.opacity * 100)}%`}
+                                        sx={{
+                                          height: 20,
+                                          borderRadius: 999,
+                                          bgcolor: effectLayerState.enabled ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)',
+                                          color: effectLayerState.enabled ? 'rgba(248,250,252,0.8)' : 'rgba(226,232,240,0.5)',
+                                          '& .MuiChip-label': {
+                                            px: 0.7,
+                                            fontSize: '0.56rem',
+                                            fontWeight: 700,
+                                            letterSpacing: 0.35,
+                                          },
+                                        }}
+                                      />
+                                      <Chip
+                                        size="small"
+                                        label={layer.mixBlendMode}
+                                        sx={{
+                                          height: 20,
+                                          borderRadius: 999,
+                                          bgcolor: 'rgba(255,255,255,0.06)',
+                                          color: 'rgba(248,250,252,0.8)',
+                                          '& .MuiChip-label': {
+                                            px: 0.7,
+                                            fontSize: '0.56rem',
+                                            fontWeight: 700,
+                                            letterSpacing: 0.35,
+                                          },
+                                        }}
+                                      />
+                                      <Switch
+                                        data-testid={`frame-editor-board-polish-fx-toggle-${layer.id}`}
+                                        size="small"
+                                        checked={effectLayerState.enabled}
+                                        onChange={() => handleToggleBoardPolishEffectLayer(layer.id)}
+                                        inputProps={{ 'aria-label': `${layer.label} effect toggle` }}
+                                        sx={{
+                                          '& .MuiSwitch-switchBase.Mui-checked': {
+                                            color: '#f8fafc',
+                                          },
+                                          '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                                            bgcolor: 'rgba(134,239,172,0.45)',
+                                          },
+                                          '& .MuiSwitch-track': {
+                                            bgcolor: 'rgba(255,255,255,0.18)',
+                                          },
+                                        }}
+                                      />
+                                    </Stack>
+                                  </Stack>
+                                  <Slider
+                                    data-testid={`frame-editor-board-polish-fx-opacity-${layer.id}`}
+                                    value={effectLayerState.opacity}
+                                    min={0}
+                                    max={1}
+                                    step={0.01}
+                                    disabled={!effectLayerState.enabled}
+                                    onChange={(_, value) => handleSetBoardPolishEffectLayerOpacity(layer.id, Array.isArray(value) ? value[0] : value)}
+                                    sx={{
+                                      color: effectLayerState.enabled ? '#f8fafc' : 'rgba(226,232,240,0.3)',
+                                      '& .MuiSlider-thumb': {
+                                        width: 12,
+                                        height: 12,
+                                      },
+                                    }}
+                                  />
+                                </Stack>
+                              </Stack>
+                              );
+                            })}
+                          </Stack>
+                        </Paper>
                         <Stack spacing={0.35}>
                           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
                             <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.66)', fontWeight: 600, letterSpacing: 0.25 }}>

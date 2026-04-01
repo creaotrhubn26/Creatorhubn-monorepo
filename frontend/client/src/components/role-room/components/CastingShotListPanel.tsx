@@ -137,6 +137,7 @@ import {
 } from '../services/storyboardLibraryService';
 import {
   exportShotListsBoardPdf,
+  exportShotListsCleanStillBundle,
   exportShotListsContactSheetPdf,
   exportShotListsShotDeckPdf,
 } from '../services/shotListExportService';
@@ -2513,6 +2514,19 @@ export function CastingShotListPanel({
     [buildExportPayload, toast],
   );
 
+  const handleExportCleanStills = useCallback(
+    async (targetShotLists: ShotList[], successMessage: string) => {
+      try {
+        await exportShotListsCleanStillBundle(buildExportPayload(targetShotLists));
+        toast.showSuccess(successMessage);
+      } catch (error) {
+        console.error('Error exporting clean still bundle:', error);
+        toast.showError('Kunne ikke eksportere clean stills');
+      }
+    },
+    [buildExportPayload, toast],
+  );
+
   const generateShotListsHTML = (project: any, shotLists: ShotList[]): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
@@ -4126,21 +4140,88 @@ export function CastingShotListPanel({
                         <Chip
                           size="small"
                           label={`${storyboardCoverage.coveredFrames}/${storyboardCoverage.totalFrames} frames brukt`}
+                          onClick={() => {
+                            setSceneStoryboardDialog({
+                              sceneId: shotList.sceneId,
+                              activeFrameIndex: 0,
+                            });
+                          }}
                           sx={{
                             bgcolor: 'rgba(59,130,246,0.14)',
                             color: '#93c5fd',
                             border: '1px solid rgba(59,130,246,0.24)',
+                            cursor: 'pointer',
                           }}
                         />
                         <Chip
                           size="small"
                           label={`${storyboardCoverage.missingFrames} mangler shot`}
+                          onClick={() => {
+                            const firstMissingFrameId = storyboardCoverage.missingFrameIds[0];
+                            const scene = manuscriptSceneById.get(shotList.sceneId);
+                            const activeFrameIndex = firstMissingFrameId && scene?.storyboardFrames
+                              ? Math.max(0, scene.storyboardFrames.findIndex((frame) => frame.id === firstMissingFrameId))
+                              : 0;
+                            setSceneStoryboardDialog({
+                              sceneId: shotList.sceneId,
+                              activeFrameIndex,
+                            });
+                          }}
                           sx={{
                             bgcolor: 'rgba(245,158,11,0.12)',
                             color: '#fbbf24',
                             border: '1px solid rgba(245,158,11,0.24)',
+                            cursor: 'pointer',
                           }}
                         />
+                        {storyboardCoverage.coveredFrameIds.length > 0 && (
+                          <Chip
+                            size="small"
+                            label="Åpne linked frame"
+                            data-testid={`legacy-shotlist-open-linked-frame-${shotList.id}`}
+                            onClick={() => {
+                              const firstCoveredFrameId = storyboardCoverage.coveredFrameIds[0];
+                              const scene = manuscriptSceneById.get(shotList.sceneId);
+                              const activeFrameIndex = firstCoveredFrameId && scene?.storyboardFrames
+                                ? Math.max(0, scene.storyboardFrames.findIndex((frame) => frame.id === firstCoveredFrameId))
+                                : 0;
+                              setSceneStoryboardDialog({
+                                sceneId: shotList.sceneId,
+                                activeFrameIndex,
+                              });
+                            }}
+                            sx={{
+                              bgcolor: 'rgba(16,185,129,0.12)',
+                              color: '#a7f3d0',
+                              border: '1px solid rgba(16,185,129,0.24)',
+                              cursor: 'pointer',
+                            }}
+                          />
+                        )}
+                        {storyboardCoverage.missingFrameIds.length > 0 && (
+                          <Chip
+                            size="small"
+                            label="Åpne manglende frame"
+                            data-testid={`legacy-shotlist-open-missing-frame-${shotList.id}`}
+                            onClick={() => {
+                              const firstMissingFrameId = storyboardCoverage.missingFrameIds[0];
+                              const scene = manuscriptSceneById.get(shotList.sceneId);
+                              const activeFrameIndex = firstMissingFrameId && scene?.storyboardFrames
+                                ? Math.max(0, scene.storyboardFrames.findIndex((frame) => frame.id === firstMissingFrameId))
+                                : 0;
+                              setSceneStoryboardDialog({
+                                sceneId: shotList.sceneId,
+                                activeFrameIndex,
+                              });
+                            }}
+                            sx={{
+                              bgcolor: 'rgba(245,158,11,0.12)',
+                              color: '#fde68a',
+                              border: '1px solid rgba(245,158,11,0.24)',
+                              cursor: 'pointer',
+                            }}
+                          />
+                        )}
                         {storyboardCoverage.unlinkedShots > 0 && (
                           <Chip
                             size="small"
@@ -6944,6 +7025,32 @@ export function CastingShotListPanel({
                     </Box>
                   </Button>
                   <Button
+                    variant="outlined"
+                    fullWidth
+                    data-testid="legacy-shotlist-export-stills-scene"
+                    startIcon={<ExportIcon />}
+                    onClick={() => {
+                      void handleExportCleanStills([selectedScene], 'Clean stills eksportert');
+                      setShowExportDialog(false);
+                      setExportSceneId(null);
+                    }}
+                    sx={{
+                      py: 2,
+                      color: '#f5d0fe',
+                      borderColor: 'rgba(192,132,252,0.3)',
+                      justifyContent: 'flex-start',
+                      textAlign: 'left',
+                      '&:hover': { borderColor: '#d8b4fe', bgcolor: 'rgba(192,132,252,0.08)' },
+                    }}
+                  >
+                    <Box>
+                      <Typography sx={{ fontWeight: 600 }}>Clean Stills (.zip)</Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
+                        PNG-stills uten editor-chrome for review og deck-bruk
+                      </Typography>
+                    </Box>
+                  </Button>
+                  <Button
                     variant="text"
                     fullWidth
                     onClick={() => setExportSceneId(null)}
@@ -7031,6 +7138,32 @@ export function CastingShotListPanel({
                 <Typography sx={{ fontWeight: 600 }}>Alle scener · Shot Deck</Typography>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
                   Ett shot per side for review, kunde eller opptaksbrief
+                </Typography>
+              </Box>
+            </Button>
+            <Button
+              variant="outlined"
+              fullWidth
+              data-testid="legacy-shotlist-export-stills-all"
+              startIcon={<ExportIcon />}
+              onClick={() => {
+                void handleExportCleanStills(shotLists, `Clean stills eksportert for ${shotLists.length} scener`);
+                setShowExportDialog(false);
+                setExportSceneId(null);
+              }}
+              sx={{
+                py: 2,
+                color: '#f5d0fe',
+                borderColor: 'rgba(192,132,252,0.3)',
+                justifyContent: 'flex-start',
+                textAlign: 'left',
+                '&:hover': { borderColor: '#d8b4fe', bgcolor: 'rgba(192,132,252,0.08)' },
+              }}
+            >
+              <Box>
+                <Typography sx={{ fontWeight: 600 }}>Alle scener · Clean Stills</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
+                  ZIP med rene PNG-stills for alle koblede storyboard-frames
                 </Typography>
               </Box>
             </Button>

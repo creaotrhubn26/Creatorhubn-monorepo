@@ -72,6 +72,14 @@ interface InviteRequest {
   paymentAmount?: number;
   paymentTimestamp?: string;
   source?: string;
+  proffAnalysisStatus?: 'completed' | 'failed' | null;
+  proffRecommendation?: 'approve' | 'review' | 'reject' | null;
+  proffRiskLevel?: 'low' | 'medium' | 'high' | 'critical' | null;
+  proffRiskScore?: number | null;
+  proffSummary?: string | null;
+  proffLastScreenedAt?: string | null;
+  proffScreeningSource?: string | null;
+  proffBrregVerified?: boolean;
 }
 
 interface PrototypeTesterRequest {
@@ -294,6 +302,34 @@ export default function AdminInviteSystem() {
     return { label: 'Ukjent', color: 'default' as const };
   };
 
+  const getProffRecommendationChip = (request: InviteRequest) => {
+    switch (request.proffRecommendation) {
+      case 'approve':
+        return { label: 'Screening: Godkjenn', color: 'success' as const };
+      case 'review':
+        return { label: 'Screening: Gjennomgå', color: 'warning' as const };
+      case 'reject':
+        return { label: 'Screening: Avvis', color: 'error' as const };
+      default:
+        return { label: 'Screening mangler', color: 'default' as const };
+    }
+  };
+
+  const getRiskChip = (riskLevel?: InviteRequest['proffRiskLevel']) => {
+    switch (riskLevel) {
+      case 'low':
+        return { label: 'Lav risiko', color: 'success' as const };
+      case 'medium':
+        return { label: 'Medium risiko', color: 'warning' as const };
+      case 'high':
+        return { label: 'Høy risiko', color: 'error' as const };
+      case 'critical':
+        return { label: 'Kritisk risiko', color: 'error' as const };
+      default:
+        return { label: 'Ikke screenet', color: 'default' as const };
+    }
+  };
+
   const pendingRequests = inviteRequests.filter((req: InviteRequest) => req.status === 'pending');
   const processedRequests = inviteRequests.filter((req: InviteRequest) => req.status !== 'pending');
   const pendingPrototypeRequests = prototypeTesterRequests.filter((req: PrototypeTesterRequest) => req.status === 'pending');
@@ -350,6 +386,7 @@ export default function AdminInviteSystem() {
                         <TableCell>Kilde</TableCell>
                         <TableCell>Kontakt</TableCell>
                         <TableCell>Org.nr</TableCell>
+                        <TableCell>Screening</TableCell>
                         <TableCell>Abonnement</TableCell>
                         <TableCell>Dato</TableCell>
                         <TableCell>Handlinger</TableCell>
@@ -397,6 +434,29 @@ export default function AdminInviteSystem() {
                             {request.phone && <Typography variant="caption" color="textSecondary">{request.phone}</Typography>}
                           </TableCell>
                           <TableCell>{request.organizationNumber || 'Ikke oppgitt'}</TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <Chip
+                                {...getProffRecommendationChip(request)}
+                                size="small"
+                              />
+                              <Chip
+                                {...getRiskChip(request.proffRiskLevel)}
+                                size="small"
+                                variant="outlined"
+                              />
+                              {request.proffSummary && (
+                                <Typography variant="caption" color="textSecondary">
+                                  {request.proffSummary}
+                                </Typography>
+                              )}
+                              {request.proffLastScreenedAt && (
+                                <Typography variant="caption" color="textSecondary">
+                                  {new Date(request.proffLastScreenedAt).toLocaleString('nb-NO')}
+                                </Typography>
+                              )}
+                            </Box>
+                          </TableCell>
                           <TableCell>
                             {request.selectedPlan ? (
                               <Box>
@@ -480,6 +540,7 @@ export default function AdminInviteSystem() {
                         <TableCell>Bedrift / Navn</TableCell>
                         <TableCell>Kilde</TableCell>
                         <TableCell>Status</TableCell>
+                        <TableCell>Screening</TableCell>
                         <TableCell>Behandlet dato</TableCell>
                         <TableCell>Handlinger</TableCell>
                       </TableRow>
@@ -495,6 +556,12 @@ export default function AdminInviteSystem() {
                             })()}
                           </TableCell>
                           <TableCell><Chip label={getStatusText(request.status)} color={getStatusColor(request.status) as any} size="small" /></TableCell>
+                          <TableCell>
+                            <Chip
+                              {...getProffRecommendationChip(request)}
+                              size="small"
+                            />
+                          </TableCell>
                           <TableCell>{request.processedDate ? new Date(request.processedDate).toLocaleDateString('nb-NO') : 'Ukjent'}</TableCell>
                           <TableCell>
                             <IconButton size="small" onClick={() => setSelectedRequest(request)}><ViewIcon /></IconButton>
@@ -780,6 +847,24 @@ export default function AdminInviteSystem() {
                 </Grid>
                 <Grid item xs={6}><Typography variant="subtitle2">E-post</Typography><Typography variant="body2">{selectedRequest.email}</Typography></Grid>
                 <Grid item xs={6}><Typography variant="subtitle2">Telefon</Typography><Typography variant="body2">{selectedRequest.phone || 'Ikke oppgitt'}</Typography></Grid>
+
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1, fontWeight: 'bold' }}>
+                    Proff-screening
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                    <Chip {...getProffRecommendationChip(selectedRequest)} size="small" />
+                    <Chip {...getRiskChip(selectedRequest.proffRiskLevel)} size="small" variant="outlined" />
+                    {selectedRequest.proffBrregVerified && (
+                      <Chip label="BRREG-verifisert" size="small" color="info" variant="outlined" />
+                    )}
+                  </Box>
+                  {selectedRequest.proffSummary && (
+                    <Alert severity={selectedRequest.proffRecommendation === 'reject' ? 'error' : selectedRequest.proffRecommendation === 'review' ? 'warning' : 'success'}>
+                      {selectedRequest.proffSummary}
+                    </Alert>
+                  )}
+                </Grid>
 
                 {/* Payment Information */}
                 {selectedRequest.selectedPlan && (

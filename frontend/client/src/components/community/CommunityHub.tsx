@@ -32,6 +32,18 @@ export default function CommunityHub({ userId, userEmail, profession }: Communit
     checkOnboardingStatus();
   }, [userId]);
 
+  const persistLocalOnboardingState = (options?: { dismissTutorial?: boolean }) => {
+    try {
+      localStorage.setItem(`community-onboarding-complete-${userId}`, 'true');
+      if (options?.dismissTutorial) {
+        localStorage.setItem('community-guide-tutorial-dismissed', 'true');
+        localStorage.setItem('community-guide-completed-steps', '[]');
+      }
+    } catch {
+      // Ignore local persistence issues.
+    }
+  };
+
   const checkOnboardingStatus = async () => {
     try {
       setLoading(true);
@@ -73,6 +85,7 @@ export default function CommunityHub({ userId, userEmail, profession }: Communit
   };
 
   const handleOnboardingComplete = async () => {
+    persistLocalOnboardingState();
     // Re-check status to ensure it's properly saved
     try {
       await checkOnboardingStatus();
@@ -98,16 +111,37 @@ export default function CommunityHub({ userId, userEmail, profession }: Communit
       console.error('Error marking onboarding as skipped: ', error);
       // Continue anyway
     }
+    persistLocalOnboardingState({ dismissTutorial: true });
     setShowLanding(false);
     setHasCompletedOnboarding(true);
   };
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
-        <Box sx={{ textAlign:'center' }}>
-          <CircularProgress />
-          <Typography variant="body1" sx={{ mt: 2 }}>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          background:
+            'radial-gradient(circle at top right, rgba(245, 166, 35, 0.14), transparent 28%), linear-gradient(180deg, #05070b 0%, #091019 52%, #06080c 100%)',
+          px: 2,
+        }}
+      >
+        <Box
+          sx={{
+            textAlign: 'center',
+            p: 4,
+            borderRadius: 4,
+            background:
+              'linear-gradient(180deg, rgba(13, 18, 27, 0.94), rgba(8, 12, 18, 0.94))',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: '0 24px 60px rgba(0, 0, 0, 0.36)',
+          }}
+        >
+          <CircularProgress sx={{ color: '#f5a623' }} />
+          <Typography variant="body1" sx={{ mt: 2, color: 'rgba(248, 241, 231, 0.68)' }}>
             Laster community...
           </Typography>
         </Box>

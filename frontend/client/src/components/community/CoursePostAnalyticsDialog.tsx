@@ -45,6 +45,19 @@ import {
 } from '@mui/icons-material';
 import ReactECharts from 'echarts-for-react';
 import { Virtuoso } from 'react-virtuoso';
+import {
+  COMMUNITY_DIALOG_ACTIONS_SX,
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_MUTED,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_PRIMARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SECONDARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_TOGGLE_GROUP_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 interface CoursePostAnalyticsDialogProps {
   open: boolean;
@@ -143,7 +156,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
 
   const handleCloseExportMenu = () => {
     setExportMenuAnchor(null);
-    setCurrentExportChart(', ');
+    setCurrentExportChart('');
   };
 
   const handleExportChart = (format: 'png' | 'jpg' | 'svg') => {
@@ -249,7 +262,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
 
         const fileName = `${currentExportChart}-chart-${new Date().getTime()}.png`;
         const chartType = currentExportChart;
-        const courseTitle = post?.course_title || ', ';
+        const courseTitle = post?.course_title || '';
 
         const response = await fetch('/api/analytics/export-to-drive', {
           method: 'POST',
@@ -287,7 +300,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
         console.error('Error uploading to Google Drive: ', error);
         setDriveUploadResult({
           success: false,
-          fileName: ', ',
+          fileName: '',
         });
         alert(`❌ Kunne ikke laste opp til Google Drive: ${error.message}`);
       } finally {
@@ -872,11 +885,20 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
-      <DialogTitle>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="xl"
+      fullWidth
+      sx={COMMUNITY_DIALOG_SX}
+      PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+    >
+      <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ position: 'relative', zIndex: 1 }}>
           <Box flex={1}>
-            <Typography variant="h6">Kursinnlegg Statistikk</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
+              Kursinnlegg Statistikk
+            </Typography>
           </Box>
           <Box display="flex" gap={2} alignItems="center">
             <ToggleButtonGroup
@@ -886,6 +908,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                 if (newMode) setViewMode(newMode);
               }}
               size="small"
+              sx={COMMUNITY_DIALOG_TOGGLE_GROUP_SX}
             >
               <ToggleButton value="single">
                 <TrendingUp fontSize="small" sx={{ mr: 0.5 }} />
@@ -896,19 +919,19 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                 Sammenlign
               </ToggleButton>
             </ToggleButtonGroup>
-            <IconButton onClick={onClose}>
+            <IconButton onClick={onClose} sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
               <Close />
             </IconButton>
           </Box>
         </Box>
       </DialogTitle>
-      <DialogContent sx={{ pb: 3 }}>
+      <DialogContent sx={{ ...COMMUNITY_DIALOG_CONTENT_SX, pb: 3 }}>
         {viewMode === 'single' ? (
           // Single Post View
           loading ? (
             <Box py={4}>
               <LinearProgress />
-              <Typography variant="body2" color="text.secondary" align="center" mt={2}>
+              <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }} align="center" mt={2}>
                 Laster statistikk...
               </Typography>
             </Box>
@@ -2030,12 +2053,12 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
         fullWidth
         PaperProps={{
           sx: {
-            borderRadius: 3,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+            ...COMMUNITY_DIALOG_PAPER_SX,
           }
         }}
+        sx={COMMUNITY_DIALOG_SX}
       >
-        <DialogTitle sx={{ pb: 1 }}>
+        <DialogTitle sx={{ ...COMMUNITY_DIALOG_TITLE_SX, pb: 1 }}>
           <Stack direction="row" spacing={2} alignItems="center">
             <Box
               component="img"
@@ -2043,13 +2066,14 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
               alt="Google Drive"
               sx={{ width: 32, height: 32 }}
             />
-            <Typography variant="h6" sx={{ fontWeight: 600}}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: COMMUNITY_DIALOG_TEXT }}>
               {driveUploadResult?.success ? '✅ Lastet opp til Google Drive!' : '❌ Opplasting feilet'}
             </Typography>
           </Stack>
           <IconButton
             onClick={handleCloseDriveSuccessDialog}
             sx={{
+              ...COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
               position: 'absolute',
               right: 8,
               top: 8}}
@@ -2057,20 +2081,20 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
             <Close />
           </IconButton>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX}>
           {driveUploadResult?.success ? (
             <Stack spacing={2}>
               <Alert severity="success" sx={{ borderRadius: 2 }}>
                 Diagrammet ble lastet opp til Google Drive!
               </Alert>
               <Box>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }} gutterBottom>
                   <strong>Filnavn:</strong>
                 </Typography>
                 <Typography variant="body1" sx={{ mb: 2 }}>
                   {driveUploadResult.fileName}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }} gutterBottom>
                   <strong>Mappe:</strong>
                 </Typography>
                 <Typography variant="body1">
@@ -2084,11 +2108,11 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
             </Alert>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
+        <DialogActions sx={{ ...COMMUNITY_DIALOG_ACTIONS_SX, px: 3, pb: 3 }}>
           <Button
             onClick={handleCloseDriveSuccessDialog}
             variant="outlined"
-            sx={{ borderRadius: 2 }}
+            sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}
           >
             Lukk
           </Button>
@@ -2097,11 +2121,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
               onClick={handleViewInDrive}
               variant="contained"
               startIcon={<OpenInNewIcon />}
-              sx={{
-                borderRadius: 2,
-                background: 'linear-gradient(135deg, #4285f4 0%, #34a853 100%)', '&:hover': {
-                  background:'linear-gradient(135deg, #3367d6 0%, #2d8e47 100%)',
-                }}}
+              sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
             >
               Vis i Google Drive
             </Button>

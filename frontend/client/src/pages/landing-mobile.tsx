@@ -184,6 +184,7 @@ const SubscriptionSelectionFlow = React.lazy(() => import('@/components/subscrip
 // const SentryTestComponent = React.lazy(() => import('@/components/test/SentryTestComponent'));
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from "@/lib/queryClient";
+import { useCreatorHubStoredSession } from '@/hooks/useCreatorHubStoredSession';
 import { PrototypeTesterIcon } from '@/components/icons/PrototypeTesterIcon';
 import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
 
@@ -673,25 +674,15 @@ const LandingMobile: React.FC<LandingCustomizationProps> = ({
     [setLocation, resetAllModals],
 );
 
-  // PERFORMANCE: User data - DISABLED: Auto-authenticated
-  // Authentication disabled - use mock data
-  const authData = {
-    authenticated: true,
-    user: {
-      id: 'local-user',
-      email: 'user@local.dev',
-      name: 'Local User',
-      profession: 'photographer',
-      userType: 'photographer',
-      isAdmin: true
-    }
-  };
+  const {
+    authenticated: isAuthenticated,
+    user: currentUser,
+    userProfession,
+    isAdmin,
+    googleLoginError,
+    clearGoogleLoginError,
+  } = useCreatorHubStoredSession();
   const userLoading = false;
-
-  const isAuthenticated = true;
-  const currentUser = authData.user;
-  const userProfession = currentUser?.profession || currentUser?.userType;
-  const isAdmin = true;
 
   // Listen for 'auth-changed' event from LoginModal
   React.useEffect(() => {
@@ -709,19 +700,12 @@ const LandingMobile: React.FC<LandingCustomizationProps> = ({
     if (isAuthenticated && currentUser) {
       (async () => {
         try {
-          // Check onboarding status
-          const response = await fetch('/api/user/onboarding-status', {
-            credentials: 'include'
-          });
+          const data = await apiRequest('/api/user/onboarding-status');
+          console.log('Onboarding status:', data);
 
-          if (response.ok) {
-            const data = await response.json();
-            console.log('Onboarding status:', data);
-
-            if (data.needsOnboarding) {
-              console.log('User needs onboarding - showing UniversalOnboarding');
-              setModalState((prev) => ({ ...prev, showOnboarding: true }));
-            }
+          if (data?.needsOnboarding) {
+            console.log('User needs onboarding - showing UniversalOnboarding');
+            setModalState((prev) => ({ ...prev, showOnboarding: true }));
           }
         } catch (error) {
           console.error('Failed to check onboarding status:', error);
@@ -729,6 +713,17 @@ const LandingMobile: React.FC<LandingCustomizationProps> = ({
       })();
     }
   }, [isAuthenticated, currentUser]);
+
+  React.useEffect(() => {
+    if (!googleLoginError) {
+      return;
+    }
+
+    setModalState((prev) => ({
+      ...prev,
+      showLoginModal: true,
+    }));
+  }, [googleLoginError]);
 
   // ROLLE BASERT TILGANGSKONTROLL PROTOKOLL - Enhanced access control med fallbacks
   const canAccessProfession = (profession: string) => {
@@ -3613,7 +3608,11 @@ const LandingMobile: React.FC<LandingCustomizationProps> = ({
         <React.Suspense fallback={<div>Loading...</div>}>
           <LoginModal
             open={modalState.showLoginModal}
-            onClose={() => setModalState((prev) => ({ ...prev, showLoginModal: false }))}
+            onClose={() => {
+              clearGoogleLoginError();
+              setModalState((prev) => ({ ...prev, showLoginModal: false }));
+            }}
+            initialError={googleLoginError}
           />
         </React.Suspense>
       )}

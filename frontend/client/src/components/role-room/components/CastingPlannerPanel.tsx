@@ -1816,7 +1816,7 @@ export function CastingPlannerPanel({
           contextLabel: 'Manus',
           primaryAction: 'drive-sync' as const,
           secondaryAction: 'calendar-sync' as const,
-          focus: { workspace: 'brief' } satisfies ClientPortalWorkspaceFocus,
+          focus: { workspace: 'manuscript' } satisfies ClientPortalWorkspaceFocus,
         };
       }
       if (storyArcView === 'shot-list') {
@@ -1824,7 +1824,7 @@ export function CastingPlannerPanel({
           contextLabel: 'Shotlist',
           primaryAction: 'calendar-sync' as const,
           secondaryAction: 'drive-sync' as const,
-          focus: { workspace: 'delivery' } satisfies ClientPortalWorkspaceFocus,
+          focus: { workspace: 'shotlist' } satisfies ClientPortalWorkspaceFocus,
         };
       }
       if (storyArcView === 'story-logic') {
@@ -1839,7 +1839,7 @@ export function CastingPlannerPanel({
         contextLabel: 'Storyboard',
         primaryAction: 'drive-sync' as const,
         secondaryAction: 'calendar-sync' as const,
-        focus: { workspace: 'delivery' } satisfies ClientPortalWorkspaceFocus,
+        focus: { workspace: 'storyboard' } satisfies ClientPortalWorkspaceFocus,
       };
     }
 

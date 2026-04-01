@@ -11,6 +11,10 @@ import {
 } from '@mui/icons-material';
 import { Avatar, Box, Button, LinearProgress, Stack, Typography } from '@mui/material';
 import AcademyBrandMark from './AcademyBrandMark';
+import {
+  buildAcademyStudentSupportCard,
+  useAcademyStudentAccessSummary,
+} from './academyStudentExperience';
 
 type TranslateFn = (no: string, en: string) => string;
 
@@ -28,12 +32,17 @@ interface AcademyStudentSidebarProps {
   studentName: string;
   activeCourseId?: string | null;
   activeCourseTitle?: string;
+  instructorName?: string;
   progressPercent?: number;
   completedLessons?: number;
   totalLessons?: number;
   streakDays?: number;
   returnTo?: string;
   continueRoute?: string;
+  nextActionTitle?: string;
+  nextActionDetail?: string;
+  nextActionRoute?: string;
+  nextActionLabel?: string;
 }
 
 function AcademyStudentSidebar({
@@ -43,13 +52,21 @@ function AcademyStudentSidebar({
   studentName,
   activeCourseId,
   activeCourseTitle,
+  instructorName,
   progressPercent = 0,
   completedLessons = 0,
   totalLessons = 0,
   streakDays = 0,
   returnTo = '/academy/student-dashboard',
   continueRoute,
+  nextActionTitle,
+  nextActionDetail,
+  nextActionRoute,
+  nextActionLabel,
 }: AcademyStudentSidebarProps) {
+  const { data: accessSummary } = useAcademyStudentAccessSummary(
+    activeCourseId ? String(activeCourseId) : undefined,
+  );
   const navItems = useMemo<NavItem[]>(
     () => [
       {
@@ -125,6 +142,17 @@ function AcademyStudentSidebar({
 
   const profileInitial = String(studentName || 'S').trim().charAt(0).toUpperCase() || 'S';
   const resolvedContinueRoute = withCourseContext(continueRoute || '/academy/player-studio');
+  const resolvedNextActionRoute = withCourseContext(nextActionRoute || continueRoute || '/academy/player-studio');
+  const streakDisplay = progressPercent > 0 ? Math.max(streakDays, 1) : Math.max(streakDays, 0);
+  const supportCard = useMemo(
+    () =>
+      buildAcademyStudentSupportCard({
+        tt,
+        access: accessSummary?.access,
+        instructorName,
+      }),
+    [accessSummary?.access, instructorName, tt],
+  );
 
   return (
     <Box
@@ -223,6 +251,47 @@ function AcademyStudentSidebar({
             {tt('Fortsett læring', 'Continue learning')}
           </Button>
         </Box>
+
+        {nextActionTitle ? (
+          <Box
+            sx={{
+              p: 1.2,
+              borderRadius: 1.1,
+              border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.26)',
+              background:
+                'radial-gradient(circle at 82% 18%, rgba(248,179,33,0.16), rgba(0,0,0,0) 34%), linear-gradient(145deg, rgba(17,22,33,0.96), rgba(10,14,21,0.98))',
+            }}
+          >
+            <Typography sx={{ color: 'rgba(248,213,111,0.94)', fontSize: 12, fontWeight: 700 }}>
+              {tt('Neste steg', 'Next step')}
+            </Typography>
+            <Typography sx={{ mt: 0.55, fontWeight: 700 }}>
+              {nextActionTitle}
+            </Typography>
+            {nextActionDetail ? (
+              <Typography sx={{ mt: 0.35, fontSize: 12.5, color: 'rgba(237,240,247,0.7)' }}>
+                {nextActionDetail}
+              </Typography>
+            ) : null}
+            <Button
+              variant="outlined"
+              startIcon={<PlayCircleOutline />}
+              onClick={() => onNavigate('next-action', resolvedNextActionRoute)}
+              sx={{
+                mt: 1.1,
+                width: '100%',
+                justifyContent: 'flex-start',
+                borderColor: 'rgba(255,255,255,0.18)',
+                color: '#edf0f7',
+                borderRadius: 1,
+                textTransform: 'none',
+                fontWeight: 700,
+              }}
+            >
+              {nextActionLabel || tt('Åpne nå', 'Open now')}
+            </Button>
+          </Box>
+        ) : null}
       </Stack>
 
       <Stack spacing={0.55} sx={{ px: 1.5 }}>
@@ -278,8 +347,55 @@ function AcademyStudentSidebar({
             {tt('Ferdigheter fullført', 'Lessons completed')}: {completedLessons}/{Math.max(totalLessons, 1)}
           </Typography>
           <Typography sx={{ mt: 0.25, fontSize: 12, color: 'rgba(237,240,247,0.68)' }}>
-            {tt('Streak', 'Streak')}: {Math.max(streakDays, 1)} {tt('dager', 'days')}
+            {tt('Streak', 'Streak')}: {streakDisplay} {tt('dager', 'days')}
           </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            mt: 1,
+            p: 1.1,
+            borderRadius: 1.1,
+            border:
+              supportCard.tone === 'success'
+                ? 'var(--academy-hairline-width, 1px) solid rgba(154,210,123,0.22)'
+                : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
+            background:
+              supportCard.tone === 'success'
+                ? 'linear-gradient(145deg, rgba(17,29,22,0.82), rgba(10,18,14,0.92))'
+                : 'linear-gradient(145deg, rgba(14,18,30,0.82), rgba(10,13,22,0.92))',
+          }}
+        >
+          <Typography sx={{ color: 'rgba(248,213,111,0.94)', fontSize: 12, fontWeight: 700 }}>
+            {supportCard.eyebrow}
+          </Typography>
+          <Typography sx={{ mt: 0.55, fontWeight: 700 }}>
+            {supportCard.title}
+          </Typography>
+          <Typography sx={{ mt: 0.35, fontSize: 12, color: 'rgba(237,240,247,0.68)' }}>
+            {supportCard.detail}
+          </Typography>
+          {supportCard.meta ? (
+            <Typography sx={{ mt: 0.3, fontSize: 12, color: 'rgba(237,240,247,0.5)' }}>
+              {supportCard.meta}
+            </Typography>
+          ) : null}
+          <Button
+            variant="text"
+            startIcon={<ForumOutlined fontSize="small" />}
+            onClick={() => onNavigate('messages', withCourseContext('/academy/settings?tab=messages'))}
+            sx={{
+              mt: 0.75,
+              px: 0,
+              minWidth: 0,
+              justifyContent: 'flex-start',
+              textTransform: 'none',
+              color: '#f8d56f',
+              fontWeight: 700,
+            }}
+          >
+            {tt('Åpne meldinger', 'Open messages')}
+          </Button>
         </Box>
       </Box>
     </Box>

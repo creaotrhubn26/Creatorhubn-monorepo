@@ -1,14 +1,21 @@
-import { useTheming } from '../utils/theming-helper';
 import React from 'react';
 import { Box } from '@mui/material';
+import { useAuth } from '@/hooks/useAuth';
 import UniversalShowcase from '../components/universal/UniversalShowcase';
 
 const MusicShowcase: React.FC = () => {
-  // Theming system
-  const theming = useTheming('photographer');
+  const { user } = useAuth();
+  const userId = user?.id || user?.email || 'unknown-user';
+
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default',}}>
-      <UniversalShowcase profession="music_producer" />
+    <Box sx={{ minHeight: '100vh' }}>
+      <UniversalShowcase
+        profession="music_producer"
+        userId={userId}
+        isOwner={true}
+        compact={false}
+        maxItems={20}
+      />
     </Box>
   );
 };

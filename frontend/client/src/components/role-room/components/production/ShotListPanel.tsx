@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { buildSceneStoryboardCandidates, loadStoryboardLibraryItemsForProject, syncShotListWithSceneStoryboard } from "../../services/storyboardLibraryService";
 import {
   exportShotListsBoardPdf,
+  exportShotListsCleanStillBundle,
   exportShotListsContactSheetPdf,
   exportShotListsShotDeckPdf,
 } from "../../services/shotListExportService";
@@ -187,6 +188,18 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
     () => (sceneStoryboardDialog ? sceneBreakdownById.get(sceneStoryboardDialog.sceneId) || null : null),
     [sceneBreakdownById, sceneStoryboardDialog],
   );
+  const handleOpenStoryboardForShotList = useCallback((id: string, frameId?: string) => {
+    const summary = filteredSummaries.find((entry) => entry.shotListId === id);
+    if (!summary) return;
+    const sceneFrames = Array.isArray(summary.sceneMeta?.storyboardFrames) ? summary.sceneMeta.storyboardFrames : [];
+    const resolvedFrameIndex = frameId
+      ? Math.max(0, sceneFrames.findIndex((frame) => frame.id === frameId))
+      : 0;
+    setSceneStoryboardDialog({ sceneId: summary.sceneId, activeFrameIndex: resolvedFrameIndex });
+  }, [filteredSummaries]);
+  const handleOpenMissingStoryboardFrameForShotList = useCallback((id: string, frameId?: string) => {
+    handleOpenStoryboardForShotList(id, frameId);
+  }, [handleOpenStoryboardForShotList]);
 
   // Top assignees across all lists (for sidebar shot counts)
   const projectStats = useMemo(() => computeProjectStats(summaries), [summaries]);
@@ -403,6 +416,11 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
     await exportShotListsShotDeckPdf(payload);
   }, [buildExportPayload]);
 
+  const handleExportCleanStills = useCallback(async (id: string | null) => {
+    const payload = await buildExportPayload(id);
+    await exportShotListsCleanStillBundle(payload);
+  }, [buildExportPayload]);
+
   // ── Handler: Batch assign ─────────────────────────────────────────────────
 
   const handleBatchAssign = useCallback(
@@ -507,11 +525,9 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
             onDuplicate={handleDuplicate}
             onDelete={(id) => dispatchDialog({ kind: 'delete', shotListIds: [id] })}
             onExport={(id) => dispatchDialog({ kind: 'export', shotListId: id })}
-            onOpenStoryboard={(id) => {
-              const summary = filteredSummaries.find((entry) => entry.shotListId === id);
-              if (!summary) return;
-              setSceneStoryboardDialog({ sceneId: summary.sceneId, activeFrameIndex: 0 });
-            }}
+            onOpenStoryboard={(id) => handleOpenStoryboardForShotList(id)}
+            onOpenStoryboardFrame={handleOpenStoryboardForShotList}
+            onOpenStoryboardMissingFrame={handleOpenMissingStoryboardFrameForShotList}
             onPersonDropped={handlePersonDropped}
             onReorder={handleReorder}
             people={peopleMap}
@@ -561,6 +577,7 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
         onExportBoardPDF={handleExportBoardPDF}
         onExportContactSheet={handleExportContactSheet}
         onExportShotDeck={handleExportShotDeck}
+        onExportCleanStills={handleExportCleanStills}
       />
 
       {/* Delete */}

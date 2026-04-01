@@ -1189,7 +1189,16 @@ export interface ProducerAccountAccessWorkspace {
   updatedAt?: string;
 }
 
-export type ProducerWorkspaceSurfaceKey = 'brief' | 'materials' | 'brand' | 'accounts' | 'delivery' | 'meetings';
+export type ProducerWorkspaceSurfaceKey =
+  | 'brief'
+  | 'materials'
+  | 'storyboard'
+  | 'manuscript'
+  | 'shotlist'
+  | 'brand'
+  | 'accounts'
+  | 'delivery'
+  | 'meetings';
 
 export type ProducerWorkspaceLayout = 'focus' | 'split' | 'grid';
 

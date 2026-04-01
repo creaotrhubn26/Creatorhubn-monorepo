@@ -79,8 +79,13 @@ interface GooglePhotosAlbum {
   title: string;
   mediaItemsCount: string;
   coverPhotoBaseUrl?: string;
+  description?: string;
+  profession?: string;
+  projectId?: string;
   productUrl: string;
   isWriteable: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   shareInfo?: {
     shareToken: string;
     shareableUrl: string;
@@ -138,7 +143,12 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
   const [filterType, setFilterType] = useState<'all' | 'shared' | 'writeable' | 'readonly'>('all');
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'count'>('date');
   const [albumMenuAnchor, setAlbumMenuAnchor] = useState<HTMLElement | null>(null);
+  const [albumMenuTarget, setAlbumMenuTarget] = useState<GooglePhotosAlbum | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [shareOptions, setShareOptions] = useState({
+    isCollaborative: true,
+    isCommentable: true,
+  });
 
   const [albumFormData, setAlbumFormData] = useState<AlbumFormData>({
     title: '',
@@ -182,10 +192,14 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
   const { data: projectsData } = useQuery<ProjectSummary[]>({
     queryKey: ['/api/projects', profession],
     queryFn: async () => {
-      const response = (await apiRequest(`/api/projects?profession=${encodeURIComponent(profession)}`)) as {
+      const response = (await apiRequest(`/api/projects?profession=${encodeURIComponent(profession)}`)) as
+        | {
         projects?: ProjectSummary[];
-      };
-      return Array.isArray(response.projects) ? response.projects : [];
+      }
+        | ProjectSummary[];
+      return Array.isArray(response)
+        ? response
+        : (Array.isArray(response.projects) ? response.projects : []);
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -214,30 +228,46 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
     staleTime: 30 * 1000,
   });
 
+  const shareAlbumMutation = useMutation({
+    mutationFn: async (payload: { albumId: string; options: { isCollaborative: boolean; isCommentable: boolean } }) => {
+      return (await apiRequest(`/api/google-photos/albums/${payload.albumId}/share`, {
+        method: 'POST',
+        body: payload.options,
+      })) as { album?: GooglePhotosAlbum };
+    },
+    onSuccess: (response) => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/google-photos/albums'] });
+      if (response.album) {
+        setSelectedAlbum(response.album);
+      }
+      setShareAlbumOpen(false);
+      closeAlbumMenu();
+    },
+  });
+
   const createAlbumMutation = useMutation({
-    mutationFn: async (payload: AlbumFormData) => {
+    mutationFn: async (payload: AlbumFormData & { profession: string }) => {
       return (await apiRequest('/api/google-photos/albums/create', {
         method: 'POST',
         body: payload,
       })) as { album?: GooglePhotosAlbum };
     },
-    onSuccess: () => {
+    onSuccess: async (response, payload) => {
+      if (response.album) {
+        setSelectedAlbum(response.album);
+        if (payload.autoShare) {
+          await shareAlbumMutation.mutateAsync({
+            albumId: response.album.id,
+            options: {
+              isCollaborative: payload.isCollaborative,
+              isCommentable: payload.isCommentable,
+            },
+          });
+        }
+      }
       void queryClient.invalidateQueries({ queryKey: ['/api/google-photos/albums'] });
       setCreateAlbumOpen(false);
       resetAlbumForm();
-    },
-  });
-
-  const shareAlbumMutation = useMutation({
-    mutationFn: async (payload: { albumId: string; options: { isCollaborative: boolean; isCommentable: boolean } }) => {
-      return await apiRequest(`/api/google-photos/albums/${payload.albumId}/share`, {
-        method: 'POST',
-        body: payload.options,
-      });
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['/api/google-photos/albums'] });
-      setShareAlbumOpen(false);
     },
   });
 
@@ -271,6 +301,7 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
 
     createAlbumMutation.mutate({
       ...albumFormData,
+      profession,
       title,
     });
   };
@@ -303,6 +334,33 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
 
   const openInGooglePhotos = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const closeAlbumMenu = () => {
+    setAlbumMenuAnchor(null);
+    setAlbumMenuTarget(null);
+  };
+
+  const openAlbumMenu = (event: React.MouseEvent<HTMLElement>, album: GooglePhotosAlbum) => {
+    event.stopPropagation();
+    setAlbumMenuAnchor(event.currentTarget);
+    setAlbumMenuTarget(album);
+  };
+
+  const openAlbumViewer = (album: GooglePhotosAlbum) => {
+    setSelectedAlbum(album);
+    setSelectedTab(1);
+    closeAlbumMenu();
+  };
+
+  const openShareDialog = (album: GooglePhotosAlbum) => {
+    setSelectedAlbum(album);
+    setShareOptions({
+      isCollaborative: album.shareInfo?.isJoined ?? true,
+      isCommentable: true,
+    });
+    setShareAlbumOpen(true);
+    closeAlbumMenu();
   };
 
   const generateAlbumName = (selectedProjectId: string) => {
@@ -346,12 +404,14 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
           return Number.parseInt(b.mediaItemsCount, 10) - Number.parseInt(a.mediaItemsCount, 10);
         case 'date':
         default:
-          return a.title.localeCompare(b.title);
+          return new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
       }
     });
   }, [albums, filterType, searchTerm, sortBy]);
 
   const selectedAlbumPhotos = selectedAlbum ? albumPhotos : [];
+  const sharedAlbumsCount = filteredAlbums.filter((album) => Boolean(album.shareInfo)).length;
+  const writeableAlbumsCount = filteredAlbums.filter((album) => album.isWriteable).length;
 
   return (
     <Box>
@@ -364,6 +424,9 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Album, deling og mediebibliotek for prosjektarbeidsflyt.
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {connectionStatus.message}
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} alignItems="center">
@@ -395,46 +458,80 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
       {selectedTab === 0 ? (
         <Stack spacing={2}>
           <Paper sx={{ p: 2, ...theming.getThemedCardSx() }}>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
-              <TextField
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Sok album"
-                fullWidth
-                size="small"
-              />
-              <FormControl size="small" sx={{ minWidth: 140 }}>
-                <InputLabel id="filter-label">Filter</InputLabel>
-                <Select
-                  labelId="filter-label"
-                  value={filterType}
-                  label="Filter"
-                  onChange={(event) => setFilterType(event.target.value as typeof filterType)}
-                >
-                  <MenuItem value="all">Alle</MenuItem>
-                  <MenuItem value="shared">Delte</MenuItem>
-                  <MenuItem value="writeable">Redigerbare</MenuItem>
-                  <MenuItem value="readonly">Read-only</MenuItem>
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: 140 }}>
-                <InputLabel id="sort-label">Sorter</InputLabel>
-                <Select
-                  labelId="sort-label"
-                  value={sortBy}
-                  label="Sorter"
-                  onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
-                >
-                  <MenuItem value="date">Dato</MenuItem>
-                  <MenuItem value="name">Navn</MenuItem>
-                  <MenuItem value="count">Antall</MenuItem>
-                </Select>
-              </FormControl>
-              <Tooltip title="Visningsmodus">
-                <IconButton onClick={() => setViewMode((prev) => (prev === 'grid' ? 'list' : 'grid'))}>
-                  {viewMode === 'grid' ? <ViewList /> : <GridView />}
-                </IconButton>
-              </Tooltip>
+            <Stack spacing={2}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
+                <Chip
+                  icon={
+                    <Badge badgeContent={filteredAlbums.length} color="primary">
+                      <Album fontSize="small" />
+                    </Badge>
+                  }
+                  label={`${filteredAlbums.length} album`}
+                  variant="outlined"
+                />
+                <Chip
+                  icon={
+                    <Badge badgeContent={sharedAlbumsCount} color="primary">
+                      <Link fontSize="small" />
+                    </Badge>
+                  }
+                  label={`${sharedAlbumsCount} delte`}
+                  variant="outlined"
+                />
+                <Chip
+                  icon={
+                    <Badge badgeContent={writeableAlbumsCount} color="secondary">
+                      <PersonAdd fontSize="small" />
+                    </Badge>
+                  }
+                  label={`${writeableAlbumsCount} redigerbare`}
+                  variant="outlined"
+                />
+              </Stack>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+                <TextField
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Sok album"
+                  fullWidth
+                  size="small"
+                />
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <InputLabel id="filter-label">Filter</InputLabel>
+                  <Select
+                    labelId="filter-label"
+                    value={filterType}
+                    label="Filter"
+                    onChange={(event) => setFilterType(event.target.value as typeof filterType)}
+                  >
+                    <MenuItem value="all">Alle</MenuItem>
+                    <MenuItem value="shared">Delte</MenuItem>
+                    <MenuItem value="writeable">Redigerbare</MenuItem>
+                    <MenuItem value="readonly">Read-only</MenuItem>
+                  </Select>
+                </FormControl>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Sort color="action" fontSize="small" />
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel id="sort-label">Sorter</InputLabel>
+                    <Select
+                      labelId="sort-label"
+                      value={sortBy}
+                      label="Sorter"
+                      onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+                    >
+                      <MenuItem value="date">Dato</MenuItem>
+                      <MenuItem value="name">Navn</MenuItem>
+                      <MenuItem value="count">Antall</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Stack>
+                <Tooltip title="Visningsmodus">
+                  <IconButton onClick={() => setViewMode((prev) => (prev === 'grid' ? 'list' : 'grid'))}>
+                    {viewMode === 'grid' ? <ViewList /> : <GridView />}
+                  </IconButton>
+                </Tooltip>
+              </Stack>
             </Stack>
           </Paper>
 
@@ -456,6 +553,7 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
                     <Box
                       sx={{
                         height: 180,
+                        position: 'relative',
                         background: album.coverPhotoBaseUrl
                           ? `url(${album.coverPhotoBaseUrl}) center/cover`
                           : 'linear-gradient(45deg, #f0f0f0 30%, #e0e0e0 90%)',
@@ -465,6 +563,13 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
                       }}
                     >
                       {!album.coverPhotoBaseUrl ? <Collections sx={{ fontSize: 48, color: 'text.disabled' }} /> : null}
+                      <IconButton
+                        size="small"
+                        sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'rgba(255,255,255,0.9)' }}
+                        onClick={(event) => openAlbumMenu(event, album)}
+                      >
+                        <MoreVert fontSize="small" />
+                      </IconButton>
                     </Box>
                     <CardContent sx={theming.getThemedCardSx()}>
                       <Typography variant="h6" noWrap sx={{ color: theming.colors.primary }}>
@@ -502,8 +607,7 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
                           size="small"
                           onClick={(event) => {
                             event.stopPropagation();
-                            setSelectedAlbum(album);
-                            setShareAlbumOpen(true);
+                            openShareDialog(album);
                           }}
                         >
                           <Share />
@@ -525,14 +629,16 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
                         <IconButton
                           size="small"
                           onClick={() => {
-                            setSelectedAlbum(album);
-                            setShareAlbumOpen(true);
+                            openShareDialog(album);
                           }}
                         >
                           <Share />
                         </IconButton>
                         <IconButton size="small" onClick={() => openInGooglePhotos(album.productUrl)}>
                           <Launch />
+                        </IconButton>
+                        <IconButton size="small" onClick={(event) => openAlbumMenu(event, album)}>
+                          <MoreVert />
                         </IconButton>
                       </Stack>
                     }
@@ -548,6 +654,61 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
               </List>
             </Card>
           )}
+
+          <Menu anchorEl={albumMenuAnchor} open={Boolean(albumMenuAnchor && albumMenuTarget)} onClose={closeAlbumMenu}>
+            <MenuItem
+              onClick={() => {
+                if (albumMenuTarget) {
+                  openAlbumViewer(albumMenuTarget);
+                }
+              }}
+            >
+              <ListItemIcon>
+                <Collections fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Vis bilder" />
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                if (albumMenuTarget) {
+                  openInGooglePhotos(albumMenuTarget.productUrl);
+                  closeAlbumMenu();
+                }
+              }}
+            >
+              <ListItemIcon>
+                <Launch fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Apne i Google Photos" />
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                if (albumMenuTarget?.shareInfo?.shareableUrl) {
+                  copyShareLink(albumMenuTarget.shareInfo.shareableUrl);
+                  closeAlbumMenu();
+                } else if (albumMenuTarget) {
+                  openShareDialog(albumMenuTarget);
+                }
+              }}
+            >
+              <ListItemIcon>
+                <Link fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary={albumMenuTarget?.shareInfo ? 'Kopier delingslenke' : 'Klargjor delingslenke'} />
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                if (albumMenuTarget) {
+                  openShareDialog(albumMenuTarget);
+                }
+              }}
+            >
+              <ListItemIcon>
+                <PersonAdd fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Del med team" />
+            </MenuItem>
+          </Menu>
         </Stack>
       ) : null}
 
@@ -741,9 +902,35 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Typography variant="body2">{selectedAlbum?.title ?? 'Ingen album valgt'}</Typography>
+            {selectedAlbum?.shareInfo?.shareableUrl ? (
+              <TextField
+                label="Delingslenke"
+                value={selectedAlbum.shareInfo.shareableUrl}
+                fullWidth
+                InputProps={{ readOnly: true }}
+              />
+            ) : null}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={shareOptions.isCollaborative}
+                  onChange={(event) => setShareOptions((prev) => ({ ...prev, isCollaborative: event.target.checked }))}
+                />
+              }
+              label="Tillat samarbeidspartnere"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={shareOptions.isCommentable}
+                  onChange={(event) => setShareOptions((prev) => ({ ...prev, isCommentable: event.target.checked }))}
+                />
+              }
+              label="Tillat kommentarer"
+            />
             <Button
               variant="outlined"
-              startIcon={<ContentCopy />}
+              startIcon={<Link />}
               onClick={() => {
                 if (selectedAlbum?.shareInfo?.shareableUrl) {
                   copyShareLink(selectedAlbum.shareInfo.shareableUrl);
@@ -755,18 +942,15 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profe
             </Button>
             <Button
               variant="contained"
-              startIcon={<Share />}
+              startIcon={selectedAlbum?.shareInfo?.shareableUrl ? <Share /> : <PersonAdd />}
               onClick={() => {
                 if (selectedAlbum) {
-                  handleShareAlbum(selectedAlbum, {
-                    isCollaborative: true,
-                    isCommentable: true,
-                  });
+                  handleShareAlbum(selectedAlbum, shareOptions);
                 }
               }}
               disabled={shareAlbumMutation.isPending || !selectedAlbum}
             >
-              {shareAlbumMutation.isPending ? 'Deler...' : 'Aktiver deling'}
+              {shareAlbumMutation.isPending ? 'Deler...' : selectedAlbum?.shareInfo?.shareableUrl ? 'Oppdater deling' : 'Aktiver deling'}
             </Button>
           </Stack>
         </DialogContent>

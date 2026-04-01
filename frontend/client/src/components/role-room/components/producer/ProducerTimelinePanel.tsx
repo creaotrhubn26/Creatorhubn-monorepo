@@ -459,6 +459,12 @@ export default function ProducerTimelinePanel({
     );
     const workspace = targetEntityType === 'client_material'
       ? 'materials'
+      : targetEntityType === 'storyboard' || targetEntityType === 'storyboard_frame'
+        ? 'storyboard'
+      : targetEntityType === 'manuscript' || targetEntityType === 'manuscript_scene' || targetEntityType === 'dialogue_line'
+        ? 'manuscript'
+      : targetEntityType === 'shotlist' || targetEntityType === 'shot'
+        ? 'shotlist'
       : targetEntityType === 'meeting_decision' || targetEntityType === 'meeting_follow_up'
         ? 'meetings'
       : targetEntityType === 'project_agreement'

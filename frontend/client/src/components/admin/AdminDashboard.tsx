@@ -124,12 +124,6 @@ import CommunityManagementDashboard from './CommunityManagementDashboard';
 import FineTuningMonitoringPanel from './FineTuningMonitoringPanel';
 import OAuthScopeChecker from './OAuthScopeChecker';
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
 // Integration props for unified workflow connectivity
 interface AdminDashboardProps {
   // Integration props for unified workflow connectivity
@@ -149,21 +143,6 @@ interface AdminDashboardProps {
   onTimelineUpdate?: (timeline: any) => void;
   onContractCreate?: (contract: any) => void;
   onEquipmentUpdate?: (equipment: any) => void;
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`admin-tabpanel-${index}`}
-      aria-labelledby={`admin-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p: 0 }}>{children}</Box>}
-    </div>
-  );
 }
 
 // Error Boundary to prevent child component crashes from killing the whole dashboard
@@ -210,6 +189,13 @@ export default function AdminDashboard({
   // Master integration system for "everything interacts with everything"
   const { integration, communication, dataFlow, componentRegistry, auth } =
     useEnhancedMasterIntegration();
+  const {
+    user: authenticatedUser,
+    isAuthenticated,
+    isLoading: userLoading,
+    isAdmin,
+    logout,
+  } = useAuth();
 
   // All hooks at the top
   const [tabValue, setTabValue] = useState(0);
@@ -242,10 +228,36 @@ export default function AdminDashboard({
   const [maintenanceModeDialog, setMaintenanceModeDialog] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
   const [payoutConfirmDialog, setPayoutConfirmDialog] = useState<{ open: boolean; payout: any | null }>({ open: false, payout: null });
+  const [hasSessionToken, setHasSessionToken] = useState<boolean>(() => {
+    try {
+      return Boolean(localStorage.getItem('creatorhub_auth_token'));
+    } catch {
+      return false;
+    }
+  });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isTablet = useMediaQuery(theme.breakpoints.down('lg'));
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'));
+
+  useEffect(() => {
+    const syncSessionTokenState = () => {
+      try {
+        setHasSessionToken(Boolean(localStorage.getItem('creatorhub_auth_token')));
+      } catch {
+        setHasSessionToken(false);
+      }
+    };
+
+    syncSessionTokenState();
+    window.addEventListener('storage', syncSessionTokenState);
+    window.addEventListener('auth-changed', syncSessionTokenState);
+
+    return () => {
+      window.removeEventListener('storage', syncSessionTokenState);
+      window.removeEventListener('auth-changed', syncSessionTokenState);
+    };
+  }, []);
 
   // Register this component in the integration system
   useEffect(() => {
@@ -329,17 +341,16 @@ export default function AdminDashboard({
     return unsubscribe;
   }, [communication, onProjectSelect, onClientSelect]);
 
-  // All useQuery hooks
-  // Authentication disabled - use mock data
-  const currentUser = {
-    id: 'local-admin',
-    sub: 'local-admin',
-    email: 'admin@local.dev',
-    name: 'Local Admin',
-    isAdmin: true
-  };
-  const userLoading = false;
-  const userError = null;
+  const currentUser = authenticatedUser
+    ? {
+        ...authenticatedUser,
+        isAdmin: isAdmin || authenticatedUser.role === 'super_admin',
+      }
+    : null;
+  const userError =
+    !userLoading && (!isAuthenticated || !hasSessionToken || !currentUser)
+      ? 'not-authenticated'
+      : null;
 
   // Push notifications for admin (after currentUser is available)
   const pushUserId = currentUser?.id || currentUser?.sub;
@@ -421,8 +432,7 @@ export default function AdminDashboard({
     retry: false,
   });
 
-  // Event handlers
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const activateTab = (newValue: number) => {
     setTabValue(newValue);
 
     // Broadcast tab change to other components
@@ -456,37 +466,37 @@ export default function AdminDashboard({
   };
 
   const handleMenuItemClick = (index: number) => {
-    setTabValue(index);
+    activateTab(index);
     setAnchorEl(null);
   };
 
   // Admin floating action button handlers (✅ corrected indices)
   const handleUserManagementOpen = () => {
-    setTabValue(1); // Brukere & Roller
+    activateTab(1); // Brukere & Roller
   };
 
   const handleSystemHealthOpen = () => {
-    setTabValue(15); // Drift
+    activateTab(17); // Drift
   };
 
   const handleAnalyticsOpen = () => {
-    setTabValue(0); // Overblikk
+    activateTab(0); // Overblikk
   };
 
   const handleBackupOpen = () => {
-    setTabValue(16); // Backup
+    activateTab(18); // Backup
   };
 
   const handleSecurityAuditOpen = () => {
-    setTabValue(17); // GDPR
+    activateTab(19); // GDPR
   };
 
   const handleBillingOpen = () => {
-    setTabValue(6); // Økonomi
+    activateTab(7); // Økonomi
   };
 
   const handleAutomationsOpen = () => {
-    setTabValue(19); // Automations
+    activateTab(21); // Automations
   };
 
   const handleLogsOpen = () => {
@@ -548,19 +558,19 @@ export default function AdminDashboard({
   };
 
   const handleSystemSettingsOpen = () => {
-    setTabValue(15); // Drift (system settings)
+    activateTab(17); // Drift (system settings)
   };
 
   const handleStrategicNotesOpen = () => {
-    setTabValue(21); // Stor Notatsløsning (Advanced Notes)
+    activateTab(23); // Stor Notatsløsning (Advanced Notes)
   };
 
   const handleMagicCreatorOpen = () => {
-    setTabValue(20); // MagicCreator
+    activateTab(22); // MagicCreator
   };
 
   const handleGoogleWorkspaceResellerOpen = () => {
-    setTabValue(20); // MagicCreator (has Google Workspace content)
+    activateTab(22); // MagicCreator (has Google Workspace content)
   };
 
   // Admin action handlers with unified workflow integration
@@ -860,7 +870,95 @@ export default function AdminDashboard({
     { id: 'feature-customization', label: 'Feature Customization', icon: Settings },
     { id: 'fine-tuning-monitor', label: 'Fine-Tuning Monitor', icon: Psychology },
   ];
-  const isVisualCmsTab = tabValue === 3;
+  const currentTab = adminTabs[tabValue] || adminTabs[0];
+  const adminShellGroups = [
+    {
+      label: 'General',
+      items: adminTabs.filter((tab) =>
+        ['overblikk', 'brukere-roller', 'community', 'innhold-assets', 'kunder-prosjekter', 'kommunikasjon'].includes(tab.id),
+      ),
+    },
+    {
+      label: 'Operations',
+      items: adminTabs.filter((tab) =>
+        ['okonomi', 'price-management', 'reports', 'academy', 'vendor-types', 'profession-types'].includes(tab.id),
+      ),
+    },
+    {
+      label: 'Platform',
+      items: adminTabs.filter((tab) =>
+        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
+      ),
+    },
+    {
+      label: 'Labs',
+      items: adminTabs.filter((tab) =>
+        ['prototype-feedback', 'development-tools', 'automations', 'creatorhub-notes', 'advanced-notes', 'integration-test', 'payment-integration-test', 'google-wallet-membership', 'google-wallet-integration-test', 'google-payments-config', 'email-analytics', 'tester-skills', 'testing-leaderboard', 'test-case-generator', 'marketing', 'feature-customization', 'fine-tuning-monitor'].includes(tab.id),
+      ),
+    },
+  ];
+  const isVisualCmsTab = currentTab.id === 'innhold-assets';
+  const tabIndexFor = (tabId: string) => adminTabs.findIndex((candidate) => candidate.id === tabId);
+  const adminTabDescriptions: Record<string, string> = {
+    overblikk: 'Monitorer aktivitet, nøkkeltall og operativ helse i én arbeidsflate.',
+    'brukere-roller': 'Administrer brukere, roller og tilgangsnivåer for hele plattformen.',
+    community: 'Følg medlemsvekst, moderering og community-aktiviteter.',
+    'innhold-assets': 'Hold kontroll på CreatorHub CMS, assets og publiseringsflyt.',
+    'kunder-prosjekter': 'Se kunder, prosjekter og leveranser i samme operative oversikt.',
+    kommunikasjon: 'Koordiner meldinger, møter og intern kommunikasjon.',
+    'prototype-feedback': 'Samle produktinnsikt, tester og prioritering fra prototyper.',
+    okonomi: 'Følg inntekter, utbetalinger og operativ økonomi.',
+    'price-management': 'Juster prismodeller og kommersielle satser på tvers av tilbud.',
+    reports: 'Analyser utvikling, rapporter og forretningssignaler.',
+    academy: 'Styr Academy-økonomi, instruktører og utbetalingsflyt.',
+    'vendor-types': 'Vedlikehold leverandørtyper og tilbudsstruktur.',
+    'profession-types': 'Administrer profesjoner, roller og kapasitet i CreatorHub.',
+    integrasjoner: 'Konfigurer API-er, OAuth og eksterne systemkoblinger.',
+    'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
+    'centralized-monitoring': 'Se overvåkning, alarmer og kritiske hendelser samlet.',
+    protokollstyring: 'Styr interne protokoller, rutiner og push-konfigurasjon.',
+    'drift-helse': 'Overvåk tjenestehelse, kapasitet og systemstatus.',
+    'system-backup': 'Administrer sikkerhetskopier og gjenoppretting.',
+    'gdpr-compliance': 'Følg personvernkrav, sletterutiner og samsvar.',
+    'development-tools': 'Kjør utviklingsverktøy og kvalitetssjekker fra admin.',
+    automations: 'Administrer bakgrunnsjobber, triggere og automasjoner.',
+    'creatorhub-notes': 'Hold strategiske notater og operativ kunnskap samlet.',
+    'advanced-notes': 'Arbeid med større notatstrukturer og organiserte kunnskapsbaser.',
+    'integration-test': 'Test admin-integrasjoner og verifiser systemflyter.',
+    'payment-integration-test': 'Verifiser betalingsflyt og eksterne systemkoblinger.',
+    'google-wallet-membership': 'Administrer medlemskort og Wallet-opplevelser.',
+    'google-wallet-integration-test': 'Test og verifiser Google Wallet-integrasjonen.',
+    'google-payments-config': 'Vedlikehold Google Payments-konfigurasjon og status.',
+    'email-analytics': 'Følg e-postytelse, leveringsgrad og responsmønstre.',
+    'tester-skills': 'Se og administrer ferdigheter for testteam og kvalitetssikring.',
+    'testing-leaderboard': 'Sammenlign testaktivitet, kvalitet og bidrag.',
+    'test-case-generator': 'Generer og vedlikehold testscenarier og cases.',
+    marketing: 'Planlegg innhold, kunngjøringer og SEO-arbeid.',
+    'feature-customization': 'Tilpass funksjoner og opplevelser på brukernivå.',
+    'fine-tuning-monitor': 'Overvåk fine-tuning-jobber, status og modellkvalitet.',
+  };
+  const currentTabDescription =
+    adminTabDescriptions[currentTab.id] ??
+    `Aktiv arbeidsflate for ${currentTab.label.toLowerCase()} i CreatorHub Admin.`;
+
+  useEffect(() => {
+    if (isMobile) {
+      return undefined;
+    }
+
+    const style = document.createElement('style');
+    style.setAttribute('data-admin-user-shell-style', 'true');
+    style.textContent = `
+      button[aria-label="Åpne chat"] {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => {
+      style.remove();
+    };
+  }, [isMobile, tabValue]);
 
   // Show loading while checking authentication
   if (userLoading) {
@@ -894,7 +992,7 @@ export default function AdminDashboard({
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
             <Button
               variant="contained"
-              onClick={() => (window.location.href = '/api/login')}
+              onClick={() => (window.location.href = '/login?redirect=%2Fadmin')}
               startIcon={<Security />}
             >
               Logg inn
@@ -920,11 +1018,800 @@ export default function AdminDashboard({
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             Pålogget som: {currentUser.email}
           </Typography>
-          <Button variant="outlined" onClick={() => (window.location.href = '/api/logout')}>
+          <Button variant="outlined" onClick={() => { void logout(); }}>
             Logg ut
           </Button>
         </Card>
       </Container>
+    );
+  }
+
+  const sharedPanelProps = {
+    onMeetingCreate,
+    onProjectUpdate,
+    onWorklogCreate,
+    onClientSelect,
+    onClientUpdate,
+    onShowcaseCreate,
+    onFileUpload,
+    onFileDownload,
+    selectedProject,
+    onProjectSelect,
+    selectedClient,
+    onSettingsUpdate,
+    onNotificationCreate,
+  };
+
+  const renderOverviewPanel = () => (
+    <Grid container spacing={{ xs: 2, sm: 3 }}>
+      <Grid item xs={12}>
+        <AdminErrorBoundary>
+          <AdminStats userEmail={currentUser.email} />
+        </AdminErrorBoundary>
+      </Grid>
+      <Grid item xs={12}>
+        <AdminErrorBoundary>
+          <EnhancedActivityFeed
+            maxItems={20}
+            showFilters={true}
+            autoRefresh={true}
+            refreshInterval={30000}
+            enableTimeline={true}
+            enableExport={true}
+            enableNotifications={true}
+          />
+        </AdminErrorBoundary>
+      </Grid>
+    </Grid>
+  );
+
+  const renderAcademyPanel = () => (
+    <Box sx={{ p: 3 }}>
+      <Typography
+        variant="h5"
+        gutterBottom
+        sx={{ display: 'flex', alignItems: 'center', gap: 2 }}
+      >
+        <School sx={{ color: '#ff8c00' }} />
+        Academy Management
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+        Administrer kursutbetalinger til instruktører og plattformgebyrer
+      </Typography>
+
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)',
+              color: 'white',
+            }}
+          >
+            <CardContent>
+              <Typography variant="h6">Plattformgebyrer (20%)</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
+                5,000
+              </Typography>
+              <Typography variant="body2">NOK denne måneden</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+              color: 'white',
+            }}
+          >
+            <CardContent>
+              <Typography variant="h6">Totale Kursregistreringer</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
+                50
+              </Typography>
+              <Typography variant="body2">studenter denne måneden</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #2196f3 0%, #1976d2 100%)',
+              color: 'white',
+            }}
+          >
+            <CardContent>
+              <Typography variant="h6">Aktive Instruktører</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
+                5
+              </Typography>
+              <Typography variant="body2">med aktive kurs</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Card>
+        <CardContent>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              mb: 2,
+            }}
+          >
+            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              💸 Utbetalingsforespørsler
+            </Typography>
+            <Chip label="3 ventende" color="warning" sx={{ fontWeight: 600 }} />
+          </Box>
+
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            <strong>20,500 NOK</strong> venter på godkjenning
+          </Alert>
+
+          <Grid container spacing={2}>
+            {[
+              {
+                id: '1',
+                instructorId: 'instructor-1',
+                name: 'John Doe Photography',
+                amount: 12000,
+                requestedAt: '2025-10-28',
+                bank: '****8901',
+              },
+              {
+                id: '2',
+                instructorId: 'instructor-2',
+                name: 'Jane Smith Video',
+                amount: 5500,
+                requestedAt: '2025-10-29',
+                bank: '****4523',
+              },
+              {
+                id: '3',
+                instructorId: 'instructor-3',
+                name: 'Bob Johnson Music',
+                amount: 3000,
+                requestedAt: '2025-10-30',
+                bank: '****7890',
+              },
+            ].map((payout) => (
+              <Grid item xs={12} key={payout.id}>
+                <Paper
+                  sx={{
+                    p: 2,
+                    bgcolor: 'rgba(255,193,7,0.1)',
+                    border: '1px solid rgba(255,193,7,0.3)',
+                    borderRadius: 2,
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Avatar sx={{ bgcolor: '#ff9800' }}>
+                      <AccountCircle />
+                    </Avatar>
+
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                        {payout.name}
+                      </Typography>
+                      <Typography variant="h6" sx={{ color: '#ff9800', fontWeight: 700 }}>
+                        {payout.amount.toLocaleString('nb-NO')} NOK
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                        <Chip label="bank_transfer" size="small" />
+                        <Chip label={`Forespurt: ${payout.requestedAt}`} size="small" />
+                        <Chip label={`Bank: ${payout.bank}`} size="small" />
+                      </Box>
+                    </Box>
+
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Tooltip title="Godkjenn utbetaling">
+                        <IconButton
+                          color="success"
+                          onClick={() => setPayoutConfirmDialog({ open: true, payout })}
+                        >
+                          <Check />
+                        </IconButton>
+                      </Tooltip>
+
+                      <Tooltip title="Avvis utbetaling">
+                        <IconButton
+                          color="error"
+                          onClick={() => {
+                            setSnackbar({
+                              open: true,
+                              message: '❌ Utbetaling avvist',
+                              severity: 'error',
+                            });
+                          }}
+                        >
+                          <Close />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Button
+            variant="outlined"
+            startIcon={<History />}
+            fullWidth
+            sx={{ mt: 3 }}
+            onClick={() =>
+              setSnackbar({
+                open: true,
+                message: 'Historikk kommer snart...',
+                severity: 'info',
+              })
+            }
+          >
+            Vis historikk
+          </Button>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+
+  const renderProtocolPanel = () => (
+    <Box sx={{ p: 3 }}>
+      <Typography
+        variant="h5"
+        gutterBottom
+        sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}
+      >
+        <Settings />
+        Drift & Innstillinger
+      </Typography>
+
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+          Push-varsler
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Aktiver push-varsler for å motta varsler om systemhendelser, brukeraktivitet og
+          kritiske oppdateringer.
+        </Typography>
+        <PushNotificationSettings userId={pushUserId || 'admin'} />
+      </Box>
+
+      <Divider sx={{ my: 4 }} />
+
+      <ComprehensiveProtocolManager {...sharedPanelProps} />
+    </Box>
+  );
+
+  const renderMarketingPanel = () => (
+    <Box>
+      <Box sx={{ mb: 3 }}>
+        <Typography
+          variant="h5"
+          sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}
+        >
+          <Campaign color="primary" />
+          Marketing Management
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Content Calendar & Announcement Management
+        </Typography>
+      </Box>
+
+      <Tabs
+        value={marketingSubTab}
+        onChange={(_, newValue) => setMarketingSubTab(newValue)}
+        sx={{
+          mb: 3,
+          borderBottom: 1,
+          borderColor: 'divider',
+        }}
+      >
+        <Tab icon={<Event />} iconPosition="start" label="Content Calendar" sx={{ textTransform: 'none' }} />
+        <Tab icon={<Campaign />} iconPosition="start" label="Announcement Creator" sx={{ textTransform: 'none' }} />
+        <Tab icon={<Campaign />} iconPosition="start" label="Social Media" sx={{ textTransform: 'none' }} />
+        <Tab icon={<Search />} iconPosition="start" label="SEO" sx={{ textTransform: 'none' }} />
+      </Tabs>
+
+      {marketingSubTab === 0 && <ContentCalendar />}
+      {marketingSubTab === 1 && <AnnouncementCreator />}
+      {marketingSubTab === 2 && <SocialMediaManager />}
+      {marketingSubTab === 3 && (
+        <Box sx={{ display: 'grid', gap: 2 }}>
+          <MarketingSEODashboard />
+
+          <Card>
+            <CardContent>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  mb: 2,
+                  flexWrap: 'wrap',
+                  gap: 1,
+                }}
+              >
+                <Typography variant="h6">Google Lighthouse Audit</Typography>
+                <Button
+                  variant="contained"
+                  size="small"
+                  disabled={seoAuditLoading}
+                  onClick={async () => {
+                    setSeoAuditLoading(true);
+                    setSeoAuditError(null);
+                    try {
+                      const res = await lighthouseAuditService.runAudit(window.location.href);
+                      setSeoAuditResult({
+                        totalScore: res.totalScore,
+                        performance: res.performance,
+                        accessibility: res.accessibility,
+                        bestPractices: res.bestPractices,
+                        seo: res.seo,
+                        pwa: res.pwa,
+                        recommendations: res.recommendations || [],
+                      });
+                    } catch (e: any) {
+                      setSeoAuditError(e?.message || 'Audit failed');
+                    } finally {
+                      setSeoAuditLoading(false);
+                    }
+                  }}
+                >
+                  {seoAuditLoading ? 'Running…' : 'Run Lighthouse Audit'}
+                </Button>
+              </Box>
+
+              {seoAuditError && <Alert severity="error" sx={{ mb: 2 }}>{seoAuditError}</Alert>}
+
+              {seoAuditResult && (
+                <Box sx={{ display: 'grid', gap: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Score: {seoAuditResult.totalScore} • Perf {seoAuditResult.performance} • Acc{' '}
+                    {seoAuditResult.accessibility} • BP {seoAuditResult.bestPractices} • SEO{' '}
+                    {seoAuditResult.seo} • PWA {seoAuditResult.pwa}
+                  </Typography>
+                  {seoAuditResult.recommendations.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      No recommendations. Great job.
+                    </Typography>
+                  ) : (
+                    seoAuditResult.recommendations
+                      .sort((a, b) => a.priority - b.priority)
+                      .map((rec) => (
+                        <Paper key={rec.id} sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 1,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <Typography sx={{ fontWeight: 600 }}>{rec.title}</Typography>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <Chip label={rec.category} size="small" />
+                              <Chip
+                                label={rec.impact}
+                                size="small"
+                                color={
+                                  rec.impact === 'high'
+                                    ? 'error'
+                                    : rec.impact === 'medium'
+                                      ? 'warning'
+                                      : 'default'
+                                }
+                              />
+                            </Box>
+                          </Box>
+                          <Typography variant="body2" sx={{ mt: 0.5 }}>
+                            {rec.description}
+                          </Typography>
+                          <Typography variant="body2" sx={{ mt: 0.5 }}>
+                            <strong>Fix:</strong> {rec.fix}
+                          </Typography>
+                        </Paper>
+                      ))
+                  )}
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Box>
+      )}
+    </Box>
+  );
+
+  const renderCurrentTabContent = () => {
+    switch (currentTab.id) {
+      case 'overblikk':
+        return renderOverviewPanel();
+      case 'brukere-roller':
+        return <UserManagementPanel {...sharedPanelProps} />;
+      case 'community':
+        return <CommunityManagementDashboard />;
+      case 'innhold-assets':
+        return (
+          <Box>
+            <Box
+              sx={{
+                mb: 2,
+                px: { xs: 1.5, sm: 2.5 },
+                pt: { xs: 1, sm: 1.5 },
+              }}
+            >
+              <Typography
+                variant="h5"
+                sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}
+              >
+                <Folder color="primary" />
+                Visual CMS Dashboard
+              </Typography>
+              <Typography variant="body1" color="text.secondary">
+                API Bank Management, Mock/Real Switching og Deployment Workflow
+              </Typography>
+            </Box>
+            <CreatorhubVisualEditorRefactored />
+          </Box>
+        );
+      case 'kunder-prosjekter':
+        return <CustomerProjectsPanel {...sharedPanelProps} />;
+      case 'kommunikasjon':
+        return <AdminCommunicationPanel {...sharedPanelProps} />;
+      case 'prototype-feedback':
+        return <PrototypeFeedbackPanel {...sharedPanelProps} />;
+      case 'okonomi':
+        return <BillingManagementPanel {...sharedPanelProps} />;
+      case 'price-management':
+        return <PriceManagementDashboard {...sharedPanelProps} />;
+      case 'reports':
+        return (
+          <Box sx={{ display: 'grid', gap: 3 }}>
+            <ReportsPanel {...sharedPanelProps} />
+            <AutomatedBusinessReports />
+          </Box>
+        );
+      case 'academy':
+        return renderAcademyPanel();
+      case 'vendor-types':
+        return (
+          <VendorTypeManager
+            {...sharedPanelProps}
+            onTypeEnabled={(typeId) => {
+              console.log('🏪 Admin Vendor Type Enabled:', typeId);
+
+              if (onNotificationCreate) {
+                onNotificationCreate({
+                  id: `vendor_type_enabled_${Date.now()}`,
+                  type: 'vendor_type_enabled',
+                  title: 'Vendor Type Enabled',
+                  message: `Admin enabled vendor type: ${typeId}`,
+                  priority: 'medium',
+                  timestamp: new Date().toISOString(),
+                  source: 'admin_dashboard',
+                });
+              }
+            }}
+          />
+        );
+      case 'profession-types':
+        return <ProfessionTypeManager />;
+      case 'integrasjoner':
+        return (
+          <Box sx={{ display: 'grid', gap: 3 }}>
+            <IntegrationsManagementPanel {...sharedPanelProps} />
+            <OAuthScopeChecker />
+          </Box>
+        );
+      case 'feature-management':
+        return <FeatureManagement {...sharedPanelProps} />;
+      case 'centralized-monitoring':
+        return <CentralizedMonitoringConsole {...sharedPanelProps} />;
+      case 'protokollstyring':
+        return renderProtocolPanel();
+      case 'drift-helse':
+        return <SystemHealthPanel {...sharedPanelProps} />;
+      case 'system-backup':
+        return <SystemBackupDashboard {...sharedPanelProps} />;
+      case 'gdpr-compliance':
+        return <GDPRCompliancePanel />;
+      case 'development-tools':
+        return <PlaceholderTextScanner {...sharedPanelProps} />;
+      case 'automations':
+        return <AutomationsPanel {...sharedPanelProps} />;
+      case 'creatorhub-notes':
+        return <CreatorHubNotes />;
+      case 'advanced-notes':
+        return <AdvancedNotesManager {...sharedPanelProps} />;
+      case 'integration-test':
+        return <AdminDashboardIntegrationTest />;
+      case 'payment-integration-test':
+        return <PaymentSystemsIntegrationTest />;
+      case 'google-wallet-membership':
+        return <GoogleWalletMembershipManager />;
+      case 'google-wallet-integration-test':
+        return <GoogleWalletIntegrationTest />;
+      case 'google-payments-config':
+        return <GooglePaymentsConfiguration />;
+      case 'email-analytics':
+        return <EmailAnalyticsDashboard />;
+      case 'tester-skills':
+        return <TesterSkillRatings />;
+      case 'testing-leaderboard':
+        return <TestingLeaderboard />;
+      case 'test-case-generator':
+        return <AutomatedTestCaseGenerator />;
+      case 'marketing':
+        return renderMarketingPanel();
+      case 'feature-customization':
+        return (
+          <FeatureCustomizationPanel
+            userId={currentUser?.id || currentUser?.sub || 'admin'}
+          />
+        );
+      case 'fine-tuning-monitor':
+        return <FineTuningMonitoringPanel />;
+      default:
+        return <DocumentationBrowser />;
+    }
+  };
+
+  if (!isMobile) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          bgcolor: '#f4f1ec',
+          px: { md: 2.5, xl: 4 },
+          py: { md: 2.5, xl: 4 },
+        }}
+      >
+        <Box
+          sx={{
+            maxWidth: '1480px',
+            mx: 'auto',
+            minHeight: 'calc(100vh - 40px)',
+            display: 'grid',
+            gridTemplateColumns: '260px minmax(0, 1fr)',
+            bgcolor: '#ffffff',
+            borderRadius: '28px',
+            border: '1px solid #ebe3d8',
+            boxShadow: '0 24px 80px rgba(27, 21, 12, 0.08)',
+            overflow: 'hidden',
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              bgcolor: '#faf8f4',
+              borderRight: '1px solid #eee6db',
+              p: 2.5,
+              minHeight: 0,
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                <Box
+                  sx={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: '12px',
+                    bgcolor: '#181512',
+                    display: 'grid',
+                    placeItems: 'center',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <img
+                    src="/creatorhub-logo-amber.svg"
+                    alt="CreatorHub"
+                    style={{ width: 22, height: 22, objectFit: 'contain' }}
+                  />
+                </Box>
+                <Box>
+                  <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, color: '#1a1713' }}>
+                    CreatorHub
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: '#8b8378' }}>
+                    Admin workspace
+                  </Typography>
+                </Box>
+              </Box>
+              <Typography sx={{ fontSize: '0.72rem', color: '#8b8378', fontWeight: 600 }}>
+                v4.0
+              </Typography>
+            </Box>
+
+            <Box sx={{ mt: 4, flex: 1, overflowY: 'auto', pr: 0.5 }}>
+              {adminShellGroups.map((group) => (
+                <Box key={group.label} sx={{ mb: 3 }}>
+                  <Typography
+                    sx={{
+                      mb: 1,
+                      px: 1.25,
+                      fontSize: '0.72rem',
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                      color: '#9a9185',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {group.label}
+                  </Typography>
+                  <Box sx={{ display: 'grid', gap: 0.5 }}>
+                    {group.items.map((tab) => {
+                      const tabIndex = tabIndexFor(tab.id);
+                      const IconComponent = tab.icon;
+                      const isSelected = tabValue === tabIndex;
+                      return (
+                        <Button
+                          key={tab.id}
+                          fullWidth
+                          onClick={() => activateTab(tabIndex)}
+                          startIcon={<IconComponent sx={{ fontSize: 18 }} />}
+                          sx={{
+                            justifyContent: 'flex-start',
+                            minHeight: 40,
+                            px: 1.25,
+                            borderRadius: '12px',
+                            textTransform: 'none',
+                            fontWeight: isSelected ? 700 : 600,
+                            color: isSelected ? '#181512' : '#6c655b',
+                            bgcolor: isSelected ? '#f1eee8' : 'transparent',
+                            '&:hover': {
+                              bgcolor: isSelected ? '#f1eee8' : '#f5f2ed',
+                            },
+                            '& .MuiButton-startIcon': {
+                              color: isSelected ? '#181512' : '#8b8378',
+                            },
+                          }}
+                        >
+                          {tab.label}
+                        </Button>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+
+            <Box sx={{ pt: 2, borderTop: '1px solid #eee6db', display: 'grid', gap: 0.75 }}>
+              <Button
+                fullWidth
+                onClick={() => setFullscreenChatOpen(true)}
+                startIcon={<Chat sx={{ fontSize: 18 }} />}
+                sx={{
+                  justifyContent: 'flex-start',
+                  borderRadius: '12px',
+                  textTransform: 'none',
+                  color: '#5f574f',
+                  fontWeight: 600,
+                }}
+              >
+                Adminstøtte
+              </Button>
+              <Button
+                fullWidth
+                onClick={() => {
+                  void logout();
+                }}
+                sx={{
+                  justifyContent: 'flex-start',
+                  borderRadius: '12px',
+                  textTransform: 'none',
+                  color: '#5f574f',
+                  fontWeight: 600,
+                }}
+              >
+                Logg ut
+              </Button>
+            </Box>
+          </Box>
+
+          <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            <Box
+              sx={{
+                px: 4,
+                py: 3,
+                borderBottom: '1px solid #f0ebe3',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 2,
+              }}
+            >
+              <Box>
+                <Typography sx={{ fontSize: '0.8rem', color: '#938b80' }}>
+                  CreatorHub Admin {'>'} Workspace {'>'} {currentTab.label}
+                </Typography>
+                <Typography
+                  sx={{
+                    mt: 0.75,
+                    fontSize: '1.05rem',
+                    fontWeight: 700,
+                    color: '#181512',
+                  }}
+                >
+                  {currentTab.label}
+                </Typography>
+                <Typography sx={{ mt: 0.5, fontSize: '0.84rem', color: '#7d7468', maxWidth: 720 }}>
+                  {currentTabDescription}
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                <Chip
+                  label="Administrator"
+                  size="small"
+                  sx={{
+                    bgcolor: '#f6ede0',
+                    color: '#8c4d00',
+                    fontWeight: 700,
+                    borderRadius: '999px',
+                  }}
+                />
+                <Avatar
+                  src={currentUser.picture || undefined}
+                  sx={{ width: 34, height: 34, bgcolor: '#efe2d4', color: '#181512' }}
+                >
+                  {(currentUser.name || currentUser.email || 'A').charAt(0).toUpperCase()}
+                </Avatar>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: '#181512' }}>
+                    {currentUser.name || 'Admin'}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontSize: '0.75rem',
+                      color: '#8f877b',
+                      maxWidth: 240,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {currentUser.email}
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                p: isVisualCmsTab ? 0 : 4,
+                minWidth: 0,
+                overflowY: 'auto',
+                bgcolor: isVisualCmsTab ? '#ffffff' : '#fcfaf7',
+              }}
+            >
+              <Box sx={{ maxWidth: isVisualCmsTab ? '100%' : '1280px', mx: 'auto' }}>
+                <AdminErrorBoundary
+                  key={currentTab.id}
+                  fallback={
+                    <Alert severity="error">
+                      Denne adminflaten kunne ikke lastes. Prøv å oppdatere siden eller bytt fane.
+                    </Alert>
+                  }
+                >
+                  {renderCurrentTabContent()}
+                </AdminErrorBoundary>
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
     );
   }
 
@@ -984,21 +1871,19 @@ export default function AdminDashboard({
 
   return (
     <>
-      {/* Top Navigation Bar - Always visible */}
       <AppBar
         position="sticky"
         elevation={2}
         sx={{
-          backgroundColor: 'background.paper',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
+          backgroundColor: 'rgba(250, 248, 244, 0.96)',
+          borderBottom: '1px solid #e9dece',
+          backdropFilter: 'blur(16px)',
           color: 'text.primary',
         }}
       >
         <Toolbar
           sx={{ px: { xs: 2, sm: 3 }, minHeight: { xs: '56px !important', sm: '64px !important' } }}
         >
-          {/* Logo and Title */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexGrow: 1 }}>
             <img
               src="/creatorhub-logo-amber.svg"
@@ -1035,814 +1920,65 @@ export default function AdminDashboard({
             </Box>
           </Box>
 
-          {/* Mobile Menu Button */}
-          {isMobile && (
-            <IconButton
-              onClick={handleMobileMenuToggle}
-              sx={{
-                color: '#ff8c00',
-                ml: 1,
-                border: '1px solid',
-                borderColor: 'divider',
-              }}
-            >
-              <MenuIcon />
-              <ExpandMore sx={{ ml: 0.5, fontSize: 16 }} />
-            </IconButton>
-          )}
+          <IconButton
+            onClick={handleMobileMenuToggle}
+            sx={{
+              color: '#ff8c00',
+              ml: 1,
+              border: '1px solid #eadfce',
+              bgcolor: '#ffffff',
+            }}
+          >
+            <MenuIcon />
+            <ExpandMore sx={{ ml: 0.5, fontSize: 16 }} />
+          </IconButton>
         </Toolbar>
-
-        {/* Desktop/Tablet Navigation Tabs */}
-        {!isMobile && (
-          <Box sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
-            <Tabs
-              value={tabValue}
-              onChange={handleTabChange}
-              variant="scrollable"
-              scrollButtons="auto"
-              allowScrollButtonsMobile
-              sx={{
-                px: { xs: 2, sm: 3 },
-                '& .MuiTabs-indicator': {
-                  backgroundColor: '#ff8c00',
-                  height: 3,
-                },
-                '& .MuiTabs-scrollButtons': {
-                  color: '#ff8c00',
-                },
-                '& .MuiTab-root': {
-                  minHeight: 48,
-                  textTransform: 'none',
-                },
-              }}
-            >
-              {adminTabs.map((tab, index) => {
-                const IconComponent = tab.icon;
-                return (
-                  <Tab
-                    key={tab.id}
-                    id={`admin-tab-${index}`}
-                    aria-controls={`admin-tabpanel-${index}`}
-                    icon={<IconComponent sx={{ fontSize: 20 }} />}
-                    label={tab.label}
-                    iconPosition="start"
-                    sx={{
-                      color: tabValue === index ? '#ff8c00' : 'text.secondary',
-                      '&.Mui-selected': {
-                        color: '#ff8c00',
-                        fontWeight: 600,
-                      },
-                      minWidth: { xs: 120, sm: 140 },
-                      fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                      gap: 1,
-                    }}
-                  />
-                );
-              })}
-            </Tabs>
-          </Box>
-        )}
       </AppBar>
 
-      {/* Mobile Dropdown Menu */}
       <MobileDropdownMenu />
 
-      <Container
-        maxWidth={isVisualCmsTab ? false : 'xl'}
-        disableGutters={isVisualCmsTab}
-        sx={{
-          width: '100%',
-          py: isVisualCmsTab ? 0 : { xs: 2, sm: 3 },
-          px: isVisualCmsTab ? 0 : { xs: 1, sm: 3 },
-        }}
-      >
-        {/* Tab Panels */}
-        <Box sx={{ mt: { xs: 1, sm: 2 } }}>
-          <TabPanel value={tabValue} index={0}>
-            <Grid container spacing={{ xs: 2, sm: 3 }}>
-              <Grid item xs={12}>
-                <AdminErrorBoundary>
-                  <AdminStats userEmail={currentUser.email} />
-                </AdminErrorBoundary>
-              </Grid>
-
-              {/* Enhanced Activity Feed */}
-              <Grid item xs={12}>
-                <AdminErrorBoundary>
-                  <EnhancedActivityFeed
-                    maxItems={20}
-                    showFilters={true}
-                    autoRefresh={true}
-                    refreshInterval={30000}
-                    enableTimeline={true}
-                    enableExport={true}
-                    enableNotifications={true}
-                  />
-                </AdminErrorBoundary>
-              </Grid>
-            </Grid>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={1}>
-            <UserManagementPanel
-              onMeetingCreate={onMeetingCreate}
-              onProjectUpdate={onProjectUpdate}
-              onWorklogCreate={onWorklogCreate}
-              onClientSelect={onClientSelect}
-              onClientUpdate={onClientUpdate}
-              onShowcaseCreate={onShowcaseCreate}
-              onFileUpload={onFileUpload}
-              onFileDownload={onFileDownload}
-              selectedProject={selectedProject}
-              onProjectSelect={onProjectSelect}
-              selectedClient={selectedClient}
-              onSettingsUpdate={onSettingsUpdate}
-              onNotificationCreate={onNotificationCreate}
-            />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={2}>
-            <CommunityManagementDashboard />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={3}>
+      <Box sx={{ minHeight: '100vh', bgcolor: '#f4f1ec', pb: 12 }}>
+        <Container
+          maxWidth={isVisualCmsTab ? false : 'xl'}
+          disableGutters={isVisualCmsTab}
+          sx={{
+            width: '100%',
+            py: isVisualCmsTab ? 0 : { xs: 2, sm: 3 },
+            px: isVisualCmsTab ? 0 : { xs: 1, sm: 3 },
+          }}
+        >
+          {!isVisualCmsTab && (
             <Box
               sx={{
-                mb: 2,
-                px: { xs: 1.5, sm: 2.5 },
-                pt: { xs: 1, sm: 1.5 },
+                mt: { xs: 1, sm: 2 },
+                mb: 2.5,
+                px: { xs: 0.5, sm: 0 },
               }}
             >
-              <Typography
-                variant="h5"
-                sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}
-              >
-                <Folder color="primary" />
-                Visual CMS Dashboard
+              <Typography sx={{ fontSize: '0.76rem', color: '#938b80', mb: 0.75 }}>
+                CreatorHub Admin {'>'} Workspace {'>'} {currentTab.label}
               </Typography>
-              <Typography variant="body1" color="text.secondary">
-                API Bank Management, Mock/Real Switching og Deployment Workflow
+              <Typography sx={{ fontSize: '1.35rem', fontWeight: 700, color: '#181512' }}>
+                {currentTab.label}
               </Typography>
-            </Box>
-
-            <CreatorhubVisualEditorRefactored />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={4}>
-            <CustomerProjectsPanel
-              onMeetingCreate={onMeetingCreate}
-              onProjectUpdate={onProjectUpdate}
-              onWorklogCreate={onWorklogCreate}
-              onClientSelect={onClientSelect}
-              onClientUpdate={onClientUpdate}
-              onShowcaseCreate={onShowcaseCreate}
-              onFileUpload={onFileUpload}
-              onFileDownload={onFileDownload}
-              selectedProject={selectedProject}
-              onProjectSelect={onProjectSelect}
-              selectedClient={selectedClient}
-              onSettingsUpdate={onSettingsUpdate}
-              onNotificationCreate={onNotificationCreate}
-            />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={4}>
-            <AdminCommunicationPanel
-              onMeetingCreate={onMeetingCreate}
-              onProjectUpdate={onProjectUpdate}
-              onWorklogCreate={onWorklogCreate}
-              onClientSelect={onClientSelect}
-              onClientUpdate={onClientUpdate}
-              onShowcaseCreate={onShowcaseCreate}
-              onFileUpload={onFileUpload}
-              onFileDownload={onFileDownload}
-              selectedProject={selectedProject}
-              onProjectSelect={onProjectSelect}
-              selectedClient={selectedClient}
-              onSettingsUpdate={onSettingsUpdate}
-              onNotificationCreate={onNotificationCreate}
-            />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={5}>
-            <PrototypeFeedbackPanel
-              onMeetingCreate={onMeetingCreate}
-              onProjectUpdate={onProjectUpdate}
-              onWorklogCreate={onWorklogCreate}
-              onClientSelect={onClientSelect}
-              onClientUpdate={onClientUpdate}
-              onShowcaseCreate={onShowcaseCreate}
-              onFileUpload={onFileUpload}
-              onFileDownload={onFileDownload}
-              selectedProject={selectedProject}
-              onProjectSelect={onProjectSelect}
-              selectedClient={selectedClient}
-              onSettingsUpdate={onSettingsUpdate}
-              onNotificationCreate={onNotificationCreate}
-            />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={6}>
-            <BillingManagementPanel
-              onMeetingCreate={onMeetingCreate}
-              onProjectUpdate={onProjectUpdate}
-              onWorklogCreate={onWorklogCreate}
-              onClientSelect={onClientSelect}
-              onClientUpdate={onClientUpdate}
-              onShowcaseCreate={onShowcaseCreate}
-              onFileUpload={onFileUpload}
-              onFileDownload={onFileDownload}
-              selectedProject={selectedProject}
-              onProjectSelect={onProjectSelect}
-              selectedClient={selectedClient}
-              onSettingsUpdate={onSettingsUpdate}
-              onNotificationCreate={onNotificationCreate}
-            />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={7}>
-            <PriceManagementDashboard
-              onMeetingCreate={onMeetingCreate}
-              onProjectUpdate={onProjectUpdate}
-              onWorklogCreate={onWorklogCreate}
-              onClientSelect={onClientSelect}
-              onClientUpdate={onClientUpdate}
-              onShowcaseCreate={onShowcaseCreate}
-              onFileUpload={onFileUpload}
-              onFileDownload={onFileDownload}
-              selectedProject={selectedProject}
-              onProjectSelect={onProjectSelect}
-              selectedClient={selectedClient}
-              onSettingsUpdate={onSettingsUpdate}
-              onNotificationCreate={onNotificationCreate}
-            />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={8}>
-            <AutomatedBusinessReports />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={9}>
-            {/* 🎓 Academy Payout Management */}
-            <Box sx={{ p: 3 }}>
-              <Typography
-                variant="h5"
-                gutterBottom
-                sx={{ display: 'flex', alignItems: 'center', gap: 2 }}
-              >
-                <School sx={{ color: '#ff8c00' }} />
-                Academy Management
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-                Administrer kursutbetalinger til instruktører og plattformgebyrer
-              </Typography>
-
-              {/* Academy Revenue Overview */}
-              <Grid container spacing={3} sx={{ mb: 4 }}>
-                <Grid item xs={12} md={4}>
-                  <Card
-                    sx={{
-                      background: 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)',
-                      color: 'white',
-                    }}
-                  >
-                    <CardContent>
-                      <Typography variant="h6">Plattformgebyrer (20%)</Typography>
-                      <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
-                        {/* TODO: Fetch from API */}
-                        5,000
-                      </Typography>
-                      <Typography variant="body2">NOK denne måneden</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-
-                <Grid item xs={12} md={4}>
-                  <Card
-                    sx={{
-                      background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
-                      color: 'white',
-                    }}
-                  >
-                    <CardContent>
-                      <Typography variant="h6">Totale Kursregistreringer</Typography>
-                      <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
-                        {/* TODO: Fetch from API */}
-                        50
-                      </Typography>
-                      <Typography variant="body2">studenter denne måneden</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-
-                <Grid item xs={12} md={4}>
-                  <Card
-                    sx={{
-                      background: 'linear-gradient(135deg, #2196f3 0%, #1976d2 100%)',
-                      color: 'white',
-                    }}
-                  >
-                    <CardContent>
-                      <Typography variant="h6">Aktive Instruktører</Typography>
-                      <Typography variant="h3" sx={{ fontWeight: 700, my: 2 }}>
-                        {/* TODO: Fetch from API */}5
-                      </Typography>
-                      <Typography variant="body2">med aktive kurs</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-
-              {/* 💸 Payout Approval Queue */}
-              <Card>
-                <CardContent>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      mb: 2,
-                    }}
-                  >
-                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      💸 Utbetalingsforespørsler
-                    </Typography>
-                    <Chip label="3 ventende" color="warning" sx={{ fontWeight: 600 }} />
-                  </Box>
-
-                  <Alert severity="warning" sx={{ mb: 3 }}>
-                    <strong>20,500 NOK</strong> venter på godkjenning
-                  </Alert>
-
-                  {/* Mock payout requests - TODO: Fetch from API */}
-                  <Grid container spacing={2}>
-                    {[
-                      {
-                        id: '1',
-                        instructorId: 'instructor-1',
-                        name: 'John Doe Photography',
-                        amount: 12000,
-                        requestedAt: '2025-10-28',
-                        bank: '****8901',
-                      },
-                      {
-                        id: '2',
-                        instructorId: 'instructor-2',
-                        name: 'Jane Smith Video',
-                        amount: 5500,
-                        requestedAt: '2025-10-29',
-                        bank: '****4523',
-                      },
-                      {
-                        id: '3',
-                        instructorId: 'instructor-3',
-                        name: 'Bob Johnson Music',
-                        amount: 3000,
-                        requestedAt: '2025-10-30',
-                        bank: '****7890',
-                      },
-                    ].map((payout) => (
-                      <Grid item xs={12} key={payout.id}>
-                        <Paper
-                          sx={{
-                            p: 2,
-                            bgcolor: 'rgba(255,193,7,0.1)',
-                            border: '1px solid rgba(255,193,7,0.3)',
-                            borderRadius: 2,
-                          }}
-                        >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <Avatar sx={{ bgcolor: '#ff9800' }}>
-                              <AccountCircle />
-                            </Avatar>
-
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                                {payout.name}
-                              </Typography>
-                              <Typography variant="h6" sx={{ color: '#ff9800', fontWeight: 700 }}>
-                                {payout.amount.toLocaleString('nb-NO')} NOK
-                              </Typography>
-                              <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
-                                <Chip label="bank_transfer" size="small" />
-                                <Chip label={`Forespurt: ${payout.requestedAt}`} size="small" />
-                                <Chip label={`Bank: ${payout.bank}`} size="small" />
-                              </Box>
-                            </Box>
-
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                              <Tooltip title="Godkjenn utbetaling">
-                                <IconButton
-                                  color="success"
-                                  onClick={() => setPayoutConfirmDialog({ open: true, payout })}
-                                >
-                                  <Check />
-                                </IconButton>
-                              </Tooltip>
-
-                              <Tooltip title="Avvis utbetaling">
-                                <IconButton
-                                  color="error"
-                                  onClick={() => {
-                                    // TODO: Implement rejection with Dialog + TextField
-                                    setSnackbar({ open: true, message: '❌ Utbetaling avvist', severity: 'error' });
-                                  }}
-                                >
-                                  <Close />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
-                          </Box>
-                        </Paper>
-                      </Grid>
-                    ))}
-                  </Grid>
-
-                  <Button
-                    variant="outlined"
-                    startIcon={<History />}
-                    fullWidth
-                    sx={{ mt: 3 }}
-                    onClick={() => setSnackbar({ open: true, message: 'Historikk kommer snart...', severity: 'info' })}
-                  >
-                    Vis historikk
-                  </Button>
-                </CardContent>
-              </Card>
-            </Box>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={10}>
-            <VendorTypeManager
-              onTypeEnabled={(typeId) => {
-                // Admin enabled vendor type - logged for analytics
-                console.log('🏪 Admin Vendor Type Enabled:', typeId);
-
-                if (onNotificationCreate) {
-                  onNotificationCreate({
-                    id: `vendor_type_enabled_${Date.now()}`,
-                    type: 'vendor_type_enabled',
-                    title: 'Vendor Type Enabled',
-                    message: `Admin enabled vendor type: ${typeId}`,
-                    priority: 'medium',
-                    timestamp: new Date().toISOString(),
-                    source: 'admin_dashboard',
-                  });
-                }
-              }}
-              onMeetingCreate={onMeetingCreate}
-              onProjectUpdate={onProjectUpdate}
-              onWorklogCreate={onWorklogCreate}
-              onClientSelect={onClientSelect}
-              onClientUpdate={onClientUpdate}
-              onShowcaseCreate={onShowcaseCreate}
-              onFileUpload={onFileUpload}
-              onFileDownload={onFileDownload}
-              selectedProject={selectedProject}
-              onProjectSelect={onProjectSelect}
-              selectedClient={selectedClient}
-              onSettingsUpdate={onSettingsUpdate}
-              onNotificationCreate={onNotificationCreate}
-            />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={11}>
-            <ProfessionTypeManager />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={12}>
-            <OAuthScopeChecker />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={13}>
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h5" gutterBottom>
-                Feature Management
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                This component is temporarily disabled due to syntax errors.
+              <Typography sx={{ mt: 0.5, fontSize: '0.92rem', color: '#6f675d' }}>
+                {currentTabDescription}
               </Typography>
             </Box>
-          </TabPanel>
+          )}
 
-          <TabPanel value={tabValue} index={14}>
-            <CentralizedMonitoringConsole
-              onMeetingCreate={onMeetingCreate}
-              onProjectUpdate={onProjectUpdate}
-              onWorklogCreate={onWorklogCreate}
-              onClientSelect={onClientSelect}
-              onClientUpdate={onClientUpdate}
-              onShowcaseCreate={onShowcaseCreate}
-              onFileUpload={onFileUpload}
-              onFileDownload={onFileDownload}
-              selectedProject={selectedProject}
-              onProjectSelect={onProjectSelect}
-              selectedClient={selectedClient}
-              onSettingsUpdate={onSettingsUpdate}
-              onNotificationCreate={onNotificationCreate}
-            />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={15}>
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h5" gutterBottom sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Settings />
-                Drift & Innstillinger
-              </Typography>
-              
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-                  Push-varsler
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Aktiver push-varsler for å motta varsler om systemhendelser, brukeraktivitet og kritiske oppdateringer.
-                </Typography>
-                <PushNotificationSettings userId={pushUserId || 'admin'} />
-              </Box>
-              
-              <Divider sx={{ my: 4 }} />
-              
-              <ComprehensiveProtocolManager
-                onMeetingCreate={onMeetingCreate}
-                onProjectUpdate={onProjectUpdate}
-                onWorklogCreate={onWorklogCreate}
-                onClientSelect={onClientSelect}
-                onClientUpdate={onClientUpdate}
-                onShowcaseCreate={onShowcaseCreate}
-                onFileUpload={onFileUpload}
-                onFileDownload={onFileDownload}
-                selectedProject={selectedProject}
-                onProjectSelect={onProjectSelect}
-                selectedClient={selectedClient}
-                onSettingsUpdate={onSettingsUpdate}
-                onNotificationCreate={onNotificationCreate}
-              />
-            </Box>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={16}>
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h5" gutterBottom>
-                System Health Panel
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                This component is temporarily disabled due to syntax errors.
-              </Typography>
-            </Box>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={17}>
-            <SystemBackupDashboard
-              onMeetingCreate={onMeetingCreate}
-              onProjectUpdate={onProjectUpdate}
-              onWorklogCreate={onWorklogCreate}
-              onClientSelect={onClientSelect}
-              onClientUpdate={onClientUpdate}
-              onShowcaseCreate={onShowcaseCreate}
-              onFileUpload={onFileUpload}
-              onFileDownload={onFileDownload}
-              selectedProject={selectedProject}
-              onProjectSelect={onProjectSelect}
-              selectedClient={selectedClient}
-              onSettingsUpdate={onSettingsUpdate}
-              onNotificationCreate={onNotificationCreate}
-            />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={18}>
-            <GDPRCompliancePanel />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={19}>
-            <PlaceholderTextScanner
-              onMeetingCreate={onMeetingCreate}
-              onProjectUpdate={onProjectUpdate}
-              onWorklogCreate={onWorklogCreate}
-              onClientSelect={onClientSelect}
-              onClientUpdate={onClientUpdate}
-              onShowcaseCreate={onShowcaseCreate}
-              onFileUpload={onFileUpload}
-              onFileDownload={onFileDownload}
-              selectedProject={selectedProject}
-              onProjectSelect={onProjectSelect}
-              selectedClient={selectedClient}
-              onSettingsUpdate={onSettingsUpdate}
-              onNotificationCreate={onNotificationCreate}
-            />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={20}>
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h5" gutterBottom>
-                Automations Panel
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                This component is temporarily disabled due to syntax errors.
-              </Typography>
-            </Box>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={21}>
-            <CreatorHubNotes />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={22}>
-            <DocumentationBrowser />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={23}>
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h5" gutterBottom>
-                Advanced Notes Manager
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                This component is temporarily disabled due to syntax errors.
-              </Typography>
-            </Box>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={24}>
-            <AdminDashboardIntegrationTest />
-          </TabPanel>
-          <TabPanel value={tabValue} index={25}>
-            <PaymentSystemsIntegrationTest />
-          </TabPanel>
-          <TabPanel value={tabValue} index={26}>
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h5" gutterBottom>
-                Google Wallet Membership Manager
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                This component is temporarily disabled due to syntax errors.
-              </Typography>
-            </Box>
-          </TabPanel>
-          <TabPanel value={tabValue} index={27}>
-            <GoogleWalletIntegrationTest />
-          </TabPanel>
-          <TabPanel value={tabValue} index={28}>
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h5" gutterBottom>
-                Google Payments Configuration
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                This component is temporarily disabled due to syntax errors.
-              </Typography>
-            </Box>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={29}>
-            <EmailAnalyticsDashboard />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={30}>
-            <TesterSkillRatings />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={31}>
-            <TestingLeaderboard />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={32}>
-            <AutomatedTestCaseGenerator />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={33}>
-            {/* Marketing Tab with sub-tabs */}
-            {/* Marketing Tab with sub-tabs */}
-            <Box sx={{ mb: 3 }}>
-              <Typography
-                variant="h5"
-                sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}
-              >
-                <Campaign color="primary" />
-                Marketing Management
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Content Calendar & Announcement Management
-              </Typography>
-            </Box>
-
-            <Tabs
-              value={marketingSubTab}
-              onChange={(_, newValue) => setMarketingSubTab(newValue)}
-              sx={{
-                mb: 3,
-                borderBottom: 1,
-                borderColor: 'divider',
-              }}
-            >
-              <Tab
-                icon={<Event />}
-                iconPosition="start"
-                label="Content Calendar"
-                sx={{ textTransform: 'none' }}
-              />
-              <Tab
-                icon={<Campaign />}
-                iconPosition="start"
-                label="Announcement Creator"
-                sx={{ textTransform: 'none' }}
-              />
-              <Tab
-                icon={<Campaign />}
-                iconPosition="start"
-                label="Social Media"
-                sx={{ textTransform: 'none' }}
-              />
-              <Tab
-                icon={<Search />}
-                iconPosition="start"
-                label="SEO"
-                sx={{ textTransform: 'none' }}
-              />
-            </Tabs>
-
-            {marketingSubTab === 0 && <ContentCalendar />}
-            {marketingSubTab === 1 && <AnnouncementCreator />}
-            {marketingSubTab === 2 && <SocialMediaManager />}
-            {marketingSubTab === 3 && (
-              <Box sx={{ display: 'grid', gap: 2 }}>
-                <MarketingSEODashboard />
-
-                <Card>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-                      <Typography variant="h6">Google Lighthouse Audit</Typography>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        disabled={seoAuditLoading}
-                        onClick={async () => {
-                          setSeoAuditLoading(true);
-                          setSeoAuditError(null);
-                          try {
-                            const res = await lighthouseAuditService.runAudit(window.location.href);
-                            setSeoAuditResult({
-                              totalScore: res.totalScore,
-                              performance: res.performance,
-                              accessibility: res.accessibility,
-                              bestPractices: res.bestPractices,
-                              seo: res.seo,
-                              pwa: res.pwa,
-                              recommendations: res.recommendations || [],
-                            });
-                          } catch (e: any) {
-                            setSeoAuditError(e?.message || 'Audit failed');
-                          } finally {
-                            setSeoAuditLoading(false);
-                          }
-                        }}
-                      >
-                        {seoAuditLoading ? 'Running…' : 'Run Lighthouse Audit'}
-                      </Button>
-                    </Box>
-
-                    {seoAuditError && (
-                      <Alert severity="error" sx={{ mb: 2 }}>{seoAuditError}</Alert>
-                    )}
-
-                    {seoAuditResult && (
-                      <Box sx={{ display: 'grid', gap: 1 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          Score: {seoAuditResult.totalScore} • Perf {seoAuditResult.performance} • Acc {seoAuditResult.accessibility} • BP {seoAuditResult.bestPractices} • SEO {seoAuditResult.seo} • PWA {seoAuditResult.pwa}
-                        </Typography>
-                        {seoAuditResult.recommendations.length === 0 ? (
-                          <Typography variant="body2" color="text.secondary">No recommendations. Great job.</Typography>
-                        ) : (
-                          seoAuditResult.recommendations
-                            .sort((a, b) => a.priority - b.priority)
-                            .map((rec) => (
-                              <Paper key={rec.id} sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
-                                  <Typography sx={{ fontWeight: 600 }}>{rec.title}</Typography>
-                                  <Box sx={{ display: 'flex', gap: 1 }}>
-                                    <Chip label={rec.category} size="small" />
-                                    <Chip label={rec.impact} size="small" color={rec.impact === 'high' ? 'error' : rec.impact === 'medium' ? 'warning' : 'default'} />
-                                  </Box>
-                                </Box>
-                                <Typography variant="body2" sx={{ mt: 0.5 }}>{rec.description}</Typography>
-                                <Typography variant="body2" sx={{ mt: 0.5 }}><strong>Fix:</strong> {rec.fix}</Typography>
-                              </Paper>
-                            ))
-                        )}
-                      </Box>
-                    )}
-                  </CardContent>
-                </Card>
-              </Box>
-            )}
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={34}>
-            <FeatureCustomizationPanel userId={currentUser?.id || currentUser?.sub || 'admin'} />
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={35}>
-            <FineTuningMonitoringPanel />
-          </TabPanel>
-        </Box>
-      </Container>
+          <AdminErrorBoundary
+            key={currentTab.id}
+            fallback={
+              <Alert severity="error">
+                Denne adminflaten kunne ikke lastes. Prøv å oppdatere siden eller velg en annen fane.
+              </Alert>
+            }
+          >
+            {renderCurrentTabContent()}
+          </AdminErrorBoundary>
+        </Container>
+      </Box>
 
       {/* Fullscreen Chat Widget */}
       <CommunicationStatusProvider>

@@ -1140,6 +1140,64 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     return crmCustomerDriveFoldersTableReady;
   };
 
+  let googleDriveProjectsTableReady: Promise<void> | null = null;
+  const ensureGoogleDriveProjectsTable = async () => {
+    if (!googleDriveProjectsTableReady) {
+      googleDriveProjectsTableReady = (async () => {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS google_drive_projects (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id VARCHAR(255) NOT NULL,
+            project_id VARCHAR(255) NOT NULL,
+            drive_folder_id VARCHAR(255) NOT NULL,
+            folder_name VARCHAR(255) NOT NULL,
+            folder_url TEXT,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `);
+        await pool.query(`
+          ALTER TABLE google_drive_projects
+            ADD COLUMN IF NOT EXISTS drive_folder_id VARCHAR(255)
+        `);
+        await pool.query(`
+          ALTER TABLE google_drive_projects
+            ADD COLUMN IF NOT EXISTS folder_name VARCHAR(255)
+        `);
+        await pool.query(`
+          ALTER TABLE google_drive_projects
+            ADD COLUMN IF NOT EXISTS folder_url TEXT
+        `);
+        await pool.query(`
+          ALTER TABLE google_drive_projects
+            ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+        `);
+        await pool.query(`
+          ALTER TABLE google_drive_projects
+            ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        `);
+        await pool.query(`
+          ALTER TABLE google_drive_projects
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        `);
+        await pool.query(`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_google_drive_projects_user_project
+            ON google_drive_projects(user_id, project_id)
+        `);
+        await pool.query(`
+          CREATE INDEX IF NOT EXISTS idx_google_drive_projects_project
+            ON google_drive_projects(project_id)
+        `);
+      })().catch((error) => {
+        googleDriveProjectsTableReady = null;
+        throw error;
+      });
+    }
+
+    return googleDriveProjectsTableReady;
+  };
+
   const mapCrmCustomer = (row: CrmCustomerRow | null | undefined) => {
     if (!row) {
       return null;
@@ -3449,6 +3507,38 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     );
   };
 
+  const upsertProjectDriveFolder = async (params: {
+    userId: string;
+    projectId: string;
+    folderId: string;
+    folderName: string;
+    folderUrl?: string | null;
+    metadata?: Record<string, unknown>;
+  }) => {
+    await ensureGoogleDriveProjectsTable();
+
+    await pool.query(
+      `INSERT INTO google_drive_projects (
+         user_id, project_id, drive_folder_id, folder_name, folder_url, metadata, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW())
+       ON CONFLICT (user_id, project_id)
+       DO UPDATE SET
+         drive_folder_id = EXCLUDED.drive_folder_id,
+         folder_name = EXCLUDED.folder_name,
+         folder_url = EXCLUDED.folder_url,
+         metadata = EXCLUDED.metadata,
+         updated_at = NOW()`,
+      [
+        params.userId,
+        params.projectId,
+        params.folderId,
+        params.folderName,
+        params.folderUrl || null,
+        JSON.stringify(params.metadata || {}),
+      ],
+    );
+  };
+
   const syncCustomerDriveFolderToCrm = async (params: {
     customerId: string;
     folderId: string;
@@ -3767,6 +3857,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const companyNameHint = toNonEmptyString(req.query.companyName) || toNonEmptyString(payload.companyName);
       const quoteFolderName = toNonEmptyString(req.query.quoteFolderName) || toNonEmptyString(payload.quoteFolderName);
       const contractFolderName = toNonEmptyString(req.query.contractFolderName) || toNonEmptyString(payload.contractFolderName);
+      const shouldEnsureProjectFolder = req.method.toUpperCase() === 'POST';
       const customStructure = dedupeStringArray([
         ...toStringArray(payload.customStructure),
         ...toStringArray(req.query.customStructure),
@@ -3793,6 +3884,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         crmCustomerProjectId = toNonEmptyString(crmCustomer?.project_id) || crmCustomerProjectId;
         projectName = projectName || crmCompanyName || crmCustomerName;
       }
+      const resolvedProjectId = projectId || crmCustomerProjectId;
 
       const customerFolder = preferredIdentity.userId && crmCustomer
         ? await ensureCustomerDriveFolder({
@@ -3816,7 +3908,8 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
           }
         | null = null;
 
-      if (preferredIdentity.userId && (projectId || crmCustomerProjectId)) {
+      if (preferredIdentity.userId && resolvedProjectId) {
+        await ensureGoogleDriveProjectsTable();
         const projectMapping = await pool.query<{
           drive_folder_id: string | null;
           folder_name: string | null;
@@ -3827,7 +3920,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
            WHERE user_id = $1 AND project_id = $2
            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
            LIMIT 1`,
-          [preferredIdentity.userId, projectId || crmCustomerProjectId],
+          [preferredIdentity.userId, resolvedProjectId],
         );
 
         const row = projectMapping.rows[0];
@@ -3853,6 +3946,29 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         }
       }
 
+      if (!projectFolder && shouldEnsureProjectFolder && projectName) {
+        projectFolder = await ensureDriveFolder(
+          driveApi,
+          projectName,
+          customerFolder?.id || null,
+        );
+      }
+
+      if (projectFolder && preferredIdentity.userId && resolvedProjectId && shouldEnsureProjectFolder) {
+        await upsertProjectDriveFolder({
+          userId: preferredIdentity.userId,
+          projectId: resolvedProjectId,
+          folderId: projectFolder.id,
+          folderName: projectFolder.name,
+          folderUrl: projectFolder.webViewLink,
+          metadata: {
+            customerFolderId: customerFolder?.id || null,
+            customerFolderName: customerFolder?.name || null,
+            source: customerFolder ? 'customer-context' : 'project-context',
+          },
+        });
+      }
+
       if (!projectFolder && !customerFolder) {
         const customerFolderCandidates = dedupeStringArray([
           crmCompanyName,
@@ -3876,8 +3992,14 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         }
       }
 
-      const primaryContextFolder = customerFolder || projectFolder;
-      const primaryContextScope = customerFolder ? 'customer' : 'project';
+      const primaryContextFolder = projectFolder || customerFolder;
+      const primaryContextScope = projectFolder ? 'project' : customerFolder ? 'customer' : 'project';
+
+      if (projectFolder && shouldEnsureProjectFolder) {
+        await Promise.all(
+          preferredStructure.map(async (folderName) => ensureDriveFolder(driveApi, folderName, projectFolder!.id)),
+        );
+      }
 
       const projectSubfolders = primaryContextFolder
         ? await listDriveSubfolders(driveApi, primaryContextFolder.id)
@@ -3946,7 +4068,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
           label: 'Kundemappe',
           description: customerFolder.name,
           category: 'customer',
-          recommended: true,
+          recommended: !projectFolder,
           folderId: customerFolder.id,
           folderName: customerFolder.name,
           scope: 'customer',
@@ -3959,7 +4081,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
           label: 'Prosjektmappe',
           description: projectFolder.name,
           category: 'project',
-          recommended: !customerFolder,
+          recommended: true,
           folderId: projectFolder.id,
           folderName: projectFolder.name,
           scope: 'project',
@@ -4106,7 +4228,13 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
           modifiedTime: toNonEmptyString(folder.modifiedTime),
         })),
         folderStructure: {
-          source: customerFolder ? 'customer-linked' : customStructure.length > 0 ? 'user-settings' : 'default',
+          source: projectFolder
+            ? 'project-linked'
+            : customerFolder
+              ? 'customer-linked'
+              : customStructure.length > 0
+                ? 'user-settings'
+                : 'default',
           folders: preferredStructure,
           quoteFolderName: quoteFolderName || 'Quotes & Proposals',
           contractFolderName: contractFolderName || 'Contracts & Documents',
@@ -4161,7 +4289,8 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         orderBy: folderId ? 'folder,name_natural,modifiedTime desc' : 'modifiedTime desc,name_natural',
         includeItemsFromAllDrives: true,
         supportsAllDrives: true,
-        fields: 'nextPageToken, files(id,name,mimeType,size,modifiedTime,iconLink,thumbnailLink,webViewLink,webContentLink,parents)',
+        fields:
+          'nextPageToken, files(id,name,mimeType,size,modifiedTime,iconLink,thumbnailLink,webViewLink,webContentLink,parents,version,fileExtension)',
       });
 
       const files = Array.isArray(response.data.files) ? response.data.files : [];
@@ -4180,6 +4309,8 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
           thumbnailLink: toNonEmptyString(file.thumbnailLink),
           webViewLink: toNonEmptyString(file.webViewLink),
           webContentLink: toNonEmptyString(file.webContentLink),
+          version: file.version == null ? null : Number(file.version),
+          fileExtension: toNonEmptyString(file.fileExtension),
           parents: Array.isArray(file.parents) ? file.parents.filter((value): value is string => typeof value === 'string') : [],
         })),
       });
@@ -4221,7 +4352,8 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const fileResponse = await driveApi.files.get({
         fileId,
         supportsAllDrives: true,
-        fields: 'id,name,mimeType,size,modifiedTime,iconLink,thumbnailLink,webViewLink,webContentLink',
+        fields:
+          'id,name,mimeType,size,modifiedTime,iconLink,thumbnailLink,webViewLink,webContentLink,version,fileExtension',
       });
 
       const permissions = await listPermissions();
@@ -4292,7 +4424,8 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         ? await driveApi.files.get({
             fileId,
             supportsAllDrives: true,
-            fields: 'id,name,mimeType,size,modifiedTime,iconLink,thumbnailLink,webViewLink,webContentLink',
+            fields:
+              'id,name,mimeType,size,modifiedTime,iconLink,thumbnailLink,webViewLink,webContentLink,version,fileExtension',
           })
         : fileResponse;
       const refreshedPermissions = sharingUpdated ? await listPermissions() : permissions;
@@ -4316,6 +4449,11 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         thumbnailLink: toNonEmptyString(refreshedFileResponse.data.thumbnailLink),
         webViewLink: toNonEmptyString(refreshedFileResponse.data.webViewLink),
         webContentLink: toNonEmptyString(refreshedFileResponse.data.webContentLink),
+        version:
+          refreshedFileResponse.data.version == null
+            ? null
+            : Number(refreshedFileResponse.data.version),
+        fileExtension: toNonEmptyString(refreshedFileResponse.data.fileExtension),
         shareMode,
         accessState,
         sharingUpdated,
@@ -4439,6 +4577,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       let projectFolder: DriveFolderReference | null = null;
 
       if (preferredIdentity.userId && projectId) {
+        await ensureGoogleDriveProjectsTable();
         const projectMapping = await pool.query<{
           drive_folder_id: string | null;
           folder_name: string | null;

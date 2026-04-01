@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
 import { useTheming } from '../../utils/theming-helper';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
@@ -49,7 +49,6 @@ import {
   AutoFixHigh,
   VideoLibrary,
   MusicNote,
-  Store,
   SmartToy,
   Login,
   Dashboard as DashboardIcon,
@@ -69,12 +68,8 @@ import {
 // Import existing components
 import BusinessBrandingSettings from '../BusinessBrandingSettings';
 import PriceAdministration from '../PriceAdministration';
-import GoogleDriveManager from '../google-drive/GoogleDriveManager';
-import GoogleDriveProjectSync from '../google-drive/GoogleDriveProjectSync';
 import { TutorialFAQIntegration } from '../tutorial/TutorialFAQIntegration';
 import { LightroomInteractiveDemo } from './misc/LightroomInteractiveDemo';
-import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
-import CreatorHubMarketplace from '../resume/ResumeBuilderMarketplace';
 import { usePlatformPricing, platformPricingService } from '../../services/PlatformPricingService';
 import { lightroomIntegrationService } from '../../services/lightroomIntegrationService';
 import { getAllProfessionFeatures } from '@shared/profession-feature-matrix';
@@ -85,7 +80,7 @@ import EnterpriseTeamManagement from '../enterprise/EnterpriseTeamManagement';
 // Import dynamic profession system
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import { useSettings, type UserSettings } from '@/contexts/SettingsContext';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -107,6 +102,14 @@ function TabPanel(props: TabPanelProps) {
     </div>
   );
 }
+
+const readNonEmptyString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
 
 interface UniversalSettingsPanelProps {
   profession: string;
@@ -167,93 +170,52 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
   // Dynamic profession system
   const { professionConfigs, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon } = useDynamicProfessions();
   const { adaptDashboardTitle, adaptTabLabels } = useProfessionAdapter();
-  const { settings, updateSetting } = useSettings();
+  const { settings } = useSettings();
   const publishingSettings = settings.publishing || { enableWebsitePublish: false, websiteTargets: [] };
-  const timelinePrefill = settings.projectCreation.timelinePrefill || {
-    projectName: true,
-    clientName: true,
-    clientEmail: true,
-    clientPhone: true,
-    eventDate: true,
-    venue: true,
-    eventType: true,
-    guestCount: true,
-    location: true,
-    culturalType: true,
-    evendiCoupleId: true,
-  };
-  const timelinePrefillDefaults = {
-    projectName: true,
-    clientName: true,
-    clientEmail: true,
-    clientPhone: true,
-    eventDate: true,
-    venue: true,
-    eventType: true,
-    guestCount: true,
-    location: true,
-    culturalType: true,
-    evendiCoupleId: true,
-  };
-  const timelinePrefillCount = Object.values(timelinePrefill).filter(Boolean).length;
-  const timelinePrefillTotal = Object.keys(timelinePrefillDefaults).length;
-  const timelineSettingsDefaults: UserSettings['weddingTimeline'] = {
-    autoCreateOnProject: false,
-    template: {
-      defaultTemplate: 'standard',
-      autoApplyTemplate: true,
-      allowTemplateSave: true,
-      templateScope: 'profession'
-    },
-    notifications: {
-      clientChanges: true,
-      timelineUpdates: true,
-      autoAdjustments: true,
-      accessGenerated: true
-    },
-    autoAdjust: {
-      enabled: true,
-      minDelayMinutes: 10,
-      requireReason: true,
-      excludeCompleted: true
-    },
-    privacy: {
-      clientAccessDefault: 'read',
-      allowDownload: false,
-      allowSave: false,
-      allowRightClick: false,
-      requireApproval: true
-    },
-    sync: {
-      enableGoogleDriveBackup: true,
-      enableCalendarSync: false,
-      calendarProvider: 'none',
-      twoWaySync: false
-    },
-    viewDefaults: {
-      defaultTab: 'overview',
-      showClientNotes: true,
-      showSpeechMarkers: true
-    }
-  };
-  const timelineSettings = settings.weddingTimeline || timelineSettingsDefaults;
 
   // Master Integration Provider
   const { integration, communication, dataFlow, componentRegistry, features } = useEnhancedMasterIntegration();
 
   // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(profession);
-  const { subscriptionPlans, isLoading: plansLoading } = usePlatformPricing();
+
+  // UNIVERSAL SETTINGS TABS - works for all active professions
+  const universalSettingsTabs = React.useMemo(() => [
+    { id: 'business', label: 'Bedriftsprofil', icon: <Business /> },
+    { id: 'my-features', label: 'Mine Funksjoner', icon: <Extension /> },
+    { id: 'profession-suites', label: 'Profesjons Suiter', icon: <SmartToy /> },
+    ...(profession === 'photographer' ? [{ id: 'photo-integrations', label: 'Foto integrasjoner', icon: <PhotoLibrary /> }] : []),
+    { id: 'faq', label: 'FAQ Veiledninger', icon: <Quiz /> },
+    { id: 'preferences', label: 'Brukerpreferanser', icon: <Settings /> }
+  ], [profession]);
+  const settingsTabValue = Math.min(
+    Math.max(activeTabValue ?? internalSettingsTabValue, 0),
+    Math.max(universalSettingsTabs.length - 1, 0)
+  );
+  const setSettingsTabValue = onTabChange ?? setInternalSettingsTabValue;
+  const getSettingsTabIndex = React.useCallback(
+    (tabId: string) => {
+      const resolvedTabId = tabId === 'backup' || tabId === 'storage' ? 'preferences' : tabId;
+      return universalSettingsTabs.findIndex((tab) => tab.id === resolvedTabId);
+    },
+    [universalSettingsTabs]
+  );
+  const isBusinessTabActive = settingsTabValue === getSettingsTabIndex('business');
+  const isProfessionSuitesTabActive = settingsTabValue === getSettingsTabIndex('profession-suites');
+  const isPhotoIntegrationsTabActive = profession === 'photographer' && settingsTabValue === getSettingsTabIndex('photo-integrations');
+  const { subscriptionPlans, isLoading: plansLoading } = usePlatformPricing({
+    enabled: isBusinessTabActive || isProfessionSuitesTabActive,
+  });
   const lightroomStatusQuery = useQuery({
     queryKey: ['universal-settings-lightroom-status', userId],
-    queryFn: () => lightroomIntegrationService.getStatus(),
-    enabled: profession === 'photographer',
+    queryFn: () => lightroomIntegrationService.getStatus(userId),
+    enabled: isPhotoIntegrationsTabActive,
   });
 
   const handleLightroomDownload = async () => {
     try {
       setLightroomAction('download');
-      await lightroomIntegrationService.downloadPluginPackage(false);
+      await lightroomIntegrationService.downloadPluginPackage(false, userId);
       setSnackbar({
         open: true,
         message: 'CreatorHub Lightroom-installasjonspakken lastes ned.',
@@ -273,7 +235,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
   const handleLightroomSmokeTest = async () => {
     try {
       setLightroomAction('test');
-      await lightroomIntegrationService.runSmokeExport();
+      await lightroomIntegrationService.runSmokeExport(userId);
       await lightroomStatusQuery.refetch();
       setSnackbar({
         open: true,
@@ -294,7 +256,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
   const handleLightroomReconnect = async () => {
     setLightroomAction('reconnect');
     try {
-      await lightroomIntegrationService.startGoogleWorkspaceReconnect();
+      await lightroomIntegrationService.startGoogleWorkspaceReconnect(userId);
     } catch (error) {
       console.error('Lightroom Google reconnect failed:', error);
     } finally {
@@ -327,32 +289,37 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       .slice(0, 6); // Show top 6 premium features
   }, [profession]);
   const { data: paymentHistory } = useQuery({
-    queryKey: ['/api/payments/history,'],
-    queryFn: () => apiRequest('/api/payments/history'),
+    queryKey: ['/api/payments/history', userId],
+    queryFn: () => apiRequest(`/api/payments/history?userId=${encodeURIComponent(userId)}`),
     staleTime: 30000,
+    enabled: isBusinessTabActive,
   });
   const { data: mvaStatus, refetch: refetchMva } = useQuery({
-    queryKey: ['/api/payments/fiken-mva-status'],
-    queryFn: () => apiRequest('/api/payments/fiken-mva-status'),
+    queryKey: ['/api/payments/fiken-mva-status', userId],
+    queryFn: () => apiRequest(`/api/payments/fiken-mva-status?userId=${encodeURIComponent(userId)}`),
     staleTime: 30000,
+    enabled: isBusinessTabActive,
   });
   const { data: skattemeldingStatus, refetch: refetchSkattemelding } = useQuery({
-    queryKey: ['/api/accounting/skattemelding/status'],
-    queryFn: () => apiRequest('/api/accounting/skattemelding/status'),
+    queryKey: ['/api/accounting/skattemelding/status', userId],
+    queryFn: () => apiRequest(`/api/accounting/skattemelding/status?userId=${encodeURIComponent(userId)}`),
     staleTime: 30000,
+    enabled: isBusinessTabActive,
   });
   const { data: currentSubscription, refetch: refetchSubscription } = useQuery({
-    queryKey: ['/api/user/subscription-status'],
-    queryFn: () => apiRequest('/api/user/subscription-status'),
+    queryKey: ['/api/user/subscription-status', userId],
+    queryFn: () => apiRequest(`/api/user/subscription-status?userId=${encodeURIComponent(userId)}`),
     staleTime: 30000,
+    enabled: isBusinessTabActive || isProfessionSuitesTabActive,
   });
   const isEnterprisePlan = (currentSubscription?.selectedPlan || '').toLowerCase() === 'enterprise';
 
   // Fetch user payment methods
   const { data: paymentMethodsData, refetch: refetchPaymentMethods } = useQuery({
-    queryKey: ['/api/user/payment-methods'],
-    queryFn: () => apiRequest('/api/user/payment-methods'),
+    queryKey: ['/api/user/payment-methods', userId],
+    queryFn: () => apiRequest(`/api/user/payment-methods?userId=${encodeURIComponent(userId)}`),
     staleTime: 30000,
+    enabled: isBusinessTabActive,
   });
   const lastFikenSyncDays = React.useMemo(() => {
     const items = paymentHistory?.history as any[] | undefined;
@@ -447,27 +414,6 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
     return displayNames[profession] || config.displayName?.toLowerCase() || 'din profesjon';
 };
 
-  // UNIVERSAL SETTINGS TABS - Fungerer for ALLE profesjoner
-  const universalSettingsTabs = React.useMemo(() => [
-    { id: 'business', label: 'Bedriftsprofil', icon: <Business /> },
-    { id: 'my-features', label: 'Mine Funksjoner', icon: <Extension /> },
-    { id: 'storage', label: 'Google Workspace Lagring', icon: <Storage /> },
-    { id: 'backup', label: 'Backup & Sync', icon: <CloudDone /> },
-    { id: 'profession-suites', label: 'Profesjons Suiter', icon: <SmartToy /> },
-    ...(profession === 'photographer' ? [{ id: 'photo-integrations', label: 'Foto integrasjoner', icon: <PhotoLibrary /> }] : []), // Photo integrations tab is photographer-specific
-    { id: 'marketplace', label: 'Marketplace', icon: <Store /> },
-    { id: 'faq', label: 'FAQ Veiledninger', icon: <Quiz /> },
-    { id: 'preferences', label: 'Brukerpreferanser', icon: <Settings /> }
-  ], [profession]);
-  const settingsTabValue = Math.min(
-    Math.max(activeTabValue ?? internalSettingsTabValue, 0),
-    Math.max(universalSettingsTabs.length - 1, 0)
-  );
-  const setSettingsTabValue = onTabChange ?? setInternalSettingsTabValue;
-  const getSettingsTabIndex = React.useCallback(
-    (tabId: string) => universalSettingsTabs.findIndex((tab) => tab.id === tabId),
-    [universalSettingsTabs]
-  );
   const showLegacyPricingSettings = false;
 
   // Register component with MasterIntegrationProvider
@@ -723,25 +669,6 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       />
                     </Box>
 
-                    {/* Marketplace Section */}
-                    <Box sx={{ mt: 3, p: 2, border: `1px solid #ff9800`, borderRadius: 2, bgcolor: 'rgba(255, 152, 0, 0.05)' }}>
-                      <Typography variant="subtitle1" sx={{ mb: 1, color: '#ff9800', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                        🛒 Marketplace - Utvid med tilleggsfunksjoner
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        Du har allerede Enterprise-planen med alle kjernefunksjoner.
-                        Utforsk Marketplace for spesialiserte tilleggsfunksjoner som kan
-                        kjøpes separat for å tilpasse løsningen til dine spesifikke behov.
-                      </Typography>
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={() => setSettingsTabValue(getSettingsTabIndex('marketplace'))}
-                        sx={{ borderColor: '#ff9800', color: '#ff9800' }}
-                      >
-                        Utforsk Marketplace
-                      </Button>
-                    </Box>
                   </>
                 );
               }
@@ -1291,783 +1218,6 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
         </>
       )}
 
-      {/* Tab 2: Google Workspace Lagring */}
-      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('storage')}>
-        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
-          <MuiCardContent>
-            <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-              <Storage sx={{ color: customBranding.color }} />
-              Google Workspace Lagring
-            </Typography>
-            
-            {/* Visual Storage Overview */}
-            <Box sx={{ mb: 4 }}>
-              <Box sx={{ 
-                p: 3, 
-                bgcolor: 'rgba(66, 133, 244, 0.05)', 
-                border: '1px solid rgba(66, 133, 244, 0.2)',
-                borderRadius: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box 
-                      component="img" 
-                      src="https://fonts.gstatic.com/s/i/productlogos/drive/v16/24px.svg"
-                      alt="Google Workspace"
-                      sx={{ width: 24, height: 24 }}
-                    />
-                    <Typography variant="h6">Lagringsoversikt</Typography>
-                  </Box>
-                  <Chip 
-                    label="15 GB brukt av 100 GB" 
-                    size="small" 
-                    color="success"
-                  />
-                </Box>
-                
-                <Box sx={{ mb: 3 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2">Total lagring</Typography>
-                    <Typography variant="body2" fontWeight="600">15%</Typography>
-                  </Box>
-                  <Box sx={{ 
-                    height: 8, 
-                    bgcolor: 'rgba(0,0,0,0.1)', 
-                    borderRadius: 4,
-                    overflow: 'hidden'
-                  }}>
-                    <Box sx={{ 
-                      width: '15%', 
-                      height: '100%', 
-                      bgcolor: '#4285f4',
-                      transition: 'width 0.3s ease'
-                    }} />
-                  </Box>
-                </Box>
-
-                {/* Storage Breakdown */}
-                <Box sx={{ mt: 3 }}>
-                  <Typography variant="subtitle2" gutterBottom fontWeight="600">Lagringsfordeling</Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <PhotoLibrary fontSize="small" sx={{ color: '#4285f4' }} />
-                        <Typography variant="body2">Showcase & Portfolio</Typography>
-                      </Box>
-                      <Typography variant="body2" fontWeight="600">6.3 GB</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <VideoLibrary fontSize="small" sx={{ color: '#34a853' }} />
-                        <Typography variant="body2">Prosjekter & Filer</Typography>
-                      </Box>
-                      <Typography variant="body2" fontWeight="600">5.8 GB</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Business fontSize="small" sx={{ color: '#fbbc04' }} />
-                        <Typography variant="body2">Bedriftsdokumenter</Typography>
-                      </Box>
-                      <Typography variant="body2" fontWeight="600">2.4 GB</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CloudDownload fontSize="small" sx={{ color: '#ea4335' }} />
-                        <Typography variant="body2">Backups</Typography>
-                      </Box>
-                      <Typography variant="body2" fontWeight="600">0.5 GB</Typography>
-                    </Box>
-                  </Box>
-                  
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    fullWidth
-                    sx={{ mt: 2 }}
-                    onClick={() => window.open('https://drive.google.com/settings/storage', '_blank')}
-                  >
-                    Administrer Google Lagring
-                  </Button>
-                </Box>
-              </Box>
-            </Box>
-
-            {/* Original Component */}
-            <GoogleWorkspaceStorageInfo 
-              userId={userId}
-              profession={profession}
-              compact={false}
-              showDetailsButton={true}
-            />
-          </MuiCardContent>
-        </MuiCard>
-      </TabPanel>
-
-      {/* Tab 3: Backup & Sync */}
-      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('backup')}>
-        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
-          <MuiCardContent>
-            <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-              <CloudDone sx={{ color: customBranding.color }} />
-              Backup & Sync Administrasjon
-            </Typography>
-
-            {/* Google Drive Manager */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Storage sx={{ color: customBranding.color }} />
-                Google Drive Filhåndtering
-              </Typography>
-              <GoogleDriveManager
-                userId={userId}
-                profession={profession}
-                selectedProject={selectedProject}
-                onProjectUpdate={onProjectUpdate}
-              />
-            </Box>
-
-            <Divider sx={{ my: 3 }} />
-
-            {/* Timeline Prefill Preferences */}
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Settings sx={{ color: customBranding.color }} />
-                Timeline Forhandsutfylling
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Velg hvilke felt som skal forhåndsutfylles når du oppretter tidslinjer.
-              </Typography>
-              <FormGroup>
-                {([
-                  { key: 'projectName', label: 'Prosjektnavn' },
-                  { key: 'clientName', label: 'Kundenavn' },
-                  { key: 'clientEmail', label: 'Kunde e-post' },
-                  { key: 'clientPhone', label: 'Kunde telefon' },
-                  { key: 'eventDate', label: 'Dato' },
-                  { key: 'venue', label: 'Lokasjon / Venue' },
-                  { key: 'eventType', label: 'Event type' },
-                  { key: 'guestCount', label: 'Antall gjester' },
-                  { key: 'location', label: 'Prosjektlokasjon' },
-                  { key: 'culturalType', label: 'Kulturtype' },
-                  { key: 'evendiCoupleId', label: 'Evendi couple ID' }
-                ] as Array<{ key: keyof UserSettings['projectCreation']['timelinePrefill']; label: string }>).map((item) => (
-                  <FormControlLabel
-                    key={item.key}
-                    control={
-                      <Switch
-                        checked={timelinePrefill[item.key]}
-                        onChange={(e) =>
-                          updateSetting('projectCreation', {
-                            timelinePrefill: {
-                              ...timelinePrefill,
-                              [item.key]: e.target.checked
-                            }
-                          })
-                        }
-                      />
-                    }
-                    label={item.label}
-                  />
-                ))}
-              </FormGroup>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2, gap: 1, flexWrap: 'wrap' }}>
-                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
-                  Valgt: {timelinePrefillCount}/{timelinePrefillTotal}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() =>
-                      updateSetting('projectCreation', {
-                        timelinePrefill: Object.fromEntries(
-                          Object.keys(timelinePrefill).map(k => [k, true])
-                        ) as UserSettings['projectCreation']['timelinePrefill']
-                      })
-                    }
-                  >
-                    Velg alle
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() =>
-                      updateSetting('projectCreation', {
-                        timelinePrefill: Object.fromEntries(
-                          Object.keys(timelinePrefill).map(k => [k, false])
-                        ) as UserSettings['projectCreation']['timelinePrefill']
-                      })
-                    }
-                  >
-                    Fjern alle
-                  </Button>
-                </Box>
-              </Box>
-            </Box>
-
-              {/* Timeline Settings */}
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Settings sx={{ color: customBranding.color }} />
-                  Timeline Innstillinger
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Velg standarder for auto-oppretting, maler, varsler, auto-justering, personvern og synk.
-                </Typography>
-
-                <FormGroup sx={{ mb: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.autoCreateOnProject}
-                        onChange={(e) => {
-                          const nextValue = e.target.checked;
-                          updateSetting('projectCreation', { autoCreateWeddingTimeline: nextValue });
-                          updateSetting('weddingTimeline', { ...timelineSettings, autoCreateOnProject: nextValue });
-                        }}
-                      />
-                    }
-                    label="Auto-opprett tidslinje ved prosjektopprettelse"
-                  />
-                </FormGroup>
-
-                <Divider sx={{ my: 2 }} />
-
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Maler</Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2, mb: 2 }}>
-                  <TextField
-                    select
-                    label="Standardmal"
-                    value={timelineSettings.template.defaultTemplate}
-                    onChange={(e) =>
-                      updateSetting('weddingTimeline', {
-                        ...timelineSettings,
-                        template: { ...timelineSettings.template, defaultTemplate: e.target.value as UserSettings['weddingTimeline']['template']['defaultTemplate'] }
-                      })
-                    }
-                  >
-                    <MenuItem value="standard">Standard</MenuItem>
-                    <MenuItem value="wedding">Bryllup</MenuItem>
-                    <MenuItem value="corporate">Bedrift</MenuItem>
-                    <MenuItem value="personal">Personlig</MenuItem>
-                  </TextField>
-                  <TextField
-                    select
-                    label="Mal-omfang"
-                    value={timelineSettings.template.templateScope}
-                    onChange={(e) =>
-                      updateSetting('weddingTimeline', {
-                        ...timelineSettings,
-                        template: { ...timelineSettings.template, templateScope: e.target.value as UserSettings['weddingTimeline']['template']['templateScope'] }
-                      })
-                    }
-                  >
-                    <MenuItem value="global">Global</MenuItem>
-                    <MenuItem value="profession">Profesjon</MenuItem>
-                    <MenuItem value="project">Prosjekt</MenuItem>
-                  </TextField>
-                </Box>
-                <FormGroup sx={{ mb: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.template.autoApplyTemplate}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            template: { ...timelineSettings.template, autoApplyTemplate: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Auto-bruk mal ved opprettelse"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.template.allowTemplateSave}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            template: { ...timelineSettings.template, allowTemplateSave: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Tillat lagring av nye maler"
-                  />
-                </FormGroup>
-
-                <Divider sx={{ my: 2 }} />
-
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Varsler</Typography>
-                <FormGroup sx={{ mb: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.notifications.clientChanges}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            notifications: { ...timelineSettings.notifications, clientChanges: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Varsle ved klientendringer"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.notifications.timelineUpdates}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            notifications: { ...timelineSettings.notifications, timelineUpdates: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Varsle ved tidslinjeoppdateringer"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.notifications.autoAdjustments}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            notifications: { ...timelineSettings.notifications, autoAdjustments: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Varsle ved auto-justering"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.notifications.accessGenerated}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            notifications: { ...timelineSettings.notifications, accessGenerated: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Varsle når klienttilgang genereres"
-                  />
-                </FormGroup>
-
-                <Divider sx={{ my: 2 }} />
-
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Auto-justering</Typography>
-                <FormGroup sx={{ mb: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.autoAdjust.enabled}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            autoAdjust: { ...timelineSettings.autoAdjust, enabled: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Aktiver auto-justering"
-                  />
-                </FormGroup>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2, mb: 2 }}>
-                  <TextField
-                    label="Minimum forsinkelse (min)"
-                    type="number"
-                    value={timelineSettings.autoAdjust.minDelayMinutes}
-                    onChange={(e) =>
-                      updateSetting('weddingTimeline', {
-                        ...timelineSettings,
-                        autoAdjust: { ...timelineSettings.autoAdjust, minDelayMinutes: Number(e.target.value) }
-                      })
-                    }
-                    inputProps={{ min: 0 }}
-                  />
-                </Box>
-                <FormGroup sx={{ mb: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.autoAdjust.requireReason}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            autoAdjust: { ...timelineSettings.autoAdjust, requireReason: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Krev årsak for forsinkelse"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.autoAdjust.excludeCompleted}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            autoAdjust: { ...timelineSettings.autoAdjust, excludeCompleted: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Hopp over fullførte hendelser"
-                  />
-                </FormGroup>
-
-                <Divider sx={{ my: 2 }} />
-
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Personvern & Klienttilgang</Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2, mb: 2 }}>
-                  <TextField
-                    select
-                    label="Standard klienttilgang"
-                    value={timelineSettings.privacy.clientAccessDefault}
-                    onChange={(e) =>
-                      updateSetting('weddingTimeline', {
-                        ...timelineSettings,
-                        privacy: { ...timelineSettings.privacy, clientAccessDefault: e.target.value as UserSettings['weddingTimeline']['privacy']['clientAccessDefault'] }
-                      })
-                    }
-                  >
-                    <MenuItem value="off">Av</MenuItem>
-                    <MenuItem value="read">Les</MenuItem>
-                    <MenuItem value="comment">Kommentar</MenuItem>
-                  </TextField>
-                </Box>
-                <FormGroup sx={{ mb: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.privacy.allowDownload}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            privacy: { ...timelineSettings.privacy, allowDownload: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Tillat nedlasting"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.privacy.allowSave}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            privacy: { ...timelineSettings.privacy, allowSave: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Tillat lagring/kopiering"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.privacy.allowRightClick}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            privacy: { ...timelineSettings.privacy, allowRightClick: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Tillat hoyreklikk"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.privacy.requireApproval}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            privacy: { ...timelineSettings.privacy, requireApproval: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Krev godkjenning"
-                  />
-                </FormGroup>
-
-                <Divider sx={{ my: 2 }} />
-
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Synk & Backup</Typography>
-                <FormGroup sx={{ mb: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.sync.enableGoogleDriveBackup}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            sync: { ...timelineSettings.sync, enableGoogleDriveBackup: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Google Drive-backup"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.sync.enableCalendarSync}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            sync: { ...timelineSettings.sync, enableCalendarSync: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Synk til kalender"
-                  />
-                </FormGroup>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2, mb: 2 }}>
-                  <TextField
-                    select
-                    label="Kalenderleverandor"
-                    value={timelineSettings.sync.calendarProvider}
-                    onChange={(e) =>
-                      updateSetting('weddingTimeline', {
-                        ...timelineSettings,
-                        sync: { ...timelineSettings.sync, calendarProvider: e.target.value as UserSettings['weddingTimeline']['sync']['calendarProvider'] }
-                      })
-                    }
-                    disabled={!timelineSettings.sync.enableCalendarSync}
-                  >
-                    <MenuItem value="none">Ingen</MenuItem>
-                    <MenuItem value="google">Google</MenuItem>
-                    <MenuItem value="outlook">Outlook</MenuItem>
-                  </TextField>
-                </Box>
-                <FormGroup sx={{ mb: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.sync.twoWaySync}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            sync: { ...timelineSettings.sync, twoWaySync: e.target.checked }
-                          })
-                        }
-                        disabled={!timelineSettings.sync.enableCalendarSync}
-                      />
-                    }
-                    label="To-veis synk"
-                  />
-                </FormGroup>
-
-                <Divider sx={{ my: 2 }} />
-
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Visning</Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2, mb: 2 }}>
-                  <TextField
-                    select
-                    label="Standard fane"
-                    value={timelineSettings.viewDefaults.defaultTab}
-                    onChange={(e) =>
-                      updateSetting('weddingTimeline', {
-                        ...timelineSettings,
-                        viewDefaults: { ...timelineSettings.viewDefaults, defaultTab: e.target.value as UserSettings['weddingTimeline']['viewDefaults']['defaultTab'] }
-                      })
-                    }
-                  >
-                    <MenuItem value="overview">Oversikt</MenuItem>
-                    <MenuItem value="events">Hendelser</MenuItem>
-                    <MenuItem value="people">Deltakere</MenuItem>
-                    <MenuItem value="client">Klienttilgang</MenuItem>
-                    <MenuItem value="settings">Innstillinger</MenuItem>
-                  </TextField>
-                </Box>
-                <FormGroup>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.viewDefaults.showClientNotes}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            viewDefaults: { ...timelineSettings.viewDefaults, showClientNotes: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Vis klientnotater"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={timelineSettings.viewDefaults.showSpeechMarkers}
-                        onChange={(e) =>
-                          updateSetting('weddingTimeline', {
-                            ...timelineSettings,
-                            viewDefaults: { ...timelineSettings.viewDefaults, showSpeechMarkers: e.target.checked }
-                          })
-                        }
-                      />
-                    }
-                    label="Vis tale-markorer"
-                  />
-                </FormGroup>
-              </Box>
-
-            <Divider sx={{ my: 3 }} />
-
-            {/* Google Drive Project Sync */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CloudDone sx={{ color: customBranding.color }} />
-                Prosjekt Synkronisering
-              </Typography>
-              <GoogleDriveProjectSync
-                userId={userId}
-                profession={profession}
-                selectedProject={selectedProject}
-                onProjectSelect={onProjectSelect}
-              />
-            </Box>
-
-            <Divider sx={{ my: 3 }} />
-
-            {/* Backup Status & Actions */}
-            <Box sx={{
-              p: 3,
-              mb: 3,
-              bgcolor: 'rgba(76, 175, 80, 0.05)',
-              border: '1px solid rgba(76, 175, 80, 0.2)',
-              borderRadius: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Box>
-                  <Typography variant="subtitle1" fontWeight="600">Siste backup</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {new Date().toLocaleDateString('no-NO')} kl. {new Date().toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' })}
-                  </Typography>
-                </Box>
-                <Chip label="✓ Suksess" color="success" size="small" />
-              </Box>
-              
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Button
-                  variant="contained"
-                  size="small"
-                  startIcon={<CloudDownload />}
-                  sx={{ 
-                    bgcolor: customBranding.color, '&:hover': { bgcolor: customBranding.darkColor || customBranding.color }
-                  }}
-                  onClick={async () => {
-                    try {
-                      const response = await fetch('/api/backup/create', {
-                        method: 'POST',
-                        headers: { 'Content-Type' : 'application/json' },
-                        body: JSON.stringify({ userId, profession })
-                      });
-                      if (response.ok) {
-                        setSnackbar({ open: true, message: 'Manuell backup startet!', severity: 'success' });
-                      }
-                    } catch (error) {
-                      console.error('Backup failed:', error);
-                      setSnackbar({ open: true, message: 'Backup feilet. Prøv igjen.', severity: 'error' });
-                    }
-                  }}
-                >
-                  Kjør backup nå
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<Download />}
-                  sx={{ 
-                    borderColor: customBranding.color,
-                    color: customBranding.color
-                  }}
-                  onClick={() => window.open('/api/backup/download/latest', '_blank')}
-                >
-                  Last ned siste backup
-                </Button>
-              </Box>
-            </Box>
-
-            {/* Sync Settings */}
-            <Box sx={{ 
-              p: 3, 
-              mb: 3, 
-              bgcolor: 'rgba(33, 150, 243, 0.05)', 
-              border: '1px solid rgba(33, 150, 243, 0.2)',
-              borderRadius: 2 }}>
-              <Typography variant="subtitle1" gutterBottom fontWeight="600" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CloudDone />
-                Automatisk synkronisering
-              </Typography>
-              
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: 'white', borderRadius: 1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box 
-                      component="img" 
-                      src="https://fonts.gstatic.com/s/i/productlogos/drive/v16/24px.svg"
-                      alt="Google Drive"
-                      sx={{ width: 20, height: 20 }}
-                    />
-                    <Typography variant="body2">Google Drive</Typography>
-                  </Box>
-                  <Chip label="Aktiv" color="success" size="small" />
-                </Box>
-                
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: 'white', borderRadius: 1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box 
-                      component="img" 
-                      src="https://fonts.gstatic.com/s/i/productlogos/photos/v14/24px.svg"
-                      alt="Google Photos"
-                      sx={{ width: 20, height: 20 }}
-                    />
-                    <Typography variant="body2">Google Photos</Typography>
-                  </Box>
-                  <Chip label="Aktiv" color="success" size="small" />
-                </Box>
-                
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: 'white', borderRadius: 1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box 
-                      component="img" 
-                      src="https://fonts.gstatic.com/s/i/productlogos/contacts/v14/24px.svg"
-                      alt="Google Contacts"
-                      sx={{ width: 20, height: 20 }}
-                    />
-                    <Typography variant="body2">Google Contacts</Typography>
-                  </Box>
-                  <Chip label="Inaktiv" size="small" />
-                </Box>
-              </Box>
-              
-              <Alert severity="info" sx={{ mt: 2 }}>
-                Synkronisering kjører automatisk hver 5. minutt. Siste synkronisering: {new Date().toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' })}
-              </Alert>
-            </Box>
-
-            {/* Original GoogleDriveManager Component */}
-            <GoogleDriveManager 
-              userId={userId}
-              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
-            />
-          </MuiCardContent>
-        </MuiCard>
-      </TabPanel>
-
       {/* Tab 4: Profession Suites */}
       <TabPanel value={settingsTabValue} index={getSettingsTabIndex('profession-suites')}>
         <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
@@ -2513,45 +1663,6 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
           </MuiCard>
         </TabPanel>
       )}
-
-      {/* Tab Marketplace: Marketplace - UNIVERSAL FOR ALLE PROFESJONER */}
-      <TabPanel value={settingsTabValue} index={getSettingsTabIndex('marketplace')}>
-        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
-          <MuiCardContent>
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-              <Store sx={{ color: customBranding.color }} />
-              Marketplace - Oppdag Nye Verktøy
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Utvid funksjonaliteten din med kraftige verktøy og integrasjoner. Alle verktøyene er testet og klar for produksjon.
-            </Typography>
-            
-            {/* Featured App: ResumeBuilder */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
-                ⭐ Featured App
-              </Typography>
-              <CreatorHubMarketplace 
-                onSelect={() => {
-                  // Navigate to ResumeBuilder
-                  window.location.href = '/resume-builder';
-                }}
-                showPricing={true}
-              />
-            </Box>
-
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Store sx={{ fontSize: 48, color: alpha(customBranding.color, 0.3), mb: 2 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                Flere verktøy kommer snart
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Vi jobber kontinuerlig med å legge til nye verktøy og integrasjoner.
-              </Typography>
-            </Box>
-          </MuiCardContent>
-        </MuiCard>
-      </TabPanel>
 
       {/* Tab FAQ: FAQ Veiledninger - UNIVERSAL FOR ALLE PROFESJONER */}
       <TabPanel value={settingsTabValue} index={getSettingsTabIndex('faq')}>
@@ -3208,7 +2319,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                       )}
 
                       <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
-                        {plan.name}
+                        {plan.displayName || plan.name}
                       </Typography>
 
                       <Box sx={{ display: 'flex', alignItems: 'baseline', mb: 2 }}>
@@ -3257,7 +2368,9 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                           }
                         }}
                       >
-                        {currentSubscription?.planName === plan.name ? 'Nåværende plan' : 'Velg plan'}
+                        {(currentSubscription?.selectedPlan || '').toLowerCase() === (plan.id || '').toLowerCase()
+                          ? 'Nåværende plan'
+                          : 'Velg plan'}
                       </Button>
                     </Box>
                   ))
@@ -3389,19 +2502,21 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       </Dialog>
 
       {/* Enterprise Inquiry Form Dialog */}
-      <EnterpriseInquiryForm
-        open={showEnterpriseInquiryDialog}
-        onClose={() => setShowEnterpriseInquiryDialog(false)}
-        onSuccess={() => {
-          setShowEnterpriseInquiryDialog(false);
-          // Show success notification or update UI
-        }}
-        existingOrgNumber={currentSubscription?.organizationNumber || ''}
-        existingCompanyName={currentSubscription?.companyName || ''}
-        existingEmail={currentSubscription?.email || ''}
-        existingProfession={profession}
-        currentPlan={currentSubscription?.selectedPlan ||'pro'}
-      />
+      {showEnterpriseInquiryDialog && (
+        <EnterpriseInquiryForm
+          open={showEnterpriseInquiryDialog}
+          onClose={() => setShowEnterpriseInquiryDialog(false)}
+          onSuccess={() => {
+            setShowEnterpriseInquiryDialog(false);
+            // Show success notification or update UI
+          }}
+          existingOrgNumber={currentSubscription?.organizationNumber || ''}
+          existingCompanyName={currentSubscription?.companyName || ''}
+          existingEmail={currentSubscription?.email || ''}
+          existingProfession={profession}
+          currentPlan={currentSubscription?.selectedPlan ||'pro'}
+        />
+      )}
 
       {/* Confirmation Dialog */}
       <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>

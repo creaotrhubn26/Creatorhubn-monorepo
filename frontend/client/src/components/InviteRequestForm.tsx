@@ -102,7 +102,27 @@ interface BrregCompany {
     adresse?: string;
     postnummer?: string;
     poststed?: string;
-};
+  };
+}
+
+function normalizeNorwegianOrganizationNumber(value: string) {
+  return String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 9);
+}
+
+function isValidNorwegianOrganizationNumber(value: string) {
+  if (!/^[0-9]{9}$/.test(value)) return false;
+  const digits = value.split("").map((digit) => Number(digit));
+  const weights = [3, 2, 7, 6, 5, 4, 3, 2];
+  const sum = weights.reduce(
+    (total, weight, index) => total + weight * digits[index],
+    0,
+  );
+  const remainder = 11 - (sum % 11);
+  if (remainder === 11) return digits[8] === 0;
+  if (remainder === 10) return false;
+  return digits[8] === remainder;
 }
 
 export function InviteRequestForm({
@@ -230,6 +250,12 @@ export function InviteRequestForm({
   const [companyLocationData, setCompanyLocationData] = useState<any>(null);
   const [travelCosts, setTravelCosts] = useState<any>(null);
   const [locationLoading, setLocationLoading] = useState(false);
+  const normalizedOrganizationNumber = normalizeNorwegianOrganizationNumber(
+    formData.organizationNumber,
+  );
+  const organizationNumberIsValid = isValidNorwegianOrganizationNumber(
+    normalizedOrganizationNumber,
+  );
 
   const submitMutation = useMutation({
     mutationFn: async (data: InviteRequestData) => {
@@ -433,7 +459,7 @@ export function InviteRequestForm({
       return formData.firstName && formData.lastName && formData.email && formData.profession;
     }
     if (step === 1) {
-      return formData.companyName && formData.organizationNumber;
+      return formData.companyName && organizationNumberIsValid;
     }
     if (isEnterprisePlan && step === 2) {
       return teamSize >= 3;
@@ -638,6 +664,12 @@ export function InviteRequestForm({
                     Bedriftsinformasjon (obligatorisk)
                   </Typography>
 
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    Organisasjonsnummer er obligatorisk. CreatorHub validerer mot
+                    Brønnøysundregistrene og kjører automatisk Proff-screening
+                    før admin kan behandle forespørselen.
+                  </Alert>
+
                   <Box sx={{ mb: 2 }}>
                     <Autocomplete
                       options={brregCompanies}
@@ -722,11 +754,30 @@ export function InviteRequestForm({
                   <TextField
                     label="Organisasjonsnummer"
                     value={formData.organizationNumber}
-                    onChange={handleInputChange("organizationNumber")}
+                    onChange={(event) => {
+                      const nextValue = normalizeNorwegianOrganizationNumber(
+                        event.target.value,
+                      );
+                      setFormData((prev) => ({
+                        ...prev,
+                        organizationNumber: nextValue,
+                      }));
+                    }}
                     required
                     fullWidth
                     sx={{ mb: 2 }}
-                    helperText={selectedCompany ? "Auto-utfylt fra BRREG" : "9-sifret organisasjonsnummer"}
+                    error={
+                      Boolean(formData.organizationNumber) &&
+                      !organizationNumberIsValid
+                    }
+                    helperText={
+                      selectedCompany
+                        ? "Auto-utfylt fra BRREG og screenes automatisk."
+                        : formData.organizationNumber &&
+                            !organizationNumberIsValid
+                          ? "Må være et gyldig 9-sifret norsk organisasjonsnummer."
+                          : "9-sifret organisasjonsnummer. Dette screenes automatisk via BRREG og Proff."
+                    }
                     InputProps={{
                       readOnly: !!selectedCompany,
                       sx: { backgroundColor: selectedCompany ? "action.hover" : "inherit", opacity: selectedCompany ? 0.7 : 1 }}}

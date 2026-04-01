@@ -3,6 +3,7 @@ import { Box, Button, IconButton, Slider, Stack, Typography, type SxProps, type 
 import {
   Fullscreen,
   FullscreenExit,
+  OpenInNew,
   Pause,
   PlayArrow,
   Subtitles,
@@ -14,6 +15,9 @@ import {
 interface AcademyPlayerStudioProps {
   src: string;
   poster?: string;
+  sourceType?: 'direct' | 'google-drive-video' | 'google-vids' | 'external-link';
+  externalUrl?: string;
+  externalLabel?: string;
   captionTrackSrc?: string;
   captionTrackLang?: string;
   captionTrackLabel?: string;
@@ -97,6 +101,9 @@ const writePlayerPrefs = (prefs: {
 function AcademyPlayerStudio({
   src,
   poster,
+  sourceType,
+  externalUrl,
+  externalLabel,
   captionTrackSrc,
   captionTrackLang = 'en',
   captionTrackLabel = 'Captions',
@@ -132,6 +139,40 @@ function AcademyPlayerStudio({
   const [captionsEnabled, setCaptionsEnabled] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const normalizedSrc = String(src || '').trim();
+  const inferredSourceType = useMemo(() => {
+    if (
+      sourceType === 'google-vids' ||
+      sourceType === 'external-link' ||
+      sourceType === 'google-drive-video'
+    ) {
+      return sourceType;
+    }
+
+    const lowered = normalizedSrc.toLowerCase();
+    if (!lowered) return 'direct';
+    if (
+      lowered.includes('drive.google.com/uc?') ||
+      lowered.includes('drive.google.com/uc&') ||
+      lowered.includes('googleusercontent.com') ||
+      lowered.includes('driveusercontent.google.com')
+    ) {
+      return 'google-drive-video';
+    }
+    if (
+      lowered.includes('docs.google.com') ||
+      lowered.includes('drive.google.com') ||
+      lowered.includes('vids.google.com') ||
+      lowered.includes('youtube.com') ||
+      lowered.includes('youtu.be') ||
+      lowered.includes('vimeo.com')
+    ) {
+      return 'external-link';
+    }
+    return 'direct';
+  }, [normalizedSrc, sourceType]);
+  const shouldRenderNativeVideo = inferredSourceType !== 'google-vids' && inferredSourceType !== 'external-link';
+  const resolvedExternalUrl = String(externalUrl || src || '').trim();
 
   const resolvedContainerSx: SxProps<Theme> = Array.isArray(containerSx)
     ? ([defaultContainerSx, ...containerSx] as SxProps<Theme>)
@@ -207,6 +248,12 @@ function AcademyPlayerStudio({
       track.mode = captionsEnabled ? 'showing' : 'hidden';
     });
   }, [captionTrackSrc, captionsEnabled, src, videoRef]);
+
+  useEffect(() => {
+    if (shouldRenderNativeVideo) return;
+    setIsPlaying(false);
+    setPosterVisible(Boolean(poster));
+  }, [poster, shouldRenderNativeVideo]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -336,7 +383,7 @@ function AcademyPlayerStudio({
     emitControlAction('fullscreen-enter');
   }, [emitControlAction]);
 
-  const showStudioControls = studioControls && !controls;
+  const showStudioControls = studioControls && !controls && shouldRenderNativeVideo;
   const hotkeysEnabled = showStudioControls && (isFocused || isHovered);
 
   const handleHotkey = useCallback(
@@ -478,57 +525,104 @@ function AcademyPlayerStudio({
           }}
         />
       )}
-      <video
-        ref={videoRef || fallbackVideoRef}
-        src={src}
-        poster={poster}
-        muted={Boolean(muted ?? isMuted)}
-        autoPlay={autoPlay}
-        loop={loop}
-        controls={controls}
-        onLoadedMetadata={onLoadedMetadata}
-        onTimeUpdate={(event) => {
-          setCurrentTime(Math.max(0, event.currentTarget.currentTime || 0));
-          onTimeUpdate?.(event);
-        }}
-        onPlay={(event) => {
-          setPosterVisible(false);
-          setIsPlaying(true);
-          emitControlAction('play');
-          onPlay?.(event);
-        }}
-        onPause={(event) => {
-          if (poster) setPosterVisible(true);
-          setIsPlaying(false);
-          emitControlAction('pause');
-          onPause?.(event);
-        }}
-        onDurationChange={(event) => {
-          setDuration(Math.max(0, Number(event.currentTarget.duration) || 0));
-        }}
-        style={{
-          position: 'relative',
-          zIndex: 0,
-          width: '100%',
-          height: '100%',
-          objectFit,
-          objectPosition,
-          display: 'block',
-          transform: 'none',
-          ...videoStyle,
-        }}
-      >
-        {captionTrackSrc ? (
-          <track
-            key={`${captionTrackSrc}:${captionTrackLang}`}
-            kind="captions"
-            src={captionTrackSrc}
-            srcLang={captionTrackLang}
-            label={captionTrackLabel}
-          />
-        ) : null}
-      </video>
-      {children ? (
+      {shouldRenderNativeVideo ? (
+        <video
+          ref={videoRef || fallbackVideoRef}
+          src={src}
+          poster={poster}
+          muted={Boolean(muted ?? isMuted)}
+          autoPlay={autoPlay}
+          loop={loop}
+          controls={controls}
+          onLoadedMetadata={onLoadedMetadata}
+          onTimeUpdate={(event) => {
+            setCurrentTime(Math.max(0, event.currentTarget.currentTime || 0));
+            onTimeUpdate?.(event);
+          }}
+          onPlay={(event) => {
+            setPosterVisible(false);
+            setIsPlaying(true);
+            emitControlAction('play');
+            onPlay?.(event);
+          }}
+          onPause={(event) => {
+            if (poster) setPosterVisible(true);
+            setIsPlaying(false);
+            emitControlAction('pause');
+            onPause?.(event);
+          }}
+          onDurationChange={(event) => {
+            setDuration(Math.max(0, Number(event.currentTarget.duration) || 0));
+          }}
+          style={{
+            position: 'relative',
+            zIndex: 0,
+            width: '100%',
+            height: '100%',
+            objectFit,
+            objectPosition,
+            display: 'block',
+            transform: 'none',
+            ...videoStyle,
+          }}
+        >
+          {captionTrackSrc ? (
+            <track
+              key={`${captionTrackSrc}:${captionTrackLang}`}
+              kind="captions"
+              src={captionTrackSrc}
+              srcLang={captionTrackLang}
+              label={captionTrackLabel}
+            />
+          ) : null}
+        </video>
+      ) : (
+        <Box
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            width: '100%',
+            height: '100%',
+            display: 'grid',
+            placeItems: 'center',
+            px: 2,
+            textAlign: 'center',
+            background:
+              'radial-gradient(circle at 74% 20%, rgba(248,179,33,0.22), rgba(9,12,18,0) 44%), linear-gradient(145deg, rgba(15,19,29,0.96), rgba(8,11,18,0.98))',
+          }}
+        >
+          <Stack spacing={1.1} alignItems="center" sx={{ maxWidth: 420 }}>
+            <Typography sx={{ fontSize: 20, fontWeight: 700, color: '#edf0f7' }}>
+              {inferredSourceType === 'google-vids'
+                ? 'Google Vids source'
+                : 'External video source'}
+            </Typography>
+            <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.72)', lineHeight: 1.5 }}>
+              {inferredSourceType === 'google-vids'
+                ? 'Denne kilden spilles ikke direkte i Academy-playeren. Aapne originalen i Google Vids eller koble en eksportert MP4 for innebygget avspilling.'
+                : 'Denne videokilden maa aapnes eksternt eller erstattes med en direkte videofil for innebygget avspilling.'}
+            </Typography>
+            {resolvedExternalUrl ? (
+              <Button
+                variant="contained"
+                startIcon={<OpenInNew />}
+                onClick={() => {
+                  window.open(resolvedExternalUrl, '_blank', 'noopener,noreferrer');
+                }}
+                sx={{
+                  textTransform: 'none',
+                  color: '#0f0f0f',
+                  fontWeight: 700,
+                  background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                }}
+              >
+                {externalLabel || 'Open source'}
+              </Button>
+            ) : null}
+          </Stack>
+        </Box>
+      )}
+      {shouldRenderNativeVideo && children ? (
         <Box
           sx={{
             position: 'absolute',

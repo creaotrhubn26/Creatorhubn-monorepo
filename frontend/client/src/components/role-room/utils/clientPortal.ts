@@ -1,4 +1,13 @@
-export type ClientPortalWorkspace = 'brief' | 'materials' | 'brand' | 'accounts' | 'delivery' | 'meetings';
+export type ClientPortalWorkspace =
+  | 'brief'
+  | 'materials'
+  | 'storyboard'
+  | 'manuscript'
+  | 'shotlist'
+  | 'brand'
+  | 'accounts'
+  | 'delivery'
+  | 'meetings';
 export type ClientPortalTab = 'media' | 'reviews' | 'export';
 
 export interface ClientPortalWorkspaceFocus {
@@ -18,7 +27,17 @@ export interface ClientPortalIntent {
   artifactId?: string;
 }
 
-const CLIENT_PORTAL_WORKSPACES: readonly ClientPortalWorkspace[] = ['brief', 'materials', 'brand', 'accounts', 'delivery', 'meetings'];
+const CLIENT_PORTAL_WORKSPACES: readonly ClientPortalWorkspace[] = [
+  'brief',
+  'materials',
+  'storyboard',
+  'manuscript',
+  'shotlist',
+  'brand',
+  'accounts',
+  'delivery',
+  'meetings',
+];
 const CLIENT_PORTAL_TABS: readonly ClientPortalTab[] = ['media', 'reviews', 'export'];
 
 const hasText = (value: string | null | undefined): value is string => (

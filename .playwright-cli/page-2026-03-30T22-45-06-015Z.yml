@@ -1,0 +1,10 @@
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - img [ref=e5]
+    - heading "Autentisering påkrevd" [level=5] [ref=e7]
+    - paragraph [ref=e8]: Du må logge inn for å få tilgang til admin-panelet.
+    - button "Logg inn" [ref=e10] [cursor=pointer]:
+      - img [ref=e12]
+      - text: Logg inn
+  - button "Åpne chat" [ref=e14] [cursor=pointer]:
+    - img [ref=e15]

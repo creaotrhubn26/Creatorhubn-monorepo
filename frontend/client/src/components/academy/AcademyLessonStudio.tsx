@@ -11,6 +11,7 @@ import {
   Button,
   Checkbox,
   Chip,
+  CircularProgress,
   Divider,
   Dialog,
   DialogActions,
@@ -30,24 +31,32 @@ import {
 } from "@mui/material";
 import {
   Add,
+  AutoAwesome,
   Campaign,
   CheckCircleOutline,
+  CloudDone,
   Description,
   DragIndicator,
   Edit,
+  FolderOpen,
   Image as ImageIcon,
+  InsertDriveFile,
   Link as LinkIcon,
   MailOutline,
   MusicNote,
   Movie,
   NotificationsNone,
+  OpenInNew,
   Pause,
   PlayArrow,
+  Refresh,
   Save,
   Search,
+  SmartToy,
   Subtitles,
   VideoLibrary,
 } from "@mui/icons-material";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   useAcademy,
@@ -61,13 +70,24 @@ import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
 import AcademyLeftSidebar from "./AcademyLeftSidebar";
 import AcademyPlayerStudio from "./AcademyPlayerStudio";
-import { probeVideoDurationSeconds } from "./academyVideoSourceUtils";
+import {
+  getAcademyPreferredPlaybackUrl,
+  getAcademyVideoExternalLink,
+  getAcademyVideoSourceType,
+  probeVideoDurationSeconds,
+} from "./academyVideoSourceUtils";
 import {
   buildUrlMediaFingerprint,
   normalizeMediaAssetId,
   normalizeMediaVersion,
   resolveLinkedVideoVersionState,
 } from "@/utils/academyMediaLinkUtils";
+import {
+  NOTEBOOK_LM_HOME_URL,
+  academyNotebookLmService,
+  type AcademyNotebookLmCourseSnapshot,
+  type AcademyNotebookLmResourceSnapshot,
+} from "@/services/academyNotebookLmService";
 
 interface AcademyLessonStudioProps {
   courseId?: string;
@@ -89,6 +109,15 @@ interface LessonResourceItem {
   type: "video" | "pdf" | "link" | "image" | "audio";
   url: string;
   duration?: number;
+  videoSourceType?:
+    | "direct"
+    | "google-drive-video"
+    | "google-vids"
+    | "external-link";
+  googleDriveFileId?: string;
+  googleDriveMimeType?: string;
+  googleDriveWebViewLink?: string;
+  googleDrivePlaybackUrl?: string;
   mediaAssetId?: string;
   mediaVersion?: number;
   mediaUpdatedAt?: string;
@@ -102,6 +131,11 @@ interface MediaResourceOption {
   url: string;
   duration?: number;
   sourceLabel: string;
+  videoSourceType?: LessonResourceItem["videoSourceType"];
+  googleDriveFileId?: string;
+  googleDriveMimeType?: string;
+  googleDriveWebViewLink?: string;
+  googleDrivePlaybackUrl?: string;
   mediaAssetId?: string;
   mediaVersion?: number;
   mediaUpdatedAt?: string;
@@ -262,6 +296,11 @@ const lessonToResourceList = (lesson: Lesson | null): LessonResourceItem[] => {
         url: resource.url || "#",
         duration:
           resourceType === "video" ? Number(lesson.duration || 0) : undefined,
+        videoSourceType: resource.videoSourceType,
+        googleDriveFileId: resource.googleDriveFileId,
+        googleDriveMimeType: resource.googleDriveMimeType,
+        googleDriveWebViewLink: resource.googleDriveWebViewLink,
+        googleDrivePlaybackUrl: resource.googleDrivePlaybackUrl,
         mediaVersion: resource.mediaVersion
           ? normalizeMediaVersion(resource.mediaVersion, 1)
           : undefined,
@@ -307,11 +346,70 @@ const resourceListsEqual = (
       item.type === other.type &&
       item.url === other.url &&
       item.duration === other.duration &&
+      item.videoSourceType === other.videoSourceType &&
+      item.googleDriveFileId === other.googleDriveFileId &&
+      item.googleDriveMimeType === other.googleDriveMimeType &&
+      item.googleDriveWebViewLink === other.googleDriveWebViewLink &&
+      item.googleDrivePlaybackUrl === other.googleDrivePlaybackUrl &&
       item.mediaVersion === other.mediaVersion &&
       item.mediaUpdatedAt === other.mediaUpdatedAt &&
       item.mediaFingerprint === other.mediaFingerprint
     );
   });
+};
+
+type NotebookLmResourceLike = {
+  id?: string;
+  title?: string;
+  type?: string;
+  url?: string;
+  description?: string;
+  videoSourceType?:
+    | "direct"
+    | "google-drive-video"
+    | "google-vids"
+    | "external-link";
+  googleDriveWebViewLink?: string;
+  googleDrivePlaybackUrl?: string;
+};
+
+const formatNotebookLmTimestamp = (
+  value: string | null | undefined,
+  fallback: string,
+): string => {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return fallback;
+  return parsed.toLocaleString("no-NO");
+};
+
+const toNotebookLmResourceSnapshot = (
+  resource: NotebookLmResourceLike,
+  fallbackId: string,
+): AcademyNotebookLmResourceSnapshot | null => {
+  const title = String(resource.title || resource.description || "").trim();
+  const url = String(resource.url || "").trim();
+  const googleDriveWebViewLink = String(
+    resource.googleDriveWebViewLink || "",
+  ).trim();
+  const googleDrivePlaybackUrl = String(
+    resource.googleDrivePlaybackUrl || "",
+  ).trim();
+
+  if (!title || (!url && !googleDriveWebViewLink && !googleDrivePlaybackUrl)) {
+    return null;
+  }
+
+  return {
+    id: String(resource.id || fallbackId),
+    title,
+    type: String(resource.type || "link"),
+    url: url || undefined,
+    description: String(resource.description || "").trim() || undefined,
+    videoSourceType: resource.videoSourceType,
+    googleDriveWebViewLink: googleDriveWebViewLink || undefined,
+    googleDrivePlaybackUrl: googleDrivePlaybackUrl || undefined,
+  };
 };
 
 function AcademyLessonStudio({
@@ -320,6 +418,7 @@ function AcademyLessonStudio({
   onSave,
   onCancel,
 }: AcademyLessonStudioProps) {
+  const queryClient = useQueryClient();
   const [location, setLocation] = useLocation();
   const { state, getCourse, updateCourse, setCurrentCourse, setCurrentLesson } =
     useAcademy();
@@ -473,8 +572,12 @@ function AcademyLessonStudio({
   );
 
   const lessonVideoState = useMemo(() => {
-    const skillVideoUrl = String(activeLesson?.videoUrl || "").trim();
-    const courseVideoUrl = String(activeCourse?.videoUrl || "").trim();
+    const skillVideoUrl =
+      getAcademyPreferredPlaybackUrl(activeLesson) ||
+      String(activeLesson?.videoUrl || "").trim();
+    const courseVideoUrl =
+      getAcademyPreferredPlaybackUrl(activeCourse) ||
+      String(activeCourse?.videoUrl || "").trim();
     const hasSkillVideo =
       skillVideoUrl.length > 0 && skillVideoUrl !== VIDEO_PLACEHOLDER;
     const hasCourseVideo =
@@ -503,33 +606,65 @@ function AcademyLessonStudio({
     };
   }, [
     activeCourse?.duration,
+    activeCourse?.googleDriveFileId,
+    activeCourse?.googleDriveMimeType,
+    activeCourse?.googleDrivePlaybackUrl,
+    activeCourse?.googleDriveWebViewLink,
+    activeCourse?.videoSourceType,
     activeCourse?.videoUrl,
     activeLesson?.duration,
+    activeLesson?.googleDriveFileId,
+    activeLesson?.googleDriveMimeType,
+    activeLesson?.googleDrivePlaybackUrl,
+    activeLesson?.googleDriveWebViewLink,
+    activeLesson?.videoSourceType,
     activeLesson?.videoUrl,
   ]);
 
-  const lessonVideoDisplayLabel = useMemo(
-    () => {
-      const explicitName =
-        lessonVideoState.source === "skill"
-          ? String(activeLesson?.linkedVideoAssetName || "").trim()
-          : lessonVideoState.source === "course"
-            ? String(activeCourse?.linkedVideoAssetName || "").trim()
-            : "";
-      if (explicitName) return explicitName;
-      return extractLessonVideoDisplayName(
-        lessonVideoState.url,
-        tt("Video", "Video"),
-      );
-    },
-    [
-      activeCourse?.linkedVideoAssetName,
-      activeLesson?.linkedVideoAssetName,
-      lessonVideoState.source,
-      lessonVideoState.url,
-      tt,
-    ],
+  const lessonPlayerCarrier = useMemo(() => {
+    if (lessonVideoState.source === "skill") {
+      return activeLesson || null;
+    }
+    if (lessonVideoState.source === "course") {
+      return activeCourse || null;
+    }
+    return null;
+  }, [activeCourse, activeLesson, lessonVideoState.source]);
+
+  const lessonPlayerSourceType = useMemo(
+    () => getAcademyVideoSourceType(lessonPlayerCarrier),
+    [lessonPlayerCarrier],
   );
+
+  const lessonPlayerSrc = useMemo(() => {
+    const resolved = getAcademyPreferredPlaybackUrl(lessonPlayerCarrier);
+    return resolved || lessonVideoState.url || VIDEO_PLACEHOLDER;
+  }, [lessonPlayerCarrier, lessonVideoState.url]);
+
+  const lessonPlayerExternalUrl = useMemo(
+    () => getAcademyVideoExternalLink(lessonPlayerCarrier),
+    [lessonPlayerCarrier],
+  );
+
+  const lessonVideoDisplayLabel = useMemo(() => {
+    const explicitName =
+      lessonVideoState.source === "skill"
+        ? String(activeLesson?.linkedVideoAssetName || "").trim()
+        : lessonVideoState.source === "course"
+          ? String(activeCourse?.linkedVideoAssetName || "").trim()
+          : "";
+    if (explicitName) return explicitName;
+    return extractLessonVideoDisplayName(
+      lessonVideoState.url,
+      tt("Video", "Video"),
+    );
+  }, [
+    activeCourse?.linkedVideoAssetName,
+    activeLesson?.linkedVideoAssetName,
+    lessonVideoState.source,
+    lessonVideoState.url,
+    tt,
+  ]);
 
   const lessonVideoVersionState = useMemo(
     () =>
@@ -580,28 +715,37 @@ function AcademyLessonStudio({
       options.push(option);
     };
 
-    if (activeCourse.videoUrl) {
-      pushOption({
-        id:
-          normalizeMediaAssetId(activeCourse.linkedVideoAssetId) ||
-          `${String(activeCourse.id)}-course-video`,
-        mediaAssetId:
-          normalizeMediaAssetId(activeCourse.linkedVideoAssetId) || undefined,
-        mediaVersion: activeCourse.linkedVideoAssetVersion
-          ? normalizeMediaVersion(activeCourse.linkedVideoAssetVersion, 1)
-          : undefined,
-        mediaUpdatedAt: activeCourse.linkedVideoUpdatedAt,
-        mediaFingerprint:
-          activeCourse.linkedVideoFingerprint ||
-          buildUrlMediaFingerprint(activeCourse.videoUrl),
-        title:
-          String(activeCourse.linkedVideoAssetName || "").trim() ||
-          `${activeCourse.title} ${tt("introvideo", "intro video")}`,
-        type: "video",
-        url: activeCourse.videoUrl,
-        duration: Number(activeCourse.duration || 0),
-        sourceLabel: tt("Kursvideo", "Course video"),
-      });
+    {
+      const courseVideoUrl =
+        getAcademyPreferredPlaybackUrl(activeCourse) || activeCourse?.videoUrl;
+      if (courseVideoUrl) {
+        pushOption({
+          id:
+            normalizeMediaAssetId(activeCourse.linkedVideoAssetId) ||
+            `${String(activeCourse.id)}-course-video`,
+          mediaAssetId:
+            normalizeMediaAssetId(activeCourse.linkedVideoAssetId) || undefined,
+          mediaVersion: activeCourse.linkedVideoAssetVersion
+            ? normalizeMediaVersion(activeCourse.linkedVideoAssetVersion, 1)
+            : undefined,
+          mediaUpdatedAt: activeCourse.linkedVideoUpdatedAt,
+          mediaFingerprint:
+            activeCourse.linkedVideoFingerprint ||
+            buildUrlMediaFingerprint(courseVideoUrl),
+          title:
+            String(activeCourse.linkedVideoAssetName || "").trim() ||
+            `${activeCourse.title} ${tt("introvideo", "intro video")}`,
+          type: "video",
+          url: courseVideoUrl,
+          duration: Number(activeCourse.duration || 0),
+          sourceLabel: tt("Kursvideo", "Course video"),
+          videoSourceType: activeCourse.videoSourceType,
+          googleDriveFileId: activeCourse.googleDriveFileId,
+          googleDriveMimeType: activeCourse.googleDriveMimeType,
+          googleDriveWebViewLink: activeCourse.googleDriveWebViewLink,
+          googleDrivePlaybackUrl: activeCourse.googleDrivePlaybackUrl,
+        });
+      }
     }
 
     (Array.isArray(activeCourse.resources)
@@ -624,34 +768,48 @@ function AcademyLessonStudio({
         type: mapLessonResourceType(resource.type, resource.url),
         url: resource.url,
         sourceLabel: tt("Media", "Media"),
+        videoSourceType: resource.videoSourceType,
+        googleDriveFileId: resource.googleDriveFileId,
+        googleDriveMimeType: resource.googleDriveMimeType,
+        googleDriveWebViewLink: resource.googleDriveWebViewLink,
+        googleDrivePlaybackUrl: resource.googleDrivePlaybackUrl,
       });
     });
 
     (Array.isArray(activeCourse.lessons) ? activeCourse.lessons : []).forEach(
       (lesson, lessonIndex) => {
         const lessonId = String(lesson.id || lessonIndex);
-        if (lesson.videoUrl) {
-          pushOption({
-            id:
-              normalizeMediaAssetId(lesson.linkedVideoAssetId) ||
-              `${String(activeCourse.id)}-${lessonId}-video`,
-            mediaAssetId:
-              normalizeMediaAssetId(lesson.linkedVideoAssetId) || undefined,
-            mediaVersion: lesson.linkedVideoAssetVersion
-              ? normalizeMediaVersion(lesson.linkedVideoAssetVersion, 1)
-              : undefined,
-            mediaUpdatedAt: lesson.linkedVideoUpdatedAt,
-            mediaFingerprint:
-              lesson.linkedVideoFingerprint ||
-              buildUrlMediaFingerprint(lesson.videoUrl),
-            title:
-              String(lesson.linkedVideoAssetName || "").trim() ||
-              `${lesson.title || tt("Leksjon", "Lesson")} ${tt("video", "video")}`,
-            type: "video",
-            url: lesson.videoUrl,
-            duration: Number(lesson.duration || 0),
-            sourceLabel: tt("Leksjonsvideo", "Lesson video"),
-          });
+        {
+          const lessonVideoUrl =
+            getAcademyPreferredPlaybackUrl(lesson) || lesson.videoUrl;
+          if (lessonVideoUrl) {
+            pushOption({
+              id:
+                normalizeMediaAssetId(lesson.linkedVideoAssetId) ||
+                `${String(activeCourse.id)}-${lessonId}-video`,
+              mediaAssetId:
+                normalizeMediaAssetId(lesson.linkedVideoAssetId) || undefined,
+              mediaVersion: lesson.linkedVideoAssetVersion
+                ? normalizeMediaVersion(lesson.linkedVideoAssetVersion, 1)
+                : undefined,
+              mediaUpdatedAt: lesson.linkedVideoUpdatedAt,
+              mediaFingerprint:
+                lesson.linkedVideoFingerprint ||
+                buildUrlMediaFingerprint(lessonVideoUrl),
+              title:
+                String(lesson.linkedVideoAssetName || "").trim() ||
+                `${lesson.title || tt("Leksjon", "Lesson")} ${tt("video", "video")}`,
+              type: "video",
+              url: lessonVideoUrl,
+              duration: Number(lesson.duration || 0),
+              sourceLabel: tt("Leksjonsvideo", "Lesson video"),
+              videoSourceType: lesson.videoSourceType,
+              googleDriveFileId: lesson.googleDriveFileId,
+              googleDriveMimeType: lesson.googleDriveMimeType,
+              googleDriveWebViewLink: lesson.googleDriveWebViewLink,
+              googleDrivePlaybackUrl: lesson.googleDrivePlaybackUrl,
+            });
+          }
         }
 
         (Array.isArray(lesson.resources) ? lesson.resources : []).forEach(
@@ -678,6 +836,11 @@ function AcademyLessonStudio({
                   ? Number(lesson.duration || 0)
                   : undefined,
               sourceLabel: tt("Media", "Media"),
+              videoSourceType: resource.videoSourceType,
+              googleDriveFileId: resource.googleDriveFileId,
+              googleDriveMimeType: resource.googleDriveMimeType,
+              googleDriveWebViewLink: resource.googleDriveWebViewLink,
+              googleDrivePlaybackUrl: resource.googleDrivePlaybackUrl,
             });
           },
         );
@@ -845,6 +1008,18 @@ function AcademyLessonStudio({
             type: mediaMatch.type,
             url: mediaMatch.url,
             duration: mediaMatch.duration ?? resource.duration,
+            videoSourceType:
+              mediaMatch.videoSourceType ?? resource.videoSourceType,
+            googleDriveFileId:
+              mediaMatch.googleDriveFileId ?? resource.googleDriveFileId,
+            googleDriveMimeType:
+              mediaMatch.googleDriveMimeType ?? resource.googleDriveMimeType,
+            googleDriveWebViewLink:
+              mediaMatch.googleDriveWebViewLink ??
+              resource.googleDriveWebViewLink,
+            googleDrivePlaybackUrl:
+              mediaMatch.googleDrivePlaybackUrl ??
+              resource.googleDrivePlaybackUrl,
             mediaVersion: mediaMatch.mediaVersion ?? resource.mediaVersion,
             mediaUpdatedAt:
               mediaMatch.mediaUpdatedAt ?? resource.mediaUpdatedAt,
@@ -1067,6 +1242,11 @@ function AcademyLessonStudio({
             type: item.type,
             url: item.url,
             duration: item.duration,
+            videoSourceType: item.videoSourceType,
+            googleDriveFileId: item.googleDriveFileId,
+            googleDriveMimeType: item.googleDriveMimeType,
+            googleDriveWebViewLink: item.googleDriveWebViewLink,
+            googleDrivePlaybackUrl: item.googleDrivePlaybackUrl,
             mediaVersion: item.mediaVersion,
             mediaUpdatedAt: item.mediaUpdatedAt,
             mediaFingerprint: item.mediaFingerprint,
@@ -1128,11 +1308,15 @@ function AcademyLessonStudio({
         return;
       }
 
-      const detectedDuration = await probeVideoDurationSeconds(selectedMedia.url);
+      const detectedDuration = await probeVideoDurationSeconds(
+        selectedMedia.url,
+      );
       const resolvedDuration =
-        (Number.isFinite(Number(detectedDuration)) && Number(detectedDuration) > 0
+        (Number.isFinite(Number(detectedDuration)) &&
+        Number(detectedDuration) > 0
           ? Number(detectedDuration)
-          : Number.isFinite(Number(selectedMedia.duration)) && Number(selectedMedia.duration) > 0
+          : Number.isFinite(Number(selectedMedia.duration)) &&
+              Number(selectedMedia.duration) > 0
             ? Number(selectedMedia.duration)
             : null) ?? null;
       const mediaAssetId =
@@ -1142,6 +1326,15 @@ function AcademyLessonStudio({
       const mediaFingerprint =
         String(selectedMedia.mediaFingerprint || "").trim() ||
         buildUrlMediaFingerprint(selectedMedia.url);
+      const mediaSourceType = selectedMedia.videoSourceType || "direct";
+      const mediaGoogleDriveFileId =
+        String(selectedMedia.googleDriveFileId || "").trim() || undefined;
+      const mediaGoogleDriveMimeType =
+        String(selectedMedia.googleDriveMimeType || "").trim() || undefined;
+      const mediaGoogleDriveWebViewLink =
+        String(selectedMedia.googleDriveWebViewLink || "").trim() || undefined;
+      const mediaGoogleDrivePlaybackUrl =
+        String(selectedMedia.googleDrivePlaybackUrl || "").trim() || undefined;
 
       const nowIso = new Date().toISOString();
 
@@ -1150,6 +1343,11 @@ function AcademyLessonStudio({
           const nextCourse: Course = {
             ...activeCourse,
             videoUrl: selectedMedia.url,
+            videoSourceType: mediaSourceType,
+            googleDriveFileId: mediaGoogleDriveFileId,
+            googleDriveMimeType: mediaGoogleDriveMimeType,
+            googleDriveWebViewLink: mediaGoogleDriveWebViewLink,
+            googleDrivePlaybackUrl: mediaGoogleDrivePlaybackUrl,
             linkedVideoAssetId: mediaAssetId || undefined,
             linkedVideoAssetVersion: mediaVersion,
             linkedVideoAssetName: selectedMedia.title,
@@ -1188,6 +1386,11 @@ function AcademyLessonStudio({
           return {
             ...lesson,
             videoUrl: selectedMedia.url,
+            videoSourceType: mediaSourceType,
+            googleDriveFileId: mediaGoogleDriveFileId,
+            googleDriveMimeType: mediaGoogleDriveMimeType,
+            googleDriveWebViewLink: mediaGoogleDriveWebViewLink,
+            googleDrivePlaybackUrl: mediaGoogleDrivePlaybackUrl,
             linkedVideoAssetId: mediaAssetId || undefined,
             linkedVideoAssetVersion: mediaVersion,
             linkedVideoAssetName: selectedMedia.title,
@@ -1421,6 +1624,410 @@ function AcademyLessonStudio({
     });
   }, [syncLessonThumbnailPatch]);
 
+  const buildLessonResourcesDraft = useCallback((): LessonResource[] => {
+    const lessonResources: LessonResource[] = resourceItems.map((resource) => ({
+      id: resource.id,
+      title: resource.title,
+      type: resource.type,
+      url: resource.url,
+      description: resource.title,
+      videoSourceType: resource.videoSourceType,
+      googleDriveFileId: resource.googleDriveFileId,
+      googleDriveMimeType: resource.googleDriveMimeType,
+      googleDriveWebViewLink: resource.googleDriveWebViewLink,
+      googleDrivePlaybackUrl: resource.googleDrivePlaybackUrl,
+      mediaAssetId: resource.mediaAssetId,
+      mediaVersion: resource.mediaVersion,
+      mediaUpdatedAt: resource.mediaUpdatedAt,
+      mediaFingerprint: resource.mediaFingerprint,
+    }));
+    const normalizedThumbnailUrl = lessonThumbnailUrl.trim();
+
+    if (
+      normalizedThumbnailUrl &&
+      !lessonResources.some(
+        (resource) =>
+          resource.type === "image" && resource.url === normalizedThumbnailUrl,
+      )
+    ) {
+      lessonResources.unshift({
+        id: `lesson-thumbnail-${activeLesson?.id || Date.now()}`,
+        title: `${lessonTitle || "Lesson"} thumbnail`,
+        type: "image",
+        url: normalizedThumbnailUrl,
+        description: tt("Leksjons-thumbnail", "Lesson thumbnail"),
+      });
+    }
+
+    return lessonResources;
+  }, [activeLesson?.id, lessonThumbnailUrl, lessonTitle, resourceItems, tt]);
+
+  const buildLessonDraft = useCallback((): Lesson | null => {
+    if (!activeCourse?.id) {
+      return null;
+    }
+
+    const selectedObjectives =
+      curriculumLearningOutcomes.length > 0
+        ? summaryPoints.filter((point) =>
+            curriculumLearningOutcomes.includes(point),
+          )
+        : summaryPoints;
+    const lessonDescription = selectedObjectives
+      .map((point) => `• ${point}`)
+      .join("\n");
+    const lessonResourcesWithThumbnail = buildLessonResourcesDraft();
+    const normalizedThumbnailUrl = lessonThumbnailUrl.trim();
+    const normalizedThumbnailZoom = normalizeZoom(lessonThumbnailZoom);
+    const normalizedThumbnailFocalX = normalizeFocal(lessonThumbnailFocalX);
+    const normalizedThumbnailFocalY = normalizeFocal(lessonThumbnailFocalY);
+    const lessonInstructorId = String(
+      selectedLessonInstructorId ||
+        activeLesson?.videoInstructorId ||
+        activeCourse?.competencyLeadInstructorId ||
+        activeCourse?.instructor?.id ||
+        "",
+    ).trim();
+
+    return {
+      id: String(activeLesson?.id || `lesson-${Date.now()}`),
+      courseId: String(activeCourse.id),
+      title: lessonTitle || "Untitled Lesson",
+      description: lessonDescription,
+      videoUrl: lessonPlayerSrc,
+      videoSourceType:
+        activeLesson?.videoSourceType || activeCourse?.videoSourceType,
+      googleDriveFileId:
+        activeLesson?.googleDriveFileId || activeCourse?.googleDriveFileId,
+      googleDriveMimeType:
+        activeLesson?.googleDriveMimeType || activeCourse?.googleDriveMimeType,
+      googleDriveWebViewLink:
+        activeLesson?.googleDriveWebViewLink ||
+        activeCourse?.googleDriveWebViewLink,
+      googleDrivePlaybackUrl:
+        activeLesson?.googleDrivePlaybackUrl ||
+        activeCourse?.googleDrivePlaybackUrl,
+      linkedVideoAssetId: activeLesson?.linkedVideoAssetId,
+      linkedVideoAssetVersion: activeLesson?.linkedVideoAssetVersion,
+      linkedVideoAssetName: activeLesson?.linkedVideoAssetName,
+      linkedVideoUpdatedAt: activeLesson?.linkedVideoUpdatedAt,
+      linkedVideoFingerprint:
+        activeLesson?.linkedVideoFingerprint ||
+        buildUrlMediaFingerprint(activeLesson?.videoUrl),
+      videoInstructorId: lessonInstructorId || undefined,
+      thumbnail: normalizedThumbnailUrl || undefined,
+      thumbnailZoom: normalizedThumbnailZoom,
+      thumbnailFocalX: normalizedThumbnailFocalX,
+      thumbnailFocalY: normalizedThumbnailFocalY,
+      duration,
+      order: Number(activeLesson?.order || 1),
+      isPreview: Boolean(activeLesson?.isPreview),
+      resources: lessonResourcesWithThumbnail,
+    };
+  }, [
+    activeCourse,
+    activeLesson?.googleDriveFileId,
+    activeLesson?.googleDriveMimeType,
+    activeLesson?.googleDrivePlaybackUrl,
+    activeLesson?.googleDriveWebViewLink,
+    activeLesson?.id,
+    activeLesson?.isPreview,
+    activeLesson?.linkedVideoAssetId,
+    activeLesson?.linkedVideoAssetName,
+    activeLesson?.linkedVideoAssetVersion,
+    activeLesson?.linkedVideoFingerprint,
+    activeLesson?.linkedVideoUpdatedAt,
+    activeLesson?.order,
+    activeLesson?.videoInstructorId,
+    activeLesson?.videoSourceType,
+    activeLesson?.videoUrl,
+    buildLessonResourcesDraft,
+    curriculumLearningOutcomes,
+    duration,
+    lessonPlayerSrc,
+    lessonThumbnailFocalX,
+    lessonThumbnailFocalY,
+    lessonThumbnailUrl,
+    lessonThumbnailZoom,
+    lessonTitle,
+    selectedLessonInstructorId,
+    summaryPoints,
+  ]);
+
+  const buildCourseLessonsWithDraft = useCallback(
+    (lessonDraft: Lesson): Lesson[] => {
+      const currentLessons =
+        Array.isArray(activeCourse?.lessons) && activeCourse.lessons.length > 0
+          ? activeCourse.lessons
+          : [lessonDraft];
+
+      const hasActive = currentLessons.some(
+        (lesson) => String(lesson.id) === String(lessonDraft.id),
+      );
+
+      return hasActive
+        ? currentLessons.map((lesson) => {
+            if (String(lesson.id) !== String(lessonDraft.id)) return lesson;
+            return {
+              ...lesson,
+              ...lessonDraft,
+              videoUrl:
+                activeLesson?.videoUrl ||
+                lesson.videoUrl ||
+                lessonDraft.videoUrl,
+              videoSourceType:
+                activeLesson?.videoSourceType || lesson.videoSourceType,
+              googleDriveFileId:
+                activeLesson?.googleDriveFileId || lesson.googleDriveFileId,
+              googleDriveMimeType:
+                activeLesson?.googleDriveMimeType || lesson.googleDriveMimeType,
+              googleDriveWebViewLink:
+                activeLesson?.googleDriveWebViewLink ||
+                lesson.googleDriveWebViewLink,
+              googleDrivePlaybackUrl:
+                activeLesson?.googleDrivePlaybackUrl ||
+                lesson.googleDrivePlaybackUrl,
+              linkedVideoAssetId:
+                activeLesson?.linkedVideoAssetId || lesson.linkedVideoAssetId,
+              linkedVideoAssetVersion:
+                activeLesson?.linkedVideoAssetVersion ||
+                lesson.linkedVideoAssetVersion,
+              linkedVideoAssetName:
+                activeLesson?.linkedVideoAssetName ||
+                lesson.linkedVideoAssetName,
+              linkedVideoUpdatedAt:
+                activeLesson?.linkedVideoUpdatedAt ||
+                lesson.linkedVideoUpdatedAt,
+              linkedVideoFingerprint:
+                activeLesson?.linkedVideoFingerprint ||
+                lesson.linkedVideoFingerprint ||
+                buildUrlMediaFingerprint(
+                  activeLesson?.videoUrl || lesson.videoUrl,
+                ),
+            };
+          })
+        : [...currentLessons, lessonDraft];
+    },
+    [
+      activeCourse?.lessons,
+      activeLesson?.googleDriveFileId,
+      activeLesson?.googleDriveMimeType,
+      activeLesson?.googleDrivePlaybackUrl,
+      activeLesson?.googleDriveWebViewLink,
+      activeLesson?.linkedVideoAssetId,
+      activeLesson?.linkedVideoAssetName,
+      activeLesson?.linkedVideoAssetVersion,
+      activeLesson?.linkedVideoFingerprint,
+      activeLesson?.linkedVideoUpdatedAt,
+      activeLesson?.videoSourceType,
+      activeLesson?.videoUrl,
+    ],
+  );
+
+  const buildNotebookLmCourseSnapshot =
+    useCallback((): AcademyNotebookLmCourseSnapshot | null => {
+      if (!activeCourse?.id) {
+        return null;
+      }
+
+      const lessonDraft = buildLessonDraft();
+      if (!lessonDraft) {
+        return null;
+      }
+
+      const nextLessons = buildCourseLessonsWithDraft(lessonDraft);
+      const courseResources = (
+        Array.isArray(activeCourse.resources) ? activeCourse.resources : []
+      )
+        .map((resource, index) =>
+          toNotebookLmResourceSnapshot(
+            resource,
+            `course-resource-${resource.id || index}`,
+          ),
+        )
+        .filter((resource): resource is AcademyNotebookLmResourceSnapshot =>
+          Boolean(resource),
+        );
+      const lessons = nextLessons
+        .map((lesson, index) => ({
+          id: String(lesson.id),
+          title: String(lesson.title || `Lesson ${index + 1}`),
+          description: String(lesson.description || "").trim() || undefined,
+          duration: Number(lesson.duration || 0) || undefined,
+          order: Number(lesson.order || index + 1),
+          isPreview: Boolean(lesson.isPreview),
+          videoUrl: String(lesson.videoUrl || "").trim() || undefined,
+          videoSourceType: lesson.videoSourceType,
+          googleDriveWebViewLink:
+            String(lesson.googleDriveWebViewLink || "").trim() || undefined,
+          googleDrivePlaybackUrl:
+            String(lesson.googleDrivePlaybackUrl || "").trim() || undefined,
+          resources: (Array.isArray(lesson.resources) ? lesson.resources : [])
+            .map((resource, resourceIndex) =>
+              toNotebookLmResourceSnapshot(
+                resource,
+                `${String(lesson.id)}-resource-${resource.id || resourceIndex}`,
+              ),
+            )
+            .filter((resource): resource is AcademyNotebookLmResourceSnapshot =>
+              Boolean(resource),
+            ),
+        }))
+        .sort((a, b) => a.order - b.order);
+
+      return {
+        courseId: String(activeCourse.id),
+        title: String(activeCourse.title || lessonTitle || "Untitled Course"),
+        description: String(activeCourse.description || "").trim() || undefined,
+        duration: Number(activeCourse.duration || 0) || undefined,
+        level: String(activeCourse.level || "").trim() || undefined,
+        category: String(activeCourse.category || "").trim() || undefined,
+        tags: Array.isArray(activeCourse.tags)
+          ? activeCourse.tags
+              .map((tag) => String(tag || "").trim())
+              .filter(Boolean)
+          : [],
+        prerequisites: Array.isArray(activeCourse.prerequisites)
+          ? activeCourse.prerequisites
+              .map((entry) => String(entry || "").trim())
+              .filter(Boolean)
+          : [],
+        learningOutcomes: Array.isArray(activeCourse.learningOutcomes)
+          ? activeCourse.learningOutcomes
+              .map((entry) => String(entry || "").trim())
+              .filter(Boolean)
+          : [],
+        instructorName:
+          String(
+            activeCourse.instructor?.name ||
+              instructorItems.find(
+                (instructor) =>
+                  String(instructor.id) === String(selectedLessonInstructorId),
+              )?.name ||
+              "",
+          ).trim() || undefined,
+        videoUrl: String(activeCourse.videoUrl || "").trim() || undefined,
+        videoSourceType: activeCourse.videoSourceType,
+        googleDriveWebViewLink:
+          String(activeCourse.googleDriveWebViewLink || "").trim() || undefined,
+        googleDrivePlaybackUrl:
+          String(activeCourse.googleDrivePlaybackUrl || "").trim() || undefined,
+        resources: courseResources,
+        lessons,
+        focusLessonId:
+          String(lessonDraft.id || activeLesson?.id || "").trim() || undefined,
+      };
+    }, [
+      activeCourse,
+      activeLesson?.id,
+      buildCourseLessonsWithDraft,
+      buildLessonDraft,
+      instructorItems,
+      lessonTitle,
+      selectedLessonInstructorId,
+    ]);
+
+  const notebookLmStatusQueryKey = useMemo(
+    () =>
+      [
+        "academy-notebooklm-status",
+        String(activeCourse?.id || ""),
+        String(activeLesson?.id || ""),
+        String(activeCourse?.title || ""),
+      ] as const,
+    [activeCourse?.id, activeCourse?.title, activeLesson?.id],
+  );
+
+  const notebookLmStatusQuery = useQuery({
+    queryKey: notebookLmStatusQueryKey,
+    enabled: Boolean(activeCourse?.id),
+    queryFn: () =>
+      academyNotebookLmService.getStatus({
+        courseId: String(activeCourse?.id || ""),
+        lessonId: String(activeLesson?.id || "").trim() || undefined,
+        courseTitle: String(activeCourse?.title || "").trim() || undefined,
+      }),
+  });
+
+  const notebookLmSyncMutation = useMutation({
+    mutationFn: async () => {
+      const snapshot = buildNotebookLmCourseSnapshot();
+      if (!snapshot) {
+        throw new Error(
+          tt(
+            "Fant ikke kursutkast for NotebookLM-synk.",
+            "Could not build a course draft for NotebookLM sync.",
+          ),
+        );
+      }
+
+      return academyNotebookLmService.sync({
+        courseId: snapshot.courseId,
+        lessonId: snapshot.focusLessonId || undefined,
+        courseTitle: snapshot.title,
+        snapshot,
+      });
+    },
+    onSuccess: (status) => {
+      queryClient.setQueryData(notebookLmStatusQueryKey, status);
+      void queryClient.invalidateQueries({
+        queryKey: ["academy-notebooklm-status"],
+      });
+      setSaveMessage(
+        tt(
+          "NotebookLM-kilder synket fra gjeldende kursutkast.",
+          "NotebookLM sources synced from the current course draft.",
+        ),
+      );
+      analytics.trackEvent("academy_notebooklm_workspace_synced", {
+        courseId: activeCourse?.id || null,
+        lessonId: activeLesson?.id || null,
+        sourceDocumentCount: status.sourceDocumentCount,
+        timestamp: Date.now(),
+      });
+    },
+    onError: (error) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : tt(
+              "Kunne ikke synke NotebookLM-kildene akkurat nå.",
+              "Could not sync NotebookLM sources right now.",
+            );
+      setSaveMessage(message);
+      debugging.logIntegration(
+        "error",
+        "Academy NotebookLM workspace sync failed",
+        {
+          message,
+          courseId: activeCourse?.id || null,
+          lessonId: activeLesson?.id || null,
+        },
+      );
+    },
+  });
+
+  const notebookLmStatus = notebookLmStatusQuery.data;
+  const notebookLmWorkspace = notebookLmStatus?.workspace || null;
+  const notebookLmCourseSummary =
+    notebookLmStatus?.courseSummary ||
+    notebookLmWorkspace?.courseSummary ||
+    null;
+  const notebookLmSourceDocuments = notebookLmStatus?.sourceDocuments || [];
+  const notebookLmSourcePreview = notebookLmSourceDocuments
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .slice(0, 6);
+  const notebookLmOpenUrl =
+    String(
+      notebookLmWorkspace?.metadata?.notebookLmUrl ||
+        notebookLmStatus?.notebookLmUrl ||
+        NOTEBOOK_LM_HOME_URL,
+    ).trim() || NOTEBOOK_LM_HOME_URL;
+  const notebookLmWorkspaceDocumentUrl =
+    notebookLmWorkspace?.workspaceDocumentUrl || null;
+  const notebookLmDriveFolderUrl = notebookLmWorkspace?.driveFolderUrl || null;
+
   const saveLesson = useCallback(
     async (publish: boolean) => {
       if (!activeCourse?.id) {
@@ -1433,126 +2040,38 @@ function AcademyLessonStudio({
         return;
       }
 
-      const selectedObjectives =
-        curriculumLearningOutcomes.length > 0
-          ? summaryPoints.filter((point) =>
-              curriculumLearningOutcomes.includes(point),
-            )
-          : summaryPoints;
-      const lessonDescription = selectedObjectives
-        .map((point) => `• ${point}`)
-        .join("\n");
-      const lessonResources: LessonResource[] = resourceItems.map(
-        (resource) => ({
-          id: resource.id,
-          title: resource.title,
-          type: resource.type,
-          url: resource.url,
-          description: resource.title,
-          mediaAssetId: resource.mediaAssetId,
-          mediaVersion: resource.mediaVersion,
-          mediaUpdatedAt: resource.mediaUpdatedAt,
-          mediaFingerprint: resource.mediaFingerprint,
-        }),
-      );
-      const normalizedThumbnailUrl = lessonThumbnailUrl.trim();
-      const normalizedThumbnailZoom = normalizeZoom(lessonThumbnailZoom);
-      const normalizedThumbnailFocalX = normalizeFocal(lessonThumbnailFocalX);
-      const normalizedThumbnailFocalY = normalizeFocal(lessonThumbnailFocalY);
-      const lessonInstructorId = String(
-        selectedLessonInstructorId ||
-          activeLesson?.videoInstructorId ||
-          activeCourse?.competencyLeadInstructorId ||
-          activeCourse?.instructor?.id ||
-          "",
-      ).trim();
-      const lessonResourcesWithThumbnail = [...lessonResources];
-      if (
-        normalizedThumbnailUrl &&
-        !lessonResourcesWithThumbnail.some(
-          (resource) =>
-            resource.type === "image" &&
-            resource.url === normalizedThumbnailUrl,
-        )
-      ) {
-        lessonResourcesWithThumbnail.unshift({
-          id: `lesson-thumbnail-${activeLesson?.id || Date.now()}`,
-          title: `${lessonTitle || "Lesson"} thumbnail`,
-          type: "image",
-          url: normalizedThumbnailUrl,
-          description: tt("Leksjons-thumbnail", "Lesson thumbnail"),
-        });
+      const lessonDraft = buildLessonDraft();
+      if (!lessonDraft) {
+        setSaveMessage(
+          tt(
+            "Fant ikke leksjonsutkast for lagring.",
+            "Could not build a lesson draft for saving.",
+          ),
+        );
+        return;
       }
 
-      const lessonDraft: Lesson = {
-        id: String(activeLesson?.id || `lesson-${Date.now()}`),
-        courseId: String(activeCourse.id),
-        title: lessonTitle || "Untitled Lesson",
-        description: lessonDescription,
-        videoUrl:
-          activeLesson?.videoUrl || activeCourse?.videoUrl || VIDEO_PLACEHOLDER,
-        linkedVideoAssetId: activeLesson?.linkedVideoAssetId,
-        linkedVideoAssetVersion: activeLesson?.linkedVideoAssetVersion,
-        linkedVideoAssetName: activeLesson?.linkedVideoAssetName,
-        linkedVideoUpdatedAt: activeLesson?.linkedVideoUpdatedAt,
-        linkedVideoFingerprint:
-          activeLesson?.linkedVideoFingerprint ||
-          buildUrlMediaFingerprint(activeLesson?.videoUrl),
-        videoInstructorId: lessonInstructorId || undefined,
-        thumbnail: normalizedThumbnailUrl || undefined,
-        thumbnailZoom: normalizedThumbnailZoom,
-        thumbnailFocalX: normalizedThumbnailFocalX,
-        thumbnailFocalY: normalizedThumbnailFocalY,
-        duration,
-        order: Number(activeLesson?.order || 1),
-        isPreview: Boolean(activeLesson?.isPreview),
-        resources: lessonResourcesWithThumbnail,
-      };
-
-      const currentLessons =
-        Array.isArray(activeCourse.lessons) && activeCourse.lessons.length > 0
-          ? activeCourse.lessons
-          : [lessonDraft];
-
-      const hasActive = currentLessons.some(
-        (lesson) => String(lesson.id) === String(lessonDraft.id),
+      const nextLessons = buildCourseLessonsWithDraft(lessonDraft);
+      const lessonInstructorId = String(
+        lessonDraft.videoInstructorId || "",
+      ).trim();
+      const normalizedThumbnailUrl = String(lessonDraft.thumbnail || "").trim();
+      const normalizedThumbnailZoom = normalizeZoom(
+        lessonDraft.thumbnailZoom || 100,
       );
-      const nextLessons = hasActive
-        ? currentLessons.map((lesson) => {
-            if (String(lesson.id) !== String(lessonDraft.id)) return lesson;
-            return {
-              ...lesson,
-              title: lessonTitle || "Untitled Lesson",
-              description: lessonDescription,
-              linkedVideoAssetId:
-                activeLesson?.linkedVideoAssetId || lesson.linkedVideoAssetId,
-              linkedVideoAssetVersion:
-                activeLesson?.linkedVideoAssetVersion ||
-                lesson.linkedVideoAssetVersion,
-              linkedVideoAssetName:
-                activeLesson?.linkedVideoAssetName || lesson.linkedVideoAssetName,
-              linkedVideoUpdatedAt:
-                activeLesson?.linkedVideoUpdatedAt || lesson.linkedVideoUpdatedAt,
-              linkedVideoFingerprint:
-                activeLesson?.linkedVideoFingerprint ||
-                lesson.linkedVideoFingerprint ||
-                buildUrlMediaFingerprint(activeLesson?.videoUrl || lesson.videoUrl),
-              videoInstructorId: lessonInstructorId || undefined,
-              thumbnail: normalizedThumbnailUrl || undefined,
-              thumbnailZoom: normalizedThumbnailZoom,
-              thumbnailFocalX: normalizedThumbnailFocalX,
-              thumbnailFocalY: normalizedThumbnailFocalY,
-              duration,
-              resources: lessonResourcesWithThumbnail,
-            };
-          })
-        : [...currentLessons, lessonDraft];
+      const normalizedThumbnailFocalX = normalizeFocal(
+        lessonDraft.thumbnailFocalX || 50,
+      );
+      const normalizedThumbnailFocalY = normalizeFocal(
+        lessonDraft.thumbnailFocalY || 50,
+      );
+      const lessonResourcesWithThumbnail = lessonDraft.resources;
 
       const payload = {
         id: activeCourse.id,
         lessonId: lessonDraft.id,
         title: lessonTitle,
-        description: lessonDescription,
+        description: lessonDraft.description,
         chapters: chapterItems,
         thumbnail: normalizedThumbnailUrl || null,
         thumbnailZoom: normalizedThumbnailZoom,
@@ -1612,28 +2131,14 @@ function AcademyLessonStudio({
     },
     [
       activeCourse,
-      activeLesson?.id,
-      activeLesson?.isPreview,
-      activeLesson?.order,
-      activeLesson?.videoInstructorId,
-      activeLesson?.videoUrl,
-      activeCourse?.competencyLeadInstructorId,
-      activeCourse?.videoUrl,
       analytics,
+      buildCourseLessonsWithDraft,
+      buildLessonDraft,
       chapterItems,
       debugging,
-      curriculumLearningOutcomes,
-      duration,
       lessonTitle,
-      lessonThumbnailUrl,
-      lessonThumbnailZoom,
-      lessonThumbnailFocalX,
-      lessonThumbnailFocalY,
       onSave,
-      resourceItems,
-      selectedLessonInstructorId,
       state.courses,
-      summaryPoints,
       tt,
       updateCourse,
     ],
@@ -1693,6 +2198,32 @@ function AcademyLessonStudio({
   const goToCourseBuilderSkills = useCallback(() => {
     setLocation(courseBuilderSkillsRoute);
   }, [courseBuilderSkillsRoute, setLocation]);
+
+  const openMediaStudio = useCallback(
+    (options?: { source?: "google-drive" }) => {
+      const query = new URLSearchParams();
+      if (activeCourse?.id) query.set("courseId", String(activeCourse.id));
+      if (activeLesson?.id) query.set("lessonId", String(activeLesson.id));
+      query.set("bind", "skill");
+      query.set(
+        "returnTo",
+        location ||
+          `/academy/lesson-editor?courseId=${encodeURIComponent(
+            String(activeCourse?.id || ""),
+          )}${
+            activeLesson?.id
+              ? `&lessonId=${encodeURIComponent(String(activeLesson.id))}`
+              : ""
+          }`,
+      );
+      if (options?.source) {
+        query.set("source", options.source);
+      }
+      const suffix = query.toString();
+      setLocation(suffix ? `/academy/media?${suffix}` : "/academy/media");
+    },
+    [activeCourse?.id, activeLesson?.id, location, setLocation],
+  );
 
   return (
     <Box
@@ -2035,11 +2566,10 @@ function AcademyLessonStudio({
                     }}
                   >
                     <AcademyPlayerStudio
-                      src={
-                        activeLesson?.videoUrl ||
-                        activeCourse?.videoUrl ||
-                        VIDEO_PLACEHOLDER
-                      }
+                      src={lessonPlayerSrc}
+                      sourceType={lessonPlayerSourceType}
+                      externalUrl={lessonPlayerExternalUrl}
+                      externalLabel={tt("Aapne kilde", "Open source")}
                       poster={
                         lessonThumbnailUrl ||
                         activeCourse?.thumbnail ||
@@ -3067,7 +3597,9 @@ function AcademyLessonStudio({
                         size="small"
                         value={selectedLessonInstructorId}
                         onChange={(event) =>
-                          setSelectedLessonInstructorId(String(event.target.value))
+                          setSelectedLessonInstructorId(
+                            String(event.target.value),
+                          )
                         }
                         sx={{
                           minWidth: { xs: "100%", md: 250 },
@@ -3234,6 +3766,94 @@ function AcademyLessonStudio({
                         </Typography>
                       </Box>
                     ) : null}
+                    <Stack
+                      direction="row"
+                      spacing={0.6}
+                      useFlexGap
+                      flexWrap="wrap"
+                      sx={{ mt: 0.75 }}
+                    >
+                      <Chip
+                        size="small"
+                        label={
+                          lessonVideoState.source === "none"
+                            ? tt("Ingen kilde", "No source")
+                            : lessonPlayerSourceType === "google-vids"
+                              ? "Google Vids"
+                              : lessonPlayerSourceType === "google-drive-video"
+                                ? tt("Drive MP4", "Drive MP4")
+                                : lessonPlayerSourceType === "external-link"
+                                  ? tt("Ekstern lenke", "External link")
+                                  : tt("Direkte fil", "Direct file")
+                        }
+                        sx={{
+                          bgcolor: "rgba(255,255,255,0.08)",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)",
+                        }}
+                      />
+                      {lessonPlayerSourceType === "google-vids" ? (
+                        <Chip
+                          size="small"
+                          label={tt(
+                            "Aapnes eksternt i spilleren",
+                            "Opens externally in the player",
+                          )}
+                          sx={{
+                            bgcolor: "rgba(115,160,255,0.16)",
+                            color: "#dbe4ff",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(115,160,255,0.22)",
+                          }}
+                        />
+                      ) : null}
+                    </Stack>
+                    {lessonPlayerSourceType === "google-vids" ? (
+                      <Typography
+                        sx={{
+                          color: "rgba(237,240,247,0.64)",
+                          fontSize: 12,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {tt(
+                          "Google Vids brukes som review/redigeringskilde. Eksporter MP4 til Drive hvis denne ferdigheten skal spilles direkte i Academy.",
+                          "Google Vids works as a review/editing source. Export an MP4 to Drive if this skill should play directly inside Academy.",
+                        )}
+                      </Typography>
+                    ) : null}
+                    <Stack
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={0.7}
+                      useFlexGap
+                      flexWrap="wrap"
+                    >
+                      <Button
+                        onClick={() => openMediaStudio()}
+                        sx={{
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Velg fra Media", "Choose from Media")}
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          openMediaStudio({ source: "google-drive" })
+                        }
+                        sx={{
+                          textTransform: "none",
+                          color: "#f8d56f",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)",
+                        }}
+                      >
+                        {tt("Google Drive / Vids", "Google Drive / Vids")}
+                      </Button>
+                    </Stack>
                   </Box>
 
                   <Box sx={lessonStudioSectionCardSx}>
@@ -3292,6 +3912,511 @@ function AcademyLessonStudio({
                         <Campaign fontSize="small" />
                       </IconButton>
                     </Stack>
+                  </Box>
+
+                  <Box sx={lessonStudioSectionCardSx}>
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      spacing={1}
+                    >
+                      <Typography sx={lessonStudioSectionLabelSx}>
+                        NotebookLM Studio
+                      </Typography>
+                      <Stack
+                        direction="row"
+                        spacing={0.55}
+                        useFlexGap
+                        flexWrap="wrap"
+                        alignItems="center"
+                      >
+                        {(notebookLmStatusQuery.isLoading ||
+                          notebookLmStatusQuery.isFetching) && (
+                          <CircularProgress
+                            size={14}
+                            sx={{ color: "rgba(248,179,33,0.9)" }}
+                          />
+                        )}
+                        <Chip
+                          size="small"
+                          icon={<CloudDone sx={{ fontSize: 14 }} />}
+                          label={
+                            notebookLmStatus?.connected
+                              ? tt("Google koblet", "Google connected")
+                              : tt("Google mangler", "Google disconnected")
+                          }
+                          sx={{
+                            bgcolor: notebookLmStatus?.connected
+                              ? "rgba(92,180,128,0.14)"
+                              : "rgba(248,179,33,0.14)",
+                            color: notebookLmStatus?.connected
+                              ? "#d8f4df"
+                              : "#f8d56f",
+                            border: notebookLmStatus?.connected
+                              ? "var(--academy-hairline-width, 1px) solid rgba(92,180,128,0.24)"
+                              : "var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.24)",
+                            ".MuiChip-icon": {
+                              color: notebookLmStatus?.connected
+                                ? "#9ee2ae"
+                                : "#f8d56f",
+                            },
+                          }}
+                        />
+                      </Stack>
+                    </Stack>
+                    <Typography
+                      sx={{
+                        color: "rgba(237,240,247,0.78)",
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {tt(
+                        "CreatorHub kan naa synke kursoversikt og ferdigheter til Google Docs som NotebookLM-kilder. Synken bruker gjeldende kursutkast fra Lesson Studio, inkludert uspurte endringer.",
+                        "CreatorHub can now sync the course overview and skills into Google Docs as NotebookLM sources. Sync uses the current Lesson Studio draft, including unsaved changes.",
+                      )}
+                    </Typography>
+                    <Stack
+                      direction="row"
+                      spacing={0.6}
+                      useFlexGap
+                      flexWrap="wrap"
+                    >
+                      {notebookLmStatus?.googleEmail ? (
+                        <Chip
+                          size="small"
+                          label={notebookLmStatus.googleEmail}
+                          sx={{
+                            bgcolor: "rgba(255,255,255,0.06)",
+                            color: "#edf0f7",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)",
+                          }}
+                        />
+                      ) : null}
+                      <Chip
+                        size="small"
+                        icon={<SmartToy sx={{ fontSize: 14 }} />}
+                        label={
+                          notebookLmStatus?.workspaceReady
+                            ? tt("Workspace klar", "Workspace ready")
+                            : tt(
+                                "Venter paa foerste synk",
+                                "Waiting for first sync",
+                              )
+                        }
+                        sx={{
+                          bgcolor: "rgba(115,160,255,0.14)",
+                          color: "#dbe4ff",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(115,160,255,0.22)",
+                          ".MuiChip-icon": { color: "#dbe4ff" },
+                        }}
+                      />
+                    </Stack>
+                    <Box
+                      sx={{
+                        display: "grid",
+                        gap: 0.75,
+                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      }}
+                    >
+                      {[
+                        {
+                          label: tt("Kilder", "Sources"),
+                          value: String(
+                            notebookLmStatus?.sourceDocumentCount || 0,
+                          ),
+                          helper: tt(
+                            "Google Docs i workspace",
+                            "Google Docs in the workspace",
+                          ),
+                          icon: <InsertDriveFile sx={{ fontSize: 15 }} />,
+                        },
+                        {
+                          label: tt("Ferdigheter", "Skills"),
+                          value: String(
+                            notebookLmCourseSummary?.lessonCount ||
+                              courseLessons.length,
+                          ),
+                          helper: tt(
+                            "Synket fra kursutkast",
+                            "Synced from the course draft",
+                          ),
+                          icon: <AutoAwesome sx={{ fontSize: 15 }} />,
+                        },
+                        {
+                          label: tt("Siste synk", "Last sync"),
+                          value: formatNotebookLmTimestamp(
+                            notebookLmWorkspace?.lastSyncedAt,
+                            tt("Ikke synket ennå", "Not synced yet"),
+                          ),
+                          helper: tt(
+                            "Drive og Docs oppdatert",
+                            "Drive and Docs updated",
+                          ),
+                          icon: <Refresh sx={{ fontSize: 15 }} />,
+                        },
+                      ].map((item) => (
+                        <Box
+                          key={item.label}
+                          sx={{
+                            p: 0.85,
+                            borderRadius: 1,
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                            bgcolor: "rgba(255,255,255,0.03)",
+                            minHeight: 86,
+                          }}
+                        >
+                          <Stack spacing={0.35}>
+                            <Stack
+                              direction="row"
+                              alignItems="center"
+                              justifyContent="space-between"
+                            >
+                              <Typography
+                                sx={{
+                                  fontSize: 11,
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.08em",
+                                  color: "rgba(237,240,247,0.54)",
+                                }}
+                              >
+                                {item.label}
+                              </Typography>
+                              <Box sx={{ color: "rgba(248,179,33,0.88)" }}>
+                                {item.icon}
+                              </Box>
+                            </Stack>
+                            <Typography
+                              sx={{
+                                fontSize:
+                                  item.label === tt("Siste synk", "Last sync")
+                                    ? 12.5
+                                    : 20,
+                                fontWeight: 700,
+                                color: "#edf0f7",
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              {item.value}
+                            </Typography>
+                            <Typography
+                              sx={{
+                                fontSize: 11.5,
+                                color: "rgba(237,240,247,0.56)",
+                              }}
+                            >
+                              {item.helper}
+                            </Typography>
+                          </Stack>
+                        </Box>
+                      ))}
+                    </Box>
+                    {notebookLmStatus?.reason ? (
+                      <Box
+                        sx={{
+                          px: 0.9,
+                          py: 0.8,
+                          borderRadius: 1,
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                          bgcolor: "rgba(255,255,255,0.03)",
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontSize: 12.5,
+                            color: "rgba(237,240,247,0.72)",
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          {notebookLmStatus.reason}
+                        </Typography>
+                      </Box>
+                    ) : null}
+                    <Stack
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={0.7}
+                      useFlexGap
+                      flexWrap="wrap"
+                    >
+                      <Button
+                        startIcon={
+                          notebookLmSyncMutation.isPending ? (
+                            <CircularProgress size={14} color="inherit" />
+                          ) : (
+                            <SmartToy fontSize="small" />
+                          )
+                        }
+                        onClick={() => notebookLmSyncMutation.mutate()}
+                        disabled={
+                          !activeCourse?.id ||
+                          notebookLmSyncMutation.isPending ||
+                          !notebookLmStatus?.syncEligible
+                        }
+                        sx={{
+                          textTransform: "none",
+                          color: "#0f0f0f",
+                          background:
+                            "linear-gradient(180deg, #ffd44e, #f2a616)",
+                        }}
+                      >
+                        {notebookLmSyncMutation.isPending
+                          ? tt("Synker...", "Syncing...")
+                          : tt("Synk til NotebookLM", "Sync to NotebookLM")}
+                      </Button>
+                      <Button
+                        startIcon={<Refresh fontSize="small" />}
+                        onClick={() => void notebookLmStatusQuery.refetch()}
+                        disabled={
+                          !activeCourse?.id || notebookLmStatusQuery.isFetching
+                        }
+                        sx={{
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Oppdater status", "Refresh status")}
+                      </Button>
+                      <Button
+                        startIcon={<OpenInNew fontSize="small" />}
+                        onClick={() =>
+                          academyNotebookLmService.openNotebookLm(
+                            notebookLmOpenUrl,
+                          )
+                        }
+                        sx={{
+                          textTransform: "none",
+                          color: "#edf0f7",
+                          border:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                        }}
+                      >
+                        {tt("Aapne NotebookLM", "Open NotebookLM")}
+                      </Button>
+                      {notebookLmWorkspaceDocumentUrl ? (
+                        <Button
+                          startIcon={<InsertDriveFile fontSize="small" />}
+                          onClick={() =>
+                            window.open(
+                              notebookLmWorkspaceDocumentUrl,
+                              "_blank",
+                              "noopener,noreferrer",
+                            )
+                          }
+                          sx={{
+                            textTransform: "none",
+                            color: "#edf0f7",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                          }}
+                        >
+                          {tt("Aapne kursoversikt", "Open course overview")}
+                        </Button>
+                      ) : null}
+                      {notebookLmDriveFolderUrl ? (
+                        <Button
+                          startIcon={<FolderOpen fontSize="small" />}
+                          onClick={() =>
+                            window.open(
+                              notebookLmDriveFolderUrl,
+                              "_blank",
+                              "noopener,noreferrer",
+                            )
+                          }
+                          sx={{
+                            textTransform: "none",
+                            color: "#edf0f7",
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+                          }}
+                        >
+                          {tt("Aapne Drive-mappe", "Open Drive folder")}
+                        </Button>
+                      ) : null}
+                    </Stack>
+                    <Typography
+                      sx={{ color: "rgba(237,240,247,0.6)", fontSize: 12 }}
+                    >
+                      {tt(
+                        "Synken oppretter ett kursdokument og ett Google Doc per ferdighet. Bruk deretter NotebookLM Studio for Audio Overview, Video Overview, quiz, study guide og andre avledede assets.",
+                        "Sync creates one course document and one Google Doc per skill. Then use NotebookLM Studio for Audio Overview, Video Overview, quizzes, study guides, and other derived assets.",
+                      )}
+                    </Typography>
+                    <Stack spacing={0.55}>
+                      {[
+                        tt(
+                          "Audio Overview for rask repetisjon, onboarding eller recap.",
+                          "Audio Overview for fast recap, onboarding, or review.",
+                        ),
+                        tt(
+                          "Video Overview, Slide Deck eller Infographic naar kurset skal repakkes.",
+                          "Video Overview, Slide Deck, or Infographic when the course needs a new format.",
+                        ),
+                        tt(
+                          "Study Guide, Flashcards eller Quiz for kunnskapssjekk etter videoen.",
+                          "Study Guide, flashcards, or a quiz for knowledge checks after the video.",
+                        ),
+                        tt(
+                          "Mind Map eller FAQ for aa se sammenhenger mellom ferdigheter og laeringsmaal.",
+                          "Mind Map or FAQ to show relationships between skills and learning objectives.",
+                        ),
+                      ].map((item) => (
+                        <Box
+                          key={item}
+                          sx={{
+                            px: 0.8,
+                            py: 0.7,
+                            borderRadius: 1,
+                            border:
+                              "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                            bgcolor: "rgba(255,255,255,0.03)",
+                          }}
+                        >
+                          <Typography
+                            sx={{
+                              fontSize: 12.5,
+                              color: "rgba(237,240,247,0.82)",
+                            }}
+                          >
+                            {item}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                    <Box
+                      sx={{
+                        borderRadius: 1,
+                        border:
+                          "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)",
+                        bgcolor: "rgba(255,255,255,0.03)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          px: 0.9,
+                          py: 0.75,
+                          borderBottom:
+                            "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)",
+                          bgcolor: "rgba(255,255,255,0.02)",
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            color: "rgba(237,240,247,0.56)",
+                          }}
+                        >
+                          {tt("Kilder i workspace", "Workspace sources")}
+                        </Typography>
+                      </Box>
+                      <Stack spacing={0}>
+                        {notebookLmSourcePreview.length === 0 ? (
+                          <Typography
+                            sx={{
+                              px: 0.9,
+                              py: 1,
+                              fontSize: 12.5,
+                              color: "rgba(237,240,247,0.62)",
+                            }}
+                          >
+                            {tt(
+                              "Ingen NotebookLM-kilder er opprettet ennå. Kjor foerste synk for aa generere Google Docs.",
+                              "No NotebookLM sources have been created yet. Run the first sync to generate Google Docs.",
+                            )}
+                          </Typography>
+                        ) : (
+                          notebookLmSourcePreview.map((document, index) => (
+                            <Stack
+                              key={`${document.id}-${document.lessonId || index}`}
+                              direction="row"
+                              spacing={0.8}
+                              alignItems="center"
+                              sx={{
+                                px: 0.9,
+                                py: 0.75,
+                                borderTop:
+                                  index === 0
+                                    ? "none"
+                                    : "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.06)",
+                              }}
+                            >
+                              <InsertDriveFile
+                                sx={{
+                                  fontSize: 17,
+                                  color:
+                                    document.kind === "course-overview"
+                                      ? "#f8d56f"
+                                      : "rgba(142,198,255,0.92)",
+                                }}
+                              />
+                              <Stack sx={{ flex: 1, minWidth: 0 }}>
+                                <Typography
+                                  noWrap
+                                  sx={{ fontSize: 13.5, color: "#edf0f7" }}
+                                >
+                                  {document.title}
+                                </Typography>
+                                <Typography
+                                  noWrap
+                                  sx={{
+                                    fontSize: 11.5,
+                                    color: "rgba(237,240,247,0.56)",
+                                  }}
+                                >
+                                  {document.kind === "course-overview"
+                                    ? tt("Kursoversikt", "Course overview")
+                                    : tt(
+                                        "Ferdighetsdokument",
+                                        "Skill document",
+                                      )}
+                                </Typography>
+                              </Stack>
+                              {document.googleDocUrl ? (
+                                <IconButton
+                                  size="small"
+                                  onClick={() =>
+                                    window.open(
+                                      document.googleDocUrl || "",
+                                      "_blank",
+                                      "noopener,noreferrer",
+                                    )
+                                  }
+                                  sx={{ color: "rgba(237,240,247,0.76)" }}
+                                  aria-label={tt(
+                                    "Aapne kilde i Google Docs",
+                                    "Open source in Google Docs",
+                                  )}
+                                >
+                                  <OpenInNew fontSize="small" />
+                                </IconButton>
+                              ) : null}
+                            </Stack>
+                          ))
+                        )}
+                      </Stack>
+                    </Box>
+                    {notebookLmStatus?.sourceDocumentCount &&
+                    notebookLmStatus.sourceDocumentCount >
+                      notebookLmSourcePreview.length ? (
+                      <Typography
+                        sx={{ color: "rgba(237,240,247,0.52)", fontSize: 11.5 }}
+                      >
+                        {tt(
+                          `${notebookLmStatus.sourceDocumentCount - notebookLmSourcePreview.length} flere dokumenter ligger i Drive-mappen.`,
+                          `${notebookLmStatus.sourceDocumentCount - notebookLmSourcePreview.length} more documents are available in the Drive folder.`,
+                        )}
+                      </Typography>
+                    ) : null}
                   </Box>
 
                   <Box sx={lessonStudioSectionCardSx}>
@@ -3470,7 +4595,10 @@ function AcademyLessonStudio({
                       <Stack spacing={0.8}>
                         {resourceItems.length === 0 && (
                           <Typography
-                            sx={{ fontSize: 13, color: "rgba(237,240,247,0.6)" }}
+                            sx={{
+                              fontSize: 13,
+                              color: "rgba(237,240,247,0.6)",
+                            }}
                           >
                             {tt(
                               "Ingen ressurser valgt fra Media ennå.",
@@ -3532,7 +4660,10 @@ function AcademyLessonStudio({
                     <TextField
                       value={searchValue}
                       onChange={(event) => setSearchValue(event.target.value)}
-                      placeholder={tt("Søk ressurser...", "Search resources...")}
+                      placeholder={tt(
+                        "Søk ressurser...",
+                        "Search resources...",
+                      )}
                       size="small"
                       InputProps={{
                         startAdornment: (
@@ -3820,27 +4951,7 @@ function AcademyLessonStudio({
             {tt("Avbryt", "Cancel")}
           </Button>
           <Button
-            onClick={() => {
-              const query = new URLSearchParams();
-              if (activeCourse?.id)
-                query.set("courseId", String(activeCourse.id));
-              if (activeLesson?.id)
-                query.set("lessonId", String(activeLesson.id));
-              query.set("bind", "skill");
-              query.set(
-                "returnTo",
-                location ||
-                  `/academy/lesson-editor?courseId=${encodeURIComponent(String(activeCourse?.id || ""))}${
-                    activeLesson?.id
-                      ? `&lessonId=${encodeURIComponent(String(activeLesson.id))}`
-                      : ""
-                  }`,
-              );
-              const suffix = query.toString();
-              setLocation(
-                suffix ? `/academy/media?${suffix}` : "/academy/media",
-              );
-            }}
+            onClick={() => openMediaStudio()}
             sx={{
               textTransform: "none",
               color: "#f8d56f",
@@ -3849,6 +4960,17 @@ function AcademyLessonStudio({
             }}
           >
             {tt("Åpne full Media", "Open full Media")}
+          </Button>
+          <Button
+            onClick={() => openMediaStudio({ source: "google-drive" })}
+            sx={{
+              textTransform: "none",
+              color: "#edf0f7",
+              border:
+                "var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)",
+            }}
+          >
+            {tt("Drive / Vids", "Drive / Vids")}
           </Button>
           <Button
             onClick={applyResourcePickerSelection}

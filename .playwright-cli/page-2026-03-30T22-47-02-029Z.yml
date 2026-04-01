@@ -1,0 +1,1140 @@
+- generic [ref=e2]:
+  - banner [ref=e50]:
+    - generic [ref=e52]:
+      - img "CreatorHub Norge" [ref=e53]
+      - generic [ref=e54]:
+        - heading "Admin Dashboard" [level=5] [ref=e55]
+        - generic [ref=e56]: academy-guest@creatorhubn.com
+    - generic [ref=e58]:
+      - generic:
+        - img
+      - tablist [ref=e61]:
+        - tab "Overblikk" [ref=e62] [cursor=pointer]:
+          - img [ref=e63]
+          - text: Overblikk
+        - tab "Brukere & Roller" [active] [selected] [ref=e65] [cursor=pointer]:
+          - img [ref=e66]
+          - text: Brukere & Roller
+        - tab "Community" [ref=e69] [cursor=pointer]:
+          - img [ref=e70]
+          - text: Community
+        - tab "Innhold & Assets" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+          - text: Innhold & Assets
+        - tab "Kunder/Prosjekter" [ref=e75] [cursor=pointer]:
+          - img [ref=e76]
+          - text: Kunder/Prosjekter
+        - tab "Kommunikasjon" [ref=e78] [cursor=pointer]:
+          - img [ref=e79]
+          - text: Kommunikasjon
+        - tab "Prototype Feedback" [ref=e81] [cursor=pointer]:
+          - img [ref=e82]
+          - text: Prototype Feedback
+        - tab "Økonomi" [ref=e84] [cursor=pointer]:
+          - img [ref=e85]
+          - text: Økonomi
+        - tab "Prisstyring" [ref=e87] [cursor=pointer]:
+          - img [ref=e88]
+          - text: Prisstyring
+        - tab "Rapporter" [ref=e90] [cursor=pointer]:
+          - img [ref=e91]
+          - text: Rapporter
+        - tab "Academy" [ref=e93] [cursor=pointer]:
+          - img [ref=e94]
+          - text: Academy
+        - tab "Vendor Types" [ref=e96] [cursor=pointer]:
+          - img [ref=e97]
+          - text: Vendor Types
+        - tab "Profesjonstyper" [ref=e99] [cursor=pointer]:
+          - img [ref=e100]
+          - text: Profesjonstyper
+        - tab "Integrasjoner" [ref=e102] [cursor=pointer]:
+          - img [ref=e103]
+          - text: Integrasjoner
+        - tab "Feature Management" [ref=e105] [cursor=pointer]:
+          - img [ref=e106]
+          - text: Feature Management
+        - tab "Sentralisert Overvåkning" [ref=e108] [cursor=pointer]:
+          - img [ref=e109]
+          - text: Sentralisert Overvåkning
+        - tab "Protokollstyring" [ref=e111] [cursor=pointer]:
+          - img [ref=e112]
+          - text: Protokollstyring
+        - tab "Drift" [ref=e114] [cursor=pointer]:
+          - img [ref=e115]
+          - text: Drift
+        - tab "Backup" [ref=e117] [cursor=pointer]:
+          - img [ref=e118]
+          - text: Backup
+        - tab "GDPR" [ref=e120] [cursor=pointer]:
+          - img [ref=e121]
+          - text: GDPR
+        - tab "Utvikling" [ref=e123] [cursor=pointer]:
+          - img [ref=e124]
+          - text: Utvikling
+        - tab "Automations" [ref=e126] [cursor=pointer]:
+          - img [ref=e127]
+          - text: Automations
+        - tab "MagicCreator" [ref=e129] [cursor=pointer]:
+          - img [ref=e130]
+          - text: MagicCreator
+        - tab "Stor Notatsløsning" [ref=e132] [cursor=pointer]:
+          - img [ref=e133]
+          - text: Stor Notatsløsning
+        - tab "Integration Test" [ref=e135] [cursor=pointer]:
+          - img [ref=e136]
+          - text: Integration Test
+        - tab "Payment Integration Test" [ref=e138] [cursor=pointer]:
+          - img [ref=e139]
+          - text: Payment Integration Test
+        - tab "Google Wallet Membership" [ref=e141] [cursor=pointer]:
+          - img [ref=e142]
+          - text: Google Wallet Membership
+        - tab "Google Wallet Integration Test" [ref=e144] [cursor=pointer]:
+          - img [ref=e145]
+          - text: Google Wallet Integration Test
+        - tab "Google Payments Config" [ref=e147] [cursor=pointer]:
+          - img [ref=e148]
+          - text: Google Payments Config
+        - tab "Email Analytics" [ref=e150] [cursor=pointer]:
+          - img [ref=e151]
+          - text: Email Analytics
+        - tab "Tester Skills" [ref=e153] [cursor=pointer]:
+          - img [ref=e154]
+          - text: Tester Skills
+        - tab "Testing Leaderboard" [ref=e156] [cursor=pointer]:
+          - img [ref=e157]
+          - text: Testing Leaderboard
+        - tab "Test Generator" [ref=e159] [cursor=pointer]:
+          - img [ref=e160]
+          - text: Test Generator
+        - tab "Marketing" [ref=e162] [cursor=pointer]:
+          - img [ref=e163]
+          - text: Marketing
+        - tab "Feature Customization" [ref=e165] [cursor=pointer]:
+          - img [ref=e166]
+          - text: Feature Customization
+        - tab "Fine-Tuning Monitor" [ref=e168] [cursor=pointer]:
+          - img [ref=e169]
+          - text: Fine-Tuning Monitor
+      - img [ref=e174] [cursor=pointer]
+  - tabpanel "Brukere & Roller" [ref=e232]:
+    - generic [ref=e234]:
+      - generic [ref=e236]:
+        - heading "👤 Brukere & Roller" [level=5] [ref=e237]
+        - generic [ref=e238]:
+          - generic [ref=e239]: "Features: 0/12"
+          - generic [ref=e241]: 0%
+      - tablist [ref=e245]:
+        - tab "Brukere" [selected] [ref=e246] [cursor=pointer]:
+          - img [ref=e247]
+          - text: Brukere
+        - tab "Tilgangsforespørsler" [ref=e249] [cursor=pointer]:
+          - img [ref=e250]
+          - text: Tilgangsforespørsler
+        - tab "E-post Design" [ref=e252] [cursor=pointer]:
+          - img [ref=e253]
+          - text: E-post Design
+        - tab "Mapper Tilgang" [ref=e255] [cursor=pointer]:
+          - img [ref=e256]
+          - text: Mapper Tilgang
+        - tab "Academy" [ref=e258] [cursor=pointer]:
+          - img [ref=e259]
+          - text: Academy
+        - tab "Enterprise" [ref=e261] [cursor=pointer]:
+          - img [ref=e262]
+          - text: Enterprise
+      - generic [ref=e265]:
+        - button "Inviter bruker" [ref=e267] [cursor=pointer]:
+          - img [ref=e269]
+          - text: Inviter bruker
+        - generic [ref=e273]:
+          - generic [ref=e275]:
+            - img [ref=e276]
+            - textbox "Søk brukere..." [ref=e278]
+            - group
+          - generic [ref=e279]:
+            - generic [ref=e280]: Filtrer etter rolle
+            - generic [ref=e281]:
+              - img [ref=e282]
+              - combobox [ref=e284] [cursor=pointer]
+              - textbox
+              - img
+              - group:
+                - generic: Filtrer etter rolle
+          - alert [ref=e285]:
+            - img [ref=e287]
+            - generic [ref=e289]: Totalt 43 brukere registrert
+        - table [ref=e293]:
+          - rowgroup [ref=e294]:
+            - row "Bruker E-post Rolle Profesjon Bedrift Status Opprettet Handlinger" [ref=e295]:
+              - columnheader "Bruker" [ref=e296]
+              - columnheader "E-post" [ref=e297]
+              - columnheader "Rolle" [ref=e298]
+              - columnheader "Profesjon" [ref=e299]
+              - columnheader "Bedrift" [ref=e300]
+              - columnheader "Status" [ref=e301]
+              - columnheader "Opprettet" [ref=e302]
+              - columnheader "Handlinger" [ref=e303]
+          - rowgroup [ref=e304]:
+            - row "A Admin E2E admin-e2e-1774910608139@creatorhubn.test Instruktør Videograf Rediger profesjon CreatorHub Test Aktiv 31.3.2026 Handlinger" [ref=e305]:
+              - cell "A Admin E2E" [ref=e306]:
+                - generic [ref=e307]:
+                  - generic [ref=e308]: A
+                  - paragraph [ref=e309]: Admin E2E
+              - cell "admin-e2e-1774910608139@creatorhubn.test" [ref=e310]:
+                - paragraph [ref=e311]: admin-e2e-1774910608139@creatorhubn.test
+              - cell "Instruktør" [ref=e312]:
+                - generic [ref=e314]: Instruktør
+              - cell "Videograf Rediger profesjon" [ref=e315]:
+                - generic [ref=e316]:
+                  - generic [ref=e317]:
+                    - img [ref=e318]
+                    - generic [ref=e320]: Videograf
+                  - button "Rediger profesjon" [ref=e321] [cursor=pointer]:
+                    - img [ref=e322]
+              - cell "CreatorHub Test" [ref=e324]:
+                - paragraph [ref=e325]: CreatorHub Test
+              - cell "Aktiv" [ref=e326]:
+                - generic [ref=e328]: Aktiv
+              - cell "31.3.2026" [ref=e329]
+              - cell "Handlinger" [ref=e330]:
+                - button "Handlinger" [ref=e331] [cursor=pointer]:
+                  - img [ref=e332]
+            - row "A Admin E2E admin-e2e-1774910557911@creatorhubn.test Bruker Fotograf Rediger profesjon CreatorHub Test Aktiv 31.3.2026 Handlinger" [ref=e334]:
+              - cell "A Admin E2E" [ref=e335]:
+                - generic [ref=e336]:
+                  - generic [ref=e337]: A
+                  - paragraph [ref=e338]: Admin E2E
+              - cell "admin-e2e-1774910557911@creatorhubn.test" [ref=e339]:
+                - paragraph [ref=e340]: admin-e2e-1774910557911@creatorhubn.test
+              - cell "Bruker" [ref=e341]:
+                - generic [ref=e343]: Bruker
+              - cell "Fotograf Rediger profesjon" [ref=e344]:
+                - generic [ref=e345]:
+                  - generic [ref=e346]:
+                    - img [ref=e347]
+                    - generic [ref=e350]: Fotograf
+                  - button "Rediger profesjon" [ref=e351] [cursor=pointer]:
+                    - img [ref=e352]
+              - cell "CreatorHub Test" [ref=e354]:
+                - paragraph [ref=e355]: CreatorHub Test
+              - cell "Aktiv" [ref=e356]:
+                - generic [ref=e358]: Aktiv
+              - cell "31.3.2026" [ref=e359]
+              - cell "Handlinger" [ref=e360]:
+                - button "Handlinger" [ref=e361] [cursor=pointer]:
+                  - img [ref=e362]
+            - row "Q qa-linkedin-flow qa-linkedin-flow@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 24.3.2026 Handlinger" [ref=e364]:
+              - cell "Q qa-linkedin-flow" [ref=e365]:
+                - generic [ref=e366]:
+                  - generic [ref=e367]: Q
+                  - paragraph [ref=e368]: qa-linkedin-flow
+              - cell "qa-linkedin-flow@creatorhubn.com" [ref=e369]:
+                - paragraph [ref=e370]: qa-linkedin-flow@creatorhubn.com
+              - cell "Bruker" [ref=e371]:
+                - generic [ref=e373]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e374]:
+                - generic [ref=e375]:
+                  - generic [ref=e377]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e378] [cursor=pointer]:
+                    - img [ref=e379]
+              - cell "Ingen bedrift" [ref=e381]:
+                - paragraph [ref=e382]: Ingen bedrift
+              - cell "Aktiv" [ref=e383]:
+                - generic [ref=e385]: Aktiv
+              - cell "24.3.2026" [ref=e386]
+              - cell "Handlinger" [ref=e387]:
+                - button "Handlinger" [ref=e388] [cursor=pointer]:
+                  - img [ref=e389]
+            - row "I inspect-meta-1773657864573 inspect-meta-1773657864573@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e391]:
+              - cell "I inspect-meta-1773657864573" [ref=e392]:
+                - generic [ref=e393]:
+                  - generic [ref=e394]: I
+                  - paragraph [ref=e395]: inspect-meta-1773657864573
+              - cell "inspect-meta-1773657864573@theroleroom.test" [ref=e396]:
+                - paragraph [ref=e397]: inspect-meta-1773657864573@theroleroom.test
+              - cell "Bruker" [ref=e398]:
+                - generic [ref=e400]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e401]:
+                - generic [ref=e402]:
+                  - generic [ref=e404]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e405] [cursor=pointer]:
+                    - img [ref=e406]
+              - cell "Ingen bedrift" [ref=e408]:
+                - paragraph [ref=e409]: Ingen bedrift
+              - cell "Aktiv" [ref=e410]:
+                - generic [ref=e412]: Aktiv
+              - cell "16.3.2026" [ref=e413]
+              - cell "Handlinger" [ref=e414]:
+                - button "Handlinger" [ref=e415] [cursor=pointer]:
+                  - img [ref=e416]
+            - row "P prodmeta-cr-1773657785148 prodmeta-cr-1773657785148@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e418]:
+              - cell "P prodmeta-cr-1773657785148" [ref=e419]:
+                - generic [ref=e420]:
+                  - generic [ref=e421]: P
+                  - paragraph [ref=e422]: prodmeta-cr-1773657785148
+              - cell "prodmeta-cr-1773657785148@theroleroom.test" [ref=e423]:
+                - paragraph [ref=e424]: prodmeta-cr-1773657785148@theroleroom.test
+              - cell "Bruker" [ref=e425]:
+                - generic [ref=e427]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e428]:
+                - generic [ref=e429]:
+                  - generic [ref=e431]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e432] [cursor=pointer]:
+                    - img [ref=e433]
+              - cell "Ingen bedrift" [ref=e435]:
+                - paragraph [ref=e436]: Ingen bedrift
+              - cell "Aktiv" [ref=e437]:
+                - generic [ref=e439]: Aktiv
+              - cell "16.3.2026" [ref=e440]
+              - cell "Handlinger" [ref=e441]:
+                - button "Handlinger" [ref=e442] [cursor=pointer]:
+                  - img [ref=e443]
+            - row "P prodmeta-cp-1773657781739 prodmeta-cp-1773657781739@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e445]:
+              - cell "P prodmeta-cp-1773657781739" [ref=e446]:
+                - generic [ref=e447]:
+                  - generic [ref=e448]: P
+                  - paragraph [ref=e449]: prodmeta-cp-1773657781739
+              - cell "prodmeta-cp-1773657781739@theroleroom.test" [ref=e450]:
+                - paragraph [ref=e451]: prodmeta-cp-1773657781739@theroleroom.test
+              - cell "Bruker" [ref=e452]:
+                - generic [ref=e454]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e455]:
+                - generic [ref=e456]:
+                  - generic [ref=e458]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e459] [cursor=pointer]:
+                    - img [ref=e460]
+              - cell "Ingen bedrift" [ref=e462]:
+                - paragraph [ref=e463]: Ingen bedrift
+              - cell "Aktiv" [ref=e464]:
+                - generic [ref=e466]: Aktiv
+              - cell "16.3.2026" [ref=e467]
+              - cell "Handlinger" [ref=e468]:
+                - button "Handlinger" [ref=e469] [cursor=pointer]:
+                  - img [ref=e470]
+            - row "P prodmeta-1773657777790 prodmeta-1773657777790@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e472]:
+              - cell "P prodmeta-1773657777790" [ref=e473]:
+                - generic [ref=e474]:
+                  - generic [ref=e475]: P
+                  - paragraph [ref=e476]: prodmeta-1773657777790
+              - cell "prodmeta-1773657777790@theroleroom.test" [ref=e477]:
+                - paragraph [ref=e478]: prodmeta-1773657777790@theroleroom.test
+              - cell "Bruker" [ref=e479]:
+                - generic [ref=e481]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e482]:
+                - generic [ref=e483]:
+                  - generic [ref=e485]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e486] [cursor=pointer]:
+                    - img [ref=e487]
+              - cell "Ingen bedrift" [ref=e489]:
+                - paragraph [ref=e490]: Ingen bedrift
+              - cell "Aktiv" [ref=e491]:
+                - generic [ref=e493]: Aktiv
+              - cell "16.3.2026" [ref=e494]
+              - cell "Handlinger" [ref=e495]:
+                - button "Handlinger" [ref=e496] [cursor=pointer]:
+                  - img [ref=e497]
+            - row "P prod-econ-1773657360378 prod-econ-1773657360378@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e499]:
+              - cell "P prod-econ-1773657360378" [ref=e500]:
+                - generic [ref=e501]:
+                  - generic [ref=e502]: P
+                  - paragraph [ref=e503]: prod-econ-1773657360378
+              - cell "prod-econ-1773657360378@theroleroom.test" [ref=e504]:
+                - paragraph [ref=e505]: prod-econ-1773657360378@theroleroom.test
+              - cell "Bruker" [ref=e506]:
+                - generic [ref=e508]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e509]:
+                - generic [ref=e510]:
+                  - generic [ref=e512]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e513] [cursor=pointer]:
+                    - img [ref=e514]
+              - cell "Ingen bedrift" [ref=e516]:
+                - paragraph [ref=e517]: Ingen bedrift
+              - cell "Aktiv" [ref=e518]:
+                - generic [ref=e520]: Aktiv
+              - cell "16.3.2026" [ref=e521]
+              - cell "Handlinger" [ref=e522]:
+                - button "Handlinger" [ref=e523] [cursor=pointer]:
+                  - img [ref=e524]
+            - row "P prod-team-1773657282223 prod-team-1773657282223@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e526]:
+              - cell "P prod-team-1773657282223" [ref=e527]:
+                - generic [ref=e528]:
+                  - generic [ref=e529]: P
+                  - paragraph [ref=e530]: prod-team-1773657282223
+              - cell "prod-team-1773657282223@theroleroom.test" [ref=e531]:
+                - paragraph [ref=e532]: prod-team-1773657282223@theroleroom.test
+              - cell "Bruker" [ref=e533]:
+                - generic [ref=e535]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e536]:
+                - generic [ref=e537]:
+                  - generic [ref=e539]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e540] [cursor=pointer]:
+                    - img [ref=e541]
+              - cell "Ingen bedrift" [ref=e543]:
+                - paragraph [ref=e544]: Ingen bedrift
+              - cell "Aktiv" [ref=e545]:
+                - generic [ref=e547]: Aktiv
+              - cell "16.3.2026" [ref=e548]
+              - cell "Handlinger" [ref=e549]:
+                - button "Handlinger" [ref=e550] [cursor=pointer]:
+                  - img [ref=e551]
+            - row "C client403-1773656998380 client403-1773656998380@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e553]:
+              - cell "C client403-1773656998380" [ref=e554]:
+                - generic [ref=e555]:
+                  - generic [ref=e556]: C
+                  - paragraph [ref=e557]: client403-1773656998380
+              - cell "client403-1773656998380@theroleroom.test" [ref=e558]:
+                - paragraph [ref=e559]: client403-1773656998380@theroleroom.test
+              - cell "Bruker" [ref=e560]:
+                - generic [ref=e562]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e563]:
+                - generic [ref=e564]:
+                  - generic [ref=e566]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e567] [cursor=pointer]:
+                    - img [ref=e568]
+              - cell "Ingen bedrift" [ref=e570]:
+                - paragraph [ref=e571]: Ingen bedrift
+              - cell "Aktiv" [ref=e572]:
+                - generic [ref=e574]: Aktiv
+              - cell "16.3.2026" [ref=e575]
+              - cell "Handlinger" [ref=e576]:
+                - button "Handlinger" [ref=e577] [cursor=pointer]:
+                  - img [ref=e578]
+            - row "C client_reviewer-1773656912110 client_reviewer-1773656912110@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e580]:
+              - cell "C client_reviewer-1773656912110" [ref=e581]:
+                - generic [ref=e582]:
+                  - generic [ref=e583]: C
+                  - paragraph [ref=e584]: client_reviewer-1773656912110
+              - cell "client_reviewer-1773656912110@theroleroom.test" [ref=e585]:
+                - paragraph [ref=e586]: client_reviewer-1773656912110@theroleroom.test
+              - cell "Bruker" [ref=e587]:
+                - generic [ref=e589]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e590]:
+                - generic [ref=e591]:
+                  - generic [ref=e593]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e594] [cursor=pointer]:
+                    - img [ref=e595]
+              - cell "Ingen bedrift" [ref=e597]:
+                - paragraph [ref=e598]: Ingen bedrift
+              - cell "Aktiv" [ref=e599]:
+                - generic [ref=e601]: Aktiv
+              - cell "16.3.2026" [ref=e602]
+              - cell "Handlinger" [ref=e603]:
+                - button "Handlinger" [ref=e604] [cursor=pointer]:
+                  - img [ref=e605]
+            - row "C content_producer-1773656904202 content_producer-1773656904202@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e607]:
+              - cell "C content_producer-1773656904202" [ref=e608]:
+                - generic [ref=e609]:
+                  - generic [ref=e610]: C
+                  - paragraph [ref=e611]: content_producer-1773656904202
+              - cell "content_producer-1773656904202@theroleroom.test" [ref=e612]:
+                - paragraph [ref=e613]: content_producer-1773656904202@theroleroom.test
+              - cell "Bruker" [ref=e614]:
+                - generic [ref=e616]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e617]:
+                - generic [ref=e618]:
+                  - generic [ref=e620]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e621] [cursor=pointer]:
+                    - img [ref=e622]
+              - cell "Ingen bedrift" [ref=e624]:
+                - paragraph [ref=e625]: Ingen bedrift
+              - cell "Aktiv" [ref=e626]:
+                - generic [ref=e628]: Aktiv
+              - cell "16.3.2026" [ref=e629]
+              - cell "Handlinger" [ref=e630]:
+                - button "Handlinger" [ref=e631] [cursor=pointer]:
+                  - img [ref=e632]
+            - row "P probe3-1773656792178 probe3-1773656792178@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e634]:
+              - cell "P probe3-1773656792178" [ref=e635]:
+                - generic [ref=e636]:
+                  - generic [ref=e637]: P
+                  - paragraph [ref=e638]: probe3-1773656792178
+              - cell "probe3-1773656792178@theroleroom.test" [ref=e639]:
+                - paragraph [ref=e640]: probe3-1773656792178@theroleroom.test
+              - cell "Bruker" [ref=e641]:
+                - generic [ref=e643]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e644]:
+                - generic [ref=e645]:
+                  - generic [ref=e647]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e648] [cursor=pointer]:
+                    - img [ref=e649]
+              - cell "Ingen bedrift" [ref=e651]:
+                - paragraph [ref=e652]: Ingen bedrift
+              - cell "Aktiv" [ref=e653]:
+                - generic [ref=e655]: Aktiv
+              - cell "16.3.2026" [ref=e656]
+              - cell "Handlinger" [ref=e657]:
+                - button "Handlinger" [ref=e658] [cursor=pointer]:
+                  - img [ref=e659]
+            - row "C content_producer-1773656720536 content_producer-1773656720536@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e661]:
+              - cell "C content_producer-1773656720536" [ref=e662]:
+                - generic [ref=e663]:
+                  - generic [ref=e664]: C
+                  - paragraph [ref=e665]: content_producer-1773656720536
+              - cell "content_producer-1773656720536@theroleroom.test" [ref=e666]:
+                - paragraph [ref=e667]: content_producer-1773656720536@theroleroom.test
+              - cell "Bruker" [ref=e668]:
+                - generic [ref=e670]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e671]:
+                - generic [ref=e672]:
+                  - generic [ref=e674]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e675] [cursor=pointer]:
+                    - img [ref=e676]
+              - cell "Ingen bedrift" [ref=e678]:
+                - paragraph [ref=e679]: Ingen bedrift
+              - cell "Aktiv" [ref=e680]:
+                - generic [ref=e682]: Aktiv
+              - cell "16.3.2026" [ref=e683]
+              - cell "Handlinger" [ref=e684]:
+                - button "Handlinger" [ref=e685] [cursor=pointer]:
+                  - img [ref=e686]
+            - row "P probe2-1773656630661 probe2-1773656630661@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e688]:
+              - cell "P probe2-1773656630661" [ref=e689]:
+                - generic [ref=e690]:
+                  - generic [ref=e691]: P
+                  - paragraph [ref=e692]: probe2-1773656630661
+              - cell "probe2-1773656630661@theroleroom.test" [ref=e693]:
+                - paragraph [ref=e694]: probe2-1773656630661@theroleroom.test
+              - cell "Bruker" [ref=e695]:
+                - generic [ref=e697]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e698]:
+                - generic [ref=e699]:
+                  - generic [ref=e701]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e702] [cursor=pointer]:
+                    - img [ref=e703]
+              - cell "Ingen bedrift" [ref=e705]:
+                - paragraph [ref=e706]: Ingen bedrift
+              - cell "Aktiv" [ref=e707]:
+                - generic [ref=e709]: Aktiv
+              - cell "16.3.2026" [ref=e710]
+              - cell "Handlinger" [ref=e711]:
+                - button "Handlinger" [ref=e712] [cursor=pointer]:
+                  - img [ref=e713]
+            - row "P probe-1773656592752 probe-1773656592752@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e715]:
+              - cell "P probe-1773656592752" [ref=e716]:
+                - generic [ref=e717]:
+                  - generic [ref=e718]: P
+                  - paragraph [ref=e719]: probe-1773656592752
+              - cell "probe-1773656592752@theroleroom.test" [ref=e720]:
+                - paragraph [ref=e721]: probe-1773656592752@theroleroom.test
+              - cell "Bruker" [ref=e722]:
+                - generic [ref=e724]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e725]:
+                - generic [ref=e726]:
+                  - generic [ref=e728]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e729] [cursor=pointer]:
+                    - img [ref=e730]
+              - cell "Ingen bedrift" [ref=e732]:
+                - paragraph [ref=e733]: Ingen bedrift
+              - cell "Aktiv" [ref=e734]:
+                - generic [ref=e736]: Aktiv
+              - cell "16.3.2026" [ref=e737]
+              - cell "Handlinger" [ref=e738]:
+                - button "Handlinger" [ref=e739] [cursor=pointer]:
+                  - img [ref=e740]
+            - row "C content_producer-1773656512325 content_producer-1773656512325@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e742]:
+              - cell "C content_producer-1773656512325" [ref=e743]:
+                - generic [ref=e744]:
+                  - generic [ref=e745]: C
+                  - paragraph [ref=e746]: content_producer-1773656512325
+              - cell "content_producer-1773656512325@theroleroom.test" [ref=e747]:
+                - paragraph [ref=e748]: content_producer-1773656512325@theroleroom.test
+              - cell "Bruker" [ref=e749]:
+                - generic [ref=e751]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e752]:
+                - generic [ref=e753]:
+                  - generic [ref=e755]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e756] [cursor=pointer]:
+                    - img [ref=e757]
+              - cell "Ingen bedrift" [ref=e759]:
+                - paragraph [ref=e760]: Ingen bedrift
+              - cell "Aktiv" [ref=e761]:
+                - generic [ref=e763]: Aktiv
+              - cell "16.3.2026" [ref=e764]
+              - cell "Handlinger" [ref=e765]:
+                - button "Handlinger" [ref=e766] [cursor=pointer]:
+                  - img [ref=e767]
+            - row "C content_producer-1773656332986 content_producer-1773656332986@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e769]:
+              - cell "C content_producer-1773656332986" [ref=e770]:
+                - generic [ref=e771]:
+                  - generic [ref=e772]: C
+                  - paragraph [ref=e773]: content_producer-1773656332986
+              - cell "content_producer-1773656332986@theroleroom.test" [ref=e774]:
+                - paragraph [ref=e775]: content_producer-1773656332986@theroleroom.test
+              - cell "Bruker" [ref=e776]:
+                - generic [ref=e778]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e779]:
+                - generic [ref=e780]:
+                  - generic [ref=e782]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e783] [cursor=pointer]:
+                    - img [ref=e784]
+              - cell "Ingen bedrift" [ref=e786]:
+                - paragraph [ref=e787]: Ingen bedrift
+              - cell "Aktiv" [ref=e788]:
+                - generic [ref=e790]: Aktiv
+              - cell "16.3.2026" [ref=e791]
+              - cell "Handlinger" [ref=e792]:
+                - button "Handlinger" [ref=e793] [cursor=pointer]:
+                  - img [ref=e794]
+            - row "P producer-debug-1773656166157 producer-debug-1773656166157@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e796]:
+              - cell "P producer-debug-1773656166157" [ref=e797]:
+                - generic [ref=e798]:
+                  - generic [ref=e799]: P
+                  - paragraph [ref=e800]: producer-debug-1773656166157
+              - cell "producer-debug-1773656166157@theroleroom.test" [ref=e801]:
+                - paragraph [ref=e802]: producer-debug-1773656166157@theroleroom.test
+              - cell "Bruker" [ref=e803]:
+                - generic [ref=e805]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e806]:
+                - generic [ref=e807]:
+                  - generic [ref=e809]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e810] [cursor=pointer]:
+                    - img [ref=e811]
+              - cell "Ingen bedrift" [ref=e813]:
+                - paragraph [ref=e814]: Ingen bedrift
+              - cell "Aktiv" [ref=e815]:
+                - generic [ref=e817]: Aktiv
+              - cell "16.3.2026" [ref=e818]
+              - cell "Handlinger" [ref=e819]:
+                - button "Handlinger" [ref=e820] [cursor=pointer]:
+                  - img [ref=e821]
+            - row "P producer-ui-1773656081768 producer-ui-1773656081768@theroleroom.test Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e823]:
+              - cell "P producer-ui-1773656081768" [ref=e824]:
+                - generic [ref=e825]:
+                  - generic [ref=e826]: P
+                  - paragraph [ref=e827]: producer-ui-1773656081768
+              - cell "producer-ui-1773656081768@theroleroom.test" [ref=e828]:
+                - paragraph [ref=e829]: producer-ui-1773656081768@theroleroom.test
+              - cell "Bruker" [ref=e830]:
+                - generic [ref=e832]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e833]:
+                - generic [ref=e834]:
+                  - generic [ref=e836]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e837] [cursor=pointer]:
+                    - img [ref=e838]
+              - cell "Ingen bedrift" [ref=e840]:
+                - paragraph [ref=e841]: Ingen bedrift
+              - cell "Aktiv" [ref=e842]:
+                - generic [ref=e844]: Aktiv
+              - cell "16.3.2026" [ref=e845]
+              - cell "Handlinger" [ref=e846]:
+                - button "Handlinger" [ref=e847] [cursor=pointer]:
+                  - img [ref=e848]
+            - row "C client-dismiss-1773655624950 client-dismiss-1773655624950@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e850]:
+              - cell "C client-dismiss-1773655624950" [ref=e851]:
+                - generic [ref=e852]:
+                  - generic [ref=e853]: C
+                  - paragraph [ref=e854]: client-dismiss-1773655624950
+              - cell "client-dismiss-1773655624950@creatorhubn.com" [ref=e855]:
+                - paragraph [ref=e856]: client-dismiss-1773655624950@creatorhubn.com
+              - cell "Bruker" [ref=e857]:
+                - generic [ref=e859]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e860]:
+                - generic [ref=e861]:
+                  - generic [ref=e863]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e864] [cursor=pointer]:
+                    - img [ref=e865]
+              - cell "Ingen bedrift" [ref=e867]:
+                - paragraph [ref=e868]: Ingen bedrift
+              - cell "Aktiv" [ref=e869]:
+                - generic [ref=e871]: Aktiv
+              - cell "16.3.2026" [ref=e872]
+              - cell "Handlinger" [ref=e873]:
+                - button "Handlinger" [ref=e874] [cursor=pointer]:
+                  - img [ref=e875]
+            - row "C client-dialog-1773655545255 client-dialog-1773655545255@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e877]:
+              - cell "C client-dialog-1773655545255" [ref=e878]:
+                - generic [ref=e879]:
+                  - generic [ref=e880]: C
+                  - paragraph [ref=e881]: client-dialog-1773655545255
+              - cell "client-dialog-1773655545255@creatorhubn.com" [ref=e882]:
+                - paragraph [ref=e883]: client-dialog-1773655545255@creatorhubn.com
+              - cell "Bruker" [ref=e884]:
+                - generic [ref=e886]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e887]:
+                - generic [ref=e888]:
+                  - generic [ref=e890]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e891] [cursor=pointer]:
+                    - img [ref=e892]
+              - cell "Ingen bedrift" [ref=e894]:
+                - paragraph [ref=e895]: Ingen bedrift
+              - cell "Aktiv" [ref=e896]:
+                - generic [ref=e898]: Aktiv
+              - cell "16.3.2026" [ref=e899]
+              - cell "Handlinger" [ref=e900]:
+                - button "Handlinger" [ref=e901] [cursor=pointer]:
+                  - img [ref=e902]
+            - row "C client-smoke-1773655459124 client-smoke-1773655459124@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e904]:
+              - cell "C client-smoke-1773655459124" [ref=e905]:
+                - generic [ref=e906]:
+                  - generic [ref=e907]: C
+                  - paragraph [ref=e908]: client-smoke-1773655459124
+              - cell "client-smoke-1773655459124@creatorhubn.com" [ref=e909]:
+                - paragraph [ref=e910]: client-smoke-1773655459124@creatorhubn.com
+              - cell "Bruker" [ref=e911]:
+                - generic [ref=e913]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e914]:
+                - generic [ref=e915]:
+                  - generic [ref=e917]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e918] [cursor=pointer]:
+                    - img [ref=e919]
+              - cell "Ingen bedrift" [ref=e921]:
+                - paragraph [ref=e922]: Ingen bedrift
+              - cell "Aktiv" [ref=e923]:
+                - generic [ref=e925]: Aktiv
+              - cell "16.3.2026" [ref=e926]
+              - cell "Handlinger" [ref=e927]:
+                - button "Handlinger" [ref=e928] [cursor=pointer]:
+                  - img [ref=e929]
+            - row "P producer-smoke-1773655453097 producer-smoke-1773655453097@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e931]:
+              - cell "P producer-smoke-1773655453097" [ref=e932]:
+                - generic [ref=e933]:
+                  - generic [ref=e934]: P
+                  - paragraph [ref=e935]: producer-smoke-1773655453097
+              - cell "producer-smoke-1773655453097@creatorhubn.com" [ref=e936]:
+                - paragraph [ref=e937]: producer-smoke-1773655453097@creatorhubn.com
+              - cell "Bruker" [ref=e938]:
+                - generic [ref=e940]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e941]:
+                - generic [ref=e942]:
+                  - generic [ref=e944]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e945] [cursor=pointer]:
+                    - img [ref=e946]
+              - cell "Ingen bedrift" [ref=e948]:
+                - paragraph [ref=e949]: Ingen bedrift
+              - cell "Aktiv" [ref=e950]:
+                - generic [ref=e952]: Aktiv
+              - cell "16.3.2026" [ref=e953]
+              - cell "Handlinger" [ref=e954]:
+                - button "Handlinger" [ref=e955] [cursor=pointer]:
+                  - img [ref=e956]
+            - row "P producer-smoke-1773655343981 producer-smoke-1773655343981@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e958]:
+              - cell "P producer-smoke-1773655343981" [ref=e959]:
+                - generic [ref=e960]:
+                  - generic [ref=e961]: P
+                  - paragraph [ref=e962]: producer-smoke-1773655343981
+              - cell "producer-smoke-1773655343981@creatorhubn.com" [ref=e963]:
+                - paragraph [ref=e964]: producer-smoke-1773655343981@creatorhubn.com
+              - cell "Bruker" [ref=e965]:
+                - generic [ref=e967]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e968]:
+                - generic [ref=e969]:
+                  - generic [ref=e971]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e972] [cursor=pointer]:
+                    - img [ref=e973]
+              - cell "Ingen bedrift" [ref=e975]:
+                - paragraph [ref=e976]: Ingen bedrift
+              - cell "Aktiv" [ref=e977]:
+                - generic [ref=e979]: Aktiv
+              - cell "16.3.2026" [ref=e980]
+              - cell "Handlinger" [ref=e981]:
+                - button "Handlinger" [ref=e982] [cursor=pointer]:
+                  - img [ref=e983]
+            - row "P producer-smoke-1773655243421 producer-smoke-1773655243421@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e985]:
+              - cell "P producer-smoke-1773655243421" [ref=e986]:
+                - generic [ref=e987]:
+                  - generic [ref=e988]: P
+                  - paragraph [ref=e989]: producer-smoke-1773655243421
+              - cell "producer-smoke-1773655243421@creatorhubn.com" [ref=e990]:
+                - paragraph [ref=e991]: producer-smoke-1773655243421@creatorhubn.com
+              - cell "Bruker" [ref=e992]:
+                - generic [ref=e994]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e995]:
+                - generic [ref=e996]:
+                  - generic [ref=e998]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e999] [cursor=pointer]:
+                    - img [ref=e1000]
+              - cell "Ingen bedrift" [ref=e1002]:
+                - paragraph [ref=e1003]: Ingen bedrift
+              - cell "Aktiv" [ref=e1004]:
+                - generic [ref=e1006]: Aktiv
+              - cell "16.3.2026" [ref=e1007]
+              - cell "Handlinger" [ref=e1008]:
+                - button "Handlinger" [ref=e1009] [cursor=pointer]:
+                  - img [ref=e1010]
+            - row "P producer-dialog-1773655140406 producer-dialog-1773655140406@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e1012]:
+              - cell "P producer-dialog-1773655140406" [ref=e1013]:
+                - generic [ref=e1014]:
+                  - generic [ref=e1015]: P
+                  - paragraph [ref=e1016]: producer-dialog-1773655140406
+              - cell "producer-dialog-1773655140406@creatorhubn.com" [ref=e1017]:
+                - paragraph [ref=e1018]: producer-dialog-1773655140406@creatorhubn.com
+              - cell "Bruker" [ref=e1019]:
+                - generic [ref=e1021]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1022]:
+                - generic [ref=e1023]:
+                  - generic [ref=e1025]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1026] [cursor=pointer]:
+                    - img [ref=e1027]
+              - cell "Ingen bedrift" [ref=e1029]:
+                - paragraph [ref=e1030]: Ingen bedrift
+              - cell "Aktiv" [ref=e1031]:
+                - generic [ref=e1033]: Aktiv
+              - cell "16.3.2026" [ref=e1034]
+              - cell "Handlinger" [ref=e1035]:
+                - button "Handlinger" [ref=e1036] [cursor=pointer]:
+                  - img [ref=e1037]
+            - row "P producer-smoke-1773655061540 producer-smoke-1773655061540@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e1039]:
+              - cell "P producer-smoke-1773655061540" [ref=e1040]:
+                - generic [ref=e1041]:
+                  - generic [ref=e1042]: P
+                  - paragraph [ref=e1043]: producer-smoke-1773655061540
+              - cell "producer-smoke-1773655061540@creatorhubn.com" [ref=e1044]:
+                - paragraph [ref=e1045]: producer-smoke-1773655061540@creatorhubn.com
+              - cell "Bruker" [ref=e1046]:
+                - generic [ref=e1048]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1049]:
+                - generic [ref=e1050]:
+                  - generic [ref=e1052]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1053] [cursor=pointer]:
+                    - img [ref=e1054]
+              - cell "Ingen bedrift" [ref=e1056]:
+                - paragraph [ref=e1057]: Ingen bedrift
+              - cell "Aktiv" [ref=e1058]:
+                - generic [ref=e1060]: Aktiv
+              - cell "16.3.2026" [ref=e1061]
+              - cell "Handlinger" [ref=e1062]:
+                - button "Handlinger" [ref=e1063] [cursor=pointer]:
+                  - img [ref=e1064]
+            - row "P producer-inspect-1773654951266 producer-inspect-1773654951266@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e1066]:
+              - cell "P producer-inspect-1773654951266" [ref=e1067]:
+                - generic [ref=e1068]:
+                  - generic [ref=e1069]: P
+                  - paragraph [ref=e1070]: producer-inspect-1773654951266
+              - cell "producer-inspect-1773654951266@creatorhubn.com" [ref=e1071]:
+                - paragraph [ref=e1072]: producer-inspect-1773654951266@creatorhubn.com
+              - cell "Bruker" [ref=e1073]:
+                - generic [ref=e1075]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1076]:
+                - generic [ref=e1077]:
+                  - generic [ref=e1079]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1080] [cursor=pointer]:
+                    - img [ref=e1081]
+              - cell "Ingen bedrift" [ref=e1083]:
+                - paragraph [ref=e1084]: Ingen bedrift
+              - cell "Aktiv" [ref=e1085]:
+                - generic [ref=e1087]: Aktiv
+              - cell "16.3.2026" [ref=e1088]
+              - cell "Handlinger" [ref=e1089]:
+                - button "Handlinger" [ref=e1090] [cursor=pointer]:
+                  - img [ref=e1091]
+            - row "P producer-smoke-1773654870360 producer-smoke-1773654870360@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 16.3.2026 Handlinger" [ref=e1093]:
+              - cell "P producer-smoke-1773654870360" [ref=e1094]:
+                - generic [ref=e1095]:
+                  - generic [ref=e1096]: P
+                  - paragraph [ref=e1097]: producer-smoke-1773654870360
+              - cell "producer-smoke-1773654870360@creatorhubn.com" [ref=e1098]:
+                - paragraph [ref=e1099]: producer-smoke-1773654870360@creatorhubn.com
+              - cell "Bruker" [ref=e1100]:
+                - generic [ref=e1102]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1103]:
+                - generic [ref=e1104]:
+                  - generic [ref=e1106]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1107] [cursor=pointer]:
+                    - img [ref=e1108]
+              - cell "Ingen bedrift" [ref=e1110]:
+                - paragraph [ref=e1111]: Ingen bedrift
+              - cell "Aktiv" [ref=e1112]:
+                - generic [ref=e1114]: Aktiv
+              - cell "16.3.2026" [ref=e1115]
+              - cell "Handlinger" [ref=e1116]:
+                - button "Handlinger" [ref=e1117] [cursor=pointer]:
+                  - img [ref=e1118]
+            - row "H helene.nygard helene.nygard@northwinddrilling.no Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 15.3.2026 Handlinger" [ref=e1120]:
+              - cell "H helene.nygard" [ref=e1121]:
+                - generic [ref=e1122]:
+                  - generic [ref=e1123]: H
+                  - paragraph [ref=e1124]: helene.nygard
+              - cell "helene.nygard@northwinddrilling.no" [ref=e1125]:
+                - paragraph [ref=e1126]: helene.nygard@northwinddrilling.no
+              - cell "Bruker" [ref=e1127]:
+                - generic [ref=e1129]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1130]:
+                - generic [ref=e1131]:
+                  - generic [ref=e1133]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1134] [cursor=pointer]:
+                    - img [ref=e1135]
+              - cell "Ingen bedrift" [ref=e1137]:
+                - paragraph [ref=e1138]: Ingen bedrift
+              - cell "Aktiv" [ref=e1139]:
+                - generic [ref=e1141]: Aktiv
+              - cell "15.3.2026" [ref=e1142]
+              - cell "Handlinger" [ref=e1143]:
+                - button "Handlinger" [ref=e1144] [cursor=pointer]:
+                  - img [ref=e1145]
+            - row "M mina.haugen mina.haugen@northwindstudio.no Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 15.3.2026 Handlinger" [ref=e1147]:
+              - cell "M mina.haugen" [ref=e1148]:
+                - generic [ref=e1149]:
+                  - generic [ref=e1150]: M
+                  - paragraph [ref=e1151]: mina.haugen
+              - cell "mina.haugen@northwindstudio.no" [ref=e1152]:
+                - paragraph [ref=e1153]: mina.haugen@northwindstudio.no
+              - cell "Bruker" [ref=e1154]:
+                - generic [ref=e1156]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1157]:
+                - generic [ref=e1158]:
+                  - generic [ref=e1160]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1161] [cursor=pointer]:
+                    - img [ref=e1162]
+              - cell "Ingen bedrift" [ref=e1164]:
+                - paragraph [ref=e1165]: Ingen bedrift
+              - cell "Aktiv" [ref=e1166]:
+                - generic [ref=e1168]: Aktiv
+              - cell "15.3.2026" [ref=e1169]
+              - cell "Handlinger" [ref=e1170]:
+                - button "Handlinger" [ref=e1171] [cursor=pointer]:
+                  - img [ref=e1172]
+            - row "C clientreviewer clientreviewer@northwinddemo.no Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 15.3.2026 Handlinger" [ref=e1174]:
+              - cell "C clientreviewer" [ref=e1175]:
+                - generic [ref=e1176]:
+                  - generic [ref=e1177]: C
+                  - paragraph [ref=e1178]: clientreviewer
+              - cell "clientreviewer@northwinddemo.no" [ref=e1179]:
+                - paragraph [ref=e1180]: clientreviewer@northwinddemo.no
+              - cell "Bruker" [ref=e1181]:
+                - generic [ref=e1183]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1184]:
+                - generic [ref=e1185]:
+                  - generic [ref=e1187]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1188] [cursor=pointer]:
+                    - img [ref=e1189]
+              - cell "Ingen bedrift" [ref=e1191]:
+                - paragraph [ref=e1192]: Ingen bedrift
+              - cell "Aktiv" [ref=e1193]:
+                - generic [ref=e1195]: Aktiv
+              - cell "15.3.2026" [ref=e1196]
+              - cell "Handlinger" [ref=e1197]:
+                - button "Handlinger" [ref=e1198] [cursor=pointer]:
+                  - img [ref=e1199]
+            - row "P producer producer@test.local Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 13.3.2026 Handlinger" [ref=e1201]:
+              - cell "P producer" [ref=e1202]:
+                - generic [ref=e1203]:
+                  - generic [ref=e1204]: P
+                  - paragraph [ref=e1205]: producer
+              - cell "producer@test.local" [ref=e1206]:
+                - paragraph [ref=e1207]: producer@test.local
+              - cell "Bruker" [ref=e1208]:
+                - generic [ref=e1210]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1211]:
+                - generic [ref=e1212]:
+                  - generic [ref=e1214]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1215] [cursor=pointer]:
+                    - img [ref=e1216]
+              - cell "Ingen bedrift" [ref=e1218]:
+                - paragraph [ref=e1219]: Ingen bedrift
+              - cell "Aktiv" [ref=e1220]:
+                - generic [ref=e1222]: Aktiv
+              - cell "13.3.2026" [ref=e1223]
+              - cell "Handlinger" [ref=e1224]:
+                - button "Handlinger" [ref=e1225] [cursor=pointer]:
+                  - img [ref=e1226]
+            - row "C content.producer.demo content.producer.demo@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 12.3.2026 Handlinger" [ref=e1228]:
+              - cell "C content.producer.demo" [ref=e1229]:
+                - generic [ref=e1230]:
+                  - generic [ref=e1231]: C
+                  - paragraph [ref=e1232]: content.producer.demo
+              - cell "content.producer.demo@creatorhubn.com" [ref=e1233]:
+                - paragraph [ref=e1234]: content.producer.demo@creatorhubn.com
+              - cell "Bruker" [ref=e1235]:
+                - generic [ref=e1237]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1238]:
+                - generic [ref=e1239]:
+                  - generic [ref=e1241]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1242] [cursor=pointer]:
+                    - img [ref=e1243]
+              - cell "Ingen bedrift" [ref=e1245]:
+                - paragraph [ref=e1246]: Ingen bedrift
+              - cell "Aktiv" [ref=e1247]:
+                - generic [ref=e1249]: Aktiv
+              - cell "12.3.2026" [ref=e1250]
+              - cell "Handlinger" [ref=e1251]:
+                - button "Handlinger" [ref=e1252] [cursor=pointer]:
+                  - img [ref=e1253]
+            - row "P producer2.test producer2.test@example.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 12.3.2026 Handlinger" [ref=e1255]:
+              - cell "P producer2.test" [ref=e1256]:
+                - generic [ref=e1257]:
+                  - generic [ref=e1258]: P
+                  - paragraph [ref=e1259]: producer2.test
+              - cell "producer2.test@example.com" [ref=e1260]:
+                - paragraph [ref=e1261]: producer2.test@example.com
+              - cell "Bruker" [ref=e1262]:
+                - generic [ref=e1264]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1265]:
+                - generic [ref=e1266]:
+                  - generic [ref=e1268]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1269] [cursor=pointer]:
+                    - img [ref=e1270]
+              - cell "Ingen bedrift" [ref=e1272]:
+                - paragraph [ref=e1273]: Ingen bedrift
+              - cell "Aktiv" [ref=e1274]:
+                - generic [ref=e1276]: Aktiv
+              - cell "12.3.2026" [ref=e1277]
+              - cell "Handlinger" [ref=e1278]:
+                - button "Handlinger" [ref=e1279] [cursor=pointer]:
+                  - img [ref=e1280]
+            - row "P producer.test producer.test@example.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 12.3.2026 Handlinger" [ref=e1282]:
+              - cell "P producer.test" [ref=e1283]:
+                - generic [ref=e1284]:
+                  - generic [ref=e1285]: P
+                  - paragraph [ref=e1286]: producer.test
+              - cell "producer.test@example.com" [ref=e1287]:
+                - paragraph [ref=e1288]: producer.test@example.com
+              - cell "Bruker" [ref=e1289]:
+                - generic [ref=e1291]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1292]:
+                - generic [ref=e1293]:
+                  - generic [ref=e1295]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1296] [cursor=pointer]:
+                    - img [ref=e1297]
+              - cell "Ingen bedrift" [ref=e1299]:
+                - paragraph [ref=e1300]: Ingen bedrift
+              - cell "Aktiv" [ref=e1301]:
+                - generic [ref=e1303]: Aktiv
+              - cell "12.3.2026" [ref=e1304]
+              - cell "Handlinger" [ref=e1305]:
+                - button "Handlinger" [ref=e1306] [cursor=pointer]:
+                  - img [ref=e1307]
+            - row "A Academy Guest academy-guest@creatorhubn.com Super Admin Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 1.3.2026 Handlinger" [ref=e1309]:
+              - cell "A Academy Guest" [ref=e1310]:
+                - generic [ref=e1311]:
+                  - generic [ref=e1312]: A
+                  - paragraph [ref=e1313]: Academy Guest
+              - cell "academy-guest@creatorhubn.com" [ref=e1314]:
+                - paragraph [ref=e1315]: academy-guest@creatorhubn.com
+              - cell "Super Admin" [ref=e1316]:
+                - generic [ref=e1318]: Super Admin
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1319]:
+                - generic [ref=e1320]:
+                  - generic [ref=e1322]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1323] [cursor=pointer]:
+                    - img [ref=e1324]
+              - cell "Ingen bedrift" [ref=e1326]:
+                - paragraph [ref=e1327]: Ingen bedrift
+              - cell "Aktiv" [ref=e1328]:
+                - generic [ref=e1330]: Aktiv
+              - cell "1.3.2026" [ref=e1331]
+              - cell "Handlinger" [ref=e1332]:
+                - button "Handlinger" [ref=e1333] [cursor=pointer]:
+                  - img [ref=e1334]
+            - row "D Dev Bruker dev@tidum.no Super Admin Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 22.2.2026 Handlinger" [ref=e1336]:
+              - cell "D Dev Bruker" [ref=e1337]:
+                - generic [ref=e1338]:
+                  - generic [ref=e1339]: D
+                  - paragraph [ref=e1340]: Dev Bruker
+              - cell "dev@tidum.no" [ref=e1341]:
+                - paragraph [ref=e1342]: dev@tidum.no
+              - cell "Super Admin" [ref=e1343]:
+                - generic [ref=e1345]: Super Admin
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1346]:
+                - generic [ref=e1347]:
+                  - generic [ref=e1349]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1350] [cursor=pointer]:
+                    - img [ref=e1351]
+              - cell "Ingen bedrift" [ref=e1353]:
+                - paragraph [ref=e1354]: Ingen bedrift
+              - cell "Aktiv" [ref=e1355]:
+                - generic [ref=e1357]: Aktiv
+              - cell "22.2.2026" [ref=e1358]
+              - cell "Handlinger" [ref=e1359]:
+                - button "Handlinger" [ref=e1360] [cursor=pointer]:
+                  - img [ref=e1361]
+            - row "N Norwedfilm Admin admin@norwedfilm.no Enterprise Admin Annet Rediger profesjon Norwedfilm AS Aktiv 10.2.2026 Handlinger" [ref=e1363]:
+              - cell "N Norwedfilm Admin" [ref=e1364]:
+                - generic [ref=e1365]:
+                  - generic [ref=e1366]: "N"
+                  - paragraph [ref=e1367]: Norwedfilm Admin
+              - cell "admin@norwedfilm.no" [ref=e1368]:
+                - paragraph [ref=e1369]: admin@norwedfilm.no
+              - cell "Enterprise Admin" [ref=e1370]:
+                - generic [ref=e1372]: Enterprise Admin
+              - cell "Annet Rediger profesjon" [ref=e1373]:
+                - generic [ref=e1374]:
+                  - generic [ref=e1375]:
+                    - img [ref=e1376]
+                    - generic [ref=e1378]: Annet
+                  - button "Rediger profesjon" [ref=e1379] [cursor=pointer]:
+                    - img [ref=e1380]
+              - cell "Norwedfilm AS" [ref=e1382]:
+                - paragraph [ref=e1383]: Norwedfilm AS
+              - cell "Aktiv" [ref=e1384]:
+                - generic [ref=e1386]: Aktiv
+              - cell "10.2.2026" [ref=e1387]
+              - cell "Handlinger" [ref=e1388]:
+                - button "Handlinger" [ref=e1389] [cursor=pointer]:
+                  - img [ref=e1390]
+            - row "D Daniel Admin daniel@creatorhubn.com Bruker Ikke spesifisert Rediger profesjon Ingen bedrift Aktiv 8.2.2026 Handlinger" [ref=e1392]:
+              - cell "D Daniel Admin" [ref=e1393]:
+                - generic [ref=e1394]:
+                  - generic [ref=e1395]: D
+                  - paragraph [ref=e1396]: Daniel Admin
+              - cell "daniel@creatorhubn.com" [ref=e1397]:
+                - paragraph [ref=e1398]: daniel@creatorhubn.com
+              - cell "Bruker" [ref=e1399]:
+                - generic [ref=e1401]: Bruker
+              - cell "Ikke spesifisert Rediger profesjon" [ref=e1402]:
+                - generic [ref=e1403]:
+                  - generic [ref=e1405]: Ikke spesifisert
+                  - button "Rediger profesjon" [ref=e1406] [cursor=pointer]:
+                    - img [ref=e1407]
+              - cell "Ingen bedrift" [ref=e1409]:
+                - paragraph [ref=e1410]: Ingen bedrift
+              - cell "Aktiv" [ref=e1411]:
+                - generic [ref=e1413]: Aktiv
+              - cell "8.2.2026" [ref=e1414]
+              - cell "Handlinger" [ref=e1415]:
+                - button "Handlinger" [ref=e1416] [cursor=pointer]:
+                  - img [ref=e1417]
+            - row "D Daniel Qazi danielqazi89@gmail.com Bruker Annet Rediger profesjon Privat Aktiv 8.2.2026 Handlinger" [ref=e1419]:
+              - cell "D Daniel Qazi" [ref=e1420]:
+                - generic [ref=e1421]:
+                  - generic [ref=e1422]: D
+                  - paragraph [ref=e1423]: Daniel Qazi
+              - cell "danielqazi89@gmail.com" [ref=e1424]:
+                - paragraph [ref=e1425]: danielqazi89@gmail.com
+              - cell "Bruker" [ref=e1426]:
+                - generic [ref=e1428]: Bruker
+              - cell "Annet Rediger profesjon" [ref=e1429]:
+                - generic [ref=e1430]:
+                  - generic [ref=e1431]:
+                    - img [ref=e1432]
+                    - generic [ref=e1434]: Annet
+                  - button "Rediger profesjon" [ref=e1435] [cursor=pointer]:
+                    - img [ref=e1436]
+              - cell "Privat" [ref=e1438]:
+                - paragraph [ref=e1439]: Privat
+              - cell "Aktiv" [ref=e1440]:
+                - generic [ref=e1442]: Aktiv
+              - cell "8.2.2026" [ref=e1443]
+              - cell "Handlinger" [ref=e1444]:
+                - button "Handlinger" [ref=e1445] [cursor=pointer]:
+                  - img [ref=e1446]
+            - row "Q Qazi FotoReel qazifotoreel@gmail.com Bruker Fotograf Rediger profesjon QAZI FOTOREEL Aktiv 8.2.2026 Handlinger" [ref=e1448]:
+              - cell "Q Qazi FotoReel" [ref=e1449]:
+                - generic [ref=e1450]:
+                  - generic [ref=e1451]: Q
+                  - paragraph [ref=e1452]: Qazi FotoReel
+              - cell "qazifotoreel@gmail.com" [ref=e1453]:
+                - paragraph [ref=e1454]: qazifotoreel@gmail.com
+              - cell "Bruker" [ref=e1455]:
+                - generic [ref=e1457]: Bruker
+              - cell "Fotograf Rediger profesjon" [ref=e1458]:
+                - generic [ref=e1459]:
+                  - generic [ref=e1460]:
+                    - img [ref=e1461]
+                    - generic [ref=e1464]: Fotograf
+                  - button "Rediger profesjon" [ref=e1465] [cursor=pointer]:
+                    - img [ref=e1466]
+              - cell "QAZI FOTOREEL" [ref=e1468]:
+                - paragraph [ref=e1469]: QAZI FOTOREEL
+              - cell "Aktiv" [ref=e1470]:
+                - generic [ref=e1472]: Aktiv
+              - cell "8.2.2026" [ref=e1473]
+              - cell "Handlinger" [ref=e1474]:
+                - button "Handlinger" [ref=e1475] [cursor=pointer]:
+                  - img [ref=e1476]
+  - generic [ref=e228]: Admin Floating Action Buttons - Temporarily disabled
+  - button "Admin Support Chat" [ref=e229] [cursor=pointer]:
+    - img [ref=e230]
+  - button "Åpne chat" [ref=e43] [cursor=pointer]:
+    - img [ref=e44]

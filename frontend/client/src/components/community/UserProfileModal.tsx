@@ -39,6 +39,19 @@ import { formatDistanceToNow } from 'date-fns';
 import { nb } from 'date-fns/locale';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import {
+  COMMUNITY_DIALOG_ACTIONS_SX,
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_MUTED,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_PRIMARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SECONDARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 interface UserProfile {
   id: string;
@@ -222,10 +235,17 @@ export default function UserProfileModal({
 
   if (loading) {
     return (
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-        <DialogContent>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth="md"
+        fullWidth
+        sx={COMMUNITY_DIALOG_SX}
+        PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+      >
+        <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX}>
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress />
+            <CircularProgress sx={{ color: '#f5a623' }} />
           </Box>
         </DialogContent>
       </Dialog>
@@ -237,27 +257,45 @@ export default function UserProfileModal({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h6">Brukerprofil</Typography>
-          <IconButton onClick={onClose} size="small">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      sx={COMMUNITY_DIALOG_SX}
+      PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+    >
+      <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
+            Brukerprofil
+          </Typography>
+          <IconButton onClick={onClose} size="small" sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
             <Close />
           </IconButton>
         </Box>
       </DialogTitle>
 
-      <DialogContent dividers>
+      <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX} dividers>
         {/* Profile Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mb: 3 }}>
-          <Avatar src={profile.profile_picture} sx={{ width: 80, height: 80 }}>
+          <Avatar
+            src={profile.profile_picture}
+            sx={{
+              width: 80,
+              height: 80,
+              bgcolor: 'rgba(245, 166, 35, 0.18)',
+              color: '#f5a623',
+              border: '1px solid rgba(245, 166, 35, 0.24)',
+            }}
+          >
             {profile.name?.charAt(0).toUpperCase()}
           </Avatar>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="h5" fontWeight={600}>
+            <Typography variant="h5" fontWeight={700} sx={{ color: COMMUNITY_DIALOG_TEXT }}>
               {profile.name}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
               {profile.profession || 'Medlem'}
             </Typography>
             <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
@@ -278,38 +316,38 @@ export default function UserProfileModal({
         {/* Stats Grid */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={6} sm={3}>
-            <Paper sx={{ p: 2, textAlign: 'center' }}>
+            <Paper sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, p: 2, textAlign: 'center' }}>
               <Message color="primary" sx={{ fontSize: 32, mb: 1 }} />
-              <Typography variant="h6">{stats?.message_count || 0}</Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="h6" sx={{ color: COMMUNITY_DIALOG_TEXT }}>{stats?.message_count || 0}</Typography>
+              <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                 Meldinger
               </Typography>
             </Paper>
           </Grid>
           <Grid item xs={6} sm={3}>
-            <Paper sx={{ p: 2, textAlign: 'center' }}>
+            <Paper sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, p: 2, textAlign: 'center' }}>
               <Favorite color="error" sx={{ fontSize: 32, mb: 1 }} />
-              <Typography variant="h6">{stats?.reaction_count || 0}</Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="h6" sx={{ color: COMMUNITY_DIALOG_TEXT }}>{stats?.reaction_count || 0}</Typography>
+              <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                 Reaksjoner
               </Typography>
             </Paper>
           </Grid>
           <Grid item xs={6} sm={3}>
-            <Paper sx={{ p: 2, textAlign: 'center' }}>
+            <Paper sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, p: 2, textAlign: 'center' }}>
               <TrendingUp color="success" sx={{ fontSize: 32, mb: 1 }} />
-              <Typography variant="h6">{stats?.thread_count || 0}</Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="h6" sx={{ color: COMMUNITY_DIALOG_TEXT }}>{stats?.thread_count || 0}</Typography>
+              <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                 Tråder
               </Typography>
             </Paper>
           </Grid>
           <Grid item xs={6} sm={3}>
-            <Paper sx={{ p: 2, textAlign: 'center' }}>
+            <Paper sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, p: 2, textAlign: 'center' }}>
               <EmojiEvents color="warning" sx={{ fontSize: 32, mb: 1 }} />
-              <Typography variant="h6">{badges.length}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                Badges
+              <Typography variant="h6" sx={{ color: COMMUNITY_DIALOG_TEXT }}>{badges.length}</Typography>
+              <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
+                Merker
               </Typography>
             </Paper>
           </Grid>
@@ -319,7 +357,7 @@ export default function UserProfileModal({
         {badges.length > 0 && (
           <>
             <Typography variant="h6" gutterBottom>
-              Badges
+              Merker
             </Typography>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 3 }}>
               {badges.map((badge) => (
@@ -338,7 +376,7 @@ export default function UserProfileModal({
         )}
 
         {/* Member Since */}
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
           Medlem siden{''}
           {formatDistanceToNow(new Date(profile.created_at), {
             addSuffix: true,
@@ -347,7 +385,7 @@ export default function UserProfileModal({
         </Typography>
       </DialogContent>
 
-      <DialogActions sx={{ justifyContent: 'space-between', px: 3, py: 2 }}>
+      <DialogActions sx={{ ...COMMUNITY_DIALOG_ACTIONS_SX, justifyContent: 'space-between' }}>
         <Box sx={{ display: 'flex', gap: 1 }}>
           {/* Block/Mute actions - only show for other users */}
           {!isOwnProfile && currentUserId && (
@@ -355,7 +393,10 @@ export default function UserProfileModal({
               <Tooltip title={isBlocked ? 'Fjern blokkering' : 'Blokker bruker'}>
                 <IconButton
                   onClick={handleBlockUser}
-                  color={isBlocked ? 'error' : 'default'}
+                  sx={{
+                    ...COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+                    color: isBlocked ? '#ff8e83' : COMMUNITY_DIALOG_TEXT,
+                  }}
                   size="small"
                 >
                   <Block />
@@ -364,7 +405,10 @@ export default function UserProfileModal({
               <Tooltip title={isMuted ? 'Fjern demping' : 'Demp bruker'}>
                 <IconButton
                   onClick={handleMuteUser}
-                  color={isMuted ? 'warning' : 'default'}
+                  sx={{
+                    ...COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+                    color: isMuted ? '#ffd27a' : COMMUNITY_DIALOG_TEXT,
+                  }}
                   size="small"
                 >
                   <PersonOff />
@@ -381,13 +425,12 @@ export default function UserProfileModal({
               variant="contained"
               startIcon={<Chat />}
               onClick={handleStartDM}
-              sx={{
-                bgcolor: '#FF8C00', '&:hover': { bgcolor: '#e67e00' }}}
+              sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
             >
               Send melding
             </Button>
           )}
-          <Button onClick={onClose}>Lukk</Button>
+          <Button onClick={onClose} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>Lukk</Button>
         </Box>
       </DialogActions>
     </Dialog>

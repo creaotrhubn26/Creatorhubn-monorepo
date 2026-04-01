@@ -60,7 +60,7 @@ export default function UnansweredQuestionsWidget({
       setLoading(true);
       const params = channelId ? `?channelId=${channelId}` : '';
       const response = await apiRequest(`/api/community/unanswered${params}`);
-      setQuestions(response.unanswered || []);
+      setQuestions(response.unanswered || response.messages || []);
     } catch (error) {
       console.error('Error fetching unanswered questions: ', error);
     } finally {
@@ -74,11 +74,33 @@ export default function UnansweredQuestionsWidget({
     return 'info';
   };
 
+  const panelSx = {
+    p: 2,
+    borderRadius: 4,
+    background:
+      'linear-gradient(180deg, rgba(13, 18, 27, 0.94), rgba(8, 12, 18, 0.94))',
+    border: '1px solid rgba(255,255,255,0.08)',
+    boxShadow: '0 24px 60px rgba(0, 0, 0, 0.36)',
+    color: 'rgba(248, 241, 231, 0.92)',
+  } as const;
+
+  const titleSx = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 1,
+    color: 'rgba(248, 241, 231, 0.92)',
+    fontWeight: 700,
+  } as const;
+
   if (loading) {
     return (
-      <Paper sx={{ p: 2 }}>
+      <Paper sx={panelSx}>
+        <Typography variant="subtitle2" gutterBottom sx={titleSx}>
+          <HelpOutline fontSize="small" sx={{ color: '#f5a623' }} />
+          Spørsmål som trenger hjelp
+        </Typography>
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress size={30} />
+          <CircularProgress size={30} sx={{ color: '#f5a623' }} />
         </Box>
       </Paper>
     );
@@ -86,12 +108,24 @@ export default function UnansweredQuestionsWidget({
 
   if (questions.length === 0) {
     return (
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <HelpOutline fontSize="small" />
+      <Paper sx={panelSx}>
+        <Typography variant="subtitle2" gutterBottom sx={titleSx}>
+          <HelpOutline fontSize="small" sx={{ color: '#f5a623' }} />
           Spørsmål som trenger hjelp
         </Typography>
-        <Alert severity="success" sx={{ mt: 1 }}>
+        <Alert
+          severity="success"
+          sx={{
+            mt: 1,
+            borderRadius: 3,
+            bgcolor: 'rgba(84, 181, 125, 0.14)',
+            color: '#d8f8e4',
+            border: '1px solid rgba(84, 181, 125, 0.2)',
+            '& .MuiAlert-icon': {
+              color: '#78df9c',
+            },
+          }}
+        >
           🎉 Alle spørsmål har fått svar!
         </Alert>
       </Paper>
@@ -99,12 +133,15 @@ export default function UnansweredQuestionsWidget({
   }
 
   return (
-    <Paper sx={{ p: 2 }}>
-      <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <HelpOutline fontSize="small" />
+    <Paper sx={panelSx}>
+      <Typography variant="subtitle2" gutterBottom sx={titleSx}>
+        <HelpOutline fontSize="small" sx={{ color: '#f5a623' }} />
         Spørsmål som trenger hjelp ({questions.length})
       </Typography>
-      <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{ mb: 2, display: 'block', color: 'rgba(248, 241, 231, 0.64)' }}
+      >
         Hjelp andre medlemmer ved å svare på deres spørsmål
       </Typography>
       <List dense>
@@ -117,24 +154,36 @@ export default function UnansweredQuestionsWidget({
             <ListItemButton
               onClick={() => onSelectQuestion(question.id, question.channel_name)}
               sx={{
-                border: 1,
-                borderColor: 'divider',
-                borderRadius: 1, '&:hover': { bgcolor: 'action.hover' }}}
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 2.5,
+                background: 'rgba(255,255,255,0.03)',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' },
+              }}
             >
+            
               <ListItemAvatar>
-                <Avatar src={question.user_avatar} sx={{ width: 32, height: 32 }}>
+                <Avatar
+                  src={question.user_avatar}
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    bgcolor: 'rgba(245, 166, 35, 0.18)',
+                    color: '#f5a623',
+                    border: '1px solid rgba(245, 166, 35, 0.18)',
+                  }}
+                >
                   {question.user_name?.[0]}
                 </Avatar>
               </ListItemAvatar>
               <ListItemText
                 primary={
-                  <Typography variant="body2" noWrap>
+                  <Typography variant="body2" noWrap sx={{ color: 'rgba(248, 241, 231, 0.9)' }}>
                     {question.content.substring(0, 60)}...
                   </Typography>
                 }
                 secondary={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{ color: 'rgba(248, 241, 231, 0.6)' }}>
                       {question.user_name} • #{question.channel_name}
                     </Typography>
                     <Chip
@@ -157,4 +206,3 @@ export default function UnansweredQuestionsWidget({
     </Paper>
   );
 }
-

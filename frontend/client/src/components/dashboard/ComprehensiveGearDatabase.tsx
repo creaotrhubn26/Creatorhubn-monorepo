@@ -183,6 +183,39 @@ const ComprehensiveGearDatabase: React.FC = () => {
   const [showImageGallery, setShowImageGallery] = useState(false);
   const [loadingImages, setLoadingImages] = useState(false);
   const [firmwareSearchSummary, setFirmwareSearchSummary] = useState('');
+  const databaseChromeSx = {
+    '& .MuiCard-root': {
+      border: '1px solid rgba(15, 23, 42, 0.08)',
+      borderRadius: { xs: 3, md: 4 },
+      background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95))',
+      boxShadow: '0 18px 48px rgba(15, 23, 42, 0.07)',
+      backdropFilter: 'blur(14px)',
+    },
+    '& .MuiAccordion-root': {
+      border: '1px solid rgba(15, 23, 42, 0.08)',
+      borderRadius: { xs: 3, md: 4 },
+      overflow: 'hidden',
+      background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95))',
+      boxShadow: '0 18px 48px rgba(15, 23, 42, 0.07)',
+      '&:before': {
+        display: 'none',
+      },
+    },
+    '& .MuiAlert-root': {
+      borderRadius: 3,
+      border: '1px solid rgba(148, 163, 184, 0.24)',
+    },
+    '& .MuiChip-root': {
+      borderRadius: 999,
+    },
+  } as const;
+  const databaseDialogPaperSx = {
+    borderRadius: { xs: 3, md: 4 },
+    border: '1px solid rgba(15, 23, 42, 0.08)',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.99), rgba(248,250,252,0.95))',
+    boxShadow: '0 32px 96px rgba(15, 23, 42, 0.18)',
+    overflow: 'hidden',
+  } as const;
   const { data: inventoryContextData = [], isLoading: inventoryContextLoading } = useQuery({
     queryKey: ['/api/equipment/inventory', userId],
     queryFn: () => apiRequest(`/api/equipment/inventory?userId=${userId}`),
@@ -548,10 +581,13 @@ const ComprehensiveGearDatabase: React.FC = () => {
           sx={{ 
             height: '100%', 
             cursor: 'pointer',
-            transition: 'transform 0.2s, box-shadow 0.2s', '&:hover': {
+            overflow: 'hidden',
+            transition: 'transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease',
+            '&:hover': {
               transform: 'translateY(-4px)',
-              boxShadow: 4
-            }
+              boxShadow: '0 24px 64px rgba(15, 23, 42, 0.12)',
+              borderColor: `${theming.colors.primary}35`,
+            },
           }}
           onClick={() => openItemDetails(item)}
         >
@@ -561,7 +597,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
               height="200"
               image={item.images[0]}
               alt={item.model}
-              sx={{ objectFit: 'contain', p: 1 }}
+              sx={{ objectFit: 'contain', p: 1.5, background: 'linear-gradient(180deg, rgba(248,250,252,0.94), rgba(241,245,249,0.76))' }}
             />
           ) : (
             <Box
@@ -570,15 +606,15 @@ const ComprehensiveGearDatabase: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: 'grey.100'
+                background: 'linear-gradient(180deg, rgba(248,250,252,0.94), rgba(241,245,249,0.76))'
               }}
             >
               {getCategoryIcon(item.category)}
             </Box>
           )}
           
-          <CardContent>
-            <Typography variant="h6" component="h3" gutterBottom noWrap sx={{ color: theming.colors.primary }}>
+          <CardContent sx={{ p: 2.25 }}>
+            <Typography variant="h6" component="h3" gutterBottom noWrap sx={{ color: theming.colors.primary, fontWeight: 700 }}>
               {item.model}
             </Typography>
             
@@ -895,82 +931,119 @@ const ComprehensiveGearDatabase: React.FC = () => {
   );
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <BuildIcon sx={{ fontSize: '2rem' }} />
-        Omfattende Utstyr Database
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Komplett database med alle produkter fra 66 produsenter siden 2018 - med ekte bilder og spesifikasjoner hentet direkte fra produsentenes nettsider.
-      </Typography>
-
-      {/* Collection Controls */}
-      <Box sx={{ mb: 3 }}>
-        <Button 
-          variant="contained"
-          color="primary"
-          startIcon={<DownloadIcon />}
-          onClick={startComprehensiveCollection}
-          disabled={isCollecting}
-          sx={{ mr: 2 }}
-        >
-          {isCollecting ? 'Samler data...' : 'Start Omfattende Datainnsamling'}
-        </Button>
-        
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={fetchDatabaseStats}
-          disabled={isCollecting}
-          sx={{ mr: 2 }}
-        >
-          Oppdater Stats
-        </Button>
-        
-        <Button
-          variant="outlined"
-          color="secondary"
-          startIcon={<CategoryIcon />}
-          onClick={async () => {
-            try {
-              const response = await fetch('/api/equipment/category-icons/generate', {
-                headers: {
-                  'Content-Type' : 'application/json'
-                },
-                method: 'POST'
-              });
-              const data = await response.json();
-              if (data.success) {
-                debugging.logIntegration('info', 'Category icons generated successfully', data);
-                setCollectionProgress('Kategori-ikonene ble regenerert for denne databasen');
-            }
-          } catch (error) {
-              debugging.logIntegration('error', 'Error generating category icons', error);
-          }
+    <Box sx={{ p: { xs: 2, md: 3 }, ...databaseChromeSx }}>
+      <Card
+        sx={{
+          mb: 3,
+          p: { xs: 2.5, md: 3.5 },
+          borderRadius: { xs: 4, md: 5 },
+          borderColor: `${theming.colors.primary}24`,
+          background: `radial-gradient(circle at top right, ${theming.colors.primary}18, transparent 32%), linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95))`,
         }}
-          disabled={isCollecting}
-        >
-          Generer Kategori-ikoner
-        </Button>
-        
+      >
+        <Grid container spacing={3} alignItems="flex-start">
+          <Grid item xs={12} lg={7}>
+            <Stack spacing={1.5}>
+              <Stack direction="row" spacing={1.75} alignItems="flex-start">
+                <Box
+                  sx={{
+                    width: { xs: 54, md: 62 },
+                    height: { xs: 54, md: 62 },
+                    borderRadius: 3,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    background: `linear-gradient(135deg, ${theming.colors.primary}22, ${theming.colors.primary}0f)`,
+                    color: theming.colors.primary,
+                  }}
+                >
+                  <BuildIcon sx={{ fontSize: '2rem' }} />
+                </Box>
+                <Box>
+                  <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 800 }}>
+                    Omfattende Utstyr Database
+                  </Typography>
+                  <Typography variant="body1" color="text.secondary">
+                    Komplett katalog med produsentbilder, spesifikasjoner, datakvalitet og firmware-/bildedekning samlet i én operativ databaseflate.
+                  </Typography>
+                </Box>
+              </Stack>
+
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Chip label={`${stats?.totalItems?.toLocaleString?.() || 0} produkter`} variant="outlined" size="small" />
+                <Chip label={`${stats?.brandCount || availableBrands.length} merker`} variant="outlined" size="small" />
+                <Chip label={`${authenticImages.length} verifiserte bilder`} color={authenticImages.length > 0 ? 'success' : 'default'} size="small" />
+                <Chip label={inventoryContext.length > 0 ? 'Inventarkontekst aktiv' : 'Inventarkontekst venter'} size="small" variant="outlined" />
+              </Stack>
+            </Stack>
+          </Grid>
+
+          <Grid item xs={12} lg={5}>
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" justifyContent={{ xs: 'flex-start', lg: 'flex-end' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<DownloadIcon />}
+                onClick={startComprehensiveCollection}
+                disabled={isCollecting}
+              >
+                {isCollecting ? 'Samler data...' : 'Start datainnsamling'}
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={fetchDatabaseStats}
+                disabled={isCollecting}
+              >
+                Oppdater stats
+              </Button>
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<CategoryIcon />}
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/equipment/category-icons/generate', {
+                      headers: {
+                        'Content-Type' : 'application/json'
+                      },
+                      method: 'POST'
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                      debugging.logIntegration('info', 'Category icons generated successfully', data);
+                      setCollectionProgress('Kategori-ikonene ble regenerert for denne databasen');
+                  }
+                } catch (error) {
+                    debugging.logIntegration('error', 'Error generating category icons', error);
+                }
+              }}
+                disabled={isCollecting}
+              >
+                Generer kategori-ikoner
+              </Button>
+            </Stack>
+          </Grid>
+        </Grid>
+
         {isCollecting && (
-          <Box sx={{ mt: 2 }}>
-            <LinearProgress />
-            <Typography variant="body2" sx={{ mt: 1 }}>
+          <Box sx={{ mt: 2.5 }}>
+            <LinearProgress sx={{ borderRadius: 999, height: 8 }} />
+            <Typography variant="body2" sx={{ mt: 1.25 }}>
               {collectionProgress}
             </Typography>
           </Box>
         )}
-      </Box>
+      </Card>
 
       {/* Database Statistics */}
       {renderDatabaseStats()}
 
       {/* Search and Filter Controls */}
       <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+        <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 700 }}>
             <SearchIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
             Søk og Filtrer
           </Typography>
@@ -1045,7 +1118,7 @@ const ComprehensiveGearDatabase: React.FC = () => {
           </Grid>
           
           {/* Google Search Integration Status */}
-          <Box sx={{ mt: 3, p: 2, border: '1px solid #4caf50', borderRadius: 1, bgcolor: '#e8f5e9' }}>
+          <Box sx={{ mt: 3, p: 2.25, border: '1px solid rgba(34,197,94,0.24)', borderRadius: 3, bgcolor: 'rgba(240,253,244,0.95)' }}>
             <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', color: '#2e7d32', display: 'flex', alignItems: 'center', gap: 1 }}>
               <CheckCircleIcon sx={{ fontSize: '1.25rem' }} />
               Google Images Integration Aktiv
@@ -1055,11 +1128,10 @@ const ComprehensiveGearDatabase: React.FC = () => {
             </Typography>
           </Box>
           
-          <Box sx={{ mt: 2 }}>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 2 }}>
             <Button 
               variant="contained"
               onClick={handleSearch}
-              sx={{ mr: 2 }}
             >
               Søk Database
             </Button>
@@ -1067,7 +1139,6 @@ const ComprehensiveGearDatabase: React.FC = () => {
               variant="outlined"
               onClick={clearFilters}
               size="small"
-              sx={{ mr: 2 }}
             >
               Nullstill filtre
             </Button>
@@ -1138,13 +1209,41 @@ const ComprehensiveGearDatabase: React.FC = () => {
             >
               {loadingImages ? 'Søker firmware...' : 'Søk Firmware'}
             </Button>
-          </Box>
+          </Stack>
         </CardContent>
       </Card>
 
-      <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ pb: 0 }}>
-          <Tabs value={activeTab} onChange={(_event, value) => setActiveTab(value)} sx={{ mb: 2 }}>
+      <Card sx={{ mb: 3, p: 1, background: 'rgba(255,255,255,0.9)' }}>
+        <CardContent sx={{ pb: '8px !important', px: 1.25, pt: 1.25 }}>
+          <Tabs
+            value={activeTab}
+            onChange={(_event, value) => setActiveTab(value)}
+            variant="scrollable"
+            allowScrollButtonsMobile
+            sx={{
+              minHeight: 56,
+              '& .MuiTabs-flexContainer': {
+                gap: 0.75,
+              },
+              '& .MuiTab-root': {
+                minHeight: 48,
+                textTransform: 'none',
+                fontWeight: 700,
+                borderRadius: 3,
+                px: 1.5,
+                border: '1px solid transparent',
+              },
+              '& .MuiTab-root.Mui-selected': {
+                color: theming.colors.primary,
+                backgroundColor: `${theming.colors.primary}14`,
+                borderColor: `${theming.colors.primary}24`,
+              },
+              '& .MuiTabs-indicator': {
+                height: 3,
+                borderRadius: 999,
+              },
+            }}
+          >
             <Tab label="Oversikt" />
             <Tab label={<Badge color="primary" badgeContent={gearData.length}>Resultater</Badge>} />
             <Tab label={<Badge color="secondary" badgeContent={authenticImages.length}>Bilder</Badge>} />
@@ -1210,15 +1309,24 @@ const ComprehensiveGearDatabase: React.FC = () => {
         onClose={closeItemDetails}
         maxWidth="md"
         fullWidth
+        PaperProps={{ sx: databaseDialogPaperSx }}
       >
         {selectedItem && (
           <>
-            <DialogTitle>
+            <DialogTitle
+              sx={{
+                px: 3,
+                pt: 3,
+                pb: 2,
+                borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+                background: `linear-gradient(135deg, ${theming.colors.primary}14, rgba(248,250,252,0.95))`,
+              }}
+            >
               {selectedItem.model} - {selectedItem.brand}
             </DialogTitle>
-            <DialogContent>
+            <DialogContent sx={{ px: 3, py: 2.5 }}>
               {selectedItem.images && selectedItem.images.length > 0 && (
-                <Box sx={{ mb: 2 }}>
+                <Box sx={{ mb: 2.5, borderRadius: 3, overflow: 'hidden', background: 'linear-gradient(180deg, rgba(248,250,252,0.94), rgba(241,245,249,0.76))', p: 2 }}>
                   <img
                     src={selectedItem.images[0]}
                     alt={selectedItem.model}
@@ -1289,8 +1397,8 @@ const ComprehensiveGearDatabase: React.FC = () => {
                 )}
               </Grid>
             </DialogContent>
-            <DialogActions>
-              <Button onClick={closeItemDetails}>
+            <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(15, 23, 42, 0.08)' }}>
+              <Button onClick={closeItemDetails} variant="contained">
                 Lukk
               </Button>
             </DialogActions>
@@ -1304,14 +1412,23 @@ const ComprehensiveGearDatabase: React.FC = () => {
         onClose={() => setShowImageGallery(false)}
         maxWidth="lg"
         fullWidth
+        PaperProps={{ sx: databaseDialogPaperSx }}
       >
-        <DialogTitle>
+        <DialogTitle
+          sx={{
+            px: 3,
+            pt: 3,
+            pb: 2,
+            borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+            background: `linear-gradient(135deg, rgba(34,197,94,0.14), rgba(248,250,252,0.95))`,
+          }}
+        >
           <Typography variant="h5" sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
             <CheckCircleIcon sx={{ fontSize: '1.5rem', color: 'success.main' }} />
             Autentiske produktbilder fra offisielle nettsider
           </Typography>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ px: 3, py: 2.5 }}>
           <Typography variant="body1" sx={{ mb: 3 }}>
             Fant {authenticImages.length}/5 ekte bilder fra produsentnettsider med høy tillitsscore
           </Typography>
@@ -1397,8 +1514,8 @@ const ComprehensiveGearDatabase: React.FC = () => {
             })}
           </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowImageGallery(false)}>
+        <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(15, 23, 42, 0.08)' }}>
+          <Button onClick={() => setShowImageGallery(false)} variant="contained">
             Lukk galleri
           </Button>
         </DialogActions>

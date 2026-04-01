@@ -466,7 +466,7 @@ export default function ShowcaseAdmin({
     // Subscribe to events
     communication.onMessageType('showcase:refresh-all', (data: any) => {
       if (data.profession === profession && data.userId === userId) {
-        queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/showcase/showcases'] });
     }
   });
     
@@ -493,7 +493,7 @@ export default function ShowcaseAdmin({
     
     communication.onMessageType('showcase:mapping-created', (data: any) => {
       if (data.profession === profession && data.userId === userId) {
-        queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/showcase/showcases'] });
     }
   });
 
@@ -629,7 +629,7 @@ export default function ShowcaseAdmin({
       if (response.ok) {
         const newShowcase = await response.json();
         console.log('✅ Showcase created:', newShowcase.title);
-        queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/showcase/showcases'] });
         setOpenDialog(null);
         showNotification('Showcase opprettet!', 'success');
         integration?.emit?.('showcase:created', {
@@ -743,7 +743,7 @@ export default function ShowcaseAdmin({
       if (response.ok) {
         const updatedShowcase = await response.json();
         console.log('✅ Showcase updated:', updatedShowcase.title);
-        queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/showcase/showcases'] });
         setOpenDialog(null);
         setEditingShowcase(null);
         showNotification('Showcase oppdatert!', 'success');
@@ -785,7 +785,7 @@ export default function ShowcaseAdmin({
 
       if (response.ok) {
         console.log('✅ Showcase deleted:', showcaseToDelete.title);
-        queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/showcase/showcases'] });
         setDeleteConfirmOpen(false);
         setShowcaseToDelete(null);
         showNotification('Showcase slettet', 'success');
@@ -1025,7 +1025,7 @@ export default function ShowcaseAdmin({
 				console.log(`✅ Batch operation ${operation} completed for ${selectedItems.length} items`);
 				setSelectedItems([]);
 				setBatchOperation('');
-				queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+				queryClient.invalidateQueries({ queryKey: ['/api/showcase/showcases'] });
 
 				// Broadcast batch operation completed event
 				communication.sendBroadcast('batch:operation-completed', {
@@ -1074,7 +1074,7 @@ export default function ShowcaseAdmin({
 			setIsEnhancing(false);
 			setEnhancementProgress(100);
 			setEnhancementDialogOpen(false);
-			queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+			queryClient.invalidateQueries({ queryKey: ['/api/showcase/showcases'] });
 			setSelectedItems([]);
 			setBulkEditMode(false);
 		},
@@ -1153,7 +1153,7 @@ export default function ShowcaseAdmin({
 
 			if (response.ok) {
 				console.log('✅ Smart album updated automatically');
-				queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+				queryClient.invalidateQueries({ queryKey: ['/api/showcase/showcases'] });
 			}
 		} catch (error) {
 			console.error('❌ Smart album update failed:', error);
@@ -1304,7 +1304,7 @@ export default function ShowcaseAdmin({
 
       if (response.ok) {
         console.log('✅ Batch operation undone');
-        queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/showcase/showcases'] });
         setLastBatchOperation(null);
         setUndoSnackbarOpen(false);
       }

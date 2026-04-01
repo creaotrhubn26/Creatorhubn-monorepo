@@ -8,6 +8,22 @@ interface AcademyDesignProviderProps {
 }
 
 export default function AcademyDesignProvider({ children }: AcademyDesignProviderProps) {
+  const academyModalSurface =
+    'linear-gradient(180deg, rgba(12, 17, 27, 0.96), rgba(8, 11, 18, 0.98))';
+  const academyModalHeader =
+    'linear-gradient(180deg, rgba(18, 25, 37, 0.98), rgba(11, 15, 24, 0.96))';
+  const academyModalSection =
+    'linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02))';
+  const academyModalBorder = 'rgba(255,255,255,0.08)';
+  const academyModalDivider = 'rgba(255,255,255,0.07)';
+  const academyModalText = '#edf0f7';
+  const academyModalTextSecondary = 'rgba(237,240,247,0.64)';
+  const academyModalField = 'rgba(255,255,255,0.035)';
+  const academyModalFieldHover = 'rgba(255,255,255,0.055)';
+  const academyModalFieldBorder = 'rgba(255,255,255,0.14)';
+  const academyModalAccent = '#f5a623';
+  const academyModalAccentStrong = '#d88912';
+
   const academyTheme = useMemo(() => {
     const theme = createTheme(creatorHubTheme, {
       typography: {
@@ -167,6 +183,77 @@ export default function AcademyDesignProvider({ children }: AcademyDesignProvide
             },
           },
         },
+        MuiDialog: {
+          styleOverrides: {
+            paper: {
+              background: academyModalSurface,
+              color: academyModalText,
+              border: `1px solid ${academyModalBorder}`,
+              borderRadius: 20,
+              boxShadow: '0 28px 80px rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(24px)',
+              overflow: 'hidden',
+            },
+          },
+        },
+        MuiDialogTitle: {
+          styleOverrides: {
+            root: {
+              background: academyModalHeader,
+              color: academyModalText,
+              borderBottom: `1px solid ${academyModalDivider}`,
+              padding: '18px 24px',
+            },
+          },
+        },
+        MuiDialogContent: {
+          styleOverrides: {
+            root: {
+              background: 'transparent',
+              color: academyModalText,
+            },
+          },
+        },
+        MuiDialogActions: {
+          styleOverrides: {
+            root: {
+              background:
+                'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.015))',
+              borderTop: `1px solid ${academyModalDivider}`,
+              padding: '14px 20px 18px',
+            },
+          },
+        },
+        MuiBackdrop: {
+          styleOverrides: {
+            root: {
+              backgroundColor: 'rgba(3, 7, 13, 0.72)',
+              backdropFilter: 'blur(14px)',
+            },
+          },
+        },
+        MuiMenu: {
+          styleOverrides: {
+            paper: {
+              background: academyModalSurface,
+              color: academyModalText,
+              border: `1px solid ${academyModalBorder}`,
+              borderRadius: 16,
+              boxShadow: '0 22px 60px rgba(0,0,0,0.45)',
+            },
+          },
+        },
+        MuiPopover: {
+          styleOverrides: {
+            paper: {
+              background: academyModalSurface,
+              color: academyModalText,
+              border: `1px solid ${academyModalBorder}`,
+              borderRadius: 16,
+              boxShadow: '0 22px 60px rgba(0,0,0,0.45)',
+            },
+          },
+        },
       },
     });
 
@@ -218,6 +305,95 @@ export default function AcademyDesignProvider({ children }: AcademyDesignProvide
           },
           'body.academy-route .MuiDivider-root': {
             borderBottomWidth: 'var(--academy-divider-width)',
+          },
+          'body.academy-route .MuiDialog-paper, body.academy-route .MuiMenu-paper, body.academy-route .MuiPopover-paper': {
+            background: `${academyModalSurface} !important`,
+            color: `${academyModalText} !important`,
+            border: `1px solid ${academyModalBorder}`,
+            boxShadow: '0 28px 80px rgba(0,0,0,0.5) !important',
+            backdropFilter: 'blur(24px)',
+          },
+          'body.academy-route .MuiDialogTitle-root': {
+            background: `${academyModalHeader} !important`,
+            color: `${academyModalText} !important`,
+            borderBottom: `1px solid ${academyModalDivider}`,
+            padding: '18px 24px !important',
+          },
+          'body.academy-route .MuiDialogContent-root': {
+            background: 'transparent !important',
+            color: `${academyModalText} !important`,
+          },
+          'body.academy-route .MuiDialogActions-root': {
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.015)) !important',
+            borderTop: `1px solid ${academyModalDivider}`,
+            padding: '14px 20px 18px !important',
+          },
+          'body.academy-route .MuiDialog-paper .MuiPaper-root': {
+            background: `${academyModalSection} !important`,
+            color: `${academyModalText} !important`,
+            border: `1px solid ${academyModalBorder}`,
+            boxShadow: 'none !important',
+          },
+          'body.academy-route .MuiDialog-paper .MuiTypography-root, body.academy-route .MuiMenu-paper .MuiTypography-root, body.academy-route .MuiPopover-paper .MuiTypography-root': {
+            color: 'inherit',
+          },
+          'body.academy-route .MuiDialog-paper .MuiOutlinedInput-root, body.academy-route .MuiDialog-paper .MuiFilledInput-root, body.academy-route .MuiDialog-paper .MuiInputBase-root, body.academy-route .MuiMenu-paper .MuiOutlinedInput-root, body.academy-route .MuiPopover-paper .MuiOutlinedInput-root': {
+            backgroundColor: `${academyModalField} !important`,
+            color: `${academyModalText} !important`,
+            borderRadius: '12px',
+          },
+          'body.academy-route .MuiDialog-paper .MuiOutlinedInput-root:hover, body.academy-route .MuiDialog-paper .MuiFilledInput-root:hover, body.academy-route .MuiDialog-paper .MuiInputBase-root:hover, body.academy-route .MuiMenu-paper .MuiOutlinedInput-root:hover, body.academy-route .MuiPopover-paper .MuiOutlinedInput-root:hover': {
+            backgroundColor: `${academyModalFieldHover} !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiInputLabel-root, body.academy-route .MuiDialog-paper .MuiFormLabel-root, body.academy-route .MuiMenu-paper .MuiInputLabel-root, body.academy-route .MuiPopover-paper .MuiInputLabel-root': {
+            color: `${academyModalTextSecondary} !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiOutlinedInput-notchedOutline, body.academy-route .MuiDialog-paper .MuiFilledInput-root:before, body.academy-route .MuiDialog-paper .MuiFilledInput-root:after, body.academy-route .MuiMenu-paper .MuiOutlinedInput-notchedOutline, body.academy-route .MuiPopover-paper .MuiOutlinedInput-notchedOutline': {
+            borderColor: `${academyModalFieldBorder} !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline, body.academy-route .MuiMenu-paper .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline, body.academy-route .MuiPopover-paper .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+            borderColor: `${academyModalAccent} !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiSelect-icon, body.academy-route .MuiDialog-paper .MuiSvgIcon-root, body.academy-route .MuiMenu-paper .MuiSvgIcon-root, body.academy-route .MuiPopover-paper .MuiSvgIcon-root': {
+            color: 'inherit',
+          },
+          'body.academy-route .MuiDialog-paper .MuiCheckbox-root, body.academy-route .MuiDialog-paper .MuiRadio-root, body.academy-route .MuiDialog-paper .MuiSwitch-switchBase, body.academy-route .MuiMenu-paper .MuiCheckbox-root': {
+            color: `${academyModalTextSecondary} !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiCheckbox-root.Mui-checked, body.academy-route .MuiDialog-paper .MuiRadio-root.Mui-checked, body.academy-route .MuiDialog-paper .MuiSwitch-switchBase.Mui-checked, body.academy-route .MuiMenu-paper .MuiCheckbox-root.Mui-checked': {
+            color: `${academyModalAccent} !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiButton-contained, body.academy-route .MuiMenu-paper .MuiButton-contained, body.academy-route .MuiPopover-paper .MuiButton-contained': {
+            background: `linear-gradient(135deg, ${academyModalAccent}, ${academyModalAccentStrong}) !important`,
+            color: '#111722 !important',
+          },
+          'body.academy-route .MuiDialog-paper .MuiButton-outlined, body.academy-route .MuiMenu-paper .MuiButton-outlined, body.academy-route .MuiPopover-paper .MuiButton-outlined': {
+            borderColor: `${academyModalAccent}55 !important`,
+            color: `${academyModalAccent} !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiButton-text, body.academy-route .MuiMenu-paper .MuiButton-text, body.academy-route .MuiPopover-paper .MuiButton-text': {
+            color: `${academyModalTextSecondary} !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiChip-root, body.academy-route .MuiMenu-paper .MuiChip-root, body.academy-route .MuiPopover-paper .MuiChip-root': {
+            background: 'rgba(255,255,255,0.06) !important',
+            color: `${academyModalText} !important`,
+            border: `1px solid ${academyModalBorder}`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiDivider-root, body.academy-route .MuiMenu-paper .MuiDivider-root, body.academy-route .MuiPopover-paper .MuiDivider-root': {
+            borderColor: `${academyModalDivider} !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiLinearProgress-root': {
+            backgroundColor: 'rgba(255,255,255,0.08) !important',
+          },
+          'body.academy-route .MuiDialog-paper .MuiLinearProgress-bar': {
+            background: `linear-gradient(90deg, ${academyModalAccent}, ${academyModalAccentStrong}) !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiMenuItem-root, body.academy-route .MuiMenu-paper .MuiMenuItem-root, body.academy-route .MuiPopover-paper .MuiMenuItem-root': {
+            color: `${academyModalText} !important`,
+          },
+          'body.academy-route .MuiDialog-paper .MuiMenuItem-root.Mui-selected, body.academy-route .MuiMenu-paper .MuiMenuItem-root.Mui-selected, body.academy-route .MuiPopover-paper .MuiMenuItem-root.Mui-selected': {
+            backgroundColor: 'rgba(245,166,35,0.14) !important',
           },
           'body.academy-route .MuiSvgIcon-root': {
             shapeRendering: 'geometricPrecision',

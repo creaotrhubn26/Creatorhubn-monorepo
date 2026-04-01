@@ -1,0 +1,558 @@
+import { normalizeRequestUrl } from './normalizeRequestUrl';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://evendi.onrender.com';
+const IS_DEVELOPMENT =
+  typeof window !== 'undefined' &&
+  (import.meta.env.DEV || window.location.hostname === 'localhost');
+
+export const CREATORHUB_AUTH_TOKEN_KEY = 'creatorhub_auth_token';
+export const CREATORHUB_AUTH_USER_KEY = 'creatorhub_auth_user';
+export const CREATORHUB_USER_ID_KEY = 'userId';
+export const CREATORHUB_USER_EMAIL_KEY = 'userEmail';
+export const CREATORHUB_GOOGLE_LOGIN_ERROR_KEY = 'creatorhub_google_login_error';
+
+const GOOGLE_CALLBACK_PARAMS = [
+  'rrGoogleStatus',
+  'rrGoogleTransfer',
+  'rrGoogleMode',
+  'rrGoogleMessage',
+] as const;
+
+const DASHBOARD_ROLE_SET = new Set([
+  'photographer',
+  'videographer',
+  'music_producer',
+  'vendor',
+  'couple',
+  'partner',
+  'enterprise',
+]);
+
+export interface CreatorHubAuthUser {
+  id: string;
+  email: string;
+  name: string;
+  displayName?: string;
+  role?: string;
+  roleLabel?: string;
+  profession?: string;
+  userType?: string;
+  requestedRole?: string | null;
+  loginAs?: string;
+  isAdmin?: boolean;
+  permissions?: string[];
+  vendorId?: string;
+  businessName?: string;
+  coupleProfileId?: string;
+  picture?: string;
+  verified_email?: boolean;
+  impersonatedByAdmin?: boolean;
+}
+
+export interface CreatorHubSessionSnapshot {
+  token: string | null;
+  user: CreatorHubAuthUser | null;
+  authenticated: boolean;
+  isAdmin: boolean;
+  userProfession: string | null;
+}
+
+type RoleRoomGoogleTransferResponse = {
+  mode?: string | null;
+  sessionToken?: string | null;
+  user?: Record<string, unknown> | null;
+  google?: {
+    email?: string | null;
+    subject?: string | null;
+    profile?: Record<string, unknown> | null;
+  } | null;
+  error?: string;
+  message?: string;
+};
+
+export type CreatorHubAcademyAudience = 'student' | 'instructor' | 'admin';
+
+function buildApiUrlCandidates(url: string): string[] {
+  const normalizedUrl = normalizeRequestUrl(url);
+  if (normalizedUrl.startsWith('http')) {
+    return [normalizedUrl];
+  }
+
+  if (!IS_DEVELOPMENT) {
+    return [`${API_BASE_URL}${normalizedUrl}`];
+  }
+
+  const localCandidate = normalizedUrl;
+  const remoteCandidate = `${API_BASE_URL}${normalizedUrl}`;
+
+  return localCandidate === remoteCandidate
+    ? [localCandidate]
+    : [localCandidate, remoteCandidate];
+}
+
+function readStringValue(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeRoleLikeValue(value: unknown): string | null {
+  const normalized = readStringValue(value)?.toLowerCase().replace(/-/g, '_') ?? null;
+  return normalized && normalized.length > 0 ? normalized : null;
+}
+
+function readStringArrayValue(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalized = value
+    .map((entry) => readStringValue(entry))
+    .filter((entry): entry is string => Boolean(entry))
+    .map((entry) => entry.trim());
+
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : undefined;
+}
+
+function readRecordValue(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readStoredJson<T>(key: string): T | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeGoogleLoginError(message: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY, message);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function removeGoogleCallbackParams(url: URL): void {
+  GOOGLE_CALLBACK_PARAMS.forEach((param) => {
+    url.searchParams.delete(param);
+  });
+}
+
+function isDashboardRole(value: string | null): boolean {
+  return Boolean(value && DASHBOARD_ROLE_SET.has(value));
+}
+
+function deriveProfession(record: Record<string, unknown>, role: string | null): string | undefined {
+  const profession =
+    normalizeRoleLikeValue(record.profession)
+    ?? normalizeRoleLikeValue(record.userType)
+    ?? normalizeRoleLikeValue(record.selectedRole)
+    ?? normalizeRoleLikeValue(record.requestedRole);
+
+  if (profession) {
+    return profession;
+  }
+
+  return isDashboardRole(role) ? role ?? undefined : undefined;
+}
+
+function hasPermission(
+  user: Pick<CreatorHubAuthUser, 'permissions'> | null | undefined,
+  permission: string,
+): boolean {
+  if (!user?.permissions || user.permissions.length === 0) {
+    return false;
+  }
+
+  return user.permissions.some((entry) => entry.trim().toLowerCase() === permission);
+}
+
+function normalizeCreatorHubAuthUser(
+  rawUser: Record<string, unknown>,
+  fallbackEmail?: string | null,
+): CreatorHubAuthUser | null {
+  const idCandidate = rawUser.id ?? rawUser.userId;
+  const emailCandidate = readStringValue(rawUser.email) ?? readStringValue(rawUser.userEmail) ?? fallbackEmail ?? null;
+  const id =
+    typeof idCandidate === 'string' && idCandidate.trim()
+      ? idCandidate.trim()
+      : typeof idCandidate === 'number'
+        ? String(idCandidate)
+        : null;
+  const email = emailCandidate ? emailCandidate.trim().toLowerCase() : null;
+
+  if (!id || !email) {
+    return null;
+  }
+
+  const role = normalizeRoleLikeValue(rawUser.role);
+  const profession = deriveProfession(rawUser, role);
+  const permissions = readStringArrayValue(rawUser.permissions);
+  const displayName =
+    readStringValue(rawUser.displayName)
+    ?? readStringValue(rawUser.display_name)
+    ?? readStringValue(rawUser.name)
+    ?? email.split('@')[0];
+  const name = readStringValue(rawUser.name) ?? displayName;
+  const requestedRole = normalizeRoleLikeValue(rawUser.requestedRole) ?? null;
+  const isAdmin =
+    rawUser.isAdmin === true ||
+    role === 'admin' ||
+    role === 'super_admin';
+
+  return {
+    ...(rawUser as Partial<CreatorHubAuthUser>),
+    id,
+    email,
+    name,
+    displayName,
+    role: role ?? undefined,
+    roleLabel: readStringValue(rawUser.roleLabel) ?? readStringValue(rawUser.role_label) ?? undefined,
+    profession,
+    userType: profession ?? undefined,
+    requestedRole,
+    loginAs: normalizeRoleLikeValue(rawUser.loginAs) ?? undefined,
+    isAdmin,
+    permissions,
+    vendorId: readStringValue(rawUser.vendorId) ?? undefined,
+    businessName: readStringValue(rawUser.businessName) ?? undefined,
+    coupleProfileId: readStringValue(rawUser.coupleProfileId) ?? undefined,
+    picture: readStringValue(rawUser.picture) ?? undefined,
+    verified_email: rawUser.verified_email === true,
+    impersonatedByAdmin: rawUser.impersonatedByAdmin === true,
+  };
+}
+
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const raw = await response.text();
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return raw;
+  }
+}
+
+async function fetchCreatorHubJson<T>(
+  url: string,
+  options?: Omit<RequestInit, 'body'> & { body?: Record<string, unknown> | string },
+): Promise<T> {
+  const { body, headers, ...rest } = options ?? {};
+  const candidateUrls = buildApiUrlCandidates(url);
+  let lastError: Error | null = null;
+
+  for (let index = 0; index < candidateUrls.length; index += 1) {
+    const candidateUrl = candidateUrls[index];
+
+    try {
+      const response = await fetch(candidateUrl, {
+        ...rest,
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers,
+        },
+        body:
+          typeof body === 'string'
+            ? body
+            : body !== undefined
+              ? JSON.stringify(body)
+              : undefined,
+      });
+
+      const payload = await readResponsePayload(response);
+      if (!response.ok) {
+        const errorMessage =
+          typeof payload === 'object' && payload !== null
+            ? readStringValue((payload as Record<string, unknown>).error)
+              ?? readStringValue((payload as Record<string, unknown>).message)
+            : typeof payload === 'string'
+              ? payload
+              : null;
+        const nextError = new Error(
+          errorMessage || `Request failed with status ${response.status}`,
+        );
+
+        if (index < candidateUrls.length - 1 && response.status >= 500) {
+          lastError = nextError;
+          continue;
+        }
+
+        throw nextError;
+      }
+
+      return payload as T;
+    } catch (error) {
+      const nextError = error instanceof Error ? error : new Error(String(error));
+      if (index < candidateUrls.length - 1) {
+        lastError = nextError;
+        continue;
+      }
+      throw nextError;
+    }
+  }
+
+  throw lastError ?? new Error('Request failed');
+}
+
+export function readCreatorHubStoredToken(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const token = window.localStorage.getItem(CREATORHUB_AUTH_TOKEN_KEY);
+    return typeof token === 'string' && token.trim() ? token.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function readCreatorHubStoredUser(): CreatorHubAuthUser | null {
+  const stored = readStoredJson<Record<string, unknown>>(CREATORHUB_AUTH_USER_KEY);
+  return stored ? normalizeCreatorHubAuthUser(stored) : null;
+}
+
+export function readCreatorHubSessionSnapshot(): CreatorHubSessionSnapshot {
+  const token = readCreatorHubStoredToken();
+  const user = readCreatorHubStoredUser();
+  const authenticated = Boolean(token && user);
+  const isAdmin = Boolean(user?.isAdmin);
+  const userProfession = user?.profession ?? user?.userType ?? null;
+
+  return {
+    token,
+    user: authenticated ? user : null,
+    authenticated,
+    isAdmin,
+    userProfession,
+  };
+}
+
+export function storeCreatorHubAuthSession(
+  sessionToken: string,
+  user: CreatorHubAuthUser,
+): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(CREATORHUB_AUTH_TOKEN_KEY, sessionToken);
+    window.localStorage.setItem(CREATORHUB_AUTH_USER_KEY, JSON.stringify(user));
+    window.localStorage.setItem(CREATORHUB_USER_ID_KEY, user.id);
+    window.localStorage.setItem(CREATORHUB_USER_EMAIL_KEY, user.email);
+    window.dispatchEvent(new Event('auth-changed'));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+export function isCreatorHubAdminImpersonation(
+  user: CreatorHubAuthUser | null | undefined,
+): boolean {
+  return Boolean(user?.impersonatedByAdmin === true);
+}
+
+export function hasCreatorHubVerifiedGoogleSession(
+  user: CreatorHubAuthUser | null | undefined,
+): boolean {
+  return Boolean(
+    user
+    && user.verified_email === true
+    && readStringValue(user.email),
+  );
+}
+
+export function resolveCreatorHubAcademyAudience(
+  user: CreatorHubAuthUser | null | undefined,
+): CreatorHubAcademyAudience | null {
+  if (!user) {
+    return null;
+  }
+
+  const normalizedRole = normalizeRoleLikeValue(user.role);
+  const normalizedProfession = normalizeRoleLikeValue(
+    user.profession ?? user.userType ?? null,
+  );
+
+  if (
+    user.isAdmin
+    || normalizedRole === 'admin'
+    || normalizedRole === 'super_admin'
+    || hasPermission(user, 'academy:admin')
+  ) {
+    return 'admin';
+  }
+
+  if (
+    normalizedRole === 'instructor'
+    || normalizedProfession === 'instructor'
+    || hasPermission(user, 'academy:write')
+  ) {
+    return 'instructor';
+  }
+
+  return 'student';
+}
+
+export function canAccessCreatorHubStudentAcademy(
+  user: CreatorHubAuthUser | null | undefined,
+): boolean {
+  if (!user) {
+    return false;
+  }
+
+  const audience = resolveCreatorHubAcademyAudience(user);
+  return audience === 'student' || audience === 'admin' || isCreatorHubAdminImpersonation(user);
+}
+
+export function buildCreatorHubGoogleReturnPath(): string {
+  if (typeof window === 'undefined') {
+    return '/';
+  }
+
+  const url = new URL(window.location.href);
+  removeGoogleCallbackParams(url);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+export function clearCreatorHubGoogleIntentFromUrl(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  removeGoogleCallbackParams(url);
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+}
+
+export async function startCreatorHubGoogleLogin(): Promise<void> {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const response = await fetchCreatorHubJson<{ authorizationUrl?: string }>('/api/role-room/google/oauth/start', {
+    method: 'POST',
+    body: {
+      mode: 'login',
+      browserOrigin: window.location.origin,
+      returnPath: buildCreatorHubGoogleReturnPath(),
+    },
+  });
+
+  if (!response.authorizationUrl) {
+    throw new Error('Kunne ikke starte Google-innloggingen.');
+  }
+
+  window.location.assign(response.authorizationUrl);
+}
+
+export async function completeCreatorHubGoogleLoginTransfer(
+  transferId: string,
+): Promise<CreatorHubAuthUser> {
+  const transfer = await fetchCreatorHubJson<RoleRoomGoogleTransferResponse>(
+    `/api/role-room/google/oauth/session-result/${encodeURIComponent(transferId)}`,
+  );
+
+  if (transfer.mode !== 'login' || !transfer.sessionToken || !transfer.user) {
+    throw new Error('Google-innloggingen mangler en gyldig brukerøkt.');
+  }
+
+  const googleProfile = readRecordValue(transfer.google?.profile);
+  const normalizedUser = normalizeCreatorHubAuthUser(
+    {
+      ...(googleProfile ?? {}),
+      ...transfer.user,
+      verified_email:
+        transfer.user.verified_email === true
+          || googleProfile?.verified_email === true,
+      picture:
+        readStringValue(transfer.user.picture)
+        ?? readStringValue(googleProfile?.picture)
+        ?? undefined,
+    },
+    readStringValue(transfer.google?.email) ?? undefined,
+  );
+
+  if (!normalizedUser) {
+    throw new Error('Klarte ikke å lese brukeren fra Google-innloggingen.');
+  }
+
+  storeCreatorHubAuthSession(transfer.sessionToken, normalizedUser);
+  return normalizedUser;
+}
+
+export async function bootstrapCreatorHubGoogleLoginRedirect(): Promise<void> {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const googleStatus = params.get('rrGoogleStatus');
+  const googleMode = params.get('rrGoogleMode');
+  const googleTransferId = params.get('rrGoogleTransfer');
+  const googleMessage = params.get('rrGoogleMessage');
+
+  if (!googleStatus) {
+    return;
+  }
+
+  try {
+    if (googleStatus === 'error') {
+      throw new Error(googleMessage || 'Google-innloggingen feilet.');
+    }
+
+    if (googleStatus !== 'success' || googleMode !== 'login' || !googleTransferId) {
+      return;
+    }
+
+    await completeCreatorHubGoogleLoginTransfer(googleTransferId);
+  } catch (error) {
+    writeGoogleLoginError(
+      error instanceof Error ? error.message : 'Google-innloggingen feilet.',
+    );
+  } finally {
+    clearCreatorHubGoogleIntentFromUrl();
+  }
+}
+
+export function consumeCreatorHubGoogleLoginError(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const value = window.sessionStorage.getItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
+    if (value) {
+      window.sessionStorage.removeItem(CREATORHUB_GOOGLE_LOGIN_ERROR_KEY);
+      return value;
+    }
+  } catch {
+    // Ignore storage failures.
+  }
+
+  return null;
+}

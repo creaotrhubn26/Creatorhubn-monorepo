@@ -31,6 +31,7 @@ import { ClientSessionProvider } from './contexts/ClientSessionContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProjectProvider } from './contexts/ProjectContext';
 import { AcademyProvider } from './contexts/AcademyContext';
+import { FileManagementStatusProvider } from './contexts/FileManagementStatusContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { ThemeProvider as AppThemeProvider } from './contexts/ThemeContext';
 import { RealTimeProvider } from './contexts/RealTimeContext';
@@ -45,6 +46,7 @@ import AdminPage from '@/pages/AdminPage';
 import EquipmentAdminPage from '@/pages/EquipmentAdminPage';
 import AdminDashboard from '@/components/admin/AdminDashboard';
 import PhotoShowcase from '@/pages/photo-showcase';
+import VideoShowcase from '@/pages/video-showcase';
 import MusicShowcase from '@/pages/music-showcase';
 import ShowcaseAdmin from '@/pages/showcase-admin';
 import ClientGallery from '@/pages/client-gallery';
@@ -157,7 +159,8 @@ import AcademyInstructorAdminStudio from '@/components/academy/AcademyInstructor
 import AcademyUserSettingsStudio from '@/components/academy/AcademyUserSettingsStudio';
 import AcademyToolsOverviewStudio from '@/components/academy/AcademyToolsOverviewStudio';
 import AcademyDesignProvider from '@/components/academy/AcademyDesignProvider';
-import CommunityLandingPage from '@/components/community/CommunityLandingPage';
+import AcademyStudentGoogleGate from '@/components/academy/AcademyStudentGoogleGate';
+import CommunityHub from '@/components/community/CommunityHub';
 import ReceiptsManager from '@/components/accounting/ReceiptsManager';
 import ShowcaseAmazonDesign from '@/components/universal/misc/ShowcaseAmazonDesign';
 import VirtualStudioPage from '@/pages/VirtualStudioPage';
@@ -168,6 +171,7 @@ import IntegrationTest from './integration/IntegrationTest';
 import ResumeBuilder from '@/components/resume/ResumeBuilder';
 import LinkedInCallback from '@/pages/LinkedInCallback';
 import LoginPageSimple from '@/pages/LoginPageSimple';
+import SmartMeetingNotesPage from '@/pages/SmartMeetingNotesPage';
 
 const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile-backup-sep19'));
 // Wrapper components for route compatibility
@@ -182,6 +186,7 @@ type AcademyRouteQueryContext = {
   view?: string;
   tab?: string;
   returnTo?: string;
+  audience?: string;
 };
 
 const getAcademyRouteQueryContext = (): AcademyRouteQueryContext => {
@@ -196,6 +201,7 @@ const getAcademyRouteQueryContext = (): AcademyRouteQueryContext => {
     const view = String(params.get('view') || '').trim();
     const tab = String(params.get('tab') || '').trim();
     const returnTo = String(params.get('returnTo') || '').trim();
+    const audience = String(params.get('audience') || '').trim().toLowerCase();
 
     return {
       courseId: courseId || undefined,
@@ -205,6 +211,7 @@ const getAcademyRouteQueryContext = (): AcademyRouteQueryContext => {
       view: view || undefined,
       tab: tab || undefined,
       returnTo: returnTo || undefined,
+      audience: audience || undefined,
     };
   } catch {
     return {};
@@ -224,12 +231,24 @@ const createAcademyRouteWrapper = (Component: React.ComponentType<any>) => {
       view: props?.view ?? routeContext.view,
       tab: props?.tab ?? routeContext.tab,
       returnTo: props?.returnTo ?? routeContext.returnTo,
+      audience: props?.audience ?? routeContext.audience,
     };
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+    const isStudentAcademyPath =
+      pathname === '/academy/student-dashboard' ||
+      pathname === '/academy/student-enrollment' ||
+      routeContext.audience === 'student' ||
+      String(routeContext.returnTo || '').includes('/academy/student-dashboard');
+    const academyContent = <Component {...mergedProps} />;
 
     return (
       <AcademyDesignProvider>
         <AcademyProvider>
-          <Component {...mergedProps} />
+          {isStudentAcademyPath ? (
+            <AcademyStudentGoogleGate>{academyContent}</AcademyStudentGoogleGate>
+          ) : (
+            academyContent
+          )}
         </AcademyProvider>
       </AcademyDesignProvider>
     );
@@ -259,6 +278,33 @@ const AcademyMonetizationRouteWrapper = createAcademyRouteWrapper(AcademyMonetiz
 const AcademyCTAOverlayRouteWrapper = createAcademyRouteWrapper(AcademyCTAOverlayStudio);
 const AcademyLowerThirdsRouteWrapper = createAcademyRouteWrapper(AcademyLowerThirdsStudio);
 const AcademyPresentationOverlayRouteWrapper = createAcademyRouteWrapper(AcademyPresentationOverlayStudio);
+const createShowcaseRouteWrapper = (Component: React.ComponentType<any>) => {
+  const ShowcaseRouteWrapper = (props: any) => (
+    <AcademyDesignProvider>
+      <SettingsProvider>
+        <AppThemeProvider>
+          <RealTimeProvider>
+            <VisualEditorProvider>
+              <FileManagementStatusProvider>
+                <Component {...props} />
+              </FileManagementStatusProvider>
+            </VisualEditorProvider>
+          </RealTimeProvider>
+        </AppThemeProvider>
+      </SettingsProvider>
+    </AcademyDesignProvider>
+  );
+
+  return ShowcaseRouteWrapper;
+};
+
+const PhotoShowcaseRouteWrapper = createShowcaseRouteWrapper(PhotoShowcase);
+const VideoShowcaseRouteWrapper = createShowcaseRouteWrapper(VideoShowcase);
+const MusicShowcaseRouteWrapper = createShowcaseRouteWrapper(MusicShowcase);
+const ShowcaseAdminRouteWrapper = createShowcaseRouteWrapper(ShowcaseAdmin);
+const ShowcaseClientEnhancedRouteWrapper =
+  createShowcaseRouteWrapper(ShowcaseClientEnhanced);
+
 const StoryArcStudioRouteWrapper = () => (
   <SettingsProvider>
     <AppThemeProvider>
@@ -277,8 +323,16 @@ const CommunityLandingPageWrapper = () => {
     const { user } = useAuth();
     const { getUserProfession } = useDynamicProfessions();
     const userId = user?.id || 'guest';
-    const profession = getUserProfession() || 'photographer';
-    return <CommunityLandingPage userId={userId} profession={profession} />;
+    const profession = user?.profession || getUserProfession() || 'photographer';
+    return (
+      <AcademyDesignProvider>
+        <CommunityHub
+          userId={userId}
+          userEmail={user?.email}
+          profession={profession}
+        />
+      </AcademyDesignProvider>
+    );
   } catch (error) {
     console.error('Error in CommunityLandingPageWrapper:', error);
     return (
@@ -369,10 +423,23 @@ function App() {
 
   React.useEffect(() => {
     const isAcademyRoute = /^\/academy(?:$|[/-])/.test(location);
-    document.body.classList.toggle('academy-route', isAcademyRoute);
+    const isCommunityRoute = /^\/community(?:$|[/-])/.test(location);
+    const isUniversalShowcaseRoute =
+      location === '/photo-showcase' ||
+      location === '/video-showcase' ||
+      location === '/showcase-admin' ||
+      /^\/showcase\/(photographer|videographer|music_producer)$/.test(location) ||
+      /^\/showcase-enhanced(?:$|\/)/.test(location);
+
+    document.body.classList.toggle(
+      'academy-route',
+      isAcademyRoute || isCommunityRoute || isUniversalShowcaseRoute,
+    );
+    document.body.classList.toggle('community-route', isCommunityRoute);
 
     return () => {
       document.body.classList.remove('academy-route');
+      document.body.classList.remove('community-route');
     };
   }, [location]);
 
@@ -452,11 +519,11 @@ function App() {
                     path="/vendor-dashboard-material"
                     component={() => <SmartDashboardRoute profession="vendor" />}
                   />
-                  <Route path="/showcase/photographer" component={PhotoShowcase} />
-                  <Route path="/photo-showcase" component={PhotoShowcase} />
-                  <Route path="/video-showcase" component={PhotoShowcase} />
-                  <Route path="/showcase/music_producer" component={MusicShowcase} />
-                  <Route path="/showcase/:projectId" component={PhotoShowcase} />
+                  <Route path="/showcase/photographer" component={PhotoShowcaseRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/showcase/videographer" component={VideoShowcaseRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/photo-showcase" component={PhotoShowcaseRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/video-showcase" component={VideoShowcaseRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/showcase/music_producer" component={MusicShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route
                     path="/equipment-rental"
                     component={() => <SmartDashboardRoute profession="photographer" />}
@@ -510,8 +577,9 @@ function App() {
                     component={() => <NorthtoneVendorShowcase />}
                   />
                   <Route path="/settings" component={() => <SmartDashboardRoute />} />
+                  <Route path="/smart-meeting-notes" component={SmartMeetingNotesPage} />
                   <Route path="/resume-builder" component={ResumeBuilder} />
-                  <Route path="/showcase-admin" component={ShowcaseAdmin as React.ComponentType<any>} />
+                  <Route path="/showcase-admin" component={ShowcaseAdminRouteWrapper as React.ComponentType<any>} />
                   {/* Plugin management routes removed - file doesn't exist */}
                   <Route path="/request-access" component={RequestAccess as React.ComponentType<any>} />
                   <Route path="/invite-status" component={InviteRequestStatus as React.ComponentType<any>} />
@@ -537,8 +605,8 @@ function App() {
                   <Route path="/client/gallery/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/bryllup/:projectId" component={WeddingClient} />
                   <Route path="/showcase/:projectId" component={ShowcaseClient} />
-                  <Route path="/showcase-enhanced/:projectId" component={ShowcaseClientEnhanced} />
-                  <Route path="/showcase-enhanced-demo" component={() => <ShowcaseClientEnhanced />} />
+                  <Route path="/showcase-enhanced/:projectId" component={ShowcaseClientEnhancedRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/showcase-enhanced-demo" component={() => <ShowcaseClientEnhancedRouteWrapper />} />
                   <Route path="/virtual-studio-test" component={() => {
                     return <div style={{ padding: '40px', backgroundColor: 'green', color: 'white', minHeight: '100vh', fontSize: '24px' }}>TEST ROUTE WORKS!</div>;
                   }} />

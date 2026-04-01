@@ -721,5 +721,3 @@ export const UniversalDashboardProvider: React.FC<{ children: React.ReactNode }>
     </UniversalContext.Provider>
   );
 };
-
-

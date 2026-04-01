@@ -542,14 +542,16 @@ class PlatformPricingService {
 export const platformPricingService = PlatformPricingService.getInstance();
 
 // React hook for easy integration
-export const usePlatformPricing = () => {
+export const usePlatformPricing = (options?: { enabled?: boolean }) => {
   const service = platformPricingService;
+  const enabled = options?.enabled ?? true;
 
   // Platform subscription plans
   const { data: subscriptionPlans, isLoading: plansLoading } = useQuery({
     queryKey: ['platform_subscription_plans'],
     queryFn: () => service.getPlatformSubscriptionPlans(),
     staleTime: 10 * 60 * 1000, // 10 minutes
+    enabled,
   });
 
   // Platform features
@@ -557,6 +559,7 @@ export const usePlatformPricing = () => {
     queryKey: ['platform_features'],
     queryFn: () => service.getPlatformFeatures(),
     staleTime: 10 * 60 * 1000,
+    enabled,
   });
 
   // Plan comparison
@@ -564,6 +567,7 @@ export const usePlatformPricing = () => {
     queryKey: ['platform_plan_comparison'],
     queryFn: () => service.comparePlans(),
     staleTime: 10 * 60 * 1000,
+    enabled,
   });
 
   return {
@@ -583,7 +587,6 @@ export const usePlatformPricing = () => {
 };
 
 export default PlatformPricingService;
-
 
 
 

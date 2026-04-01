@@ -502,6 +502,7 @@ export interface ExportDialogProps {
   onExportBoardPDF: (shotListId: string | null) => void;
   onExportContactSheet: (shotListId: string | null) => void;
   onExportShotDeck: (shotListId: string | null) => void;
+  onExportCleanStills: (shotListId: string | null) => void;
 }
 
 export function ExportDialog({
@@ -513,6 +514,7 @@ export function ExportDialog({
   onExportBoardPDF,
   onExportContactSheet,
   onExportShotDeck,
+  onExportCleanStills,
 }: ExportDialogProps) {
   const label =
     shotListId
@@ -562,6 +564,15 @@ export function ExportDialog({
           sx={{ justifyContent: 'flex-start', textTransform: 'none', borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.85)' }}
         >
           Shot Deck
+        </Button>
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<ExportIcon />}
+          onClick={() => { onExportCleanStills(shotListId); onClose(); }}
+          sx={{ justifyContent: 'flex-start', textTransform: 'none', borderColor: 'rgba(255,255,255,0.2)', color: '#c4b5fd' }}
+        >
+          Clean Stills (.zip)
         </Button>
       </DialogContent>
 

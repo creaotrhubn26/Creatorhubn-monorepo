@@ -36,6 +36,7 @@ import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
 import authSessionService from '../services/authSessionService';
 import { googleWorkspaceApi } from '../services/castingApiService';
 import { parseClientPortalIntentFromWindow } from '../utils/clientPortal';
+import { getRoleRoomVideoPosterUrl, getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
 import { isRoleRoomStandaloneRuntime } from '../utils/runtime';
 
 /* ─────────────────────────── types ────────────────────────────── */
@@ -372,7 +373,17 @@ function RoleChip({
   const videoRef   = useRef<HTMLVideoElement>(null);
   const cardRef    = useRef<HTMLButtonElement>(null);
   const [videoSrc, setVideoSrc] = useState<string | undefined>(undefined);
+  const [videoReady, setVideoReady] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
   const objPos = videoPosition ?? DESIGN.card.defaultFocalPoint;
+  const fallbackImage = getRoleRoomVideoStillUrl(video, roleIcons[role.id]);
+  const fallbackPoster = getRoleRoomVideoPosterUrl(video, fallbackImage);
+
+  useEffect(() => {
+    setVideoReady(false);
+    setVideoFailed(false);
+    setVideoSrc(undefined);
+  }, [video]);
 
   // Lazy-load: only assign src once the card scrolls into view
   useEffect(() => {
@@ -393,16 +404,26 @@ function RoleChip({
   }, [video]);
 
   useEffect(() => {
+    if (selected && video && !videoSrc) {
+      setVideoSrc(video);
+    }
+  }, [selected, video, videoSrc]);
+
+  useEffect(() => {
     const el = videoRef.current;
-    if (!el) return;
-    if (selected) {
+    if (!el || videoFailed) return;
+    if (selected && videoSrc && !videoReady) {
+      el.load();
+      return;
+    }
+    if (selected && videoReady) {
       el.currentTime = 0;
       el.play().catch(() => {});
     } else {
       el.pause();
       el.currentTime = 0;
     }
-  }, [selected]);
+  }, [selected, videoFailed, videoReady, videoSrc]);
 
   return (
     <Box
@@ -410,6 +431,8 @@ function RoleChip({
       type="button"
       ref={cardRef}
       onClick={() => onSelect(role.id)}
+      data-testid={`role-room-role-card-${role.id}`}
+      data-media-mode={selected && videoReady && !videoFailed ? 'video' : 'image'}
       sx={{
         position: 'relative',
         cursor: 'pointer',
@@ -443,16 +466,48 @@ function RoleChip({
       }}
     >
       {/* ── full-bleed video or icon fills entire card ── */}
+      {fallbackImage ? (
+        <Box
+          component="img"
+          src={fallbackImage}
+          alt={role.label}
+          className="card-icon"
+          sx={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            objectFit: 'cover', objectPosition: objPos,
+            zIndex: 0,
+            filter: selected
+              ? `brightness(1.08) saturate(1.15) drop-shadow(0 0 14px ${DESIGN.p.iconDropSelected})`
+              : 'brightness(0.88) saturate(0.95)',
+            transition: `filter 0.3s ${easing}, opacity 0.3s ${easing}`,
+            opacity: selected && videoReady && !videoFailed ? 0.12 : 1,
+          }}
+        />
+      ) : null}
       {video ? (
         <Box
           component="video"
           ref={videoRef}
           src={videoSrc}
-          poster={video.replace('.mp4', '_thumb.webp')}
+          poster={fallbackPoster}
           loop
           muted
           playsInline
-          preload="none"
+          preload="metadata"
+          onLoadedData={() => {
+            setVideoReady(true);
+            setVideoFailed(false);
+          }}
+          onCanPlay={() => {
+            setVideoReady(true);
+            setVideoFailed(false);
+          }}
+          onError={() => {
+            setVideoReady(false);
+            setVideoFailed(true);
+          }}
+          data-testid={`role-room-role-card-video-${role.id}`}
           className="card-icon"
           sx={{
             position: 'absolute', inset: 0,
@@ -462,7 +517,8 @@ function RoleChip({
             filter: selected
               ? 'brightness(1.1) saturate(1.3)'
               : 'brightness(0.82) saturate(0.9)',
-            transition: `filter 0.3s ${easing}`,
+            transition: `filter 0.3s ${easing}, opacity 0.3s ${easing}`,
+            opacity: selected && videoReady && !videoFailed ? 1 : 0,
           }}
         />
       ) : roleIcons[role.id] ? (
@@ -733,8 +789,16 @@ export default function LoginDialog({
   const [badgeKey, setBadgeKey] = useState(0);
   const [testimonialIdx, setTestimonialIdx] = useState(0);
   const [testimonialVisible, setTestimonialVisible] = useState(true);
+  const [backdropVideoReady, setBackdropVideoReady] = useState(false);
+  const [backdropVideoFailed, setBackdropVideoFailed] = useState(false);
   const hasSeenHint = useRef(false);
   const clientPortalIntent = parseClientPortalIntentFromWindow();
+  const backdropStillUrl = getRoleRoomVideoStillUrl(DESIGN.backdrop.src, '/role-room-assets/landing_backdrop.webp');
+
+  useEffect(() => {
+    setBackdropVideoReady(false);
+    setBackdropVideoFailed(false);
+  }, [open]);
 
   const visibleProfessionCategories =
     loginPersona === 'content_producer'
@@ -1255,6 +1319,26 @@ export default function LoginDialog({
       }}
     >
       {/* ── video backdrop ── */}
+      {backdropStillUrl ? (
+        <Box
+          component="img"
+          src={backdropStillUrl}
+          alt=""
+          aria-hidden="true"
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: DESIGN.backdrop.objectPosition,
+            opacity: DESIGN.backdrop.opacity,
+            zIndex: 0,
+            pointerEvents: 'none',
+            filter: DESIGN.backdrop.filter,
+          }}
+        />
+      ) : null}
       <Box
         component="video"
         src={DESIGN.backdrop.src}
@@ -1262,6 +1346,20 @@ export default function LoginDialog({
         loop
         muted
         playsInline
+        onLoadedData={() => {
+          setBackdropVideoReady(true);
+          setBackdropVideoFailed(false);
+        }}
+        onCanPlay={() => {
+          setBackdropVideoReady(true);
+          setBackdropVideoFailed(false);
+        }}
+        onError={() => {
+          setBackdropVideoReady(false);
+          setBackdropVideoFailed(true);
+        }}
+        data-testid="role-room-login-backdrop-video"
+        data-media-mode={backdropVideoReady && !backdropVideoFailed ? 'video' : 'image'}
         sx={{
           position: 'absolute',
           inset: 0,
@@ -1269,10 +1367,11 @@ export default function LoginDialog({
           height: '100%',
           objectFit: 'cover',
           objectPosition: DESIGN.backdrop.objectPosition,
-          opacity: DESIGN.backdrop.opacity,
+          opacity: backdropVideoReady && !backdropVideoFailed ? DESIGN.backdrop.opacity : 0,
           zIndex: 0,
           pointerEvents: 'none',
           filter: DESIGN.backdrop.filter,
+          transition: `opacity 0.3s ${easing}`,
         }}
       />
 

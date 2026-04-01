@@ -118,6 +118,11 @@ import {
   type Transform,
 } from './drawing/SelectionTools';
 import {
+  renderBoardPolishEffectsToCanvas,
+  type BoardPolishDraftState,
+  type BoardPolishEffectLayerId,
+} from '../utils/storyboardBoardPolish';
+import {
   getOnionFrames,
   renderOnionSkins,
   type OnionSkinSettings,
@@ -258,6 +263,9 @@ export interface PencilCanvasProProps {
   initialStrokes?: PencilStroke[];
   underlayLayers?: RenderableLayerOverlay[];
   activeStrokeTransforms?: StrokeTransform[];
+  boardPolishState?: BoardPolishDraftState;
+  boardPolishPresentationActive?: boolean;
+  boardPolishPreviewEffectId?: BoardPolishEffectLayerId;
   layerState?: {
     layers: DrawingLayer[];
     activeLayerId: string;
@@ -1364,6 +1372,9 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   initialStrokes = [],
   underlayLayers = [],
   activeStrokeTransforms = [],
+  boardPolishState,
+  boardPolishPresentationActive = false,
+  boardPolishPreviewEffectId,
   layerState,
   brushSettings: initialBrushSettings,
   showToolbar = true,
@@ -2743,7 +2754,20 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         shouldShowTextSelection && annotation.id === drawingState.selectedTextAnnotationId
       );
     });
+    if (boardPolishState) {
+      renderBoardPolishEffectsToCanvas(
+        ctx,
+        width,
+        height,
+        boardPolishState,
+        boardPolishPresentationActive,
+        boardPolishPreviewEffectId,
+      );
+    }
   }, [
+    boardPolishPreviewEffectId,
+    boardPolishPresentationActive,
+    boardPolishState,
     width,
     height,
     underlayLayers,

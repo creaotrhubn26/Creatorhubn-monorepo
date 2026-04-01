@@ -161,12 +161,15 @@ import { errorHandler } from './src/core/services/errorHandler';
 // Training & Guides
 import { PhotographyTrainingPanel } from './src/ui/panels/PhotographyTrainingPanel';
 import { StudioGuidesPanel } from './src/ui/panels/StudioGuidesPanel';
-import { AdvancedGuidesPanel, AdvancedGuideSettings as PanelAdvancedGuideSettings } from './src/ui/panels/AdvancedGuidesPanel';
+import type { AdvancedGuideSettings as PanelAdvancedGuideSettings } from './src/ui/panels/AdvancedGuidesPanel';
+import { AdvancedGuidesPanel } from './src/ui/panels/AdvancedGuidesPanel';
 import { useStudioGuideSettings, useShowStudioGuides, useAdvancedGuideSettings, useActions, useNodes } from './src/state/selectors';
 
 // Advanced Visual Guides
-import { CompositionOverlays, CompositionGuideType } from './src/ui/components/CompositionOverlays';
-import { VideoProductionGuides, AspectRatioType } from './src/ui/components/VideoProductionGuides';
+import type { CompositionGuideType } from './src/ui/components/CompositionOverlays';
+import { CompositionOverlays } from './src/ui/components/CompositionOverlays';
+import type { AspectRatioType } from './src/ui/components/VideoProductionGuides';
+import { VideoProductionGuides } from './src/ui/components/VideoProductionGuides';
 import { ColorExposureOverlay } from './src/ui/components/ColorExposureGuides';
 import { GlassesReflectionGuide, GlassesReflectionPanel } from './src/ui/components/GlassesReflectionGuide';
 import { CatchlightPanel, CatchlightSettings } from './src/ui/panels/CatchlightPanel';

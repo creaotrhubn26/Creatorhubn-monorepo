@@ -723,6 +723,29 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     () => (selectedScene ? computeStoryboardCoverageSummary(selectedSceneShots, selectedScene) : null),
     [selectedScene, selectedSceneShots],
   );
+  const selectedSceneStoryboardFirstLinkedFrameIndex = useMemo(() => {
+    if (!selectedScene) {
+      return undefined;
+    }
+    const sceneFrames = Array.isArray(selectedScene.storyboardFrames) ? selectedScene.storyboardFrames : [];
+    const linkedFrameId = selectedSceneShots.find((shot) => (
+      typeof shot.storyboardFrameId === 'string'
+      && sceneFrames.some((frame) => frame.id === shot.storyboardFrameId)
+    ))?.storyboardFrameId;
+    if (!linkedFrameId) {
+      return undefined;
+    }
+    const frameIndex = sceneFrames.findIndex((frame) => frame.id === linkedFrameId);
+    return frameIndex >= 0 ? frameIndex : undefined;
+  }, [selectedScene, selectedSceneShots]);
+  const selectedSceneStoryboardFirstMissingFrameIndex = useMemo(() => {
+    if (!selectedScene || !selectedSceneStoryboardCoverage?.missingFrameIds.length) {
+      return undefined;
+    }
+    const sceneFrames = Array.isArray(selectedScene.storyboardFrames) ? selectedScene.storyboardFrames : [];
+    const frameIndex = sceneFrames.findIndex((frame) => frame.id === selectedSceneStoryboardCoverage.missingFrameIds[0]);
+    return frameIndex >= 0 ? frameIndex : undefined;
+  }, [selectedScene, selectedSceneStoryboardCoverage]);
 
   // ============================================
   // REFERENCE SEARCH — race-safe, backend-proxied
@@ -2044,6 +2067,22 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       activeFrameIndex: selectedShotStoryboardLink?.frameIndex ?? 0,
     });
   }, [selectedScene, selectedShotStoryboardLink]);
+
+  const handleOpenSelectedSceneCoverageLinkedFrame = useCallback(() => {
+    if (!selectedScene || selectedSceneStoryboardFirstLinkedFrameIndex === undefined) return;
+    setSceneStoryboardDialog({
+      sceneId: selectedScene.id,
+      activeFrameIndex: selectedSceneStoryboardFirstLinkedFrameIndex,
+    });
+  }, [selectedScene, selectedSceneStoryboardFirstLinkedFrameIndex]);
+
+  const handleOpenSelectedSceneCoverageMissingFrame = useCallback(() => {
+    if (!selectedScene || selectedSceneStoryboardFirstMissingFrameIndex === undefined) return;
+    setSceneStoryboardDialog({
+      sceneId: selectedScene.id,
+      activeFrameIndex: selectedSceneStoryboardFirstMissingFrameIndex,
+    });
+  }, [selectedScene, selectedSceneStoryboardFirstMissingFrameIndex]);
 
   const handleOpenSelectedShotStoryboardLinkDialog = useCallback(() => {
     if (!selectedShot || !selectedScene) return;
@@ -5500,7 +5539,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
         {/* SHOT INSPECTOR - Shows when shot is selected */}
         {selectedShot && shotMetadata[selectedShot.id] && (
-          <Box sx={{ borderBottom: '1px solid #2a3142', bgcolor: '#0f4c3f' }}>
+          <Box sx={{ borderBottom: '1px solid #2a3142', bgcolor: '#0f4c3f' }} data-testid="pmv-shot-inspector">
             <Box
               sx={{
                 px: 2,
@@ -5524,7 +5563,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               </IconButton>
             </Box>
             <Box sx={{ p: 2 }}>
-              <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#fff', mb: 1.5 }}>
+              <Typography
+                sx={{ fontSize: 13, fontWeight: 600, color: '#fff', mb: 1.5 }}
+                data-testid="pmv-shot-title"
+              >
                 {selectedShot.description || 'Shot Details'}
               </Typography>
 
@@ -5672,15 +5714,37 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         .join(', ')}
                     </Typography>
                   )}
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={handleOpenSelectedSceneStoryboard}
-                    data-testid="pmv-scene-open-storyboard"
-                    sx={{ color: '#93c5fd', borderColor: 'rgba(59,130,246,0.32)' }}
-                  >
-                    Åpne scene-storyboard
-                  </Button>
+                  <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleOpenSelectedSceneStoryboard}
+                      data-testid="pmv-scene-open-storyboard"
+                      sx={{ color: '#93c5fd', borderColor: 'rgba(59,130,246,0.32)' }}
+                    >
+                      Åpne scene-storyboard
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleOpenSelectedSceneCoverageLinkedFrame}
+                      data-testid="pmv-scene-open-linked-frame"
+                      disabled={selectedSceneStoryboardFirstLinkedFrameIndex === undefined}
+                      sx={{ color: '#bfdbfe', borderColor: 'rgba(96,165,250,0.26)' }}
+                    >
+                      Åpne linked frame
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleOpenSelectedSceneCoverageMissingFrame}
+                      data-testid="pmv-scene-open-missing-frame"
+                      disabled={selectedSceneStoryboardFirstMissingFrameIndex === undefined}
+                      sx={{ color: '#fbbf24', borderColor: 'rgba(245,158,11,0.24)' }}
+                    >
+                      Åpne manglende frame
+                    </Button>
+                  </Stack>
                 </Box>
               )}
               

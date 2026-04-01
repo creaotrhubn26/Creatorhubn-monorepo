@@ -23,9 +23,27 @@ import {
   CameraAlt,
 } from '@mui/icons-material';
 
+const ADMIN_DEMO_EMAIL = 'academy-guest@creatorhubn.com';
+const ADMIN_DEMO_PASSWORD = 'guest-access';
+
 export default function LoginPageSimple() {
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
   const [, setLocation] = useLocation();
+  const redirectTarget = (() => {
+    if (typeof window === 'undefined') return null;
+    const candidate = new URLSearchParams(window.location.search).get('redirect');
+    return candidate && candidate.startsWith('/') ? candidate : null;
+  })();
+  const hasStoredToken = (() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(window.localStorage.getItem('creatorhub_auth_token'));
+  })();
+  const currentRole = String(user?.role || '').toLowerCase();
+  const currentUserCanAccessRedirect =
+    !redirectTarget ||
+    redirectTarget !== '/admin' ||
+    currentRole === 'admin' ||
+    currentRole === 'super_admin';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,8 +52,8 @@ export default function LoginPageSimple() {
   const [isLoading, setIsLoading] = useState(false);
 
   // If already authenticated, redirect to dashboard
-  if (isAuthenticated) {
-    setLocation('/dashboard');
+  if (isAuthenticated && hasStoredToken && currentUserCanAccessRedirect) {
+    setLocation(redirectTarget || '/dashboard');
     return null;
   }
 
@@ -46,12 +64,20 @@ export default function LoginPageSimple() {
     setError('');
 
     try {
-      const data = await login(email, password || 'auto');
-      // Redirect based on role
-      if (data.user?.role === 'couple') {
+      const normalizedEmail = email.trim().toLowerCase();
+      const effectivePassword =
+        !password.trim() && normalizedEmail === ADMIN_DEMO_EMAIL
+          ? ADMIN_DEMO_PASSWORD
+          : password || 'auto';
+      const data = await login(email, effectivePassword);
+      if (redirectTarget) {
+        setLocation(redirectTarget);
+      } else if (data.user?.role === 'couple') {
         setLocation('/dashboard');
       } else if (data.user?.role === 'vendor') {
         setLocation('/fotograf');
+      } else if (data.user?.role === 'admin' || data.user?.role === 'super_admin') {
+        setLocation('/admin');
       } else {
         setLocation('/dashboard');
       }
@@ -60,7 +86,7 @@ export default function LoginPageSimple() {
     } finally {
       setIsLoading(false);
     }
-  }, [email, password, login, setLocation]);
+  }, [email, password, login, redirectTarget, setLocation]);
 
   return (
     <Box sx={{
@@ -97,6 +123,12 @@ export default function LoginPageSimple() {
                   <Alert severity="error">{error}</Alert>
                 )}
 
+                {isAuthenticated && hasStoredToken && !currentUserCanAccessRedirect && (
+                  <Alert severity="info">
+                    Du er allerede logget inn med en konto uten admin-tilgang. Logg inn på nytt med admin-kontoen for å fortsette til admin.
+                  </Alert>
+                )}
+
                 <TextField
                   fullWidth
                   label="E-postadresse"
@@ -122,7 +154,7 @@ export default function LoginPageSimple() {
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); setError(''); }}
                   disabled={isLoading}
-                  helperText="La feltet stå tomt for demo-innlogging"
+                  helperText={`Admin demo: ${ADMIN_DEMO_EMAIL} / ${ADMIN_DEMO_PASSWORD}`}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -166,13 +198,13 @@ export default function LoginPageSimple() {
                 Demo-kontoer:
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                <strong>Admin:</strong> daniel@creatorhubn.com
+                <strong>Admin:</strong> {ADMIN_DEMO_EMAIL}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                <strong>Fotograf:</strong> qazifotoreel@gmail.com
+                <strong>Passord:</strong> {ADMIN_DEMO_PASSWORD}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                <strong>Brudepar:</strong> danielqazi89@gmail.com
+                Tomt passord fungerer også for denne demo-kontoen.
               </Typography>
             </Box>
           </CardContent>

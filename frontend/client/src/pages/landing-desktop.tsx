@@ -53,6 +53,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useCreatorHubStoredSession } from '@/hooks/useCreatorHubStoredSession';
 import FAQSection from "@/components/landing/FAQSection";
 import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
 
@@ -835,23 +836,13 @@ const LandingDesktop: React.FC<LandingCustomizationProps> = ({
     [setLocation, resetAllModals],
   );
 
-  // Optimized user data fetching - DISABLED: Auto-authenticated
-  // Authentication disabled - use mock data
-  const authData = {
-    authenticated: true,
-    user: {
-      id: 'local-user',
-      email: 'user@local.dev',
-      name: 'Local User',
-      profession: 'photographer',
-      userType: 'photographer',
-      isAdmin: true
-    }
-  };
-
-  const isAuthenticated = true;
-  const currentUser = authData.user;
-  const isAdmin = true;
+  const {
+    authenticated: isAuthenticated,
+    user: currentUser,
+    isAdmin,
+    googleLoginError,
+    clearGoogleLoginError,
+  } = useCreatorHubStoredSession();
 
   // ✅ FIX #1: Listen for 'auth-changed' event from LoginModal
   React.useEffect(() => {
@@ -869,19 +860,12 @@ const LandingDesktop: React.FC<LandingCustomizationProps> = ({
     if (isAuthenticated && currentUser) {
       (async () => {
         try {
-          // Check onboarding status
-          const response = await fetch('/api/user/onboarding-status', {
-            credentials: 'include'
-          });
+          const data = await apiRequest('/api/user/onboarding-status');
+          console.log('📋 Onboarding status:', data);
 
-          if (response.ok) {
-            const data = await response.json();
-            console.log('📋 Onboarding status:', data);
-
-            if (data.needsOnboarding) {
-              console.log('🎓 User needs onboarding - showing UniversalOnboarding');
-              setModalState((prev) => ({ ...prev, showOnboarding: true }));
-            }
+          if (data?.needsOnboarding) {
+            console.log('🎓 User needs onboarding - showing UniversalOnboarding');
+            setModalState((prev) => ({ ...prev, showOnboarding: true }));
           }
         } catch (error) {
           console.error('Failed to check onboarding status:', error);
@@ -889,6 +873,17 @@ const LandingDesktop: React.FC<LandingCustomizationProps> = ({
       })();
     }
   }, [isAuthenticated, currentUser]);
+
+  React.useEffect(() => {
+    if (!googleLoginError) {
+      return;
+    }
+
+    setModalState((prev) => ({
+      ...prev,
+      showLoginModal: true,
+    }));
+  }, [googleLoginError]);
 
   const handleNavigation = (path: string) => {
     handleNavigationCleanup(path);
@@ -3400,7 +3395,11 @@ const LandingDesktop: React.FC<LandingCustomizationProps> = ({
         <React.Suspense fallback={<div>Loading...</div>}>
           <LoginModal
             open={modalState.showLoginModal}
-            onClose={handleCloseModals}
+            onClose={() => {
+              clearGoogleLoginError();
+              handleCloseModals();
+            }}
+            initialError={googleLoginError}
           />
         </React.Suspense>
       )}

@@ -8,7 +8,7 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -51,6 +51,8 @@ import {
   Folder as FolderIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import NotebookLmWorkspaceCard from './NotebookLmWorkspaceCard';
+import { notebookLmWorkspaceService } from '@/services/notebookLmWorkspaceService';
 
 interface QuickMeetingNotesModalProps {
   isOpen: boolean;
@@ -70,6 +72,8 @@ interface Project {
   title: string;
   clientName: string;
   clientEmail?: string;
+  description?: string;
+  location?: string;
   status: string;
   eventDate?: string;
   type: string;
@@ -87,6 +91,8 @@ export function QuickMeetingNotesModal({
   selectedProject,
   onProjectSelect
 }: QuickMeetingNotesModalProps) {
+  const { user } = useAuth();
+  const userId = user?.id || undefined;
   const initialProjectId = preselectedProjectId || selectedProject?.id || '';
 
   // Form state
@@ -139,12 +145,53 @@ export function QuickMeetingNotesModal({
   // Fetch projects for the current user
   const { data: projects } = useQuery({
     queryKey: ['/api/projects', profession],
-    queryFn: () => apiRequest(['/api/projects', profession], {
+    queryFn: () => apiRequest('/api/projects', {
       headers: {
   }
   }),
     enabled: isOpen
 });
+
+  const currentProject = projects?.find((p: Project) => p.id === selectedProjectId);
+  const requiresProjectSelection = !isPersonalNote && !selectedProjectId;
+
+  const notebookWorkspaceScope = useMemo(() => ({
+    userId,
+    profession,
+    projectId: selectedProjectId || undefined,
+    clientId: currentProject?.customerId || selectedProject?.customerId || undefined,
+    projectTitle: currentProject?.title || selectedProject?.title || undefined,
+    clientName: currentProject?.clientName || selectedProject?.clientName || undefined,
+    clientEmail: currentProject?.clientEmail || selectedProject?.clientEmail || undefined,
+    latestMeetingTitle: meetingTitle || undefined,
+  }), [
+    userId,
+    profession,
+    selectedProjectId,
+    currentProject?.customerId,
+    currentProject?.title,
+    currentProject?.clientName,
+    currentProject?.clientEmail,
+    selectedProject?.customerId,
+    selectedProject?.title,
+    selectedProject?.clientName,
+    selectedProject?.clientEmail,
+    meetingTitle,
+  ]);
+
+  const notebookWorkspaceQuery = useQuery({
+    queryKey: ['notebooklm-workspace', 'quick-modal', notebookWorkspaceScope],
+    queryFn: () => notebookLmWorkspaceService.getStatus(notebookWorkspaceScope),
+    enabled: isOpen,
+  });
+
+  const notebookWorkspaceSyncMutation = useMutation({
+    mutationFn: () => notebookLmWorkspaceService.sync(notebookWorkspaceScope),
+    onSuccess: (status) => {
+      queryClient.setQueryData(['notebooklm-workspace', 'quick-modal', notebookWorkspaceScope], status);
+      void queryClient.invalidateQueries({ queryKey: ['notebooklm-workspace'] });
+    },
+  });
 
   const createNoteMutation = useMutation({
     mutationFn: (noteData: any) => apiRequest('/api/meeting-notes', {
@@ -153,12 +200,61 @@ export function QuickMeetingNotesModal({
     }),
     onSuccess: (note: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/meeting-notes', ],});
+      void queryClient.invalidateQueries({ queryKey: ['notebooklm-workspace'] });
       if (onMeetingCreate) {
         onMeetingCreate(note);
       }
       handleClose();
   }
 });
+
+  const createFullNoteMutation = useMutation({
+    mutationFn: async () => {
+      const resolvedTitle = meetingTitle.trim() || (selectedProjectId
+        ? `Møte - ${currentProject?.title || profConfig.projectLabel}`
+        : 'Møtenotat');
+
+      return apiRequest('/api/meeting-notes', {
+        method: 'POST',
+        body: {
+          title: resolvedTitle,
+          meetingDate,
+          profession,
+          projectId: selectedProjectId || null,
+          clientId: currentProject?.customerId || selectedProject?.customerId || null,
+          clientName: currentProject?.clientName || selectedProject?.clientName || '',
+          clientEmail: currentProject?.clientEmail || selectedProject?.clientEmail || '',
+          personalNotes: {
+            content: quickNotes,
+            sections: [],
+            googleDriveBackup: isPersonalNote,
+          },
+          clientNotes: (!isPersonalNote && !isPrivate) ? { content: quickNotes, sections: [] } : null,
+          isClientVisible: isPersonalNote ? false : !isPrivate,
+          clientAccessLevel: isPersonalNote ? 'none' : (isPrivate ? 'none' : 'summary'),
+          noteType: isPersonalNote ? 'personal' : 'project',
+        },
+      }) as Promise<{ meetingId?: string; id?: string }>;
+    },
+    onSuccess: (note) => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/meeting-notes'] });
+      void queryClient.invalidateQueries({ queryKey: ['notebooklm-workspace'] });
+
+      const params = new URLSearchParams();
+      params.set('profession', profession);
+
+      const resolvedMeetingId = String(note?.meetingId || note?.id || '').trim();
+      if (resolvedMeetingId) {
+        params.set('meetingId', resolvedMeetingId);
+      }
+      if (selectedProjectId) {
+        params.set('projectId', selectedProjectId);
+      }
+
+      window.open(`/smart-meeting-notes?${params.toString()}`, '_blank');
+      handleClose();
+    },
+  });
 
   useEffect(() => {
     if (!isOpen) {
@@ -220,15 +316,13 @@ export function QuickMeetingNotesModal({
 };
 
   const handleCreateFullNote = () => {
-    const params = new URLSearchParams();
-    params.set('profession', profession);
-    if (selectedProjectId) params.set('projectId', selectedProjectId);
+    if (requiresProjectSelection) {
+      return;
+    }
 
-    window.open(`/smart-meeting-notes?${params.toString()}`, '_blank');
-    handleClose();
-};
+    createFullNoteMutation.mutate();
+  };
 
-  const currentProject = projects?.find((p: Project) => p.id === selectedProjectId);
   const selectedProjectValue = Array.isArray(projects) && projects.some((project: Project) => project.id === selectedProjectId)
     ? selectedProjectId
     : '';
@@ -277,10 +371,10 @@ export function QuickMeetingNotesModal({
               <MuiCard
                 sx={{
                   cursor: 'pointer',
-                  border: !selectedProjectId ? '2px solid #2196F3' : '2px solid #e0e0e0',
-                  bgcolor: !selectedProjectId ? '#e3f2fd' : 'transparent',
+                  border: isPersonalNote ? '2px solid #2196F3' : '2px solid #e0e0e0',
+                  bgcolor: isPersonalNote ? '#e3f2fd' : 'transparent',
                   '&:hover': {
-                    borderColor: !selectedProjectId ? '#2196F3' : '#bdbdbd'
+                    borderColor: isPersonalNote ? '#2196F3' : '#bdbdbd'
                   }
                 }}
                 onClick={() => {
@@ -295,7 +389,7 @@ export function QuickMeetingNotesModal({
                     </Box>
                     <Box>
                       <Typography variant="body2" sx={{ fontWeight: 500}}>Personlige notater</Typography>
-                      <Typography variant="caption" color="text.secondary">Backup til Google Drive</Typography>
+                      <Typography variant="caption" color="text.secondary">Internt notat med Drive-backup</Typography>
                     </Box>
                   </Box>
                 </CardContent>
@@ -304,9 +398,9 @@ export function QuickMeetingNotesModal({
               <MuiCard
                 sx={{
                   cursor: 'pointer',
-                  border: selectedProjectId ? '2px solid #FF9800' : '2px solid #e0e0e0',
-                  bgcolor: selectedProjectId ? '#fff3e0' : 'transparent', '&:hover': {
-                    borderColor: selectedProjectId ? '#FF9800' : '#bdbdbd'
+                  border: !isPersonalNote ? '2px solid #FF9800' : '2px solid #e0e0e0',
+                  bgcolor: !isPersonalNote ? '#fff3e0' : 'transparent', '&:hover': {
+                    borderColor: !isPersonalNote ? '#FF9800' : '#bdbdbd'
               }
               }}
                 onClick={() => {
@@ -325,20 +419,79 @@ export function QuickMeetingNotesModal({
                     <Box>
                       <Typography variant="body2" sx={{ fontWeight: 500}}>Prosjektnotater</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Kobling til {profConfig.projectLabel.toLowerCase()}
+                        Kobles til prosjekt og NotebookLM
                       </Typography>
                     </Box>
                   </Box>
                 </CardContent>
               </MuiCard>
             </Box>
+
+            <Box
+              sx={{
+                mt: 1.5,
+                p: 2,
+                borderRadius: 2.5,
+                border: '1px solid',
+                borderColor: !isPersonalNote ? 'rgba(245, 158, 11, 0.28)' : 'rgba(59, 130, 246, 0.22)',
+                bgcolor: !isPersonalNote ? 'rgba(255, 247, 237, 0.92)' : 'rgba(239, 246, 255, 0.92)',
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                {!isPersonalNote ? 'Dette blir en NotebookLM-kilde' : 'Dette blir et internt notat'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {!isPersonalNote
+                  ? (currentProject
+                    ? `Prosjektnotater for ${currentProject.title} lagres som møtenotat, synkes til Google Drive og tas inn i prosjektets NotebookLM-workspace.`
+                    : 'Velg et prosjekt under. Da lagres notatet som møtenotat, synkes til Google Drive og tas inn i prosjektets NotebookLM-workspace.')
+                  : 'Personlige notater lagres som interne notater for deg. De kan sikkerhetskopieres til Google Drive, men de går ikke inn i NotebookLM før notatet er koblet til et prosjekt eller en klient.'}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.25 }}>
+                <Chip
+                  size="small"
+                  color={!isPersonalNote ? 'warning' : 'primary'}
+                  label={!isPersonalNote ? 'Sync: Google Drive + NotebookLM' : 'Sync: intern note'}
+                  variant={!isPersonalNote ? 'filled' : 'outlined'}
+                />
+                {!isPersonalNote ? (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={currentProject ? `Prosjekt: ${currentProject.title}` : 'Prosjekt: velg under'}
+                  />
+                ) : (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label="NotebookLM: ikke før prosjektkobling"
+                  />
+                )}
+              </Box>
+            </Box>
+
+            {!isPersonalNote ? (
+              <Box
+                sx={{
+                  mt: 1.25,
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: 'rgba(255, 247, 237, 0.78)',
+                  border: '1px solid rgba(245, 158, 11, 0.16)',
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  Slik vet CreatorHub hvilket prosjekt dette gjelder: hvis du åpnet møtenotatet fra et prosjekt i dashboardet er prosjektet forhåndsvalgt. Hvis ikke velger du prosjektet manuelt i listen under.
+                </Typography>
+              </Box>
+            ) : null}
           </Box>
 
           {/* Project Selection */}
-          {selectedProjectId && (
+          {!isPersonalNote && (
             <Box>
               <FormControl fullWidth>
-                <InputLabel>Velg {profConfig.projectLabel}</InputLabel>
+                <InputLabel>Velg prosjekt</InputLabel>
                 <Select
                   value={selectedProjectValue}
                   onChange={(e) => {
@@ -350,10 +503,10 @@ export function QuickMeetingNotesModal({
                       onProjectSelect?.(nextProject);
                     }
                   }}
-                  label={`Velg ${profConfig.projectLabel}`}
+                  label="Velg prosjekt"
                 >
                   <MenuItem value="" disabled>
-                    Velg {profConfig.projectLabel.toLowerCase()}
+                    Velg prosjekt
                   </MenuItem>
                   {projects?.map((project: Project) => (
                     <MenuItem key={project.id} value={project.id}>
@@ -365,8 +518,56 @@ export function QuickMeetingNotesModal({
                   ))}
                 </Select>
               </FormControl>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                {currentProject
+                  ? `Dette notatet blir koblet til ${currentProject.title}.`
+                  : 'Velg prosjektet som notatet skal lagres under.'}
+              </Typography>
             </Box>
           )}
+
+          {!isPersonalNote && currentProject ? (
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2.5,
+                border: '1px solid rgba(245, 158, 11, 0.2)',
+                bgcolor: 'rgba(255, 247, 237, 0.88)',
+              }}
+            >
+              <Typography variant="overline" sx={{ color: 'warning.dark', fontWeight: 700, letterSpacing: 1 }}>
+                Aktiv prosjektkobling
+              </Typography>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, mt: 0.25 }}>
+                {currentProject.title}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {[
+                  currentProject.clientName || null,
+                  currentProject.location || null,
+                  currentProject.eventDate || null,
+                ]
+                  .filter(Boolean)
+                  .join(' • ') || 'Prosjektet brukes som kilde for møtenotat og NotebookLM'}
+              </Typography>
+              {currentProject.description ? (
+                <Typography variant="body2" sx={{ mt: 1.25 }}>
+                  {currentProject.description}
+                </Typography>
+              ) : null}
+            </Box>
+          ) : null}
+
+          <NotebookLmWorkspaceCard
+            status={notebookWorkspaceQuery.data}
+            loading={notebookWorkspaceQuery.isLoading}
+            syncing={notebookWorkspaceSyncMutation.isPending}
+            profession={profession}
+            onSync={() => {
+              notebookWorkspaceSyncMutation.mutate();
+            }}
+            dense
+          />
 
           {/* Meeting Date */}
           <Box>
@@ -412,11 +613,16 @@ export function QuickMeetingNotesModal({
           {/* Action Info */}
           <Alert severity="info" sx={{ mt:  2 }}>
             <Typography variant="body2">
-              {!selectedProjectId 
+              {isPersonalNote
                 ? "📋 Personlige notater lagres automatisk til Google Drive for backup"
                 : `📁 Prosjektnotater kobles til ${currentProject?.title || 'valgt prosjekt'} og ${isPrivate ? 'holdes private' : 'kan deles med klient'}`
-            }
+              }
             </Typography>
+            {!isPersonalNote ? (
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                `Åpne full møteeditor` oppretter først et ekte møtenotat med denne prosjektkoblingen og åpner deretter hele møteeditoren med samme NotebookLM-arbeidsrom.
+              </Typography>
+            ) : null}
           </Alert>
         </Box>
       </DialogContent>
@@ -430,14 +636,15 @@ export function QuickMeetingNotesModal({
           onClick={handleCreateFullNote}
           variant="outlined"
           startIcon={<PlusIcon />}
+          disabled={requiresProjectSelection || createFullNoteMutation.isPending}
         >
-          Fullt møte
+          {createFullNoteMutation.isPending ? 'Åpner editor...' : 'Åpne full møteeditor'}
         </Button>
         
         <Button onClick={handleSaveQuickNote}
           variant="contained"
           startIcon={<SaveIcon />}
-          disabled={!meetingTitle.trim() || !quickNotes.trim() || createNoteMutation.isPending}
+          disabled={!meetingTitle.trim() || !quickNotes.trim() || requiresProjectSelection || createNoteMutation.isPending}
         >
           {createNoteMutation.isPending ? 'Lagrer...' : 'Lagre notater'}
         </Button>

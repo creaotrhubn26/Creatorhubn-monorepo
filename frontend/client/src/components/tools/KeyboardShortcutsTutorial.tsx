@@ -239,6 +239,7 @@ export const KeyboardShortcutsTutorial: React.FC<KeyboardShortcutsTutorialProps>
       }}
     >
       <DialogTitle
+        component="div"
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -579,4 +580,3 @@ export const KeyboardShortcutsTutorial: React.FC<KeyboardShortcutsTutorialProps>
     </Dialog>
   );
 };
-

@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "files": [
+    "./client/src/components/admin/UserManagementPanel.tsx"
+  ]
+}

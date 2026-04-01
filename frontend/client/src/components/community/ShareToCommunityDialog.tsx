@@ -62,6 +62,21 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import {
+  COMMUNITY_DIALOG_ACTIONS_SX,
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_FIELD_SX,
+  COMMUNITY_DIALOG_MUTED,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_PRIMARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SECONDARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
+  COMMUNITY_DIALOG_SWITCH_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 // ============================================
 // INTERFACES
@@ -109,32 +124,32 @@ interface ShareToCommunityDialogProps {
 const shareTypes = [
   {
     id: 'showcase',
-    label: 'Share Work',
-    description: 'Share your work with the community',
+    label: 'Del arbeid',
+    description: 'Del arbeidet ditt med community',
     icon: <Image />,
   },
   {
     id: 'feedback',
-    label: 'Request Feedback',
-    description: 'Ask for constructive feedback',
+    label: 'Be om tilbakemelding',
+    description: 'Be om konkrete tilbakemeldinger',
     icon: <Feedback />,
   },
   {
     id: 'inspiration',
-    label: 'Share Inspiration',
-    description: 'Inspire others with your work',
+    label: 'Del inspirasjon',
+    description: 'Inspirer andre med arbeidet ditt',
     icon: <Lightbulb />,
   },
   {
     id: 'tutorial',
-    label: 'Tutorial/Tips',
-    description: 'Share how you created this',
+    label: 'Guide og tips',
+    description: 'Vis hvordan du lagde dette',
     icon: <School />,
   },
   {
     id: 'discussion',
-    label: 'Start Discussion',
-    description: 'Open a discussion about techniques',
+    label: 'Start diskusjon',
+    description: 'Åpne en diskusjon om teknikker',
     icon: <Forum />,
   },
 ];
@@ -264,7 +279,7 @@ export default function ShareToCommunityDialog({
       const itemsData = itemsToShare.filter(i => selectedItems.includes(i.id));
       
       // Build message content
-      let content = message || ', ';
+      let content = message || '';
       
       if (shareType === 'feedback' && feedbackQuestions.length > 0) {
         content += '\n\n**Feedback Questions:**\n';
@@ -368,14 +383,21 @@ export default function ShareToCommunityDialog({
 
   if (shareSuccess) {
     return (
-      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-        <DialogContent>
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <CheckCircle sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
-            <Typography variant="h5" gutterBottom>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth="sm"
+        fullWidth
+        sx={COMMUNITY_DIALOG_SX}
+        PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+      >
+        <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX}>
+          <Box sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, textAlign: 'center', py: 4 }}>
+            <CheckCircle sx={{ fontSize: 64, color: '#78d6a3', mb: 2 }} />
+            <Typography variant="h5" gutterBottom sx={{ color: COMMUNITY_DIALOG_TEXT }}>
               Shared Successfully!
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
               Your {selectedItems.length > 1 ? 'items have' : 'item has'} been shared to the community.
             </Typography>
           </Box>
@@ -385,10 +407,17 @@ export default function ShareToCommunityDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      sx={COMMUNITY_DIALOG_SX}
+      PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+    >
+      <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', zIndex: 1 }}>
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
             {professionIcon && (
               <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
                 {professionIcon}
@@ -396,25 +425,34 @@ export default function ShareToCommunityDialog({
             )}
             <Share color="primary" />
             {enhancedProfessionConfig?.displayName || professionConfig?.displayName
-              ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Share to Community`
-              : 'Share to Community'}
+              ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Del i community`
+              : 'Del i community'}
           </Typography>
-          <IconButton onClick={onClose} size="small">
+          <IconButton onClick={onClose} size="small" sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
             <Close />
           </IconButton>
         </Box>
       </DialogTitle>
 
-      <DialogContent dividers>
+      <DialogContent
+        sx={{
+          ...COMMUNITY_DIALOG_CONTENT_SX,
+          '& .MuiFormControl-root': COMMUNITY_DIALOG_FIELD_SX,
+          '& .MuiTextField-root': COMMUNITY_DIALOG_FIELD_SX,
+          '& .MuiAutocomplete-root': COMMUNITY_DIALOG_FIELD_SX,
+          '& .MuiSwitch-root': COMMUNITY_DIALOG_SWITCH_SX,
+        }}
+        dividers
+      >
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress />
+            <CircularProgress sx={{ color: '#f5a623' }} />
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {/* Item Preview */}
             {itemsToShare.length === 1 && item && (
-              <Card sx={{ display: 'flex', maxHeight: 120 }}>
+              <Card sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, display: 'flex', maxHeight: 120 }}>
                 {item.thumbnailUrl && (
                   <CardMedia
                     component="img"
@@ -431,7 +469,7 @@ export default function ShareToCommunityDialog({
                     </Typography>
                   </Box>
                   {item.description && (
-                    <Typography variant="body2" color="text.secondary" noWrap>
+                    <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }} noWrap>
                       {item.description}
                     </Typography>
                   )}
@@ -443,9 +481,9 @@ export default function ShareToCommunityDialog({
             {itemsToShare.length > 1 && (
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  Select items to share ({selectedItems.length} selected)
+                  Velg hva du vil dele ({selectedItems.length} valgt)
                 </Typography>
-                <List dense sx={{ maxHeight: 200, overflow: 'auto', bgcolor: 'grey.50', borderRadius: 1 }}>
+                <List dense sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, maxHeight: 200, overflow: 'auto' }}>
                   {itemsToShare.map((i) => (
                     <ListItem key={i.id} dense>
                       <ListItemIcon sx={{ minWidth: 40 }}>
@@ -475,7 +513,7 @@ export default function ShareToCommunityDialog({
             {/* Share Type Selection */}
             <Box>
               <Typography variant="subtitle2" gutterBottom>
-                How would you like to share?
+                Hvordan vil du dele?
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 {shareTypes.map((type) => (
@@ -495,11 +533,11 @@ export default function ShareToCommunityDialog({
             {/* Group & Channel Selection */}
             <Box sx={{ display: 'flex', gap: 2 }}>
               <FormControl fullWidth size="small">
-                <InputLabel>Community Group</InputLabel>
+                <InputLabel>Community-gruppe</InputLabel>
                 <Select
                   value={selectedGroup}
                   onChange={(e) => setSelectedGroup(e.target.value)}
-                  label="Community Group"
+                  label="Community-gruppe"
                 >
                   {groups.map((group) => (
                     <MenuItem key={group.id} value={group.id}>
@@ -513,11 +551,11 @@ export default function ShareToCommunityDialog({
               </FormControl>
 
               <FormControl fullWidth size="small">
-                <InputLabel>Channel</InputLabel>
+                <InputLabel>Kanal</InputLabel>
                 <Select
                   value={selectedChannel}
                   onChange={(e) => setSelectedChannel(e.target.value)}
-                  label="Channel"
+                  label="Kanal"
                   disabled={!selectedGroup}
                 >
                   {channels.map((channel) => (
@@ -537,14 +575,15 @@ export default function ShareToCommunityDialog({
               fullWidth
               multiline
               rows={3}
-              label={shareType === 'feedback' ? 'What feedback are you looking for?' : 'Add a message'}
+              label={shareType === 'feedback' ? 'Hva vil du ha tilbakemelding på?' : 'Legg til melding'}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder={
                 shareType === 'feedback'
-                  ? 'Describe what specific aspects you want feedback on...'
+                  ? 'Beskriv hvilke deler du vil ha tilbakemelding på...'
                   : shareType === 'tutorial'
-                  ? 'Share the story behind this work or techniques used...' : 'Add context or description for your share...'
+                  ? 'Del historien bak dette eller teknikkene du brukte...'
+                  : 'Legg til kontekst eller en kort beskrivelse av det du deler...'
               }
             />
 
@@ -552,7 +591,7 @@ export default function ShareToCommunityDialog({
             {shareType === 'feedback' && (
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  Specific Questions (optional)
+                  Spesifikke spørsmål (valgfritt)
                 </Typography>
                 {feedbackQuestions.map((q, index) => (
                   <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1 }}>
@@ -561,7 +600,7 @@ export default function ShareToCommunityDialog({
                       size="small"
                       value={q}
                       onChange={(e) => updateFeedbackQuestion(index, e.target.value)}
-                      placeholder={`Question ${index + 1}`}
+                      placeholder={`Spørsmål ${index + 1}`}
                     />
                     <IconButton size="small" onClick={() => removeFeedbackQuestion(index)}>
                       <Close fontSize="small" />
@@ -569,7 +608,7 @@ export default function ShareToCommunityDialog({
                   </Box>
                 ))}
                 <Button size="small" onClick={addFeedbackQuestion}>
-                  + Add Question
+                  + Legg til spørsmål
                 </Button>
               </Box>
             )}
@@ -595,8 +634,8 @@ export default function ShareToCommunityDialog({
                 <TextField
                   {...params}
                   size="small"
-                  label="Tags"
-                  placeholder="Add tags..."
+                  label="Tagger"
+                  placeholder="Legg til tagger..."
                 />
               )}
             />
@@ -612,9 +651,9 @@ export default function ShareToCommunityDialog({
                 }
                 label={
                   <Box>
-                    <Typography variant="body2">Request Mentor Review</Typography>
+                    <Typography variant="body2">Be om mentorvurdering</Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Get feedback from experienced community mentors
+                      Få tilbakemelding fra erfarne mentorer i community
                     </Typography>
                   </Box>
                 }
@@ -624,16 +663,16 @@ export default function ShareToCommunityDialog({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose}>Cancel</Button>
+      <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
+        <Button onClick={onClose} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>Avbryt</Button>
         <Button
           variant="contained"
           onClick={handleShare}
           disabled={!selectedChannel || selectedItems.length === 0 || sharing}
           startIcon={sharing ? <CircularProgress size={16} /> : <Send />}
-          sx={{ bgcolor: '#FF8C00', '&:hover': { bgcolor: '#e67e00' } }}
+          sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
         >
-          {sharing ? 'Sharing...' : `Share ${selectedItems.length > 1 ? `${selectedItems.length} Items` : 'Item'}`}
+          {sharing ? 'Deler...' : `Del ${selectedItems.length > 1 ? `${selectedItems.length} elementer` : 'element'}`}
         </Button>
       </DialogActions>
     </Dialog>
@@ -641,4 +680,3 @@ export default function ShareToCommunityDialog({
 }
 
 export { ShareToCommunityDialog };
-

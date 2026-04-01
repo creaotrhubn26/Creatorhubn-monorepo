@@ -10,6 +10,9 @@ import {
   CardContent,
   Button,
   Alert,
+  Divider,
+  FormControlLabel,
+  FormGroup,
   Grid,
   Tabs,
   Tab,
@@ -27,6 +30,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Switch,
   Tooltip,
   Chip,
 } from '@mui/material';
@@ -50,7 +54,7 @@ import {
   HelpOutline,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
-import { useSettings } from '@/contexts/SettingsContext';
+import { useSettings, type UserSettings } from '@/contexts/SettingsContext';
 import ClientAccessSettings from '@/components/shared/ClientAccessSettings';
 import WeddingTimeline from '../wedding-timeline';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -118,13 +122,39 @@ interface TimelineEvent {
 
 interface EvendiTimeline {
   id: string;
+  projectId?: string;
+  title?: string;
   eventDate: string;
   venue: string;
   clientName: string;
+  coupleName?: string;
   eventType?: EventType;
   events: TimelineEvent[];
   clientAccessEnabled?: boolean;
   lastClientActivity?: string;
+  timelineData?: {
+    planningBrief?: {
+      title?: string | null;
+      clientName?: string | null;
+      summary?: string | null;
+      requests?: string | null;
+      location?: string | null;
+      eventDate?: string | null;
+      timeframe?: string | null;
+    };
+    latestMeetingSync?: {
+      meetingId?: string | null;
+      meetingTitle?: string | null;
+      syncedAt?: string | null;
+      baseMode?: string | null;
+      projectTitle?: string | null;
+      clientName?: string | null;
+      briefSummary?: string | null;
+      specialRequests?: string | null;
+      location?: string | null;
+      selectedSections?: string[];
+    };
+  };
   createdAt: string;
   updatedAt: string
 }
@@ -162,6 +192,30 @@ function getContextualLabels(eventType: EventType, category: 'personal' | 'corpo
       : 'Endringer lager maler som kan brukes for nye arrangementer',
     contextPrefix: isWeddingType ? 'bryllups' : isCorporate ? 'bedrifts' : '',
   };
+}
+
+function formatNorwegianDateTime(value?: string | null) {
+  if (!value) return 'Ikke registrert ennå';
+  const parsedValue = new Date(value);
+  if (Number.isNaN(parsedValue.getTime())) return value;
+  return parsedValue.toLocaleString('no-NO', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatNorwegianDate(value?: string | null) {
+  if (!value) return 'Ikke satt';
+  const parsedValue = new Date(value);
+  if (Number.isNaN(parsedValue.getTime())) return value;
+  return parsedValue.toLocaleDateString('no-NO', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 // Contextual demo data generator — returns event-type-appropriate demo timeline
@@ -301,7 +355,7 @@ export default function EvendiTimelineAdmin({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetType, setResetType] = useState<'pin' | 'password' | 'both'>('both');
   const { profession } = useProfessionAdapter();
-  const { settings } = useSettings();
+  const { settings, updateSetting } = useSettings();
   const timelinePrefillSettings = settings?.projectCreation?.timelinePrefill || {
     projectName: true,
     clientName: true,
@@ -315,6 +369,24 @@ export default function EvendiTimelineAdmin({
     culturalType: true,
     evendiCoupleId: true,
   };
+  const timelinePrefillFields: Array<{
+    key: keyof UserSettings['projectCreation']['timelinePrefill'];
+    label: string;
+  }> = [
+    { key: 'projectName', label: 'Prosjektnavn' },
+    { key: 'clientName', label: 'Kundenavn' },
+    { key: 'clientEmail', label: 'Kunde e-post' },
+    { key: 'clientPhone', label: 'Kunde telefon' },
+    { key: 'eventDate', label: 'Dato' },
+    { key: 'venue', label: 'Lokasjon / Venue' },
+    { key: 'eventType', label: 'Event type' },
+    { key: 'guestCount', label: 'Antall gjester' },
+    { key: 'location', label: 'Prosjektlokasjon' },
+    { key: 'culturalType', label: 'Kulturtype' },
+    { key: 'evendiCoupleId', label: 'Evendi couple ID' },
+  ];
+  const timelinePrefillCount = Object.values(timelinePrefillSettings).filter(Boolean).length;
+  const timelinePrefillTotal = timelinePrefillFields.length;
   const timelineSettings = settings?.weddingTimeline || {
     autoCreateOnProject: false,
     template: {
@@ -700,6 +772,39 @@ export default function EvendiTimelineAdmin({
 
   // Use demo data if in demo mode or if the API failed
   const timeline = isDemoMode || timelineError ? getDemoTimeline(resolvedEventType) : fetchedTimeline;
+  const planningBrief = timeline?.timelineData?.planningBrief;
+  const latestMeetingSync = timeline?.timelineData?.latestMeetingSync;
+  const evendiMeetingContextAvailable = Boolean(
+    planningBrief?.summary ||
+      planningBrief?.requests ||
+      planningBrief?.location ||
+      planningBrief?.eventDate ||
+      latestMeetingSync?.meetingTitle ||
+      latestMeetingSync?.syncedAt,
+  );
+  const syncedSectionLabels = (latestMeetingSync?.selectedSections ?? [])
+    .map((section) => {
+      switch (section) {
+        case 'summary':
+          return 'Hovedpunkter';
+        case 'actionItems':
+          return 'Oppgaver';
+        case 'decisions':
+          return 'Beslutninger';
+        case 'nextSteps':
+          return 'Neste steg';
+        case 'clientPoints':
+          return 'Kundeønsker';
+        case 'timelinePoints':
+          return 'Tidslinjepunkter';
+        default:
+          return section;
+      }
+    })
+    .filter(Boolean);
+  const syncedMeetingEvent = latestMeetingSync?.meetingTitle
+    ? timeline?.events.find((event) => event.title === `Møtenotat: ${latestMeetingSync.meetingTitle}`)
+    : undefined;
 
   const icalBaseUrl = React.useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -1121,6 +1226,187 @@ export default function EvendiTimelineAdmin({
         }
         </Typography>
       </Alert>
+
+      <Card
+        sx={{
+          mb: 3,
+          bgcolor: 'rgba(255,252,245,0.98)',
+          border: '1px solid rgba(161,98,7,0.14)',
+          boxShadow: '0 18px 48px rgba(148, 116, 43, 0.08)',
+          ...theming.getThemedCardSx(),
+        }}
+      >
+        <CardContent sx={{ p: 3.25 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 1.5,
+              mb: 2.25,
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+              <Box
+                sx={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: 'rgba(245,124,0,0.12)',
+                  color: '#b45309',
+                }}
+              >
+                <Lightbulb />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#8a4b08' }}>
+                  Evendi møtekontekst
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Prosjektbrief, forespørsel og siste møtesynk brukes som planleggingskontekst i tidslinjen.
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              <Chip
+                size="small"
+                color={evendiMeetingContextAvailable ? 'success' : 'default'}
+                variant={evendiMeetingContextAvailable ? 'filled' : 'outlined'}
+                label={evendiMeetingContextAvailable ? 'Kontekst synket til Evendi' : 'Venter på første møtesynk'}
+              />
+              {(latestMeetingSync?.projectTitle || planningBrief?.title || currentProject?.projectName) && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`Prosjekt: ${latestMeetingSync?.projectTitle || planningBrief?.title || currentProject?.projectName}`}
+                />
+              )}
+            </Box>
+          </Box>
+
+          {evendiMeetingContextAvailable ? (
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={4}>
+                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.86)' }}>
+                  <CardContent sx={{ p: 2.25 }}>
+                    <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
+                      Siste synk
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.75 }}>
+                      {latestMeetingSync?.meetingTitle || 'Møtenotat ikke synket ennå'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {latestMeetingSync?.syncedAt
+                        ? `Oppdatert ${formatNorwegianDateTime(latestMeetingSync.syncedAt)}`
+                        : 'Bruk Smart Meeting Notes og Synk til Evendi for å fylle tidslinjen med møteinnsikt.'}
+                    </Typography>
+                    {syncedMeetingEvent && (
+                      <Alert severity="success" sx={{ mt: 1.5 }}>
+                        Opprettet som tidslinjehendelse{syncedMeetingEvent.time ? ` kl. ${syncedMeetingEvent.time}` : ''}.
+                      </Alert>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.86)' }}>
+                  <CardContent sx={{ p: 2.25 }}>
+                    <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
+                      Kunde og lokasjon
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.75 }}>
+                      {latestMeetingSync?.clientName || planningBrief?.clientName || currentProject?.clientName || timeline?.clientName || timeline?.coupleName || 'Kunde ikke valgt'}
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, color: 'text.secondary' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <LocationOn sx={{ fontSize: 18 }} />
+                        <Typography variant="body2">
+                          {planningBrief?.location || latestMeetingSync?.location || timeline?.venue || 'Lokasjon ikke satt'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CalendarToday sx={{ fontSize: 18 }} />
+                        <Typography variant="body2">
+                          {formatNorwegianDate(planningBrief?.eventDate || timeline?.eventDate)}
+                        </Typography>
+                      </Box>
+                      {planningBrief?.timeframe && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Schedule sx={{ fontSize: 18 }} />
+                          <Typography variant="body2">{planningBrief.timeframe}</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Card sx={{ height: '100%', border: '1px solid rgba(15,23,42,0.08)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.86)' }}>
+                  <CardContent sx={{ p: 2.25 }}>
+                    <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
+                      Hva Evendi bruker
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                      {latestMeetingSync?.baseMode === 'project' ? 'Prosjektnotat med NotebookLM- og Evendi-kontekst' : 'Notat koblet til prosjektkontekst'}
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                      {syncedSectionLabels.length > 0 ? (
+                        syncedSectionLabels.map((label) => (
+                          <Chip key={label} label={label} size="small" variant="outlined" />
+                        ))
+                      ) : (
+                        <Chip label="Ingen seksjoner synket ennå" size="small" variant="outlined" />
+                      )}
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {(planningBrief?.summary || latestMeetingSync?.briefSummary) && (
+                <Grid item xs={12} md={6}>
+                  <Card sx={{ height: '100%', border: '1px solid rgba(245,124,0,0.14)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.86)' }}>
+                    <CardContent sx={{ p: 2.25 }}>
+                      <Typography variant="overline" sx={{ color: '#8a4b08', fontWeight: 700 }}>
+                        Prosjektbrief fra forespørsel
+                      </Typography>
+                      <Typography variant="body2" sx={{ lineHeight: 1.7 }}>
+                        {planningBrief?.summary || latestMeetingSync?.briefSummary}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+
+              {(planningBrief?.requests || latestMeetingSync?.specialRequests) && (
+                <Grid item xs={12} md={6}>
+                  <Card sx={{ height: '100%', border: '1px solid rgba(34,197,94,0.14)', boxShadow: 'none', bgcolor: 'rgba(255,255,255,0.86)' }}>
+                    <CardContent sx={{ p: 2.25 }}>
+                      <Typography variant="overline" sx={{ color: '#166534', fontWeight: 700 }}>
+                        Kundeønsker og spesielle hensyn
+                      </Typography>
+                      <Typography variant="body2" sx={{ lineHeight: 1.7 }}>
+                        {planningBrief?.requests || latestMeetingSync?.specialRequests}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+            </Grid>
+          ) : (
+            <Alert severity="info" sx={{ backgroundColor: 'rgba(255,255,255,0.88)' }}>
+              Når du bruker <strong>Smart Meeting Notes</strong> med prosjektnotater og velger <strong>Synk til Evendi</strong>,
+              vises prosjektbrief, kundeønsker, møtetittel og synkede seksjoner her automatisk.
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Prefill notice */}
       {prefill && (
@@ -1826,6 +2112,266 @@ export default function EvendiTimelineAdmin({
           </Typography>
 
           <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    <Settings sx={{ color: theming.colors.primary }} />
+                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                      Forhåndsutfylling ved ny tidslinje
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Velg hvilke prosjekt- og kundefelt Evendi skal bruke når nye tidslinjer opprettes fra prosjektkontekst.
+                  </Typography>
+
+                  <Alert severity="info" sx={{ mb: 2.5 }}>
+                    Disse valgene styrer hva som fylles inn automatisk når du oppretter eller åpner en ny Evendi-tidslinje.
+                  </Alert>
+
+                  <FormGroup>
+                    {timelinePrefillFields.map((item) => (
+                      <FormControlLabel
+                        key={item.key}
+                        control={
+                          <Switch
+                            checked={timelinePrefillSettings[item.key]}
+                            onChange={(event) =>
+                              updateSetting('projectCreation', {
+                                timelinePrefill: {
+                                  ...timelinePrefillSettings,
+                                  [item.key]: event.target.checked,
+                                },
+                              })
+                            }
+                          />
+                        }
+                        label={item.label}
+                      />
+                    ))}
+                  </FormGroup>
+
+                  <Divider sx={{ my: 2 }} />
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Valgt: {timelinePrefillCount}/{timelinePrefillTotal}
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() =>
+                          updateSetting('projectCreation', {
+                            timelinePrefill: Object.fromEntries(
+                              timelinePrefillFields.map((field) => [field.key, true]),
+                            ) as UserSettings['projectCreation']['timelinePrefill'],
+                          })
+                        }
+                      >
+                        Velg alle
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() =>
+                          updateSetting('projectCreation', {
+                            timelinePrefill: Object.fromEntries(
+                              timelinePrefillFields.map((field) => [field.key, false]),
+                            ) as UserSettings['projectCreation']['timelinePrefill'],
+                          })
+                        }
+                      >
+                        Fjern alle
+                      </Button>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    <Schedule sx={{ color: theming.colors.primary }} />
+                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                      Auto-justering
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Styr hvordan Evendi skal håndtere forsinkelser og automatisk flytte resten av tidslinjen.
+                  </Typography>
+
+                  <FormGroup sx={{ mb: 2 }}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={timelineSettings.autoAdjust.enabled}
+                          onChange={(event) =>
+                            updateSetting('weddingTimeline', {
+                              ...timelineSettings,
+                              autoAdjust: { ...timelineSettings.autoAdjust, enabled: event.target.checked },
+                            })
+                          }
+                        />
+                      }
+                      label="Aktiver auto-justering"
+                    />
+                  </FormGroup>
+
+                  <TextField
+                    fullWidth
+                    label="Minimum forsinkelse (min)"
+                    type="number"
+                    value={timelineSettings.autoAdjust.minDelayMinutes}
+                    onChange={(event) =>
+                      updateSetting('weddingTimeline', {
+                        ...timelineSettings,
+                        autoAdjust: {
+                          ...timelineSettings.autoAdjust,
+                          minDelayMinutes: Number(event.target.value),
+                        },
+                      })
+                    }
+                    inputProps={{ min: 0 }}
+                    sx={{ mb: 2 }}
+                  />
+
+                  <FormGroup>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={timelineSettings.autoAdjust.requireReason}
+                          onChange={(event) =>
+                            updateSetting('weddingTimeline', {
+                              ...timelineSettings,
+                              autoAdjust: { ...timelineSettings.autoAdjust, requireReason: event.target.checked },
+                            })
+                          }
+                        />
+                      }
+                      label="Krev årsak for forsinkelse"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={timelineSettings.autoAdjust.excludeCompleted}
+                          onChange={(event) =>
+                            updateSetting('weddingTimeline', {
+                              ...timelineSettings,
+                              autoAdjust: { ...timelineSettings.autoAdjust, excludeCompleted: event.target.checked },
+                            })
+                          }
+                        />
+                      }
+                      label="Hopp over fullførte hendelser"
+                    />
+                  </FormGroup>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    <Settings sx={{ color: theming.colors.primary }} />
+                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                      Personvern & Klienttilgang
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Sett standard tilgangsnivå og hva klienter kan gjøre når Evendi-tidslinjen deles.
+                  </Typography>
+
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Standard klienttilgang</InputLabel>
+                    <Select
+                      value={timelineSettings.privacy.clientAccessDefault}
+                      label="Standard klienttilgang"
+                      onChange={(event) =>
+                        updateSetting('weddingTimeline', {
+                          ...timelineSettings,
+                          privacy: {
+                            ...timelineSettings.privacy,
+                            clientAccessDefault: event.target.value as UserSettings['weddingTimeline']['privacy']['clientAccessDefault'],
+                          },
+                        })
+                      }
+                    >
+                      <MenuItem value="off">Av</MenuItem>
+                      <MenuItem value="read">Les</MenuItem>
+                      <MenuItem value="comment">Kommentar</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  <FormGroup>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={timelineSettings.privacy.allowDownload}
+                          onChange={(event) =>
+                            updateSetting('weddingTimeline', {
+                              ...timelineSettings,
+                              privacy: { ...timelineSettings.privacy, allowDownload: event.target.checked },
+                            })
+                          }
+                        />
+                      }
+                      label="Tillat nedlasting"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={timelineSettings.privacy.allowSave}
+                          onChange={(event) =>
+                            updateSetting('weddingTimeline', {
+                              ...timelineSettings,
+                              privacy: { ...timelineSettings.privacy, allowSave: event.target.checked },
+                            })
+                          }
+                        />
+                      }
+                      label="Tillat lagring/kopiering"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={timelineSettings.privacy.allowRightClick}
+                          onChange={(event) =>
+                            updateSetting('weddingTimeline', {
+                              ...timelineSettings,
+                              privacy: { ...timelineSettings.privacy, allowRightClick: event.target.checked },
+                            })
+                          }
+                        />
+                      }
+                      label="Tillat hoyreklikk"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={timelineSettings.privacy.requireApproval}
+                          onChange={(event) =>
+                            updateSetting('weddingTimeline', {
+                              ...timelineSettings,
+                              privacy: { ...timelineSettings.privacy, requireApproval: event.target.checked },
+                            })
+                          }
+                        />
+                      }
+                      label="Krev godkjenning"
+                    />
+                  </FormGroup>
+
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    Mer avansert klientdeling ligger fortsatt under egen <strong>Klienttilgang</strong>-fane i Evendi.
+                  </Alert>
+                </CardContent>
+              </Card>
+            </Grid>
+
             {/* PIN/Password Reset */}
             <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>

@@ -1,0 +1,184 @@
+- generic [ref=e50]:
+  - generic [ref=e51]:
+    - generic [ref=e52]:
+      - generic [ref=e53]:
+        - img "CreatorHub" [ref=e55]
+        - generic [ref=e56]:
+          - paragraph [ref=e57]: CreatorHub
+          - paragraph [ref=e58]: Admin workspace
+      - paragraph [ref=e59]: v4.0
+    - generic [ref=e60]:
+      - generic [ref=e61]:
+        - paragraph [ref=e62]: General
+        - generic [ref=e63]:
+          - button "Overblikk" [ref=e64] [cursor=pointer]:
+            - img [ref=e66]
+            - text: Overblikk
+          - button "Brukere & Roller" [ref=e68] [cursor=pointer]:
+            - img [ref=e70]
+            - text: Brukere & Roller
+          - button "Community" [ref=e73] [cursor=pointer]:
+            - img [ref=e75]
+            - text: Community
+          - button "Innhold & Assets" [ref=e77] [cursor=pointer]:
+            - img [ref=e79]
+            - text: Innhold & Assets
+          - button "Kunder/Prosjekter" [ref=e81] [cursor=pointer]:
+            - img [ref=e83]
+            - text: Kunder/Prosjekter
+          - button "Kommunikasjon" [ref=e85] [cursor=pointer]:
+            - img [ref=e87]
+            - text: Kommunikasjon
+      - generic [ref=e89]:
+        - paragraph [ref=e90]: Operations
+        - generic [ref=e91]:
+          - button "Økonomi" [ref=e92] [cursor=pointer]:
+            - img [ref=e94]
+            - text: Økonomi
+          - button "Prisstyring" [ref=e96] [cursor=pointer]:
+            - img [ref=e98]
+            - text: Prisstyring
+          - button "Rapporter" [ref=e100] [cursor=pointer]:
+            - img [ref=e102]
+            - text: Rapporter
+          - button "Academy" [ref=e104] [cursor=pointer]:
+            - img [ref=e106]
+            - text: Academy
+          - button "Vendor Types" [ref=e108] [cursor=pointer]:
+            - img [ref=e110]
+            - text: Vendor Types
+          - button "Profesjonstyper" [ref=e112] [cursor=pointer]:
+            - img [ref=e114]
+            - text: Profesjonstyper
+      - generic [ref=e116]:
+        - paragraph [ref=e117]: Platform
+        - generic [ref=e118]:
+          - button "Integrasjoner" [ref=e119] [cursor=pointer]:
+            - img [ref=e121]
+            - text: Integrasjoner
+          - button "Feature Management" [ref=e123] [cursor=pointer]:
+            - img [ref=e125]
+            - text: Feature Management
+          - button "Sentralisert Overvåkning" [ref=e127] [cursor=pointer]:
+            - img [ref=e129]
+            - text: Sentralisert Overvåkning
+          - button "Protokollstyring" [ref=e131] [cursor=pointer]:
+            - img [ref=e133]
+            - text: Protokollstyring
+          - button "Drift" [ref=e135] [cursor=pointer]:
+            - img [ref=e137]
+            - text: Drift
+          - button "Backup" [ref=e139] [cursor=pointer]:
+            - img [ref=e141]
+            - text: Backup
+          - button "GDPR" [ref=e143] [cursor=pointer]:
+            - img [ref=e145]
+            - text: GDPR
+      - generic [ref=e147]:
+        - paragraph [ref=e148]: Labs
+        - generic [ref=e149]:
+          - button "Prototype Feedback" [ref=e150] [cursor=pointer]:
+            - img [ref=e152]
+            - text: Prototype Feedback
+          - button "Utvikling" [ref=e154] [cursor=pointer]:
+            - img [ref=e156]
+            - text: Utvikling
+          - button "Automations" [ref=e158] [cursor=pointer]:
+            - img [ref=e160]
+            - text: Automations
+          - button "MagicCreator" [ref=e162] [cursor=pointer]:
+            - img [ref=e164]
+            - text: MagicCreator
+          - button "Stor Notatsløsning" [ref=e166] [cursor=pointer]:
+            - img [ref=e168]
+            - text: Stor Notatsløsning
+          - button "Integration Test" [ref=e170] [cursor=pointer]:
+            - img [ref=e172]
+            - text: Integration Test
+          - button "Payment Integration Test" [ref=e174] [cursor=pointer]:
+            - img [ref=e176]
+            - text: Payment Integration Test
+          - button "Google Wallet Membership" [ref=e178] [cursor=pointer]:
+            - img [ref=e180]
+            - text: Google Wallet Membership
+          - button "Google Wallet Integration Test" [ref=e182] [cursor=pointer]:
+            - img [ref=e184]
+            - text: Google Wallet Integration Test
+          - button "Google Payments Config" [ref=e186] [cursor=pointer]:
+            - img [ref=e188]
+            - text: Google Payments Config
+          - button "Email Analytics" [ref=e190] [cursor=pointer]:
+            - img [ref=e192]
+            - text: Email Analytics
+          - button "Tester Skills" [ref=e194] [cursor=pointer]:
+            - img [ref=e196]
+            - text: Tester Skills
+          - button "Testing Leaderboard" [ref=e198] [cursor=pointer]:
+            - img [ref=e200]
+            - text: Testing Leaderboard
+          - button "Test Generator" [ref=e202] [cursor=pointer]:
+            - img [ref=e204]
+            - text: Test Generator
+          - button "Marketing" [ref=e206] [cursor=pointer]:
+            - img [ref=e208]
+            - text: Marketing
+          - button "Feature Customization" [ref=e210] [cursor=pointer]:
+            - img [ref=e212]
+            - text: Feature Customization
+          - button "Fine-Tuning Monitor" [ref=e214] [cursor=pointer]:
+            - img [ref=e216]
+            - text: Fine-Tuning Monitor
+    - generic [ref=e219]:
+      - button "Adminstøtte" [ref=e220] [cursor=pointer]:
+        - img [ref=e222]
+        - text: Adminstøtte
+      - button "Logg ut" [ref=e224] [cursor=pointer]
+  - generic [ref=e225]:
+    - generic [ref=e226]:
+      - generic [ref=e227]:
+        - paragraph [ref=e228]: CreatorHub Admin > Workspace > Overblikk
+        - paragraph [ref=e229]: Overblikk
+        - paragraph [ref=e230]: Monitorer aktivitet, nøkkeltall og operativ helse i én arbeidsflate.
+      - generic [ref=e231]:
+        - generic [ref=e233]: Administrator
+        - generic [ref=e234]: C
+        - generic [ref=e235]:
+          - paragraph [ref=e236]: CreatorHub Admin
+          - paragraph [ref=e237]: academy-guest@creatorhubn.com
+    - generic [ref=e240]:
+      - heading "Admin statistikk er kun tilgjengelig for systemadministrator" [level=6] [ref=e243]
+      - generic [ref=e246]:
+        - generic [ref=e247]:
+          - generic [ref=e248]:
+            - generic [ref=e249]:
+              - img [ref=e250]
+              - generic [ref=e252]:
+                - heading "Enhanced Activity Feed" [level=6] [ref=e253]
+                - generic [ref=e254]: Real-time updates • 0 total activities
+            - generic [ref=e255]:
+              - button "Push-varsler innstillinger" [ref=e256] [cursor=pointer]:
+                - img [ref=e257]
+              - button "Export to CSV" [ref=e259] [cursor=pointer]:
+                - img [ref=e260]
+              - button "Refresh" [ref=e262] [cursor=pointer]:
+                - img [ref=e263]
+          - generic [ref=e265]:
+            - generic [ref=e267]:
+              - img [ref=e269]
+              - textbox "Search activities..." [ref=e271]
+              - group
+            - group [ref=e272]:
+              - button [pressed] [ref=e273] [cursor=pointer]:
+                - img [ref=e274]
+              - button [ref=e276] [cursor=pointer]:
+                - img [ref=e277]
+            - button [ref=e279] [cursor=pointer]:
+              - img [ref=e280]
+          - generic: Start Date
+          - generic: End Date
+          - generic: Category
+          - generic: Priority
+        - separator [ref=e282]
+        - alert [ref=e283]:
+          - img [ref=e285]
+          - generic [ref=e287]: Failed to load activity feed

@@ -165,10 +165,8 @@ import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
 
 // Import Gear News component
 import { EnhancedGearTab } from '../dashboard/EnhancedGearTab';
-import {
-  QuickMeetingNotesModal,
-  QuickMeetingNotesModal as GoogleWorkspaceMeetingManager,
-} from '../meetings/QuickMeetingNotesModal';
+import { QuickMeetingNotesModal } from '../meetings/QuickMeetingNotesModal';
+import GoogleWorkspaceMeetingManager from '../meetings/GoogleWorkspaceMeetingManager';
 import CustomerInquiryCenter, { type EmailMessage as CustomerInquiryEmailMessage } from '../email/CustomerInquiryCenter';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
 import UniversalKeyboardShortcuts from '../keyboard-shortcuts/UniversalKeyboardShortcuts';
@@ -179,7 +177,7 @@ import HelpdeskSystem from './HelpdeskSystem';
 import ProjectTimeline from '../project/ProjectTimeline';
 
 // Import Universal Components for enhanced integration
-import ContextualDriveUploadWorkspace from './ContextualDriveUploadWorkspace';
+import DriveOperationsWorkspacePanel from './DriveOperationsWorkspacePanel';
 import UniversalChatWidget from '../chat/UniversalChatWidget';
 import { useCommunicationStatus, CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 import { useFileManagementStatus, FileManagementStatusProvider } from '../../contexts/FileManagementStatusContext';
@@ -265,7 +263,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
       { id: 'showcase-publisher', label: 'Showcase Publisher', icon: <VideoLibrary /> },
-      { id: 'file-upload', label: 'File Upload', icon: <CloudUpload /> },
+      { id: 'file-upload', label: 'Filsystem', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'AI Forbedring', icon: <AutoFixHigh /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
       { id: 'photo-enhancement', label: 'Fotoforbedring', icon: <Collections /> },
@@ -296,7 +294,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
-      { id: 'file-upload', label: 'File Upload', icon: <CloudUpload /> },
+      { id: 'file-upload', label: 'Filsystem', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'AI Forbedring', icon: <AutoFixHigh /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
       { id: 'clients', label: 'Kunder', icon: <Group /> },
@@ -328,7 +326,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
-      { id: 'file-upload', label: 'File Upload', icon: <CloudUpload /> },
+      { id: 'file-upload', label: 'Filsystem', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'Video AI', icon: <MovieCreation /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
       { id: 'clients', label: 'Kunder', icon: <Group /> },
@@ -360,7 +358,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'split-sheets', label: 'Split Sheets', icon: <AccountBalance /> },
       { id: 'showcase-viewer', label: 'Musikk Showcase', icon: <LibraryMusic /> },
-      { id: 'file-upload', label: 'Musikk Upload', icon: <CloudUpload /> },
+      { id: 'file-upload', label: 'Filsystem', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'Audio AI', icon: <SmartToy /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
       { id: 'clients', label: 'Artister', icon: <Person /> },
@@ -418,7 +416,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
-      { id: 'file-upload', label: 'File Upload', icon: <CloudUpload /> },
+      { id: 'file-upload', label: 'Filsystem', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'AI Forbedring', icon: <AutoFixHigh /> },
       { id: 'video-enhancement', label: 'Video AI', icon: <MovieCreation /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
@@ -594,7 +592,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   
   // Universal dashboard context
   const {
-    state: _universalState,
+    state: universalState,
     setProjects,
     addProject: _addProject,
     updateProject,
@@ -753,6 +751,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           queryClient.invalidateQueries({ queryKey: ['/api/communication/email/status'] }),
           queryClient.invalidateQueries({ queryKey: ['/api/communication/email/threads'] }),
           queryClient.invalidateQueries({ queryKey: ['/api/communication/email/messages'] }),
+          queryClient.invalidateQueries({ queryKey: ['universal-settings-lightroom-status', userId] }),
+          queryClient.invalidateQueries({ queryKey: ['universal-settings-drive-status', userId] }),
+          queryClient.invalidateQueries({ queryKey: ['universal-settings-google-photos-status', userId] }),
+          queryClient.invalidateQueries({ queryKey: ['universal-settings-google-contacts-status', userId] }),
+          queryClient.invalidateQueries({ queryKey: ['universal-settings-workspace-backup-status', userId] }),
+          queryClient.invalidateQueries({ queryKey: ['file-management-google-drive-status', userId] }),
+          queryClient.invalidateQueries({ queryKey: ['google-drive-context', userId] }),
+          queryClient.invalidateQueries({ queryKey: ['google-drive-files', userId] }),
+          queryClient.invalidateQueries({ queryKey: ['/api/google-workspace/storage', userId] }),
         ]);
 
         window.dispatchEvent(new CustomEvent('creatorhub-google-workspace-linked', {
@@ -773,7 +780,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     return () => {
       cancelled = true;
     };
-  }, [clearGoogleWorkspaceIntentFromUrl]);
+  }, [clearGoogleWorkspaceIntentFromUrl, userId]);
 
   useEffect(() => {
     const checkMentorStatus = async () => {
@@ -818,6 +825,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       if (tab.id === 'showcase-viewer' && config.tabs.some(configTab => configTab.id === 'showcase-admin')) {
         return false;
       }
+      if (tab.id === 'files' && config.tabs.some((configTab) => configTab.id === 'file-upload')) {
+        return false;
+      }
 
       // Map tab IDs to feature checks - All enabled by default for better UX
       const featureMap: Record<string, boolean> = {
@@ -838,7 +848,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         'client-management': true, // Always available
         'team-management': profession === 'enterprise', // Enterprise only
         'equipment': true, // Always available
-        'files': true,
+        'files': !config.tabs.some((configTab) => configTab.id === 'file-upload'),
         'support': true,
         'settings': true, // Always available
         'administration': true, // Pricing administration for all professions
@@ -1016,10 +1026,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   }, [communication, setUniversalSelectedProject, setUniversalSelectedClient, setProjects, setClients, availableTabs]);
   
   // Grouped UI State - Reduced hooks from 18+ to 4 for better performance
-  const [tabState, setTabState] = useState({
-    main: 0,
-    settings: 0,
-    timeline: 0 });
+  const [tabState, setTabState] = useState(() => ({
+    main: universalState.tabState.main ?? 0,
+    settings: universalState.tabState.settings ?? 2,
+    timeline: universalState.tabState.timeline ?? 0,
+  }));
   
   const [modalState, setModalState] = useState({
     showProjectModal: false,
@@ -1234,6 +1245,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const setSettingsTabValue = (value: number) => updateTabStateLocal('settings', value);
   const selectedTimelineTab = tabState.timeline;
   const setSelectedTimelineTab = (value: number) => updateTabStateLocal('timeline', value);
+  const previousMainTabRef = useRef(tabValue);
   
   // Additional tab states for sub-navigation
   const [equipmentTabValue, setEquipmentTabValue] = useState(0);
@@ -1246,6 +1258,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       setTabValue(0);
     }
   }, [availableTabs.length, tabValue, setTabValue]);
+
+  useEffect(() => {
+    const settingsIndex = availableTabs.findIndex((tab) => tab.id === 'settings');
+    const enteredSettings = settingsIndex >= 0 && tabValue === settingsIndex && previousMainTabRef.current !== settingsIndex;
+
+    previousMainTabRef.current = tabValue;
+  }, [availableTabs, tabValue]);
   
   const selectedProject = selectedItems.project;
   const setSelectedProject = (value: Project | null) => {
@@ -1508,6 +1527,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
   const sharedGoogleDriveProjectSyncProps = useMemo(() => ({
     userId,
+    profession,
     projectId: selectedProject?.id,
     selectedProject,
     onProjectSelect: setSelectedProject,
@@ -1516,7 +1536,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         updateProject(project.id, project);
       }
     },
-  }), [selectedProject, setSelectedProject, updateProject, userId]);
+  }), [profession, selectedProject, setSelectedProject, updateProject, userId]);
 
   const sharedGoogleWorkspaceMeetingProps = useMemo(() => ({
     profession,
@@ -2240,15 +2260,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
   const renderUnifiedSettingsPanel = useCallback(() => (
     <Box sx={{ p: { xs: 1.5, md: 0 } }}>
-      <UniversalSettingsPanel
-        userId={userId}
-        profession={profession}
-        customBranding={customBranding}
-        selectedProject={selectedProject}
-        onProjectSelect={setSelectedProject}
-        activeTabValue={settingsTabValue}
-        onTabChange={setSettingsTabValue}
-      />
+      <SettingsProvider>
+        <UniversalSettingsPanel
+          userId={userId}
+          profession={profession}
+          customBranding={customBranding}
+          selectedProject={selectedProject}
+          onProjectSelect={setSelectedProject}
+          activeTabValue={settingsTabValue}
+          onTabChange={setSettingsTabValue}
+        />
+      </SettingsProvider>
     </Box>
   ), [
     customBranding,
@@ -5416,17 +5438,20 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Tab 7: Universal File Upload */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'file-upload')}>
-                <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                  <ContextualDriveUploadWorkspace
-                    userId={userId}
-                    profession={profession}
-                    selectedProject={selectedProject}
-                    selectedClient={selectedClient}
-                    projects={projects}
-                    onSelectProject={setSelectedProject}
-                    onSelectClient={setSelectedClient}
-                  />
-                </Box>
+                <DriveOperationsWorkspacePanel
+                  userId={userId}
+                  profession={profession}
+                  selectedProject={selectedProject}
+                  selectedClient={selectedClient}
+                  projects={projects}
+                  onSelectProject={setSelectedProject}
+                  onSelectClient={setSelectedClient}
+                  onProjectUpdate={(project) => {
+                    if (project?.id) {
+                      updateProject(project.id, project);
+                    }
+                  }}
+                />
               </TabPanel>
 
               {/* Tab 8: AI Forbedring - Photo Enhancement Suite */}
@@ -5600,10 +5625,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 </Box>
               </TabPanel>
 
-              {/* Tab 13: Filer */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'files')}>
-                <GoogleDriveManager {...sharedGoogleDriveManagerProps} />
-              </TabPanel>
+              {availableTabs.some((tab) => tab.id === 'files') && (
+                <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'files')}>
+                  <GoogleDriveManager {...sharedGoogleDriveManagerProps} />
+                </TabPanel>
+              )}
 
               {/* Tab 14: Support */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'support')}>
@@ -5615,30 +5641,31 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 {renderUnifiedSettingsPanel()}
               </TabPanel>
 
-              {/* Tab 10: Filer */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'files')}>
-                <Box sx={{ p: 3 }}>
-                  <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, color: theming.colors.primary }}>
-                    <FolderOpen sx={{ mr: 1, verticalAlign: 'middle' }} />
-                    Filbehandling
-                  </Typography>
-                  
-                  {/* File Management with Google Drive Integration */}
-                  <Grid2 container spacing={3}>
-                    <Grid2 size={{ xs: 12, md: 8 }}>
-                      <FilesTab 
-                        userId={userId}
-                        profession={profession}
-                        selectedProject={selectedProject}
-                        onProjectSelect={setSelectedProject}
-                      />
+              {availableTabs.some((tab) => tab.id === 'files') && (
+                <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'files')}>
+                  <Box sx={{ p: 3 }}>
+                    <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, color: theming.colors.primary }}>
+                      <FolderOpen sx={{ mr: 1, verticalAlign: 'middle' }} />
+                      Filbehandling
+                    </Typography>
+                    
+                    {/* File Management with Google Drive Integration */}
+                    <Grid2 container spacing={3}>
+                      <Grid2 size={{ xs: 12, md: 8 }}>
+                        <FilesTab 
+                          userId={userId}
+                          profession={profession}
+                          selectedProject={selectedProject}
+                          onProjectSelect={setSelectedProject}
+                        />
+                      </Grid2>
+                      <Grid2 size={{ xs: 12, md: 4 }}>
+                        <GoogleWorkspaceStorageInfo userId={userId} />
+                      </Grid2>
                     </Grid2>
-                    <Grid2 size={{ xs: 12, md: 4 }}>
-                      <GoogleWorkspaceStorageInfo userId={userId} />
-                    </Grid2>
-                  </Grid2>
-                </Box>
-              </TabPanel>
+                  </Box>
+                </TabPanel>
+              )}
 
               {/* Tab: Administrasjon */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'administration')}>
@@ -5755,17 +5782,20 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Tab 7: Universal File Upload - For videographers */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'file-upload')}>
-                <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                  <ContextualDriveUploadWorkspace
-                    userId={userId}
-                    profession={profession}
-                    selectedProject={selectedProject}
-                    selectedClient={selectedClient}
-                    projects={projects}
-                    onSelectProject={setSelectedProject}
-                    onSelectClient={setSelectedClient}
-                  />
-                </Box>
+                <DriveOperationsWorkspacePanel
+                  userId={userId}
+                  profession={profession}
+                  selectedProject={selectedProject}
+                  selectedClient={selectedClient}
+                  projects={projects}
+                  onSelectProject={setSelectedProject}
+                  onSelectClient={setSelectedClient}
+                  onProjectUpdate={(project) => {
+                    if (project?.id) {
+                      updateProject(project.id, project);
+                    }
+                  }}
+                />
               </TabPanel>
 
               {/* Tab 8: Video AI - Advanced Video Enhancement */}
@@ -5885,43 +5915,44 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 </Box>
               </TabPanel>
 
-              {/* Tab 10: Filer */}
-              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'files')}>
-                <Box sx={{ p: 3 }}>
-                  <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, color: theming.colors.primary }}>
-                    <FolderOpen sx={{ mr: 1, verticalAlign: 'middle' }} />
-                    Filbehandling
-                  </Typography>
-                  
-                  {/* File Management with multiple options */}
-                  <Grid2 container spacing={3}>
-                    <Grid2 size={{ xs: 12, lg: 8 }}>
-                      <Box sx={{ mb: 3 }}>
-                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                          Mine Filer
-                        </Typography>
-                        <FilesTab 
-                          userId={userId}
-                          profession={profession}
-                        />
-                      </Box>
+              {availableTabs.some((tab) => tab.id === 'files') && (
+                <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'files')}>
+                  <Box sx={{ p: 3 }}>
+                    <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, color: theming.colors.primary }}>
+                      <FolderOpen sx={{ mr: 1, verticalAlign: 'middle' }} />
+                      Filbehandling
+                    </Typography>
+                    
+                    {/* File Management with multiple options */}
+                    <Grid2 container spacing={3}>
+                      <Grid2 size={{ xs: 12, lg: 8 }}>
+                        <Box sx={{ mb: 3 }}>
+                          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                            Mine Filer
+                          </Typography>
+                          <FilesTab 
+                            userId={userId}
+                            profession={profession}
+                          />
+                        </Box>
+                      </Grid2>
+                      <Grid2 size={{ xs: 12, lg: 4 }}>
+                        <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 2, mb: 3 }}>
+                          <GoogleWorkspaceStorageInfo userId={userId} />
+                        </Box>
+                        
+                        {/* Google Drive Manager alt */}
+                        <Box>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
+                            Google Drive Synkronisering
+                          </Typography>
+                          <GoogleDriveManager {...sharedGoogleDriveManagerProps} />
+                        </Box>
+                      </Grid2>
                     </Grid2>
-                    <Grid2 size={{ xs: 12, lg: 4 }}>
-                      <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 2, mb: 3 }}>
-                        <GoogleWorkspaceStorageInfo userId={userId} />
-                      </Box>
-                      
-                      {/* Google Drive Manager alt */}
-                      <Box>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
-                          Google Drive Synkronisering
-                        </Typography>
-                        <GoogleDriveManager {...sharedGoogleDriveManagerProps} />
-                      </Box>
-                    </Grid2>
-                  </Grid2>
-                </Box>
-              </TabPanel>
+                  </Box>
+                </TabPanel>
+              )}
 
               {/* Tab 11: Innstillinger */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'settings')}>
@@ -6011,17 +6042,20 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               {/* Tab 5: Universal File Upload for Music Producers, Files for others */}
               {(profession as string) === 'music_producer' ? (
                 <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'file-upload') >= 0 ? availableTabs.findIndex(tab => tab.id === 'file-upload') : 5}>
-                  <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                    <ContextualDriveUploadWorkspace
-                      userId={userId}
-                      profession={profession}
-                      selectedProject={selectedProject}
-                      selectedClient={selectedClient}
-                      projects={projects}
-                      onSelectProject={setSelectedProject}
-                      onSelectClient={setSelectedClient}
-                    />
-                  </Box>
+                  <DriveOperationsWorkspacePanel
+                    userId={userId}
+                    profession={profession}
+                    selectedProject={selectedProject}
+                    selectedClient={selectedClient}
+                    projects={projects}
+                    onSelectProject={setSelectedProject}
+                    onSelectClient={setSelectedClient}
+                    onProjectUpdate={(project) => {
+                      if (project?.id) {
+                        updateProject(project.id, project);
+                      }
+                    }}
+                  />
                 </TabPanel>
               ) : (
                 <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'files') >= 0 ? availableTabs.findIndex(tab => tab.id === 'files') : 5}>
@@ -6487,14 +6521,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           if (overviewTabIndex >= 0) setTabValue(overviewTabIndex);
         }}
         onDriveOpen={() => {
-          // Switch to Universal Settings and open backup/drive management
-          const settingsTabIndex = availableTabs.findIndex(tab => tab.id === 'settings');
-          if (settingsTabIndex >= 0) {
-            setTabValue(settingsTabIndex);
-            setSettingsTabValue(3);
-          } else {
-            const filesTabIndex = availableTabs.findIndex(tab => tab.id === 'files' || tab.id === 'file-upload');
-            if (filesTabIndex >= 0) setTabValue(filesTabIndex);
+          const fileUploadTabIndex = availableTabs.findIndex((tab) => tab.id === 'file-upload');
+          if (fileUploadTabIndex >= 0) {
+            setTabValue(fileUploadTabIndex);
+            return;
+          }
+
+          const filesTabIndex = availableTabs.findIndex((tab) => tab.id === 'files');
+          if (filesTabIndex >= 0) {
+            setTabValue(filesTabIndex);
           }
         }}
         onNotificationCenterOpen={() => {

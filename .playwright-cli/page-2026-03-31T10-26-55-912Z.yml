@@ -1,0 +1,222 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - img "CreatorHub" [ref=e9]
+        - generic [ref=e10]:
+          - paragraph [ref=e11]: CreatorHub
+          - paragraph [ref=e12]: Admin workspace
+      - paragraph [ref=e13]: v4.0
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - paragraph [ref=e16]: General
+        - generic [ref=e17]:
+          - button "Overblikk" [ref=e18] [cursor=pointer]:
+            - img [ref=e20]
+            - text: Overblikk
+          - button "Brukere & Roller" [active] [ref=e22] [cursor=pointer]:
+            - img [ref=e24]
+            - text: Brukere & Roller
+          - button "Community" [ref=e27] [cursor=pointer]:
+            - img [ref=e29]
+            - text: Community
+          - button "Innhold & Assets" [ref=e31] [cursor=pointer]:
+            - img [ref=e33]
+            - text: Innhold & Assets
+          - button "Kunder/Prosjekter" [ref=e35] [cursor=pointer]:
+            - img [ref=e37]
+            - text: Kunder/Prosjekter
+          - button "Kommunikasjon" [ref=e39] [cursor=pointer]:
+            - img [ref=e41]
+            - text: Kommunikasjon
+      - generic [ref=e43]:
+        - paragraph [ref=e44]: Operations
+        - generic [ref=e45]:
+          - button "Økonomi" [ref=e46] [cursor=pointer]:
+            - img [ref=e48]
+            - text: Økonomi
+          - button "Prisstyring" [ref=e50] [cursor=pointer]:
+            - img [ref=e52]
+            - text: Prisstyring
+          - button "Rapporter" [ref=e54] [cursor=pointer]:
+            - img [ref=e56]
+            - text: Rapporter
+          - button "Academy" [ref=e58] [cursor=pointer]:
+            - img [ref=e60]
+            - text: Academy
+          - button "Vendor Types" [ref=e62] [cursor=pointer]:
+            - img [ref=e64]
+            - text: Vendor Types
+          - button "Profesjonstyper" [ref=e66] [cursor=pointer]:
+            - img [ref=e68]
+            - text: Profesjonstyper
+      - generic [ref=e70]:
+        - paragraph [ref=e71]: Platform
+        - generic [ref=e72]:
+          - button "Integrasjoner" [ref=e73] [cursor=pointer]:
+            - img [ref=e75]
+            - text: Integrasjoner
+          - button "Feature Management" [ref=e77] [cursor=pointer]:
+            - img [ref=e79]
+            - text: Feature Management
+          - button "Sentralisert Overvåkning" [ref=e81] [cursor=pointer]:
+            - img [ref=e83]
+            - text: Sentralisert Overvåkning
+          - button "Protokollstyring" [ref=e85] [cursor=pointer]:
+            - img [ref=e87]
+            - text: Protokollstyring
+          - button "Drift" [ref=e89] [cursor=pointer]:
+            - img [ref=e91]
+            - text: Drift
+          - button "Backup" [ref=e93] [cursor=pointer]:
+            - img [ref=e95]
+            - text: Backup
+          - button "GDPR" [ref=e97] [cursor=pointer]:
+            - img [ref=e99]
+            - text: GDPR
+      - generic [ref=e101]:
+        - paragraph [ref=e102]: Labs
+        - generic [ref=e103]:
+          - button "Prototype Feedback" [ref=e104] [cursor=pointer]:
+            - img [ref=e106]
+            - text: Prototype Feedback
+          - button "Utvikling" [ref=e108] [cursor=pointer]:
+            - img [ref=e110]
+            - text: Utvikling
+          - button "Automations" [ref=e112] [cursor=pointer]:
+            - img [ref=e114]
+            - text: Automations
+          - button "MagicCreator" [ref=e116] [cursor=pointer]:
+            - img [ref=e118]
+            - text: MagicCreator
+          - button "Stor Notatsløsning" [ref=e120] [cursor=pointer]:
+            - img [ref=e122]
+            - text: Stor Notatsløsning
+          - button "Integration Test" [ref=e124] [cursor=pointer]:
+            - img [ref=e126]
+            - text: Integration Test
+          - button "Payment Integration Test" [ref=e128] [cursor=pointer]:
+            - img [ref=e130]
+            - text: Payment Integration Test
+          - button "Google Wallet Membership" [ref=e132] [cursor=pointer]:
+            - img [ref=e134]
+            - text: Google Wallet Membership
+          - button "Google Wallet Integration Test" [ref=e136] [cursor=pointer]:
+            - img [ref=e138]
+            - text: Google Wallet Integration Test
+          - button "Google Payments Config" [ref=e140] [cursor=pointer]:
+            - img [ref=e142]
+            - text: Google Payments Config
+          - button "Email Analytics" [ref=e144] [cursor=pointer]:
+            - img [ref=e146]
+            - text: Email Analytics
+          - button "Tester Skills" [ref=e148] [cursor=pointer]:
+            - img [ref=e150]
+            - text: Tester Skills
+          - button "Testing Leaderboard" [ref=e152] [cursor=pointer]:
+            - img [ref=e154]
+            - text: Testing Leaderboard
+          - button "Test Generator" [ref=e156] [cursor=pointer]:
+            - img [ref=e158]
+            - text: Test Generator
+          - button "Marketing" [ref=e160] [cursor=pointer]:
+            - img [ref=e162]
+            - text: Marketing
+          - button "Feature Customization" [ref=e164] [cursor=pointer]:
+            - img [ref=e166]
+            - text: Feature Customization
+          - button "Fine-Tuning Monitor" [ref=e168] [cursor=pointer]:
+            - img [ref=e170]
+            - text: Fine-Tuning Monitor
+    - generic [ref=e173]:
+      - button "Adminstøtte" [ref=e174] [cursor=pointer]:
+        - img [ref=e176]
+        - text: Adminstøtte
+      - button "Logg ut" [ref=e178] [cursor=pointer]
+  - generic [ref=e179]:
+    - generic [ref=e180]:
+      - generic [ref=e181]:
+        - paragraph [ref=e182]: CreatorHub Admin > Workspace > Brukere & Roller
+        - paragraph [ref=e183]: Brukere & Roller
+        - paragraph [ref=e184]: Administrer brukere, roller og tilgangsnivåer for hele plattformen.
+      - generic [ref=e185]:
+        - generic [ref=e187]: Administrator
+        - generic [ref=e188]: C
+        - generic [ref=e189]:
+          - paragraph [ref=e190]: CreatorHub Admin
+          - paragraph [ref=e191]: academy-guest@creatorhubn.com
+    - generic [ref=e242]:
+      - generic [ref=e243]:
+        - heading "User management" [level=4] [ref=e244]
+        - paragraph [ref=e245]: Manage team members, approval flows and access control from one operational surface.
+        - generic [ref=e246]:
+          - generic [ref=e247]: FEATURES
+          - generic [ref=e249]: 0/12 aktive
+      - generic [ref=e251]:
+        - generic:
+          - img
+        - tablist [ref=e254]:
+          - tab "Brukere" [selected] [ref=e255] [cursor=pointer]:
+            - img [ref=e256]
+            - text: Brukere
+          - tab "Tilgangsforespørsler" [ref=e258] [cursor=pointer]:
+            - img [ref=e259]
+            - text: Tilgangsforespørsler
+          - tab "E-post Design" [ref=e261] [cursor=pointer]:
+            - img [ref=e262]
+            - text: E-post Design
+          - tab "Mapper Tilgang" [ref=e264] [cursor=pointer]:
+            - img [ref=e265]
+            - text: Mapper Tilgang
+          - tab "Academy" [ref=e267] [cursor=pointer]:
+            - img [ref=e268]
+            - text: Academy
+          - tab "Enterprise" [ref=e270] [cursor=pointer]:
+            - img [ref=e271]
+            - text: Enterprise
+        - img [ref=e274] [cursor=pointer]
+      - generic [ref=e276]:
+        - alert [ref=e277]:
+          - img [ref=e279]
+          - generic [ref=e281]: "500:"
+        - alert [ref=e282]:
+          - img [ref=e284]
+          - generic [ref=e286]: "500:"
+        - generic [ref=e287]:
+          - generic [ref=e289]:
+            - generic [ref=e290]:
+              - heading "All users 0" [level=6] [ref=e291]
+              - paragraph [ref=e292]: Search members, adjust access and continue approvals without leaving the table.
+            - generic [ref=e293]:
+              - generic [ref=e295]:
+                - img [ref=e297]
+                - textbox "Search" [ref=e299]
+                - group
+              - generic [ref=e300]:
+                - img
+                - generic [ref=e302]:
+                  - combobox [ref=e303] [cursor=pointer]: Filters
+                  - textbox
+                  - img
+                  - group
+              - button "Add user" [ref=e304] [cursor=pointer]:
+                - img [ref=e306]
+                - text: Add user
+          - table [ref=e309]:
+            - rowgroup [ref=e310]:
+              - row "User name Access Last active Date added Actions" [ref=e311]:
+                - columnheader [ref=e312]:
+                  - generic [ref=e313] [cursor=pointer]:
+                    - checkbox [ref=e314]
+                    - img [ref=e315]
+                - columnheader "User name" [ref=e317]
+                - columnheader "Access" [ref=e318]
+                - columnheader "Last active" [ref=e319]
+                - columnheader "Date added" [ref=e320]
+                - columnheader "Actions" [ref=e321]
+            - rowgroup [ref=e322]:
+              - row [ref=e323]:
+                - cell [ref=e324]:
+                  - alert [ref=e325]:
+                    - img [ref=e327]
+                    - generic [ref=e329]: Ingen brukere matcher søket eller filteret.

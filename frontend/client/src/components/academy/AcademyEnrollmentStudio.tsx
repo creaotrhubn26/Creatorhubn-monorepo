@@ -110,6 +110,7 @@ interface InviteRequestItem {
   status?: string | null;
   requestDate?: string | null;
   processedDate?: string | null;
+  processedBy?: string | null;
   selectedPlan?: string | null;
   planName?: string | null;
   planPrice?: number | null;
@@ -1169,6 +1170,9 @@ function AcademyEnrollmentStudio({
     onSuccess: async (_response, variables) => {
       await queryClient.invalidateQueries({
         queryKey: ["academy-enrollment-invite-requests"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["/api/admin/users"],
       });
       analytics.trackEvent("academy_enrollment_request_processed", {
         requestId: variables.requestId,

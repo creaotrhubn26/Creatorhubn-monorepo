@@ -619,6 +619,30 @@ interface GoogleMeetCreateResponse {
   scheduledAt?: string;
   calendarEventId?: string | null;
   webViewUrl?: string | null;
+  meetingNote?: {
+    meetingId?: string | null;
+    googleCalendarEventId?: string | null;
+  } | null;
+  notebookLmWorkspace?: {
+    id?: string;
+    title?: string;
+    workspaceDocumentUrl?: string | null;
+  } | null;
+  notebookLmStatus?: {
+    workspaceReady?: boolean;
+    syncEligible?: boolean;
+    reason?: string | null;
+  } | null;
+  meetingNotesContext?: {
+    projectId?: string | null;
+    clientId?: string | null;
+    profession?: string | null;
+    projectTitle?: string | null;
+    clientName?: string | null;
+    clientEmail?: string | null;
+    suggestedMeetingTitle?: string | null;
+    calendarEventId?: string | null;
+  } | null;
 }
 
 type ConversationMeetingAction = 'call' | 'video' | 'follow-up';
@@ -3170,12 +3194,44 @@ export default function UniversalChatWidget({
 
       if (action === 'follow-up') {
         showStatusToast(sharedBackToContext
-          ? 'Oppfølgingsmøte opprettet og delt tilbake i samtalen.'
-          : 'Oppfølgingsmøte opprettet.');
+          ? (
+            response.notebookLmStatus?.workspaceReady
+              ? (
+                response.meetingNote?.meetingId
+                  ? 'Oppfølgingsmøte opprettet, delt tilbake i samtalen og koblet til møtenotat + NotebookLM workspace.'
+                  : 'Oppfølgingsmøte opprettet, delt tilbake i samtalen og koblet til NotebookLM workspace.'
+              )
+              : 'Oppfølgingsmøte opprettet og delt tilbake i samtalen.'
+          )
+          : (
+            response.notebookLmStatus?.workspaceReady
+              ? (
+                response.meetingNote?.meetingId
+                  ? 'Oppfølgingsmøte opprettet og koblet til møtenotat + NotebookLM workspace.'
+                  : 'Oppfølgingsmøte opprettet og koblet til NotebookLM workspace.'
+              )
+              : 'Oppfølgingsmøte opprettet.'
+          ));
       } else {
         showStatusToast(sharedBackToContext
-          ? 'Google Meet opprettet, åpnet og delt tilbake i samtalen.'
-          : 'Google Meet opprettet og åpnes nå.');
+          ? (
+            response.notebookLmStatus?.workspaceReady
+              ? (
+                response.meetingNote?.meetingId
+                  ? 'Google Meet opprettet, delt tilbake i samtalen og koblet til møtenotat + NotebookLM.'
+                  : 'Google Meet opprettet, delt tilbake i samtalen og klargjort for NotebookLM.'
+              )
+              : 'Google Meet opprettet, åpnet og delt tilbake i samtalen.'
+          )
+          : (
+            response.notebookLmStatus?.workspaceReady
+              ? (
+                response.meetingNote?.meetingId
+                  ? 'Google Meet opprettet og møtenotat + NotebookLM workspace er klart.'
+                  : 'Google Meet opprettet og NotebookLM workspace er klart.'
+              )
+              : 'Google Meet opprettet og åpnes nå.'
+          ));
       }
     } catch (error) {
       if (pendingMeetWindow && !pendingMeetWindow.closed) {

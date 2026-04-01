@@ -1,18 +1,19 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
-import { isProfessionFeatureAvailable, getAllProfessionFeatures } from '../../../../shared/profession-feature-matrix';
+import { isProfessionFeatureAvailable } from '../../../../shared/profession-feature-matrix';
 import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { getProfessionIcon } from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import {
+  Autocomplete,
   Box,
   Card,
   CardContent,
@@ -42,12 +43,10 @@ import {
   Alert,
   Tabs,
   Tab,
-  Tooltip,
 } from '@mui/material';
 import {
   Search,
   ExpandMore,
-  Star,
   TrendingUp,
   OpenInNew,
   Close,
@@ -75,7 +74,6 @@ import {
   EquipmentMaintenanceIcon,
   EquipmentRentalIcon,
   MarketPricesIcon,
-  LensDatabaseIcon,
   SoftwareDatabaseIcon,
   EquipmentToolsIcon,
   EquipmentNewsIcon,
@@ -91,12 +89,6 @@ import {
   EnhancedMonetizationIcon as MonetizationOn,
   AttachMoneyIcon as AttachMoney,
   SpeedIcon as Schedule,
-  
-  // Additional equipment icons
-  LensIcon,
-  CameraGearIcon,
-  LightingIcon,
-  CameraSettingsIcon
 } from '../shared/CreatorHubIcons';
 import ComprehensiveGearDatabase from './ComprehensiveGearDatabase';
 import KeyboardShortcutsTools from '../tools/KeyboardShortcutsToolsNew';
@@ -110,6 +102,235 @@ interface EnhancedGearTabProps {
   selectedProject?: any;
   onProjectSelect?: (project: any) => void
 }
+
+interface InventoryFormState {
+  name: string;
+  brand: string;
+  model: string;
+  category: string;
+  status: string;
+  condition: string;
+  imageUrl: string;
+  notes: string;
+}
+
+interface InventoryEquipmentItem {
+  id: number | string;
+  name?: string | null;
+  brand: string;
+  model: string;
+  category?: string | null;
+  status?: string | null;
+  condition?: string | null;
+  currentValue?: number | null;
+  imageUrl?: string | null;
+  supplierUrl?: string | null;
+  purchaseVendor?: string | null;
+  catalogDescription?: string | null;
+  catalogSpecifications?: Record<string, unknown> | null;
+  imageSource?: string | null;
+  specifications?: Record<string, unknown> | null;
+  recommendedMemoryCards?: InventoryRecommendedMemoryCard[];
+}
+
+interface EquipmentCatalogItem {
+  id?: number | string;
+  brand: string;
+  model: string;
+  category?: string | null;
+  imageUrl?: string | null;
+}
+
+interface InventoryRecommendedMemoryCard {
+  id: string;
+  name: string;
+  fullName: string;
+  category: string;
+  commonCapacities: string[];
+  videoClass?: string;
+  uhsClass?: string;
+  description: string;
+  color: string;
+}
+
+interface InventoryFirmwareUpdate {
+  id: number | string;
+  deviceBrand: string;
+  deviceModel: string;
+  currentVersion: string;
+  latestVersion: string;
+  releaseDate: string;
+  priority: string;
+  description: string;
+  downloadUrl?: string;
+  status?: string;
+  urlKind?: 'direct-download' | 'model-support' | 'brand-portal';
+}
+
+const createEmptyInventoryForm = (): InventoryFormState => ({
+  name: '',
+  brand: '',
+  model: '',
+  category: '',
+  status: 'available',
+  condition: 'excellent',
+  imageUrl: '',
+  notes: '',
+});
+
+const normalizeInventoryCatalogToken = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+const inventoryCatalogCategoryMap: Record<string, string> = {
+  kamera: 'cameras',
+  kameraer: 'cameras',
+  camera: 'cameras',
+  cameras: 'cameras',
+  objektiv: 'lenses',
+  objektiver: 'lenses',
+  optics: 'lenses',
+  optikk: 'lenses',
+  lens: 'lenses',
+  lenses: 'lenses',
+  blits: 'flash',
+  flash: 'flash',
+  light: 'flash',
+  lighting: 'flash',
+  lys: 'flash',
+  belysning: 'flash',
+  lyd: 'audio',
+  audio: 'audio',
+  sound: 'audio',
+  interface: 'audio',
+  monitorer: 'audio',
+  mikrofoner: 'audio',
+  video: 'video',
+  cinema: 'video',
+  stativ: 'accessories',
+  stativer: 'accessories',
+  tripod: 'accessories',
+  tripods: 'accessories',
+  rigg: 'accessories',
+  tilbehor: 'accessories',
+  accessories: 'accessories',
+  accessory: 'accessories',
+  support: 'accessories',
+  software: 'software',
+  programvare: 'software',
+  daw: 'software',
+  plugins: 'software',
+  plugin: 'software',
+};
+
+const normalizeInventoryCatalogCategory = (value: string): string =>
+  inventoryCatalogCategoryMap[normalizeInventoryCatalogToken(value)] || '';
+
+const makeInventoryDeviceLookupKey = (brand: string, model: string): string =>
+  `${normalizeInventoryCatalogToken(brand)}::${normalizeInventoryCatalogToken(model)}`;
+
+const uniqueSortedInventoryValues = (values: Array<string | null | undefined>): string[] =>
+  Array.from(
+    new Set(
+      values.filter(
+        (value): value is string => typeof value === 'string' && value.trim().length > 0,
+      ),
+    ),
+  ).sort((left, right) => left.localeCompare(right, 'nb'));
+
+type InventorySpecificationHighlight = {
+  label: string;
+  value: string;
+};
+
+const formatInventorySpecificationValue = (value: unknown): string | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Ja' : 'Nei';
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  return null;
+};
+
+const getInventorySpecificationHighlights = (
+  item: InventoryEquipmentItem,
+): InventorySpecificationHighlight[] => {
+  const catalogSpecifications = item.catalogSpecifications || {};
+  const fallbackSpecifications = item.specifications || {};
+  const specificationSource = {
+    ...catalogSpecifications,
+    ...fallbackSpecifications,
+  } as Record<string, unknown>;
+  const normalizedCategory = normalizeInventoryCatalogCategory(item.category || '');
+
+  const cameraKeys: Array<{ key: string; label: string; transform?: (value: string) => string }> = [
+    { key: 'sensorSize', label: 'Sensor' },
+    { key: 'megapixels', label: 'MP', transform: (value) => `${value} MP` },
+    { key: 'mount', label: 'Fatning' },
+    { key: 'videoResolution', label: 'Video' },
+    { key: 'videoFrameRates', label: 'FPS' },
+  ];
+
+  const lensKeys: Array<{ key: string; label: string }> = [
+    { key: 'focalLength', label: 'Brennvidde' },
+    { key: 'maxAperture', label: 'Lysstyrke' },
+    { key: 'mount', label: 'Fatning' },
+  ];
+
+  const audioKeys: Array<{ key: string; label: string }> = [
+    { key: 'channels', label: 'Kanaler' },
+    { key: 'rangeMeters', label: 'Rekkevidde' },
+    { key: 'batteryHours', label: 'Batteri' },
+  ];
+
+  const prioritizedKeys =
+    normalizedCategory === 'cameras' || normalizedCategory === 'video'
+      ? cameraKeys
+      : normalizedCategory === 'lenses'
+        ? lensKeys
+        : normalizedCategory === 'audio'
+          ? audioKeys
+          : [];
+
+  const highlights = prioritizedKeys
+    .map((entry) => {
+      const formatted = formatInventorySpecificationValue(specificationSource[entry.key]);
+      if (!formatted) return null;
+      return {
+        label: entry.label,
+        value: entry.transform ? entry.transform(formatted) : formatted,
+      };
+    })
+    .filter((entry): entry is InventorySpecificationHighlight => Boolean(entry));
+
+  if (highlights.length > 0) {
+    return highlights.slice(0, 4);
+  }
+
+  return Object.entries(specificationSource)
+    .filter(([key]) => !['notes', 'supportedMemoryCardTypes', 'supportedMemoryCardLabels'].includes(key))
+    .map(([key, value]) => {
+      const formatted = formatInventorySpecificationValue(value);
+      if (!formatted) return null;
+
+      return {
+        label: key,
+        value: formatted,
+      };
+    })
+    .filter((entry): entry is InventorySpecificationHighlight => Boolean(entry))
+    .slice(0, 3);
+};
 
 export function EnhancedGearTab({ 
   profession, 
@@ -141,10 +362,13 @@ export function EnhancedGearTab({
   const [currentTab, setCurrentTab] = useState(0);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
   const [firmwareSyncing, setFirmwareSyncing] = useState(false);
+  const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
+  const [inventoryForm, setInventoryForm] = useState<InventoryFormState>(() => createEmptyInventoryForm());
 
   // Get current user ID before any hooks depend on it
   const { user } = useAuth();
   const userId = user?.id || 'guest';
+  const queryClient = useQueryClient();
   
   // Push notifications
   const { pushEnabled, isSupported } = usePushNotifications(userId);
@@ -167,13 +391,7 @@ export function EnhancedGearTab({
     features.checkFeatureAccess('keyboard-shortcuts').hasAccess,
     [profession, features]
   );
-  
-  // Get all available features for this profession
-  const availableFeatures = useMemo(() => 
-    getAllProfessionFeatures(profession).filter((feature) => features.checkFeatureAccess(feature).hasAccess),
-    [profession, features]
-  );
-  
+
   // Equipment subtabs configuration - EXTENDED WITH ALL DATABASE FEATURES
   // Using custom equipment-specific icons for better visual clarity
   const equipmentTabs = useMemo(
@@ -183,7 +401,6 @@ export function EnhancedGearTab({
       { id: 'maintenance', label: 'Vedlikehold', icon: EquipmentMaintenanceIcon },
       { id: 'rentals', label: 'Utleie', icon: EquipmentRentalIcon },
       { id: 'market', label: 'Markedspriser', icon: MarketPricesIcon },
-      { id: 'lenses', label: 'Objektiver', icon: LensDatabaseIcon },
       { id: 'software', label: 'Programvare', icon: SoftwareDatabaseIcon },
       { id: 'tools', label: 'Verktøy', icon: EquipmentToolsIcon },
       { id: 'news', label: 'Nyheter', icon: EquipmentNewsIcon }
@@ -193,16 +410,8 @@ export function EnhancedGearTab({
 
   const dynamicProfessionConfig = professionConfigs[profession];
   const professionDashboardTitle = professionAdapter.adaptDashboardTitle();
-  const professionProjectTypes = professionAdapter.getProjectTypes();
-  const professionHourlyRate = professionAdapter.getDefaultHourlyRate();
-  const professionKeywords = professionAdapter.getProfessionSpecificKeywords().slice(0, 3);
-  const professionTips = professionAdapter.getProfessionSEOTips().slice(0, 2);
   const adaptedTabLabels = professionAdapter.adaptTabLabels();
   const projectLabel = selectedProject?.name || selectedProject?.title || null;
-  const featureSummary = useMemo(
-    () => `${availableFeatures.length} funksjoner aktive`,
-    [availableFeatures.length]
-  );
   const visibleEquipmentTabs = useMemo(
     () =>
       equipmentTabs.filter((tab) => {
@@ -402,6 +611,268 @@ export function EnhancedGearTab({
     enabled: !!userId && userId !== 'guest'
   });
 
+  const {
+    data: inventoryFirmwareUpdates = [],
+    isLoading: inventoryFirmwareLoading,
+    refetch: refetchInventoryFirmwareUpdates,
+  } = useQuery({
+    queryKey: ['/api/equipment/firmware-updates', userId, profession],
+    queryFn: async (): Promise<InventoryFirmwareUpdate[]> =>
+      apiRequest(`/api/equipment/firmware-updates/${userId}?profession=${profession}`),
+    enabled: !!userId && userId !== 'guest',
+    staleTime: 15 * 60 * 1000,
+  });
+
+  const config = getProfessionConfig(profession);
+
+  const inventoryCategoryOptions = useMemo(
+    () => [...new Set(config.categories.filter((category) => category.trim().length > 0))],
+    [config.categories]
+  );
+
+  const normalizedInventoryCatalogCategoryValue = useMemo(
+    () => normalizeInventoryCatalogCategory(inventoryForm.category),
+    [inventoryForm.category]
+  );
+
+  const normalizedInventoryBrandInput = inventoryForm.brand.trim();
+  const normalizedInventoryModelInput = inventoryForm.model.trim();
+
+  const { data: equipmentBrandCatalog = [] } = useQuery({
+    queryKey: ['/api/equipment/brands'],
+    queryFn: async (): Promise<string[]> => {
+      const response = await apiRequest('/api/equipment/brands');
+      return Array.isArray(response?.data) ? response.data : [];
+    },
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const hasExactInventoryBrandMatch = useMemo(
+    () =>
+      equipmentBrandCatalog.some(
+        (brand) =>
+          normalizeInventoryCatalogToken(brand) ===
+          normalizeInventoryCatalogToken(normalizedInventoryBrandInput),
+      ),
+    [equipmentBrandCatalog, normalizedInventoryBrandInput]
+  );
+
+  const { data: inventoryCatalogMatches = [], isFetching: inventoryCatalogMatchesLoading } = useQuery({
+    queryKey: [
+      '/api/equipment/search',
+      'inventory-dialog',
+      normalizedInventoryCatalogCategoryValue,
+      normalizedInventoryBrandInput,
+      normalizedInventoryModelInput,
+    ],
+    queryFn: async (): Promise<EquipmentCatalogItem[]> => {
+      const searchParams = new URLSearchParams({
+        limit: normalizedInventoryModelInput ? '60' : '140',
+      });
+
+      if (normalizedInventoryCatalogCategoryValue) {
+        searchParams.set('category', normalizedInventoryCatalogCategoryValue);
+      }
+
+      const searchTerms = [normalizedInventoryBrandInput, normalizedInventoryModelInput]
+        .filter((value) => value.length > 0)
+        .join(' ');
+
+      if (hasExactInventoryBrandMatch && !normalizedInventoryModelInput) {
+        searchParams.set('brand', normalizedInventoryBrandInput);
+      } else if (searchTerms.length > 0) {
+        searchParams.set('q', searchTerms);
+      }
+
+      const response = await apiRequest(`/api/equipment/search?${searchParams.toString()}`);
+
+      if (Array.isArray(response?.data)) {
+        return response.data as EquipmentCatalogItem[];
+      }
+
+      if (Array.isArray(response?.results)) {
+        return response.results as EquipmentCatalogItem[];
+      }
+
+      return [];
+    },
+    enabled:
+      addEquipmentOpen &&
+      (
+        normalizedInventoryCatalogCategoryValue.length > 0 ||
+        normalizedInventoryBrandInput.length > 0 ||
+        normalizedInventoryModelInput.length > 0
+      ),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const inventoryBrandOptions = useMemo(() => {
+    const categoryScopedBrands =
+      normalizedInventoryCatalogCategoryValue.length > 0
+        ? uniqueSortedInventoryValues(inventoryCatalogMatches.map((item) => item.brand))
+        : [];
+    const sourceBrands = categoryScopedBrands.length > 0 ? categoryScopedBrands : equipmentBrandCatalog;
+
+    if (!normalizedInventoryBrandInput) {
+      return sourceBrands;
+    }
+
+    const normalizedTerm = normalizeInventoryCatalogToken(normalizedInventoryBrandInput);
+    return sourceBrands.filter((brand) =>
+      normalizeInventoryCatalogToken(brand).includes(normalizedTerm),
+    );
+  }, [
+    equipmentBrandCatalog,
+    inventoryCatalogMatches,
+    normalizedInventoryBrandInput,
+    normalizedInventoryCatalogCategoryValue,
+  ]);
+
+  const inventoryModelOptions = useMemo(() => {
+    const scopedItems =
+      normalizedInventoryBrandInput.length > 0
+        ? inventoryCatalogMatches.filter((item) =>
+            normalizeInventoryCatalogToken(item.brand).includes(
+              normalizeInventoryCatalogToken(normalizedInventoryBrandInput),
+            ),
+          )
+        : inventoryCatalogMatches;
+
+    const allModels = uniqueSortedInventoryValues(scopedItems.map((item) => item.model));
+    if (!normalizedInventoryModelInput) {
+      return allModels;
+    }
+
+    const normalizedTerm = normalizeInventoryCatalogToken(normalizedInventoryModelInput);
+    return allModels.filter((model) =>
+      normalizeInventoryCatalogToken(model).includes(normalizedTerm),
+    );
+  }, [inventoryCatalogMatches, normalizedInventoryBrandInput, normalizedInventoryModelInput]);
+
+  const selectedInventoryCatalogMatch = useMemo(
+    () =>
+      inventoryCatalogMatches.find(
+        (item) =>
+          normalizeInventoryCatalogToken(item.brand) ===
+            normalizeInventoryCatalogToken(normalizedInventoryBrandInput) &&
+          normalizeInventoryCatalogToken(item.model) ===
+            normalizeInventoryCatalogToken(normalizedInventoryModelInput),
+      ) || null,
+    [inventoryCatalogMatches, normalizedInventoryBrandInput, normalizedInventoryModelInput]
+  );
+
+  const inventoryFirmwareUpdateMap = useMemo(() => {
+    const updates = Array.isArray(inventoryFirmwareUpdates) ? inventoryFirmwareUpdates : [];
+    return new Map(
+      updates.map((update) => [
+        makeInventoryDeviceLookupKey(update.deviceBrand, update.deviceModel),
+        update,
+      ]),
+    );
+  }, [inventoryFirmwareUpdates]);
+
+  const inventoryStatusOptions = useMemo(
+    () => [
+      { value: 'available', label: 'Tilgjengelig' },
+      { value: 'in_use', label: 'I bruk' },
+      { value: 'maintenance', label: 'Ved service' },
+      { value: 'rented', label: 'Utleid' },
+    ],
+    []
+  );
+
+  const inventoryConditionOptions = useMemo(
+    () => [
+      { value: 'excellent', label: 'Utmerket' },
+      { value: 'good', label: 'God' },
+      { value: 'fair', label: 'Grei' },
+      { value: 'poor', label: 'Slitt' },
+    ],
+    []
+  );
+
+  const updateInventoryField = useCallback(
+    <K extends keyof InventoryFormState>(field: K, value: InventoryFormState[K]) => {
+      setInventoryForm((previous) => ({
+        ...previous,
+        [field]: value,
+      }));
+    },
+    []
+  );
+
+  const resetInventoryForm = useCallback(() => {
+    setInventoryForm({
+      ...createEmptyInventoryForm(),
+      category: inventoryCategoryOptions[0] || '',
+    });
+  }, [inventoryCategoryOptions]);
+
+  const openAddEquipmentDialog = useCallback(() => {
+    if (userId === 'guest') {
+      addToast({
+        message: 'Logg inn for å registrere utstyr i inventaret ditt.',
+        type: 'warning',
+        duration: 4000,
+      });
+      return;
+    }
+
+    resetInventoryForm();
+    setAddEquipmentOpen(true);
+  }, [addToast, resetInventoryForm, userId]);
+
+  const addInventoryMutation = useMutation({
+    mutationFn: async (payload: InventoryFormState) => {
+      const brand = payload.brand.trim();
+      const model = payload.model.trim();
+      const name = payload.name.trim() || `${brand} ${model}`.trim();
+
+      return apiRequest('/api/equipment/inventory', {
+        method: 'POST',
+        body: {
+          userId,
+          profession,
+          name,
+          brand,
+          model,
+          category: payload.category || inventoryCategoryOptions[0] || null,
+          imageUrl: payload.imageUrl.trim() || null,
+          status: payload.status,
+          condition: payload.condition,
+          specifications: payload.notes.trim().length > 0 ? { notes: payload.notes.trim() } : {},
+        },
+      });
+    },
+    onSuccess: (createdItem) => {
+      const equipmentName =
+        typeof createdItem?.name === 'string' && createdItem.name.trim().length > 0
+          ? createdItem.name.trim()
+          : `${inventoryForm.brand} ${inventoryForm.model}`.trim();
+
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment/inventory', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment/images', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment/firmware-updates', userId, profession] });
+
+      handleEquipmentFlow(equipmentName, 'create', {
+        equipmentId: createdItem?.id ?? null,
+        origin: 'inventory-dialog-submit',
+        category: inventoryForm.category,
+      });
+      showEquipmentToast('added', equipmentName);
+      setAddEquipmentOpen(false);
+      resetInventoryForm();
+    },
+    onError: (error) => {
+      const errorMessage = error instanceof Error ? error.message : 'Ukjent feil';
+      addToast({
+        message: `Kunne ikke lagre utstyret akkurat nå: ${errorMessage}`,
+        type: 'error',
+        duration: 4500,
+      });
+    },
+  });
+
   const syncFirmwareNow = useCallback(async () => {
     const endTiming = performance.startTiming('gear_firmware_sync_manual');
     setFirmwareSyncing(true);
@@ -415,7 +886,7 @@ export function EnhancedGearTab({
         },
       });
 
-      await refetchFirmwareData();
+      await Promise.all([refetchFirmwareData(), refetchInventoryFirmwareUpdates()]);
 
       const updatesCount =
         typeof response?.updatesCount === 'number'
@@ -457,7 +928,7 @@ export function EnhancedGearTab({
       setFirmwareSyncing(false);
       endTiming();
     }
-  }, [addToast, analytics, features, firmwareData?.updatesAvailable, navigateToTab, performance, profession, refetchFirmwareData, userId]);
+  }, [addToast, analytics, features, firmwareData?.updatesAvailable, navigateToTab, performance, profession, refetchFirmwareData, refetchInventoryFirmwareUpdates, userId]);
 
   // ============================================================================
   // TOAST NOTIFICATION HELPERS - CreatorHub Brand Kit Aligned
@@ -661,7 +1132,7 @@ export function EnhancedGearTab({
   }, [addToast]);
 
   // Get profession-specific configuration
-  const getProfessionConfig = (profession: string) => {
+  function getProfessionConfig(profession: string) {
     switch (profession) {
       case 'photographer':
         return {
@@ -713,16 +1184,51 @@ export function EnhancedGearTab({
           description: 'Profesjonelt utstyr for leverandører og eventselskaper'
         };
     }
-  };
-
-  const config = getProfessionConfig(profession);
+  }
   const professionDisplayIcon = useMemo(
     () => React.cloneElement(getProfessionIcon(dynamicProfessionConfig?.displayName || profession), {
       sx: { fontSize: 20, color: config.color }
     }),
     [config.color, dynamicProfessionConfig?.displayName, profession]
   );
-  const actualGearNews = gearNews?.success ? gearNews.data : [];
+  const actualGearNews = Array.isArray(gearNews)
+    ? gearNews
+    : Array.isArray(gearNewsResponse?.data)
+      ? gearNewsResponse.data
+      : [];
+  const workspaceChromeSx = {
+    '& .MuiCard-root': {
+      border: '1px solid rgba(15, 23, 42, 0.08)',
+      borderRadius: { xs: 3, md: 4 },
+      background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))',
+      boxShadow: '0 18px 48px rgba(15, 23, 42, 0.07)',
+      backdropFilter: 'blur(14px)',
+    },
+    '& .MuiAccordion-root': {
+      border: '1px solid rgba(15, 23, 42, 0.08)',
+      borderRadius: { xs: 3, md: 4 },
+      overflow: 'hidden',
+      background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))',
+      boxShadow: '0 18px 48px rgba(15, 23, 42, 0.07)',
+      '&:before': {
+        display: 'none',
+      },
+    },
+    '& .MuiAlert-root': {
+      borderRadius: 3,
+      border: '1px solid rgba(148, 163, 184, 0.24)',
+    },
+    '& .MuiChip-root': {
+      borderRadius: 999,
+    },
+  } as const;
+  const workspaceDialogPaperSx = {
+    borderRadius: { xs: 3, md: 4 },
+    border: '1px solid rgba(15, 23, 42, 0.08)',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.99), rgba(248,250,252,0.95))',
+    boxShadow: '0 30px 90px rgba(15, 23, 42, 0.18)',
+    overflow: 'hidden',
+  } as const;
 
   // Tools functionality
   const renderToolsTab = () => {
@@ -730,33 +1236,6 @@ export function EnhancedGearTab({
     const latestSoftwareUpdates = Array.isArray(softwareUpdates)
       ? softwareUpdates.filter((update: any) => update.isLatest).length
       : 0;
-    const toolHealthCards = [
-      {
-        label: 'Aktive verktøy',
-        value: `${toolsAccess ? 4 : 3}`,
-        description: 'operativt i arbeidsflaten',
-        accent: config.color,
-      },
-      {
-        label: 'Push-status',
-        value: pushEnabled ? 'På' : 'Av',
-        description: isSupported ? 'kan styres herfra' : 'ikke støttet på denne enheten',
-        accent: pushEnabled ? '#059669' : '#64748b',
-      },
-      {
-        label: 'Bildesynk',
-        value: `${equipmentImages.length}`,
-        description: imagesLoading ? 'oppdaterer inventarbilder' : 'bilder koblet til utstyr',
-        accent: '#0f766e',
-      },
-      {
-        label: 'Oppdateringer',
-        value: `${firmwareUpdatesCount + latestSoftwareUpdates}`,
-        description: 'firmware + programvare klare for review',
-        accent: '#7c3aed',
-      },
-    ];
-
     const toolModules = [
       {
         id: 'worklog',
@@ -773,23 +1252,6 @@ export function EnhancedGearTab({
         primaryAction: {
           label: 'Åpne shortcuts',
           onClick: focusShortcutWorkspace,
-        },
-      },
-      {
-        id: 'memory',
-        title: 'Minneskort & Recovery',
-        status: 'Klar',
-        icon: <Memory sx={{ fontSize: 24 }} />,
-        accent: '#ea580c',
-        description: 'Tilbehørsdatabasen brukes som operativ inngang for minnekort, backup-medier og recovery-relatert utstyr.',
-        bullets: [
-          'Åpner databasen direkte filtrert mot tilbehør og minnekort.',
-          'Passer for både feltbackup, redundans og filgjenoppretting.',
-        ],
-        meta: '5-nivå recovery · feltbackup · redundans',
-        primaryAction: {
-          label: 'Åpne tilbehørsdatabase',
-          onClick: openAccessoryToolkit,
         },
       },
       {
@@ -901,36 +1363,8 @@ export function EnhancedGearTab({
           </Grid>
         </Paper>
 
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          {toolHealthCards.map((card) => (
-            <Grid item xs={6} md={3} key={card.label}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 2,
-                  borderRadius: 3,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  background: `linear-gradient(180deg, ${card.accent}12, rgba(255,255,255,0.95))`,
-                  minHeight: 124,
-                }}
-              >
-                <Typography variant="overline" sx={{ letterSpacing: '0.08em', color: 'text.secondary' }}>
-                  {card.label}
-                </Typography>
-                <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 800, color: theming.colors.primary }}>
-                  {card.value}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  {card.description}
-                </Typography>
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
-
         <Grid container spacing={3}>
-          <Grid item xs={12} xl={8}>
+          <Grid item xs={12}>
             <Grid container spacing={2.5}>
               {toolModules.map((module) => (
                 <Grid item xs={12} md={6} key={module.id}>
@@ -1039,99 +1473,6 @@ export function EnhancedGearTab({
                 </Grid>
               ))}
             </Grid>
-          </Grid>
-
-          <Grid item xs={12} xl={4}>
-            <Stack spacing={2.5}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 2.5,
-                  borderRadius: 4,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  background: 'linear-gradient(180deg, rgba(15,23,42,0.96), rgba(30,41,59,0.96))',
-                  color: 'white',
-                }}
-              >
-                <Typography variant="overline" sx={{ letterSpacing: '0.12em', color: 'rgba(255,255,255,0.72)' }}>
-                  Operativ status
-                </Typography>
-                <Typography variant="h6" sx={{ mt: 0.75, mb: 2, fontWeight: 700 }}>
-                  Gear-verktøyene er koblet til samme arbeidskontekst
-                </Typography>
-                <Stack spacing={1.5}>
-                  <Box>
-                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.76)' }}>
-                      Aktiv profesjon
-                    </Typography>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      {getProfessionDisplayName(profession)}
-                    </Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.76)' }}>
-                      Prosjektkontekst
-                    </Typography>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      {projectLabel || 'Ingen prosjekt valgt'}
-                    </Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.76)' }}>
-                      Neste anbefalte steg
-                    </Typography>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      {firmwareUpdatesCount > 0 ? 'Gå gjennom firmwarefunn' : 'Oppdater tilbehør og bilder'}
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Paper>
-
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 2.5,
-                  borderRadius: 4,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  backgroundColor: 'rgba(255,255,255,0.92)',
-                }}
-              >
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: theming.colors.primary }}>
-                  Anbefalt flyt
-                </Typography>
-                <Stack spacing={1.5}>
-                  {[
-                    'Start med tilbehørsdatabasen når du trenger kort, backup-medier eller recovery-utstyr.',
-                    'Synk firmware manuelt før viktige opptak når du vil bekrefte at alt er oppdatert.',
-                    'Bruk push-varsler for å samle vedlikehold, firmware og gear-hendelser i ett varslingsspor.',
-                  ].map((item, index) => (
-                    <Stack key={item} direction="row" spacing={1.25} alignItems="flex-start">
-                      <Box
-                        sx={{
-                          minWidth: 24,
-                          height: 24,
-                          borderRadius: '999px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          bgcolor: `${config.color}18`,
-                          color: config.color,
-                          fontWeight: 800,
-                          fontSize: '0.75rem',
-                        }}
-                      >
-                        {index + 1}
-                      </Box>
-                      <Typography variant="body2" color="text.secondary">
-                        {item}
-                      </Typography>
-                    </Stack>
-                  ))}
-                </Stack>
-              </Paper>
-            </Stack>
           </Grid>
 
           <Grid item xs={12}>
@@ -1639,17 +1980,16 @@ export function EnhancedGearTab({
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {imagesLoading
               ? 'Synkroniserer utstyrsbilder fra databasen...'
-              : `${equipmentImages.length} bilder er knyttet til inventaret ditt`}
+              : inventoryFirmwareLoading
+                ? 'Sjekker firmware-status for registrert utstyr...'
+                : `${equipmentImages.length} bilder og ${inventoryFirmwareUpdates.length} firmwaretreff er knyttet til inventaret ditt`}
           </Typography>
         </Box>
         <Button 
           variant="contained" 
           startIcon={<Camera />} 
           sx={{ bgcolor: config.color }}
-          onClick={() => {
-            handleEquipmentFlow('Canon EOS R5', 'create', { origin: 'inventory-header-cta' });
-            showEquipmentToast('added', 'Canon EOS R5');
-          }}
+          onClick={openAddEquipmentDialog}
         >
           Legg til utstyr
         </Button>
@@ -1672,18 +2012,37 @@ export function EnhancedGearTab({
             variant="contained" 
             startIcon={<Camera />} 
             sx={{ bgcolor: config.color }}
-            onClick={() => {
-              handleEquipmentFlow('Nytt utstyr', 'create', { origin: 'inventory-empty-state' });
-              showEquipmentToast('added', 'Nytt utstyr');
-            }}
+            onClick={openAddEquipmentDialog}
           >
             Registrer første utstyr
           </Button>
         </Card>
       ) : (
         <Grid container spacing={2}>
-          {userEquipment.map((item: any) => (
+          {userEquipment.map((item: InventoryEquipmentItem) => (
             <Grid item xs={12} sm={6} md={4} key={item.id}>
+              {(() => {
+                const specificationHighlights = getInventorySpecificationHighlights(item);
+                const specificationSectionTitle =
+                  ['cameras', 'video'].includes(normalizeInventoryCatalogCategory(item.category || ''))
+                    ? 'Kameraspesifikasjoner:'
+                    : 'Spesifikasjoner:';
+                const firmwareUpdate =
+                  inventoryFirmwareUpdateMap.get(
+                    makeInventoryDeviceLookupKey(item.brand, item.model),
+                  ) || null;
+                const firmwareReleaseDate =
+                  firmwareUpdate?.releaseDate
+                    ? new Date(firmwareUpdate.releaseDate).toLocaleDateString('no-NO')
+                    : null;
+                const firmwareLinkLabel =
+                  firmwareUpdate?.urlKind === 'direct-download'
+                    ? 'Last ned'
+                    : firmwareUpdate?.urlKind === 'brand-portal'
+                      ? 'Åpne produsentside'
+                      : 'Åpne firmware-side';
+
+                return (
               <Card sx={{ 
                 height: '100%',
                 cursor: 'pointer',
@@ -1712,6 +2071,15 @@ export function EnhancedGearTab({
                         {item.brand} {item.model}
                       </Typography>
                     </Box>
+                    {firmwareUpdate && (
+                      <Chip
+                        label="Firmware"
+                        size="small"
+                        color="warning"
+                        icon={<Update />}
+                        sx={{ ml: 1, fontWeight: 700 }}
+                      />
+                    )}
                   </Box>
                   
                   <Divider sx={{ my: 2 }} />
@@ -1742,8 +2110,225 @@ export function EnhancedGearTab({
                       </Box>
                     )}
                   </Stack>
+
+                  {(item.catalogDescription || specificationHighlights.length > 0) && (
+                    <>
+                      <Divider sx={{ my: 2 }} />
+                      <Stack spacing={1}>
+                        {item.catalogDescription && (
+                          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
+                            {item.catalogDescription}
+                          </Typography>
+                        )}
+                        {specificationHighlights.length > 0 && (
+                          <Stack spacing={0.9}>
+                            <Typography variant="caption" color="text.secondary">
+                              {specificationSectionTitle}
+                            </Typography>
+                            <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                              {specificationHighlights.map((specification) => (
+                                <Chip
+                                  key={`${item.id}-${specification.label}`}
+                                  size="small"
+                                  label={`${specification.label}: ${specification.value}`}
+                                  variant="outlined"
+                                  sx={{
+                                    borderColor: 'rgba(15, 23, 42, 0.12)',
+                                    color: theming.colors.primary,
+                                    backgroundColor: 'rgba(255,255,255,0.8)',
+                                  }}
+                                />
+                              ))}
+                            </Stack>
+                          </Stack>
+                        )}
+                      </Stack>
+                    </>
+                  )}
+
+                  {firmwareUpdate && (
+                    <>
+                      <Divider sx={{ my: 2 }} />
+                      <Stack spacing={1}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Firmwareoppdatering:
+                          </Typography>
+                          <Chip
+                            label={firmwareUpdate.priority === 'critical' ? 'Kritisk' : 'Tilgjengelig'}
+                            size="small"
+                            color={firmwareUpdate.priority === 'critical' ? 'error' : 'warning'}
+                            variant={firmwareUpdate.priority === 'critical' ? 'filled' : 'outlined'}
+                          />
+                        </Box>
+                        <Typography variant="body2" sx={{ color: theming.colors.primary, fontWeight: 600, lineHeight: 1.5 }}>
+                          {firmwareUpdate.description || `Ny firmware er tilgjengelig for ${item.brand} ${item.model}.`}
+                        </Typography>
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={`Nå: ${firmwareUpdate.currentVersion || 'Ukjent'}`}
+                          />
+                          <Chip
+                            size="small"
+                            sx={{ backgroundColor: `${config.color}12`, color: config.color }}
+                            label={`Ny: ${firmwareUpdate.latestVersion}`}
+                          />
+                          {firmwareReleaseDate && (
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={`Sluppet: ${firmwareReleaseDate}`}
+                            />
+                          )}
+                        </Stack>
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              navigateToTab('news');
+                              setExpandedAccordion('firmware');
+                              showFirmwareToast(
+                                firmwareUpdate.priority === 'critical' ? 'critical' : 'available',
+                                `${item.brand} ${item.model}`,
+                                firmwareUpdate.latestVersion,
+                              );
+                            }}
+                            sx={{
+                              color: config.color,
+                              borderColor: `${config.color}55`,
+                              '&:hover': {
+                                borderColor: config.color,
+                                backgroundColor: `${config.color}10`,
+                              },
+                            }}
+                          >
+                            Åpne firmware
+                          </Button>
+                          {firmwareUpdate.downloadUrl && (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              href={firmwareUpdate.downloadUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                showFirmwareToast('downloaded', `${item.brand} ${item.model}`);
+                              }}
+                              sx={{ backgroundColor: config.color }}
+                            >
+                              {firmwareLinkLabel}
+                            </Button>
+                          )}
+                        </Stack>
+                      </Stack>
+                    </>
+                  )}
+
+                  {(item.supplierUrl || item.recommendedMemoryCards?.length) && (
+                    <>
+                      <Divider sx={{ my: 2 }} />
+                      <Stack spacing={1.2}>
+                        {item.supplierUrl && (
+                          <Stack spacing={0.6}>
+                            <Typography variant="caption" color="text.secondary">
+                              Kjøpslenke:
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              href={item.supplierUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              startIcon={<OpenInNew />}
+                              onClick={(event) => event.stopPropagation()}
+                              sx={{
+                                alignSelf: 'flex-start',
+                                color: config.color,
+                                borderColor: `${config.color}55`,
+                                '&:hover': {
+                                  borderColor: config.color,
+                                  backgroundColor: `${config.color}10`,
+                                },
+                              }}
+                            >
+                              {item.purchaseVendor === 'Foto.no' ? 'Kjøp hos Foto.no' : 'Åpne produktside'}
+                            </Button>
+                          </Stack>
+                        )}
+
+                        {Array.isArray(item.recommendedMemoryCards) && item.recommendedMemoryCards.length > 0 && (
+                          <Stack spacing={0.9}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Støttede minnekort:
+                              </Typography>
+                              <Button
+                                size="small"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openAccessoryToolkit();
+                                }}
+                                sx={{ minWidth: 0, px: 0, color: config.color, fontWeight: 700 }}
+                              >
+                                Åpne kortguide
+                              </Button>
+                            </Box>
+                            <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                              {item.recommendedMemoryCards.slice(0, 2).map((card) => (
+                                <Chip
+                                  key={card.id}
+                                  label={card.fullName}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{
+                                    borderColor: `${config.color}35`,
+                                    color: theming.colors.primary,
+                                    maxWidth: '100%',
+                                  }}
+                                />
+                              ))}
+                              {item.recommendedMemoryCards.length > 2 && (
+                                <Chip
+                                  label={`+${item.recommendedMemoryCards.length - 2} flere`}
+                                  size="small"
+                                  sx={{ backgroundColor: `${config.color}12`, color: config.color }}
+                                />
+                              )}
+                            </Stack>
+                            {Array.from(
+                              new Set(
+                                item.recommendedMemoryCards
+                                  .flatMap((card) => card.commonCapacities)
+                                  .filter((capacity) => capacity.trim().length > 0),
+                              ),
+                            ).length > 0 && (
+                              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.5 }}>
+                                Vanlige kapasiteter:{' '}
+                                {Array.from(
+                                  new Set(
+                                    item.recommendedMemoryCards
+                                      .flatMap((card) => card.commonCapacities)
+                                      .filter((capacity) => capacity.trim().length > 0),
+                                  ),
+                                )
+                                  .slice(0, 4)
+                                  .join(', ')}
+                              </Typography>
+                            )}
+                          </Stack>
+                        )}
+                      </Stack>
+                    </>
+                  )}
                 </CardContent>
               </Card>
+                );
+              })()}
             </Grid>
           ))}
         </Grid>
@@ -2451,150 +3036,159 @@ export function EnhancedGearTab({
 );
 
   return (
-    <Box className={className} sx={{ maxWidth: '100%', mx: 'auto' }}>
+    <Box className={className} sx={{ maxWidth: '100%', mx: 'auto', ...workspaceChromeSx }}>
       {/* Enhanced Header */}
-      <Paper elevation={3} sx={{ 
-        mb: 4, 
-        p: 4, 
-        background: `linear-gradient(135deg, ${config.color}15 0%, ${config.color}05 100%)`,
-        borderRadius: 3,
-        border: `2px solid ${config.color}30`,
-        ...theming.getThemedCardSx()
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {React.cloneElement(config.icon, { 
-              sx: { fontSize: 48, color: config.color, mr: 3 }
-            })}
-            <Box>
-              <Typography variant="h4" sx={{ 
-                fontWeight: 700,
-                mb: 1,
-                color: theming.colors.primary
-              }}>
-                {config.title}
-              </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
-                {dynamicProfessionConfig?.displayName || getProfessionDisplayName(profession)} · {professionDashboardTitle}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {config.description}
-              </Typography>
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 4,
+          p: { xs: 2.5, md: 3.5 },
+          borderRadius: { xs: 4, md: 5 },
+          border: `1px solid ${config.color}26`,
+          background: `radial-gradient(circle at top right, ${config.color}16, transparent 34%), radial-gradient(circle at bottom left, ${config.color}10, transparent 28%), linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95))`,
+          boxShadow: '0 24px 70px rgba(15, 23, 42, 0.08)',
+          overflow: 'hidden',
+          ...theming.getThemedCardSx(),
+        }}
+      >
+        <Grid container spacing={3} alignItems="flex-start">
+          <Grid item xs={12} xl={8}>
+            <Stack spacing={2}>
+              <Stack direction="row" spacing={2} alignItems="flex-start">
+                <Box
+                  sx={{
+                    width: { xs: 56, md: 68 },
+                    height: { xs: 56, md: 68 },
+                    borderRadius: 3,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    background: `linear-gradient(135deg, ${config.color}22, ${config.color}0f)`,
+                    color: config.color,
+                    boxShadow: `inset 0 0 0 1px ${config.color}22`,
+                  }}
+                >
+                  {React.cloneElement(config.icon, {
+                    sx: { fontSize: { xs: 30, md: 38 }, color: config.color },
+                  })}
+                </Box>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: theming.colors.primary }}>
+                    {config.title}
+                  </Typography>
+                  <Typography variant="body1" color="text.secondary" sx={{ mb: 0.75 }}>
+                    {dynamicProfessionConfig?.displayName || getProfessionDisplayName(profession)} · {professionDashboardTitle}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 760 }}>
+                    {config.description}. Hele utstyrsområdet er samlet som én workspace for database, inventar, service, utleie, programvare og operative verktøy.
+                  </Typography>
+                </Box>
+              </Stack>
+
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Chip 
-                  icon={professionDisplayIcon}
-                  label={featureSummary}
-                  variant="outlined"
-                  size="small"
-                />
-                <Chip 
-                  label="Live-oppdateringer" 
-                  color="success" 
-                  size="small"
-                  icon={<Schedule />}
-                />
-                <Chip 
-                  label={`${gearNews?.length || 0} nyheter`}
-                  variant="outlined"
-                  size="small"
-                />
-                <Chip
-                  icon={<Star />}
-                  label={`${professionProjectTypes.length} prosjektmaler`}
-                  variant="outlined"
-                  size="small"
-                />
-                <Chip
-                  icon={<AttachMoney />}
-                  label={`${professionHourlyRate} kr/t standard`}
-                  variant="outlined"
-                  size="small"
-                />
                 {projectLabel && (
                   <Chip
                     label={`Prosjekt: ${projectLabel}`}
                     color="primary"
                     size="small"
                     onClick={handleProjectFocus}
+                    sx={{ cursor: 'pointer' }}
                   />
                 )}
               </Stack>
-            </Box>
-          </Box>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<Info />}
-              onClick={() => {
-                setCurrentTab(0);
-                showDatabaseToast('synced');
-              }}
-            >
-              Synk database
-            </Button>
-            {projectLabel && (
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<Business />}
-                onClick={handleProjectFocus}
-              >
-                Åpne prosjekt
-              </Button>
-            )}
-            {isSupported && (
-              <Tooltip title="Push-varsler innstillinger">
-                <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
-                  {pushEnabled ? <NotificationsActive /> : <Notifications />}
-                </IconButton>
-              </Tooltip>
-            )}
-          </Stack>
-        </Box>
-        <Grid container spacing={2} sx={{ mt: 0.5 }}>
-          <Grid item xs={12} md={8}>
-            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-              {professionKeywords.map((keyword) => (
-                <Chip key={keyword} label={keyword} size="small" variant="outlined" />
-              ))}
-              {professionTips.map((tip) => (
-                <Chip key={tip} label={tip} size="small" icon={<Info />} />
-              ))}
             </Stack>
           </Grid>
-          <Grid item xs={12} md={4}>
-            <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', md: 'flex-end' }} useFlexGap flexWrap="wrap">
-              <Chip icon={<CameraGearIcon />} label={adaptedTabLabels.equipment} size="small" onClick={() => navigateToTab('inventory')} />
-              <Chip icon={<LensIcon />} label="Objektiver" size="small" onClick={() => navigateToTab('lenses')} />
-              <Chip icon={<LightingIcon />} label="Marked" size="small" onClick={() => navigateToTab('market')} />
-              <Chip icon={<FirmwareUpdateIcon />} label="Firmware" size="small" onClick={() => navigateToTab('news')} />
-              <Chip icon={<CameraSettingsIcon />} label="Programvare" size="small" onClick={() => navigateToTab('software')} />
+
+          <Grid item xs={12} xl={4}>
+            <Stack spacing={1.25} alignItems={{ xs: 'stretch', xl: 'flex-end' }}>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" justifyContent={{ xs: 'flex-start', xl: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<Info />}
+                  onClick={() => {
+                    setCurrentTab(0);
+                    showDatabaseToast('synced');
+                  }}
+                  sx={{ backgroundColor: config.color }}
+                >
+                  Synk database
+                </Button>
+                {projectLabel && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<Business />}
+                    onClick={handleProjectFocus}
+                  >
+                    Åpne prosjekt
+                  </Button>
+                )}
+                {isSupported && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={pushEnabled ? <NotificationsActive /> : <Notifications />}
+                    onClick={() => setPushSettingsOpen(true)}
+                  >
+                    Varsler
+                  </Button>
+                )}
+              </Stack>
             </Stack>
           </Grid>
         </Grid>
       </Paper>
 
       {/* Equipment Subtabs */}
-      <Paper elevation={2} sx={{ mb: 3, borderRadius: 2, ...theming.getThemedCardSx() }}>
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: 1,
+          borderRadius: 4,
+          border: '1px solid rgba(15, 23, 42, 0.08)',
+          background: 'rgba(255,255,255,0.88)',
+          backdropFilter: 'blur(18px)',
+          boxShadow: '0 20px 50px rgba(15, 23, 42, 0.08)',
+          ...theming.getThemedCardSx(),
+        }}
+      >
         <Tabs 
           value={currentTab}
           onChange={(e, newValue) => setCurrentTab(newValue)}
-          variant="fullWidth"
+          variant="scrollable"
+          allowScrollButtonsMobile
           sx={{
-            borderBottom: 1,
-            borderColor: 'divider','& .MuiTab-root': {
+            minHeight: 60,
+            '& .MuiTabs-flexContainer': {
+              gap: 0.75,
+            },
+            '& .MuiTab-root': {
               textTransform: 'none',
-              fontWeight: 600,
-              fontSize: '0.95rem','&.Mui-selected': {
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              minHeight: 52,
+              px: 1.75,
+              borderRadius: 3,
+              border: '1px solid transparent',
+              transition: 'all 0.18s ease',
+              '&.Mui-selected': {
+                backgroundColor: `${config.color}16`,
+                borderColor: `${config.color}28`,
                 color: config.color,
-          }
-        }, '& .MuiTabs-indicator': {
+              },
+            },
+            '& .MuiTabs-scrollButtons': {
+              borderRadius: 2,
+            },
+            '& .MuiTabs-indicator': {
               backgroundColor: config.color,
-              height:  3,
-              borderRadius: '3px 3px 0 0'
-      }
-      }}
+              height: 3,
+              borderRadius: 999,
+            },
+          }}
         >
           {visibleEquipmentTabs.map((tab) => {
             const TabIcon = tab.icon;
@@ -2632,16 +3226,13 @@ export function EnhancedGearTab({
       {/* Tab 4: Markedspriser - Market comparison (market_equipment table) */}
       {activeTabId === 'market' && renderMarketTab()}
       
-      {/* Tab 5: Objektiver - Lens database (lens_database table) */}
-      {activeTabId === 'lenses' && renderLensesTab()}
-      
-      {/* Tab 6: Programvare - Software database (software_database + software_updates tables) */}
+      {/* Tab 5: Programvare - Software database (software_database + software_updates tables) */}
       {activeTabId === 'software' && renderSoftwareTab()}
       
-      {/* Tab 7: Verktøy - Tools and utilities */}
+      {/* Tab 6: Verktøy - Tools and utilities */}
       {activeTabId === 'tools' && renderToolsTab()}
       
-      {/* Tab 8: Nyheter - Equipment news and firmware updates */}
+      {/* Tab 7: Nyheter - Equipment news and firmware updates */}
       {activeTabId === 'news' && (
         <Stack spacing={3}>
         {/* Professional Equipment Database Section */}
@@ -2849,15 +3440,19 @@ export function EnhancedGearTab({
         maxWidth="md" 
         fullWidth
         PaperProps={{
-          sx: { borderRadius: 3 }
-    }}
+          sx: workspaceDialogPaperSx
+        }}
       >
         <DialogTitle sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
-          pb: 1
-  }}>
+          pb: 2,
+          px: 3,
+          pt: 3,
+          borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+          background: `linear-gradient(135deg, ${config.color}14, rgba(248,250,252,0.94))`
+        }}>
           <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
             {selectedArticle?.title}
           </Typography>
@@ -2868,7 +3463,7 @@ export function EnhancedGearTab({
             <Close />
           </IconButton>
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ px: 3, py: 2.5, borderColor: 'rgba(15, 23, 42, 0.08)' }}>
           <Box sx={{ mb: 2 }}>
             <Chip 
               label={selectedArticle?.category}
@@ -2895,7 +3490,7 @@ export function EnhancedGearTab({
             {selectedArticle?.content || selectedArticle?.summary}
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
+        <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(15, 23, 42, 0.08)', justifyContent: 'space-between' }}>
           {selectedArticle?.url && (
             <Button
               href={selectedArticle.url}
@@ -2913,17 +3508,323 @@ export function EnhancedGearTab({
         </DialogActions>
       </Dialog>
 
+      <Dialog
+        open={addEquipmentOpen}
+        onClose={() => {
+          if (!addInventoryMutation.isPending) {
+            setAddEquipmentOpen(false);
+          }
+        }}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{ sx: workspaceDialogPaperSx }}
+      >
+        <DialogTitle
+          sx={{
+            px: 3,
+            pt: 3,
+            pb: 2,
+            borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+            background: `linear-gradient(135deg, ${config.color}14, rgba(248,250,252,0.94))`,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+                Legg til utstyr
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Registrer utstyr i inventaret ditt for vedlikehold, verdi og prosjektkontekst.
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={() => setAddEquipmentOpen(false)}
+              disabled={addInventoryMutation.isPending}
+              sx={{ color: 'text.secondary' }}
+            >
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ px: 3, py: 3 }}>
+          <Stack spacing={2.25} sx={{ mt: 1 }}>
+            <Alert severity="info" sx={{ alignItems: 'flex-start' }}>
+              Velg kategori, merke og modell fra katalogen for mer presise forslag og riktigere leverandørbilder. Du kan fortsatt skrive alt inn manuelt hvis utstyret ikke finnes i listen.
+            </Alert>
+            <TextField
+              label="Visningsnavn"
+              value={inventoryForm.name}
+              onChange={(event) => updateInventoryField('name', event.target.value)}
+              placeholder="F.eks. Hovedkamera bryllup"
+              fullWidth
+              helperText="Hvis feltet er tomt, opprettes visningsnavnet automatisk fra merke og modell."
+            />
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={4}>
+                <FormControl fullWidth>
+                  <InputLabel id="inventory-category-label">Kategori</InputLabel>
+                  <Select
+                    labelId="inventory-category-label"
+                    label="Kategori"
+                    value={inventoryForm.category}
+                    onChange={(event) => updateInventoryField('category', event.target.value)}
+                  >
+                    {inventoryCategoryOptions.map((category) => (
+                      <MenuItem key={category} value={category}>
+                        {category}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormControl fullWidth>
+                  <InputLabel id="inventory-status-label">Status</InputLabel>
+                  <Select
+                    labelId="inventory-status-label"
+                    label="Status"
+                    value={inventoryForm.status}
+                    onChange={(event) => updateInventoryField('status', event.target.value)}
+                  >
+                    {inventoryStatusOptions.map((statusOption) => (
+                      <MenuItem key={statusOption.value} value={statusOption.value}>
+                        {statusOption.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormControl fullWidth>
+                  <InputLabel id="inventory-condition-label">Tilstand</InputLabel>
+                  <Select
+                    labelId="inventory-condition-label"
+                    label="Tilstand"
+                    value={inventoryForm.condition}
+                    onChange={(event) => updateInventoryField('condition', event.target.value)}
+                  >
+                    {inventoryConditionOptions.map((conditionOption) => (
+                      <MenuItem key={conditionOption.value} value={conditionOption.value}>
+                        {conditionOption.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <Autocomplete
+                  freeSolo
+                  fullWidth
+                  options={inventoryBrandOptions}
+                  loading={inventoryCatalogMatchesLoading && normalizedInventoryCatalogCategoryValue.length > 0}
+                  noOptionsText="Ingen merker funnet. Skriv inn manuelt."
+                  value={inventoryForm.brand}
+                  onChange={(_event, nextValue) => {
+                    updateInventoryField('brand', typeof nextValue === 'string' ? nextValue : '');
+                  }}
+                  onInputChange={(_event, nextValue, reason) => {
+                    if (reason !== 'reset') {
+                      updateInventoryField('brand', nextValue);
+                    }
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Merke"
+                      placeholder="Velg eller skriv merke"
+                      required
+                      helperText={
+                        inventoryForm.category
+                          ? 'Merker filtreres automatisk etter valgt kategori.'
+                          : 'Velg fra katalogen eller skriv inn manuelt.'
+                      }
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Autocomplete
+                  freeSolo
+                  fullWidth
+                  options={inventoryModelOptions}
+                  loading={inventoryCatalogMatchesLoading}
+                  noOptionsText="Ingen modeller funnet. Skriv inn manuelt."
+                  value={inventoryForm.model}
+                  onChange={(_event, nextValue) => {
+                    const nextModel = typeof nextValue === 'string' ? nextValue : '';
+                    updateInventoryField('model', nextModel);
+
+                    const matchedCatalogItem = inventoryCatalogMatches.find(
+                      (item) =>
+                        normalizeInventoryCatalogToken(item.model) ===
+                          normalizeInventoryCatalogToken(nextModel) &&
+                        (
+                          inventoryForm.brand.trim().length === 0 ||
+                          normalizeInventoryCatalogToken(item.brand) ===
+                            normalizeInventoryCatalogToken(inventoryForm.brand)
+                        ),
+                    );
+
+                    if (matchedCatalogItem?.brand && inventoryForm.brand.trim().length === 0) {
+                      updateInventoryField('brand', matchedCatalogItem.brand);
+                    }
+
+                    if (matchedCatalogItem?.category) {
+                      const matchedDisplayCategory = inventoryCategoryOptions.find(
+                        (category) =>
+                          normalizeInventoryCatalogCategory(category) ===
+                          normalizeInventoryCatalogToken(matchedCatalogItem.category || ''),
+                      );
+
+                      if (matchedDisplayCategory) {
+                        updateInventoryField('category', matchedDisplayCategory);
+                      }
+                    }
+                  }}
+                  onInputChange={(_event, nextValue, reason) => {
+                    if (reason !== 'reset') {
+                      updateInventoryField('model', nextValue);
+                    }
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Modell"
+                      placeholder="Velg eller skriv modell"
+                      required
+                      helperText={
+                        inventoryForm.brand
+                          ? 'Modellforslag tilpasses merke og kategori.'
+                          : 'Velg gjerne merke først for mer treffsikre modellforslag.'
+                      }
+                    />
+                  )}
+                  renderOption={(props, option) => {
+                    const { key, ...optionProps } = props;
+                    const matchedItem = inventoryCatalogMatches.find(
+                      (item) =>
+                        normalizeInventoryCatalogToken(item.model) ===
+                          normalizeInventoryCatalogToken(option) &&
+                        (
+                          inventoryForm.brand.trim().length === 0 ||
+                          normalizeInventoryCatalogToken(item.brand) ===
+                            normalizeInventoryCatalogToken(inventoryForm.brand)
+                        ),
+                    );
+
+                    return (
+                      <Box component="li" key={key} {...optionProps}>
+                        {matchedItem?.imageUrl ? (
+                          <Box
+                            component="img"
+                            src={matchedItem.imageUrl}
+                            alt={`${matchedItem.brand} ${matchedItem.model}`}
+                            sx={{
+                              width: 52,
+                              height: 52,
+                              borderRadius: 2,
+                              objectFit: 'cover',
+                              border: '1px solid rgba(15, 23, 42, 0.08)',
+                              mr: 1.5,
+                              flexShrink: 0,
+                              backgroundColor: 'rgba(248,250,252,0.9)',
+                            }}
+                          />
+                        ) : null}
+                        <Stack spacing={0.25}>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            {option}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            {[matchedItem?.brand, matchedItem?.category].filter(Boolean).join(' • ') || 'Katalogtreff'}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    );
+                  }}
+                />
+              </Grid>
+            </Grid>
+            {selectedInventoryCatalogMatch ? (
+              <Alert severity="success" sx={{ alignItems: 'flex-start' }}>
+                Katalogtreff funnet for <strong>{selectedInventoryCatalogMatch.brand} {selectedInventoryCatalogMatch.model}</strong>. Leverandørbilde og korrekt produktkobling brukes ved lagring.
+              </Alert>
+            ) : !inventoryCatalogMatchesLoading && inventoryForm.brand.trim().length > 0 && inventoryForm.model.trim().length > 0 ? (
+              <Alert severity="warning" sx={{ alignItems: 'flex-start' }}>
+                Fant ikke et sikkert katalogtreff på denne kombinasjonen. Du kan fortsatt lagre manuelt, men bilde og leverandørkobling hentes bare hvis systemet finner en trygg match.
+              </Alert>
+            ) : null}
+            <TextField
+              label="Bilde-URL"
+              value={inventoryForm.imageUrl}
+              onChange={(event) => updateInventoryField('imageUrl', event.target.value)}
+              placeholder="https://..."
+              fullWidth
+            />
+            <TextField
+              label="Notater"
+              value={inventoryForm.notes}
+              onChange={(event) => updateInventoryField('notes', event.target.value)}
+              placeholder="Serienummer, forsikring, bruksscenario eller annet relevant."
+              multiline
+              minRows={3}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2.5, borderTop: '1px solid rgba(15, 23, 42, 0.08)' }}>
+          <Button
+            onClick={() => setAddEquipmentOpen(false)}
+            disabled={addInventoryMutation.isPending}
+          >
+            Avbryt
+          </Button>
+          <Button
+            variant="contained"
+            disabled={
+              addInventoryMutation.isPending ||
+              inventoryForm.brand.trim().length === 0 ||
+              inventoryForm.model.trim().length === 0
+            }
+            onClick={() => addInventoryMutation.mutate(inventoryForm)}
+            sx={{ minWidth: 148 }}
+          >
+            {addInventoryMutation.isPending ? 'Lagrer...' : 'Lagre utstyr'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Push Notification Settings Dialog */}
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Push-varsler innstillinger</DialogTitle>
-          <DialogContent>
+        <Dialog
+          open={pushSettingsOpen}
+          onClose={() => setPushSettingsOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{ sx: workspaceDialogPaperSx }}
+        >
+          <DialogTitle
+            sx={{
+              px: 3,
+              pt: 3,
+              pb: 2,
+              borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+              background: `linear-gradient(135deg, ${config.color}14, rgba(248,250,252,0.94))`,
+            }}
+          >
+            Push-varsler innstillinger
+          </DialogTitle>
+          <DialogContent sx={{ px: 3, py: 2.5 }}>
             <Box sx={{ mt: 2 }}>
               <PushNotificationSettings userId={userId} showDescription={false} />
             </Box>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+          <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(15, 23, 42, 0.08)' }}>
+            <Button onClick={() => setPushSettingsOpen(false)} variant="contained" sx={{ backgroundColor: config.color }}>
+              Lukk
+            </Button>
           </DialogActions>
         </Dialog>
       )}

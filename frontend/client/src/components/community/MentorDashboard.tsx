@@ -38,6 +38,23 @@ import { formatDistanceToNow } from 'date-fns';
 import { nb } from 'date-fns/locale';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import {
+  COMMUNITY_DIALOG_ACTIONS_SX,
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_MUTED,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_PRIMARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SECONDARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SURFACE_SX,
+  COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
+  COMMUNITY_DIALOG_SWITCH_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_TAB_SX,
+  COMMUNITY_DIALOG_TABS_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 interface MentorDashboardProps {
   open: boolean;
@@ -108,13 +125,15 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
 
   const renderStats = () => (
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 3 }}>
-      <Card>
+      <Card sx={COMMUNITY_DIALOG_SURFACE_SUBTLE_SX}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CheckCircle color="success" />
             <Box>
-              <Typography variant="h4">{stats?.questions_answered || 0}</Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="h4" sx={{ color: COMMUNITY_DIALOG_TEXT }}>
+                {stats?.questions_answered || 0}
+              </Typography>
+              <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                 Spørsmål besvart
               </Typography>
             </Box>
@@ -122,15 +141,15 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card sx={COMMUNITY_DIALOG_SURFACE_SUBTLE_SX}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Schedule color="primary" />
             <Box>
-              <Typography variant="h4">
-                {stats?.avg_response_time ? `${Math.round(parseFloat(stats.avg_response_time) / 60)}m` : 'N/A'}
+              <Typography variant="h4" sx={{ color: COMMUNITY_DIALOG_TEXT }}>
+                {stats?.avg_response_time ? `${Math.round(parseFloat(stats.avg_response_time) / 60)}m` : 'Ikke satt'}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                 Gj.snitt responstid
               </Typography>
             </Box>
@@ -138,13 +157,15 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card sx={COMMUNITY_DIALOG_SURFACE_SUBTLE_SX}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TrendingUp color="success" />
             <Box>
-              <Typography variant="h4">{stats?.solutions_marked || 0}</Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="h4" sx={{ color: COMMUNITY_DIALOG_TEXT }}>
+                {stats?.solutions_marked || 0}
+              </Typography>
+              <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                 Løsninger markert
               </Typography>
             </Box>
@@ -152,11 +173,13 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card sx={COMMUNITY_DIALOG_SURFACE_SUBTLE_SX}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="h4">⭐ {stats?.help_rating?.toFixed(1) || '0.0'}</Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="h4" sx={{ color: COMMUNITY_DIALOG_TEXT }}>
+              ⭐ {stats?.help_rating?.toFixed(1) || '0.0'}
+            </Typography>
+            <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
               Hjelpsomhetsrating
             </Typography>
           </Box>
@@ -178,11 +201,15 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
             <ListItem
               key={question.id}
               sx={{
-                border: 1,
-                borderColor: 'divider',
-                borderRadius: 1,
+                ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
+                borderRadius: 2,
                 mb: 1,
-                cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' }}}
+                cursor: 'pointer',
+                '&:hover': {
+                  bgcolor: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(245, 166, 35, 0.24)',
+                },
+              }}
               onClick={() => {
                 onSelectQuestion(question.id, question.channel_id);
                 onClose();
@@ -207,13 +234,13 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
                 }
                 secondary={
                   <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                       {question.author_name}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                       • {question.channel_name}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                       • {formatDistanceToNow(new Date(question.created_at), { addSuffix: true, locale: nb })}
                     </Typography>
                   </Box>
@@ -227,37 +254,54 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
   );
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      sx={COMMUNITY_DIALOG_SX}
+      PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+    >
+      <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <School color="primary" />
-            <Typography variant="h6">Mentor Dashboard</Typography>
+            <School sx={{ color: '#ffd27a' }} />
+            <Typography variant="h6" sx={{ fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
+              Mentoroversikt
+            </Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {isSupported && (
               <Tooltip title="Push-varsler innstillinger">
-                <IconButton onClick={() => setPushSettingsOpen(true)} size="small" color={pushEnabled ? 'primary' : 'default'}>
+                <IconButton
+                  onClick={() => setPushSettingsOpen(true)}
+                  size="small"
+                  sx={{
+                    ...COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+                    color: pushEnabled ? '#ffd27a' : COMMUNITY_DIALOG_TEXT,
+                  }}
+                >
                   {pushEnabled ? <NotificationsActive /> : <Notifications />}
                 </IconButton>
               </Tooltip>
             )}
-            <IconButton onClick={onClose} size="small">
+            <IconButton onClick={onClose} size="small" sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
               <Close />
             </IconButton>
           </Box>
         </Box>
       </DialogTitle>
 
-      <DialogContent>
+      <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX}>
         {/* Stats Section */}
         {stats && renderStats()}
 
         <Divider sx={{ my: 2 }} />
 
         {/* Tabs for different views */}
-        <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mb: 2 }}>
+        <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ ...COMMUNITY_DIALOG_TABS_SX, mb: 2 }}>
           <Tab
+            sx={COMMUNITY_DIALOG_TAB_SX}
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <HelpOutline fontSize="small" />
@@ -266,6 +310,7 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
             }
           />
           <Tab
+            sx={COMMUNITY_DIALOG_TAB_SX}
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Warning fontSize="small" />
@@ -288,26 +333,37 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
 
         {/* Refresh Button */}
         <Box sx={{ display: 'flex', justifyContent:'center', mt: 3 }}>
-          <Button variant="outlined" onClick={fetchDashboardData} disabled={loading}>
+          <Button variant="outlined" onClick={fetchDashboardData} disabled={loading} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
             Oppdater
           </Button>
         </Box>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Lukk</Button>
+      <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
+        <Button onClick={onClose} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
+          Lukk
+        </Button>
       </DialogActions>
 
       {/* Push Notification Settings Dialog */}
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Push-varsler innstillinger</DialogTitle>
-          <DialogContent>
+        <Dialog
+          open={pushSettingsOpen}
+          onClose={() => setPushSettingsOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          sx={COMMUNITY_DIALOG_SX}
+          PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+        >
+          <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>Push-varsler innstillinger</DialogTitle>
+          <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX}>
             <Box sx={{ mt: 2 }}>
               <PushNotificationSettings userId={userId} showDescription={false} />
             </Box>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+          <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
+            <Button onClick={() => setPushSettingsOpen(false)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
+              Lukk
+            </Button>
           </DialogActions>
         </Dialog>
       )}

@@ -22,9 +22,23 @@ import {
   FormControlLabel,
   Radio,
   FormLabel,
+  IconButton,
 } from '@mui/material';
-import { Report, Send } from '@mui/icons-material';
+import { Close, Report, Send } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  COMMUNITY_DIALOG_ACTIONS_SX,
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_FIELD_SX,
+  COMMUNITY_DIALOG_MUTED,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_PRIMARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SECONDARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 interface ReportDialogProps {
   open: boolean;
@@ -67,7 +81,7 @@ export default function ReportDialog({
     }
 
     setSubmitting(true);
-    setError(', ');
+    setError('');
 
     try {
       const response = await apiRequest('/api/community/moderation/report', {
@@ -87,8 +101,8 @@ export default function ReportDialog({
         setTimeout(() => {
           onClose();
           setSuccess(false);
-          setReportReason(', ');
-          setReportDescription(', ');
+          setReportReason('');
+          setReportDescription('');
         }, 2000);
       }
     } catch (err) {
@@ -100,15 +114,36 @@ export default function ReportDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Report color="error" />
-          <Typography variant="h6">Rapporter Regelbrudd</Typography>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      sx={COMMUNITY_DIALOG_SX}
+      PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+    >
+      <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Report sx={{ color: '#ff8e83' }} />
+            <Typography variant="h6" sx={{ fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
+              Rapporter Regelbrudd
+            </Typography>
+          </Box>
+          <IconButton onClick={onClose} size="small" sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
+            <Close />
+          </IconButton>
         </Box>
       </DialogTitle>
 
-      <DialogContent>
+      <DialogContent
+        sx={{
+          ...COMMUNITY_DIALOG_CONTENT_SX,
+          '& .MuiFormLabel-root': { color: COMMUNITY_DIALOG_MUTED },
+          '& .MuiRadio-root': { color: COMMUNITY_DIALOG_MUTED },
+          '& .MuiRadio-root.Mui-checked': { color: '#f5a623' },
+        }}
+      >
         {success ? (
           <Alert severity="success" sx={{ mb: 2 }}>
             Takk for rapporten! Vårt moderasjonsteam vil gjennomgå den snart.
@@ -149,6 +184,7 @@ export default function ReportDialog({
               placeholder="Vennligst gi en detaljert beskrivelse av hva som skjedde..."
               required
               helperText="Vær så spesifikk som mulig. Dette hjelper vårt moderasjonsteam med å ta riktig beslutning."
+              sx={COMMUNITY_DIALOG_FIELD_SX}
             />
 
             {error && (
@@ -160,16 +196,16 @@ export default function ReportDialog({
         )}
       </DialogContent>
 
-      <DialogActions>
-        <Button onClick={onClose} disabled={submitting}>
+      <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
+        <Button onClick={onClose} disabled={submitting} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
           Avbryt
         </Button>
         <Button
           onClick={handleSubmit}
           variant="contained"
-          color="error"
           disabled={submitting || success}
           startIcon={<Send />}
+          sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
         >
           {submitting ? 'Sender...' : 'Send Rapport'}
         </Button>
@@ -177,4 +213,3 @@ export default function ReportDialog({
     </Dialog>
   );
 }
-

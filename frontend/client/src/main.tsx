@@ -5,6 +5,7 @@ window.Buffer = Buffer;
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { initSentry } from './utils/sentry';
+import { bootstrapCreatorHubGoogleLoginRedirect } from './lib/creatorhubGoogleAuth';
 import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
 import './styles/academy-responsive.css';
 
@@ -130,7 +131,11 @@ if (!rootElement) {
   console.log('[main.tsx] Creating root, about to render');
   // #endregion
 
-  void resolveRootComponent()
+  void bootstrapCreatorHubGoogleLoginRedirect()
+    .catch((error) => {
+      console.error('[main.tsx] Google login bootstrap failed:', error);
+    })
+    .then(() => resolveRootComponent())
     .then((RootComponent) => {
       console.log('[main.tsx] Root component loaded');
       root.render(

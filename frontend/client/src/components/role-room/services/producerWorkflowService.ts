@@ -625,6 +625,37 @@ async function syncClientGroundingReviews(projectId: string): Promise<void> {
   }
 }
 
+function queueClientGroundingResync(projectId: string): void {
+  void (async () => {
+    try {
+      await Promise.all([
+        syncClientGroundingTimeline(projectId),
+        syncClientGroundingReviews(projectId),
+      ]);
+      emitProducerWorkflowEvent({
+        projectId,
+        domain: 'timeline',
+        mutation: 'reloaded',
+        entityId: CLIENT_MATERIAL_TIMELINE_ENTITY_ID,
+      });
+      emitProducerWorkflowEvent({
+        projectId,
+        domain: 'reviews',
+        mutation: 'reloaded',
+        entityId: CLIENT_MATERIAL_TIMELINE_ENTITY_ID,
+      });
+      emitProducerWorkflowEvent({
+        projectId,
+        domain: 'project',
+        mutation: 'updated',
+        entityId: projectId,
+      });
+    } catch (error) {
+      console.error('[producerWorkflowService] Failed to resync client grounding state', error);
+    }
+  })();
+}
+
 function asRecord(value: unknown): LooseRecord {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as LooseRecord;
@@ -2320,14 +2351,13 @@ export const producerWorkflowService = {
       }),
     });
     const item = normalizeClientMaterial(response.item, projectId);
-    await syncClientGroundingTimeline(projectId);
-    await syncClientGroundingReviews(projectId);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'project',
       mutation: 'created',
       entityId: item.id,
     });
+    queueClientGroundingResync(projectId);
     return item;
   },
 
@@ -2350,14 +2380,13 @@ export const producerWorkflowService = {
       ])),
     });
     const item = normalizeClientMaterial(response.item, projectId);
-    await syncClientGroundingTimeline(projectId);
-    await syncClientGroundingReviews(projectId);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'project',
       mutation: 'updated',
       entityId: item.id,
     });
+    queueClientGroundingResync(projectId);
     return item;
   },
 
@@ -2365,14 +2394,13 @@ export const producerWorkflowService = {
     await producerWorkflowRequest<{ success?: boolean }>(`/projects/${projectId}/producer/client-materials/${materialId}`, {
       method: 'DELETE',
     });
-    await syncClientGroundingTimeline(projectId);
-    await syncClientGroundingReviews(projectId);
     emitProducerWorkflowEvent({
       projectId,
       domain: 'project',
       mutation: 'deleted',
       entityId: materialId,
     });
+    queueClientGroundingResync(projectId);
   },
 
   async createEconomyItem(projectId: string, payload: CreateProducerEconomyItemInput): Promise<ProducerEconomyItem> {

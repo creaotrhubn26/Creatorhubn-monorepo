@@ -3,7 +3,7 @@
  * Advanced video player with learning features inspired by the design
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useAcademy } from '@/contexts/AcademyContext';
 import {
   Box,
@@ -85,6 +85,7 @@ import {
   CastConnected,
   Tv,
   Devices,
+  OpenInNew,
   WifiTethering,
   WifiTetheringError,
 } from '@mui/icons-material';
@@ -107,6 +108,12 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useTheming } from '../../utils/theming-helper';
 import CastingService, { type CastingDevice } from '../../services/CastingService';
+import {
+  getAcademyPreferredPlaybackUrl,
+  getAcademyVideoExternalLink,
+  getAcademyVideoSourceType,
+  isAcademyVideoPlayableInNativePlayer,
+} from './academyVideoSourceUtils';
 
 interface AcademyVideoPlayerProps {
 	  course: any;
@@ -312,6 +319,42 @@ function AcademyVideoPlayer({
   const [castingProgress, setCastingProgress] = useState(0);
   const [castingError, setCastingError] = useState<string | null>(null);
 
+  const resolvedVideoCarrier = useMemo(() => {
+    const lessonPlaybackUrl =
+      getAcademyPreferredPlaybackUrl(lesson) || String(lesson?.videoUrl || '').trim();
+    if (lessonPlaybackUrl) {
+      return lesson;
+    }
+
+    const coursePlaybackUrl =
+      getAcademyPreferredPlaybackUrl(course) || String(course?.videoUrl || '').trim();
+    if (coursePlaybackUrl) {
+      return course;
+    }
+
+    return lesson || course || null;
+  }, [course, lesson]);
+
+  const resolvedVideoSourceType = useMemo(
+    () => getAcademyVideoSourceType(resolvedVideoCarrier),
+    [resolvedVideoCarrier],
+  );
+
+  const resolvedExternalVideoUrl = useMemo(
+    () => getAcademyVideoExternalLink(resolvedVideoCarrier),
+    [resolvedVideoCarrier],
+  );
+
+  const nativePlayerVideoUrl = useMemo(
+    () => getAcademyPreferredPlaybackUrl(resolvedVideoCarrier),
+    [resolvedVideoCarrier],
+  );
+
+  const canRenderNativeVideo = useMemo(
+    () => isAcademyVideoPlayableInNativePlayer(resolvedVideoCarrier),
+    [resolvedVideoCarrier],
+  );
+
   // Wire up unused state variables for player state tracking
   const playerStateTracking = {
     showControls, setShowControls,
@@ -367,6 +410,12 @@ function AcademyVideoPlayer({
 
   // Video event handlers
   const handlePlay = useCallback(() => {
+    if (!canRenderNativeVideo || !nativePlayerVideoUrl) {
+      if (resolvedExternalVideoUrl && typeof window !== 'undefined') {
+        window.open(resolvedExternalVideoUrl, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
     if (videoRef.current) {
       videoRef.current.play();
       setIsPlaying(true);
@@ -376,7 +425,14 @@ function AcademyVideoPlayer({
         timestamp: Date.now(),
       });
     }
-  }, [course?.id, lesson?.id, analytics]);
+  }, [
+    analytics,
+    canRenderNativeVideo,
+    course?.id,
+    lesson?.id,
+    nativePlayerVideoUrl,
+    resolvedExternalVideoUrl,
+  ]);
 
   const handlePause = useCallback(() => {
     if (videoRef.current) {
@@ -1013,8 +1069,8 @@ function AcademyVideoPlayer({
         setAriaLiveRegion(`Connected to ${device.name}`);
 
         // Auto-cast current media if available
-        if (lesson?.videoUrl) {
-          await castingService.castMedia(lesson.videoUrl, {
+        if (canRenderNativeVideo && nativePlayerVideoUrl) {
+          await castingService.castMedia(nativePlayerVideoUrl, {
             title: lesson.title || course?.title,
             subtitle: course?.title,
             duration: duration,
@@ -1032,7 +1088,15 @@ function AcademyVideoPlayer({
         setAriaLiveRegion(`Connection failed: ${error}`);
       }
     },
-    [course?.id, lesson?.id, lesson?.videoUrl, lesson?.title, duration, analytics],
+    [
+      analytics,
+      canRenderNativeVideo,
+      course?.id,
+      duration,
+      lesson?.id,
+      lesson?.title,
+      nativePlayerVideoUrl,
+    ],
   );
 
   const handleDeviceDisconnect = useCallback(async () => {
@@ -1128,43 +1192,91 @@ function AcademyVideoPlayer({
       </div>
 
       {/* Video Element */}
-      <video
-        ref={videoRef}
-        src={lesson?.videoUrl}
-        onLoadedMetadata={handleLoadedMetadata}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={handleEnded}
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover'}}
-        onClick={isPlaying ? handlePause : handlePlay}
-        aria-label={`${course?.title} - ${lesson?.title || 'Lesson video'}`}
-        role="img"
-        tabIndex={-1}
-      >
-        {/* Caption Tracks */}
-        {captionTracks.map((track, index) => (
-          <track
-            key={index}
-            kind="captions"
-            src={track.src}
-            srcLang={track.language}
-            label={track.label}
-            default={track.language === captionLanguage}
-          />
-        ))}
-        {/* Audio Description Tracks */}
-        {audioDescriptionTracks.map((track, index) => (
-          <track
-            key={index}
-            kind="descriptions"
-            src={track.src}
-            srcLang={track.language}
-            label={track.label}
-          />
-        ))}
-      </video>
+      {canRenderNativeVideo && nativePlayerVideoUrl ? (
+        <video
+          ref={videoRef}
+          src={nativePlayerVideoUrl}
+          onLoadedMetadata={handleLoadedMetadata}
+          onTimeUpdate={handleTimeUpdate}
+          onEnded={handleEnded}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover'}}
+          onClick={isPlaying ? handlePause : handlePlay}
+          aria-label={`${course?.title} - ${lesson?.title || 'Lesson video'}`}
+          role="img"
+          tabIndex={-1}
+        >
+          {/* Caption Tracks */}
+          {captionTracks.map((track, index) => (
+            <track
+              key={index}
+              kind="captions"
+              src={track.src}
+              srcLang={track.language}
+              label={track.label}
+              default={track.language === captionLanguage}
+            />
+          ))}
+          {/* Audio Description Tracks */}
+          {audioDescriptionTracks.map((track, index) => (
+            <track
+              key={index}
+              kind="descriptions"
+              src={track.src}
+              srcLang={track.language}
+              label={track.label}
+            />
+          ))}
+        </video>
+      ) : (
+        <Box
+          sx={{
+            width: '100%',
+            height: '100%',
+            display: 'grid',
+            placeItems: 'center',
+            p: 3,
+            background:
+              'radial-gradient(circle at 72% 18%, rgba(248,179,33,0.18), rgba(0,0,0,0) 44%), linear-gradient(145deg, rgba(18,22,32,0.96), rgba(8,11,18,0.98))',
+          }}
+        >
+          <Stack spacing={1.2} alignItems="center" sx={{ maxWidth: 540, textAlign: 'center' }}>
+            <Alert
+              severity="info"
+              sx={{
+                width: '100%',
+                bgcolor: 'rgba(24,30,42,0.88)',
+                color: '#edf0f7',
+                border: '1px solid rgba(115,160,255,0.24)',
+                '& .MuiAlert-icon': { color: '#dbe4ff' },
+              }}
+            >
+              {resolvedVideoSourceType === 'google-vids'
+                ? 'Denne leksjonen bruker Google Vids som kilde. Academy aapner den eksternt i stedet for aa spille den direkte.'
+                : 'Denne videokilden kan ikke spilles direkte i Academy-playeren.'}
+            </Alert>
+            {resolvedExternalVideoUrl ? (
+              <Button
+                variant="contained"
+                startIcon={<OpenInNew />}
+                onClick={() => {
+                  window.open(resolvedExternalVideoUrl, '_blank', 'noopener,noreferrer');
+                }}
+                sx={{
+                  textTransform: 'none',
+                  color: '#0f0f0f',
+                  fontWeight: 700,
+                  background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                }}
+              >
+                {resolvedVideoSourceType === 'google-vids' ? 'Open Google Vids' : 'Open source'}
+              </Button>
+            ) : null}
+          </Stack>
+        </Box>
+      )}
 
       {/* Custom Caption Styling */}
       {captionsEnabled && (

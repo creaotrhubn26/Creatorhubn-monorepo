@@ -74,12 +74,12 @@ export default function BecomeMentorDialog({
   const [expertiseInput, setExpertiseInput] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const steps = ['Fordeler','Din Profil', 'Initialisering'];
+  const steps = ['Fordeler', 'Din Profil', 'Initialisering'];
 
   const handleAddExpertise = () => {
     if (expertiseInput.trim() && !expertise.includes(expertiseInput.trim())) {
       setExpertise([...expertise, expertiseInput.trim()]);
-      setExpertiseInput(', ');
+      setExpertiseInput('');
     }
   };
 
@@ -326,7 +326,7 @@ export default function BecomeMentorDialog({
                   🎉 Gratulerer! Du er nå mentor og instruktør!
                 </Typography>
                 <Typography variant="body2">
-                  Du har nå tilgang til både Community Mentor Dashboard og Academy Dashboard.
+                  Du har nå tilgang til både mentoroversikten i community og Academy-oversikten.
                   Velg hvor du vil gå videre:
                 </Typography>
               </Alert>
@@ -345,7 +345,7 @@ export default function BecomeMentorDialog({
                   }}
                   sx={{ textTransform: 'none', py: 1.5 }}
                 >
-                  Gå til Community Dashboard
+                  Gå til community-oversikten
                 </Button>
 
                 <Button
@@ -367,7 +367,7 @@ export default function BecomeMentorDialog({
                   }}
                   sx={{ textTransform: 'none', py: 1.5 }}
                 >
-                  Gå til Academy Dashboard
+                  Gå til Academy-oversikten
                 </Button>
               </Stack>
             </>
@@ -447,5 +447,3 @@ export default function BecomeMentorDialog({
     </Dialog>
   );
 }
-
-

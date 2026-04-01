@@ -1,0 +1,163 @@
+- generic [ref=e2]:
+  - banner [ref=e50]:
+    - generic [ref=e52]:
+      - img "CreatorHub Norge" [ref=e53]
+      - generic [ref=e54]:
+        - heading "Admin Dashboard" [level=5] [ref=e55]
+        - generic [ref=e56]: academy-guest@creatorhubn.com
+    - generic [ref=e58]:
+      - generic:
+        - img
+      - tablist [ref=e61]:
+        - tab "Overblikk" [selected] [ref=e62] [cursor=pointer]:
+          - img [ref=e63]
+          - text: Overblikk
+        - tab "Brukere & Roller" [ref=e65] [cursor=pointer]:
+          - img [ref=e66]
+          - text: Brukere & Roller
+        - tab "Community" [ref=e69] [cursor=pointer]:
+          - img [ref=e70]
+          - text: Community
+        - tab "Innhold & Assets" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+          - text: Innhold & Assets
+        - tab "Kunder/Prosjekter" [ref=e75] [cursor=pointer]:
+          - img [ref=e76]
+          - text: Kunder/Prosjekter
+        - tab "Kommunikasjon" [ref=e78] [cursor=pointer]:
+          - img [ref=e79]
+          - text: Kommunikasjon
+        - tab "Prototype Feedback" [ref=e81] [cursor=pointer]:
+          - img [ref=e82]
+          - text: Prototype Feedback
+        - tab "Økonomi" [ref=e84] [cursor=pointer]:
+          - img [ref=e85]
+          - text: Økonomi
+        - tab "Prisstyring" [ref=e87] [cursor=pointer]:
+          - img [ref=e88]
+          - text: Prisstyring
+        - tab "Rapporter" [ref=e90] [cursor=pointer]:
+          - img [ref=e91]
+          - text: Rapporter
+        - tab "Academy" [ref=e93] [cursor=pointer]:
+          - img [ref=e94]
+          - text: Academy
+        - tab "Vendor Types" [ref=e96] [cursor=pointer]:
+          - img [ref=e97]
+          - text: Vendor Types
+        - tab "Profesjonstyper" [ref=e99] [cursor=pointer]:
+          - img [ref=e100]
+          - text: Profesjonstyper
+        - tab "Integrasjoner" [ref=e102] [cursor=pointer]:
+          - img [ref=e103]
+          - text: Integrasjoner
+        - tab "Feature Management" [ref=e105] [cursor=pointer]:
+          - img [ref=e106]
+          - text: Feature Management
+        - tab "Sentralisert Overvåkning" [ref=e108] [cursor=pointer]:
+          - img [ref=e109]
+          - text: Sentralisert Overvåkning
+        - tab "Protokollstyring" [ref=e111] [cursor=pointer]:
+          - img [ref=e112]
+          - text: Protokollstyring
+        - tab "Drift" [ref=e114] [cursor=pointer]:
+          - img [ref=e115]
+          - text: Drift
+        - tab "Backup" [ref=e117] [cursor=pointer]:
+          - img [ref=e118]
+          - text: Backup
+        - tab "GDPR" [ref=e120] [cursor=pointer]:
+          - img [ref=e121]
+          - text: GDPR
+        - tab "Utvikling" [ref=e123] [cursor=pointer]:
+          - img [ref=e124]
+          - text: Utvikling
+        - tab "Automations" [ref=e126] [cursor=pointer]:
+          - img [ref=e127]
+          - text: Automations
+        - tab "MagicCreator" [ref=e129] [cursor=pointer]:
+          - img [ref=e130]
+          - text: MagicCreator
+        - tab "Stor Notatsløsning" [ref=e132] [cursor=pointer]:
+          - img [ref=e133]
+          - text: Stor Notatsløsning
+        - tab "Integration Test" [ref=e135] [cursor=pointer]:
+          - img [ref=e136]
+          - text: Integration Test
+        - tab "Payment Integration Test" [ref=e138] [cursor=pointer]:
+          - img [ref=e139]
+          - text: Payment Integration Test
+        - tab "Google Wallet Membership" [ref=e141] [cursor=pointer]:
+          - img [ref=e142]
+          - text: Google Wallet Membership
+        - tab "Google Wallet Integration Test" [ref=e144] [cursor=pointer]:
+          - img [ref=e145]
+          - text: Google Wallet Integration Test
+        - tab "Google Payments Config" [ref=e147] [cursor=pointer]:
+          - img [ref=e148]
+          - text: Google Payments Config
+        - tab "Email Analytics" [ref=e150] [cursor=pointer]:
+          - img [ref=e151]
+          - text: Email Analytics
+        - tab "Tester Skills" [ref=e153] [cursor=pointer]:
+          - img [ref=e154]
+          - text: Tester Skills
+        - tab "Testing Leaderboard" [ref=e156] [cursor=pointer]:
+          - img [ref=e157]
+          - text: Testing Leaderboard
+        - tab "Test Generator" [ref=e159] [cursor=pointer]:
+          - img [ref=e160]
+          - text: Test Generator
+        - tab "Marketing" [ref=e162] [cursor=pointer]:
+          - img [ref=e163]
+          - text: Marketing
+        - tab "Feature Customization" [ref=e165] [cursor=pointer]:
+          - img [ref=e166]
+          - text: Feature Customization
+        - tab "Fine-Tuning Monitor" [ref=e168] [cursor=pointer]:
+          - img [ref=e169]
+          - text: Fine-Tuning Monitor
+      - img [ref=e174] [cursor=pointer]
+  - tabpanel "Overblikk" [ref=e178]:
+    - generic [ref=e180]:
+      - heading "Admin statistikk er kun tilgjengelig for systemadministrator" [level=6] [ref=e183]
+      - generic [ref=e186]:
+        - generic [ref=e187]:
+          - generic [ref=e188]:
+            - generic [ref=e189]:
+              - img [ref=e190]
+              - generic [ref=e192]:
+                - heading "Enhanced Activity Feed" [level=6] [ref=e193]
+                - generic [ref=e194]: Real-time updates • 0 total activities
+            - generic [ref=e195]:
+              - button "Push-varsler innstillinger" [ref=e196] [cursor=pointer]:
+                - img [ref=e197]
+              - button "Export to CSV" [ref=e199] [cursor=pointer]:
+                - img [ref=e200]
+              - button "Refresh" [ref=e202] [cursor=pointer]:
+                - img [ref=e203]
+          - generic [ref=e205]:
+            - generic [ref=e207]:
+              - img [ref=e209]
+              - textbox "Search activities..." [ref=e211]
+              - group
+            - group [ref=e212]:
+              - button [pressed] [ref=e213] [cursor=pointer]:
+                - img [ref=e214]
+              - button [ref=e216] [cursor=pointer]:
+                - img [ref=e217]
+            - button [ref=e219] [cursor=pointer]:
+              - img [ref=e220]
+          - generic: Start Date
+          - generic: End Date
+          - generic: Category
+          - generic: Priority
+        - separator [ref=e222]
+        - alert [ref=e223]:
+          - img [ref=e225]
+          - generic [ref=e227]: No activities match your filters
+  - generic [ref=e228]: Admin Floating Action Buttons - Temporarily disabled
+  - button "Admin Support Chat" [ref=e229] [cursor=pointer]:
+    - img [ref=e230]
+  - button "Åpne chat" [ref=e43] [cursor=pointer]:
+    - img [ref=e44]

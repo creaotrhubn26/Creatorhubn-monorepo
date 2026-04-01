@@ -1,0 +1,698 @@
+- application "CreatorHub Norge Dashboard" [ref=e3]:
+  - main "Dashboard hovedinnhold" [ref=e4]:
+    - generic [ref=e6]:
+      - heading "Admin Dashboard Tilgang" [level=6] [ref=e7]:
+        - img [ref=e8]
+        - text: Admin Dashboard Tilgang
+      - generic [ref=e10]:
+        - button "admin" [ref=e11] [cursor=pointer]:
+          - img [ref=e13]
+          - text: admin
+        - button "Fotograf" [ref=e15] [cursor=pointer]:
+          - img [ref=e17]
+          - text: Fotograf
+        - button "Videograf" [ref=e19] [cursor=pointer]:
+          - img [ref=e21]
+          - text: Videograf
+        - button "Musikkprodusent" [ref=e23] [cursor=pointer]:
+          - img [ref=e25]
+          - text: Musikkprodusent
+        - button "Leverandør" [ref=e27] [cursor=pointer]:
+          - img [ref=e29]
+          - text: Leverandør
+        - button "Enterprise Team" [ref=e31] [cursor=pointer]:
+          - img [ref=e33]
+          - text: Enterprise Team
+      - paragraph [ref=e35]: Som administrator har du tilgang til alle dashboards med samme mappestruktur og funksjonalitet.
+    - banner "Dashboard header" [ref=e36]:
+      - img "CreatorHub Norge hovedlogo" [ref=e38]
+      - generic [ref=e39]:
+        - button "GÅ TIL ACADEMY" [ref=e40] [cursor=pointer]:
+          - img [ref=e42]
+          - text: GÅ TIL ACADEMY
+        - button "GÅ TIL SHOWCASE" [ref=e44] [cursor=pointer]:
+          - img [ref=e46]
+          - text: GÅ TIL SHOWCASE
+        - button "GÅ TIL COMMUNITY" [ref=e48] [cursor=pointer]:
+          - img [ref=e50]
+          - text: GÅ TIL COMMUNITY
+      - region "Velkomstsektor med brukerinformasjon" [ref=e52]:
+        - generic [ref=e53]:
+          - generic [ref=e54]:
+            - img [ref=e56]
+            - generic [ref=e58]:
+              - heading "Velkommen tilbake, Fotograf" [level=3] [ref=e60]: Velkommen tilbake, Fotograf!
+              - paragraph [ref=e61]: Du har 0 aktive prosjekter og 0 nye notater
+            - generic [ref=e62]:
+              - button "Åpne møtenotater" [ref=e63] [cursor=pointer]:
+                - img [ref=e65]
+                - text: Møtenotater
+              - button "Åpne Marketplace" [ref=e67] [cursor=pointer]:
+                - img [ref=e69]
+                - text: Marketplace
+              - button "Split Sheets Oversikt" [ref=e71] [cursor=pointer]:
+                - img [ref=e73]
+                - text: Split Sheets
+              - button "Opprett prosjekt" [ref=e75] [cursor=pointer]:
+                - img [ref=e77]
+                - text: Opprett prosjekt
+              - button "E-post senter," [ref=e80] [cursor=pointer]:
+                - generic [ref=e81]:
+                  - img [ref=e82]
+                  - generic: "0"
+              - button "Client activity," [ref=e84] [cursor=pointer]:
+                - generic [ref=e85]:
+                  - img [ref=e86]
+                  - generic: "0"
+          - generic [ref=e88]:
+            - button "Prosjekter" [ref=e89] [cursor=pointer]:
+              - img [ref=e91]
+              - text: Prosjekter
+            - button "Evendi Evendi" [ref=e93] [cursor=pointer]:
+              - img "Evendi" [ref=e95]
+              - text: Evendi
+            - button "Showcase Admin" [ref=e96] [cursor=pointer]:
+              - img [ref=e98]
+              - text: Showcase Admin
+            - button "Filsystem" [ref=e100] [cursor=pointer]:
+              - img [ref=e102]
+              - text: Filsystem
+    - region "Statistikk oversikt" [ref=e104]:
+      - generic [ref=e108]:
+        - img [ref=e110]
+        - generic [ref=e112]:
+          - heading "0" [level=5] [ref=e113] [cursor=pointer]
+          - paragraph [ref=e114]: Aktive Prosjekter
+      - generic [ref=e118]:
+        - img [ref=e120]
+        - generic [ref=e122]:
+          - heading "0" [level=5] [ref=e123]
+          - paragraph [ref=e124]: Nye Kunder
+      - generic [ref=e128]:
+        - img [ref=e130]
+        - generic [ref=e132]:
+          - heading "0 kr" [level=5] [ref=e133]
+          - paragraph [ref=e134]: Månedens Inntekt
+      - generic [ref=e138]:
+        - img [ref=e140]
+        - generic [ref=e142]:
+          - heading "N/A" [level=5] [ref=e143]
+          - paragraph [ref=e144]: Vurdering
+    - generic [ref=e145]:
+      - generic [ref=e147]:
+        - generic:
+          - img
+        - tablist [ref=e150]:
+          - tab "Oversikt" [selected] [ref=e151] [cursor=pointer]:
+            - img [ref=e152]
+            - text: Oversikt
+          - tab "Prosjekter" [ref=e154] [cursor=pointer]:
+            - img [ref=e155]
+            - text: Prosjekter
+          - tab "Evendi Evendi" [ref=e157] [cursor=pointer]:
+            - img "Evendi" [ref=e158]
+            - text: Evendi
+          - tab "Showcase Admin" [ref=e159] [cursor=pointer]:
+            - img [ref=e160]
+            - text: Showcase Admin
+          - tab "Filsystem" [ref=e162] [cursor=pointer]:
+            - img [ref=e163]
+            - text: Filsystem
+          - tab "AI Forbedring" [ref=e165] [cursor=pointer]:
+            - img [ref=e166]
+            - text: AI Forbedring
+          - tab "Worklog" [ref=e168] [cursor=pointer]:
+            - img [ref=e169]
+            - text: Worklog
+          - tab "Kunder" [ref=e172] [cursor=pointer]:
+            - img [ref=e173]
+            - text: Kunder
+          - tab "Utstyr" [ref=e175] [cursor=pointer]:
+            - img [ref=e176]
+            - text: Utstyr
+          - tab "Support" [ref=e179] [cursor=pointer]:
+            - img [ref=e180]
+            - text: Support
+          - tab "Innstillinger" [ref=e182] [cursor=pointer]:
+            - img [ref=e183]
+            - text: Innstillinger
+          - tab "Administrasjon" [ref=e185] [cursor=pointer]:
+            - img [ref=e186]
+            - text: Administrasjon
+          - tab "Role Room The Role Room" [ref=e189] [cursor=pointer]:
+            - img "Role Room" [ref=e190]
+            - text: The Role Room
+          - tab "Integration Test" [ref=e191] [cursor=pointer]:
+            - img [ref=e192]
+            - text: Integration Test
+        - img [ref=e196] [cursor=pointer]
+      - tabpanel [ref=e198]:
+        - generic [ref=e199]:
+          - generic [ref=e200]:
+            - heading "Kundeforespørsler & Kommunikasjon" [level=6] [ref=e201]:
+              - img [ref=e202]
+              - text: Kundeforespørsler & Kommunikasjon
+            - generic [ref=e206]:
+              - generic [ref=e207]:
+                - generic [ref=e210]:
+                  - img [ref=e211]
+                  - heading "2" [level=4] [ref=e213]
+                  - paragraph [ref=e214]: Nye Forespørsler
+                - generic [ref=e217]:
+                  - img [ref=e218]
+                  - heading "0" [level=4] [ref=e220]
+                  - paragraph [ref=e221]: Besvarte
+                - generic [ref=e224]:
+                  - img [ref=e225]
+                  - heading "0" [level=4] [ref=e227]
+                  - paragraph [ref=e228]: Kundeforespørsler
+                - generic [ref=e231]:
+                  - img [ref=e232]
+                  - heading "1" [level=4] [ref=e234]
+                  - paragraph [ref=e235]: Høy Prioritet
+              - generic [ref=e236]:
+                - generic [ref=e237]:
+                  - heading "Kundeforespørsler & Kommunikasjon" [level=6] [ref=e238]
+                  - generic [ref=e240]: undefined profesjoner
+                  - button "Ny E-post" [ref=e241] [cursor=pointer]:
+                    - img [ref=e243]
+                    - text: Ny E-post
+                  - button "Planlegg møte" [ref=e245] [cursor=pointer]:
+                    - img [ref=e247]
+                    - text: Planlegg møte
+                - generic [ref=e250]:
+                  - generic [ref=e251]:
+                    - generic [ref=e252]: Filterstatus
+                    - generic [ref=e253]:
+                      - combobox [ref=e254] [cursor=pointer]: Nye
+                      - textbox: new
+                      - img
+                      - group:
+                        - generic: Filterstatus
+                  - generic [ref=e255]: Trykk på stjerneikonet for å prioritere viktige henvendelser.
+                - separator [ref=e256]
+                - tablist [ref=e260]:
+                  - tab "Nye Forespørsler 2" [selected] [ref=e261] [cursor=pointer]:
+                    - generic [ref=e262]:
+                      - text: Nye Forespørsler
+                      - generic [ref=e263]: "2"
+                  - tab "Alle E-poster" [ref=e264] [cursor=pointer]
+                  - tab "Booking Forespørsler" [ref=e265] [cursor=pointer]
+                  - tab "Kontakter" [ref=e266] [cursor=pointer]
+                  - tab "Statistikk" [ref=e267] [cursor=pointer]
+              - tabpanel [ref=e270]:
+                - list [ref=e272]:
+                  - generic [ref=e273] [cursor=pointer]:
+                    - img [ref=e276]
+                    - generic [ref=e278]:
+                      - generic [ref=e280]:
+                        - paragraph [ref=e281]: "Forespørsel: bryllupsvideo - Åse Brøndby"
+                        - button "Marker som viktig" [ref=e282]:
+                          - img [ref=e283]
+                      - generic [ref=e286]:
+                        - generic [ref=e287]: Åse Brøndby • 2026-02-07T19:34:47.497Z
+                        - generic [ref=e288]:
+                          - button "Svar" [ref=e289]:
+                            - img [ref=e291]
+                            - text: Svar
+                          - button "Opprett Prosjekt" [ref=e293]:
+                            - img [ref=e295]
+                            - text: Opprett Prosjekt
+                  - generic [ref=e297] [cursor=pointer]:
+                    - img [ref=e300]
+                    - generic [ref=e302]:
+                      - generic [ref=e304]:
+                        - paragraph [ref=e305]: "Forespørsel: bryllupsfotografi - Daniel Qazi"
+                        - img [ref=e306]
+                        - button "Marker som viktig" [ref=e309]:
+                          - img [ref=e310]
+                      - generic [ref=e313]:
+                        - generic [ref=e314]: Daniel Qazi • 2026-02-07T19:31:34.629Z
+                        - generic [ref=e315]:
+                          - button "Svar" [ref=e316]:
+                            - img [ref=e318]
+                            - text: Svar
+                          - button "Opprett Prosjekt" [ref=e320]:
+                            - img [ref=e322]
+                            - text: Opprett Prosjekt
+          - generic [ref=e326]:
+            - generic [ref=e327]:
+              - heading "Kommende Prosjekter" [level=6] [ref=e328]
+              - button "Se alle" [ref=e329] [cursor=pointer]
+            - generic [ref=e330]:
+              - img [ref=e331]
+              - heading "Ingen kommende prosjekter" [level=6] [ref=e333]
+              - button "Opprett Prosjekt" [ref=e334] [cursor=pointer]:
+                - img [ref=e336]
+                - text: Opprett Prosjekt
+          - generic [ref=e341]:
+            - generic [ref=e342]:
+              - heading "Lokasjonsintelligens 📍 Oslo (standard)" [level=6] [ref=e343]:
+                - img [ref=e344]
+                - text: Lokasjonsintelligens
+                - generic [ref=e347]: 📍 Oslo (standard)
+              - button "Tillat plasseringstilgang for å få værdata for din lokasjon" [ref=e348] [cursor=pointer]:
+                - img [ref=e349]
+            - generic [ref=e351]:
+              - generic [ref=e353]:
+                - heading "Værmelding" [level=6] [ref=e354]:
+                  - img [ref=e355]
+                  - text: Værmelding
+                - heading "5°C" [level=4] [ref=e357]
+                - paragraph [ref=e358]: "Vind: 1 m/s"
+                - paragraph [ref=e359]: "Sikt: 20 km"
+              - generic [ref=e361]:
+                - heading "5-dagers prognose" [level=6] [ref=e362]:
+                  - img [ref=e363]
+                  - text: 5-dagers prognose
+                - generic [ref=e365]:
+                  - paragraph [ref=e366]: man.
+                  - paragraph [ref=e367]: 5°C
+                - generic [ref=e368]:
+                  - paragraph [ref=e369]: tir.
+                  - paragraph [ref=e370]: 12°C
+                - generic [ref=e371]:
+                  - paragraph [ref=e372]: ons.
+                  - paragraph [ref=e373]: 14°C
+              - generic [ref=e375]:
+                - heading "Økonomiske indikatorer" [level=6] [ref=e376]:
+                  - img [ref=e377]
+                  - text: Økonomiske indikatorer
+                - generic [ref=e379]:
+                  - paragraph [ref=e380]: Konsumprisindeks (KPI)
+                  - paragraph [ref=e381]: 126.3 index
+                - generic [ref=e382]:
+                  - paragraph [ref=e383]: Styringsrente
+                  - paragraph [ref=e384]: 4.5 percent
+              - generic [ref=e386]:
+                - heading "Befolkningsdata" [level=6] [ref=e387]:
+                  - img [ref=e388]
+                  - text: Befolkningsdata
+                - heading "724,000" [level=6] [ref=e390]
+                - paragraph [ref=e391]: Oslo befolkning
+                - paragraph [ref=e392]: "Vekst: 1.4%"
+          - generic [ref=e393]:
+            - generic [ref=e394]:
+              - heading "Photo Projects" [level=6] [ref=e395]:
+                - img [ref=e396]
+                - text: Photo Projects
+              - button "View All" [ref=e399] [cursor=pointer]
+            - generic [ref=e400]:
+              - generic [ref=e403] [cursor=pointer]:
+                - heading "E2E Test Project" [level=6] [ref=e404]
+                - paragraph [ref=e405]: No date
+              - generic [ref=e408] [cursor=pointer]:
+                - heading "E2E Test Project" [level=6] [ref=e409]
+                - paragraph [ref=e410]: No date
+              - generic [ref=e413] [cursor=pointer]:
+                - heading "E2E Test Project" [level=6] [ref=e414]
+                - paragraph [ref=e415]: No date
+              - generic [ref=e418] [cursor=pointer]:
+                - heading "E2E Test Project" [level=6] [ref=e419]
+                - paragraph [ref=e420]: No date
+              - generic [ref=e423] [cursor=pointer]:
+                - heading "E2E Test Project" [level=6] [ref=e424]
+                - paragraph [ref=e425]: No date
+          - region "Smart arbeidsflyt system" [ref=e426]:
+            - generic [ref=e427]:
+              - generic [ref=e428]:
+                - heading "Smart Arbeidsflyt" [level=4] [ref=e429]:
+                  - img [ref=e431]
+                  - text: Smart Arbeidsflyt
+                - generic [ref=e433]:
+                  - img [ref=e434]
+                  - generic [ref=e436]: AI-drevet
+              - generic [ref=e438]:
+                - heading "Smart Arbeidsflyt" [level=4] [ref=e439]:
+                  - img [ref=e440]
+                  - text: Smart Arbeidsflyt
+                - 'heading "Automatiser hele din-prosessen med ett klikk Støttede prosjekttyper: Bryllup, Portrett, Bedrift, Kommersielt, Lifestyle" [level=6] [ref=e443]':
+                  - text: Automatiser hele din-prosessen med ett klikk
+                  - 'generic "Støttede prosjekttyper: Bryllup, Portrett, Bedrift, Kommersielt, Lifestyle" [ref=e444]':
+                    - img [ref=e445]
+                    - generic [ref=e447]: 5 prosjekttyper tilgjengelig
+                - tablist "workflow tabs" [ref=e451]:
+                  - tab "Aktive Workflows 3" [selected] [ref=e452] [cursor=pointer]:
+                    - generic [ref=e453]:
+                      - generic [ref=e454]: Aktive Workflows
+                      - generic [ref=e455]: "3"
+                  - tab "Arkiv 0" [ref=e456] [cursor=pointer]:
+                    - generic [ref=e457]:
+                      - generic [ref=e458]: Arkiv
+                      - generic: "0"
+                - generic [ref=e461]:
+                  - generic [ref=e462]:
+                    - img [ref=e464]
+                    - generic [ref=e466]:
+                      - heading "Komplett Fotografprosess" [level=6] [ref=e467]
+                      - text: AI-drevet automatisering for profesjonelle fotografer
+                  - generic [ref=e469]:
+                    - generic [ref=e471]:
+                      - img [ref=e473]
+                      - paragraph [ref=e475]: Last opp bilder
+                    - generic [ref=e477]:
+                      - img [ref=e479]
+                      - paragraph [ref=e481]: Velg prosjektmappe
+                    - generic [ref=e483]:
+                      - img [ref=e485]
+                      - paragraph [ref=e487]: Photo Enhancer
+                    - generic [ref=e489]:
+                      - img [ref=e491]
+                      - paragraph [ref=e493]: Auto culling
+                    - generic [ref=e495]:
+                      - img [ref=e497]
+                      - paragraph [ref=e500]: Opprett showcase
+                    - generic [ref=e502]:
+                      - img [ref=e504]
+                      - paragraph [ref=e506]: Send til klient
+                  - generic [ref=e507]:
+                    - generic [ref=e508]:
+                      - img [ref=e510]
+                      - generic [ref=e512]:
+                        - heading "75%" [level=5] [ref=e513]
+                        - text: Raskere prosessering
+                    - generic [ref=e514]:
+                      - img [ref=e516]
+                      - generic [ref=e518]:
+                        - heading "3-4t → 15min" [level=5] [ref=e519]
+                        - text: Tidsbesparelse
+                    - generic [ref=e520]:
+                      - img [ref=e522]
+                      - generic [ref=e524]:
+                        - heading "100%" [level=5] [ref=e525]
+                        - text: Automatisert
+                - generic [ref=e526]:
+                  - heading "Handlinger for photographer" [level=6] [ref=e527]
+                  - 'generic "Standard timesats: 120 NOK/t" [ref=e528]':
+                    - img [ref=e529]
+                    - generic [ref=e531]: 120 NOK/t
+                - generic [ref=e532]:
+                  - generic [ref=e535]:
+                    - heading "Filer 3" [level=6] [ref=e536]:
+                      - text: Filer
+                      - generic [ref=e538]: "3"
+                    - generic [ref=e539]:
+                      - button "Last opp til Drive" [ref=e541] [cursor=pointer]:
+                        - img [ref=e543]
+                        - text: Last opp til Drive
+                      - button "Velg prosjektmappe" [ref=e546] [cursor=pointer]:
+                        - img [ref=e548]
+                        - text: Velg prosjektmappe
+                      - button "Backup RAW filer" [ref=e551] [cursor=pointer]:
+                        - img [ref=e553]
+                        - text: Backup RAW filer
+                  - generic [ref=e557]:
+                    - heading "Synkronisering 2" [level=6] [ref=e558]:
+                      - text: Synkronisering
+                      - generic [ref=e560]: "2"
+                    - generic [ref=e561]:
+                      - button "CreatorHub Photo Enhancer" [ref=e563] [cursor=pointer]:
+                        - img [ref=e565]
+                        - text: CreatorHub Photo Enhancer
+                      - button "Lightroom sync" [ref=e568] [cursor=pointer]:
+                        - img [ref=e570]
+                        - text: Lightroom sync
+                  - generic [ref=e574]:
+                    - heading "Analyse 3" [level=6] [ref=e575]:
+                      - text: Analyse
+                      - generic [ref=e577]: "3"
+                    - generic [ref=e578]:
+                      - button "Automatisk culling" [ref=e580] [cursor=pointer]:
+                        - img [ref=e582]
+                        - text: Automatisk culling
+                      - button "Utstyr oversikt" [ref=e585] [cursor=pointer]:
+                        - img [ref=e587]
+                        - text: Utstyr oversikt
+                      - button "Utstyr forberedelse" [ref=e590] [cursor=pointer]:
+                        - img [ref=e592]
+                        - text: Utstyr forberedelse
+                  - generic [ref=e596]:
+                    - heading "Prosjekt 6" [level=6] [ref=e597]:
+                      - text: Prosjekt
+                      - generic [ref=e599]: "6"
+                    - generic [ref=e600]:
+                      - button "Opprett showcase" [ref=e602] [cursor=pointer]:
+                        - img [ref=e604]
+                        - text: Opprett showcase
+                      - button "Opprett fotoprosjekt" [ref=e608] [cursor=pointer]:
+                        - img [ref=e610]
+                        - text: Opprett fotoprosjekt
+                      - button "Planlegg fotografering" [ref=e613] [cursor=pointer]:
+                        - img [ref=e615]
+                        - text: Planlegg fotografering
+                      - button "Opprett worklog" [ref=e619] [cursor=pointer]:
+                        - img [ref=e621]
+                        - text: Opprett worklog
+                      - button "Vis timeline" [ref=e624] [cursor=pointer]:
+                        - img [ref=e626]
+                        - text: Vis timeline
+                      - button "Vis showcase" [ref=e630] [cursor=pointer]:
+                        - img [ref=e632]
+                        - text: Vis showcase
+                  - generic [ref=e637]:
+                    - heading "Klient 5" [level=6] [ref=e638]:
+                      - text: Klient
+                      - generic [ref=e640]: "5"
+                    - generic [ref=e641]:
+                      - button "Send e-post til klient" [ref=e643] [cursor=pointer]:
+                        - img [ref=e645]
+                        - text: Send e-post til klient
+                      - button "Generer kontrakt" [ref=e648] [cursor=pointer]:
+                        - img [ref=e650]
+                        - text: Generer kontrakt
+                      - button "Ny klient" [ref=e653] [cursor=pointer]:
+                        - img [ref=e655]
+                        - text: Ny klient
+                      - button "Send forhåndsvisning" [ref=e658] [cursor=pointer]:
+                        - img [ref=e660]
+                        - text: Send forhåndsvisning
+                      - button "Opprett møte" [ref=e663] [cursor=pointer]:
+                        - img [ref=e665]
+                        - text: Opprett møte
+                - generic [ref=e669]:
+                  - generic [ref=e672]:
+                    - generic [ref=e673]:
+                      - generic [ref=e674]:
+                        - heading "Komplett Fotografprosess" [level=6] [ref=e675]
+                        - generic [ref=e678]: 6 steg
+                      - generic [ref=e679]:
+                        - generic "Start workflow" [ref=e680]:
+                          - button "Start" [ref=e681] [cursor=pointer]:
+                            - img [ref=e683]
+                            - text: Start
+                        - button "Arkiver workflow" [ref=e685] [cursor=pointer]:
+                          - img [ref=e686]
+                    - generic [ref=e688]:
+                      - generic [ref=e689]:
+                        - generic [ref=e690]: "1"
+                        - generic [ref=e691]:
+                          - img [ref=e692]
+                          - generic [ref=e694]: Last opp til Drive
+                      - generic [ref=e695]:
+                        - generic [ref=e696]: "2"
+                        - generic [ref=e697]:
+                          - img [ref=e698]
+                          - generic [ref=e700]: Velg prosjektmappe
+                      - generic [ref=e701]:
+                        - generic [ref=e702]: "3"
+                        - generic [ref=e703]:
+                          - img [ref=e704]
+                          - generic [ref=e706]: CreatorHub Photo Enhancer
+                      - generic [ref=e707]:
+                        - generic [ref=e708]: "4"
+                        - generic [ref=e709]:
+                          - img [ref=e710]
+                          - generic [ref=e712]: Automatisk culling
+                      - generic [ref=e713]:
+                        - generic [ref=e714]: "5"
+                        - generic [ref=e715]:
+                          - img [ref=e716]
+                          - generic [ref=e719]: Opprett showcase
+                      - generic [ref=e720]:
+                        - generic [ref=e721]: "6"
+                        - generic [ref=e722]:
+                          - img [ref=e723]
+                          - generic [ref=e725]: Send e-post til klient
+                  - generic [ref=e728]:
+                    - generic [ref=e729]:
+                      - generic [ref=e730]:
+                        - heading "Bryllupsdagprosess" [level=6] [ref=e731]
+                        - generic [ref=e734]: 4 steg
+                      - generic [ref=e735]:
+                        - generic "Start workflow" [ref=e736]:
+                          - button "Start" [ref=e737] [cursor=pointer]:
+                            - img [ref=e739]
+                            - text: Start
+                        - button "Arkiver workflow" [ref=e741] [cursor=pointer]:
+                          - img [ref=e742]
+                    - generic [ref=e744]:
+                      - generic [ref=e745]:
+                        - generic [ref=e746]: "1"
+                        - generic [ref=e747]:
+                          - img [ref=e748]
+                          - generic [ref=e750]: Utstyr forberedelse
+                      - generic [ref=e751]:
+                        - generic [ref=e752]: "2"
+                        - generic [ref=e753]:
+                          - img [ref=e754]
+                          - generic [ref=e757]: Planlegg fotografering
+                      - generic [ref=e758]:
+                        - generic [ref=e759]: "3"
+                        - generic [ref=e760]:
+                          - img [ref=e761]
+                          - generic [ref=e763]: Backup RAW filer
+                      - generic [ref=e764]:
+                        - generic [ref=e765]: "4"
+                        - generic [ref=e766]:
+                          - img [ref=e767]
+                          - generic [ref=e769]: Send forhåndsvisning
+                  - generic [ref=e772]:
+                    - generic [ref=e773]:
+                      - generic [ref=e774]:
+                        - heading "Klient Onboarding" [level=6] [ref=e775]
+                        - generic [ref=e778]: 4 steg
+                      - generic [ref=e779]:
+                        - generic "Start workflow" [ref=e780]:
+                          - button "Start" [ref=e781] [cursor=pointer]:
+                            - img [ref=e783]
+                            - text: Start
+                        - button "Arkiver workflow" [ref=e785] [cursor=pointer]:
+                          - img [ref=e786]
+                    - generic [ref=e788]:
+                      - generic [ref=e789]:
+                        - generic [ref=e790]: "1"
+                        - generic [ref=e791]:
+                          - img [ref=e792]
+                          - generic [ref=e794]: Ny klient
+                      - generic [ref=e795]:
+                        - generic [ref=e796]: "2"
+                        - generic [ref=e797]:
+                          - img [ref=e798]
+                          - generic [ref=e800]: Generer kontrakt
+                      - generic [ref=e801]:
+                        - generic [ref=e802]: "3"
+                        - generic [ref=e803]:
+                          - img [ref=e804]
+                          - generic [ref=e807]: Planlegg fotografering
+                      - generic [ref=e808]:
+                        - generic [ref=e809]: "4"
+                        - generic [ref=e810]:
+                          - img [ref=e811]
+                          - generic [ref=e813]: Opprett fotoprosjekt
+          - generic [ref=e814]:
+            - heading "Personalisert Nyheter & Innsikter" [level=6] [ref=e815]:
+              - img [ref=e816]
+              - text: Personalisert Nyheter & Innsikter
+            - generic [ref=e818]:
+              - img [ref=e819]
+              - heading "Personaliserte nyheter" [level=5] [ref=e821]
+              - paragraph [ref=e822]: Legg til utstyret ditt for å få relevante nyheter fra bransjen
+          - generic [ref=e823]:
+            - heading "Senter for Salg & Inntekt" [level=6] [ref=e824]:
+              - img [ref=e825]
+              - text: Senter for Salg & Inntekt
+            - generic [ref=e827]:
+              - generic [ref=e828]:
+                - generic [ref=e829]:
+                  - img [ref=e830]
+                  - heading "Salgsmanagement" [level=4] [ref=e833]
+                - heading "Komplett CRM-system for fotografer • admin@local.dev" [level=6] [ref=e834]
+              - generic [ref=e835]:
+                - button "Opprett møte" [ref=e837] [cursor=pointer]:
+                  - img [ref=e839]
+                  - text: Opprett møte
+                - button "Ny arbeidslogg" [ref=e842] [cursor=pointer]:
+                  - img [ref=e844]
+                  - text: Ny arbeidslogg
+                - button "Velg klient" [ref=e847] [cursor=pointer]:
+                  - img [ref=e849]
+                  - text: Velg klient
+                - button "Åpne prosjekt" [ref=e852] [cursor=pointer]:
+                  - img [ref=e854]
+                  - text: Åpne prosjekt
+                - button "Lag påminnelse" [ref=e857] [cursor=pointer]:
+                  - img [ref=e859]
+                  - text: Lag påminnelse
+              - generic [ref=e862]:
+                - generic [ref=e866]:
+                  - generic [ref=e867]:
+                    - paragraph [ref=e868]: Totale Leads
+                    - heading "0" [level=4] [ref=e869]
+                  - img [ref=e870]
+                - generic [ref=e875]:
+                  - generic [ref=e876]:
+                    - paragraph [ref=e877]: Aktive Deals
+                    - heading "0" [level=4] [ref=e878]
+                  - img [ref=e879]
+                - generic [ref=e884]:
+                  - generic [ref=e885]:
+                    - paragraph [ref=e886]: Konverteringsrate
+                    - heading "0%" [level=4] [ref=e887]
+                  - img [ref=e888]
+                - generic [ref=e893]:
+                  - generic [ref=e894]:
+                    - paragraph [ref=e895]: Total Verdi
+                    - heading "0 undefined" [level=4] [ref=e896]
+                  - img [ref=e897]
+              - tablist [ref=e902]:
+                - tab "Pipeline" [selected] [ref=e903] [cursor=pointer]
+                - tab "Leads Liste" [ref=e904] [cursor=pointer]
+                - tab "Statistikk" [ref=e905] [cursor=pointer]
+              - generic [ref=e907]:
+                - generic [ref=e910]:
+                  - heading "Kald Lead" [level=6] [ref=e911]
+                  - paragraph [ref=e912]: 0 leads • 0 undefined
+                  - list [ref=e913]
+                - generic [ref=e916]:
+                  - heading "Varm Lead" [level=6] [ref=e917]
+                  - paragraph [ref=e918]: 0 leads • 0 undefined
+                  - list [ref=e919]
+                - generic [ref=e922]:
+                  - heading "Het Lead" [level=6] [ref=e923]
+                  - paragraph [ref=e924]: 0 leads • 0 undefined
+                  - list [ref=e925]
+                - generic [ref=e928]:
+                  - heading "Kvalifisert" [level=6] [ref=e929]
+                  - paragraph [ref=e930]: 0 leads • 0 undefined
+                  - list [ref=e931]
+                - generic [ref=e934]:
+                  - heading "Tilbud Sendt" [level=6] [ref=e935]
+                  - paragraph [ref=e936]: 0 leads • 0 undefined
+                  - list [ref=e937]
+                - generic [ref=e940]:
+                  - heading "Forhandling" [level=6] [ref=e941]
+                  - paragraph [ref=e942]: 0 leads • 0 undefined
+                  - list [ref=e943]
+                - generic [ref=e946]:
+                  - heading "Avsluttet Won" [level=6] [ref=e947]
+                  - paragraph [ref=e948]: 0 leads • 0 undefined
+                  - list [ref=e949]
+                - generic [ref=e952]:
+                  - heading "Avsluttet Lost" [level=6] [ref=e953]
+                  - paragraph [ref=e954]: 0 leads • 0 undefined
+                  - list [ref=e955]
+          - generic [ref=e958]:
+            - img [ref=e959]
+            - heading "Ingen kontrakter ennå" [level=6] [ref=e961]
+            - paragraph [ref=e962]: Opprett din første kontrakt for å komme i gang
+            - button "Opprett kontrakt" [ref=e963] [cursor=pointer]:
+              - img [ref=e965]
+              - text: Opprett kontrakt
+          - generic [ref=e970]:
+            - generic [ref=e971]:
+              - generic [ref=e972]:
+                - generic [ref=e973]:
+                  - img [ref=e974]
+                  - paragraph [ref=e976]: Google Workspace Lagring
+                - generic [ref=e977]:
+                  - generic [ref=e979]: Google Drive koblet
+                  - generic [ref=e981]: Live fra Google Drive
+              - generic [ref=e983]: 26.5 GB / 2048.0 GB
+            - progressbar [ref=e984]
+            - generic [ref=e986]:
+              - generic [ref=e987]: God lagringsplass
+              - button "Detaljer" [ref=e989] [cursor=pointer]
+  - button [ref=e991] [cursor=pointer]:
+    - img [ref=e992]
+  - button "chat" [ref=e995] [cursor=pointer]:
+    - img [ref=e996]

@@ -20,6 +20,7 @@ import {
 } from '@mui/icons-material';
 import LoginDialog from './LoginDialog';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
+import { getRoleRoomVideoPosterUrl, getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
 
 interface CastingLandingPageProps {
   onEnter: () => void;
@@ -52,6 +53,10 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   const [typedWhat, setTypedWhat] = useState('');
   const [cursorTarget, setCursorTarget] = useState<'why'|'how'|'what'|'none'>('none');
   const [cursorVisible, setCursorVisible] = useState(true);
+  const [backdropVideoReady, setBackdropVideoReady] = useState(false);
+  const [backdropVideoFailed, setBackdropVideoFailed] = useState(false);
+  const [introVideoReady, setIntroVideoReady] = useState(false);
+  const [introVideoFailed, setIntroVideoFailed] = useState(false);
 
   const demoModeEnabled = ROLE_ROOM_LANDING_CONFIG.demoModeEnabled;
   const introEnabled = ROLE_ROOM_LANDING_CONFIG.intro.enabled;
@@ -63,11 +68,23 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   const howLabel = ROLE_ROOM_LANDING_CONFIG.intro.howLabel;
   const howText = HOW;
   const whatLabel = ROLE_ROOM_LANDING_CONFIG.intro.whatLabel;
+  const backdropStillUrl = getRoleRoomVideoStillUrl(backdropVideoUrl, '/role-room-assets/landing_backdrop.webp');
+  const introStillUrl = getRoleRoomVideoPosterUrl(introVideoUrl, '/role-room-assets/landing_backdrop_with_logo.webp');
 
   /* skip intro entirely if disabled in role room config */
   useEffect(() => {
     if (!introEnabled) setShowIntro(false);
   }, [introEnabled]);
+
+  useEffect(() => {
+    setBackdropVideoReady(false);
+    setBackdropVideoFailed(false);
+  }, [backdropVideoUrl]);
+
+  useEffect(() => {
+    setIntroVideoReady(false);
+    setIntroVideoFailed(false);
+  }, [introVideoUrl]);
 
   // Chain typewriter: WHY label → HOW label → WHAT label
   useEffect(() => {
@@ -152,18 +169,50 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
     }}>
 
       {/* ── full-bleed video backdrop ── */}
+      {backdropStillUrl ? (
+        <Box
+          component="img"
+          src={backdropStillUrl}
+          alt=""
+          aria-hidden="true"
+          sx={{
+            position: 'fixed', inset: 0,
+            width: '100%', height: '100%',
+            objectFit: 'cover', objectPosition: 'center 30%',
+            opacity: 0.22,
+            zIndex: 0,
+            pointerEvents: 'none',
+            filter: 'saturate(0.6) brightness(0.55)',
+          }}
+        />
+      ) : null}
       <Box
         component="video"
         src={backdropVideoUrl}
         autoPlay loop muted playsInline
+        onLoadedData={() => {
+          setBackdropVideoReady(true);
+          setBackdropVideoFailed(false);
+        }}
+        onCanPlay={() => {
+          setBackdropVideoReady(true);
+          setBackdropVideoFailed(false);
+        }}
+        onError={() => {
+          setBackdropVideoReady(false);
+          setBackdropVideoFailed(true);
+        }}
+        data-testid="role-room-landing-backdrop-video"
+        data-media-mode={backdropVideoReady && !backdropVideoFailed ? 'video' : 'image'}
         sx={{
           position: 'fixed', inset: 0,
           width: '100%', height: '100%',
           objectFit: 'cover', objectPosition: 'center 30%',
-          opacity: 0.22,
+          opacity: backdropVideoReady && !backdropVideoFailed ? 0.22 : 0,
           zIndex: 0,
           pointerEvents: 'none',
           filter: 'saturate(0.6) brightness(0.55)',
+          transition: 'opacity 0.3s ease',
         }}
       />
       {/* dark gradient over video so text is always readable */}
@@ -185,15 +234,46 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
               background: '#000',
             }}
           >
+            {introStillUrl ? (
+              <Box
+                component="img"
+                src={introStillUrl}
+                alt=""
+                aria-hidden="true"
+                sx={{
+                  position: 'absolute', inset: 0,
+                  width: '100%', height: '100%',
+                  objectFit: 'cover',
+                  opacity: introVideoReady && !introVideoFailed ? 0.12 : 1,
+                  transition: 'opacity 0.3s ease',
+                }}
+              />
+            ) : null}
             <Box
               component="video"
               src={introVideoUrl}
               autoPlay muted playsInline
               onEnded={() => setShowIntro(false)}
+              onLoadedData={() => {
+                setIntroVideoReady(true);
+                setIntroVideoFailed(false);
+              }}
+              onCanPlay={() => {
+                setIntroVideoReady(true);
+                setIntroVideoFailed(false);
+              }}
+              onError={() => {
+                setIntroVideoReady(false);
+                setIntroVideoFailed(true);
+              }}
+              data-testid="role-room-landing-intro-video"
+              data-media-mode={introVideoReady && !introVideoFailed ? 'video' : 'image'}
               sx={{
                 position: 'absolute', inset: 0,
                 width: '100%', height: '100%',
                 objectFit: 'cover',
+                opacity: introVideoReady && !introVideoFailed ? 1 : 0,
+                transition: 'opacity 0.3s ease',
               }}
             />
             {/* Skip button */}

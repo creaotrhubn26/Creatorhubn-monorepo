@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   Alert,
   Avatar,
@@ -9,6 +9,12 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Stack,
   Slider,
   TextField,
@@ -47,6 +53,7 @@ import {
 } from '@mui/icons-material';
 import type {
   CastingProject,
+  Manuscript,
   ProducerAccountAccessPlatform,
   ProducerBrandGuideColor,
   ProducerBrandLogoDetection,
@@ -67,6 +74,7 @@ import type {
   ShotList,
 } from '../../models/casting';
 import { castingService } from '../../services/castingService';
+import { manuscriptService } from '../../services/manuscriptService';
 import settingsService from '../../services/settingsService';
 import {
   producerWorkflowService,
@@ -548,10 +556,35 @@ const CLIENT_MATERIAL_TEMPLATES: ClientMaterialTemplate[] = [
 
 const WORKSPACE_COLOR_OPTIONS = ['#38bdf8', '#fbbf24', '#a855f7', '#22c55e', '#fb7185', '#f97316', '#14b8a6', '#94a3b8'];
 const ACCOUNT_ACCESS_PLATFORM_ORDER: ProducerAccountAccessPlatform[] = ['google', 'meta', 'linkedin', 'youtube', 'tiktok'];
+const PRODUCER_WORKSPACE_SURFACE_VALUES: ProducerWorkspaceSurfaceKey[] = [
+  'brief',
+  'materials',
+  'storyboard',
+  'manuscript',
+  'shotlist',
+  'brand',
+  'accounts',
+  'delivery',
+  'meetings',
+];
+
+const isProducerWorkspaceSurfaceKey = (value: unknown): value is ProducerWorkspaceSurfaceKey => (
+  typeof value === 'string'
+  && PRODUCER_WORKSPACE_SURFACE_VALUES.includes(value as ProducerWorkspaceSurfaceKey)
+);
 
 const getWorkspaceSurfaceIcon = (surface: ProducerWorkspaceSurfaceKey) => {
   if (surface === 'materials') {
     return <PermMediaIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
+  }
+  if (surface === 'storyboard') {
+    return <SpaceDashboardOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
+  }
+  if (surface === 'manuscript') {
+    return <ArticleOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
+  }
+  if (surface === 'shotlist') {
+    return <GridViewOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
   }
   if (surface === 'brand') {
     return <PaletteOutlinedIcon sx={{ color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface], fontSize: 18 }} />;
@@ -581,6 +614,21 @@ const getWorkspaceSurfaceDescription = (
     return isClientReviewerMode
       ? 'Logo, farger, fonter og uttrykk som skal styre leveransene.'
       : 'Logo, farger, fonter og visuell retning.';
+  }
+  if (surface === 'storyboard') {
+    return isClientReviewerMode
+      ? 'Oversikt over storyboardet og et sted for inspirasjoner, referanser og visuelle innspill.'
+      : 'Scenevis storyboard med klientinspirasjoner og framekontekst.';
+  }
+  if (surface === 'manuscript') {
+    return isClientReviewerMode
+      ? 'Les manus og skriv forslag til endringer uten å redigere originalteksten direkte.'
+      : 'Samle manuslesning, klientforslag og neste omskrivninger på ett sted.';
+  }
+  if (surface === 'shotlist') {
+    return isClientReviewerMode
+      ? 'En ryddig, lesbar oversikt over planlagte shots, scene og sted uten produksjonsstøy.'
+      : 'Klientvennlig shotlistoversikt som speiler scene- og storyboarddekning.';
   }
   if (surface === 'accounts') {
     return isClientReviewerMode
@@ -1067,6 +1115,24 @@ const getShotListLabel = (shotList: ShotList): string => (
   shotList.sceneName?.trim() || shotList.sceneId || shotList.id
 );
 
+const getSceneDisplayLabel = (
+  scene: NonNullable<CastingProject['sceneBreakdowns']>[number],
+): string => {
+  const sceneNumber = scene.sceneNumber !== undefined && scene.sceneNumber !== null
+    ? String(scene.sceneNumber).trim()
+    : '';
+  const sceneTitle = readFirstNonEmptyString(scene.sceneName, scene.sceneHeading, scene.heading, scene.id);
+  const prefix = sceneNumber ? `Scene ${sceneNumber}` : 'Scene';
+  return sceneTitle ? `${prefix} · ${sceneTitle}` : prefix;
+};
+
+const getStoryboardFrameDisplayLabel = (
+  frame: NonNullable<NonNullable<CastingProject['sceneBreakdowns']>[number]['storyboardFrames']>[number],
+  index: number,
+): string => (
+  readFirstNonEmptyString(frame.title, frame.description, `Frame ${index + 1}`)
+);
+
 interface ParsedMaterialMetadata {
   fileName: string;
   versionLabel: string;
@@ -1078,6 +1144,30 @@ interface ParsedMaterialMetadata {
   packageName: string;
   projectFileId: string;
   projectFileDownloadUrl: string;
+}
+
+interface WorkspaceContributionMetadata {
+  workspaceSurface: ProducerWorkspaceSurfaceKey | null;
+  manuscriptId: string;
+  sceneId: string;
+  storyboardFrameId: string;
+  rationale: string;
+}
+
+interface ManuscriptSuggestionDraft {
+  manuscriptId: string;
+  sceneId: string;
+  title: string;
+  suggestion: string;
+  rationale: string;
+}
+
+interface StoryboardInspirationDraft {
+  sceneId: string;
+  storyboardFrameId: string;
+  title: string;
+  note: string;
+  externalUrl: string;
 }
 
 interface DeliveryWorkspaceAssetSummary {
@@ -1115,13 +1205,36 @@ const parseMaterialMetadata = (material: ProducerClientMaterial): ParsedMaterial
   };
 };
 
-const getSurfaceForMaterial = (material: ProducerClientMaterial): ProducerWorkspaceSurfaceKey => (
-  material.entry_type === 'brand_asset' ? 'brand' : 'materials'
-);
+const parseWorkspaceContributionMetadata = (material: ProducerClientMaterial): WorkspaceContributionMetadata => {
+  const metadata = asRecord(material.metadata);
+  return {
+    workspaceSurface: isProducerWorkspaceSurfaceKey(metadata.workspaceSurface)
+      ? metadata.workspaceSurface
+      : isProducerWorkspaceSurfaceKey(metadata.surface)
+        ? metadata.surface
+        : null,
+    manuscriptId: readFirstNonEmptyString(metadata.manuscriptId),
+    sceneId: readFirstNonEmptyString(metadata.sceneId),
+    storyboardFrameId: readFirstNonEmptyString(metadata.storyboardFrameId, metadata.frameId),
+    rationale: readFirstNonEmptyString(metadata.rationale, metadata.why),
+  };
+};
+
+const getSurfaceForMaterial = (material: ProducerClientMaterial): ProducerWorkspaceSurfaceKey => {
+  const contributionMetadata = parseWorkspaceContributionMetadata(material);
+  if (contributionMetadata.workspaceSurface) {
+    return contributionMetadata.workspaceSurface;
+  }
+  return material.entry_type === 'brand_asset' ? 'brand' : 'materials';
+};
 
 const getSurfaceForProjectFile = (file: ProjectFileRecord): ProducerWorkspaceSurfaceKey => {
   const source = getProjectFileMetadataString(file, 'source');
   const entryType = getProjectFileMetadataString(file, 'entryType');
+  const configuredSurface = getProjectFileMetadataString(file, 'workspaceSurface', 'surface');
+  if (isProducerWorkspaceSurfaceKey(configuredSurface)) {
+    return configuredSurface;
+  }
   if (source === 'role_room_client_material') {
     return entryType === 'brand_asset' ? 'brand' : 'materials';
   }
@@ -1518,6 +1631,7 @@ export default function ProducerMediaPanel({
   const [error, setError] = useState<string | null>(null);
   const [intakeDraft, setIntakeDraft] = useState<ProducerClientIntake>(EMPTY_INTAKE);
   const [materials, setMaterials] = useState<ProducerClientMaterial[]>([]);
+  const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
   const [reviews, setReviews] = useState<ProducerClientReview[]>([]);
   const [timelineItems, setTimelineItems] = useState<ProducerTimelineItem[]>([]);
   const [planningDraft, setPlanningDraft] = useState<ProducerProjectPlanning>(() => normalizeProducerProjectPlanning(project));
@@ -1538,9 +1652,25 @@ export default function ProducerMediaPanel({
   const [deletingMaterialId, setDeletingMaterialId] = useState<string | null>(null);
   const [uploadingMaterialFile, setUploadingMaterialFile] = useState(false);
   const [materialDraft, setMaterialDraft] = useState<ClientMaterialDraft>(EMPTY_MATERIAL_DRAFT);
+  const [manuscriptSuggestionDraft, setManuscriptSuggestionDraft] = useState<ManuscriptSuggestionDraft>({
+    manuscriptId: '',
+    sceneId: '',
+    title: '',
+    suggestion: '',
+    rationale: '',
+  });
+  const [storyboardInspirationDraft, setStoryboardInspirationDraft] = useState<StoryboardInspirationDraft>({
+    sceneId: '',
+    storyboardFrameId: '',
+    title: '',
+    note: '',
+    externalUrl: '',
+  });
   const [selectedMaterialFile, setSelectedMaterialFile] = useState<File | null>(null);
   const [activeSectionId, setActiveSectionId] = useState(() => normalizeProducerProjectPlanning(project).workspaceNavigation?.activeSectionId ?? getDefaultProducerWorkspaceNavigation().activeSectionId ?? '');
   const [activePageId, setActivePageId] = useState(() => normalizeProducerProjectPlanning(project).workspaceNavigation?.activePageId ?? getDefaultProducerWorkspaceNavigation().activePageId ?? '');
+  const activeSectionIdRef = useRef(activeSectionId);
+  const activePageIdRef = useRef(activePageId);
   const [workspaceContextMenu, setWorkspaceContextMenu] = useState<WorkspaceContextMenuState | null>(null);
   const [workspaceToolsAnchorEl, setWorkspaceToolsAnchorEl] = useState<HTMLElement | null>(null);
   const [showWorkspaceOperations, setShowWorkspaceOperations] = useState(false);
@@ -1650,6 +1780,133 @@ export default function ProducerMediaPanel({
     ),
     [deliveryWorkspaceAssets.googleArtifacts, deliveryWorkspaceAssets.legalAgreements, focusedArtifactId, materials, planningDraft, projectFiles],
   );
+  const storyboardScenes = useMemo(
+    () => Array.isArray(project.sceneBreakdowns) ? project.sceneBreakdowns : [],
+    [project.sceneBreakdowns],
+  );
+  const storyboardFrameCount = useMemo(
+    () => storyboardScenes.reduce((total, scene) => total + (scene.storyboardFrames?.length ?? 0), 0),
+    [storyboardScenes],
+  );
+  const primaryManuscript = useMemo(
+    () => manuscripts[0] ?? null,
+    [manuscripts],
+  );
+  const totalShotCount = useMemo(
+    () => shotLists.reduce((total, shotList) => total + shotList.shots.length, 0),
+    [shotLists],
+  );
+  const uncoveredStoryboardSceneCount = useMemo(() => {
+    return storyboardScenes.filter((scene) => !shotLists.some((shotList) => (
+      (hasText(scene.id) && shotList.sceneId === scene.id)
+      || (hasText(scene.sceneName) && shotList.sceneName?.trim() === scene.sceneName?.trim())
+      || (scene.sceneNumber !== undefined && scene.sceneNumber !== null && String(shotList.sceneId).trim() === String(scene.sceneNumber).trim())
+    ))).length;
+  }, [shotLists, storyboardScenes]);
+  const shotListRows = useMemo(() => {
+    const roleNameById = new Map(project.roles.map((role) => [role.id, role.name]));
+    const locationNameById = new Map(project.locations.map((location) => [location.id, location.name]));
+    const sceneById = new Map(storyboardScenes.map((scene) => [scene.id, scene]));
+
+    return shotLists.flatMap((shotList) => (
+      shotList.shots.map((shot, index) => {
+        const linkedScene = shot.sceneId ? sceneById.get(shot.sceneId) : null;
+        const planLabel = typeof shot.estimatedTime === 'number' && shot.estimatedTime > 0
+          ? `${shot.estimatedTime} min`
+          : typeof shot.duration === 'number' && shot.duration > 0
+            ? `${Math.max(1, Math.round(shot.duration / 60))} min`
+            : `#${index + 1}`;
+        const castSummary = Array.from(new Set([
+          ...(shot.assignments ?? []).map((assignment) => readFirstNonEmptyString(
+            assignment.name,
+            assignment.roleName,
+            assignment.roleId ? roleNameById.get(assignment.roleId) : '',
+          )),
+          readFirstNonEmptyString(shot.roleId ? roleNameById.get(shot.roleId) : ''),
+        ].filter((value): value is string => hasText(value)))).slice(0, 4).join(', ');
+        const locationLabel = readFirstNonEmptyString(
+          shot.locationId ? locationNameById.get(shot.locationId) : '',
+          linkedScene?.locationName,
+          shot.locationId,
+          shotList.sceneName,
+          shotList.sceneId,
+        );
+
+        return {
+          id: shot.id,
+          planLabel,
+          sceneLabel: readFirstNonEmptyString(
+            linkedScene ? getSceneDisplayLabel(linkedScene) : '',
+            getShotListLabel(shotList),
+            shot.sceneId,
+            shot.id,
+          ),
+          locationLabel: locationLabel || 'Ikke satt',
+          castSummary: castSummary || 'Ikke spesifisert',
+          description: readFirstNonEmptyString(
+            shot.description,
+            shot.notes,
+            linkedScene?.description,
+            `${shot.shotType} · ${shot.cameraAngle}`,
+          ),
+          shotListLabel: getShotListLabel(shotList),
+        };
+      })
+    ));
+  }, [project.locations, project.roles, shotLists, storyboardScenes]);
+  const storyboardSceneOptions = useMemo(
+    () => storyboardScenes.map((scene) => ({
+      id: scene.id,
+      label: getSceneDisplayLabel(scene),
+      frameCount: scene.storyboardFrames?.length ?? 0,
+    })),
+    [storyboardScenes],
+  );
+  const storyboardFrameOptions = useMemo(() => {
+    const selectedScene = storyboardScenes.find((scene) => scene.id === storyboardInspirationDraft.sceneId) ?? null;
+    return (selectedScene?.storyboardFrames ?? []).map((frame, index) => ({
+      id: frame.id,
+      label: getStoryboardFrameDisplayLabel(frame, index),
+      thumbnailUrl: frame.thumbnailUrl ?? frame.imageUrl ?? '',
+    }));
+  }, [storyboardInspirationDraft.sceneId, storyboardScenes]);
+  const manuscriptExcerpt = useMemo(() => {
+    if (!primaryManuscript?.content) {
+      return '';
+    }
+    return primaryManuscript.content.replace(/\s+/g, ' ').trim().slice(0, 320);
+  }, [primaryManuscript?.content]);
+
+  useEffect(() => {
+    activeSectionIdRef.current = activeSectionId;
+  }, [activeSectionId]);
+
+  useEffect(() => {
+    activePageIdRef.current = activePageId;
+  }, [activePageId]);
+
+  useEffect(() => {
+    setManuscriptSuggestionDraft((previous) => ({
+      ...previous,
+      manuscriptId: previous.manuscriptId || primaryManuscript?.id || '',
+      sceneId: previous.sceneId || storyboardScenes[0]?.id || '',
+    }));
+  }, [primaryManuscript?.id, storyboardScenes]);
+
+  useEffect(() => {
+    setStoryboardInspirationDraft((previous) => {
+      const nextSceneId = previous.sceneId || storyboardScenes[0]?.id || '';
+      const nextScene = storyboardScenes.find((scene) => scene.id === nextSceneId) ?? null;
+      const nextFrameId = previous.storyboardFrameId
+        || nextScene?.storyboardFrames?.[0]?.id
+        || '';
+      return {
+        ...previous,
+        sceneId: nextSceneId,
+        storyboardFrameId: nextFrameId,
+      };
+    });
+  }, [storyboardScenes]);
 
   useEffect(() => {
     const normalizedPlanning = normalizeProducerProjectPlanning(project);
@@ -1659,8 +1916,31 @@ export default function ProducerMediaPanel({
     setBrandDosDraft(stringifyLineSeparatedValues(normalizedPlanning.brandGuide.dos));
     setBrandDontsDraft(stringifyLineSeparatedValues(normalizedPlanning.brandGuide.donts));
     const navigation = normalizeProducerWorkspaceNavigation(normalizedPlanning.workspaceNavigation);
-    setActiveSectionId(navigation.activeSectionId ?? navigation.sections[0]?.id ?? '');
-    setActivePageId(navigation.activePageId ?? navigation.sections[0]?.pages[0]?.id ?? '');
+    const previousPageId = activePageIdRef.current;
+    const previousSectionId = activeSectionIdRef.current;
+    const sectionForPreviousPage = previousPageId
+      ? navigation.sections.find((section) => flattenProducerWorkspacePages(section).some((page) => page.id === previousPageId))
+      : null;
+    const preservedSection = sectionForPreviousPage
+      ?? (previousSectionId ? navigation.sections.find((section) => section.id === previousSectionId) ?? null : null);
+    const preservedPages = preservedSection ? flattenProducerWorkspacePages(preservedSection) : [];
+    const nextSectionId = preservedSection?.id
+      ?? navigation.activeSectionId
+      ?? navigation.sections[0]?.id
+      ?? '';
+    const nextPageId = (previousPageId && preservedPages.some((page) => page.id === previousPageId))
+      ? previousPageId
+      : navigation.sections.find((section) => section.id === nextSectionId)
+        ? (navigation.activePageId && flattenProducerWorkspacePages(
+          navigation.sections.find((section) => section.id === nextSectionId)!,
+        ).some((page) => page.id === navigation.activePageId)
+          ? navigation.activePageId
+          : flattenProducerWorkspacePages(
+            navigation.sections.find((section) => section.id === nextSectionId)!,
+          )[0]?.id ?? '')
+        : '';
+    setActiveSectionId(nextSectionId);
+    setActivePageId(nextPageId);
   }, [project]);
 
   const loadClientWorkspace = useCallback(async () => {
@@ -1699,6 +1979,30 @@ export default function ProducerMediaPanel({
   useEffect(() => {
     void loadClientWorkspace();
   }, [loadClientWorkspace]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadManuscripts = async () => {
+      try {
+        const nextManuscripts = await manuscriptService.getManuscripts(projectId);
+        if (!cancelled) {
+          setManuscripts(nextManuscripts);
+        }
+      } catch (loadManuscriptError) {
+        console.error('[ProducerMediaPanel] Failed to load manuscripts', loadManuscriptError);
+        if (!cancelled) {
+          setManuscripts([]);
+        }
+      }
+    };
+
+    void loadManuscripts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const loadGoogleAccessStatus = useCallback(async () => {
     const requestId = ++googleAccessRequestRef.current;
@@ -2032,6 +2336,81 @@ export default function ProducerMediaPanel({
       setSavingMaterial(false);
     }
   }, [materialDraft, projectId]);
+
+  const handleSubmitManuscriptSuggestion = useCallback(async () => {
+    if (!manuscriptSuggestionDraft.title.trim() || !manuscriptSuggestionDraft.suggestion.trim()) {
+      setError('Forslaget må ha en tittel og en konkret endring.');
+      return;
+    }
+
+    setSavingMaterial(true);
+    setError(null);
+    try {
+      const created = await producerWorkflowService.createClientMaterial(projectId, {
+        entryType: 'feedback',
+        title: manuscriptSuggestionDraft.title.trim(),
+        description: manuscriptSuggestionDraft.suggestion.trim(),
+        status: 'suggested',
+        metadata: {
+          workspaceSurface: 'manuscript',
+          manuscriptId: manuscriptSuggestionDraft.manuscriptId || primaryManuscript?.id || undefined,
+          sceneId: manuscriptSuggestionDraft.sceneId || undefined,
+          rationale: manuscriptSuggestionDraft.rationale.trim() || undefined,
+          suggestionType: 'change_request',
+        },
+      });
+      setMaterials((previous) => [created, ...previous]);
+      setManuscriptSuggestionDraft({
+        manuscriptId: manuscriptSuggestionDraft.manuscriptId || primaryManuscript?.id || '',
+        sceneId: manuscriptSuggestionDraft.sceneId,
+        title: '',
+        suggestion: '',
+        rationale: '',
+      });
+    } catch (saveError) {
+      console.error('[ProducerMediaPanel] Failed to save manuscript suggestion', saveError);
+      setError('Kunne ikke lagre manusforslaget.');
+    } finally {
+      setSavingMaterial(false);
+    }
+  }, [manuscriptSuggestionDraft, primaryManuscript?.id, projectId]);
+
+  const handleSubmitStoryboardInspiration = useCallback(async () => {
+    if (!storyboardInspirationDraft.title.trim()) {
+      setError('Inspirasjonen må ha en tittel.');
+      return;
+    }
+
+    setSavingMaterial(true);
+    setError(null);
+    try {
+      const created = await producerWorkflowService.createClientMaterial(projectId, {
+        entryType: 'reference',
+        title: storyboardInspirationDraft.title.trim(),
+        description: storyboardInspirationDraft.note.trim() || undefined,
+        externalUrl: storyboardInspirationDraft.externalUrl.trim() || undefined,
+        status: 'provided',
+        metadata: {
+          workspaceSurface: 'storyboard',
+          sceneId: storyboardInspirationDraft.sceneId || undefined,
+          storyboardFrameId: storyboardInspirationDraft.storyboardFrameId || undefined,
+          inspirationType: 'client_reference',
+        },
+      });
+      setMaterials((previous) => [created, ...previous]);
+      setStoryboardInspirationDraft((previous) => ({
+        ...previous,
+        title: '',
+        note: '',
+        externalUrl: '',
+      }));
+    } catch (saveError) {
+      console.error('[ProducerMediaPanel] Failed to save storyboard inspiration', saveError);
+      setError('Kunne ikke lagre storyboard-inspirasjonen.');
+    } finally {
+      setSavingMaterial(false);
+    }
+  }, [projectId, storyboardInspirationDraft]);
 
   const handleSavePlanningContext = useCallback(async () => {
     setSavingPlanning(true);
@@ -2637,6 +3016,18 @@ export default function ProducerMediaPanel({
       return (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime);
     });
   }, [materials]);
+  const manuscriptSuggestions = useMemo(
+    () => sortedMaterials.filter((material) => (
+      material.entry_type === 'feedback' && getSurfaceForMaterial(material) === 'manuscript'
+    )),
+    [sortedMaterials],
+  );
+  const storyboardInspirations = useMemo(
+    () => sortedMaterials.filter((material) => (
+      material.entry_type === 'reference' && getSurfaceForMaterial(material) === 'storyboard'
+    )),
+    [sortedMaterials],
+  );
 
   const workflowOpenLabels = isClientReviewerMode
     ? {
@@ -3582,6 +3973,50 @@ export default function ProducerMediaPanel({
       icon: <PermMediaIcon sx={{ color: '#fcd34d' }} />,
     },
     {
+      key: 'storyboard' as const,
+      title: 'Storyboard',
+      subtitle: isClientReviewerMode
+        ? 'Se scener og legg inn visuelle inspirasjoner uten å rote til produksjonsflaten.'
+        : 'Storyboard med sceneoversikt, frames og klientinspirasjoner.',
+      progressLabel: storyboardFrameCount > 0 ? `${storyboardFrameCount} frames` : 'Ingen frames ennå',
+      detail: storyboardInspirations.length > 0
+        ? `${storyboardInspirations.length} inspirasjoner er lagt inn på storyboardet.`
+        : 'Ingen inspirasjoner er koblet til storyboardet ennå.',
+      accent: 'rgba(251,113,133,0.16)',
+      textColor: '#fecdd3',
+      icon: <SpaceDashboardOutlinedIcon sx={{ color: '#fda4af' }} />,
+    },
+    {
+      key: 'manuscript' as const,
+      title: 'Manus',
+      subtitle: isClientReviewerMode
+        ? 'Les manus og skriv foreslåtte endringer uten å overskrive originalen.'
+        : 'Samle manuslesning og klientforslag i én arbeidsflate.',
+      progressLabel: primaryManuscript ? `${manuscriptSuggestions.length} forslag` : 'Manus mangler',
+      detail: primaryManuscript?.title
+        ? `${primaryManuscript.title}${primaryManuscript.version ? ` · ${primaryManuscript.version}` : ''}`
+        : 'Ingen manus er koblet til prosjektet ennå.',
+      accent: 'rgba(129,140,248,0.16)',
+      textColor: '#c7d2fe',
+      icon: <ArticleOutlinedIcon sx={{ color: '#a5b4fc' }} />,
+    },
+    {
+      key: 'shotlist' as const,
+      title: 'Shotlist',
+      subtitle: isClientReviewerMode
+        ? 'En ren oversikt over scene, sted, cast og beskrivelser for planlagte shots.'
+        : 'Klientvennlig shotlist-tabell med dekning og sceneoversikt.',
+      progressLabel: `${shotLists.length} lister · ${totalShotCount} shots`,
+      detail: shotListRows.length > 0
+        ? uncoveredStoryboardSceneCount > 0
+          ? `${shotListRows.length} oversiktsrader klare · ${uncoveredStoryboardSceneCount} storyboardscener mangler shotlist.`
+          : `${shotListRows.length} oversiktsrader klare for klientvisning.`
+        : 'Ingen shotlist-rader er klare for klientoversikt ennå.',
+      accent: 'rgba(34,211,238,0.16)',
+      textColor: '#bae6fd',
+      icon: <GridViewOutlinedIcon sx={{ color: '#67e8f9' }} />,
+    },
+    {
       key: 'brand' as const,
       title: 'Merkevareguide',
       subtitle: isClientReviewerMode
@@ -3646,6 +4081,8 @@ export default function ProducerMediaPanel({
     intakeDraft.projectGoal,
     isClientReviewerMode,
     linkedCalendarMaterialCount,
+    manuscriptSuggestions.length,
+    primaryManuscript,
     meetingAgendaCoverageCount,
     materials.length,
     planningDraft.brandGuide.visualStyle,
@@ -3653,6 +4090,12 @@ export default function ProducerMediaPanel({
     planningDraft.meetingWorkspace.liveNotes,
     openMeetingFollowUpCount,
     requiredAccountEntries.length,
+    shotListRows.length,
+    shotLists.length,
+    storyboardFrameCount,
+    storyboardInspirations.length,
+    totalShotCount,
+    uncoveredStoryboardSceneCount,
   ]);
 
   const activeWorkspaceCard = workspaceCards.find((card) => card.key === activeWorkspace) ?? workspaceCards[0];
@@ -3725,6 +4168,14 @@ export default function ProducerMediaPanel({
     ],
   );
   const storyboardPreviewTiles = useMemo<WorkspaceShowcaseTile[]>(() => {
+    if (storyboardScenes.length > 0) {
+      return storyboardScenes.slice(0, 3).map((scene, index) => ({
+        id: scene.id,
+        eyebrow: index === 0 ? 'Storyboard' : 'Scene',
+        title: getSceneDisplayLabel(scene),
+        meta: `${scene.storyboardFrames?.length ?? 0} frames`,
+      }));
+    }
     if (shotLists.length > 0) {
       return shotLists.slice(0, 3).map((shotList, index) => ({
         id: shotList.id,
@@ -3755,13 +4206,34 @@ export default function ProducerMediaPanel({
         meta: 'Åpne storyboard eller shotlist for å fylle planverket.',
       },
     ];
-  }, [planningDraft.contentCalendar, shotLists]);
+  }, [planningDraft.contentCalendar, shotLists, storyboardScenes]);
   const workspaceSummaryRows = useMemo(() => {
     if (activeWorkspace === 'materials') {
       return [
         { label: 'Registrert', value: `${materials.length} materialer` },
         { label: 'Koblet til plan', value: linkedCalendarMaterialCount > 0 ? `${linkedCalendarMaterialCount} kalenderpunkter` : 'Ingen koblinger ennå' },
         { label: 'Shotlist', value: materials.some((item) => hasText(item.linked_shot_list_id)) ? 'Koblet til scener' : 'Ikke koblet til shotlist' },
+      ];
+    }
+    if (activeWorkspace === 'storyboard') {
+      return [
+        { label: 'Scener', value: `${storyboardScenes.length} registrert` },
+        { label: 'Frames', value: storyboardFrameCount > 0 ? `${storyboardFrameCount} frames` : 'Ingen frames ennå' },
+        { label: 'Inspirasjoner', value: storyboardInspirations.length > 0 ? `${storyboardInspirations.length} lagt inn` : 'Ingen inspirasjoner ennå' },
+      ];
+    }
+    if (activeWorkspace === 'manuscript') {
+      return [
+        { label: 'Manus', value: primaryManuscript ? primaryManuscript.title : 'Ingen manus koblet ennå' },
+        { label: 'Scener', value: storyboardScenes.length > 0 ? `${storyboardScenes.length} scener` : 'Ingen scener koblet' },
+        { label: 'Forslag', value: manuscriptSuggestions.length > 0 ? `${manuscriptSuggestions.length} forslag` : 'Ingen forslag ennå' },
+      ];
+    }
+    if (activeWorkspace === 'shotlist') {
+      return [
+        { label: 'Lister', value: `${shotLists.length} shotlists` },
+        { label: 'Shots', value: `${totalShotCount} planlagt` },
+        { label: 'Dekning', value: uncoveredStoryboardSceneCount > 0 ? `${uncoveredStoryboardSceneCount} scener mangler shotlist` : 'Alle storyboardscener er koblet' },
       ];
     }
     if (activeWorkspace === 'brand') {
@@ -3797,6 +4269,7 @@ export default function ProducerMediaPanel({
     intakeDraft.projectGoal,
     intakeDraft.targetAudience,
     linkedCalendarMaterialCount,
+    manuscriptSuggestions.length,
     materials,
     openMeetingFollowUpCount,
     planningDraft.activationPlan.activation,
@@ -3809,6 +4282,14 @@ export default function ProducerMediaPanel({
     planningDraft.deliveryWorkflow.versioningRule,
     planningDraft.meetingWorkspace.sessionLabel,
     planningDraft.meetingWorkspace.status,
+    primaryManuscript,
+    shotListRows.length,
+    shotLists.length,
+    storyboardFrameCount,
+    storyboardInspirations.length,
+    storyboardScenes.length,
+    totalShotCount,
+    uncoveredStoryboardSceneCount,
   ]);
   const nextSignalList = useMemo(
     () => clientContributionTasks.slice(0, 3),
@@ -5331,6 +5812,7 @@ export default function ProducerMediaPanel({
           return (
             <Box
               key={page.id}
+              data-testid={`producer-media-page-${page.surface}`}
               onClick={() => selectPage(sectionId, page.id)}
               onContextMenu={(event) => {
                 if (!canManageWorkspaceShell) {
@@ -5785,6 +6267,7 @@ export default function ProducerMediaPanel({
                     return (
                       <Box
                         key={page.id}
+                        data-testid={`producer-media-page-${page.surface}`}
                         onClick={() => selectPage(sectionId, page.id)}
                         onContextMenu={(event) => {
                           if (!canManageWorkspaceShell) {
@@ -6116,6 +6599,7 @@ export default function ProducerMediaPanel({
                 return (
                   <Box
                     key={page.id}
+                    data-testid={`producer-media-page-${page.surface}`}
                     role="button"
                     tabIndex={0}
                     onClick={() => selectPage(sectionId, page.id)}
@@ -6914,6 +7398,724 @@ export default function ProducerMediaPanel({
                   )}
                 </Stack>
               ) : null}
+            </Box>
+          ) : null}
+
+          {activeWorkspace === 'storyboard' ? (
+            <Box
+              data-testid="producer-media-storyboard-workspace"
+              sx={{
+                borderRadius: 3,
+                border: '1px solid rgba(251,113,133,0.18)',
+                bgcolor: 'rgba(15,23,42,0.62)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                p: { xs: 1.25, md: 1.5 },
+                '& .MuiInputBase-root': {
+                  borderRadius: 2,
+                  bgcolor: 'rgba(248,250,252,0.04)',
+                  color: '#f8fafc',
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(226,232,240,0.62)',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(251,113,133,0.16)',
+                },
+              }}
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
+                <Box>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
+                    Storyboard og inspirasjoner
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 720 }}>
+                    Klienten ser scener og frames i rolig form, og kan legge inn inspirasjoner og referanser direkte på riktig scene uten å rote til produksjonseditoren.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                  <Chip size="small" label={`${storyboardScenes.length} scener`} sx={{ bgcolor: 'rgba(251,113,133,0.14)', color: '#fecdd3' }} />
+                  <Chip size="small" label={`${storyboardFrameCount} frames`} sx={{ bgcolor: 'rgba(129,140,248,0.14)', color: '#c7d2fe' }} />
+                  <Chip size="small" label={`${storyboardInspirations.length} inspirasjoner`} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
+                </Stack>
+              </Stack>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', xl: '1.1fr 0.9fr' },
+                  gap: 1,
+                  mb: 1.2,
+                }}
+              >
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.8,
+                    border: '1px solid rgba(148,163,184,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.4)',
+                  }}
+                >
+                  <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem' }}>
+                    Sceneoversikt
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mt: 0.22, mb: 0.9 }}>
+                    Klienten får oversikt over hvilke scener som faktisk er blokkert i storyboardet og kan peke inspirasjoner inn på rett sted.
+                  </Typography>
+                  {storyboardScenes.length > 0 ? (
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                        gap: 0.8,
+                      }}
+                    >
+                      {storyboardScenes.map((scene) => {
+                        const previewFrame = scene.storyboardFrames?.[0] ?? null;
+                        return (
+                          <Box
+                            key={scene.id}
+                            sx={{
+                              borderRadius: 1.5,
+                              border: '1px solid rgba(148,163,184,0.14)',
+                              overflow: 'hidden',
+                              background: 'rgba(15,23,42,0.52)',
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                aspectRatio: '16 / 9',
+                                bgcolor: 'rgba(15,23,42,0.72)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              {previewFrame?.thumbnailUrl || previewFrame?.imageUrl ? (
+                                <Box
+                                  component="img"
+                                  src={previewFrame.thumbnailUrl ?? previewFrame.imageUrl}
+                                  alt={getSceneDisplayLabel(scene)}
+                                  sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                />
+                              ) : (
+                                <SpaceDashboardOutlinedIcon sx={{ color: 'rgba(251,113,133,0.46)', fontSize: 34 }} />
+                              )}
+                            </Box>
+                            <Box sx={{ p: 0.85 }}>
+                              <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem', lineHeight: 1.35 }}>
+                                {getSceneDisplayLabel(scene)}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.22 }}>
+                                {readFirstNonEmptyString(scene.locationName, scene.intExt, scene.description, 'Storyboardscene uten ekstra notat')}
+                              </Typography>
+                              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.7 }}>
+                                <Chip size="small" label={`${scene.storyboardFrames?.length ?? 0} frames`} sx={{ bgcolor: 'rgba(251,113,133,0.14)', color: '#fecdd3' }} />
+                                {scene.storyboardFrames?.[0]?.title ? (
+                                  <Chip size="small" label={scene.storyboardFrames[0].title} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#e2e8f0' }} />
+                                ) : null}
+                              </Stack>
+                            </Box>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  ) : (
+                    <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.84rem' }}>
+                      Ingen storyboardscener er koblet til prosjektet ennå.
+                    </Typography>
+                  )}
+                </Box>
+
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.8,
+                    border: '1px solid rgba(148,163,184,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.4)',
+                  }}
+                >
+                  <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem' }}>
+                    Legg til inspirasjon
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mt: 0.22, mb: 0.9 }}>
+                    Bruk denne til visuelle referanser, tone, lys, komposisjon eller andre pekere produsenten skal ta med seg videre.
+                  </Typography>
+                  <Stack spacing={1.05}>
+                    <TextField
+                      select
+                      label="Scene"
+                      value={storyboardInspirationDraft.sceneId}
+                      onChange={(event) => {
+                        const nextSceneId = event.target.value;
+                        const nextScene = storyboardScenes.find((scene) => scene.id === nextSceneId) ?? null;
+                        setStoryboardInspirationDraft((previous) => ({
+                          ...previous,
+                          sceneId: nextSceneId,
+                          storyboardFrameId: nextScene?.storyboardFrames?.[0]?.id ?? '',
+                        }));
+                      }}
+                      fullWidth
+                      disabled={!canEditClientInput || storyboardSceneOptions.length === 0}
+                    >
+                      {storyboardSceneOptions.map((scene) => (
+                        <MenuItem key={scene.id} value={scene.id}>
+                          {`${scene.label} · ${scene.frameCount} frames`}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      select
+                      label="Frame (valgfritt)"
+                      value={storyboardInspirationDraft.storyboardFrameId}
+                      onChange={(event) => setStoryboardInspirationDraft((previous) => ({
+                        ...previous,
+                        storyboardFrameId: event.target.value,
+                      }))}
+                      fullWidth
+                      disabled={!canEditClientInput || storyboardFrameOptions.length === 0}
+                    >
+                      <MenuItem value="">Hele scenen</MenuItem>
+                      {storyboardFrameOptions.map((frame) => (
+                        <MenuItem key={frame.id} value={frame.id}>
+                          {frame.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      label="Tittel"
+                      value={storyboardInspirationDraft.title}
+                      onChange={(event) => setStoryboardInspirationDraft((previous) => ({ ...previous, title: event.target.value }))}
+                      fullWidth
+                      inputProps={{ 'data-testid': 'producer-media-storyboard-title-input' }}
+                      disabled={!canEditClientInput}
+                    />
+                    <TextField
+                      label="Lenke til referanse (valgfritt)"
+                      value={storyboardInspirationDraft.externalUrl}
+                      onChange={(event) => setStoryboardInspirationDraft((previous) => ({ ...previous, externalUrl: event.target.value }))}
+                      fullWidth
+                      inputProps={{ 'data-testid': 'producer-media-storyboard-url-input' }}
+                      disabled={!canEditClientInput}
+                    />
+                    <TextField
+                      label="Hva bør teamet se etter?"
+                      value={storyboardInspirationDraft.note}
+                      onChange={(event) => setStoryboardInspirationDraft((previous) => ({ ...previous, note: event.target.value }))}
+                      fullWidth
+                      multiline
+                      minRows={4}
+                      inputProps={{ 'data-testid': 'producer-media-storyboard-note-input' }}
+                      disabled={!canEditClientInput}
+                    />
+                    {canEditClientInput ? (
+                      <Button
+                        data-testid="producer-media-storyboard-save-inspiration"
+                        variant="contained"
+                        onClick={() => {
+                          void handleSubmitStoryboardInspiration();
+                        }}
+                        disabled={savingMaterial}
+                        sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, bgcolor: '#fb7185', '&:hover': { bgcolor: '#f43f5e' } }}
+                      >
+                        {savingMaterial ? 'Lagrer inspirasjon...' : 'Lagre inspirasjon'}
+                      </Button>
+                    ) : null}
+                  </Stack>
+                </Box>
+              </Box>
+
+              <Box
+                sx={{
+                  p: 0.95,
+                  borderRadius: 1.8,
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  bgcolor: 'rgba(2,6,23,0.4)',
+                }}
+              >
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem', mb: 0.22 }}>
+                  Lagrede inspirasjoner
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mb: 0.95 }}>
+                  Alle innspill her er knyttet til scene og kan plukkes opp videre i storyboard- og shot-arbeidet.
+                </Typography>
+                {storyboardInspirations.length > 0 ? (
+                  <Stack spacing={0.8}>
+                    {storyboardInspirations.map((material) => {
+                      const metadata = parseWorkspaceContributionMetadata(material);
+                      const sceneLabel = storyboardScenes.find((scene) => scene.id === metadata.sceneId);
+                      const frameLabel = storyboardScenes
+                        .flatMap((scene) => scene.storyboardFrames ?? [])
+                        .find((frame) => frame.id === metadata.storyboardFrameId);
+                      return (
+                        <Box
+                          key={material.id}
+                          sx={{
+                            p: 0.9,
+                            borderRadius: 1.35,
+                            border: '1px solid rgba(148,163,184,0.14)',
+                            bgcolor: 'rgba(15,23,42,0.52)',
+                          }}
+                        >
+                          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={0.9}>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
+                                {sceneLabel ? (
+                                  <Chip size="small" label={getSceneDisplayLabel(sceneLabel)} sx={{ bgcolor: 'rgba(251,113,133,0.14)', color: '#fecdd3' }} />
+                                ) : null}
+                                {frameLabel ? (
+                                  <Chip size="small" label={readFirstNonEmptyString(frameLabel.title, frameLabel.description, 'Frame')} sx={{ bgcolor: 'rgba(129,140,248,0.14)', color: '#c7d2fe' }} />
+                                ) : null}
+                              </Stack>
+                              <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.86rem' }}>
+                                {material.title}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.78rem', lineHeight: 1.5, mt: 0.28 }}>
+                                {material.description ?? 'Ingen ekstra notat lagt inn.'}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.72rem', mt: 0.55 }}>
+                                {formatTimestamp(material.updated_at ?? material.created_at ?? '')}
+                              </Typography>
+                            </Box>
+                            <Stack direction={{ xs: 'row', md: 'column' }} spacing={0.65} alignItems={{ md: 'flex-end' }}>
+                              {material.external_url ? (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  component="a"
+                                  href={material.external_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                                >
+                                  Åpne referanse
+                                </Button>
+                              ) : null}
+                              {canEditClientInput ? (
+                                <Button
+                                  size="small"
+                                  variant="text"
+                                  onClick={() => {
+                                    void handleDeleteMaterial(material.id);
+                                  }}
+                                  disabled={deletingMaterialId === material.id}
+                                  sx={{ textTransform: 'none', fontWeight: 700, color: '#fda4af' }}
+                                >
+                                  {deletingMaterialId === material.id ? 'Sletter...' : 'Fjern'}
+                                </Button>
+                              ) : null}
+                            </Stack>
+                          </Stack>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                ) : (
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.84rem' }}>
+                    Ingen storyboard-inspirasjoner er registrert ennå.
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          ) : null}
+
+          {activeWorkspace === 'manuscript' ? (
+            <Box
+              data-testid="producer-media-manuscript-workspace"
+              sx={{
+                borderRadius: 3,
+                border: '1px solid rgba(129,140,248,0.18)',
+                bgcolor: 'rgba(15,23,42,0.62)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                p: { xs: 1.25, md: 1.5 },
+                '& .MuiInputBase-root': {
+                  borderRadius: 2,
+                  bgcolor: 'rgba(248,250,252,0.04)',
+                  color: '#f8fafc',
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(226,232,240,0.62)',
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(129,140,248,0.16)',
+                },
+              }}
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
+                <Box>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
+                    Manus og endringsforslag
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 720 }}>
+                    Klienten leser manus i oversiktlig form og skriver forslag til endringer som egne innspill. Originalteksten blir ikke overskrevet direkte i klientflaten.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                  <Chip size="small" label={primaryManuscript ? (primaryManuscript.version ? `Versjon ${primaryManuscript.version}` : 'Manus koblet') : 'Ingen manus'} sx={{ bgcolor: 'rgba(129,140,248,0.14)', color: '#c7d2fe' }} />
+                  <Chip size="small" label={`${manuscriptSuggestions.length} forslag`} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
+                </Stack>
+              </Stack>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', xl: '1.05fr 0.95fr' },
+                  gap: 1,
+                  mb: 1.2,
+                }}
+              >
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.8,
+                    border: '1px solid rgba(148,163,184,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.4)',
+                  }}
+                >
+                  <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem' }}>
+                    Manusoversikt
+                  </Typography>
+                  {primaryManuscript ? (
+                    <>
+                      <Typography sx={{ color: '#e0e7ff', fontWeight: 700, fontSize: '1rem', mt: 0.5 }}>
+                        {primaryManuscript.title}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mt: 0.18 }}>
+                        {[primaryManuscript.author, primaryManuscript.subtitle, primaryManuscript.format].filter(Boolean).join(' · ') || 'Manusdetaljer er ikke satt'}
+                      </Typography>
+                      <Box
+                        sx={{
+                          mt: 0.9,
+                          p: 0.95,
+                          borderRadius: 1.4,
+                          border: '1px solid rgba(129,140,248,0.14)',
+                          bgcolor: 'rgba(15,23,42,0.52)',
+                        }}
+                      >
+                        <Typography sx={{ color: 'rgba(191,219,254,0.62)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', mb: 0.35 }}>
+                          Utdrag
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(226,232,240,0.92)', fontSize: '0.82rem', lineHeight: 1.7 }}>
+                          {manuscriptExcerpt || 'Manuset har ikke tekstinnhold ennå.'}
+                          {manuscriptExcerpt && primaryManuscript.content.length > manuscriptExcerpt.length ? '…' : ''}
+                        </Typography>
+                      </Box>
+                    </>
+                  ) : (
+                    <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.84rem', mt: 0.6 }}>
+                      Ingen manus er koblet til prosjektet ennå.
+                    </Typography>
+                  )}
+                  <Box
+                    sx={{
+                      mt: 0.95,
+                      p: 0.95,
+                      borderRadius: 1.4,
+                      border: '1px solid rgba(148,163,184,0.14)',
+                      bgcolor: 'rgba(15,23,42,0.52)',
+                    }}
+                  >
+                    <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.86rem', mb: 0.55 }}>
+                      Scenegrunnlag
+                    </Typography>
+                    {storyboardSceneOptions.length > 0 ? (
+                      <Stack spacing={0.42}>
+                        {storyboardSceneOptions.slice(0, 6).map((scene) => (
+                          <Typography key={scene.id} sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.78rem', lineHeight: 1.45 }}>
+                            {`${scene.label} · ${scene.frameCount} frames`}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
+                        Ingen scener er koblet til manusgrunnlaget ennå.
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+
+                <Box
+                  sx={{
+                    p: 0.95,
+                    borderRadius: 1.8,
+                    border: '1px solid rgba(148,163,184,0.14)',
+                    bgcolor: 'rgba(2,6,23,0.4)',
+                  }}
+                >
+                  <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem' }}>
+                    Foreslå endring
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mt: 0.22, mb: 0.9 }}>
+                    Bruk dette til omskrivninger, tydeliggjøringer eller forslag til scenen, ikke til å redigere selve manuset direkte.
+                  </Typography>
+                  <Stack spacing={1.05}>
+                    <TextField
+                      select
+                      label="Manus"
+                      value={manuscriptSuggestionDraft.manuscriptId}
+                      onChange={(event) => setManuscriptSuggestionDraft((previous) => ({
+                        ...previous,
+                        manuscriptId: event.target.value,
+                      }))}
+                      fullWidth
+                      disabled={!canEditClientInput || manuscripts.length === 0}
+                    >
+                      {manuscripts.map((manuscript) => (
+                        <MenuItem key={manuscript.id} value={manuscript.id}>
+                          {manuscript.title}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      select
+                      label="Scene (valgfritt)"
+                      value={manuscriptSuggestionDraft.sceneId}
+                      onChange={(event) => setManuscriptSuggestionDraft((previous) => ({
+                        ...previous,
+                        sceneId: event.target.value,
+                      }))}
+                      fullWidth
+                      disabled={!canEditClientInput || storyboardSceneOptions.length === 0}
+                    >
+                      <MenuItem value="">Hele manuset</MenuItem>
+                      {storyboardSceneOptions.map((scene) => (
+                        <MenuItem key={scene.id} value={scene.id}>
+                          {scene.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      label="Kort tittel"
+                      value={manuscriptSuggestionDraft.title}
+                      onChange={(event) => setManuscriptSuggestionDraft((previous) => ({ ...previous, title: event.target.value }))}
+                      fullWidth
+                      inputProps={{ 'data-testid': 'producer-media-manuscript-title-input' }}
+                      disabled={!canEditClientInput}
+                    />
+                    <TextField
+                      label="Hva foreslår du å endre?"
+                      value={manuscriptSuggestionDraft.suggestion}
+                      onChange={(event) => setManuscriptSuggestionDraft((previous) => ({ ...previous, suggestion: event.target.value }))}
+                      fullWidth
+                      multiline
+                      minRows={4}
+                      inputProps={{ 'data-testid': 'producer-media-manuscript-suggestion-input' }}
+                      disabled={!canEditClientInput}
+                    />
+                    <TextField
+                      label="Hvorfor?"
+                      value={manuscriptSuggestionDraft.rationale}
+                      onChange={(event) => setManuscriptSuggestionDraft((previous) => ({ ...previous, rationale: event.target.value }))}
+                      fullWidth
+                      multiline
+                      minRows={3}
+                      inputProps={{ 'data-testid': 'producer-media-manuscript-rationale-input' }}
+                      disabled={!canEditClientInput}
+                    />
+                    {canEditClientInput ? (
+                      <Button
+                        data-testid="producer-media-manuscript-save-suggestion"
+                        variant="contained"
+                        onClick={() => {
+                          void handleSubmitManuscriptSuggestion();
+                        }}
+                        disabled={savingMaterial}
+                        sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, bgcolor: '#818cf8', '&:hover': { bgcolor: '#6366f1' } }}
+                      >
+                        {savingMaterial ? 'Lagrer forslag...' : 'Lagre forslag'}
+                      </Button>
+                    ) : null}
+                  </Stack>
+                </Box>
+              </Box>
+
+              <Box
+                sx={{
+                  p: 0.95,
+                  borderRadius: 1.8,
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  bgcolor: 'rgba(2,6,23,0.4)',
+                }}
+              >
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem', mb: 0.22 }}>
+                  Forslagslogg
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mb: 0.95 }}>
+                  Endringsforslagene ligger som egne punkter teamet kan følge opp, uten å blande klientkommentarer inn i selve manusstrukturen.
+                </Typography>
+                {manuscriptSuggestions.length > 0 ? (
+                  <Stack spacing={0.8}>
+                    {manuscriptSuggestions.map((material) => {
+                      const metadata = parseWorkspaceContributionMetadata(material);
+                      const sceneLabel = storyboardScenes.find((scene) => scene.id === metadata.sceneId);
+                      return (
+                        <Box
+                          key={material.id}
+                          sx={{
+                            p: 0.9,
+                            borderRadius: 1.35,
+                            border: '1px solid rgba(148,163,184,0.14)',
+                            bgcolor: 'rgba(15,23,42,0.52)',
+                          }}
+                        >
+                          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={0.9}>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
+                                {sceneLabel ? (
+                                  <Chip size="small" label={getSceneDisplayLabel(sceneLabel)} sx={{ bgcolor: 'rgba(129,140,248,0.14)', color: '#c7d2fe' }} />
+                                ) : (
+                                  <Chip size="small" label="Hele manuset" sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#e2e8f0' }} />
+                                )}
+                                <Chip size="small" label={material.status ?? 'suggested'} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
+                              </Stack>
+                              <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.86rem' }}>
+                                {material.title}
+                              </Typography>
+                              <Typography sx={{ color: 'rgba(226,232,240,0.92)', fontSize: '0.8rem', lineHeight: 1.55, mt: 0.28 }}>
+                                {material.description}
+                              </Typography>
+                              {metadata.rationale ? (
+                                <Typography sx={{ color: 'rgba(148,163,184,0.88)', fontSize: '0.76rem', lineHeight: 1.5, mt: 0.52 }}>
+                                  {`Hvorfor: ${metadata.rationale}`}
+                                </Typography>
+                              ) : null}
+                              <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.72rem', mt: 0.55 }}>
+                                {formatTimestamp(material.updated_at ?? material.created_at ?? '')}
+                              </Typography>
+                            </Box>
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant="text"
+                                onClick={() => {
+                                  void handleDeleteMaterial(material.id);
+                                }}
+                                disabled={deletingMaterialId === material.id}
+                                sx={{ textTransform: 'none', fontWeight: 700, color: '#c7d2fe', alignSelf: { md: 'flex-start' } }}
+                              >
+                                {deletingMaterialId === material.id ? 'Sletter...' : 'Fjern'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                ) : (
+                  <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.84rem' }}>
+                    Ingen manusforslag er registrert ennå.
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          ) : null}
+
+          {activeWorkspace === 'shotlist' ? (
+            <Box
+              data-testid="producer-media-shotlist-workspace"
+              sx={{
+                borderRadius: 3,
+                border: '1px solid rgba(34,211,238,0.18)',
+                bgcolor: 'rgba(15,23,42,0.62)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                p: { xs: 1.25, md: 1.5 },
+              }}
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
+                <Box>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
+                    Shotlist overview
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 760 }}>
+                    Dette er klientvisningen av shotlisten: tydelig, rolig og sceneorientert. Den viser hva som skal dekkes, hvor og med hvem, men ikke den interne produksjonsstøyen.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                  <Chip size="small" label={`${shotLists.length} shotlists`} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
+                  <Chip size="small" label={`${totalShotCount} shots`} sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a' }} />
+                  <Chip
+                    size="small"
+                    label={uncoveredStoryboardSceneCount > 0 ? `${uncoveredStoryboardSceneCount} scener mangler` : 'Full storyboarddekning'}
+                    sx={{
+                      bgcolor: uncoveredStoryboardSceneCount > 0 ? 'rgba(251,113,133,0.14)' : 'rgba(34,197,94,0.14)',
+                      color: uncoveredStoryboardSceneCount > 0 ? '#fecdd3' : '#bbf7d0',
+                    }}
+                  />
+                </Stack>
+              </Stack>
+
+              <Box
+                sx={{
+                  mb: 1.1,
+                  p: 0.95,
+                  borderRadius: 1.8,
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  bgcolor: 'rgba(2,6,23,0.4)',
+                }}
+              >
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem', mb: 0.22 }}>
+                  Klientformat
+                </Typography>
+                <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem', lineHeight: 1.5 }}>
+                  Oversikten er bevisst komprimert til plan, scene, sted, cast og beskrivelse. Det gjør den rask å lese i møter og trygg å sende til klient uten at de må tolke intern shot-detaljering.
+                </Typography>
+              </Box>
+
+              <TableContainer
+                data-testid="producer-media-shotlist-table"
+                sx={{
+                  borderRadius: 2,
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  bgcolor: 'rgba(2,6,23,0.4)',
+                  overflow: 'hidden',
+                }}
+              >
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'rgba(245,158,11,0.9)' }}>
+                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', width: 120 }}>Plan</TableCell>
+                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 220 }}>Scene / klipp</TableCell>
+                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 150 }}>Sted</TableCell>
+                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 180 }}>Cast</TableCell>
+                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 260 }}>Beskrivelse</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {shotListRows.length > 0 ? shotListRows.map((row, index) => {
+                      const showGroupRow = index === 0 || shotListRows[index - 1]?.shotListLabel !== row.shotListLabel;
+                      return (
+                        <Fragment key={row.id}>
+                          {showGroupRow ? (
+                            <TableRow sx={{ bgcolor: 'rgba(59,130,246,0.18)' }}>
+                              <TableCell colSpan={5} sx={{ color: '#dbeafe', fontWeight: 800, fontSize: '0.76rem', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                                {row.shotListLabel}
+                              </TableCell>
+                            </TableRow>
+                          ) : null}
+                          <TableRow
+                            sx={{
+                              bgcolor: index % 2 === 0 ? 'rgba(15,23,42,0.42)' : 'rgba(15,23,42,0.62)',
+                              '& td': { borderColor: 'rgba(148,163,184,0.12)' },
+                            }}
+                          >
+                            <TableCell sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.8rem' }}>{row.planLabel}</TableCell>
+                            <TableCell sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.8rem' }}>{row.sceneLabel}</TableCell>
+                            <TableCell sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.8rem' }}>{row.locationLabel}</TableCell>
+                            <TableCell sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.8rem' }}>{row.castSummary}</TableCell>
+                            <TableCell sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.8rem', lineHeight: 1.5 }}>{row.description}</TableCell>
+                          </TableRow>
+                        </Fragment>
+                      );
+                    }) : (
+                      <TableRow>
+                        <TableCell colSpan={5} sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.84rem', py: 2.4, textAlign: 'center' }}>
+                          Ingen shotlist-rader er klare for klientoversikt ennå.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </Box>
           ) : null}
 

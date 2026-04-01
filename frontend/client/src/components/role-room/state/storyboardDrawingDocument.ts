@@ -1,7 +1,7 @@
 import type { PencilStroke } from '../hooks/useApplePencil';
 
 export type StoryboardDocumentAspectRatio = '16:9' | '4:3' | '2.35:1' | '1:1' | '9:16';
-export type StoryboardDocumentLayerType = 'drawing' | 'group' | 'video' | 'audio' | 'transformation';
+export type StoryboardDocumentLayerType = 'drawing' | 'group' | 'video' | 'audio' | 'transformation' | 'effect';
 export type StoryboardDocumentBlendMode =
   | 'normal'
   | 'multiply'
@@ -50,6 +50,22 @@ export type StoryboardDocumentBoardPolishMode = 'edit' | 'present';
 export type StoryboardDocumentBoardPolishTone = 'neutral' | 'noir' | 'amber';
 export type StoryboardDocumentBoardPolishFinish = 'clean' | 'hatch' | 'marker';
 export type StoryboardDocumentBoardPolishWeather = 'none' | 'mist' | 'rain';
+export type StoryboardDocumentBoardPolishEffectLayerId = 'atmosphere' | 'weather' | 'finish' | 'vignette';
+
+export interface StoryboardDocumentBoardPolishEffectLayerState {
+  id: StoryboardDocumentBoardPolishEffectLayerId;
+  enabled: boolean;
+  opacity: number;
+}
+
+export interface StoryboardDocumentBoardPolishEffectRegion {
+  id: StoryboardDocumentBoardPolishEffectLayerId;
+  xRatio: number;
+  yRatio: number;
+  widthRatio: number;
+  heightRatio: number;
+  feather: number;
+}
 
 export interface StoryboardDocumentBoardPolishState {
   mode: StoryboardDocumentBoardPolishMode;
@@ -59,6 +75,8 @@ export interface StoryboardDocumentBoardPolishState {
   atmosphere: number;
   lineBoost: number;
   vignette: number;
+  effectLayers: StoryboardDocumentBoardPolishEffectLayerState[];
+  effectRegions: StoryboardDocumentBoardPolishEffectRegion[];
   updatedAt: string;
 }
 
@@ -173,6 +191,12 @@ export interface StoryboardDocumentTransformationLayer extends StoryboardDocumen
   pivotMode: 'global' | 'per-layer';
 }
 
+export interface StoryboardDocumentEffectLayer extends StoryboardDocumentLayerBase {
+  type: 'effect';
+  effectId: StoryboardDocumentBoardPolishEffectLayerId;
+  effectScope: 'board-polish';
+}
+
 export interface StoryboardDocumentAppliedTransform {
   layerId: string;
   layerName: string;
@@ -194,7 +218,8 @@ export type StoryboardDocumentLayer =
   | StoryboardDocumentGroupLayer
   | StoryboardDocumentVideoLayer
   | StoryboardDocumentAudioLayer
-  | StoryboardDocumentTransformationLayer;
+  | StoryboardDocumentTransformationLayer
+  | StoryboardDocumentEffectLayer;
 
 export interface StoryboardDocumentSheet {
   id: string;
@@ -417,6 +442,8 @@ export interface StoryboardDocumentRenderableLayer {
   id: string;
   name: string;
   type: StoryboardDocumentLayerType;
+  effectId?: StoryboardDocumentBoardPolishEffectLayerId;
+  effectScope?: 'board-polish';
   depth: number;
   parentLayerId?: string;
   visible: boolean;
@@ -502,6 +529,65 @@ const normalizeBoardPolishState = (
   fallbackUpdatedAt: string,
 ): StoryboardDocumentBoardPolishState | undefined => {
   if (!isRecord(value)) return undefined;
+  const defaultEffectLayers: StoryboardDocumentBoardPolishEffectLayerState[] = [
+    { id: 'atmosphere', enabled: true, opacity: 1 },
+    { id: 'weather', enabled: true, opacity: 1 },
+    { id: 'finish', enabled: true, opacity: 1 },
+    { id: 'vignette', enabled: true, opacity: 1 },
+  ];
+  const effectLayersValue = Array.isArray(value.effectLayers) ? value.effectLayers : [];
+  const normalizedEffectLayers = defaultEffectLayers.map((fallbackLayer) => {
+    const persistedLayer = effectLayersValue.find((entry) => (
+      entry
+      && typeof entry === 'object'
+      && (entry as Record<string, unknown>).id === fallbackLayer.id
+    )) as Record<string, unknown> | undefined;
+    return {
+      id: fallbackLayer.id,
+      enabled: typeof persistedLayer?.enabled === 'boolean' ? persistedLayer.enabled : fallbackLayer.enabled,
+      opacity:
+        typeof persistedLayer?.opacity === 'number'
+          ? Math.min(1, Math.max(0, persistedLayer.opacity))
+          : fallbackLayer.opacity,
+    };
+  });
+  const defaultEffectRegions: StoryboardDocumentBoardPolishEffectRegion[] = [
+    { id: 'atmosphere', xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1, feather: 0.34 },
+    { id: 'weather', xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1, feather: 0.24 },
+    { id: 'finish', xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1, feather: 0.12 },
+    { id: 'vignette', xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1, feather: 0.08 },
+  ];
+  const effectRegionsValue = Array.isArray(value.effectRegions) ? value.effectRegions : [];
+  const normalizedEffectRegions = defaultEffectRegions.map((fallbackRegion) => {
+    const persistedRegion = effectRegionsValue.find((entry) => (
+      entry
+      && typeof entry === 'object'
+      && (entry as Record<string, unknown>).id === fallbackRegion.id
+    )) as Record<string, unknown> | undefined;
+    const widthRatio = typeof persistedRegion?.widthRatio === 'number'
+      ? Math.max(0.08, Math.min(1, persistedRegion.widthRatio))
+      : fallbackRegion.widthRatio;
+    const heightRatio = typeof persistedRegion?.heightRatio === 'number'
+      ? Math.max(0.08, Math.min(1, persistedRegion.heightRatio))
+      : fallbackRegion.heightRatio;
+    const xRatio = typeof persistedRegion?.xRatio === 'number'
+      ? Math.max(0, Math.min(1 - widthRatio, persistedRegion.xRatio))
+      : fallbackRegion.xRatio;
+    const yRatio = typeof persistedRegion?.yRatio === 'number'
+      ? Math.max(0, Math.min(1 - heightRatio, persistedRegion.yRatio))
+      : fallbackRegion.yRatio;
+    return {
+      id: fallbackRegion.id,
+      xRatio,
+      yRatio,
+      widthRatio,
+      heightRatio,
+      feather:
+        typeof persistedRegion?.feather === 'number'
+          ? Math.min(0.48, Math.max(0, persistedRegion.feather))
+          : fallbackRegion.feather,
+    };
+  });
   return {
     mode: value.mode === 'present' ? 'present' : 'edit',
     tone: value.tone === 'noir' || value.tone === 'amber' ? value.tone : 'neutral',
@@ -519,8 +605,64 @@ const normalizeBoardPolishState = (
       typeof value.vignette === 'number'
         ? Math.min(1, Math.max(0, value.vignette))
         : 0.54,
+    effectLayers: normalizedEffectLayers,
+    effectRegions: normalizedEffectRegions,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : fallbackUpdatedAt,
   };
+};
+
+const STORYBOARD_BOARD_POLISH_EFFECT_LAYER_LABELS: Record<StoryboardDocumentBoardPolishEffectLayerId, string> = {
+  atmosphere: 'FX Atmosphere',
+  weather: 'FX Weather',
+  finish: 'FX Finish',
+  vignette: 'FX Vignette',
+};
+
+const getStoryboardDocumentBoardPolishEffectLayerId = (
+  effectId: StoryboardDocumentBoardPolishEffectLayerId,
+): string => `effect-board-polish-${effectId}`;
+
+const createStoryboardDocumentBoardPolishEffectLayer = (
+  effectState: StoryboardDocumentBoardPolishEffectLayerState,
+  updatedAt: string,
+  existingLayer?: StoryboardDocumentEffectLayer,
+): StoryboardDocumentEffectLayer => ({
+  id: existingLayer?.id || getStoryboardDocumentBoardPolishEffectLayerId(effectState.id),
+  type: 'effect',
+  effectId: effectState.id,
+  effectScope: 'board-polish',
+  name: STORYBOARD_BOARD_POLISH_EFFECT_LAYER_LABELS[effectState.id],
+  visible: effectState.enabled,
+  locked: existingLayer?.locked ?? false,
+  opacity: effectState.opacity,
+  blendMode: existingLayer?.blendMode ?? 'normal',
+  createdAt: existingLayer?.createdAt || updatedAt,
+  updatedAt,
+});
+
+const syncStoryboardDrawingDocumentBoardPolishEffectLayers = (
+  document: StoryboardDrawingDocument,
+  updatedAt: string,
+): StoryboardDocumentLayer[] => {
+  const nonBoardPolishEffectLayers = document.layers.filter((layer) => !(
+    layer.type === 'effect' && layer.effectScope === 'board-polish'
+  ));
+  const boardPolish = normalizeBoardPolishState(document.metadata.boardPolish, updatedAt);
+  if (!boardPolish) {
+    return nonBoardPolishEffectLayers;
+  }
+
+  const existingEffectLayers = new Map(
+    document.layers
+      .filter((layer): layer is StoryboardDocumentEffectLayer => layer.type === 'effect' && layer.effectScope === 'board-polish')
+      .map((layer) => [layer.effectId, layer]),
+  );
+
+  const nextEffectLayers = boardPolish.effectLayers.map((effectState) => (
+    createStoryboardDocumentBoardPolishEffectLayer(effectState, updatedAt, existingEffectLayers.get(effectState.id))
+  ));
+
+  return [...nonBoardPolishEffectLayers, ...nextEffectLayers];
 };
 
 const createDocumentId = (prefix: string): string => {
@@ -952,12 +1094,20 @@ const normalizeStoryboardDrawingDocument = (
   const primarySheetId = validSheetIds.has(document.primarySheetId) ? document.primarySheetId : sheets[0].id;
   const selectedSheetIds = document.timeline.selectedSheetIds.filter((sheetId) => validSheetIds.has(sheetId));
   const selectedMarkerIds = document.timeline.selectedMarkerIds.filter((markerId) => validMarkerIds.has(markerId));
+  const normalizedBoardPolish = normalizeBoardPolishState(document.metadata.boardPolish, updatedAt) || undefined;
+  const syncedLayers = syncStoryboardDrawingDocumentBoardPolishEffectLayers({
+    ...document,
+    metadata: {
+      ...document.metadata,
+      boardPolish: normalizedBoardPolish,
+    },
+  }, updatedAt);
 
   return {
     ...document,
     updatedAt,
     primarySheetId,
-    layers: document.layers.map((layer) => {
+    layers: syncedLayers.map((layer) => {
       if (layer.type !== 'transformation') return layer;
       return {
         ...layer,
@@ -1023,6 +1173,7 @@ const normalizeStoryboardDrawingDocument = (
     },
     metadata: {
       ...document.metadata,
+      boardPolish: normalizedBoardPolish,
       shapeScaffoldAssemblies: (document.metadata.shapeScaffoldAssemblies || [])
         .map((assembly) => ({
           ...assembly,
@@ -1501,7 +1652,7 @@ const getSheetLayerStackEntries = (
   const sheetBounds = getStrokeBounds(
     sheet.layerIds.flatMap((layerId) => getLayerDescendantStrokes(document, layerId, strokeMap))
   );
-  return getLayerStackEntries(document, sheet.layerIds, {
+  const sheetEntries = getLayerStackEntries(document, sheet.layerIds, {
     frameIndex,
     depth: 0,
     inheritedVisible: true,
@@ -1512,6 +1663,27 @@ const getSheetLayerStackEntries = (
     sheetPivot: { x: sheetBounds.centerX, y: sheetBounds.centerY },
     visited: new Set<string>(),
   });
+  const boardPolishEffectEntries = document.layers
+    .filter((layer): layer is StoryboardDocumentEffectLayer => layer.type === 'effect' && layer.effectScope === 'board-polish')
+    .map((layer) => ({
+      id: layer.id,
+      name: layer.name,
+      type: layer.type,
+      effectId: layer.effectId,
+      effectScope: layer.effectScope,
+      depth: 0,
+      parentLayerId: undefined,
+      visible: layer.visible,
+      effectiveVisible: layer.visible,
+      locked: layer.locked,
+      effectiveLocked: layer.locked,
+      opacity: layer.opacity,
+      effectiveOpacity: layer.opacity,
+      blendMode: layer.blendMode,
+      strokes: [],
+      appliedTransforms: [],
+    }));
+  return [...sheetEntries, ...boardPolishEffectEntries];
 };
 
 const findDrawingDescendantLayerId = (

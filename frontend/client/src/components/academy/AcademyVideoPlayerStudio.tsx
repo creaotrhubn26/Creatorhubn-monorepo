@@ -52,6 +52,7 @@ import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
 import AcademyLeftSidebar from './AcademyLeftSidebar';
 import AcademyPlayerStudio from './AcademyPlayerStudio';
 import AcademyStudentSidebar from './AcademyStudentSidebar';
+import { buildAcademyStudentNextAction } from './academyStudentExperience';
 import { resolveAcademyVideoUrl } from './academyVideoSourceUtils';
 
 interface ChapterItem {
@@ -172,6 +173,7 @@ interface AssignmentOverlayItem {
   courseId: string;
   title: string;
   subtitle: string;
+  status?: string;
   scope?: 'course' | 'skill';
   skillId?: string;
   placement?: AssignmentPlacement;
@@ -212,6 +214,16 @@ const ANNOTATION_RESOURCE_COURSE_PREFIX = 'annotation-resource-course-';
 const ANNOTATION_RESOURCE_SKILL_PREFIX = 'annotation-resource-skill-';
 const ANNOTATION_STORE_KEY = 'academyAnnotationStoreV1';
 const ANNOTATION_META_MARKER = '::annotation-meta::';
+const STUDENT_HIDDEN_RESOURCE_PREFIXES = [
+  CTA_RESOURCE_COURSE_PREFIX,
+  CTA_RESOURCE_SKILL_PREFIX,
+  LOWER_THIRD_RESOURCE_COURSE_PREFIX,
+  LOWER_THIRD_RESOURCE_SKILL_PREFIX,
+  PRESENTATION_RESOURCE_COURSE_PREFIX,
+  PRESENTATION_RESOURCE_SKILL_PREFIX,
+  ANNOTATION_RESOURCE_COURSE_PREFIX,
+  ANNOTATION_RESOURCE_SKILL_PREFIX,
+];
 
 const cinematicPanelSx = {
   borderRadius: 1.4,
@@ -714,6 +726,39 @@ function AcademyVideoPlayerStudio({
       progressPercent: clamp(progressPercent, 0, 100),
     };
   }, [activeCourse?.lessons, studentProgressRows]);
+  const currentLessonProgress = useMemo(
+    () =>
+      studentProgressRows.find(
+        (row) => String(row.lessonId || '') === String(activeLesson?.id || ''),
+      ) || null,
+    [activeLesson?.id, studentProgressRows],
+  );
+  const lessonNotesCount = useMemo(
+    () => (Array.isArray(currentLessonProgress?.notes) ? currentLessonProgress.notes.length : 0),
+    [currentLessonProgress?.notes],
+  );
+  const lessonBookmarkCount = useMemo(
+    () => (Array.isArray(currentLessonProgress?.bookmarks) ? currentLessonProgress.bookmarks.length : 0),
+    [currentLessonProgress?.bookmarks],
+  );
+  const lessonPathMeta = useMemo(() => {
+    const lessons = Array.isArray(activeCourse?.lessons)
+      ? [...activeCourse.lessons].sort(
+          (left, right) => Number(left.order || 0) - Number(right.order || 0),
+        )
+      : [];
+    const currentIndex = lessons.findIndex(
+      (lesson) => String(lesson.id) === String(activeLesson?.id || ''),
+    );
+    return {
+      index: currentIndex >= 0 ? currentIndex + 1 : lessons.length > 0 ? 1 : 0,
+      total: lessons.length,
+      nextLesson:
+        currentIndex >= 0 && currentIndex + 1 < lessons.length
+          ? lessons[currentIndex + 1]
+          : null,
+    };
+  }, [activeCourse?.lessons, activeLesson?.id]);
   const activeCourseWithAssignments = activeCourse as CourseWithAssignmentStudio | null;
   const effectiveVideoUrl = useMemo(
     () =>
@@ -769,6 +814,15 @@ function AcademyVideoPlayerStudio({
     const lessonResources = Array.isArray(activeLesson?.resources) ? activeLesson.resources : [];
     return { courseResources, lessonResources };
   }, [activeCourse?.resources, activeLesson?.resources]);
+  const studentLearningResources = useMemo(() => {
+    return [...runtimeOverlayResources.lessonResources, ...runtimeOverlayResources.courseResources].filter(
+      (resource) =>
+        !STUDENT_HIDDEN_RESOURCE_PREFIXES.some((prefix) =>
+          String(resource.id || '').startsWith(prefix),
+        ),
+    );
+  }, [runtimeOverlayResources.courseResources, runtimeOverlayResources.lessonResources]);
+  const recommendedLearningResource = studentLearningResources[0] || null;
 
   const runtimeCtaOverlays = useMemo<RuntimeCTAOverlay[]>(() => {
     const safeDuration = Math.max(
@@ -1100,6 +1154,55 @@ function AcademyVideoPlayerStudio({
       })
       .sort((a, b) => Number(a.triggerAt || 0) - Number(b.triggerAt || 0));
   }, [activeCourse?.duration, activeCourseWithAssignments?.assignmentStudio?.assignments, activeLesson?.duration, activeLesson?.id]);
+  const assignmentsNeedingAttention = useMemo(() => {
+    const now = Date.now();
+    const nextWeek = now + 7 * 86400000;
+    return assignmentOverlays.filter((assignment) => {
+      const dueAt = new Date(String(assignment.dueDate || '')).getTime();
+      return assignment.status === 'overdue' || (Number.isFinite(dueAt) && dueAt >= now && dueAt <= nextWeek);
+    }).length;
+  }, [assignmentOverlays]);
+  const studentNextAction = useMemo(
+    () =>
+      buildAcademyStudentNextAction({
+        tt,
+        courseTitle: activeCourse?.title,
+        lessonTitle: activeLesson?.title,
+        pendingAssignments: assignmentOverlays.length,
+        dueSoonAssignments: assignmentsNeedingAttention,
+        notesToReview: lessonNotesCount + lessonBookmarkCount,
+        resourceCount: studentLearningResources.length,
+        progressPercent: studentProgressStats.progressPercent,
+        isNewStudent: studentProgressStats.progressPercent <= 0,
+      }),
+    [
+      activeCourse?.title,
+      activeLesson?.title,
+      assignmentOverlays.length,
+      assignmentsNeedingAttention,
+      lessonBookmarkCount,
+      lessonNotesCount,
+      studentLearningResources.length,
+      studentProgressStats.progressPercent,
+      tt,
+    ],
+  );
+  const studentSidebarNextActionRoute =
+    studentNextAction.id === 'assignment'
+      ? studentAssignmentsRoute
+      : studentNextAction.id === 'resources'
+        ? studentResourcesRoute
+        : studentNextAction.id === 'feedback'
+          ? '/academy/settings?tab=messages'
+          : currentStudentPlayerRoute;
+  const studentSidebarNextActionLabel =
+    studentNextAction.id === 'assignment'
+      ? tt('Åpne oppgaver', 'Open assignments')
+      : studentNextAction.id === 'resources'
+        ? tt('Åpne ressurser', 'Open resources')
+        : studentNextAction.id === 'feedback'
+          ? tt('Åpne dialog', 'Open messages')
+          : tt('Fortsett læring', 'Continue learning');
 
   const activeAssignmentOverlay = useMemo(() => {
     return (
@@ -1567,11 +1670,16 @@ function AcademyVideoPlayerStudio({
             studentName={studentName}
             activeCourseId={activeCourse?.id ? String(activeCourse.id) : null}
             activeCourseTitle={activeCourse?.title || undefined}
+            instructorName={activeCourse?.instructor?.name || undefined}
             progressPercent={studentProgressStats.progressPercent}
             completedLessons={studentProgressStats.completedLessons}
             totalLessons={studentProgressStats.totalLessons}
             returnTo={studentBaseReturnTo}
             continueRoute={currentStudentPlayerRoute}
+            nextActionTitle={studentNextAction.title}
+            nextActionDetail={studentNextAction.detail}
+            nextActionRoute={studentSidebarNextActionRoute}
+            nextActionLabel={studentSidebarNextActionLabel}
           />
         ) : (
           <AcademyLeftSidebar
@@ -1874,6 +1982,99 @@ function AcademyVideoPlayerStudio({
                   )}
                 </Stack>
               </Stack>
+
+              {isStudentMode ? (
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', xl: 'repeat(3, minmax(0, 1fr))' },
+                    gap: 1,
+                  }}
+                >
+                  <Box sx={{ ...cinematicPanelSx, p: 1 }}>
+                    <Typography sx={{ fontSize: 12, color: 'rgba(248,213,111,0.94)', fontWeight: 700 }}>
+                      {tt('Du er her', 'You are here')}
+                    </Typography>
+                    <Typography sx={{ mt: 0.45, fontWeight: 700 }}>
+                      {activeLesson?.title || tt('Aktiv leksjon', 'Active lesson')}
+                    </Typography>
+                    <Typography sx={{ mt: 0.3, color: 'rgba(237,240,247,0.7)', fontSize: 13 }}>
+                      {tt(
+                        `Leksjon ${lessonPathMeta.index}/${Math.max(lessonPathMeta.total, 1)} i ${activeCourse?.title || tt('kurset ditt', 'your course')}.`,
+                        `Lesson ${lessonPathMeta.index}/${Math.max(lessonPathMeta.total, 1)} in ${activeCourse?.title || 'your course'}.`,
+                      )}
+                    </Typography>
+                    <Typography sx={{ mt: 0.45, color: '#f8d56f', fontWeight: 700, fontSize: 13 }}>
+                      {tt(
+                        `${Number(currentLessonProgress?.progress || 0)}% fullført i denne leksjonen`,
+                        `${Number(currentLessonProgress?.progress || 0)}% completed in this lesson`,
+                      )}
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ ...cinematicPanelSx, p: 1 }}>
+                    <Typography sx={{ fontSize: 12, color: 'rgba(248,213,111,0.94)', fontWeight: 700 }}>
+                      {tt('Neste anbefaling', 'Next recommendation')}
+                    </Typography>
+                    <Typography sx={{ mt: 0.45, fontWeight: 700 }}>
+                      {recommendedLearningResource?.title ||
+                        lessonPathMeta.nextLesson?.title ||
+                        studentNextAction.title}
+                    </Typography>
+                    <Typography sx={{ mt: 0.3, color: 'rgba(237,240,247,0.7)', fontSize: 13 }}>
+                      {recommendedLearningResource
+                        ? tt(
+                            'Åpne denne ressursen mens innholdet fortsatt er ferskt fra videoen.',
+                            'Open this resource while the video content is still fresh.',
+                          )
+                        : lessonPathMeta.nextLesson
+                          ? tt(
+                              'Neste leksjon ligger klar så snart du er ferdig med denne delen.',
+                              'The next lesson is ready as soon as you finish this section.',
+                            )
+                          : studentNextAction.detail}
+                    </Typography>
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        setLocation(
+                          recommendedLearningResource
+                            ? studentResourcesRoute
+                            : studentSidebarNextActionRoute,
+                        )
+                      }
+                      sx={{
+                        mt: 0.8,
+                        textTransform: 'none',
+                        color: '#f8d56f',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.22)',
+                      }}
+                    >
+                      {recommendedLearningResource
+                        ? tt('Åpne ressurs', 'Open resource')
+                        : studentSidebarNextActionLabel}
+                    </Button>
+                  </Box>
+
+                  <Box sx={{ ...cinematicPanelSx, p: 1 }}>
+                    <Typography sx={{ fontSize: 12, color: 'rgba(248,213,111,0.94)', fontWeight: 700 }}>
+                      {tt('Læringsspor', 'Learning trail')}
+                    </Typography>
+                    <Typography sx={{ mt: 0.45, fontWeight: 700 }}>
+                      {tt(
+                        `${lessonNotesCount} notater · ${lessonBookmarkCount} bokmerker`,
+                        `${lessonNotesCount} notes · ${lessonBookmarkCount} bookmarks`,
+                      )}
+                    </Typography>
+                    <Typography sx={{ mt: 0.3, color: 'rgba(237,240,247,0.7)', fontSize: 13 }}>
+                      {tt(
+                        `Nye notater lagres på tidskoden ${formatTime(currentTime)} så du finner igjen riktig øyeblikk senere.`,
+                        `New notes are saved at ${formatTime(currentTime)} so you can revisit the right moment later.`,
+                      )}
+                    </Typography>
+                  </Box>
+                </Box>
+              ) : null}
 
               <Box sx={{ ...cinematicPanelSx, p: 1, position: 'relative' }}>
                 <Box
@@ -2552,7 +2753,7 @@ function AcademyVideoPlayerStudio({
                   <Stack direction="row" spacing={0.8} alignItems="center">
                     <TextField
                       size="small"
-                      placeholder={tt('Legg til notat i transkripsjonen...', 'Add note to transcript...')}
+                      placeholder={tt('Legg til notat med tidskode og læringspoeng...', 'Add a timestamped learning note...')}
                       value={noteDraft}
                       onChange={(event) => setNoteDraft(event.target.value)}
                       sx={{
@@ -2571,9 +2772,9 @@ function AcademyVideoPlayerStudio({
                         color: '#edf0f7',
                         border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                       }}
-                    >
-                      {tt('Legg til notat', 'Add Note')}
-                    </Button>
+                      >
+                        {tt('Legg til notat', 'Add Note')}
+                      </Button>
                     {isStudentMode ? (
                       <Button
                         onClick={() => setLocation(studentResourcesRoute)}
@@ -2600,6 +2801,14 @@ function AcademyVideoPlayerStudio({
                       </Button>
                     )}
                   </Stack>
+                  {isStudentMode ? (
+                    <Typography sx={{ mt: 0.6, fontSize: 12, color: 'rgba(237,240,247,0.58)' }}>
+                      {tt(
+                        `Notatet lagres på ${formatTime(currentTime)} og brukes senere i gjennomgang av ukeplanen din.`,
+                        `This note is saved at ${formatTime(currentTime)} and reused later in your weekly review.`,
+                      )}
+                    </Typography>
+                  ) : null}
                 </Box>
               </Box>
 
@@ -2611,6 +2820,50 @@ function AcademyVideoPlayerStudio({
             </Box>
 
             <Box sx={{ ...cinematicPanelSx, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              {isStudentMode ? (
+                <Box
+                  sx={{
+                    p: 1.1,
+                    borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
+                    background: 'linear-gradient(180deg, rgba(15,18,27,0.96), rgba(10,13,20,0.94))',
+                  }}
+                >
+                  <Typography sx={{ fontSize: 12, color: 'rgba(248,213,111,0.94)', fontWeight: 700 }}>
+                    {tt('Neste steg', 'Next step')}
+                  </Typography>
+                  <Typography sx={{ mt: 0.45, fontWeight: 700 }}>
+                    {studentNextAction.title}
+                  </Typography>
+                  <Typography sx={{ mt: 0.35, color: 'rgba(237,240,247,0.7)', fontSize: 13 }}>
+                    {studentNextAction.detail}
+                  </Typography>
+                  <Stack direction="row" spacing={0.8} sx={{ mt: 0.85 }}>
+                    <Button
+                      size="small"
+                      onClick={() => setLocation(studentSidebarNextActionRoute)}
+                      sx={{
+                        textTransform: 'none',
+                        color: '#0f0f0f',
+                        background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {studentSidebarNextActionLabel}
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => setLocation(studentDashboardRoute)}
+                      sx={{
+                        textTransform: 'none',
+                        color: '#edf0f7',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                      }}
+                    >
+                      {tt('Til oversikt', 'Back to overview')}
+                    </Button>
+                  </Stack>
+                </Box>
+              ) : null}
               <Tabs
                 value={rightTab}
                 onChange={(_, value: RightTab) => setRightTab(value)}

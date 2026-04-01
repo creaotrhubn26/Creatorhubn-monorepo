@@ -57,8 +57,17 @@ import { useAcademyLocale } from './academyLocale';
 import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
 import AcademyLeftSidebar from './AcademyLeftSidebar';
 import AcademyStudentSidebar from './AcademyStudentSidebar';
-import { probeVideoDurationSeconds } from './academyVideoSourceUtils';
+import {
+  buildAcademyStudentNextAction,
+  describeAcademyStudentResourceContext,
+} from './academyStudentExperience';
+import {
+  buildGoogleDriveMediaAssetId,
+  isGoogleVidsMimeType,
+  probeVideoDurationSeconds,
+} from './academyVideoSourceUtils';
 import { apiRequest } from '@/lib/queryClient';
+import { academyGoogleWorkspaceService } from '@/services/academyGoogleWorkspaceService';
 import {
   buildMediaUploadFingerprint,
   buildUrlMediaFingerprint,
@@ -97,6 +106,45 @@ interface MediaAsset {
   locked?: boolean;
   version?: number;
   fingerprint?: string;
+  videoSourceType?: 'direct' | 'google-drive-video' | 'google-vids' | 'external-link';
+  googleDriveFileId?: string;
+  googleDriveMimeType?: string;
+  googleDriveWebViewLink?: string;
+  googleDrivePlaybackUrl?: string;
+}
+
+interface GoogleDriveConnectionStatus {
+  connected: boolean;
+  status?: string;
+  syncEnabled?: boolean;
+  accountEmail?: string | null;
+  lastSync?: string | null;
+  message?: string | null;
+  source?: string | null;
+}
+
+interface GoogleDriveFileItem {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: number | null;
+  modifiedTime?: string | null;
+  iconLink?: string | null;
+  thumbnailLink?: string | null;
+  webViewLink?: string | null;
+  webContentLink?: string | null;
+  version?: number | null;
+  fileExtension?: string | null;
+}
+
+interface GoogleDriveFilesResponse {
+  files?: GoogleDriveFileItem[];
+}
+
+interface GoogleDriveShareResponse extends GoogleDriveFileItem {
+  accessState?: string;
+  shareMode?: string;
+  sharingUpdated?: boolean;
 }
 
 interface AcademyStoredMediaAssetPayload {
@@ -132,6 +180,80 @@ interface AcademyMediaStudioProps {
 
 type PendingMediaBindingMode = 'video' | 'resource';
 type UploadDialogMode = 'new' | 'replace-selected';
+
+const DRIVE_VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'm4v', 'webm', 'ogg', 'm3u8']);
+const GOOGLE_DRIVE_VIDEO_SOURCE_TAG = 'google-drive';
+const GOOGLE_VIDS_SOURCE_TAG = 'google-vids';
+
+const normalizeDriveMimeType = (value: unknown): string =>
+  String(value || '').trim().toLowerCase();
+
+const isGoogleDriveBinaryVideo = (file: Pick<GoogleDriveFileItem, 'mimeType' | 'fileExtension'>): boolean => {
+  const mimeType = normalizeDriveMimeType(file.mimeType);
+  if (mimeType.startsWith('video/')) return true;
+  const extension = String(file.fileExtension || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\./, '');
+  return DRIVE_VIDEO_EXTENSIONS.has(extension);
+};
+
+const isGoogleDriveVideoCandidate = (file: Pick<GoogleDriveFileItem, 'mimeType' | 'fileExtension'>): boolean =>
+  isGoogleDriveBinaryVideo(file) || isGoogleVidsMimeType(file.mimeType);
+
+const buildGoogleDrivePlaybackUrl = (file: Pick<GoogleDriveFileItem, 'id' | 'webContentLink'>): string => {
+  const contentLink = String(file.webContentLink || '').trim();
+  if (contentLink) return contentLink;
+  const fileId = String(file.id || '').trim();
+  return fileId ? `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}` : '';
+};
+
+const mapGoogleDriveFileToMediaAsset = (
+  file: GoogleDriveFileItem,
+  overrides?: Partial<GoogleDriveShareResponse>,
+): MediaAsset => {
+  const merged = {
+    ...file,
+    ...overrides,
+  };
+  const fileId = String(merged.id || '').trim();
+  const isVids = isGoogleVidsMimeType(merged.mimeType);
+  const isBinaryVideo = isGoogleDriveBinaryVideo(merged);
+  const playbackUrl = isBinaryVideo ? buildGoogleDrivePlaybackUrl(merged) : '';
+  const viewUrl = String(merged.webViewLink || '').trim();
+  const effectiveUrl = isBinaryVideo ? playbackUrl || viewUrl : viewUrl;
+  const fileVersion =
+    merged.version == null ? 1 : normalizeMediaVersion(merged.version, 1);
+
+  return {
+    id: buildGoogleDriveMediaAssetId(fileId) || `gdrive-${Date.now()}`,
+    name: String(merged.name || '').trim() || 'Google Drive asset',
+    type: isBinaryVideo || isVids ? 'video' : 'document',
+    url: effectiveUrl,
+    posterUrl: String(merged.thumbnailLink || '').trim() || undefined,
+    size: Number.isFinite(Number(merged.size)) ? Number(merged.size) : 0,
+    duration: undefined,
+    updatedAt: String(merged.modifiedTime || '').trim() || new Date().toISOString(),
+    tags: [
+      GOOGLE_DRIVE_VIDEO_SOURCE_TAG,
+      ...(isVids ? [GOOGLE_VIDS_SOURCE_TAG] : ['drive-video']),
+    ],
+    isFavorite: false,
+    source: 'resource',
+    locked: false,
+    version: fileVersion,
+    fingerprint: buildUrlMediaFingerprint(effectiveUrl || viewUrl || fileId),
+    videoSourceType: isVids
+      ? 'google-vids'
+      : isBinaryVideo
+        ? 'google-drive-video'
+        : 'external-link',
+    googleDriveFileId: fileId || undefined,
+    googleDriveMimeType: String(merged.mimeType || '').trim() || undefined,
+    googleDriveWebViewLink: viewUrl || undefined,
+    googleDrivePlaybackUrl: playbackUrl || undefined,
+  };
+};
 
 const panelSx = {
   borderRadius: 1.4,
@@ -266,6 +388,21 @@ const formatDuration = (seconds?: number): string => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${String(secs).padStart(2, '0')}`;
+};
+
+const formatDateTime = (value: string | undefined | null): string => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(parsed);
+  } catch {
+    return parsed.toLocaleString();
+  }
 };
 
 const normalizeAssetUrl = (value: string | undefined | null): string => {
@@ -462,14 +599,16 @@ const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
 
   if (course.videoUrl) {
     const assetId =
-      normalizeMediaAssetId(course.linkedVideoAssetId) || `${courseId}-video`;
+      normalizeMediaAssetId(course.linkedVideoAssetId) ||
+      buildGoogleDriveMediaAssetId(course.googleDriveFileId) ||
+      `${courseId}-video`;
     mergeAsset({
       id: assetId,
       name:
         String(course.linkedVideoAssetName || '').trim() ||
         `${course.title} Intro Video`,
       type: 'video',
-      url: course.videoUrl,
+      url: String(course.googleDrivePlaybackUrl || '').trim() || course.videoUrl,
       posterUrl: String(course.linkedVideoPosterUrl || '').trim() || undefined,
       size: 18 * 1024 * 1024,
       duration: Number(course.duration || 0),
@@ -482,6 +621,13 @@ const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
       fingerprint:
         String(course.linkedVideoFingerprint || '').trim() ||
         buildUrlMediaFingerprint(course.videoUrl),
+      videoSourceType: course.videoSourceType || 'direct',
+      googleDriveFileId: String(course.googleDriveFileId || '').trim() || undefined,
+      googleDriveMimeType: String(course.googleDriveMimeType || '').trim() || undefined,
+      googleDriveWebViewLink:
+        String(course.googleDriveWebViewLink || '').trim() || undefined,
+      googleDrivePlaybackUrl:
+        String(course.googleDrivePlaybackUrl || '').trim() || undefined,
     });
   }
 
@@ -511,6 +657,15 @@ const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
       fingerprint:
         String(resource.mediaFingerprint || '').trim() ||
         buildUrlMediaFingerprint(resource.url),
+      videoSourceType: resource.videoSourceType || undefined,
+      googleDriveFileId:
+        String(resource.googleDriveFileId || '').trim() || undefined,
+      googleDriveMimeType:
+        String(resource.googleDriveMimeType || '').trim() || undefined,
+      googleDriveWebViewLink:
+        String(resource.googleDriveWebViewLink || '').trim() || undefined,
+      googleDrivePlaybackUrl:
+        String(resource.googleDrivePlaybackUrl || '').trim() || undefined,
     });
   });
 
@@ -521,6 +676,7 @@ const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
     if (lesson.videoUrl) {
       const assetId =
         normalizeMediaAssetId(lesson.linkedVideoAssetId) ||
+        buildGoogleDriveMediaAssetId(lesson.googleDriveFileId) ||
         `${courseId}-${lessonId}-video`;
       mergeAsset({
         id: assetId,
@@ -528,7 +684,7 @@ const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
           String(lesson.linkedVideoAssetName || '').trim() ||
           (lesson.title ? `${lesson.title} Video` : `Lesson ${lessonIndex + 1} Video`),
         type: 'video',
-        url: lesson.videoUrl,
+        url: String(lesson.googleDrivePlaybackUrl || '').trim() || lesson.videoUrl,
         posterUrl: String(lesson.linkedVideoPosterUrl || '').trim() || undefined,
         size: 12 * 1024 * 1024,
         duration: Number(lesson.duration || 0),
@@ -546,6 +702,14 @@ const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
         fingerprint:
           String(lesson.linkedVideoFingerprint || '').trim() ||
           buildUrlMediaFingerprint(lesson.videoUrl),
+        videoSourceType: lesson.videoSourceType || undefined,
+        googleDriveFileId: String(lesson.googleDriveFileId || '').trim() || undefined,
+        googleDriveMimeType:
+          String(lesson.googleDriveMimeType || '').trim() || undefined,
+        googleDriveWebViewLink:
+          String(lesson.googleDriveWebViewLink || '').trim() || undefined,
+        googleDrivePlaybackUrl:
+          String(lesson.googleDrivePlaybackUrl || '').trim() || undefined,
       });
     }
 
@@ -580,6 +744,15 @@ const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
         fingerprint:
           String(resource.mediaFingerprint || '').trim() ||
           buildUrlMediaFingerprint(resource.url),
+        videoSourceType: resource.videoSourceType || undefined,
+        googleDriveFileId:
+          String(resource.googleDriveFileId || '').trim() || undefined,
+        googleDriveMimeType:
+          String(resource.googleDriveMimeType || '').trim() || undefined,
+        googleDriveWebViewLink:
+          String(resource.googleDriveWebViewLink || '').trim() || undefined,
+        googleDrivePlaybackUrl:
+          String(resource.googleDrivePlaybackUrl || '').trim() || undefined,
       });
     });
   });
@@ -613,6 +786,11 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
     const audience = String(params.get('audience') || '').trim().toLowerCase();
     return { lessonId, target, returnTo, audience };
   }, [location]);
+  const routeShouldOpenDrivePicker = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('source') === 'google-drive';
+  }, [location]);
 
   const [scopeTab, setScopeTab] = useState<AssetScope>('all');
   const [typeTab, setTypeTab] = useState<'all' | MediaAssetType>('all');
@@ -635,6 +813,13 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
   const [pendingBindingDialogOpen, setPendingBindingDialogOpen] = useState(false);
   const [pendingBindingAssetId, setPendingBindingAssetId] = useState('');
   const [pendingBindingMode, setPendingBindingMode] = useState<PendingMediaBindingMode>('resource');
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const [drivePickerSearchValue, setDrivePickerSearchValue] = useState('');
+  const [driveStatus, setDriveStatus] = useState<GoogleDriveConnectionStatus | null>(null);
+  const [driveStatusLoading, setDriveStatusLoading] = useState(false);
+  const [driveFiles, setDriveFiles] = useState<GoogleDriveFileItem[]>([]);
+  const [driveFilesLoading, setDriveFilesLoading] = useState(false);
+  const [driveImportingKey, setDriveImportingKey] = useState('');
   const customFoldersHydratedRef = useRef(false);
 
   const folderDefinitions = useMemo<FolderDefinition[]>(
@@ -824,6 +1009,94 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
     });
   }, [sourceAssets]);
 
+  const refreshGoogleDriveStatus = useCallback(async () => {
+    setDriveStatusLoading(true);
+    try {
+      const response = (await apiRequest(
+        '/api/file-management/google-drive/status',
+      )) as GoogleDriveConnectionStatus;
+      setDriveStatus(response);
+    } catch (error) {
+      setDriveStatus({
+        connected: false,
+        status: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : tt(
+                'Kunne ikke hente Google Drive-status.',
+                'Could not load Google Drive status.',
+              ),
+      });
+    } finally {
+      setDriveStatusLoading(false);
+    }
+  }, [tt]);
+
+  const startGoogleWorkspaceConnect = useCallback(async () => {
+    try {
+      await academyGoogleWorkspaceService.startConnect();
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error
+          ? error.message
+          : tt(
+              'Kunne ikke starte Google-innloggingen.',
+              'Could not start the Google sign-in flow.',
+            ),
+      );
+    }
+  }, [tt]);
+
+  const loadGoogleDriveFiles = useCallback(
+    async (query?: string) => {
+      setDriveFilesLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set('pageSize', '60');
+        const normalizedQuery = String(query || '').trim();
+        if (normalizedQuery) {
+          params.set('search', normalizedQuery);
+        }
+        const response = (await apiRequest(
+          `/api/google/drive/files?${params.toString()}`,
+        )) as GoogleDriveFilesResponse;
+        const files = Array.isArray(response.files) ? response.files : [];
+        setDriveFiles(files.filter((file) => isGoogleDriveVideoCandidate(file)));
+      } catch (error) {
+        setDriveFiles([]);
+        setStatusMessage(
+          error instanceof Error
+            ? error.message
+            : tt(
+                'Kunne ikke hente Google Drive-filer.',
+                'Could not load Google Drive files.',
+              ),
+        );
+      } finally {
+        setDriveFilesLoading(false);
+      }
+    },
+    [tt],
+  );
+
+  useEffect(() => {
+    void refreshGoogleDriveStatus();
+  }, [refreshGoogleDriveStatus]);
+
+  useEffect(() => {
+    if (!drivePickerOpen) return;
+    const timer = window.setTimeout(() => {
+      void loadGoogleDriveFiles(drivePickerSearchValue);
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [drivePickerOpen, drivePickerSearchValue, loadGoogleDriveFiles]);
+
+  useEffect(() => {
+    if (!routeShouldOpenDrivePicker) return;
+    setDrivePickerOpen(true);
+  }, [routeShouldOpenDrivePicker]);
+
   useEffect(() => {
     analytics.trackEvent('academy_media_studio_opened', {
       courseId: activeCourse?.id || null,
@@ -860,6 +1133,16 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
       })
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }, [assets, folderDefinitions, folderId, scopeTab, searchValue, typeTab]);
+
+  const visibleDriveFiles = useMemo(
+    () =>
+      [...driveFiles].sort(
+        (a, b) =>
+          new Date(String(b.modifiedTime || '')).getTime() -
+          new Date(String(a.modifiedTime || '')).getTime(),
+      ),
+    [driveFiles],
+  );
 
   useEffect(() => {
     if (visibleAssets.length === 0) {
@@ -972,6 +1255,83 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
       progressPercent: Math.max(0, Math.min(100, progressPercent)),
     };
   }, [activeCourse?.lessons, studentProgressRows]);
+  const resourceContextByAssetId = useMemo(() => {
+    return new Map(
+      visibleAssets.map((asset) => [
+        asset.id,
+        describeAcademyStudentResourceContext({
+          tt,
+          type: asset.type,
+          tags: asset.tags,
+          source: asset.source,
+          lessonId: asset.lessonId,
+          currentLessonId: activeLesson?.id ? String(activeLesson.id) : null,
+          activeAssignmentLessonId: activeLesson?.id ? String(activeLesson.id) : null,
+          isFavorite: asset.isFavorite,
+        }),
+      ]),
+    );
+  }, [activeLesson?.id, tt, visibleAssets]);
+  const recommendedAssets = useMemo(() => {
+    const getPriority = (asset: MediaAsset): number => {
+      const tagText = asset.tags.join(' ').toLowerCase();
+      if (
+        (activeLesson?.id && String(asset.lessonId || '') === String(activeLesson.id)) ||
+        asset.source === 'lesson'
+      ) {
+        return 0;
+      }
+      if (/assignment|oppgave|brief|worksheet|template|checklist/.test(tagText)) {
+        return 1;
+      }
+      if (asset.isFavorite) {
+        return 2;
+      }
+      if (asset.type === 'document' || asset.type === 'video') {
+        return 3;
+      }
+      return 4;
+    };
+
+    return [...visibleAssets]
+      .sort((left, right) => {
+        const priorityDiff = getPriority(left) - getPriority(right);
+        if (priorityDiff !== 0) return priorityDiff;
+        return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+      })
+      .slice(0, 3);
+  }, [activeLesson?.id, visibleAssets]);
+  const selectedAssetContext = selectedAsset ? resourceContextByAssetId.get(selectedAsset.id) || null : null;
+  const studentNextAction = useMemo(
+    () =>
+      buildAcademyStudentNextAction({
+        tt,
+        courseTitle: activeCourse?.title,
+        lessonTitle: activeLesson?.title,
+        resourceCount: recommendedAssets.length,
+        progressPercent: studentProgressStats.progressPercent,
+        isNewStudent: studentProgressStats.progressPercent <= 0,
+      }),
+    [
+      activeCourse?.title,
+      activeLesson?.title,
+      recommendedAssets.length,
+      studentProgressStats.progressPercent,
+      tt,
+    ],
+  );
+  const studentSidebarNextActionRoute =
+    studentNextAction.id === 'assignment'
+      ? studentAssignmentsRoute
+      : studentNextAction.id === 'feedback'
+        ? '/academy/settings?tab=messages'
+        : studentPlayerRoute;
+  const studentSidebarNextActionLabel =
+    studentNextAction.id === 'assignment'
+      ? tt('Til oppgaven', 'To assignment')
+      : studentNextAction.id === 'feedback'
+        ? tt('Åpne dialog', 'Open messages')
+        : tt('Til leksjonen', 'Back to lesson');
 
   useEffect(() => {
     setVideoBindingTarget(routeVideoBindingParams.target);
@@ -1359,6 +1719,16 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
               version: nextVersion,
               fingerprint: nextFingerprint,
               source: asset.source === 'upload' ? 'upload' : asset.source,
+              videoSourceType:
+                replacementType === 'video'
+                  ? storedReplacement.videoSourceType || 'direct'
+                  : undefined,
+              googleDriveFileId: storedReplacement.googleDriveFileId || undefined,
+              googleDriveMimeType: storedReplacement.googleDriveMimeType || undefined,
+              googleDriveWebViewLink:
+                storedReplacement.googleDriveWebViewLink || undefined,
+              googleDrivePlaybackUrl:
+                storedReplacement.googleDrivePlaybackUrl || undefined,
             }
           : asset,
       ),
@@ -1391,6 +1761,16 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
           title: shouldRenameTitle(resource.title) ? replacementFile.name : resource.title,
           url: nextUrl,
           size: storedReplacement.size || replacementFile.size,
+          videoSourceType:
+            replacementType === 'video'
+              ? storedReplacement.videoSourceType || 'direct'
+              : undefined,
+          googleDriveFileId: storedReplacement.googleDriveFileId || undefined,
+          googleDriveMimeType: storedReplacement.googleDriveMimeType || undefined,
+          googleDriveWebViewLink:
+            storedReplacement.googleDriveWebViewLink || undefined,
+          googleDrivePlaybackUrl:
+            storedReplacement.googleDrivePlaybackUrl || undefined,
           mediaAssetId: selectedAsset.id,
           mediaVersion: nextVersion,
           mediaUpdatedAt: nowIso,
@@ -1412,6 +1792,16 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
             title: shouldRenameTitle(resource.title) ? replacementFile.name : resource.title,
             url: nextUrl,
             size: storedReplacement.size || replacementFile.size,
+            videoSourceType:
+              replacementType === 'video'
+                ? storedReplacement.videoSourceType || 'direct'
+                : undefined,
+            googleDriveFileId: storedReplacement.googleDriveFileId || undefined,
+            googleDriveMimeType: storedReplacement.googleDriveMimeType || undefined,
+            googleDriveWebViewLink:
+              storedReplacement.googleDriveWebViewLink || undefined,
+            googleDrivePlaybackUrl:
+              storedReplacement.googleDrivePlaybackUrl || undefined,
             mediaAssetId: selectedAsset.id,
             mediaVersion: nextVersion,
             mediaUpdatedAt: nowIso,
@@ -1429,6 +1819,21 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
         return {
           ...lesson,
           videoUrl: shouldUpdateDirectVideo ? nextUrl : lesson.videoUrl,
+          videoSourceType: shouldUpdateDirectVideo
+            ? storedReplacement.videoSourceType || 'direct'
+            : lesson.videoSourceType,
+          googleDriveFileId: shouldUpdateDirectVideo
+            ? storedReplacement.googleDriveFileId || undefined
+            : lesson.googleDriveFileId,
+          googleDriveMimeType: shouldUpdateDirectVideo
+            ? storedReplacement.googleDriveMimeType || undefined
+            : lesson.googleDriveMimeType,
+          googleDriveWebViewLink: shouldUpdateDirectVideo
+            ? storedReplacement.googleDriveWebViewLink || undefined
+            : lesson.googleDriveWebViewLink,
+          googleDrivePlaybackUrl: shouldUpdateDirectVideo
+            ? storedReplacement.googleDrivePlaybackUrl || undefined
+            : lesson.googleDrivePlaybackUrl,
           linkedVideoAssetId: shouldUpdateDirectVideo
             ? selectedAsset.id
             : lesson.linkedVideoAssetId,
@@ -1463,6 +1868,21 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
       const nextCourse: Course = {
         ...activeCourse,
         videoUrl: updateCourseVideo ? nextUrl : activeCourse.videoUrl,
+        videoSourceType: updateCourseVideo
+          ? storedReplacement.videoSourceType || 'direct'
+          : activeCourse.videoSourceType,
+        googleDriveFileId: updateCourseVideo
+          ? storedReplacement.googleDriveFileId || undefined
+          : activeCourse.googleDriveFileId,
+        googleDriveMimeType: updateCourseVideo
+          ? storedReplacement.googleDriveMimeType || undefined
+          : activeCourse.googleDriveMimeType,
+        googleDriveWebViewLink: updateCourseVideo
+          ? storedReplacement.googleDriveWebViewLink || undefined
+          : activeCourse.googleDriveWebViewLink,
+        googleDrivePlaybackUrl: updateCourseVideo
+          ? storedReplacement.googleDrivePlaybackUrl || undefined
+          : activeCourse.googleDrivePlaybackUrl,
         linkedVideoAssetId: updateCourseVideo
           ? selectedAsset.id
           : activeCourse.linkedVideoAssetId,
@@ -1859,6 +2279,13 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
         return {
           ...lesson,
           videoUrl: matchesDirectVideo ? '' : lesson.videoUrl,
+          videoSourceType: matchesDirectVideo ? undefined : lesson.videoSourceType,
+          googleDriveFileId: matchesDirectVideo ? undefined : lesson.googleDriveFileId,
+          googleDriveMimeType: matchesDirectVideo ? undefined : lesson.googleDriveMimeType,
+          googleDriveWebViewLink:
+            matchesDirectVideo ? undefined : lesson.googleDriveWebViewLink,
+          googleDrivePlaybackUrl:
+            matchesDirectVideo ? undefined : lesson.googleDrivePlaybackUrl,
           linkedVideoAssetId: matchesDirectVideo ? undefined : lesson.linkedVideoAssetId,
           linkedVideoAssetVersion: matchesDirectVideo
             ? undefined
@@ -1890,6 +2317,21 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
         await updateCourse({
           ...activeCourse,
           videoUrl: matchesCourseDirectVideo ? '' : activeCourse.videoUrl,
+          videoSourceType: matchesCourseDirectVideo
+            ? undefined
+            : activeCourse.videoSourceType,
+          googleDriveFileId: matchesCourseDirectVideo
+            ? undefined
+            : activeCourse.googleDriveFileId,
+          googleDriveMimeType: matchesCourseDirectVideo
+            ? undefined
+            : activeCourse.googleDriveMimeType,
+          googleDriveWebViewLink: matchesCourseDirectVideo
+            ? undefined
+            : activeCourse.googleDriveWebViewLink,
+          googleDrivePlaybackUrl: matchesCourseDirectVideo
+            ? undefined
+            : activeCourse.googleDrivePlaybackUrl,
           linkedVideoAssetId: matchesCourseDirectVideo
             ? undefined
             : activeCourse.linkedVideoAssetId,
@@ -1983,11 +2425,25 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
       const assetFingerprint =
         assetToBind.fingerprint || buildUrlMediaFingerprint(assetToBind.url);
       const assetPosterUrl = String(assetToBind.posterUrl || '').trim() || undefined;
+      const assetVideoSourceType = assetToBind.videoSourceType || 'direct';
+      const assetGoogleDriveFileId =
+        String(assetToBind.googleDriveFileId || '').trim() || undefined;
+      const assetGoogleDriveMimeType =
+        String(assetToBind.googleDriveMimeType || '').trim() || undefined;
+      const assetGoogleDriveWebViewLink =
+        String(assetToBind.googleDriveWebViewLink || '').trim() || undefined;
+      const assetGoogleDrivePlaybackUrl =
+        String(assetToBind.googleDrivePlaybackUrl || '').trim() || undefined;
       try {
         if (target === 'course') {
           const nextCourse: Course = {
             ...activeCourse,
             videoUrl: assetToBind.url,
+            videoSourceType: assetVideoSourceType,
+            googleDriveFileId: assetGoogleDriveFileId,
+            googleDriveMimeType: assetGoogleDriveMimeType,
+            googleDriveWebViewLink: assetGoogleDriveWebViewLink,
+            googleDrivePlaybackUrl: assetGoogleDrivePlaybackUrl,
             linkedVideoAssetId: assetToBind.id,
             linkedVideoAssetVersion: assetVersion,
             linkedVideoAssetName: assetToBind.name,
@@ -2023,6 +2479,11 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
           return {
             ...lesson,
             videoUrl: assetToBind.url,
+            videoSourceType: assetVideoSourceType,
+            googleDriveFileId: assetGoogleDriveFileId,
+            googleDriveMimeType: assetGoogleDriveMimeType,
+            googleDriveWebViewLink: assetGoogleDriveWebViewLink,
+            googleDrivePlaybackUrl: assetGoogleDrivePlaybackUrl,
             linkedVideoAssetId: assetToBind.id,
             linkedVideoAssetVersion: assetVersion,
             linkedVideoAssetName: assetToBind.name,
@@ -2119,6 +2580,15 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
         url: assetToLink.url,
         description: `[folder:${primaryFolderTag}] [source:${sourceTag}] ${tt('Koblet fra Media', 'Linked from Media')}`,
         size: Number.isFinite(assetToLink.size) ? assetToLink.size : undefined,
+        videoSourceType: assetToLink.videoSourceType || undefined,
+        googleDriveFileId:
+          String(assetToLink.googleDriveFileId || '').trim() || undefined,
+        googleDriveMimeType:
+          String(assetToLink.googleDriveMimeType || '').trim() || undefined,
+        googleDriveWebViewLink:
+          String(assetToLink.googleDriveWebViewLink || '').trim() || undefined,
+        googleDrivePlaybackUrl:
+          String(assetToLink.googleDrivePlaybackUrl || '').trim() || undefined,
         mediaAssetId: assetToLink.id,
         mediaVersion: normalizeMediaVersion(assetToLink.version, 1),
         mediaUpdatedAt: String(assetToLink.updatedAt || '').trim() || new Date().toISOString(),
@@ -2251,6 +2721,100 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
     ],
   );
 
+  const importDriveFileToTarget = useCallback(
+    async (file: GoogleDriveFileItem, mode: PendingMediaBindingMode) => {
+      const importKey = `${file.id}:${mode}`;
+      setDriveImportingKey(importKey);
+      try {
+        let sharedFile: Partial<GoogleDriveShareResponse> | undefined;
+        try {
+          sharedFile = (await apiRequest(
+            `/api/google/drive/files/${encodeURIComponent(file.id)}/share`,
+            {
+              method: 'POST',
+              body: {
+                shareMode: 'link',
+                ensureAccessible: true,
+              },
+            },
+          )) as GoogleDriveShareResponse;
+        } catch {
+          sharedFile = undefined;
+        }
+
+        const importedAsset = mapGoogleDriveFileToMediaAsset(file, sharedFile);
+        if (!importedAsset.url) {
+          setStatusMessage(
+            tt(
+              'Kunne ikke finne en brukbar Drive-lenke for denne filen.',
+              'Could not resolve a usable Drive link for this file.',
+            ),
+          );
+          return;
+        }
+
+        setAssets((current) => {
+          const next = current.filter((asset) => asset.id !== importedAsset.id);
+          return [importedAsset, ...next];
+        });
+        setSelectedAssetId(importedAsset.id);
+
+        if (mode === 'video' && importedAsset.type === 'video') {
+          await bindSelectedVideoToTarget(videoBindingTarget, importedAsset);
+        } else {
+          await linkSelectedAssetAsResource(videoBindingTarget, importedAsset);
+        }
+
+        setDrivePickerOpen(false);
+        analytics.trackEvent('academy_google_drive_asset_imported', {
+          courseId: activeCourse?.id || null,
+          lessonId:
+            videoBindingTarget === 'skill'
+              ? videoBindingLessonId || state.currentLesson?.id || null
+              : null,
+          driveFileId: file.id,
+          mimeType: file.mimeType,
+          mode,
+          sourceType: importedAsset.videoSourceType || 'direct',
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : tt(
+                'Kunne ikke importere fil fra Google Drive.',
+                'Could not import file from Google Drive.',
+              );
+        setStatusMessage(message);
+        debugging.logIntegration('error', 'AcademyMediaStudio drive import failed', {
+          message,
+          driveFileId: file.id,
+          mimeType: file.mimeType,
+          mode,
+          courseId: activeCourse?.id || null,
+          lessonId:
+            videoBindingTarget === 'skill'
+              ? videoBindingLessonId || state.currentLesson?.id || null
+              : null,
+        });
+      } finally {
+        setDriveImportingKey('');
+      }
+    },
+    [
+      activeCourse?.id,
+      analytics,
+      bindSelectedVideoToTarget,
+      debugging,
+      linkSelectedAssetAsResource,
+      state.currentLesson?.id,
+      tt,
+      videoBindingLessonId,
+      videoBindingTarget,
+    ],
+  );
+
   const handlePendingBindingConfirm = useCallback(
     async (mode?: PendingMediaBindingMode) => {
       const resolvedMode = mode || pendingBindingMode;
@@ -2284,15 +2848,28 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
     setLocation('/academy/player-studio');
   }, [isStudentMode, selectedAsset, setLocation, studentPlayerRoute]);
 
-  const syncNow = useCallback(() => {
+  const syncNow = useCallback(async () => {
     setSyncing(true);
     setStatusMessage(tt('Synkroniserer med skylagring...', 'Syncing with cloud storage...'));
-
-    setTimeout(() => {
+    try {
+      await refreshGoogleDriveStatus();
+      if (drivePickerOpen) {
+        await loadGoogleDriveFiles(drivePickerSearchValue);
+      }
+      setStatusMessage(
+        tt('Google Drive-status oppdatert.', 'Google Drive status refreshed.'),
+      );
+    } catch {
+      setStatusMessage(
+        tt(
+          'Kunne ikke oppdatere Google Drive-status akkurat nå.',
+          'Could not refresh Google Drive status right now.',
+        ),
+      );
+    } finally {
       setSyncing(false);
-      setStatusMessage(tt('Synkronisering fullført.', 'Sync complete.'));
-    }, 900);
-  }, [tt]);
+    }
+  }, [drivePickerOpen, drivePickerSearchValue, loadGoogleDriveFiles, refreshGoogleDriveStatus, tt]);
 
   const handleSave = useCallback(
     (publish: boolean) => {
@@ -2361,11 +2938,16 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
             studentName={studentName}
             activeCourseId={activeCourse?.id ? String(activeCourse.id) : null}
             activeCourseTitle={activeCourse?.title || undefined}
+            instructorName={activeCourse?.instructor?.name || undefined}
             progressPercent={studentProgressStats.progressPercent}
             completedLessons={studentProgressStats.completedLessons}
             totalLessons={studentProgressStats.totalLessons}
             returnTo={studentBaseReturnTo}
             continueRoute={studentPlayerRoute}
+            nextActionTitle={studentNextAction.title}
+            nextActionDetail={studentNextAction.detail}
+            nextActionRoute={studentSidebarNextActionRoute}
+            nextActionLabel={studentSidebarNextActionLabel}
           />
 
           <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -2598,6 +3180,51 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                   </Typography>
                 </Stack>
 
+                {recommendedAssets.length > 0 ? (
+                  <Box sx={{ ...panelSx, p: 1, mb: 1, borderColor: 'rgba(248,179,33,0.18)' }}>
+                    <Typography sx={{ fontSize: 15, fontWeight: 700 }}>
+                      {tt('Anbefalt akkurat nå', 'Recommended right now')}
+                    </Typography>
+                    <Stack spacing={0.75} sx={{ mt: 0.8 }}>
+                      {recommendedAssets.map((asset) => {
+                        const contextMeta = resourceContextByAssetId.get(asset.id);
+                        return (
+                          <Box
+                            key={`recommended-${asset.id}`}
+                            onClick={() => handleAssetSelect(asset.id)}
+                            sx={{
+                              px: 0.85,
+                              py: 0.8,
+                              borderRadius: 1,
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
+                              bgcolor: 'rgba(10,14,22,0.68)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Stack direction="row" spacing={0.8} alignItems="center">
+                              <Box minWidth={0} sx={{ flex: 1 }}>
+                                <Typography sx={{ fontWeight: 700 }} noWrap>
+                                  {asset.name}
+                                </Typography>
+                                <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.62)' }}>
+                                  {contextMeta?.detail}
+                                </Typography>
+                              </Box>
+                              {contextMeta ? (
+                                <Chip
+                                  label={contextMeta.label}
+                                  size="small"
+                                  sx={{ bgcolor: contextMeta.chipBg, color: contextMeta.chipColor }}
+                                />
+                              ) : null}
+                            </Stack>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  </Box>
+                ) : null}
+
                 <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', pr: 0.3 }}>
                   {visibleAssets.length === 0 ? (
                     <Box
@@ -2631,6 +3258,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                       {visibleAssets.map((asset, index) => {
                         const selected = selectedAssetId === asset.id;
                         const previewImageUrl = resolveAssetPreviewImageUrl(asset);
+                        const contextMeta = resourceContextByAssetId.get(asset.id);
                         return (
                           <Box
                             key={asset.id}
@@ -2683,12 +3311,28 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                               </IconButton>
                             </Box>
                             <Stack spacing={0.45} sx={{ p: 1 }}>
+                              {contextMeta ? (
+                                <Chip
+                                  label={contextMeta.label}
+                                  size="small"
+                                  sx={{
+                                    alignSelf: 'flex-start',
+                                    bgcolor: contextMeta.chipBg,
+                                    color: contextMeta.chipColor,
+                                  }}
+                                />
+                              ) : null}
                               <Typography sx={{ fontSize: 18, fontWeight: 700, lineHeight: 1.12 }}>
                                 {asset.name}
                               </Typography>
                               <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 12 }}>
                                 {formatBytes(asset.size)} · {formatDuration(asset.duration)}
                               </Typography>
+                              {contextMeta ? (
+                                <Typography sx={{ color: 'rgba(237,240,247,0.66)', fontSize: 12 }}>
+                                  {contextMeta.detail}
+                                </Typography>
+                              ) : null}
                             </Stack>
                           </Box>
                         );
@@ -2726,6 +3370,27 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                         {selectedAsset.duration ? ` · ${formatDuration(selectedAsset.duration)}` : ''}
                       </Typography>
                     </Stack>
+
+                    {selectedAssetContext ? (
+                      <Box
+                        sx={{
+                          ...panelSx,
+                          p: 1,
+                          borderColor: 'rgba(255,255,255,0.1)',
+                        }}
+                      >
+                        <Stack direction="row" spacing={0.8} alignItems="center">
+                          <Chip
+                            label={selectedAssetContext.label}
+                            size="small"
+                            sx={{ bgcolor: selectedAssetContext.chipBg, color: selectedAssetContext.chipColor }}
+                          />
+                          <Typography sx={{ color: 'rgba(237,240,247,0.76)', fontSize: 13 }}>
+                            {selectedAssetContext.detail}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    ) : null}
 
                     <Stack spacing={0.55}>
                       <Button
@@ -3034,11 +3699,28 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                   <CloudDownload sx={{ color: '#9ec4ff' }} />
                   <Typography sx={{ fontWeight: 600 }}>Google Drive</Typography>
                 </Stack>
-                <Chip label="Online" size="small" sx={{ bgcolor: 'rgba(79,199,128,0.16)', color: '#9ce5b5' }} />
+                <Chip
+                  label={
+                    driveStatusLoading
+                      ? tt('Sjekker', 'Checking')
+                      : driveStatus?.connected
+                        ? tt('Tilkoblet', 'Connected')
+                        : driveStatus?.status === 'missing_scope'
+                          ? tt('Mangler scope', 'Missing scope')
+                          : tt('Frakoblet', 'Disconnected')
+                  }
+                  size="small"
+                  sx={{
+                    bgcolor: driveStatus?.connected
+                      ? 'rgba(79,199,128,0.16)'
+                      : 'rgba(255,255,255,0.08)',
+                    color: driveStatus?.connected ? '#9ce5b5' : 'rgba(237,240,247,0.82)',
+                  }}
+                />
               </Stack>
               <LinearProgress
-                variant="determinate"
-                value={syncing ? 55 : 82}
+                variant={syncing || driveStatusLoading ? 'indeterminate' : 'determinate'}
+                value={driveStatus?.connected ? 100 : 12}
                 sx={{
                   mt: 1,
                   height: 6,
@@ -3051,22 +3733,54 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                 }}
               />
               <Typography sx={{ mt: 0.8, color: 'rgba(237,240,247,0.62)', fontSize: 12 }}>
-                Synced 2 hours ago · 620 GB / 1 TB
+                {driveStatus?.accountEmail
+                  ? driveStatus.accountEmail
+                  : tt(
+                      'Koble Google Workspace for aa hente Drive-videoer og Google Vids.',
+                      'Connect Google Workspace to import Drive videos and Google Vids.',
+                    )}
               </Typography>
-              <Button
-                fullWidth
-                variant="outlined"
-                startIcon={<Sync />}
-                onClick={syncNow}
-                sx={{
-                  mt: 1,
-                  textTransform: 'none',
-                  color: '#edf0f7',
-                  borderColor: 'rgba(255,255,255,0.2)',
-                }}
-              >
-                Sync Now
-              </Button>
+              <Typography sx={{ mt: 0.35, color: 'rgba(237,240,247,0.52)', fontSize: 12 }}>
+                {driveStatus?.lastSync
+                  ? tt(
+                      `Sist verifisert ${formatDateTime(driveStatus.lastSync)}`,
+                      `Last verified ${formatDateTime(driveStatus.lastSync)}`,
+                    )
+                  : driveStatus?.message ||
+                    tt(
+                      'Importer Google Vids som review-lenke eller Drive-video som spillbar MP4.',
+                      'Import Google Vids as a review link or a Drive video as a playable MP4.',
+                    )}
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} sx={{ mt: 1 }}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  startIcon={<CloudDownload />}
+                  onClick={() => setDrivePickerOpen(true)}
+                  sx={{
+                    textTransform: 'none',
+                    color: '#0f0f0f',
+                    fontWeight: 700,
+                    background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                  }}
+                >
+                  {tt('Browse Drive / Vids', 'Browse Drive / Vids')}
+                </Button>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<Sync />}
+                  onClick={() => void syncNow()}
+                  sx={{
+                    textTransform: 'none',
+                    color: '#edf0f7',
+                    borderColor: 'rgba(255,255,255,0.2)',
+                  }}
+                >
+                  {tt('Oppdater', 'Refresh')}
+                </Button>
+              </Stack>
             </Box>
 
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
@@ -4436,6 +5150,341 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                 : videoBindingTarget === 'course'
                   ? tt('Koble til kurset', 'Link to course')
                   : tt('Koble til ferdigheten', 'Link to skill')}
+            </Button>
+          </DialogActions>
+        </Dialog>
+        <Dialog
+          open={drivePickerOpen}
+          onClose={() => setDrivePickerOpen(false)}
+          fullWidth
+          maxWidth="md"
+          PaperProps={{
+            sx: {
+              bgcolor: 'rgba(12,16,24,0.98)',
+              color: '#edf0f7',
+              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
+            },
+          }}
+        >
+          <DialogTitle sx={{ pb: 0.8 }}>
+            {tt('Importer fra Google Drive / Vids', 'Import from Google Drive / Vids')}
+          </DialogTitle>
+          <DialogContent sx={{ pt: '8px !important' }}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={0.8}
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+              sx={{ mb: 1 }}
+            >
+              <TextField
+                fullWidth
+                size="small"
+                value={drivePickerSearchValue}
+                onChange={(event) => setDrivePickerSearchValue(event.target.value)}
+                placeholder={tt('Sok i Drive eller Google Vids...', 'Search Drive or Google Vids...')}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    color: '#edf0f7',
+                    bgcolor: 'rgba(255,255,255,0.03)',
+                    '& fieldset': { borderColor: 'rgba(255,255,255,0.16)' },
+                  },
+                }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search sx={{ color: 'rgba(237,240,247,0.65)' }} />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <Button
+                onClick={() => void loadGoogleDriveFiles(drivePickerSearchValue)}
+                startIcon={<Sync />}
+                sx={{
+                  textTransform: 'none',
+                  color: '#edf0f7',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {tt('Oppdater liste', 'Refresh list')}
+              </Button>
+            </Stack>
+
+            <Box
+              sx={{
+                mb: 1.1,
+                px: 1,
+                py: 0.9,
+                borderRadius: 1,
+                border: driveStatus?.connected
+                  ? 'var(--academy-hairline-width, 1px) solid rgba(92,180,128,0.24)'
+                  : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
+                bgcolor: driveStatus?.connected
+                  ? 'rgba(92,180,128,0.08)'
+                  : 'rgba(255,255,255,0.04)',
+              }}
+            >
+              <Stack direction="row" spacing={0.7} useFlexGap flexWrap="wrap" alignItems="center">
+                <Chip
+                  size="small"
+                  label={
+                    driveStatus?.connected
+                      ? tt('Google Drive tilkoblet', 'Google Drive connected')
+                      : tt('Google Drive ikke tilkoblet', 'Google Drive not connected')
+                  }
+                  sx={{
+                    bgcolor: driveStatus?.connected
+                      ? 'rgba(92,180,128,0.16)'
+                      : 'rgba(255,255,255,0.08)',
+                    color: driveStatus?.connected ? '#d8f4df' : '#edf0f7',
+                    fontWeight: 700,
+                  }}
+                />
+                <Chip
+                  size="small"
+                  label={
+                    videoBindingTarget === 'course'
+                      ? tt(`Maal: ${bindingTargetLabel}`, `Target: ${bindingTargetLabel}`)
+                      : tt(`Maal: ${bindingTargetLabel}`, `Target: ${bindingTargetLabel}`)
+                  }
+                  sx={{
+                    bgcolor: 'rgba(248,179,33,0.12)',
+                    color: '#f8d56f',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.2)',
+                  }}
+                />
+              </Stack>
+              <Typography sx={{ mt: 0.7, color: 'rgba(237,240,247,0.72)', fontSize: 12.5 }}>
+                {driveStatus?.connected
+                  ? tt(
+                      'Importer spillbare Drive-videoer direkte, eller koble Google Vids som ekstern review-kilde.',
+                      'Import playable Drive videos directly, or link Google Vids as an external review source.',
+                    )
+                  : driveStatus?.message ||
+                    tt(
+                      'Koble Google Workspace for aa hente filer fra Drive og Google Vids.',
+                      'Connect Google Workspace to load files from Drive and Google Vids.',
+                    )}
+              </Typography>
+              {!driveStatus?.connected ? (
+                <Button
+                  onClick={() => void startGoogleWorkspaceConnect()}
+                  startIcon={<Lock />}
+                  sx={{
+                    mt: 0.8,
+                    textTransform: 'none',
+                    color: '#0f0f0f',
+                    background: 'linear-gradient(180deg, #7af0b1, #44c886)',
+                    fontWeight: 700,
+                  }}
+                >
+                  {tt('Logg inn med Google', 'Sign in with Google')}
+                </Button>
+              ) : null}
+            </Box>
+
+            {driveFilesLoading ? (
+              <LinearProgress
+                sx={{
+                  mb: 1,
+                  height: 6,
+                  borderRadius: 999,
+                  bgcolor: 'rgba(255,255,255,0.08)',
+                  '& .MuiLinearProgress-bar': {
+                    borderRadius: 999,
+                    background: 'linear-gradient(90deg, #8de270 0%, #f8b321 100%)',
+                  },
+                }}
+              />
+            ) : null}
+
+            <Stack spacing={0.8} sx={{ maxHeight: 420, overflowY: 'auto', pr: 0.35 }}>
+              {!driveStatus?.connected && !driveFilesLoading ? (
+                <Box
+                  sx={{
+                    px: 1,
+                    py: 1,
+                    borderRadius: 1,
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
+                    bgcolor: 'rgba(255,255,255,0.03)',
+                  }}
+                >
+                  <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.8)' }}>
+                    {tt(
+                      'Ingen aktiv Google Drive-tilkobling ble funnet for denne brukeren.',
+                      'No active Google Drive connection was found for this user.',
+                    )}
+                  </Typography>
+                </Box>
+              ) : null}
+
+              {driveStatus?.connected && !driveFilesLoading && visibleDriveFiles.length === 0 ? (
+                <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.62)' }}>
+                  {tt(
+                    'Ingen Drive-filer eller Google Vids matchet soeket.',
+                    'No Drive files or Google Vids matched this search.',
+                  )}
+                </Typography>
+              ) : null}
+
+              {visibleDriveFiles.map((file) => {
+                const isVids = isGoogleVidsMimeType(file.mimeType);
+                const importVideoKey = `${file.id}:video`;
+                const importResourceKey = `${file.id}:resource`;
+                const openUrl =
+                  String(file.webViewLink || '').trim() ||
+                  String(file.webContentLink || '').trim();
+
+                return (
+                  <Box
+                    key={file.id}
+                    sx={{
+                      px: 1,
+                      py: 0.95,
+                      borderRadius: 1,
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
+                      background: 'rgba(11,15,24,0.72)',
+                    }}
+                  >
+                    <Stack
+                      direction={{ xs: 'column', md: 'row' }}
+                      spacing={1}
+                      justifyContent="space-between"
+                      alignItems={{ xs: 'stretch', md: 'flex-start' }}
+                    >
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography sx={{ fontWeight: 600 }} noWrap>
+                          {file.name}
+                        </Typography>
+                        <Stack
+                          direction="row"
+                          spacing={0.6}
+                          useFlexGap
+                          flexWrap="wrap"
+                          sx={{ mt: 0.5 }}
+                        >
+                          <Chip
+                            size="small"
+                            label={isVids ? 'Google Vids' : tt('Drive-video', 'Drive video')}
+                            sx={{
+                              bgcolor: isVids
+                                ? 'rgba(115,160,255,0.16)'
+                                : 'rgba(248,179,33,0.12)',
+                              color: isVids ? '#dbe4ff' : '#f8d56f',
+                              fontWeight: 700,
+                            }}
+                          />
+                          {file.version != null ? (
+                            <Chip
+                              size="small"
+                              label={`v${normalizeMediaVersion(file.version, 1)}`}
+                              sx={{
+                                bgcolor: 'rgba(255,255,255,0.08)',
+                                color: 'rgba(237,240,247,0.82)',
+                              }}
+                            />
+                          ) : null}
+                          {file.mimeType ? (
+                            <Chip
+                              size="small"
+                              label={file.mimeType}
+                              sx={{
+                                bgcolor: 'rgba(255,255,255,0.06)',
+                                color: 'rgba(237,240,247,0.72)',
+                              }}
+                            />
+                          ) : null}
+                        </Stack>
+                        <Typography sx={{ mt: 0.55, color: 'rgba(237,240,247,0.58)', fontSize: 12 }}>
+                          {[formatBytes(Number(file.size || 0)), formatDateTime(file.modifiedTime)]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </Typography>
+                        <Typography sx={{ mt: 0.3, color: 'rgba(237,240,247,0.7)', fontSize: 12.5 }}>
+                          {isVids
+                            ? tt(
+                                'Kobles som ekstern Google Vids-kilde. For innebygget avspilling: eksporter MP4 til Drive.',
+                                'Links as an external Google Vids source. For embedded playback: export an MP4 to Drive.',
+                              )
+                            : tt(
+                                'Kobles som spillbar Google Drive-video.',
+                                'Links as a playable Google Drive video.',
+                              )}
+                        </Typography>
+                      </Box>
+
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={0.6}
+                        alignItems={{ xs: 'stretch', sm: 'center' }}
+                      >
+                        <Button
+                          onClick={() => void importDriveFileToTarget(file, 'video')}
+                          disabled={
+                            (videoBindingTarget === 'skill' && lessonBindingOptions.length === 0) ||
+                            driveImportingKey === importVideoKey
+                          }
+                          sx={{
+                            textTransform: 'none',
+                            color: '#0f0f0f',
+                            fontWeight: 700,
+                            background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
+                          }}
+                        >
+                          {driveImportingKey === importVideoKey
+                            ? tt('Importer...', 'Importing...')
+                            : videoBindingTarget === 'course'
+                              ? tt('Koble som kursvideo', 'Link as course video')
+                              : tt('Koble som ferdighetsvideo', 'Link as skill video')}
+                        </Button>
+                        <Button
+                          onClick={() => void importDriveFileToTarget(file, 'resource')}
+                          disabled={
+                            (videoBindingTarget === 'skill' && lessonBindingOptions.length === 0) ||
+                            driveImportingKey === importResourceKey
+                          }
+                          variant="outlined"
+                          sx={{
+                            textTransform: 'none',
+                            color: '#edf0f7',
+                            borderColor: 'rgba(255,255,255,0.18)',
+                          }}
+                        >
+                          {driveImportingKey === importResourceKey
+                            ? tt('Importer...', 'Importing...')
+                            : videoBindingTarget === 'course'
+                              ? tt('Legg til som kursressurs', 'Add as course resource')
+                              : tt('Legg til som ressurs', 'Add as resource')}
+                        </Button>
+                        {openUrl ? (
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              window.open(openUrl, '_blank', 'noopener,noreferrer');
+                            }}
+                            sx={{
+                              color: '#edf0f7',
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
+                              borderRadius: 1,
+                            }}
+                          >
+                            <LinkIcon fontSize="small" />
+                          </IconButton>
+                        ) : null}
+                      </Stack>
+                    </Stack>
+                  </Box>
+                );
+              })}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => setDrivePickerOpen(false)}
+              sx={{ textTransform: 'none', color: 'rgba(237,240,247,0.82)' }}
+            >
+              {tt('Lukk', 'Close')}
             </Button>
           </DialogActions>
         </Dialog>

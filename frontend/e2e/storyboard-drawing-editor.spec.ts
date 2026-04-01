@@ -1566,22 +1566,41 @@ test.describe('Storyboard drawing editor layout contract', () => {
     await page.getByTestId('frame-editor-board-polish-card-finish-hatch').click();
     await page.getByTestId('frame-editor-board-polish-card-weather-rain').click();
     const atmosphereSlider = page.getByTestId('frame-editor-board-polish-atmosphere');
-    const atmosphereSliderBox = await getBox(atmosphereSlider, 'board polish atmosphere slider');
-    await page.mouse.click(
-      atmosphereSliderBox.x + (atmosphereSliderBox.width * 0.74),
-      atmosphereSliderBox.y + (atmosphereSliderBox.height / 2),
-    );
+    await atmosphereSlider.click();
+    for (let step = 0; step < 8; step += 1) {
+      await page.keyboard.press('ArrowRight');
+    }
     const boardPolishOverlay = page.getByTestId('frame-editor-board-polish-overlay');
     await expect(page.getByTestId('frame-editor-status-board-polish')).toContainText('present · amber');
     await expect(page.getByTestId('frame-editor-board-polish-summary')).toContainText('present · amber');
     await expect(page.getByTestId('frame-editor-board-polish-style-summary')).toContainText('Hatch finish');
     await expect(page.getByTestId('frame-editor-board-polish-style-summary')).toContainText('Rain weather');
+    await expect(page.getByTestId('frame-editor-board-polish-fx-stack')).toContainText('Atmosphere');
+    await expect(page.getByTestId('frame-editor-board-polish-fx-stack')).toContainText('Weather');
+    await expect(page.getByTestId('frame-editor-board-polish-fx-stack')).toContainText('Finish');
+    await expect(page.getByTestId('frame-editor-board-polish-fx-stack')).toContainText('Vignette');
+    const finishFxStackRow = page.getByTestId('frame-editor-board-polish-fx-stack-finish');
+    const weatherToggle = page.getByTestId('frame-editor-board-polish-fx-toggle-weather');
+    const finishFxOpacitySlider = page.getByTestId('frame-editor-board-polish-fx-opacity-finish');
+    await weatherToggle.click();
+    await finishFxOpacitySlider.click();
+    for (let step = 0; step < 14; step += 1) {
+      await page.keyboard.press('ArrowLeft');
+    }
     await expect(boardPolishOverlay).toHaveAttribute('data-tone', 'amber');
     await expect(boardPolishOverlay).toHaveAttribute('data-finish', 'hatch');
     await expect(boardPolishOverlay).toHaveAttribute('data-weather', 'rain');
+    await expect(page.getByTestId('frame-editor-board-polish-style-summary')).toContainText('custom FX mix');
+    await expect(boardPolishOverlay).toHaveAttribute('data-effect-count', '3');
+    await expect(page.getByTestId('frame-editor-board-polish-effect-atmosphere')).toBeVisible();
+    await expect(page.locator('[data-testid="frame-editor-board-polish-effect-weather"]')).toHaveCount(0);
+    await expect(page.getByTestId('frame-editor-board-polish-effect-finish')).toBeVisible();
+    await expect(page.getByTestId('frame-editor-board-polish-effect-vignette')).toBeVisible();
     const savedAtmosphere = await boardPolishOverlay.getAttribute('data-atmosphere');
+    const savedFinishFxOpacity = await finishFxStackRow.getAttribute('data-opacity');
     expect(savedAtmosphere, 'board polish atmosphere should be serialized on the overlay').not.toBeNull();
-    expect(Number(savedAtmosphere || '0')).toBeGreaterThan(0.6);
+    expect(Number(savedAtmosphere || '0')).toBeGreaterThan(0.5);
+    expect(Number(savedFinishFxOpacity || '0')).toBeLessThan(1);
     await expect(saveButton).toBeEnabled();
 
     await saveButton.click();
@@ -1595,11 +1614,65 @@ test.describe('Storyboard drawing editor layout contract', () => {
     await expect(page.getByTestId('frame-editor-status-board-polish')).toContainText('present · amber');
     await expect(page.getByTestId('frame-editor-board-polish-summary')).toContainText('present · amber');
     await expect(page.getByTestId('frame-editor-board-polish-style-summary')).toContainText('Hatch finish');
-    await expect(page.getByTestId('frame-editor-board-polish-style-summary')).toContainText('Rain weather');
+    await expect(page.getByTestId('frame-editor-board-polish-style-summary')).toContainText('Rain muted weather');
+    await expect(page.getByTestId('frame-editor-board-polish-style-summary')).toContainText('custom FX mix');
     await expect(page.getByTestId('frame-editor-board-polish-overlay')).toHaveAttribute('data-tone', 'amber');
     await expect(page.getByTestId('frame-editor-board-polish-overlay')).toHaveAttribute('data-finish', 'hatch');
     await expect(page.getByTestId('frame-editor-board-polish-overlay')).toHaveAttribute('data-weather', 'rain');
     await expect(page.getByTestId('frame-editor-board-polish-overlay')).toHaveAttribute('data-atmosphere', savedAtmosphere!);
+    await expect(page.getByTestId('frame-editor-board-polish-overlay')).toHaveAttribute('data-effect-count', '3');
+    await expect(page.getByTestId('frame-editor-board-polish-effect-atmosphere')).toBeVisible();
+    await expect(page.locator('[data-testid="frame-editor-board-polish-effect-weather"]')).toHaveCount(0);
+    await expect(page.getByTestId('frame-editor-board-polish-effect-finish')).toBeVisible();
+    await expect(page.getByTestId('frame-editor-board-polish-effect-vignette')).toBeVisible();
+    await expect(page.getByTestId('frame-editor-board-polish-fx-stack-finish')).toHaveAttribute('data-opacity', savedFinishFxOpacity!);
+
+    await inspector.getByRole('button', { name: 'LAYERS' }).click();
+    await expect(page.getByTestId('frame-editor-layer-card-fx-atmosphere')).toContainText('FX Atmosphere');
+    await expect(page.getByTestId('frame-editor-layer-card-fx-atmosphere')).toContainText('Enabled');
+    await expect(page.getByTestId('frame-editor-layer-card-fx-weather')).toContainText('FX Weather');
+    await expect(page.getByTestId('frame-editor-layer-card-fx-weather')).toContainText('Muted');
+    await expect(page.getByTestId('frame-editor-layer-card-fx-finish')).toContainText('FX Finish');
+    await expect(page.getByTestId('frame-editor-layer-card-fx-vignette')).toContainText('FX Vignette');
+    await page.getByTestId('frame-editor-layer-visibility-fx-weather').click();
+    await expect(page.getByTestId('frame-editor-board-polish-overlay')).toHaveAttribute('data-effect-count', '4');
+    await expect(page.getByTestId('frame-editor-board-polish-effect-weather')).toBeVisible();
+
+    await inspector.getByRole('button', { name: 'SHOT' }).click();
+    await page.getByTestId('frame-editor-board-polish-mode-toggle').click();
+    await expect(page.locator('[data-testid="frame-editor-board-polish-overlay"]')).toHaveCount(0);
+
+    await inspector.getByRole('button', { name: 'LAYERS' }).click();
+    await page.getByTestId('frame-editor-layer-card-fx-weather').click();
+    await expect(page.getByTestId('frame-editor-layer-effect-region-card')).toBeVisible();
+    await page.getByTestId('frame-editor-layer-effect-region-preset-focus').click();
+    const weatherRegionOverlay = page.getByTestId('frame-editor-board-polish-effect-region-overlay');
+    await expect(weatherRegionOverlay).toHaveAttribute('data-effect-id', 'weather');
+    await expect(weatherRegionOverlay).toHaveAttribute('data-x-ratio', '0.1800');
+    await expect(weatherRegionOverlay).toHaveAttribute('data-width-ratio', '0.6400');
+    const featherSlider = page.getByTestId('frame-editor-layer-effect-region-feather');
+    await featherSlider.click();
+    for (let step = 0; step < 6; step += 1) {
+      await page.keyboard.press('ArrowRight');
+    }
+    const savedWeatherFeather = await weatherRegionOverlay.getAttribute('data-feather');
+    expect(Number(savedWeatherFeather || '0')).toBeGreaterThan(0.22);
+
+    await saveButton.click();
+    await expect(page.getByTestId('drawing-editor-harness-save-count')).toContainText('saves=2');
+    await harnessRemountButton.click();
+
+    await inspector.getByRole('button', { name: 'LAYERS' }).click();
+    await page.getByTestId('frame-editor-layer-card-fx-weather').click();
+    await expect(page.getByTestId('frame-editor-board-polish-effect-region-overlay')).toHaveAttribute('data-x-ratio', '0.1800');
+    await expect(page.getByTestId('frame-editor-board-polish-effect-region-overlay')).toHaveAttribute('data-width-ratio', '0.6400');
+    await expect(page.getByTestId('frame-editor-board-polish-effect-region-overlay')).toHaveAttribute('data-feather', savedWeatherFeather!);
+
+    await inspector.getByRole('button', { name: 'SHOT' }).click();
+    await page.getByTestId('frame-editor-board-polish-mode-toggle').click();
+    await expect(page.getByTestId('frame-editor-board-polish-effect-weather')).toHaveAttribute('data-x-ratio', '0.1800');
+    await expect(page.getByTestId('frame-editor-board-polish-effect-weather')).toHaveAttribute('data-width-ratio', '0.6400');
+    await expect(page.getByTestId('frame-editor-board-polish-effect-weather')).toHaveAttribute('data-feather', savedWeatherFeather!);
 
     expectNoRuntimeIssues(collector, 'board polish present mode checks');
   });

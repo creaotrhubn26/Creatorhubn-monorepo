@@ -157,6 +157,39 @@ interface CommunityLandingPageProps {
   onSkip?: () => void;
 }
 
+const COMMUNITY_SHELL_BACKGROUND = `
+  radial-gradient(circle at top right, rgba(245, 166, 35, 0.14), transparent 28%),
+  radial-gradient(circle at bottom left, rgba(88, 122, 168, 0.18), transparent 32%),
+  linear-gradient(180deg, #05070b 0%, #091019 52%, #06080c 100%)
+`;
+const COMMUNITY_PANEL_BACKGROUND =
+  'linear-gradient(180deg, rgba(13, 18, 27, 0.94), rgba(8, 12, 18, 0.94))';
+const COMMUNITY_PANEL_BORDER = '1px solid rgba(255, 255, 255, 0.08)';
+const COMMUNITY_PANEL_SHADOW = '0 24px 60px rgba(0, 0, 0, 0.36)';
+const COMMUNITY_TEXT_PRIMARY = 'rgba(248, 241, 231, 0.94)';
+const COMMUNITY_TEXT_MUTED = 'rgba(248, 241, 231, 0.68)';
+const COMMUNITY_ACCENT = '#f5a623';
+const COMMUNITY_PROFILE_STORAGE_KEY = 'creatorhub-community-onboarding-profile-v1';
+const ONBOARDING_INTEREST_OPTIONS = [
+  'Lys',
+  'Redigering',
+  'Regi',
+  'Lyd',
+  'Storytelling',
+  'Produksjon',
+];
+const ONBOARDING_GOAL_OPTIONS = [
+  'Få raskere svar',
+  'Finne samarbeid',
+  'Lære av Academy',
+  'Bygge fagprofil',
+];
+const ONBOARDING_FIRST_ACTIONS = [
+  'Post et introinnlegg',
+  'Svar på et åpent spørsmål',
+  'Diskuter en Academy-leksjon',
+];
+
 function CommunityLandingPageComponent({
   userId,
   profession,
@@ -172,6 +205,10 @@ function CommunityLandingPageComponent({
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showAccessDialog, setShowAccessDialog] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+  const [firstAction, setFirstAction] = useState<string>('');
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   // Initialize hooks
   const {
@@ -187,6 +224,20 @@ function CommunityLandingPageComponent({
 
   const analytics = useOnboardingAnalytics(userId, profession);
   const { canProceed } = useStepValidation();
+
+  const persistCommunityProfile = useCallback((next: {
+    interests?: string[];
+    goals?: string[];
+    firstAction?: string;
+  }) => {
+    if (typeof window === 'undefined') return;
+    const payload = {
+      interests: next.interests ?? selectedInterests,
+      goals: next.goals ?? selectedGoals,
+      firstAction: next.firstAction ?? firstAction,
+    };
+    window.localStorage.setItem(COMMUNITY_PROFILE_STORAGE_KEY, JSON.stringify(payload));
+  }, [firstAction, selectedGoals, selectedInterests]);
 
   // Open login modal handler
   const handleOpenLogin = () => {
@@ -210,6 +261,27 @@ function CommunityLandingPageComponent({
       setActiveStep(localProgress.activeStep);
     }
   }, [localProgress]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(COMMUNITY_PROFILE_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setSelectedInterests(Array.isArray(parsed?.interests) ? parsed.interests : []);
+      setSelectedGoals(Array.isArray(parsed?.goals) ? parsed.goals : []);
+      setFirstAction(typeof parsed?.firstAction === 'string' ? parsed.firstAction : '');
+    } catch (error) {
+      console.error('Error loading community onboarding profile:', error);
+    } finally {
+      setProfileLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!profileLoaded) return;
+    persistCommunityProfile({});
+  }, [selectedInterests, selectedGoals, firstAction, persistCommunityProfile, profileLoaded]);
 
   // Load backend progress on mount
   useEffect(() => {
@@ -424,12 +496,46 @@ function CommunityLandingPageComponent({
 
   if (loading) {
     return (
-      <Container maxWidth="md" sx={{ py: 8 }}>
-        <LinearProgress />
-        <Typography variant="body1" sx={{ mt: 2, textAlign: 'center' }}>
-          Laster velkomstopplevelse...
-        </Typography>
-      </Container>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: COMMUNITY_SHELL_BACKGROUND,
+          px: 2,
+        }}
+      >
+        <Box
+          sx={{
+            width: 'min(560px, 100%)',
+            p: { xs: 3, md: 4 },
+            borderRadius: 4,
+            background: COMMUNITY_PANEL_BACKGROUND,
+            border: COMMUNITY_PANEL_BORDER,
+            boxShadow: COMMUNITY_PANEL_SHADOW,
+            backdropFilter: 'blur(18px)',
+          }}
+        >
+          <LinearProgress
+            sx={{
+              height: 8,
+              borderRadius: 999,
+              bgcolor: 'rgba(255,255,255,0.08)',
+              '& .MuiLinearProgress-bar': {
+                borderRadius: 999,
+                background: 'linear-gradient(90deg, #f5a623 0%, #ffcd73 100%)',
+              },
+            }}
+          />
+          <Typography
+            variant="body1"
+            sx={{ mt: 2, textAlign: 'center', color: COMMUNITY_TEXT_MUTED }}
+          >
+            Laster velkomstopplevelse...
+          </Typography>
+        </Box>
+      </Box>
     );
   }
 
@@ -452,11 +558,11 @@ function CommunityLandingPageComponent({
       <Box
         sx={{
           minHeight: '100vh',
-          background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
-          py: { xs: 3, md: 6 },
+          background: COMMUNITY_SHELL_BACKGROUND,
+          py: { xs: 3, md: 5 },
         }}
       >
-        <Container maxWidth="lg">
+        <Container maxWidth="xl">
           {/* Header with Skip Button */}
           <Box
             sx={{
@@ -469,16 +575,28 @@ function CommunityLandingPageComponent({
             }}
           >
             <Box sx={{ flex: 1 }}>
+              <Chip
+                label="CreatorHub Community"
+                size="small"
+                sx={{
+                  mb: 1.5,
+                  bgcolor: 'rgba(245, 166, 35, 0.14)',
+                  color: COMMUNITY_ACCENT,
+                  border: '1px solid rgba(245, 166, 35, 0.22)',
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                }}
+              />
               <Typography
-                variant="h3"
+                variant="h2"
                 sx={{
                   fontWeight: 800,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  backgroundClip: 'text',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
+                  color: COMMUNITY_TEXT_PRIMARY,
                   mb: 1.5,
-                  fontSize: { xs: '1.75rem', md: '2.5rem' },
+                  fontSize: { xs: '2.15rem', md: '3.1rem' },
+                  letterSpacing: '-0.02em',
+                  maxWidth: '12ch',
                 }}
               >
                 {onboardingConfig.welcome_title}
@@ -486,7 +604,7 @@ function CommunityLandingPageComponent({
               <Typography
                 variant="body1"
                 sx={{
-                  color: 'text.secondary',
+                  color: COMMUNITY_TEXT_MUTED,
                   fontSize: { xs: '0.95rem', md: '1.1rem' },
                   lineHeight: 1.7,
                   maxWidth: '600px',
@@ -500,18 +618,17 @@ function CommunityLandingPageComponent({
               onClick={onSkip}
               startIcon={<Close />}
               sx={{
-                borderColor: 'rgba(0, 0, 0, 0.23)',
-                color: 'text.secondary',
+                borderColor: 'rgba(245, 166, 35, 0.28)',
+                color: COMMUNITY_TEXT_PRIMARY,
                 textTransform: 'none',
                 px: 3,
                 py: 1,
-                borderRadius: 2,
+                borderRadius: 999,
                 fontWeight: 600,
+                background: 'rgba(255,255,255,0.03)',
                 '&:hover': {
-                  borderColor: 'error.main',
-                  color: 'error.main',
-                  bgcolor: 'error.light',
-                  borderWidth: 2,
+                  borderColor: 'rgba(245, 166, 35, 0.42)',
+                  bgcolor: 'rgba(245, 166, 35, 0.12)',
                 },
               }}
             >
@@ -523,10 +640,12 @@ function CommunityLandingPageComponent({
           <Card
             sx={{
               mb: 4,
-              borderRadius: 3,
-              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
-              border: '1px solid rgba(0, 0, 0, 0.05)',
+              borderRadius: 4,
+              boxShadow: COMMUNITY_PANEL_SHADOW,
+              border: COMMUNITY_PANEL_BORDER,
+              background: COMMUNITY_PANEL_BACKGROUND,
               overflow: 'hidden',
+              backdropFilter: 'blur(18px)',
             }}
           >
             <CardContent sx={{ p: 3 }}>
@@ -544,20 +663,20 @@ function CommunityLandingPageComponent({
                       width: 40,
                       height: 40,
                       borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      background: 'linear-gradient(135deg, #f5a623 0%, #ffd27d 100%)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)',
+                      boxShadow: '0 10px 24px rgba(245, 166, 35, 0.28)',
                     }}
                   >
-                    <CheckCircle sx={{ color: 'white', fontSize: 24 }} />
+                    <CheckCircle sx={{ color: '#05070b', fontSize: 24 }} />
                   </Box>
                   <Typography
                     variant="h6"
                     sx={{
                       fontWeight: 700,
-                      color: 'text.primary',
+                      color: COMMUNITY_TEXT_PRIMARY,
                     }}
                   >
                     Fremdrift
@@ -566,10 +685,11 @@ function CommunityLandingPageComponent({
                 <Chip
                   label={`${completedSteps.size} / ${onboardingConfig.steps.length} fullført`}
                   sx={{
-                    bgcolor: 'success.light',
-                    color: 'success.dark',
+                    bgcolor: 'rgba(245, 166, 35, 0.14)',
+                    color: COMMUNITY_ACCENT,
                     fontWeight: 600,
                     px: 1,
+                    border: '1px solid rgba(245, 166, 35, 0.18)',
                   }}
                 />
               </Box>
@@ -580,11 +700,11 @@ function CommunityLandingPageComponent({
                   sx={{
                     height: 12,
                     borderRadius: 6,
-                    bgcolor: 'rgba(0, 0, 0, 0.05)',
+                    bgcolor: 'rgba(255, 255, 255, 0.08)',
                     '& .MuiLinearProgress-bar': {
                       borderRadius: 6,
-                      background: 'linear-gradient(90deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
-                      boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
+                      background: 'linear-gradient(90deg, #f5a623 0%, #ffd27d 100%)',
+                      boxShadow: '0 2px 10px rgba(245, 166, 35, 0.3)',
                     },
                   }}
                 />
@@ -594,7 +714,7 @@ function CommunityLandingPageComponent({
                     position: 'absolute',
                     right: 0,
                     top: -24,
-                    color: 'text.secondary',
+                    color: COMMUNITY_TEXT_MUTED,
                     fontWeight: 600,
                   }}
                 >
@@ -604,16 +724,169 @@ function CommunityLandingPageComponent({
             </CardContent>
           </Card>
 
+          <Card
+            sx={{
+              mb: 4,
+              borderRadius: 4,
+              boxShadow: COMMUNITY_PANEL_SHADOW,
+              border: COMMUNITY_PANEL_BORDER,
+              background: COMMUNITY_PANEL_BACKGROUND,
+              overflow: 'hidden',
+              backdropFilter: 'blur(18px)',
+            }}
+          >
+            <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', lg: '1.1fr 0.9fr' },
+                  gap: 3,
+                }}
+              >
+                <Box>
+                  <Typography variant="h5" sx={{ color: COMMUNITY_TEXT_PRIMARY, fontWeight: 700 }}>
+                    Sett opp din community-profil
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.7, color: COMMUNITY_TEXT_MUTED, maxWidth: 620 }}>
+                    Velg interesser og ønsket første handling. Disse valgene brukes til å prioritere hjemflaten når du kommer inn i community som {getProfessionDisplayName(profession)}.
+                  </Typography>
+
+                  <Typography variant="subtitle2" sx={{ mt: 2.2, mb: 1, color: COMMUNITY_TEXT_PRIMARY }}>
+                    Hva vil du se mer av?
+                  </Typography>
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    {ONBOARDING_INTEREST_OPTIONS.map((interest) => {
+                      const selected = selectedInterests.includes(interest);
+                      return (
+                        <Button
+                          key={interest}
+                          variant={selected ? 'contained' : 'outlined'}
+                          size="small"
+                          onClick={() =>
+                            setSelectedInterests((prev) =>
+                              prev.includes(interest)
+                                ? prev.filter((item) => item !== interest)
+                                : [...prev, interest].slice(-4),
+                            )
+                          }
+                          sx={{
+                            borderRadius: 999,
+                            textTransform: 'none',
+                            bgcolor: selected ? COMMUNITY_ACCENT : 'transparent',
+                            color: selected ? '#05070b' : COMMUNITY_TEXT_PRIMARY,
+                            borderColor: selected ? 'transparent' : 'rgba(255,255,255,0.12)',
+                            '&:hover': {
+                              bgcolor: selected ? '#ffcd73' : 'rgba(245, 166, 35, 0.08)',
+                              borderColor: 'rgba(245, 166, 35, 0.24)',
+                            },
+                          }}
+                        >
+                          {interest}
+                        </Button>
+                      );
+                    })}
+                  </Stack>
+
+                  <Typography variant="subtitle2" sx={{ mt: 2.2, mb: 1, color: COMMUNITY_TEXT_PRIMARY }}>
+                    Hva er viktigst for deg nå?
+                  </Typography>
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    {ONBOARDING_GOAL_OPTIONS.map((goal) => {
+                      const selected = selectedGoals.includes(goal);
+                      return (
+                        <Button
+                          key={goal}
+                          variant={selected ? 'contained' : 'outlined'}
+                          size="small"
+                          onClick={() =>
+                            setSelectedGoals((prev) =>
+                              prev.includes(goal)
+                                ? prev.filter((item) => item !== goal)
+                                : [...prev, goal].slice(-3),
+                            )
+                          }
+                          sx={{
+                            borderRadius: 999,
+                            textTransform: 'none',
+                            bgcolor: selected ? 'rgba(245, 166, 35, 0.14)' : 'transparent',
+                            color: COMMUNITY_TEXT_PRIMARY,
+                            borderColor: selected ? 'rgba(245, 166, 35, 0.24)' : 'rgba(255,255,255,0.12)',
+                          }}
+                        >
+                          {goal}
+                        </Button>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+
+                <Box
+                  sx={{
+                    p: 2,
+                    borderRadius: 3,
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ color: COMMUNITY_TEXT_PRIMARY, fontWeight: 700 }}>
+                    Første handling i community
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.6, color: COMMUNITY_TEXT_MUTED }}>
+                    Velg én ting vi skal hjelpe deg i gang med på hjemskjermen.
+                  </Typography>
+                  <Stack spacing={1} sx={{ mt: 2 }}>
+                    {ONBOARDING_FIRST_ACTIONS.map((action) => {
+                      const selected = firstAction === action;
+                      return (
+                        <Button
+                          key={action}
+                          variant={selected ? 'contained' : 'outlined'}
+                          onClick={() => setFirstAction(action)}
+                          sx={{
+                            justifyContent: 'flex-start',
+                            borderRadius: 3,
+                            px: 1.5,
+                            py: 1.2,
+                            textTransform: 'none',
+                            bgcolor: selected ? COMMUNITY_ACCENT : 'transparent',
+                            color: selected ? '#05070b' : COMMUNITY_TEXT_PRIMARY,
+                            borderColor: selected ? 'transparent' : 'rgba(255,255,255,0.12)',
+                          }}
+                        >
+                          {action}
+                        </Button>
+                      );
+                    })}
+                  </Stack>
+                  <Box
+                    sx={{
+                      mt: 2,
+                      p: 1.5,
+                      borderRadius: 2.5,
+                      bgcolor: 'rgba(245, 166, 35, 0.08)',
+                      border: '1px solid rgba(245, 166, 35, 0.14)',
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ color: COMMUNITY_TEXT_MUTED }}>
+                      Profilen din styrer hvilke kort, spørsmål og Academy-koblinger som løftes frem først på hjemflaten.
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+
           {/* Welcome Video (if configured) */}
           {onboardingConfig.welcome_video_url && (
             <Card
               sx={{
                 mb: 4,
-                borderRadius: 3,
+                borderRadius: 4,
                 overflow: 'hidden',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                boxShadow: '0 8px 32px rgba(102, 126, 234, 0.3)',
-                border: 'none',
+                background:
+                  'linear-gradient(135deg, rgba(20, 28, 40, 0.98) 0%, rgba(11, 16, 25, 0.96) 70%)',
+                boxShadow: COMMUNITY_PANEL_SHADOW,
+                border: COMMUNITY_PANEL_BORDER,
               }}
             >
               <CardContent sx={{ p: { xs: 2, md: 3 } }}>
@@ -630,20 +903,21 @@ function CommunityLandingPageComponent({
                       width: 56,
                       height: 56,
                       borderRadius: 2,
-                      bgcolor: 'rgba(255, 255, 255, 0.2)',
+                      bgcolor: 'rgba(245, 166, 35, 0.14)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       backdropFilter: 'blur(10px)',
+                      border: '1px solid rgba(245, 166, 35, 0.18)',
                     }}
                   >
-                    <VideoLibrary sx={{ fontSize: 32, color: 'white' }} />
+                    <VideoLibrary sx={{ fontSize: 32, color: COMMUNITY_ACCENT }} />
                   </Box>
                   <Box>
                     <Typography
                       variant="h5"
                       sx={{
-                        color: 'white',
+                        color: COMMUNITY_TEXT_PRIMARY,
                         fontWeight: 700,
                         mb: 0.5,
                       }}
@@ -653,7 +927,7 @@ function CommunityLandingPageComponent({
                     <Typography
                       variant="body2"
                       sx={{
-                        color: 'rgba(255,255,255,0.95)',
+                        color: COMMUNITY_TEXT_MUTED,
                         fontSize: '0.95rem',
                       }}
                     >
@@ -663,9 +937,10 @@ function CommunityLandingPageComponent({
                 </Box>
                 <Box
                   sx={{
-                    borderRadius: 2,
+                    borderRadius: 3,
                     overflow: 'hidden',
                     boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
+                    border: '1px solid rgba(255,255,255,0.08)',
                   }}
                 >
                   <VideoEmbed videoUrl={onboardingConfig.welcome_video_url} lazy={false} />
@@ -677,20 +952,51 @@ function CommunityLandingPageComponent({
           {/* Onboarding Steps */}
           <Grid container spacing={4}>
             <Grid item xs={12} md={8}>
-              <Stepper activeStep={activeStep} orientation="vertical">
-                {onboardingConfig.steps.map((step, index) => (
-                  <OnboardingStep
-                    key={step.id}
-                    step={step}
-                    index={index}
-                    isActive={activeStep === index}
-                    isCompleted={completedSteps.has(index)}
-                    onComplete={() => handleStepComplete(index)}
-                    onPrevious={index > 0 ? () => setActiveStep(index - 1) : undefined}
-                    showPrevious={index > 0}
-                  />
-                ))}
-              </Stepper>
+              <Box
+                sx={{
+                  p: { xs: 2.5, md: 3.5 },
+                  borderRadius: 4,
+                  background: COMMUNITY_PANEL_BACKGROUND,
+                  border: COMMUNITY_PANEL_BORDER,
+                  boxShadow: COMMUNITY_PANEL_SHADOW,
+                  backdropFilter: 'blur(18px)',
+                }}
+              >
+                <Typography
+                  variant="h5"
+                  sx={{ color: COMMUNITY_TEXT_PRIMARY, fontWeight: 700, mb: 1 }}
+                >
+                  Slik kommer du i gang
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ color: COMMUNITY_TEXT_MUTED, mb: 3 }}
+                >
+                  Følg stegene i rekkefølge for å åpne community med samme arbeidsflyt som i Academy.
+                </Typography>
+                <Stepper
+                  activeStep={activeStep}
+                  orientation="vertical"
+                  sx={{
+                    '& .MuiStepConnector-line': {
+                      borderColor: 'rgba(255,255,255,0.1)',
+                    },
+                  }}
+                >
+                  {onboardingConfig.steps.map((step, index) => (
+                    <OnboardingStep
+                      key={step.id}
+                      step={step}
+                      index={index}
+                      isActive={activeStep === index}
+                      isCompleted={completedSteps.has(index)}
+                      onComplete={() => handleStepComplete(index)}
+                      onPrevious={index > 0 ? () => setActiveStep(index - 1) : undefined}
+                      showPrevious={index > 0}
+                    />
+                  ))}
+                </Stepper>
+              </Box>
 
               {/* Enhanced Completion Card */}
               {allStepsCompleted && (
@@ -699,9 +1005,10 @@ function CommunityLandingPageComponent({
                     mt: 4,
                     textAlign: 'center',
                     borderRadius: 4,
-                    background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
-                    boxShadow: '0 12px 40px rgba(17, 153, 142, 0.4)',
-                    border: 'none',
+                    background:
+                      'linear-gradient(135deg, rgba(36, 27, 10, 0.98) 0%, rgba(18, 15, 11, 0.98) 100%)',
+                    boxShadow: COMMUNITY_PANEL_SHADOW,
+                    border: COMMUNITY_PANEL_BORDER,
                     position: 'relative',
                     overflow: 'hidden',
                     '&::before': {
@@ -711,7 +1018,8 @@ function CommunityLandingPageComponent({
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      background: 'radial-gradient(circle at 30% 50%, rgba(255, 255, 255, 0.2) 0%, transparent 50%)',
+                      background:
+                        'radial-gradient(circle at 30% 50%, rgba(245, 166, 35, 0.18) 0%, transparent 55%)',
                     },
                   }}
                 >
@@ -721,7 +1029,7 @@ function CommunityLandingPageComponent({
                         width: 100,
                         height: 100,
                         borderRadius: '50%',
-                        bgcolor: 'rgba(255, 255, 255, 0.25)',
+                        bgcolor: 'rgba(245, 166, 35, 0.14)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -739,14 +1047,15 @@ function CommunityLandingPageComponent({
                             boxShadow: '0 12px 32px rgba(0, 0, 0, 0.3)',
                           },
                         },
+                        border: '1px solid rgba(245, 166, 35, 0.2)',
                       }}
                     >
-                      <EmojiEvents sx={{ fontSize: 60, color: 'white' }} />
+                      <EmojiEvents sx={{ fontSize: 60, color: COMMUNITY_ACCENT }} />
                     </Box>
                     <Typography
                       variant="h4"
                       sx={{
-                        color: 'white',
+                        color: COMMUNITY_TEXT_PRIMARY,
                         fontWeight: 800,
                         mb: 2,
                         fontSize: { xs: '1.75rem', md: '2.25rem' },
@@ -764,15 +1073,15 @@ function CommunityLandingPageComponent({
                         mt: 3,
                         px: 4,
                         py: 1.5,
-                        borderRadius: 3,
-                        bgcolor: 'white',
-                        color: '#11998e',
+                        borderRadius: 999,
+                        bgcolor: COMMUNITY_ACCENT,
+                        color: '#05070b',
                         fontWeight: 700,
                         fontSize: '1.1rem',
                         textTransform: 'none',
                         boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
                         '&:hover': {
-                          bgcolor: 'rgba(255, 255, 255, 0.95)',
+                          bgcolor: '#ffcd73',
                           transform: 'translateY(-2px)',
                           boxShadow: '0 6px 20px rgba(0, 0, 0, 0.3)',
                         },

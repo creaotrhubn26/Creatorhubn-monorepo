@@ -3,6 +3,14 @@ import autoTable from 'jspdf-autotable';
 
 import type { CastingShot, SceneBreakdown, ShotList, StoryboardFrame } from '../models/casting';
 import type { ShotListSummary } from '../models/derivedState';
+import {
+  createBoardPolishEffectLayerStates,
+  createBoardPolishEffectRegions,
+  createBoardPolishDraftState,
+  getBoardPolishStyleSummary,
+  renderBoardPolishCompositeDataUrl,
+  type BoardPolishDraftState,
+} from '../utils/storyboardBoardPolish';
 
 export interface ShotListExportPayload {
   projectName?: string;
@@ -18,6 +26,15 @@ interface ResolvedShotEntry {
   frame?: StoryboardFrame;
   shotIndex: number;
 }
+
+interface ResolvedShotRender {
+  imageDataUrl: string | null;
+  boardPolish?: BoardPolishDraftState;
+  boardPolishSummary?: string;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
 
 const NB_NO_DATE = new Intl.DateTimeFormat('nb-NO', {
   year: 'numeric',
@@ -53,6 +70,48 @@ const resolveShotImageUrl = (shot: CastingShot, frame?: StoryboardFrame): string
   (typeof shot.imageUrl === 'string' && shot.imageUrl.trim().length > 0 ? shot.imageUrl : undefined)
   || (typeof frame?.thumbnailUrl === 'string' && frame.thumbnailUrl.trim().length > 0 ? frame.thumbnailUrl : undefined)
   || (typeof frame?.imageUrl === 'string' && frame.imageUrl.trim().length > 0 ? frame.imageUrl : undefined);
+
+const resolveFrameBoardPolish = (frame?: StoryboardFrame): BoardPolishDraftState | undefined => {
+  if (!frame || !isRecord(frame)) {
+    return undefined;
+  }
+
+  const drawingDataRaw = frame.drawingData;
+  if (!isRecord(drawingDataRaw)) {
+    return undefined;
+  }
+
+  const documentRaw = drawingDataRaw.document;
+  if (!isRecord(documentRaw)) {
+    return undefined;
+  }
+
+  const metadataRaw = documentRaw.metadata;
+  if (!isRecord(metadataRaw)) {
+    return undefined;
+  }
+
+  const boardPolishRaw = metadataRaw.boardPolish;
+  if (!isRecord(boardPolishRaw)) {
+    return undefined;
+  }
+
+  return createBoardPolishDraftState({
+    mode: boardPolishRaw.mode === 'present' ? 'present' : 'edit',
+    tone: typeof boardPolishRaw.tone === 'string' ? boardPolishRaw.tone as BoardPolishDraftState['tone'] : undefined,
+    finish: typeof boardPolishRaw.finish === 'string' ? boardPolishRaw.finish as BoardPolishDraftState['finish'] : undefined,
+    weather: typeof boardPolishRaw.weather === 'string' ? boardPolishRaw.weather as BoardPolishDraftState['weather'] : undefined,
+    atmosphere: typeof boardPolishRaw.atmosphere === 'number' ? boardPolishRaw.atmosphere : undefined,
+    lineBoost: typeof boardPolishRaw.lineBoost === 'number' ? boardPolishRaw.lineBoost : undefined,
+    vignette: typeof boardPolishRaw.vignette === 'number' ? boardPolishRaw.vignette : undefined,
+    effectLayers: createBoardPolishEffectLayerStates(
+      Array.isArray(boardPolishRaw.effectLayers) ? boardPolishRaw.effectLayers as BoardPolishDraftState['effectLayers'] : [],
+    ),
+    effectRegions: createBoardPolishEffectRegions(
+      Array.isArray(boardPolishRaw.effectRegions) ? boardPolishRaw.effectRegions as BoardPolishDraftState['effectRegions'] : [],
+    ),
+  });
+};
 
 const getShotDurationLabel = (shot: CastingShot): string => {
   const duration = typeof shot.duration === 'number' && Number.isFinite(shot.duration)
@@ -113,6 +172,31 @@ async function loadImageAsDataUrl(url?: string): Promise<string | null> {
   return promise;
 }
 
+function createPlaceholderPreviewDataUrl(label = 'Ingen frame tilgjengelig'): string | null {
+  if (typeof document === 'undefined') return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1280;
+  canvas.height = 720;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    return null;
+  }
+
+  context.fillStyle = '#f4f6f8';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = '#d2d6dc';
+  context.lineWidth = 12;
+  context.strokeRect(12, 12, canvas.width - 24, canvas.height - 24);
+  context.fillStyle = '#6b7280';
+  context.font = 'bold 42px sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(label, canvas.width / 2, canvas.height / 2);
+
+  return canvas.toDataURL('image/png');
+}
+
 function addPlaceholderImage(
   doc: jsPDF,
   x: number,
@@ -152,6 +236,31 @@ async function addResolvedImage(
   }
 }
 
+async function resolveShotRender(
+  shot: CastingShot,
+  frame?: StoryboardFrame,
+): Promise<ResolvedShotRender> {
+  const resolvedUrl = resolveShotImageUrl(shot, frame);
+  const boardPolish = resolveFrameBoardPolish(frame);
+  const sourceDataUrl = resolvedUrl ? await loadImageAsDataUrl(resolvedUrl) : null;
+  const fallbackDataUrl = sourceDataUrl || createPlaceholderPreviewDataUrl();
+
+  if (!boardPolish || !fallbackDataUrl) {
+    return {
+      imageDataUrl: fallbackDataUrl,
+      boardPolish,
+      boardPolishSummary: boardPolish ? getBoardPolishStyleSummary(boardPolish) : undefined,
+    };
+  }
+
+  const polishedDataUrl = await renderBoardPolishCompositeDataUrl(fallbackDataUrl, boardPolish, true);
+  return {
+    imageDataUrl: polishedDataUrl || fallbackDataUrl,
+    boardPolish,
+    boardPolishSummary: getBoardPolishStyleSummary(boardPolish),
+  };
+}
+
 function resolveShotEntries(payload: ShotListExportPayload): ResolvedShotEntry[] {
   return payload.shotLists.flatMap((shotList) => {
     const scene = payload.sceneMap?.get(shotList.sceneId);
@@ -171,6 +280,15 @@ function buildBaseFilename(payload: ShotListExportPayload, suffix: string): stri
       ? formatSceneName(payload.shotLists[0], payload.sceneMap?.get(payload.shotLists[0].sceneId))
       : payload.projectName || 'shot-lists';
   return `${slugify(sceneName)}-${suffix}.pdf`;
+}
+
+function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function addExportHeader(
@@ -267,6 +385,7 @@ export async function exportShotListsBoardPdf(payload: ShotListExportPayload): P
       for (let column = 0; column < rowShots.length; column += 1) {
         const shot = rowShots[column];
         const frame = resolveShotFrame(shot, scene);
+        const render = await resolveShotRender(shot, frame);
         const cardWidth = (contentWidth - 8) / 2;
         const x = margin + column * (cardWidth + 8);
         const imageWidth = 86;
@@ -280,7 +399,7 @@ export async function exportShotListsBoardPdf(payload: ShotListExportPayload): P
         const imageY = y + 8;
         await addResolvedImage(
           doc,
-          resolveShotImageUrl(shot, frame),
+          render.imageDataUrl || undefined,
           imageX,
           imageY,
           imageWidth,
@@ -307,6 +426,10 @@ export async function exportShotListsBoardPdf(payload: ShotListExportPayload): P
             ? shot.notes
             : 'Fri shot';
         doc.text(noteLabel, metaX, imageY + 40);
+        if (render.boardPolishSummary) {
+          doc.setTextColor(96, 165, 250);
+          doc.text(render.boardPolishSummary, metaX, imageY + 46);
+        }
       }
 
       y += rowHeight;
@@ -322,7 +445,6 @@ export async function exportShotListsContactSheetPdf(payload: ShotListExportPayl
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const margin = 12;
-  const pageWidth = doc.internal.pageSize.getWidth();
   const cellWidth = 88;
   const cellHeight = 58;
   const columns = 3;
@@ -347,6 +469,7 @@ export async function exportShotListsContactSheetPdf(payload: ShotListExportPayl
     const pageEntries = entries.slice(start, start + pageCapacity);
     for (let index = 0; index < pageEntries.length; index += 1) {
       const entry = pageEntries[index];
+      const render = await resolveShotRender(entry.shot, entry.frame);
       const row = Math.floor(index / columns);
       const column = index % columns;
       const x = margin + column * (cellWidth + gap);
@@ -354,7 +477,7 @@ export async function exportShotListsContactSheetPdf(payload: ShotListExportPayl
 
       await addResolvedImage(
         doc,
-        resolveShotImageUrl(entry.shot, entry.frame),
+        render.imageDataUrl || undefined,
         x,
         y,
         cellWidth,
@@ -371,6 +494,11 @@ export async function exportShotListsContactSheetPdf(payload: ShotListExportPayl
       doc.setFontSize(7.5);
       doc.setTextColor(90, 98, 112);
       doc.text(formatSceneName(entry.shotList, entry.scene), x, y + cellHeight + 10);
+      if (render.boardPolishSummary) {
+        doc.setFontSize(7);
+        doc.setTextColor(96, 165, 250);
+        doc.text(render.boardPolishSummary, x, y + cellHeight + 14);
+      }
     }
   }
 
@@ -384,13 +512,13 @@ export async function exportShotListsShotDeckPdf(payload: ShotListExportPayload)
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const margin = 14;
   const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
 
   for (let index = 0; index < entries.length; index += 1) {
     if (index > 0) {
       doc.addPage('a4', 'landscape');
     }
     const entry = entries[index];
+    const render = await resolveShotRender(entry.shot, entry.frame);
 
     addExportHeader(
       doc,
@@ -402,7 +530,7 @@ export async function exportShotListsShotDeckPdf(payload: ShotListExportPayload)
 
     await addResolvedImage(
       doc,
-      resolveShotImageUrl(entry.shot, entry.frame),
+      render.imageDataUrl || undefined,
       margin,
       28,
       pageWidth - margin * 2,
@@ -419,6 +547,7 @@ export async function exportShotListsShotDeckPdf(payload: ShotListExportPayload)
         ['Storyboard', entry.frame?.shotNumber || 'Ikke koblet til scene-frame'],
         ['Kamera', `${entry.shot.cameraAngle || 'Eye Level'} • ${entry.shot.cameraMovement || 'Static'}`],
         ['Varighet', getShotDurationLabel(entry.shot)],
+        ...(render.boardPolishSummary ? [['Board Polish', render.boardPolishSummary]] : []),
         ['Notater', entry.shot.notes || 'Ingen notater'],
       ],
       theme: 'grid',
@@ -442,4 +571,33 @@ export async function exportShotListsShotDeckPdf(payload: ShotListExportPayload)
   }
 
   doc.save(buildBaseFilename(payload, 'shot-deck'));
+}
+
+export async function exportShotListsCleanStillBundle(payload: ShotListExportPayload): Promise<void> {
+  const entries = resolveShotEntries(payload);
+  if (entries.length === 0) return;
+
+  const module = await import('jszip');
+  const JSZip = module.default;
+  const zip = new JSZip();
+
+  for (const entry of entries) {
+    const render = await resolveShotRender(entry.shot, entry.frame);
+    if (!render.imageDataUrl) {
+      continue;
+    }
+
+    const base64Payload = render.imageDataUrl.split(',')[1];
+    if (!base64Payload) {
+      continue;
+    }
+
+    const filename = `${slugify(formatSceneName(entry.shotList, entry.scene))}-${slugify(
+      getShotDeckTitle(entry.shot, entry.frame, entry.shotIndex),
+    )}.png`;
+    zip.file(filename, base64Payload, { base64: true });
+  }
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  saveBlob(blob, buildBaseFilename(payload, 'clean-stills').replace(/\.pdf$/i, '.zip'));
 }

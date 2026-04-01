@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
   Dialog,
@@ -21,17 +21,13 @@ import {
   Close,
 } from '@mui/icons-material';
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
+import { startCreatorHubGoogleLogin } from '@/lib/creatorhubGoogleAuth';
 
 interface LoginModalProps {
   open: boolean;
   onClose: () => void;
   context?: 'community' | 'academy' | 'general';
-}
-
-interface AuthMessage {
-  type: 'AUTH_SUCCESS' | 'AUTH_FAILED' | 'AUTH_CANCELLED';
-  user?: any;
-  error?: string;
+  initialError?: string | null;
 }
 
 const AUTH_TOKEN_KEY = 'creatorhub_auth_token';
@@ -51,7 +47,12 @@ const getContextTitle = (context?: string) => {
   }
 };
 
-export function LoginModal({ open, onClose, context = 'general' }: LoginModalProps) {
+export function LoginModal({
+  open,
+  onClose,
+  context = 'general',
+  initialError = null,
+}: LoginModalProps) {
   const [, setLocation] = useLocation();
   const [loginType, setLoginType] = useState<'general' | 'prototype' | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,61 +61,13 @@ export function LoginModal({ open, onClose, context = 'general' }: LoginModalPro
   // Get contextual title
   const contextTitle = getContextTitle(context);
 
-  // Check authentication status
-  const checkAuthStatus = useCallback(async () => {
-    try {
-      const response = await fetch('/api/auth/status', {
-        credentials: 'include'
-      });
-      const data = await response.json();
-
-      if (data.authenticated) {
-        console.log('✅ User authenticated: ', data.user);
-        // Trigger auth state refresh in EnhancedMasterIntegrationProvider
-        window.dispatchEvent(new Event('auth-changed'));
-        onClose();
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Failed to check auth status: ', error);
-      return false;
-    }
-  }, [onClose]);
-
-  // Handle messages from OAuth popup
   useEffect(() => {
-    const handleMessage = (event: MessageEvent<AuthMessage>) => {
-      // Security: Verify message origin
-      if (event.origin !== window.location.origin) {
-        console.warn('Received message from untrusted origin:', event.origin);
-        return;
-      }
+    if (!open) {
+      return;
+    }
 
-      const { type, user, error: authError } = event.data;
-
-      if (type === 'AUTH_SUCCESS') {
-        console.log('✅ Authentication successful via postMessage: ', user);
-        setIsLoading(false);
-        setError(null);
-
-        // Trigger auth state refresh
-        window.dispatchEvent(new Event('auth-changed'));
-        onClose();
-      } else if (type === 'AUTH_FAILED') {
-        console.error('❌ Authentication failed:', authError);
-        setIsLoading(false);
-        setError(authError || 'Authentication failed. Please try again.');
-      } else if (type === 'AUTH_CANCELLED') {
-        console.log('⚠️ Authentication cancelled by user');
-        setIsLoading(false);
-        setError(null);
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [onClose]);
+    setError(initialError);
+  }, [initialError, open]);
 
   const handleGoogleLogin = async () => {
     if (!loginType) {
@@ -127,52 +80,7 @@ export function LoginModal({ open, onClose, context = 'general' }: LoginModalPro
 
     try {
       console.log(`🔐 Attempting Google login with type: ${loginType}...`);
-
-      // ✅ FIX #1: Pass login type to backend
-      const authUrl = `${window.location.origin}/api/auth/google?type=${loginType}`;
-        const authWindow = window.open(
-          authUrl,
-          'googleAuth',
-          'width=500,height=600,scrollbars=yes,resizable=yes'
-        );
-
-      // ✅ FIX #5: Check if popup was blocked
-      if (!authWindow) {
-        throw new Error('Popup blocked. Please allow popups for this site and try again.');
-      }
-
-      console.log('📱 OAuth popup opened successfully');
-
-      // ✅ FIX #5: Timeout if auth takes too long (2 minutes)
-      const timeout = setTimeout(() => {
-        if (authWindow && !authWindow.closed) {
-          authWindow.close();
-          setIsLoading(false);
-          setError('Authentication timed out. Please try again.');
-          console.error('⏱️ Authentication timeout');
-        }
-      }, 120000);
-
-      // ✅ FIX #2: Monitor popup closure and check auth status
-      const checkClosed = setInterval(async () => {
-        if (authWindow?.closed) {
-          clearInterval(checkClosed);
-          clearTimeout(timeout);
-
-          console.log('🔍 OAuth popup closed, checking authentication status...');
-
-          // ✅ FIX #4: Validate session after popup closes
-          setTimeout(async () => {
-            const isAuthenticated = await checkAuthStatus();
-
-            if (!isAuthenticated) {
-              // User closed popup without completing auth
-              setIsLoading(false);
-              console.log('⚠️ Popup closed without completing authentication');
-            }
-          }, 500); // Small delay to allow session to be set
-        }
-      }, 1000);
+      await startCreatorHubGoogleLogin();
 
     } catch (error) {
       console.error('❌ Login error:', error);
@@ -218,7 +126,8 @@ export function LoginModal({ open, onClose, context = 'general' }: LoginModalPro
   const resetModal = () => {
     setLoginType(null);
     setIsLoading(false);
-};
+    setError(null);
+  };
 
   const handleClose = () => {
     resetModal();
@@ -506,7 +415,7 @@ export function LoginModal({ open, onClose, context = 'general' }: LoginModalPro
               </Button>
             </Box>
 
-            {loginType === 'prototype' && (
+            {loginType === 'prototype' && context === 'academy' && (
               <Box sx={{ textAlign: 'center' }}>
                 <Typography
                   variant="caption"

@@ -34,6 +34,18 @@ import {
 import { UniversalFileUpload } from '@/components/universal/UniversalFileUpload';
 import { UniversalDownload } from '@/components/universal/UniversalDownload';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  COMMUNITY_DIALOG_ACTIONS_SX,
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_FIELD_SX,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_PRIMARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SECONDARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 interface CommunityFileAttachmentProps {
   userId: string;
@@ -117,25 +129,29 @@ export const CommunityFileAttachment: React.FC<CommunityFileAttachmentProps> = (
         onClose={() => setUploadDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        sx={COMMUNITY_DIALOG_SX}
+        PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
       >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, position: 'relative', zIndex: 1 }}>
             <Box
               component="img"
               src="https://fonts.gstatic.com/s/i/productlogos/drive_2020q4/v8/web-64dp/logo_drive_2020q4_color_2x_web_64dp.png"
               alt="Google Drive"
               sx={{ width: 24, height: 24 }}
             />
-            <span>Legg ved filer</span>
+            <Box component="span" sx={{ color: COMMUNITY_DIALOG_TEXT, fontWeight: 800, fontSize: '1.05rem' }}>
+              Legg ved filer
+            </Box>
           </Box>
           <IconButton
             onClick={() => setUploadDialogOpen(false)}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
+            sx={{ ...COMMUNITY_DIALOG_CLOSE_BUTTON_SX, position: 'absolute', right: 16, top: 16 }}
           >
             <Close />
           </IconButton>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX}>
           <UniversalFileUpload
             userId={userId}
             projectId={channelId}
@@ -245,7 +261,7 @@ export const CommunityFileDisplay: React.FC<CommunityFileDisplayProps> = ({
         }),
       });
       setShareSuccess(`Filen er delt med ${shareEmail}!`);
-      setShareEmail(', ');
+      setShareEmail('');
     } catch (error) {
       console.error('Error sharing file:', error);
       setShareError('Kunne ikke dele filen');
@@ -331,9 +347,16 @@ export const CommunityFileDisplay: React.FC<CommunityFileDisplayProps> = ({
       </Menu>
 
       {/* Share Dialog */}
-      <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Del fil med bruker</DialogTitle>
-        <DialogContent>
+      <Dialog
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        sx={COMMUNITY_DIALOG_SX}
+        PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+      >
+        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>Del fil med bruker</DialogTitle>
+        <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX}>
           {shareSuccess && <Alert severity="success" sx={{ mb: 2 }}>{shareSuccess}</Alert>}
           {shareError && <Alert severity="error" sx={{ mb: 2 }}>{shareError}</Alert>}
 
@@ -342,7 +365,7 @@ export const CommunityFileDisplay: React.FC<CommunityFileDisplayProps> = ({
             label="E-postadresse"
             value={shareEmail}
             onChange={(e) => setShareEmail(e.target.value)}
-            sx={{ mb: 2, mt: 1 }}
+            sx={{ ...COMMUNITY_DIALOG_FIELD_SX, mb: 2, mt: 1 }}
             placeholder="bruker@example.com"
           />
 
@@ -353,15 +376,23 @@ export const CommunityFileDisplay: React.FC<CommunityFileDisplayProps> = ({
             value={shareRole}
             onChange={(e) => setShareRole(e.target.value as any)}
             SelectProps={{ native: true }}
+            sx={COMMUNITY_DIALOG_FIELD_SX}
           >
             <option value="reader">Leser (kan se)</option>
             <option value="commenter">Kommentator (kan kommentere)</option>
             <option value="writer">Skribent (kan redigere)</option>
           </TextField>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShareDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={handleShareWithUser} variant="contained" disabled={!shareEmail}>
+        <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
+          <Button onClick={() => setShareDialogOpen(false)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
+            Avbryt
+          </Button>
+          <Button
+            onClick={handleShareWithUser}
+            variant="contained"
+            disabled={!shareEmail}
+            sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
+          >
             Del
           </Button>
         </DialogActions>
@@ -372,12 +403,12 @@ export const CommunityFileDisplay: React.FC<CommunityFileDisplayProps> = ({
 
 function getFileType(url: string): 'document' | 'image' | 'video' | 'audio' | 'archive' | 'other' {
   const ext = url.split('.').pop()?.toLowerCase();
-  if (['jpg','jpeg','png','gif','webp','svg'].includes(ext || ',')) return 'image';
-  if (['mp4','mov','avi','mkv','webm'].includes(ext || ',')) return 'video';
-  if (['mp3','wav','ogg','flac','m4a'].includes(ext || ',')) return 'audio';
-  if (['zip','rar','7z','tar','gz'].includes(ext || ', ')) return 'archive';
-  if (['pdf','doc','docx','xls','xlsx','ppt', 'pptx'].includes(ext || ',')) return 'document';
-  return'other';
+  if (['jpg','jpeg','png','gif','webp','svg'].includes(ext || '')) return 'image';
+  if (['mp4','mov','avi','mkv','webm'].includes(ext || '')) return 'video';
+  if (['mp3','wav','ogg','flac','m4a'].includes(ext || '')) return 'audio';
+  if (['zip','rar','7z','tar','gz'].includes(ext || '')) return 'archive';
+  if (['pdf','doc','docx','xls','xlsx','ppt', 'pptx'].includes(ext || '')) return 'document';
+  return 'other';
 }
 
 function extractFileId(url: string): string | undefined {

@@ -1,0 +1,44 @@
+- generic [ref=e2]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - img [ref=e7]
+      - heading "CreatorHub" [level=4] [ref=e10]
+      - paragraph [ref=e11]: Logg inn for å fortsette
+    - generic [ref=e12]:
+      - generic [ref=e14]:
+        - alert [ref=e56]:
+          - img [ref=e58]
+          - generic [ref=e60]: "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - text: E-postadresse
+            - generic [ref=e17]: "*"
+          - generic [ref=e18]:
+            - img [ref=e20]
+            - textbox "E-postadresse" [ref=e22]: academy-guest@creatorhubn.com
+            - group:
+              - generic: E-postadresse *
+        - generic [ref=e23]:
+          - generic [ref=e24]: Passord
+          - generic [ref=e25]:
+            - img [ref=e27]
+            - textbox "Passord" [ref=e29]: guest-access
+            - button [ref=e31] [cursor=pointer]:
+              - img [ref=e32]
+            - group:
+              - generic: Passord
+          - paragraph [ref=e34]: "Admin demo: academy-guest@creatorhubn.com / guest-access"
+        - button "Logg inn" [ref=e45] [cursor=pointer]:
+          - img [ref=e61]
+          - text: Logg inn
+      - generic [ref=e35]:
+        - generic [ref=e36]: "Demo-kontoer:"
+        - generic [ref=e37]:
+          - strong [ref=e38]: "Admin:"
+          - text: academy-guest@creatorhubn.com
+        - generic [ref=e39]:
+          - strong [ref=e40]: "Passord:"
+          - text: guest-access
+        - generic [ref=e41]: Tomt passord fungerer også for denne demo-kontoen.
+  - button "Åpne chat" [ref=e42] [cursor=pointer]:
+    - img [ref=e43]

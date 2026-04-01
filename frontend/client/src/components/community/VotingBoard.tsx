@@ -84,6 +84,21 @@ import { apiRequest } from '@/lib/queryClient';
 import type { SnackbarKey} from 'notistack';
 import { useSnackbar, SnackbarContent } from 'notistack';
 import { forwardRef } from 'react';
+import {
+  COMMUNITY_DIALOG_ACTIONS_SX,
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_FIELD_SX,
+  COMMUNITY_DIALOG_MUTED,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_PRIMARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SECONDARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
+  COMMUNITY_DIALOG_SWITCH_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 // ============================================
 // VOTING NOTIFICATION INTERFACE
@@ -106,7 +121,7 @@ interface VotingNotification {
 // ============================================
 
 const boardTypeConfig: Record<string, { label: string; icon: React.ReactElement }> = {
-  feature_request: { label: 'Feature Requests', icon: <Lightbulb fontSize="small" /> },
+  feature_request: { label: 'Funksjonsønsker', icon: <Lightbulb fontSize="small" /> },
   poll: { label: 'Avstemning', icon: <HowToVote fontSize="small" /> },
   priority: { label: 'Prioritering', icon: <TrendingUp fontSize="small" /> },
   feedback: { label: 'Tilbakemelding', icon: <Comment fontSize="small" /> },
@@ -650,8 +665,8 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
       if (response.success) {
         fetchBoardDetails(selectedBoard.id);
         setCreateItemDialogOpen(false);
-        setNewItemTitle(', ');
-        setNewItemDescription(', ');
+        setNewItemTitle('');
+        setNewItemDescription('');
         setNewItemAnonymous(false);
       }
     } catch (error) {
@@ -731,7 +746,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
 
       if (response.success) {
         setComments(prev => [...prev, response.comment]);
-        setNewComment(', ');
+        setNewComment('');
       }
     } catch (error) {
       console.error('Error adding comment:', error);
@@ -880,14 +895,14 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             </Typography>
           </Box>
           {permissions?.canCreateBoard && (
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              onClick={() => setCreateBoardDialogOpen(true)}
-              sx={{ bgcolor: '#FF8C00', '&:hover': { bgcolor: '#e67e00' } }}
-            >
-              Nytt stemmebrett
-            </Button>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={() => setCreateBoardDialogOpen(true)}
+            sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
+          >
+            Nytt stemmebrett
+          </Button>
           )}
         </Box>
 
@@ -896,12 +911,12 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             <CircularProgress />
           </Box>
         ) : boards.length === 0 ? (
-          <Paper sx={{ p: 4, textAlign: 'center' }}>
-            <HowToVote sx={{ fontSize: 64, color: 'grey.400', mb: 2 }} />
-            <Typography variant="h6" color="text.secondary" gutterBottom>
+          <Paper sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, p: 4, textAlign: 'center' }}>
+            <HowToVote sx={{ fontSize: 64, color: COMMUNITY_DIALOG_MUTED, mb: 2 }} />
+            <Typography variant="h6" sx={{ color: COMMUNITY_DIALOG_MUTED }} gutterBottom>
               Ingen stemmebrett ennå
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
               {permissions?.canCreateBoard
                 ? 'Opprett et nytt stemmebrett for å samle tilbakemeldinger og feature requests.'
                 : 'Administratorer kan opprette stemmebrett for denne gruppen.'}
@@ -913,8 +928,14 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
               <Card
                 key={board.id}
                 sx={{
+                  ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
                   cursor: 'pointer',
-                  transition: 'all 0.2s','&:hover': { transform: 'translateY(-2px)', boxShadow: 4 },
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: 4,
+                    borderColor: 'rgba(245, 166, 35, 0.24)',
+                  },
                   border: board.status !== 'active' ? '2px solid' : undefined,
                   borderColor: board.status === 'closed' ? 'error.main' : 'grey.400'}}
                 onClick={() => setSelectedBoard(board)}
@@ -932,7 +953,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                     />
                   </Box>
                   {board.description && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    <Typography variant="body2" sx={{ mb: 2, color: COMMUNITY_DIALOG_MUTED }}>
                       {board.description}
                     </Typography>
                   )}
@@ -955,7 +976,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                         />
                       </Tooltip>
                     </Box>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                       {formatDistanceToNow(new Date(board.created_at), { addSuffix: true, locale: nb })}
                     </Typography>
                   </Box>
@@ -966,9 +987,23 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         )}
 
         {/* Create Board Dialog */}
-        <Dialog open={createBoardDialogOpen} onClose={() => setCreateBoardDialogOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Opprett nytt stemmebrett</DialogTitle>
-          <DialogContent>
+        <Dialog
+          open={createBoardDialogOpen}
+          onClose={() => setCreateBoardDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          sx={COMMUNITY_DIALOG_SX}
+          PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+        >
+          <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>Opprett nytt stemmebrett</DialogTitle>
+          <DialogContent
+            sx={{
+              ...COMMUNITY_DIALOG_CONTENT_SX,
+              '& .MuiFormControl-root': COMMUNITY_DIALOG_FIELD_SX,
+              '& .MuiTextField-root': COMMUNITY_DIALOG_FIELD_SX,
+              '& .MuiSwitch-root': COMMUNITY_DIALOG_SWITCH_SX,
+            }}
+          >
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
               <TextField
                 label="Tittel"
@@ -1006,8 +1041,9 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
               {/* Notify members option */}
               <Paper 
                 sx={{ 
+                  ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
                   p: 2, 
-                  bgcolor: notifyOnCreate ? 'rgba(255, 140, 0, 0.1)' : 'grey.50',
+                  bgcolor: notifyOnCreate ? 'rgba(255, 140, 0, 0.1)' : 'rgba(255,255,255,0.03)',
                   border: notifyOnCreate ? '1px solid #FF8C00' : '1px solid transparent',
                   borderRadius: 2
                 }}
@@ -1049,17 +1085,19 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
               </Paper>
             </Box>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setCreateBoardDialogOpen(false)}>Avbryt</Button>
-            <Button
-              onClick={handleCreateBoard}
-              variant="contained"
-              disabled={!newBoardTitle.trim()}
-              startIcon={notifyOnCreate ? <NotificationsActive /> : undefined}
-              sx={{ bgcolor: '#FF8C00', '&:hover': { bgcolor: '#e67e00' } }}
-            >
-              {notifyOnCreate ? 'Opprett og varsle' : 'Opprett'}
-            </Button>
+        <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
+          <Button onClick={() => setCreateBoardDialogOpen(false)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
+            Avbryt
+          </Button>
+          <Button
+            onClick={handleCreateBoard}
+            variant="contained"
+            disabled={!newBoardTitle.trim()}
+            startIcon={notifyOnCreate ? <NotificationsActive /> : undefined}
+            sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
+          >
+            {notifyOnCreate ? 'Opprett og varsle' : 'Opprett'}
+          </Button>
           </DialogActions>
         </Dialog>
       </Box>
@@ -1091,7 +1129,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             variant="contained"
             startIcon={<Add />}
             onClick={() => setCreateItemDialogOpen(true)}
-            sx={{ bgcolor: '#FF8C00','&:hover': { bgcolor: '#e67e00' } }}
+            sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
           >
             Nytt forslag
           </Button>
@@ -1437,9 +1475,16 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
       </Menu>
 
       {/* Edit item dialog */}
-      <Dialog open={Boolean(editingItem)} onClose={() => setEditingItem(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Rediger forslag</DialogTitle>
-        <DialogContent>
+      <Dialog
+        open={Boolean(editingItem)}
+        onClose={() => setEditingItem(null)}
+        maxWidth="sm"
+        fullWidth
+        sx={COMMUNITY_DIALOG_SX}
+        PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+      >
+        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>Rediger forslag</DialogTitle>
+        <DialogContent sx={{ ...COMMUNITY_DIALOG_CONTENT_SX, '& .MuiTextField-root': COMMUNITY_DIALOG_FIELD_SX }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField
               label="Tittel"
@@ -1458,12 +1503,12 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             />
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditingItem(null)}>Avbryt</Button>
+        <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
+          <Button onClick={() => setEditingItem(null)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>Avbryt</Button>
           <Button 
             variant="contained" 
             onClick={handleEditItem}
-            sx={{ bgcolor: '#FF8C00', '&:hover': { bgcolor: '#e67e00' } }}
+            sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
           >
             Lagre endringer
           </Button>
@@ -1471,9 +1516,22 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
       </Dialog>
 
       {/* Create Item Dialog */}
-      <Dialog open={createItemDialogOpen} onClose={() => setCreateItemDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Legg til nytt forslag</DialogTitle>
-        <DialogContent>
+      <Dialog
+        open={createItemDialogOpen}
+        onClose={() => setCreateItemDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        sx={COMMUNITY_DIALOG_SX}
+        PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+      >
+        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>Legg til nytt forslag</DialogTitle>
+        <DialogContent
+          sx={{
+            ...COMMUNITY_DIALOG_CONTENT_SX,
+            '& .MuiTextField-root': COMMUNITY_DIALOG_FIELD_SX,
+            '& .MuiSwitch-root': COMMUNITY_DIALOG_SWITCH_SX,
+          }}
+        >
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField
               label="Tittel"
@@ -1503,13 +1561,15 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             />
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateItemDialogOpen(false)}>Avbryt</Button>
+        <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
+          <Button onClick={() => setCreateItemDialogOpen(false)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
+            Avbryt
+          </Button>
           <Button
             onClick={handleCreateItem}
             variant="contained"
             disabled={!newItemTitle.trim()}
-            sx={{ bgcolor: '#FF8C00','&:hover': { bgcolor: '#e67e00' } }}
+            sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
           >
             Send inn
           </Button>
@@ -1522,27 +1582,31 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         onClose={() => setItemDetailDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        sx={COMMUNITY_DIALOG_SX}
+        PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
       >
         {selectedItem && (
           <>
-            <DialogTitle>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography variant="h6">{selectedItem.title}</Typography>
-                <IconButton onClick={() => setItemDetailDialogOpen(false)}>
+            <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
+                  {selectedItem.title}
+                </Typography>
+                <IconButton onClick={() => setItemDetailDialogOpen(false)} sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
                   <Close />
                 </IconButton>
               </Box>
             </DialogTitle>
-            <DialogContent dividers>
+            <DialogContent sx={{ ...COMMUNITY_DIALOG_CONTENT_SX, '& .MuiTextField-root': COMMUNITY_DIALOG_FIELD_SX }} dividers>
               <Box sx={{ display: 'flex', gap: 3 }}>
                 {/* Vote Section */}
                 <Box
                   sx={{
+                    ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     p: 2,
-                    bgcolor: 'grey.50',
                     borderRadius: 2,
                     minWidth: 100}}
                 >
@@ -1563,7 +1627,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                   >
                     {selectedItem.userVote === 'down' ? <ThumbDown /> : <ThumbDownOutlined />}
                   </IconButton>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                     {selectedItem.upvotes} opp / {selectedItem.downvotes} ned
                   </Typography>
                 </Box>
@@ -1600,7 +1664,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                       <Typography variant="body2" fontWeight={500}>
                         {selectedItem.is_anonymous ? 'Anonym' : selectedItem.creator_name}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                         {formatDistanceToNow(new Date(selectedItem.created_at), { addSuffix: true, locale: nb })}
                       </Typography>
                     </Box>
@@ -1636,7 +1700,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                       variant="contained"
                       onClick={handleAddComment}
                       disabled={!newComment.trim()}
-                      sx={{ bgcolor: '#FF8C00', '&:hover': { bgcolor: '#e67e00' } }}
+                      sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
                     >
                       Send
                     </Button>
@@ -1723,4 +1787,3 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
 }
 
 export { VotingBoard };
-

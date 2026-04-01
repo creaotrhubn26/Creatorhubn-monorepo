@@ -60,9 +60,6 @@ import {
   School,
   EmojiEvents,
   Reply,
-  PushPin,
-  Search,
-  Notifications,
   Chat,
   Group,
   Star,
@@ -75,15 +72,182 @@ import {
   ExpandMore,
   QuestionAnswer,
   Help,
-  Bookmark,
   Lock,
 } from '@mui/icons-material';
-import { useTheming } from '../../utils/theming-helper';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { useSnackbar } from 'notistack';
 
 const TUTORIAL_ID = 'community-guide';
+const COMMUNITY_GUIDE_BACKGROUND = `
+  radial-gradient(circle at top right, rgba(245, 166, 35, 0.18), transparent 28%),
+  radial-gradient(circle at bottom left, rgba(88, 122, 168, 0.16), transparent 30%),
+  linear-gradient(180deg, #05070b 0%, #091019 52%, #06080c 100%)
+`;
+const COMMUNITY_GUIDE_PANEL_ALT =
+  'linear-gradient(180deg, rgba(18, 24, 34, 0.92), rgba(10, 14, 21, 0.96))';
+const COMMUNITY_GUIDE_BORDER = '1px solid rgba(255,255,255,0.08)';
+const COMMUNITY_GUIDE_TEXT = 'rgba(248, 241, 231, 0.94)';
+const COMMUNITY_GUIDE_MUTED = 'rgba(248, 241, 231, 0.66)';
+const COMMUNITY_GUIDE_ACCENT = '#f5a623';
+const COMMUNITY_GUIDE_ACCENT_BRIGHT = '#ffd27a';
+const COMMUNITY_GUIDE_SUCCESS = '#78d6a3';
+const COMMUNITY_GUIDE_WARNING = '#f4b35e';
+const COMMUNITY_GUIDE_ERROR = '#ff8e83';
+const COMMUNITY_GUIDE_BASE_PAPER_SX = {
+  p: 2,
+  borderRadius: 3,
+  background: COMMUNITY_GUIDE_PANEL_ALT,
+  border: COMMUNITY_GUIDE_BORDER,
+  boxShadow: '0 18px 36px rgba(0, 0, 0, 0.24)',
+} as const;
+const COMMUNITY_GUIDE_STEP_CONTENT_SX = {
+  py: 2.5,
+  color: COMMUNITY_GUIDE_TEXT,
+  '& .MuiTypography-root': {
+    color: COMMUNITY_GUIDE_TEXT,
+  },
+  '& .MuiTypography-body2, & .MuiTypography-caption, & .MuiTypography-colorTextSecondary': {
+    color: COMMUNITY_GUIDE_MUTED,
+  },
+  '& .MuiAlert-root': {
+    borderRadius: 3,
+    border: COMMUNITY_GUIDE_BORDER,
+    boxShadow: '0 18px 36px rgba(0, 0, 0, 0.18)',
+  },
+  '& .MuiAlert-icon': {
+    opacity: 1,
+  },
+  '& .MuiAlert-standardInfo': {
+    bgcolor: 'rgba(88, 122, 168, 0.16)',
+    borderColor: 'rgba(88, 122, 168, 0.28)',
+    color: COMMUNITY_GUIDE_TEXT,
+  },
+  '& .MuiAlert-standardInfo .MuiAlert-icon': {
+    color: '#9dc6ff',
+  },
+  '& .MuiAlert-standardSuccess': {
+    bgcolor: 'rgba(120, 214, 163, 0.12)',
+    borderColor: 'rgba(120, 214, 163, 0.24)',
+    color: COMMUNITY_GUIDE_TEXT,
+  },
+  '& .MuiAlert-standardSuccess .MuiAlert-icon': {
+    color: COMMUNITY_GUIDE_SUCCESS,
+  },
+  '& .MuiAlert-standardWarning': {
+    bgcolor: 'rgba(244, 179, 94, 0.12)',
+    borderColor: 'rgba(244, 179, 94, 0.24)',
+    color: COMMUNITY_GUIDE_TEXT,
+  },
+  '& .MuiAlert-standardWarning .MuiAlert-icon': {
+    color: COMMUNITY_GUIDE_WARNING,
+  },
+  '& .MuiAlert-standardError': {
+    bgcolor: 'rgba(255, 142, 131, 0.12)',
+    borderColor: 'rgba(255, 142, 131, 0.24)',
+    color: COMMUNITY_GUIDE_TEXT,
+  },
+  '& .MuiAlert-standardError .MuiAlert-icon': {
+    color: COMMUNITY_GUIDE_ERROR,
+  },
+  '& .MuiPaper-root:not(.MuiDialog-paper)': {
+    background: `${COMMUNITY_GUIDE_PANEL_ALT} !important`,
+    border: COMMUNITY_GUIDE_BORDER,
+    boxShadow: '0 18px 36px rgba(0, 0, 0, 0.24)',
+    color: COMMUNITY_GUIDE_TEXT,
+  },
+  '& .MuiAccordion-root': {
+    background: 'rgba(255,255,255,0.03) !important',
+    border: COMMUNITY_GUIDE_BORDER,
+    borderRadius: '22px !important',
+    overflow: 'hidden',
+    boxShadow: '0 18px 36px rgba(0, 0, 0, 0.18)',
+  },
+  '& .MuiAccordion-root::before': {
+    display: 'none',
+  },
+  '& .MuiAccordion-root + .MuiAccordion-root': {
+    mt: 1.2,
+  },
+  '& .MuiAccordionSummary-root': {
+    px: 2,
+    minHeight: 58,
+  },
+  '& .MuiAccordionSummary-content': {
+    my: 1.5,
+  },
+  '& .MuiAccordionSummary-expandIconWrapper': {
+    color: COMMUNITY_GUIDE_MUTED,
+  },
+  '& .MuiAccordionDetails-root': {
+    pt: 0,
+    px: 2,
+    pb: 2,
+  },
+  '& .MuiDivider-root': {
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  '& .MuiListItem-root': {
+    px: 0,
+  },
+  '& .MuiListItemText-primary': {
+    color: COMMUNITY_GUIDE_TEXT,
+  },
+  '& .MuiListItemText-secondary': {
+    color: COMMUNITY_GUIDE_MUTED,
+  },
+  '& .MuiListItemIcon-root': {
+    minWidth: 34,
+    color: COMMUNITY_GUIDE_ACCENT,
+  },
+  '& .MuiTableCell-root': {
+    borderBottom: '1px solid rgba(255,255,255,0.08)',
+    color: COMMUNITY_GUIDE_TEXT,
+    py: 1.1,
+  },
+  '& .MuiTableRow-root:last-of-type .MuiTableCell-root': {
+    borderBottom: 'none',
+  },
+  '& .MuiChip-root': {
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.05) !important',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: COMMUNITY_GUIDE_TEXT,
+  },
+  '& .MuiChip-colorPrimary': {
+    backgroundColor: 'rgba(88, 122, 168, 0.18) !important',
+    borderColor: 'rgba(88, 122, 168, 0.28)',
+  },
+  '& .MuiChip-colorSecondary': {
+    backgroundColor: 'rgba(171, 137, 255, 0.18) !important',
+    borderColor: 'rgba(171, 137, 255, 0.28)',
+  },
+  '& .MuiChip-colorSuccess': {
+    backgroundColor: 'rgba(120, 214, 163, 0.16) !important',
+    borderColor: 'rgba(120, 214, 163, 0.28)',
+  },
+  '& .MuiChip-colorWarning': {
+    backgroundColor: 'rgba(245, 166, 35, 0.16) !important',
+    borderColor: 'rgba(245, 166, 35, 0.28)',
+    color: COMMUNITY_GUIDE_ACCENT_BRIGHT,
+  },
+  '& .MuiChip-colorError': {
+    backgroundColor: 'rgba(255, 142, 131, 0.16) !important',
+    borderColor: 'rgba(255, 142, 131, 0.28)',
+  },
+  '& strong': {
+    color: '#ffffff',
+  },
+  '& code': {
+    fontFamily: 'IBM Plex Mono, ui-monospace, SFMono-Regular, monospace',
+    fontSize: '0.82rem',
+    color: COMMUNITY_GUIDE_ACCENT_BRIGHT,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 8,
+    padding: '0.1rem 0.35rem',
+  },
+} as const;
 
 interface TutorialPreference {
   tutorialId: string;
@@ -102,6 +266,38 @@ interface CommunityTutorialProps {
   onOpenFromMenu?: () => void;
 }
 
+function readLocalTutorialPreference(): Pick<TutorialPreference, 'dismissed' | 'completedSteps'> {
+  try {
+    const localDismissed = localStorage.getItem(`${TUTORIAL_ID}-tutorial-dismissed`);
+    const localSteps = localStorage.getItem(`${TUTORIAL_ID}-completed-steps`);
+
+    return {
+      dismissed: localDismissed === 'true',
+      completedSteps: localSteps ? JSON.parse(localSteps) : [],
+    };
+  } catch {
+    return {
+      dismissed: false,
+      completedSteps: [],
+    };
+  }
+}
+
+function mergeTutorialPreference(
+  remote?: Partial<TutorialPreference> | null,
+): TutorialPreference {
+  const local = readLocalTutorialPreference();
+  const remoteSteps = Array.isArray(remote?.completedSteps) ? remote.completedSteps : [];
+
+  return {
+    tutorialId: typeof remote?.tutorialId === 'string' ? remote.tutorialId : TUTORIAL_ID,
+    dismissed: Boolean(remote?.dismissed) || local.dismissed,
+    dismissedAt: typeof remote?.dismissedAt === 'string' ? remote.dismissedAt : null,
+    completedSteps: Array.from(new Set([...remoteSteps, ...local.completedSteps])),
+    profession: typeof remote?.profession === 'string' ? remote.profession : null,
+  };
+}
+
 export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
   open,
   onClose,
@@ -113,8 +309,6 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
   const [dontShowAgain, setDontShowAgain] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
-  const [showChecklist, setShowChecklist] = React.useState(false);
-  const theming = useTheming();
   const queryClient = useQueryClient();
   const { enqueueSnackbar } = useSnackbar();
 
@@ -123,18 +317,10 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
     queryKey: ['tutorialPreferences', TUTORIAL_ID],
     queryFn: async () => {
       try {
-        return await apiRequest(`/api/user/preferences/tutorial/${TUTORIAL_ID}`);
+        const remotePrefs = await apiRequest(`/api/user/preferences/tutorial/${TUTORIAL_ID}`);
+        return mergeTutorialPreference(remotePrefs);
       } catch {
-        // Fallback to localStorage if API fails
-        const localDismissed = localStorage.getItem(`${TUTORIAL_ID}-tutorial-dismissed`);
-        const localSteps = localStorage.getItem(`${TUTORIAL_ID}-completed-steps`);
-        return {
-          tutorialId: TUTORIAL_ID,
-          dismissed: localDismissed === 'true',
-          dismissedAt: null,
-          completedSteps: localSteps ? JSON.parse(localSteps) : [],
-          profession: null
-        };
+        return mergeTutorialPreference();
       }
     },
     enabled: open,
@@ -190,7 +376,9 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
         })
       });
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
+      localStorage.setItem(`${TUTORIAL_ID}-tutorial-dismissed`, String(variables.dismissed));
+      localStorage.setItem(`${TUTORIAL_ID}-completed-steps`, JSON.stringify(variables.completedSteps));
       queryClient.invalidateQueries({ queryKey: ['tutorialPreferences', TUTORIAL_ID] });
     },
     onError: () => {
@@ -212,7 +400,8 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
         })
       });
     },
-    onSuccess: () => {
+    onSuccess: (_result, newCompletedSteps) => {
+      localStorage.setItem(`${TUTORIAL_ID}-completed-steps`, JSON.stringify(newCompletedSteps));
       queryClient.invalidateQueries({ queryKey: ['tutorialPreferences', TUTORIAL_ID] });
     },
     onError: () => {
@@ -317,18 +506,26 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Tjene badges og poeng" />
+              <ListItemText primary="Tjene merker og poeng" />
             </ListItem>
           </List>
 
-          <Paper sx={{ p: 2, bgcolor: theming.colors.primary + '10', mt: 2 }}>
+          <Paper
+            sx={{
+              ...COMMUNITY_GUIDE_BASE_PAPER_SX,
+              mt: 2,
+              background:
+                'linear-gradient(180deg, rgba(245, 166, 35, 0.14), rgba(245, 166, 35, 0.05))',
+              border: '1px solid rgba(245, 166, 35, 0.22)',
+            }}
+          >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               {getProfessionIcon()}
               <Typography variant="subtitle2" fontWeight={600}>
                 Tilpasset for deg som {getProfessionDisplayName()}
               </Typography>
             </Box>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: COMMUNITY_GUIDE_MUTED }}>
               Denne guiden er tilpasset din profesjon. Du vil se tips og kanaler som er 
               relevante for {getProfessionDisplayName().toLowerCase()}-miljøet.
             </Typography>
@@ -389,7 +586,13 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           <Typography variant="subtitle2" fontWeight={600} gutterBottom>
             👆 Prøv dette:
           </Typography>
-          <Paper sx={{ p: 2, bgcolor: 'grey.50', border: '1px dashed', borderColor: 'grey.300' }}>
+          <Paper
+            sx={{
+              ...COMMUNITY_GUIDE_BASE_PAPER_SX,
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px dashed rgba(245, 166, 35, 0.32)',
+            }}
+          >
             <Typography variant="body2">
               1. Klikk på en <strong>gruppe</strong> i venstre sidefelt<br />
               2. Velg en <strong>kanal</strong> for å se meldinger<br />
@@ -502,7 +705,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             Noen samtaler er best en-til-en. Slik starter du en privat samtale:
           </Typography>
 
-          <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+          <Paper sx={{ ...COMMUNITY_GUIDE_BASE_PAPER_SX, mb: 2 }}>
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
               Metode 1: Via brukerprofil
             </Typography>
@@ -519,7 +722,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             </List>
           </Paper>
 
-          <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+          <Paper sx={{ ...COMMUNITY_GUIDE_BASE_PAPER_SX, mb: 2 }}>
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
               Metode 2: Via chat-ikon
             </Typography>
@@ -628,7 +831,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
       )
     },
     {
-      label: 'Badges & Engasjement',
+      label: 'Merker & engasjement',
       icon: <EmojiEvents />,
       content: (
         <Box>
@@ -637,7 +840,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           </Typography>
 
           <Typography variant="body1" paragraph>
-            Jo mer du deltar, jo flere badges og poeng får du. 
+            Jo mer du deltar, jo flere merker og poeng får du.
             Her er hvordan systemet fungerer:
           </Typography>
 
@@ -678,8 +881,8 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
 
           <Alert severity="success" icon={<EmojiEvents />} sx={{ mb: 2 }}>
             <Typography variant="body2">
-              <strong>Badges:</strong> Du låser opp badges automatisk når du 
-              når visse milepæler. Se alle dine badges i profilen din!
+              <strong>Merker:</strong> Du låser opp merker automatisk når du
+              når visse milepæler. Se alle merkene dine i profilen din!
             </Typography>
           </Alert>
 
@@ -689,15 +892,15 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           <List dense>
             <ListItem>
               <ListItemIcon><CheckCircle color="disabled" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Send din første melding" secondary="Utstedes: Velkommen-badge" />
+              <ListItemText primary="Send din første melding" secondary="Utstedes: Velkommen-merke" />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="disabled" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Gi 10 reaksjoner" secondary="Utstedes: Supporter-badge" />
+              <ListItemText primary="Gi 10 reaksjoner" secondary="Utstedes: Supporter-merke" />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="disabled" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Delta i 3 avstemninger" secondary="Utstedes: Demokrat-badge" />
+              <ListItemText primary="Delta i 3 avstemninger" secondary="Utstedes: Demokrat-merke" />
             </ListItem>
           </List>
         </Box>
@@ -716,7 +919,15 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             Her er en oppsummering og noen siste tips:
           </Typography>
 
-          <Paper sx={{ p: 2, mb: 2, bgcolor: 'success.50', border: '2px solid', borderColor: 'success.main' }}>
+          <Paper
+            sx={{
+              ...COMMUNITY_GUIDE_BASE_PAPER_SX,
+              mb: 2,
+              background:
+                'linear-gradient(180deg, rgba(120, 214, 163, 0.14), rgba(120, 214, 163, 0.05))',
+              border: '1px solid rgba(120, 214, 163, 0.24)',
+            }}
+          >
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
               📋 Kom-i-gang sjekkliste:
             </Typography>
@@ -770,7 +981,14 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             </List>
           </Alert>
 
-          <Paper sx={{ p: 2, bgcolor: theming.colors.primary + '10' }}>
+          <Paper
+            sx={{
+              ...COMMUNITY_GUIDE_BASE_PAPER_SX,
+              background:
+                'linear-gradient(180deg, rgba(88, 122, 168, 0.14), rgba(88, 122, 168, 0.05))',
+              border: '1px solid rgba(88, 122, 168, 0.22)',
+            }}
+          >
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
               🔑 Hurtigtaster:
             </Typography>
@@ -802,7 +1020,12 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             📖 Komplett eksempel: "Slik blir du aktiv på 5 minutter"
           </Typography>
 
-          <Paper sx={{ p: 2, bgcolor: 'grey.50', border: '1px solid', borderColor: 'grey.300' }}>
+          <Paper
+            sx={{
+              ...COMMUNITY_GUIDE_BASE_PAPER_SX,
+              background: 'rgba(255,255,255,0.03)',
+            }}
+          >
             <Typography variant="body2" component="div">
               <strong>Steg 1:</strong> Klikk på gruppen "{getProfessionDisplayName()}-fellesskapet" i venstre meny.<br /><br />
               <strong>Steg 2:</strong> Velg kanalen "#presentasjoner".<br /><br />
@@ -823,62 +1046,185 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
       onClose={handleClose}
       maxWidth="md"
       fullWidth
+      sx={{
+        '& .MuiBackdrop-root': {
+          backgroundColor: 'rgba(4, 6, 10, 0.76)',
+          backdropFilter: 'blur(12px)',
+        },
+      }}
       PaperProps={{
         sx: {
-          borderRadius: 3,
+          borderRadius: { xs: 3, md: 4 },
           maxHeight: '90vh',
+          background: COMMUNITY_GUIDE_BACKGROUND,
+          border: COMMUNITY_GUIDE_BORDER,
+          boxShadow: '0 36px 90px rgba(0, 0, 0, 0.56)',
+          color: COMMUNITY_GUIDE_TEXT,
+          overflow: 'hidden',
         }
       }}
     >
-      <DialogTitle sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        bgcolor: theming.colors.primary + '10',
-        borderBottom: '1px solid',
-        borderColor: 'divider'
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Forum sx={{ color: theming.colors.primary, fontSize: 32 }} />
+      <DialogTitle
+        sx={{
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 2,
+          px: { xs: 2.5, md: 3 },
+          py: 2.5,
+          background: 'linear-gradient(180deg, rgba(13, 18, 27, 0.96), rgba(9, 13, 20, 0.92))',
+          borderBottom: COMMUNITY_GUIDE_BORDER,
+          overflow: 'hidden',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: -120,
+            right: -60,
+            width: 260,
+            height: 260,
+            background:
+              'radial-gradient(circle, rgba(245, 166, 35, 0.24) 0%, rgba(245, 166, 35, 0) 70%)',
+            pointerEvents: 'none',
+          },
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, position: 'relative', zIndex: 1 }}>
+          <Box
+            sx={{
+              width: 52,
+              height: 52,
+              borderRadius: 2.5,
+              display: 'grid',
+              placeItems: 'center',
+              background: 'linear-gradient(135deg, rgba(245, 166, 35, 0.2), rgba(245, 166, 35, 0.08))',
+              border: '1px solid rgba(245, 166, 35, 0.28)',
+              color: COMMUNITY_GUIDE_ACCENT_BRIGHT,
+              boxShadow: '0 14px 30px rgba(0, 0, 0, 0.24)',
+            }}
+          >
+            <Forum sx={{ fontSize: 28 }} />
+          </Box>
           <Box>
-            <Typography variant="h6" fontWeight={600}>
+            <Chip
+              label="Fellesskapsguide"
+              size="small"
+              sx={{
+                mb: 1,
+                bgcolor: 'rgba(245, 166, 35, 0.14)',
+                color: COMMUNITY_GUIDE_ACCENT_BRIGHT,
+                border: '1px solid rgba(245, 166, 35, 0.24)',
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}
+            />
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: 800,
+                letterSpacing: '-0.02em',
+                color: COMMUNITY_GUIDE_TEXT,
+              }}
+            >
               Velkommen til Fellesskapet
             </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Din komplette guide til CreatorHub Norge Community
+            <Typography
+              variant="body2"
+              sx={{
+                mt: 0.75,
+                color: COMMUNITY_GUIDE_MUTED,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                flexWrap: 'wrap',
+              }}
+            >
+              <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', color: COMMUNITY_GUIDE_ACCENT_BRIGHT }}>
+                {getProfessionIcon()}
+              </Box>
+              Din komplette guide til CreatorHub Norge Community, tilpasset {getProfessionDisplayName().toLowerCase()}-flyten.
             </Typography>
           </Box>
         </Box>
-        <IconButton onClick={handleClose} size="small">
+        <IconButton
+          onClick={handleClose}
+          size="small"
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            color: COMMUNITY_GUIDE_TEXT,
+            border: '1px solid rgba(255,255,255,0.08)',
+            bgcolor: 'rgba(255,255,255,0.04)',
+            '&:hover': {
+              bgcolor: 'rgba(245, 166, 35, 0.1)',
+              borderColor: 'rgba(245, 166, 35, 0.24)',
+            },
+          }}
+        >
           <Close />
         </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ p: 0 }}>
-        <Stepper activeStep={activeStep} orientation="vertical" sx={{ p: 3 }}>
+      <DialogContent
+        sx={{
+          p: 0,
+          background: 'linear-gradient(180deg, rgba(8, 12, 18, 0.28), rgba(5, 7, 11, 0.72))',
+        }}
+      >
+        <Stepper
+          activeStep={activeStep}
+          orientation="vertical"
+          sx={{
+            p: { xs: 2.25, md: 3 },
+            '& .MuiStepConnector-line': {
+              borderColor: 'rgba(255,255,255,0.1)',
+              borderLeftWidth: 2,
+              minHeight: 24,
+            },
+            '& .MuiStepContent-root': {
+              borderLeftColor: 'rgba(255,255,255,0.1)',
+              ml: 1.1,
+              pl: 3,
+              py: 0.5,
+            },
+          }}
+        >
           {tutorialSteps.map((step, index) => (
             <Step key={step.label} completed={completedSteps.includes(index)}>
               <StepLabel
                 optional={
                   index === tutorialSteps.length - 1 ? (
-                    <Typography variant="caption">Siste steg</Typography>
+                    <Typography variant="caption" sx={{ color: COMMUNITY_GUIDE_MUTED }}>
+                      Siste steg
+                    </Typography>
                   ) : null
                 }
                 StepIconComponent={() => (
                   <Box
                     sx={{
-                      width: 32,
-                      height: 32,
+                      width: 40,
+                      height: 40,
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      bgcolor: activeStep === index 
-                        ? theming.colors.primary 
+                      background: activeStep === index 
+                        ? `linear-gradient(135deg, ${COMMUNITY_GUIDE_ACCENT} 0%, ${COMMUNITY_GUIDE_ACCENT_BRIGHT} 100%)`
                         : completedSteps.includes(index)
-                          ? 'success.main'
-                          : 'grey.300',
-                      color: 'white',
+                          ? `linear-gradient(135deg, ${COMMUNITY_GUIDE_SUCCESS} 0%, #9af0c1 100%)`
+                          : 'rgba(255,255,255,0.05)',
+                      border: activeStep === index || completedSteps.includes(index)
+                        ? 'none'
+                        : '1px solid rgba(255,255,255,0.1)',
+                      boxShadow:
+                        activeStep === index || completedSteps.includes(index)
+                          ? '0 16px 28px rgba(0, 0, 0, 0.24)'
+                          : 'none',
+                      color:
+                        activeStep === index || completedSteps.includes(index)
+                          ? '#05070b'
+                          : COMMUNITY_GUIDE_TEXT,
                     }}
                   >
                     {completedSteps.includes(index) ? (
@@ -889,12 +1235,17 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                   </Box>
                 )}
               >
-                <Typography fontWeight={activeStep === index ? 600 : 400}>
+                <Typography
+                  sx={{
+                    fontWeight: activeStep === index ? 700 : 600,
+                    color: activeStep === index ? COMMUNITY_GUIDE_TEXT : 'rgba(248, 241, 231, 0.82)',
+                  }}
+                >
                   {step.label}
                 </Typography>
               </StepLabel>
               <StepContent>
-                <Box sx={{ py: 2 }}>
+                <Box sx={COMMUNITY_GUIDE_STEP_CONTENT_SX}>
                   {step.content}
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
@@ -902,6 +1253,16 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                     disabled={index === 0}
                     onClick={handleBack}
                     size="small"
+                    sx={{
+                      color: COMMUNITY_GUIDE_MUTED,
+                      borderRadius: 999,
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      px: 1.8,
+                      '&:hover': {
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        borderColor: 'rgba(255,255,255,0.16)',
+                      },
+                    }}
                   >
                     Tilbake
                   </Button>
@@ -910,8 +1271,15 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                     onClick={handleNext}
                     size="small"
                     sx={{
-                      bgcolor: theming.colors.primary,
-                      '&:hover': { bgcolor: theming.colors.primary }
+                      borderRadius: 999,
+                      px: 1.8,
+                      background: `linear-gradient(135deg, ${COMMUNITY_GUIDE_ACCENT} 0%, ${COMMUNITY_GUIDE_ACCENT_BRIGHT} 100%)`,
+                      color: '#05070b',
+                      fontWeight: 700,
+                      boxShadow: '0 18px 30px rgba(0, 0, 0, 0.24)',
+                      '&:hover': {
+                        background: `linear-gradient(135deg, ${COMMUNITY_GUIDE_ACCENT_BRIGHT} 0%, #ffe1a7 100%)`,
+                      },
                     }}
                   >
                     {index === tutorialSteps.length - 1 ? 'Fullfør' : 'Neste'}
@@ -923,49 +1291,100 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
         </Stepper>
 
         {activeStep === tutorialSteps.length && (
-          <Box sx={{ p: 3, textAlign: 'center' }}>
-            <EmojiEvents sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
-            <Typography variant="h5" fontWeight={600} gutterBottom>
-              🎉 Gratulerer!
-            </Typography>
-            <Typography variant="body1" color="text.secondary" paragraph>
-              Du har fullført guiden og er klar til å bli en aktiv del av fellesskapet.
-            </Typography>
-            <Alert severity="info" sx={{ textAlign: 'left', maxWidth: 400, mx: 'auto' }}>
-              <Typography variant="body2">
-                <strong>Åpne guiden igjen:</strong><br />
-                Klikk på <Help sx={{ fontSize: 14, verticalAlign: 'middle' }} /> Hjelp-ikonet 
-                eller trykk <code>⌘+?</code>
+          <Box
+            sx={{
+              ...COMMUNITY_GUIDE_STEP_CONTENT_SX,
+              p: { xs: 2.5, md: 3 },
+              textAlign: 'center',
+            }}
+          >
+            <Box
+              sx={{
+                mx: 'auto',
+                maxWidth: 560,
+                borderRadius: 4,
+                background: COMMUNITY_GUIDE_PANEL_ALT,
+                border: COMMUNITY_GUIDE_BORDER,
+                boxShadow: '0 24px 60px rgba(0, 0, 0, 0.3)',
+                px: { xs: 2.5, md: 4 },
+                py: { xs: 3, md: 4 },
+              }}
+            >
+              <EmojiEvents sx={{ fontSize: 64, color: COMMUNITY_GUIDE_ACCENT_BRIGHT, mb: 2 }} />
+              <Typography variant="h5" fontWeight={700} gutterBottom sx={{ color: COMMUNITY_GUIDE_TEXT }}>
+                🎉 Gratulerer!
               </Typography>
-            </Alert>
+              <Typography variant="body1" sx={{ color: COMMUNITY_GUIDE_MUTED }} paragraph>
+                Du har fullført guiden og er klar til å bli en aktiv del av fellesskapet.
+              </Typography>
+              <Alert severity="info" sx={{ textAlign: 'left', maxWidth: 400, mx: 'auto' }}>
+                <Typography variant="body2">
+                  <strong>Åpne guiden igjen:</strong><br />
+                  Klikk på <Help sx={{ fontSize: 14, verticalAlign: 'middle' }} /> Hjelp-ikonet
+                  eller trykk <code>⌘+?</code>
+                </Typography>
+              </Alert>
+            </Box>
           </Box>
         )}
       </DialogContent>
 
-      <DialogActions sx={{ 
-        px: 3, 
-        py: 2, 
-        borderTop: '1px solid', 
-        borderColor: 'divider',
-        justifyContent: 'space-between' 
-      }}>
+      <DialogActions
+        sx={{
+          px: { xs: 2.5, md: 3 },
+          py: 2.25,
+          borderTop: COMMUNITY_GUIDE_BORDER,
+          background: 'linear-gradient(180deg, rgba(8, 12, 18, 0.88), rgba(5, 7, 11, 0.96))',
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', md: 'center' },
+          gap: 2,
+          flexDirection: { xs: 'column', md: 'row' },
+        }}
+      >
         <FormControlLabel
           control={
             <Checkbox
               checked={dontShowAgain}
               onChange={(e) => setDontShowAgain(e.target.checked)}
               size="small"
+              sx={{
+                color: COMMUNITY_GUIDE_MUTED,
+                '&.Mui-checked': {
+                  color: COMMUNITY_GUIDE_ACCENT,
+                },
+              }}
             />
           }
           label={
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: COMMUNITY_GUIDE_MUTED }}>
               Ikke vis denne guiden automatisk igjen
             </Typography>
           }
         />
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          {isSaving && <CircularProgress size={20} />}
-          <Button onClick={handleClose} disabled={isSaving}>
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 1,
+            alignItems: 'center',
+            justifyContent: { xs: 'space-between', md: 'flex-end' },
+            flexWrap: 'wrap',
+          }}
+        >
+          {isSaving && <CircularProgress size={20} sx={{ color: COMMUNITY_GUIDE_ACCENT }} />}
+          <Button
+            onClick={handleClose}
+            disabled={isSaving}
+            sx={{
+              color: COMMUNITY_GUIDE_MUTED,
+              borderRadius: 999,
+              border: '1px solid rgba(255,255,255,0.1)',
+              px: 2,
+              '&:hover': {
+                bgcolor: 'rgba(255,255,255,0.04)',
+                borderColor: 'rgba(255,255,255,0.16)',
+              },
+            }}
+          >
             {activeStep === tutorialSteps.length ? 'Lukk' : 'Hopp over'}
           </Button>
           {activeStep < tutorialSteps.length && (
@@ -973,6 +1392,17 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
               variant="outlined"
               onClick={() => setActiveStep(tutorialSteps.length)}
               size="small"
+              sx={{
+                borderRadius: 999,
+                px: 2,
+                color: COMMUNITY_GUIDE_ACCENT_BRIGHT,
+                borderColor: 'rgba(245, 166, 35, 0.24)',
+                backgroundColor: 'rgba(245, 166, 35, 0.08)',
+                '&:hover': {
+                  borderColor: 'rgba(245, 166, 35, 0.34)',
+                  backgroundColor: 'rgba(245, 166, 35, 0.12)',
+                },
+              }}
             >
               Gå til slutt
             </Button>
@@ -995,16 +1425,10 @@ export function useCommunityTutorial(userId: string) {
     queryKey: ['tutorialPreferences', TUTORIAL_ID],
     queryFn: async () => {
       try {
-        return await apiRequest(`/api/user/preferences/tutorial/${TUTORIAL_ID}`);
+        const remotePrefs = await apiRequest(`/api/user/preferences/tutorial/${TUTORIAL_ID}`);
+        return mergeTutorialPreference(remotePrefs);
       } catch {
-        const localDismissed = localStorage.getItem(`${TUTORIAL_ID}-tutorial-dismissed`);
-        return {
-          tutorialId: TUTORIAL_ID,
-          dismissed: localDismissed === 'true',
-          dismissedAt: null,
-          completedSteps: [],
-          profession: null
-        };
+        return mergeTutorialPreference();
       }
     },
     enabled: !!userId,

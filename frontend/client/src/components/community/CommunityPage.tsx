@@ -9,7 +9,7 @@
  * - Feature-gated channels
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Box,
   Container,
@@ -42,7 +42,6 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  CardMedia,
   Alert,
   Switch,
 } from '@mui/material';
@@ -94,8 +93,6 @@ import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import { GdprNotice } from '@/components/common/GdprNotice';
 import CommunitySettingsSidebar from './CommunitySettingsSidebar';
-import { usePushNotifications } from '../../hooks/usePushNotifications';
-import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import ThreadViewDialog from './ThreadViewDialog';
 import PinnedMessagesBar from './PinnedMessagesBar';
 import UserProfileModal from './UserProfileModal';
@@ -115,6 +112,19 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import PrototypeFeedbackTool from '../feedback/PrototypeFeedbackTool';
 import { useAuth } from '@/hooks/useAuth';
 import { CommunityTutorial, useCommunityTutorial } from './CommunityTutorial';
+import CommunityHomeDashboard from './CommunityHomeDashboard';
+import {
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_MUTED,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_SECONDARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_SWITCH_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 interface CommunityGroup {
   id: string;
@@ -177,13 +187,84 @@ interface CommunityPageProps {
   profession: string;
 }
 
+interface CommunityStats {
+  messages: number;
+  reactions: number;
+  solutions: number;
+}
+
+interface NotificationPreferencesState {
+  notify_mentions: boolean;
+  notify_replies: boolean;
+  notify_reactions: boolean;
+  notify_badges: boolean;
+  notify_moderation: boolean;
+  notify_followed_threads: boolean;
+  notify_daily_digest: boolean;
+  notify_mentor_requests: boolean;
+  notify_course_discussions: boolean;
+}
+
+interface CommunityNeedsHelpQuestion {
+  id: string;
+  content: string;
+  user_name: string;
+  user_avatar?: string;
+  channel_name: string;
+  channel_id?: string;
+  created_at: string;
+  hours_waiting: number;
+}
+
+interface CommunityProfilePreference {
+  interests: string[];
+  goals: string[];
+  firstAction?: string;
+}
+
+const COMMUNITY_SHELL_BACKGROUND = `
+  radial-gradient(circle at top right, rgba(245, 166, 35, 0.14), transparent 28%),
+  radial-gradient(circle at bottom left, rgba(88, 122, 168, 0.18), transparent 32%),
+  linear-gradient(180deg, #05070b 0%, #091019 52%, #06080c 100%)
+`;
+const COMMUNITY_PANEL_BACKGROUND =
+  'linear-gradient(180deg, rgba(13, 18, 27, 0.94), rgba(8, 12, 18, 0.94))';
+const COMMUNITY_PANEL_BORDER = '1px solid rgba(255,255,255,0.08)';
+const COMMUNITY_PANEL_SHADOW = '0 24px 60px rgba(0, 0, 0, 0.36)';
+const COMMUNITY_INSET_BACKGROUND = 'rgba(6, 9, 14, 0.58)';
+const COMMUNITY_HOVER_BACKGROUND = 'rgba(255,255,255,0.04)';
+const COMMUNITY_TEXT_PRIMARY = 'rgba(248, 241, 231, 0.92)';
+const COMMUNITY_TEXT_MUTED = 'rgba(248, 241, 231, 0.64)';
+const COMMUNITY_ACCENT = '#f5a623';
+const COMMUNITY_PROFILE_STORAGE_KEY = 'creatorhub-community-onboarding-profile-v1';
+const COMMUNITY_UPCOMING_EVENTS = [
+  {
+    id: 'mentor-office-hours',
+    title: 'Mentortid',
+    subtitle: '15-min raske sparringer på spørsmål som stopper progresjon.',
+    dateLabel: 'Tirsdag 18:00',
+    type: 'Mentor',
+  },
+  {
+    id: 'academy-roundtable',
+    title: 'Academy-rundebord',
+    subtitle: 'Diskuter ukens leksjoner og hva som faktisk fungerer i praksis.',
+    dateLabel: 'Onsdag 20:00',
+    type: 'Academy',
+  },
+  {
+    id: 'feedback-friday',
+    title: 'Tilbakemeldingsfredag',
+    subtitle: 'Del work-in-progress og få raske tilbakemeldinger fra community.',
+    dateLabel: 'Fredag 16:30',
+    type: 'Tilbakemelding',
+  },
+] as const;
+
 export default function CommunityPage({ userId, profession }: CommunityPageProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { communication } = useEnhancedMasterIntegration();
-  
-  // Push notifications
-  const { pushEnabled, isSupported } = usePushNotifications(userId);
   
   // Auth for prototype testing access
   const { isPrototypeTester, isAdmin } = useAuth();
@@ -206,9 +287,21 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
 
   const [selectedGroup, setSelectedGroup] = useState<CommunityGroup | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<CommunityChannel | null>(null);
+  const [selectedView, setSelectedView] = useState<'home' | 'channel'>('home');
   const [messageInput, setMessageInput] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [userStats, setUserStats] = useState<CommunityStats>({
+    messages: 0,
+    reactions: 0,
+    solutions: 0,
+  });
+  const [needsHelpQueue, setNeedsHelpQueue] = useState<CommunityNeedsHelpQuestion[]>([]);
+  const [channelPreviewMessages, setChannelPreviewMessages] = useState<Record<string, CommunityMessage[]>>({});
+  const [communityProfile, setCommunityProfile] = useState<CommunityProfilePreference>({
+    interests: [],
+    goals: [],
+  });
 
   // Report dialog state
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
@@ -291,7 +384,6 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   // WebSocket state for real-time features
@@ -309,13 +401,33 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
   const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [notificationPreferencesOpen, setNotificationPreferencesOpen] = useState(false);
-  const [notificationPreferences, setNotificationPreferences] = useState({
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferencesState>({
     notify_mentions: true,
     notify_replies: true,
     notify_reactions: true,
     notify_badges: true,
     notify_moderation: true,
+    notify_followed_threads: true,
+    notify_daily_digest: false,
+    notify_mentor_requests: true,
+    notify_course_discussions: true,
   });
+
+  const loadCommunityProfile = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(COMMUNITY_PROFILE_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setCommunityProfile({
+        interests: Array.isArray(parsed?.interests) ? parsed.interests : [],
+        goals: Array.isArray(parsed?.goals) ? parsed.goals : [],
+        firstAction: typeof parsed?.firstAction === 'string' ? parsed.firstAction : undefined,
+      });
+    } catch (error) {
+      console.error('Error loading community profile:', error);
+    }
+  }, []);
 
   useEffect(() => {
     fetchUserCommunityData();
@@ -325,7 +437,11 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
     checkMentorEligibility();
     fetchUnreadNotificationCount();
     fetchNotificationPreferences();
-  }, [userId, profession]);
+    fetchCommunityStats();
+    fetchNeedsHelpQueue();
+    fetchPublishedPosts();
+    loadCommunityProfile();
+  }, [userId, profession, loadCommunityProfile]);
 
   // Track current community component for prototype feedback context
   useEffect(() => {
@@ -359,6 +475,12 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [openCommunityTutorial]);
 
+  useEffect(() => {
+    if (showCommunityTutorial && onboardingOpen) {
+      setOnboardingOpen(false);
+    }
+  }, [showCommunityTutorial, onboardingOpen]);
+
   const fetchUnreadNotificationCount = async () => {
     try {
       const response = await apiRequest(`/api/community/notifications/${userId}/unread-count`, {
@@ -386,6 +508,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
           notify_reactions: response.preferences.notify_reactions ?? true,
           notify_badges: response.preferences.notify_badges ?? true,
           notify_moderation: response.preferences.notify_moderation ?? true,
+          notify_followed_threads: response.preferences.notify_followed_threads ?? true,
+          notify_daily_digest: response.preferences.notify_daily_digest ?? false,
+          notify_mentor_requests: response.preferences.notify_mentor_requests ?? true,
+          notify_course_discussions: response.preferences.notify_course_discussions ?? true,
         });
       }
     } catch (error) {
@@ -393,7 +519,47 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
     }
   };
 
-  const updateNotificationPreferences = async (preferences: any) => {
+  const fetchCommunityStats = async () => {
+    try {
+      const response = await apiRequest(`/api/community/user/${userId}/stats`, {
+        method: 'GET',
+      }) as { success: boolean; stats: CommunityStats };
+
+      if (response.success && response.stats) {
+        setUserStats({
+          messages: Number(response.stats.messages || 0),
+          reactions: Number(response.stats.reactions || 0),
+          solutions: Number(response.stats.solutions || 0),
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching community stats:', error);
+    }
+  };
+
+  const fetchNeedsHelpQueue = async () => {
+    try {
+      const response = await apiRequest('/api/community/unanswered', {
+        method: 'GET',
+      }) as {
+        success: boolean;
+        unanswered?: CommunityNeedsHelpQuestion[];
+        messages?: CommunityNeedsHelpQuestion[];
+      };
+
+      const queue = Array.isArray(response.unanswered)
+        ? response.unanswered
+        : Array.isArray(response.messages)
+          ? response.messages
+          : [];
+
+      setNeedsHelpQueue(queue);
+    } catch (error) {
+      console.error('Error fetching needs-help queue:', error);
+    }
+  };
+
+  const updateNotificationPreferences = async (preferences: NotificationPreferencesState) => {
     try {
       const response = await apiRequest(`/api/community/notifications/${userId}/preferences`, {
         method: 'PUT',
@@ -525,6 +691,18 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
   };
 
   const checkFirstTimeUser = async () => {
+    const localOnboardingComplete = (() => {
+      try {
+        return localStorage.getItem(`community-onboarding-complete-${userId}`) === 'true';
+      } catch {
+        return false;
+      }
+    })();
+
+    if (localOnboardingComplete) {
+      return;
+    }
+
     try {
       // Check if user has completed onboarding
       const response = await apiRequest(`/api/user-kv/${userId}/community_onboarding_complete`);
@@ -637,11 +815,6 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
     };
   }, [selectedChannel, userId, profession]);
 
-  useEffect(() => {
-    // Scroll to bottom when new messages arrive
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   const checkModeratorStatus = async () => {
     try {
       const response = await apiRequest(`/api/community/user/${userId}/roles`);
@@ -658,6 +831,55 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
       console.error('Error checking moderator status:', error);
     }
   };
+
+  const resolveChannel = useCallback((channelIdentifier?: string | null) => {
+    if (!channelIdentifier) return null;
+    return channels.find((channel) =>
+      channel.id === channelIdentifier
+      || channel.display_name === channelIdentifier
+      || channel.name === channelIdentifier,
+    ) || null;
+  }, [channels]);
+
+  const openChannel = useCallback((channel: CommunityChannel | null) => {
+    if (!channel) return;
+    setSelectedChannel(channel);
+    setSelectedView('channel');
+    if (isMobile) {
+      setMobileDrawerOpen(false);
+    }
+  }, [isMobile]);
+
+  const openChannelByIdentifier = useCallback((channelIdentifier?: string | null) => {
+    const channel = resolveChannel(channelIdentifier);
+    if (channel) {
+      openChannel(channel);
+    }
+  }, [openChannel, resolveChannel]);
+
+  const fetchChannelPreviews = useCallback(async (nextChannels: CommunityChannel[]) => {
+    try {
+      const previewEntries = await Promise.all(
+        nextChannels.slice(0, 4).map(async (channel) => {
+          const response = await apiRequest(`/api/community/channels/${channel.id}/messages`, {
+            method: 'GET',
+          }) as { success: boolean; messages: CommunityMessage[] };
+
+          return [
+            channel.id,
+            response.success ? response.messages : [],
+          ] as const;
+        }),
+      );
+
+      setChannelPreviewMessages((prev) => ({
+        ...prev,
+        ...Object.fromEntries(previewEntries),
+      }));
+    } catch (error) {
+      console.error('Error fetching channel previews:', error);
+    }
+  }, []);
 
   const fetchUserCommunityData = async () => {
     try {
@@ -718,6 +940,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
 
       if (response.success) {
         setChannels(response.channels);
+        void fetchChannelPreviews(response.channels);
         
         // Auto-select first accessible channel
         if (response.channels.length > 0) {
@@ -737,6 +960,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
 
       if (response.success) {
         setMessages(response.messages);
+        setChannelPreviewMessages((prev) => ({
+          ...prev,
+          [channelId]: response.messages,
+        }));
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -1000,16 +1227,209 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
     }
   };
 
+  const allKnownMessages = useMemo(() => {
+    const seen = new Set<string>();
+    const combined = [...messages, ...Object.values(channelPreviewMessages).flat()];
+    return combined.filter((message) => {
+      if (!message?.id || seen.has(message.id)) return false;
+      seen.add(message.id);
+      return true;
+    });
+  }, [messages, channelPreviewMessages]);
+
+  const fallbackNeedsHelpQueue = useMemo<CommunityNeedsHelpQuestion[]>(() => {
+    const now = Date.now();
+    return allKnownMessages
+      .filter((message) =>
+        message.user_id !== userId
+        && /\?/.test(message.content || '')
+        && !message.is_solution
+        && Number(message.thread_count || 0) === 0,
+      )
+      .slice()
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      .slice(0, 6)
+      .map((message) => ({
+        id: message.id,
+        content: message.content,
+        user_name: message.user_name,
+        user_avatar: message.user_avatar || undefined,
+        channel_name: resolveChannel(message.channel_id)?.display_name || 'community',
+        channel_id: message.channel_id,
+        created_at: message.created_at,
+        hours_waiting: Math.max(
+          1,
+          Math.round((now - new Date(message.created_at).getTime()) / (1000 * 60 * 60)),
+        ),
+      }));
+  }, [allKnownMessages, resolveChannel, userId]);
+
+  const effectiveNeedsHelpQueue = useMemo(
+    () => (needsHelpQueue.length > 0 ? needsHelpQueue : fallbackNeedsHelpQueue),
+    [needsHelpQueue, fallbackNeedsHelpQueue],
+  );
+
+  const yourThreads = useMemo(
+    () =>
+      allKnownMessages
+        .filter((message) => message.user_id === userId)
+        .slice()
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [allKnownMessages, userId],
+  );
+
+  const knowledgeFeed = useMemo(
+    () =>
+      allKnownMessages
+        .filter((message) => message.is_solution || Number(message.thread_count || 0) > 0)
+        .slice()
+        .sort((a, b) => {
+          const solutionDelta = Number(Boolean(b.is_solution)) - Number(Boolean(a.is_solution));
+          if (solutionDelta !== 0) return solutionDelta;
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        }),
+    [allKnownMessages],
+  );
+
+  const academyAnnouncements = useMemo(
+    () => allKnownMessages.filter((message) => message.message_type === 'course_announcement'),
+    [allKnownMessages],
+  );
+
+  const mentorsOnline = useMemo(() => {
+    const mentorMap = new Map<string, { id: string; name: string; avatar?: string | null }>();
+    allKnownMessages.forEach((message) => {
+      if (!mentorIds.has(message.user_id) || !onlineUsers.has(message.user_id)) return;
+      mentorMap.set(message.user_id, {
+        id: message.user_id,
+        name: message.user_name,
+        avatar: message.user_avatar,
+      });
+    });
+    return Array.from(mentorMap.values());
+  }, [allKnownMessages, mentorIds, onlineUsers]);
+
+  const badgeTracks = useMemo(
+    () => [
+      {
+        id: 'helpful',
+        label: 'Hjelpsom responder',
+        detail: 'Markerte løsninger bygger troverdighet og hjelper nye medlemmer raskere.',
+        current: userStats.solutions,
+        target: 5,
+        accent: '#78df9c',
+      },
+      {
+        id: 'builder',
+        label: 'Samtalebygger',
+        detail: 'Jevn aktivitet gjør deg lettere å finne og følge i community.',
+        current: userStats.messages,
+        target: 20,
+        accent: '#7aa7ff',
+      },
+      {
+        id: 'academy-bridge',
+        label: 'Academy-brobygger',
+        detail: 'Koble læring til praksis ved å starte diskusjoner rundt kurs og leksjoner.',
+        current: academyAnnouncements.length + publishedPosts.length,
+        target: 3,
+        accent: '#f5a623',
+      },
+    ],
+    [academyAnnouncements.length, publishedPosts.length, userStats.messages, userStats.solutions],
+  );
+
+  const composerSuggestions = useMemo(() => {
+    const query = messageInput.trim().toLowerCase();
+    if (query.length < 12) return [];
+    const tokens = Array.from(
+      new Set(
+        query
+          .split(/[^a-zA-Z0-9æøåÆØÅ]+/)
+          .map((token) => token.trim())
+          .filter((token) => token.length > 2),
+      ),
+    );
+    if (tokens.length === 0) return [];
+
+    return knowledgeFeed
+      .map((message) => {
+        const haystack = `${message.content} ${message.user_name}`.toLowerCase();
+        const score = tokens.reduce((count, token) => count + (haystack.includes(token) ? 1 : 0), 0);
+        return { message, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return new Date(b.message.created_at).getTime() - new Date(a.message.created_at).getTime();
+      })
+      .slice(0, 3)
+      .map((entry) => entry.message);
+  }, [knowledgeFeed, messageInput]);
+
+  const handleUsePromptTemplate = useCallback((prompt: string, channelId?: string) => {
+    if (channelId) {
+      openChannelByIdentifier(channelId);
+    } else if (selectedChannel) {
+      setSelectedView('channel');
+    } else if (channels[0]) {
+      openChannel(channels[0]);
+    }
+    setMessageInput(prompt);
+  }, [channels, openChannel, openChannelByIdentifier, selectedChannel]);
+
+  const handleOpenDiscussion = useCallback((channelId: string, messageId: string) => {
+    openChannelByIdentifier(channelId);
+    const target = allKnownMessages.find((message) => message.id === messageId);
+    if (target && (target.thread_count || target.parent_message_id)) {
+      setThreadMessageId(target.parent_message_id || target.id);
+      setThreadDialogOpen(true);
+    }
+  }, [allKnownMessages, openChannelByIdentifier]);
+
+  const handleSelectNeedsHelpQuestion = useCallback((question: CommunityNeedsHelpQuestion) => {
+    openChannelByIdentifier(question.channel_id || question.channel_name);
+    setThreadMessageId(question.id);
+    setThreadDialogOpen(true);
+  }, [openChannelByIdentifier]);
+
   const renderSidebar = () => (
-    <Box sx={{ width: isMobile ? 280 : 300, height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box
+      sx={{
+        width: isMobile ? 280 : 300,
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        color: COMMUNITY_TEXT_PRIMARY,
+      }}
+    >
       {/* User Profile Header */}
-      <Paper sx={{ p: 2, mb: 2 }}>
+      <Paper
+        sx={{
+          p: 2,
+          mb: 2,
+          borderRadius: 4,
+          background: COMMUNITY_PANEL_BACKGROUND,
+          border: COMMUNITY_PANEL_BORDER,
+          boxShadow: COMMUNITY_PANEL_SHADOW,
+          color: COMMUNITY_TEXT_PRIMARY,
+        }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Avatar src={user?.picture} sx={{ width: 50, height: 50 }}>
+          <Avatar
+            src={user?.picture}
+            sx={{
+              width: 50,
+              height: 50,
+              bgcolor: 'rgba(245, 166, 35, 0.18)',
+              color: COMMUNITY_ACCENT,
+              border: '1px solid rgba(245, 166, 35, 0.2)',
+            }}
+          >
             {user?.name?.[0]}
           </Avatar>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="subtitle1" fontWeight={600}>
+            <Typography variant="subtitle1" fontWeight={600} sx={{ color: COMMUNITY_TEXT_PRIMARY }}>
               {user?.name}
             </Typography>
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
@@ -1036,20 +1456,30 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         <UnansweredQuestionsWidget
           channelId={selectedChannel?.id}
           onSelectQuestion={(questionId, channelName) => {
-            // Find the channel and navigate to it
-            const channel = channels.find(c => c.display_name === channelName);
+            const channel = resolveChannel(channelName);
             if (channel) {
-              setSelectedChannel(channel);
-              // Scroll to the message (TODO: implement scroll to message)
+              openChannel(channel);
+              setThreadMessageId(questionId);
+              setThreadDialogOpen(true);
             }
           }}
         />
       </Box>
 
       {/* Groups */}
-      <Paper sx={{ flex: 1, overflow: 'auto' }}>
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Typography variant="subtitle2" fontWeight={600}>
+      <Paper
+        sx={{
+          flex: 1,
+          overflow: 'auto',
+          borderRadius: 4,
+          background: COMMUNITY_PANEL_BACKGROUND,
+          border: COMMUNITY_PANEL_BORDER,
+          boxShadow: COMMUNITY_PANEL_SHADOW,
+          color: COMMUNITY_TEXT_PRIMARY,
+        }}
+      >
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+          <Typography variant="subtitle2" fontWeight={600} sx={{ color: COMMUNITY_TEXT_PRIMARY }}>
             Dine Grupper
           </Typography>
         </Box>
@@ -1061,7 +1491,34 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
               onClick={() => {
                 setSelectedGroup(group);
                 fetchGroupChannels(group.id);
+                setSelectedView('home');
                 if (isMobile) setMobileDrawerOpen(false);
+              }}
+              sx={{
+                borderRadius: 2,
+                mx: 1,
+                mb: 0.5,
+                color: COMMUNITY_TEXT_PRIMARY,
+                '& .MuiListItemIcon-root': {
+                  color: COMMUNITY_TEXT_MUTED,
+                  minWidth: 38,
+                },
+                '& .MuiListItemText-secondary': {
+                  color: COMMUNITY_TEXT_MUTED,
+                },
+                '&.Mui-selected': {
+                  background: 'rgba(245, 166, 35, 0.12)',
+                  border: '1px solid rgba(245, 166, 35, 0.22)',
+                  '& .MuiListItemIcon-root': {
+                    color: COMMUNITY_ACCENT,
+                  },
+                  '&:hover': {
+                    background: 'rgba(245, 166, 35, 0.16)',
+                  },
+                },
+                '&:hover': {
+                  background: COMMUNITY_HOVER_BACKGROUND,
+                },
               }}
             >
               <ListItemIcon>
@@ -1078,9 +1535,9 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         {/* Channels */}
         {selectedGroup && (
           <>
-            <Divider />
-            <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-              <Typography variant="subtitle2" fontWeight={600}>
+            <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+            <Box sx={{ p: 2, borderBottom: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+              <Typography variant="subtitle2" fontWeight={600} sx={{ color: COMMUNITY_TEXT_PRIMARY }}>
                 Kanaler
               </Typography>
             </Box>
@@ -1090,10 +1547,38 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   key={channel.id}
                   selected={selectedChannel?.id === channel.id}
                   onClick={() => {
-                    setSelectedChannel(channel);
-                    if (isMobile) setMobileDrawerOpen(false);
+                    openChannel(channel);
                   }}
                   disabled={!!channel.requires_feature && !channel.is_default}
+                  sx={{
+                    borderRadius: 2,
+                    mx: 1,
+                    mb: 0.5,
+                    color: COMMUNITY_TEXT_PRIMARY,
+                    '& .MuiListItemIcon-root': {
+                      color: COMMUNITY_TEXT_MUTED,
+                      minWidth: 38,
+                    },
+                    '& .MuiListItemText-secondary': {
+                      color: COMMUNITY_TEXT_MUTED,
+                    },
+                    '&.Mui-selected': {
+                      background: 'rgba(245, 166, 35, 0.12)',
+                      border: '1px solid rgba(245, 166, 35, 0.22)',
+                      '& .MuiListItemIcon-root': {
+                        color: COMMUNITY_ACCENT,
+                      },
+                      '&:hover': {
+                        background: 'rgba(245, 166, 35, 0.16)',
+                      },
+                    },
+                    '&.Mui-disabled': {
+                      opacity: 0.5,
+                    },
+                    '&:hover': {
+                      background: COMMUNITY_HOVER_BACKGROUND,
+                    },
+                  }}
                 >
                   <ListItemIcon>
                     {channel.is_read_only ? (
@@ -1119,8 +1604,36 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
       </Paper>
 
       {/* Bottom Navigation - Dashboard & Academy */}
-      <Paper sx={{ mt: 2, p: 1 }}>
+      <Paper
+        sx={{
+          mt: 2,
+          p: 1,
+          borderRadius: 4,
+          background: COMMUNITY_PANEL_BACKGROUND,
+          border: COMMUNITY_PANEL_BORDER,
+          boxShadow: COMMUNITY_PANEL_SHADOW,
+        }}
+      >
         <Stack spacing={1}>
+          <Button
+            fullWidth
+            variant={selectedView === 'home' ? 'contained' : 'outlined'}
+            startIcon={<DashboardIcon />}
+            onClick={() => setSelectedView('home')}
+            sx={{
+              textTransform: 'none',
+              justifyContent: 'flex-start',
+              color: selectedView === 'home' ? '#05070b' : COMMUNITY_TEXT_PRIMARY,
+              borderColor: 'rgba(255,255,255,0.1)',
+              bgcolor: selectedView === 'home' ? COMMUNITY_ACCENT : 'transparent',
+              '&:hover': {
+                borderColor: 'rgba(245, 166, 35, 0.22)',
+                bgcolor: selectedView === 'home' ? '#ffcd73' : 'rgba(245, 166, 35, 0.08)',
+              },
+            }}
+          >
+            Community-hjem
+          </Button>
           {/* Back to Dashboard Button */}
           <Button
             fullWidth
@@ -1130,7 +1643,16 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
               // Navigate back to UniversalDashboard
               window.history.back();
             }}
-            sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
+            sx={{
+              textTransform: 'none',
+              justifyContent: 'flex-start',
+              color: COMMUNITY_TEXT_PRIMARY,
+              borderColor: 'rgba(255,255,255,0.1)',
+              '&:hover': {
+                borderColor: 'rgba(245, 166, 35, 0.22)',
+                bgcolor: 'rgba(245, 166, 35, 0.08)',
+              },
+            }}
           >
             Tilbake til Dashboard
           </Button>
@@ -1157,7 +1679,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 }}
                 sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
               >
-                Academy Dashboard
+                Academy-oversikt
               </Button>
 
               {/* Publish Course Button */}
@@ -1167,7 +1689,16 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 color="primary"
                 startIcon={<Announcement />}
                 onClick={handleOpenPublishDialog}
-                sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
+                sx={{
+                  textTransform: 'none',
+                  justifyContent: 'flex-start',
+                  color: COMMUNITY_TEXT_PRIMARY,
+                  borderColor: 'rgba(255,255,255,0.1)',
+                  '&:hover': {
+                    borderColor: 'rgba(245, 166, 35, 0.22)',
+                    bgcolor: 'rgba(245, 166, 35, 0.08)',
+                  },
+                }}
               >
                 Publiser Kurs
               </Button>
@@ -1179,7 +1710,16 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 color="secondary"
                 startIcon={<Edit />}
                 onClick={handleOpenPublishedPosts}
-                sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
+                sx={{
+                  textTransform: 'none',
+                  justifyContent: 'flex-start',
+                  color: COMMUNITY_TEXT_PRIMARY,
+                  borderColor: 'rgba(255,255,255,0.1)',
+                  '&:hover': {
+                    borderColor: 'rgba(245, 166, 35, 0.22)',
+                    bgcolor: 'rgba(245, 166, 35, 0.08)',
+                  },
+                }}
               >
                 Administrer Innlegg
               </Button>
@@ -1199,7 +1739,14 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         sx={{
           display: 'flex',
           gap: 2,
-          p: 2, '&:hover': { bgcolor: 'action.hover' }}}
+          p: 2,
+          borderRadius: 3,
+          color: COMMUNITY_TEXT_PRIMARY,
+          background: isOwnMessage ? 'rgba(245, 166, 35, 0.04)' : 'transparent',
+          '&:hover': {
+            bgcolor: COMMUNITY_HOVER_BACKGROUND,
+          },
+        }}
       >
         <Badge
           overlap="circular"
@@ -1209,7 +1756,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
             '& .MuiBadge-badge': {
               backgroundColor: onlineUsers.has(message.user_id) ? '#44b700' : '#bdbdbd',
               color: onlineUsers.has(message.user_id) ? '#44b700' : '#bdbdbd',
-              boxShadow: '0 0 0 2px #fff',
+              boxShadow: '0 0 0 2px #0b1017',
               width: 12,
               height: 12,
               borderRadius: '50%','&::after': onlineUsers.has(message.user_id) ? {
@@ -1238,7 +1785,12 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
             sx={{
               width: 40,
               height: 40,
-              cursor: 'pointer','&:hover': { opacity: 0.8 }}}
+              cursor: 'pointer',
+              bgcolor: 'rgba(245, 166, 35, 0.18)',
+              color: COMMUNITY_ACCENT,
+              border: '1px solid rgba(245, 166, 35, 0.18)',
+              '&:hover': { opacity: 0.8 },
+            }}
             onClick={() => {
               setSelectedProfileUserId(message.user_id);
               setProfileModalOpen(true);
@@ -1249,7 +1801,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         </Badge>
         <Box sx={{ flex: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <Typography variant="subtitle2" fontWeight={600}>
+            <Typography variant="subtitle2" fontWeight={600} sx={{ color: COMMUNITY_TEXT_PRIMARY }}>
               {message.user_name}
             </Typography>
             {/* Mentor Badge */}
@@ -1262,7 +1814,11 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 sx={{
                   height: 20,
                   fontSize: '10px',
-                  fontWeight: 600}}
+                  fontWeight: 600,
+                  bgcolor: 'rgba(245, 166, 35, 0.14)',
+                  color: COMMUNITY_ACCENT,
+                  border: '1px solid rgba(245, 166, 35, 0.18)',
+                }}
               />
             )}
             {message.user_badges?.map((badgeSlug) => {
@@ -1282,7 +1838,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 </Tooltip>
               ) : null;
             })}
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{ color: COMMUNITY_TEXT_MUTED }}>
               {formatDistanceToNow(new Date(message.created_at), {
                 addSuffix: true,
                 locale: nb,
@@ -1292,7 +1848,14 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
               <IconButton
                 size="small"
                 onClick={(e) => handleOpenMessageMenu(e, message)}
-                sx={{ opacity: 0.6, '&:hover': { opacity: 1 } }}
+                sx={{
+                  opacity: 0.72,
+                  color: COMMUNITY_TEXT_MUTED,
+                  '&:hover': {
+                    opacity: 1,
+                    bgcolor: COMMUNITY_HOVER_BACKGROUND,
+                  },
+                }}
               >
                 <MoreVert fontSize="small" />
               </IconButton>
@@ -1309,12 +1872,47 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 onChange={(e) => setEditMessageContent(e.target.value)}
                 autoFocus
                 size="small"
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    color: COMMUNITY_TEXT_PRIMARY,
+                    bgcolor: COMMUNITY_INSET_BACKGROUND,
+                    borderRadius: 2.5,
+                    '& fieldset': {
+                      borderColor: 'rgba(255,255,255,0.1)',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: 'rgba(245, 166, 35, 0.24)',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: 'rgba(245, 166, 35, 0.42)',
+                    },
+                  },
+                }}
               />
               <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                <Button size="small" variant="contained" onClick={() => handleSaveEdit(message.id)}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={() => handleSaveEdit(message.id)}
+                  sx={{
+                    bgcolor: COMMUNITY_ACCENT,
+                    color: '#05070b',
+                    '&:hover': {
+                      bgcolor: '#ffcd73',
+                    },
+                  }}
+                >
                   Lagre
                 </Button>
-                <Button size="small" variant="outlined" onClick={handleCancelEdit}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleCancelEdit}
+                  sx={{
+                    color: COMMUNITY_TEXT_PRIMARY,
+                    borderColor: 'rgba(255,255,255,0.12)',
+                  }}
+                >
                   Avbryt
                 </Button>
               </Box>
@@ -1322,14 +1920,16 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
           ) : (
             <>
               <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', flex: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{ whiteSpace: 'pre-wrap', flex: 1, color: COMMUNITY_TEXT_PRIMARY }}
+                >
                   {message.content}
                   {message.is_edited && (
                     <Typography
                       component="span"
                       variant="caption"
-                      color="text.secondary"
-                      sx={{ ml: 1, fontStyle: 'italic' }}
+                      sx={{ ml: 1, fontStyle: 'italic', color: COMMUNITY_TEXT_MUTED }}
                     >
                       (redigert)
                     </Typography>
@@ -1342,7 +1942,12 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     label="Løsning"
                     size="small"
                     color="success"
-                    sx={{ height: 24 }}
+                    sx={{
+                      height: 24,
+                      bgcolor: 'rgba(84, 181, 125, 0.14)',
+                      color: '#78df9c',
+                      border: '1px solid rgba(84, 181, 125, 0.2)',
+                    }}
                   />
                 )}
               </Box>
@@ -1354,10 +1959,13 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   sx={{
                     mt: 2,
                     cursor: 'pointer',
-                    transition: 'all 0.2s','&:hover': {
-                      boxShadow: 3,
+                    transition: 'all 0.2s',
+                    background: COMMUNITY_PANEL_BACKGROUND,
+                    borderColor: 'rgba(255,255,255,0.08)',
+                    '&:hover': {
+                      boxShadow: COMMUNITY_PANEL_SHADOW,
                       transform: 'translateY(-2px)'
-                    }
+                    },
                   }}
                   onClick={() => {
                     const courseId = message.attachments[0].courseId;
@@ -1366,10 +1974,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 >
                   <CardContent>
                     <Box display="flex" alignItems="center" gap={1} mb={1}>
-                      <Box sx={{ color: 'primary.main' }}>
+                      <Box sx={{ color: COMMUNITY_ACCENT }}>
                         {getCourseCategoryIcon(message.attachments[0].category)}
                       </Box>
-                      <Typography variant="h6">
+                      <Typography variant="h6" sx={{ color: COMMUNITY_TEXT_PRIMARY }}>
                         {message.attachments[0].title}
                       </Typography>
                     </Box>
@@ -1413,7 +2021,14 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   sx={{
                     fontSize: '12px',
                     height: 24,
-                    bgcolor: users.includes(userId) ? 'primary.light' : 'action.hover'}}
+                    color: COMMUNITY_TEXT_PRIMARY,
+                    bgcolor: users.includes(userId)
+                      ? 'rgba(245, 166, 35, 0.16)'
+                      : 'rgba(255,255,255,0.06)',
+                    border: users.includes(userId)
+                      ? '1px solid rgba(245, 166, 35, 0.2)'
+                      : '1px solid rgba(255,255,255,0.08)',
+                  }}
                 />
               ))}
             </Box>
@@ -1429,19 +2044,31 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 setThreadMessageId(message.id);
                 setThreadDialogOpen(true);
               }}
-              sx={{ textTransform: 'none', minWidth: 'auto' }}
+              sx={{
+                textTransform: 'none',
+                minWidth: 'auto',
+                color: COMMUNITY_TEXT_MUTED,
+              }}
             >
               {(message.thread_count || 0) > 0 ? `${message.thread_count} svar` : 'Svar'}
             </Button>
 
             {/* Quick Reactions */}
-            <IconButton size="small" onClick={() => handleReaction(message.id, '👍')}>
+            <IconButton
+              size="small"
+              onClick={() => handleReaction(message.id, '👍')}
+              sx={{ color: COMMUNITY_TEXT_MUTED }}
+            >
               <Favorite fontSize="small" />
             </IconButton>
-            <IconButton size="small" onClick={() => handleReaction(message.id, '❤️')}>
+            <IconButton
+              size="small"
+              onClick={() => handleReaction(message.id, '❤️')}
+              sx={{ color: COMMUNITY_TEXT_MUTED }}
+            >
               <EmojiEmotions fontSize="small" />
             </IconButton>
-            <IconButton size="small">
+            <IconButton size="small" sx={{ color: COMMUNITY_TEXT_MUTED }}>
               <Reply fontSize="small" />
             </IconButton>
           </Box>
@@ -1452,12 +2079,33 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
 
   if (loading) {
     return (
-      <Container maxWidth="xl" sx={{ py: 4, textAlign: 'center' }}>
-        <CircularProgress />
-        <Typography variant="body1" sx={{ mt: 2 }}>
-          Laster community...
-        </Typography>
-      </Container>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: COMMUNITY_SHELL_BACKGROUND,
+          px: 2,
+        }}
+      >
+        <Box
+          sx={{
+            width: 'min(420px, 100%)',
+            p: 4,
+            textAlign: 'center',
+            borderRadius: 4,
+            background: COMMUNITY_PANEL_BACKGROUND,
+            border: COMMUNITY_PANEL_BORDER,
+            boxShadow: COMMUNITY_PANEL_SHADOW,
+          }}
+        >
+          <CircularProgress sx={{ color: COMMUNITY_ACCENT }} />
+          <Typography variant="body1" sx={{ mt: 2, color: COMMUNITY_TEXT_MUTED }}>
+            Laster community...
+          </Typography>
+        </Box>
+      </Box>
     );
   }
 
@@ -1473,13 +2121,23 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         `}
       </style>
 
-      <Container maxWidth="xl" sx={{ py: 2, height: 'calc(100vh - 100px)' }}>
-        <Box sx={{ display: 'flex', height: '100%', gap: 2 }}>
+      <Box sx={{ minHeight: '100vh', background: COMMUNITY_SHELL_BACKGROUND, py: { xs: 2, md: 3 } }}>
+        <Container maxWidth={false} sx={{ px: { xs: 2, md: 3 }, height: 'calc(100vh - 48px)' }}>
+          <Box sx={{ display: 'flex', height: '100%', gap: 2 }}>
         {/* Mobile Menu Button */}
         {isMobile && (
           <IconButton
             onClick={() => setMobileDrawerOpen(true)}
-            sx={{ position: 'fixed', top: 80, left: 16, zIndex: 100, bgcolor: 'background.paper' }}
+            sx={{
+              position: 'fixed',
+              top: 80,
+              left: 16,
+              zIndex: 100,
+              bgcolor: COMMUNITY_PANEL_BACKGROUND,
+              color: COMMUNITY_TEXT_PRIMARY,
+              border: COMMUNITY_PANEL_BORDER,
+              boxShadow: COMMUNITY_PANEL_SHADOW,
+            }}
           >
             <MenuIcon />
           </IconButton>
@@ -1493,224 +2151,443 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
           anchor="left"
           open={mobileDrawerOpen}
           onClose={() => setMobileDrawerOpen(false)}
+          sx={{
+            '& .MuiDrawer-paper': {
+              background: COMMUNITY_SHELL_BACKGROUND,
+              p: 1,
+            },
+          }}
         >
           {renderSidebar()}
         </Drawer>
 
         {/* Main Content - Messages */}
-        <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Channel Header */}
-          {selectedChannel && (
-            <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="h6">
-                    # {selectedChannel.display_name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {selectedChannel.description}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  {/* Become Mentor Button */}
-                  {mentorEligible && !isMentor && (
+        <Paper
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            borderRadius: 4,
+            background: COMMUNITY_PANEL_BACKGROUND,
+            border: COMMUNITY_PANEL_BORDER,
+            boxShadow: COMMUNITY_PANEL_SHADOW,
+            color: COMMUNITY_TEXT_PRIMARY,
+          }}
+        >
+          <Box sx={{ p: 2, borderBottom: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+            <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, justifyContent: 'space-between', gap: 2, flexDirection: { xs: 'column', md: 'row' } }}>
+              <Box>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  <Button
+                    variant={selectedView === 'home' ? 'contained' : 'outlined'}
+                    startIcon={<DashboardIcon />}
+                    onClick={() => setSelectedView('home')}
+                    sx={{
+                      borderRadius: 999,
+                      textTransform: 'none',
+                      bgcolor: selectedView === 'home' ? COMMUNITY_ACCENT : 'transparent',
+                      color: selectedView === 'home' ? '#05070b' : COMMUNITY_TEXT_PRIMARY,
+                      borderColor: 'rgba(255,255,255,0.12)',
+                    }}
+                  >
+                    Hjem
+                  </Button>
+                  {selectedChannel && (
                     <Button
-                      variant="contained"
-                      color="secondary"
-                      size="small"
-                      startIcon={<School />}
-                      onClick={() => setBecomeMentorDialogOpen(true)}
-                      sx={{ textTransform: 'none' }}
+                      variant={selectedView === 'channel' ? 'contained' : 'outlined'}
+                      onClick={() => setSelectedView('channel')}
+                      sx={{
+                        borderRadius: 999,
+                        textTransform: 'none',
+                        bgcolor: selectedView === 'channel' ? 'rgba(245, 166, 35, 0.14)' : 'transparent',
+                        color: COMMUNITY_TEXT_PRIMARY,
+                        borderColor: 'rgba(255,255,255,0.12)',
+                      }}
                     >
-                      Bli Mentor
+                      # {selectedChannel.display_name}
                     </Button>
                   )}
-
-                  {/* Mentor Dashboard Button */}
-                  {isMentor && (
-                    <Tooltip title="Mentor Dashboard">
-                      <IconButton
-                        onClick={() => setMentorDashboardOpen(true)}
-                        color="secondary"
-                      >
-                        <Badge badgeContent="🎓" color="secondary">
-                          <HelpOutline />
-                        </Badge>
-                      </IconButton>
-                    </Tooltip>
-                  )}
-
-                  {/* Voting Board Button */}
-                  {selectedGroup && (
-                    <Tooltip title="Stemmebrett - Feature Requests">
-                      <IconButton
-                        onClick={() => setVotingBoardOpen(true)}
-                        color="primary"
-                      >
-                        <HowToVote />
-                      </IconButton>
-                    </Tooltip>
-                  )}
-
-                  {/* Notification Bell */}
-                  <Tooltip title="Varsler">
+                </Stack>
+                <Typography variant="body2" sx={{ mt: 1, color: COMMUNITY_TEXT_MUTED }}>
+                  {selectedView === 'home'
+                    ? 'Prioriter svar, kunnskap og Academy-broer fra ett sted.'
+                    : selectedChannel?.description || 'Aktiv kanalvisning.'}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip
+                  label={wsConnected ? 'Sanntidssynk' : 'Frakoblet'}
+                  size="small"
+                  sx={{
+                    bgcolor: wsConnected ? 'rgba(84, 181, 125, 0.14)' : 'rgba(255,255,255,0.06)',
+                    color: wsConnected ? '#78df9c' : COMMUNITY_TEXT_MUTED,
+                    border: wsConnected
+                      ? '1px solid rgba(84, 181, 125, 0.2)'
+                      : '1px solid rgba(255,255,255,0.08)',
+                  }}
+                />
+                {mentorEligible && !isMentor && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<School />}
+                    onClick={() => setBecomeMentorDialogOpen(true)}
+                    sx={{
+                      textTransform: 'none',
+                      bgcolor: COMMUNITY_ACCENT,
+                      color: '#05070b',
+                    }}
+                  >
+                    Bli Mentor
+                  </Button>
+                )}
+                {isMentor && (
+                  <Tooltip title="Mentoroversikt">
                     <IconButton
-                      onClick={() => setNotificationDrawerOpen(true)}
-                      color={unreadNotificationCount > 0 ? 'error' : 'default'}
+                      onClick={() => setMentorDashboardOpen(true)}
+                      sx={{
+                        color: COMMUNITY_TEXT_PRIMARY,
+                        border: COMMUNITY_PANEL_BORDER,
+                        bgcolor: 'rgba(255,255,255,0.03)',
+                      }}
                     >
-                      <Badge badgeContent={unreadNotificationCount} color="error">
-                        <Notifications />
+                      <Badge badgeContent="🎓" color="secondary">
+                        <HelpOutline />
                       </Badge>
                     </IconButton>
                   </Tooltip>
-
-                  <Tooltip title="Søk (⌘+K)">
+                )}
+                {selectedGroup && (
+                  <Tooltip title="Stemmebrett - funksjonsønsker">
                     <IconButton
-                      onClick={() => {
-                        setSearchScope('all');
-                        setSearchScopeId(undefined);
-                        setSearchScopeName(undefined);
-                        setSearchDialogOpen(true);
+                      onClick={() => setVotingBoardOpen(true)}
+                      sx={{
+                        color: COMMUNITY_TEXT_PRIMARY,
+                        border: COMMUNITY_PANEL_BORDER,
+                        bgcolor: 'rgba(255,255,255,0.03)',
                       }}
                     >
-                      <Search />
+                      <HowToVote />
                     </IconButton>
                   </Tooltip>
-
-                  {/* Help / Tutorial Button */}
-                  <Tooltip title="Hjelp & Guide (⌘+?)">
-                    <IconButton
-                      onClick={openCommunityTutorial}
-                      color="primary"
-                    >
-                      <HelpOutline />
-                    </IconButton>
-                  </Tooltip>
-
-                  <IconButton>
-                    <MoreVert />
+                )}
+                <Tooltip title="Varsler">
+                  <IconButton
+                    onClick={() => setNotificationDrawerOpen(true)}
+                    sx={{
+                      color: unreadNotificationCount > 0 ? '#ff8b8b' : COMMUNITY_TEXT_PRIMARY,
+                      border: COMMUNITY_PANEL_BORDER,
+                      bgcolor: 'rgba(255,255,255,0.03)',
+                    }}
+                  >
+                    <Badge badgeContent={unreadNotificationCount} color="error">
+                      <Notifications />
+                    </Badge>
                   </IconButton>
-                </Box>
+                </Tooltip>
+                <Tooltip title="Søk (⌘+K)">
+                  <IconButton
+                    onClick={() => {
+                      setSearchScope('all');
+                      setSearchScopeId(undefined);
+                      setSearchScopeName(undefined);
+                      setSearchDialogOpen(true);
+                    }}
+                    sx={{
+                      color: COMMUNITY_TEXT_PRIMARY,
+                      border: COMMUNITY_PANEL_BORDER,
+                      bgcolor: 'rgba(255,255,255,0.03)',
+                    }}
+                  >
+                    <Search />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Hjelp & Guide (⌘+?)">
+                  <IconButton
+                    onClick={openCommunityTutorial}
+                    sx={{
+                      color: COMMUNITY_TEXT_PRIMARY,
+                      border: COMMUNITY_PANEL_BORDER,
+                      bgcolor: 'rgba(255,255,255,0.03)',
+                    }}
+                  >
+                    <HelpOutline />
+                  </IconButton>
+                </Tooltip>
               </Box>
             </Box>
-          )}
-
-          {/* Messages Area */}
-          <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-            {/* Pinned Messages Bar */}
-            {selectedChannel && (
-              <PinnedMessagesBar
-                channelId={selectedChannel.id}
-                userId={userId}
-                isModerator={isModerator}
-                onUnpin={(messageId) => {
-                  setMessages(messages.map(m =>
-                    m.id === messageId ? { ...m, is_pinned: false } : m
-                  ));
-                }}
-              />
-            )}
-
-            {messages.length === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 8 }}>
-                <Forum sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary">
-                  Ingen meldinger ennå
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Vær den første til å starte samtalen!
-                </Typography>
-              </Box>
-            ) : (
-              <Virtuoso
-                ref={virtuosoRef}
-                data={messages}
-                itemContent={(index, message) => renderMessage(message)}
-                followOutput="smooth"
-                alignToBottom
-                style={{ height: '100%' }}
-              />
-            )}
           </Box>
 
-          {/* Message Input */}
-          {selectedChannel && !selectedChannel.is_read_only && (
-            <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-              {/* Typing Indicator */}
-              {typingUsers.size > 0 && (
-                <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                    {typingUsers.size === 1
-                      ? 'Noen skriver...'
-                      : `${typingUsers.size} personer skriver...`}
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'text.secondary', animation: 'pulse 1.4s infinite' }} />
-                    <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'text.secondary', animation: 'pulse 1.4s infinite 0.2s' }} />
-                    <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: 'text.secondary', animation: 'pulse 1.4s infinite 0.4s' }} />
+          {selectedView === 'home' ? (
+            <Box
+              sx={{
+                flex: 1,
+                overflow: 'auto',
+                p: { xs: 1.5, md: 2.5 },
+                background: 'linear-gradient(180deg, rgba(7,10,16,0.36), rgba(6,8,14,0.76))',
+              }}
+            >
+              <CommunityHomeDashboard
+                userName={user?.name || userProfile?.display_name || 'Creator'}
+                interests={communityProfile.interests}
+                stats={userStats}
+                needsHelp={effectiveNeedsHelpQueue}
+                yourThreads={yourThreads}
+                knowledgeFeed={knowledgeFeed}
+                academyAnnouncements={academyAnnouncements}
+                mentorsOnline={mentorsOnline}
+                badgeTracks={badgeTracks}
+                upcomingEvents={[...COMMUNITY_UPCOMING_EVENTS]}
+                recommendedChannel={selectedChannel ? {
+                  id: selectedChannel.id,
+                  display_name: selectedChannel.display_name,
+                  description: selectedChannel.description,
+                  unread_count: selectedChannel.unread_count,
+                } : undefined}
+                onOpenChannel={(channelId) => openChannelByIdentifier(channelId)}
+                onOpenDiscussion={handleOpenDiscussion}
+                onSelectQuestion={handleSelectNeedsHelpQuestion}
+                onUsePrompt={handleUsePromptTemplate}
+                onOpenAcademy={() => {
+                  window.location.href = '/academy';
+                }}
+                onOpenNotifications={() => setNotificationPreferencesOpen(true)}
+                onOpenMentorDashboard={() => setMentorDashboardOpen(true)}
+                onBecomeMentor={() => setBecomeMentorDialogOpen(true)}
+                onOpenPublishDialog={handleOpenPublishDialog}
+                isMentor={isMentor}
+                mentorEligible={mentorEligible}
+              />
+            </Box>
+          ) : (
+            <>
+              <Box
+                sx={{
+                  flex: 1,
+                  overflow: 'auto',
+                  p: 2,
+                  background: 'linear-gradient(180deg, rgba(7,10,16,0.36), rgba(6,8,14,0.76))',
+                }}
+              >
+                {selectedChannel && (
+                  <PinnedMessagesBar
+                    channelId={selectedChannel.id}
+                    userId={userId}
+                    isModerator={isModerator}
+                    onUnpin={(messageId) => {
+                      setMessages(messages.map(m =>
+                        m.id === messageId ? { ...m, is_pinned: false } : m
+                      ));
+                    }}
+                  />
+                )}
+
+                {messages.length === 0 ? (
+                  <Box sx={{ textAlign: 'center', py: 8 }}>
+                    <Forum sx={{ fontSize: 60, color: COMMUNITY_ACCENT, mb: 2 }} />
+                    <Typography variant="h6" sx={{ color: COMMUNITY_TEXT_PRIMARY }}>
+                      Ingen meldinger ennå
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: COMMUNITY_TEXT_MUTED }}>
+                      Vær den første til å starte samtalen!
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Virtuoso
+                    ref={virtuosoRef}
+                    data={messages}
+                    itemContent={(index, message) => renderMessage(message)}
+                    followOutput="smooth"
+                    alignToBottom
+                    style={{ height: '100%' }}
+                  />
+                )}
+              </Box>
+
+              {selectedChannel && !selectedChannel.is_read_only && (
+                <Box sx={{ p: 2, borderTop: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 1.2 }}>
+                    <Chip
+                      label="Spør om Academy-leksjon"
+                      onClick={() =>
+                        handleUsePromptTemplate(
+                          'Jeg jobber med en Academy-leksjon akkurat nå og trenger sparring på dette: ',
+                          selectedChannel.id,
+                        )
+                      }
+                      sx={{ bgcolor: 'rgba(245, 166, 35, 0.12)', color: '#f5a623' }}
+                    />
+                    <Chip
+                      label="Del takeaway"
+                      onClick={() =>
+                        handleUsePromptTemplate(
+                          'Dette er det viktigste jeg tar med meg fra Academy i dag. Hvordan ville dere brukt dette i praksis? ',
+                          selectedChannel.id,
+                        )
+                      }
+                      sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: COMMUNITY_TEXT_PRIMARY }}
+                    />
+                    <Chip
+                      label="Be om tilbakemelding"
+                      onClick={() =>
+                        handleUsePromptTemplate(
+                          'Jeg vil gjerne ha tilbakemelding på denne ideen / leveransen før jeg går videre: ',
+                          selectedChannel.id,
+                        )
+                      }
+                      sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: COMMUNITY_TEXT_PRIMARY }}
+                    />
+                  </Stack>
+
+                  {composerSuggestions.length > 0 && (
+                    <Box
+                      sx={{
+                        mb: 1.2,
+                        p: 1.5,
+                        borderRadius: 3,
+                        bgcolor: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.06)',
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ color: COMMUNITY_TEXT_MUTED }}>
+                        Mulige svar før du poster
+                      </Typography>
+                      <Stack spacing={1} sx={{ mt: 1 }}>
+                        {composerSuggestions.map((suggestion) => (
+                          <Box key={suggestion.id} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center' }}>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ color: COMMUNITY_TEXT_PRIMARY, fontWeight: 700 }}>
+                                {suggestion.user_name}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: COMMUNITY_TEXT_MUTED }}>
+                                {suggestion.content.slice(0, 120)}...
+                              </Typography>
+                            </Box>
+                            <Button
+                              size="small"
+                              sx={{ color: '#f5a623', flexShrink: 0 }}
+                              onClick={() => handleOpenDiscussion(suggestion.channel_id, suggestion.id)}
+                            >
+                              Vis
+                            </Button>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {typingUsers.size > 0 && (
+                    <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{ fontStyle: 'italic', color: COMMUNITY_TEXT_MUTED }}
+                      >
+                        {typingUsers.size === 1
+                          ? 'Noen skriver...'
+                          : `${typingUsers.size} personer skriver...`}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: COMMUNITY_TEXT_MUTED, animation: 'pulse 1.4s infinite' }} />
+                        <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: COMMUNITY_TEXT_MUTED, animation: 'pulse 1.4s infinite 0.2s' }} />
+                        <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: COMMUNITY_TEXT_MUTED, animation: 'pulse 1.4s infinite 0.4s' }} />
+                      </Box>
+                    </Box>
+                  )}
+                  <TextField
+                    fullWidth
+                    multiline
+                    maxRows={4}
+                    placeholder={`Send melding til # ${selectedChannel.display_name}`}
+                    value={messageInput}
+                    onChange={handleMessageInputChange}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                        sendTypingIndicator(false);
+                      }
+                    }}
+                    disabled={sendingMessage}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        color: COMMUNITY_TEXT_PRIMARY,
+                        background: COMMUNITY_INSET_BACKGROUND,
+                        borderRadius: 3,
+                        '& fieldset': {
+                          borderColor: 'rgba(255,255,255,0.1)',
+                        },
+                        '&:hover fieldset': {
+                          borderColor: 'rgba(245, 166, 35, 0.24)',
+                        },
+                        '&.Mui-focused fieldset': {
+                          borderColor: 'rgba(245, 166, 35, 0.42)',
+                        },
+                      },
+                      '& .MuiInputBase-input::placeholder': {
+                        color: COMMUNITY_TEXT_MUTED,
+                        opacity: 1,
+                      },
+                      '& textarea::placeholder': {
+                        color: COMMUNITY_TEXT_MUTED,
+                        opacity: 1,
+                      },
+                    }}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <CommunityFileAttachment
+                            userId={userId}
+                            channelId={selectedChannel.id}
+                            onFilesUploaded={handleFilesUploaded}
+                            disabled={sendingMessage}
+                          />
+                          <Tooltip title="Legg til emoji">
+                            <IconButton
+                              size="small"
+                              onClick={handleOpenEmojiPicker}
+                              disabled={sendingMessage}
+                              sx={{ color: COMMUNITY_TEXT_MUTED }}
+                            >
+                              <EmojiEmotions fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <IconButton
+                            color="primary"
+                            onClick={handleSendMessage}
+                            disabled={(!messageInput.trim() && attachedFiles.length === 0) || sendingMessage}
+                            sx={{ color: COMMUNITY_ACCENT }}
+                          >
+                            {sendingMessage ? (
+                              <CircularProgress size={20} sx={{ color: COMMUNITY_ACCENT }} />
+                            ) : (
+                              <Send fontSize="small" />
+                            )}
+                          </IconButton>
+                        </InputAdornment>
+                      )}}
+                  />
+                </Box>
+              )}
+
+              {selectedChannel && selectedChannel.is_read_only && (
+                <Box
+                  sx={{
+                    p: 2,
+                    borderTop: 1,
+                    borderColor: 'rgba(255,255,255,0.08)',
+                    bgcolor: 'rgba(245, 166, 35, 0.08)',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Lock fontSize="small" sx={{ color: COMMUNITY_TEXT_MUTED }} />
+                    <Typography variant="body2" sx={{ color: COMMUNITY_TEXT_MUTED }}>
+                      Denne kanalen er skrivebeskyttet. Kun administratorer kan sende meldinger.
+                    </Typography>
                   </Box>
                 </Box>
               )}
-              <TextField
-                fullWidth
-                multiline
-                maxRows={4}
-                placeholder={`Send melding til # ${selectedChannel.display_name}`}
-                value={messageInput}
-                onChange={handleMessageInputChange}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                    sendTypingIndicator(false); // Stop typing indicator on send
-                  }
-                }}
-                disabled={sendingMessage}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <CommunityFileAttachment
-                        userId={userId}
-                        channelId={selectedChannel.id}
-                        onFilesUploaded={handleFilesUploaded}
-                        disabled={sendingMessage}
-                      />
-                      <Tooltip title="Legg til emoji">
-                        <IconButton
-                          size="small"
-                          onClick={handleOpenEmojiPicker}
-                          disabled={sendingMessage}
-                        >
-                          <EmojiEmotions fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <IconButton
-                        color="primary"
-                        onClick={handleSendMessage}
-                        disabled={(!messageInput.trim() && attachedFiles.length === 0) || sendingMessage}
-                      >
-                        {sendingMessage ? (
-                          <CircularProgress size={20} />
-                        ) : (
-                          <Send fontSize="small" />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  )}}
-              />
-            </Box>
-          )}
-
-          {/* Read-only Channel Notice */}
-          {selectedChannel && selectedChannel.is_read_only && (
-            <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider', bgcolor: 'action.hover' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Lock fontSize="small" color="disabled" />
-                <Typography variant="body2" color="text.secondary">
-                  Denne kanalen er skrivebeskyttet. Kun administratorer kan sende meldinger.
-                </Typography>
-              </Box>
-            </Box>
+            </>
           )}
 
           {/* Emoji Picker Popover */}
@@ -1746,6 +2623,8 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
             onToggleCollapse={() => setSettingsSidebarCollapsed(!settingsSidebarCollapsed)}
           />
         )}
+        </Box>
+      </Container>
       </Box>
 
       {/* Message Context Menu */}
@@ -1972,7 +2851,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
           }}
           messageId={threadMessageId}
           userId={userId}
-          channelId={selectedChannel?.id || ', '}
+          channelId={selectedChannel?.id}
         />
       )}
 
@@ -2010,23 +2889,17 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
           setSearchScopeId(undefined);
           setSearchScopeName(undefined);
         }}
+        currentUserId={userId}
         defaultScope={searchScope}
         defaultScopeId={searchScopeId}
         defaultScopeName={searchScopeName}
         onSelectMessage={(messageId, channelId) => {
-          const channel = channels.find((c) => c.id === channelId);
-          if (channel) {
-            setSelectedChannel(channel);
-            // TODO: Scroll to specific message
-          }
+          handleOpenDiscussion(channelId, messageId);
         }}
         onSelectThread={(threadId, channelId) => {
-          const channel = channels.find((c) => c.id === channelId);
-          if (channel) {
-            setSelectedChannel(channel);
-            setThreadMessageId(threadId);
-            setThreadDialogOpen(true);
-          }
+          openChannelByIdentifier(channelId);
+          setThreadMessageId(threadId);
+          setThreadDialogOpen(true);
         }}
         onSelectUser={(userId) => {
           setSelectedProfileUserId(userId);
@@ -2047,13 +2920,15 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
 
       {/* Welcome Onboarding Dialog */}
       <WelcomeOnboardingDialog
-        open={onboardingOpen}
+        open={onboardingOpen && !showCommunityTutorial}
         onClose={() => setOnboardingOpen(false)}
         userName={user?.name || 'Bruker'}
         onComplete={() => {
-          // Mark onboarding as complete in user preferences
-          // TODO: Save to backend
-          console.log('Onboarding complete');
+          try {
+            localStorage.setItem(`community-onboarding-complete-${userId}`, 'true');
+          } catch {
+            // Ignore local persistence issues.
+          }
         }}
       />
 
@@ -2089,12 +2964,9 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
           onClose={() => setMentorDashboardOpen(false)}
           userId={userId}
           onSelectQuestion={(messageId, channelId) => {
-            // Find the channel and navigate to it
-            const channel = channels.find((c) => c.id === channelId);
-            if (channel) {
-              setSelectedChannel(channel);
-              // TODO: Scroll to specific message
-            }
+            openChannelByIdentifier(channelId);
+            setThreadMessageId(messageId);
+            setThreadDialogOpen(true);
           }}
         />
       )}
@@ -2105,10 +2977,11 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         onClose={() => setVotingBoardOpen(false)}
         maxWidth="lg"
         fullWidth
-        PaperProps={{ sx: { minHeight: '80vh' } }}
+        sx={COMMUNITY_DIALOG_SX}
+        PaperProps={{ sx: { ...COMMUNITY_DIALOG_PAPER_SX, minHeight: '80vh' } }}
       >
         <VotingBoard
-          groupId={selectedGroup?.id || ', '}
+          groupId={selectedGroup?.id ?? ''}
           userId={userId}
           onClose={() => setVotingBoardOpen(false)}
         />
@@ -2153,16 +3026,20 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
           onClose={() => setShowPublishedPosts(false)}
           maxWidth="lg"
           fullWidth
+          sx={COMMUNITY_DIALOG_SX}
+          PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
         >
-          <DialogTitle>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="h6">Administrer Kursinnlegg</Typography>
-              <IconButton onClick={() => setShowPublishedPosts(false)}>
+          <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ position: 'relative', zIndex: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
+                Administrer Kursinnlegg
+              </Typography>
+              <IconButton onClick={() => setShowPublishedPosts(false)} sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
                 <Close />
               </IconButton>
             </Box>
           </DialogTitle>
-          <DialogContent>
+          <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX}>
             <Stack spacing={3}>
               {/* Scheduled Posts Widget */}
               <ScheduledPostsWidget />
@@ -2179,7 +3056,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 ) : (
                   <Stack spacing={2}>
                     {publishedPosts.map((post) => (
-                      <Card key={post.id} variant="outlined">
+                      <Card key={post.id} sx={COMMUNITY_DIALOG_SURFACE_SUBTLE_SX}>
                         <CardContent>
                           <Box display="flex" gap={2}>
                             {post.course_thumbnail && (
@@ -2193,7 +3070,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                               <Typography variant="h6" gutterBottom>
                                 {post.course_title}
                               </Typography>
-                              <Typography variant="body2" color="text.secondary" gutterBottom>
+                              <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }} gutterBottom>
                                 Kanal: {post.channel_name}
                               </Typography>
                               <Box display="flex" gap={1} mt={1}>
@@ -2221,6 +3098,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                                 variant="outlined"
                                 size="small"
                                 startIcon={<Edit />}
+                                sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}
                                 onClick={() => {
                                   setEditingPost(post);
                                   setEditPostDialogOpen(true);
@@ -2232,11 +3110,12 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                                 variant="outlined"
                                 size="small"
                                 startIcon={<Visibility />}
+                                sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}
                                 onClick={() => {
                                   // Navigate to the message in the channel
                                   const channel = channels.find(c => c.id === post.channel_id);
                                   if (channel) {
-                                    setSelectedChannel(channel);
+                                    openChannel(channel);
                                     setShowPublishedPosts(false);
                                   }
                                 }}
@@ -2309,18 +3188,27 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         onClose={() => setNotificationPreferencesOpen(false)}
         maxWidth="sm"
         fullWidth
+        sx={COMMUNITY_DIALOG_SX}
+        PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
       >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6">Varslingsinnstillinger</Typography>
-            <IconButton onClick={() => setNotificationPreferencesOpen(false)}>
+        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
+              Varslingsinnstillinger
+            </Typography>
+            <IconButton onClick={() => setNotificationPreferencesOpen(false)} sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
               <Close />
             </IconButton>
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent
+          sx={{
+            ...COMMUNITY_DIALOG_CONTENT_SX,
+            '& .MuiSwitch-root': COMMUNITY_DIALOG_SWITCH_SX,
+          }}
+        >
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
               Velg hvilke typer varsler du vil motta fra fellesskapet.
             </Typography>
 
@@ -2417,10 +3305,84 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 />
               </Box>
             </Box>
+
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent:'space-between', py: 1 }}>
+                <Box>
+                  <Typography variant="body1">🧵 Fulgt tråd</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Når det skjer noe nytt i tråder du følger eller har deltatt i
+                  </Typography>
+                </Box>
+                <Switch
+                  checked={notificationPreferences.notify_followed_threads}
+                  onChange={(e) => updateNotificationPreferences({
+                    ...notificationPreferences,
+                    notify_followed_threads: e.target.checked,
+                  })}
+                />
+              </Box>
+              <Divider />
+            </Box>
+
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent:'space-between', py: 1 }}>
+                <Box>
+                  <Typography variant="body1">📬 Daglig digest</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Oppsummering av svar, åpne spørsmål og relevante diskusjoner
+                  </Typography>
+                </Box>
+                <Switch
+                  checked={notificationPreferences.notify_daily_digest}
+                  onChange={(e) => updateNotificationPreferences({
+                    ...notificationPreferences,
+                    notify_daily_digest: e.target.checked,
+                  })}
+                />
+              </Box>
+              <Divider />
+            </Box>
+
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent:'space-between', py: 1 }}>
+                <Box>
+                  <Typography variant="body1">🎓 Mentorforespørsler</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Når noen trenger mentorhjelp eller sender SOS i ditt fagområde
+                  </Typography>
+                </Box>
+                <Switch
+                  checked={notificationPreferences.notify_mentor_requests}
+                  onChange={(e) => updateNotificationPreferences({
+                    ...notificationPreferences,
+                    notify_mentor_requests: e.target.checked,
+                  })}
+                />
+              </Box>
+              <Divider />
+            </Box>
+
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent:'space-between', py: 1 }}>
+                <Box>
+                  <Typography variant="body1">🎬 Academy-diskusjoner</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Når kurs, leksjoner eller publiserte Academy-innlegg får aktivitet
+                  </Typography>
+                </Box>
+                <Switch
+                  checked={notificationPreferences.notify_course_discussions}
+                  onChange={(e) => updateNotificationPreferences({
+                    ...notificationPreferences,
+                    notify_course_discussions: e.target.checked,
+                  })}
+                />
+              </Box>
+            </Box>
           </Stack>
         </DialogContent>
       </Dialog>
-      </Container>
 
       {/* Prototype Feedback Tool - Community Context Aware */}
       {(isPrototypeTester || isAdmin) && (

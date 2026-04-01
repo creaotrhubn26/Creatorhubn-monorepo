@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 
 const TEST_PAGE = '/e2e-casting-test.html?session=content-producer';
@@ -66,6 +67,7 @@ async function openShotListWorkspace(page: Page) {
 
   await expect(page.getByText(/PRO-VISNING/i).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/Shot List|Shotlist/i).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('legacy-shotlist-coverage-cp-shotlist-2')).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe('Shotlist storyboard bridge', () => {
@@ -108,7 +110,14 @@ test.describe('Shotlist storyboard bridge', () => {
     await expect(page.getByTestId('legacy-shot-description-cp-shot-2A')).toHaveValue(nextDescription);
   });
 
-  test('scene exports support board pdf, contact sheet, and shot deck', async ({ page }) => {
+  test('coverage actions can open the first missing storyboard frame directly', async ({ page }) => {
+    await page.getByTestId('legacy-shotlist-open-missing-frame-cp-shotlist-2').click();
+    await expect(page.getByTestId('scene-storyboard-dialog')).toBeVisible();
+    await expect(page.getByTestId('scene-storyboard-active-frame-card')).toContainText('Shot 2C');
+    await page.getByTestId('scene-storyboard-dialog').getByRole('button', { name: /^Lukk$/i }).click();
+  });
+
+  test('scene exports support board pdf, contact sheet, and shot deck', async ({ page }, testInfo) => {
     await page.getByTestId('legacy-shotlist-export-trigger-cp-shotlist-2').click();
     await expect(page.getByTestId('legacy-shotlist-export-dialog')).toBeVisible();
 
@@ -117,6 +126,9 @@ test.describe('Shotlist storyboard bridge', () => {
       page.getByTestId('legacy-shotlist-export-board-scene').click(),
     ]);
     expect(boardDownload.suggestedFilename()).toContain('-board.pdf');
+    const boardPath = testInfo.outputPath(boardDownload.suggestedFilename());
+    await boardDownload.saveAs(boardPath);
+    expect((await stat(boardPath)).size).toBeGreaterThan(10_000);
 
     await page.getByTestId('legacy-shotlist-export-trigger-cp-shotlist-2').click();
     const [contactDownload] = await Promise.all([
@@ -124,6 +136,9 @@ test.describe('Shotlist storyboard bridge', () => {
       page.getByTestId('legacy-shotlist-export-contact-scene').click(),
     ]);
     expect(contactDownload.suggestedFilename()).toContain('-contact-sheet.pdf');
+    const contactPath = testInfo.outputPath(contactDownload.suggestedFilename());
+    await contactDownload.saveAs(contactPath);
+    expect((await stat(contactPath)).size).toBeGreaterThan(8_000);
 
     await page.getByTestId('legacy-shotlist-export-trigger-cp-shotlist-2').click();
     const [deckDownload] = await Promise.all([
@@ -131,5 +146,22 @@ test.describe('Shotlist storyboard bridge', () => {
       page.getByTestId('legacy-shotlist-export-deck-scene').click(),
     ]);
     expect(deckDownload.suggestedFilename()).toContain('-shot-deck.pdf');
+    const deckPath = testInfo.outputPath(deckDownload.suggestedFilename());
+    await deckDownload.saveAs(deckPath);
+    expect((await stat(deckPath)).size).toBeGreaterThan(8_000);
+  });
+
+  test('scene exports support clean still bundles', async ({ page }, testInfo) => {
+    await page.getByTestId('legacy-shotlist-export-trigger-cp-shotlist-2').click();
+    await expect(page.getByTestId('legacy-shotlist-export-dialog')).toBeVisible();
+
+    const [stillDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByTestId('legacy-shotlist-export-stills-scene').click(),
+    ]);
+    expect(stillDownload.suggestedFilename()).toContain('-clean-stills.zip');
+    const stillPath = testInfo.outputPath(stillDownload.suggestedFilename());
+    await stillDownload.saveAs(stillPath);
+    expect((await stat(stillPath)).size).toBeGreaterThan(10_000);
   });
 });

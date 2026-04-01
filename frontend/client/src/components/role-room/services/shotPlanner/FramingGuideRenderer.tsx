@@ -1,4 +1,5 @@
-import React, { useRef, useEffect } from "react";
+import type React from "react";
+import { useRef, useEffect } from "react";
 import { Box } from "@mui/material";
 import * as PIXI from "pixi.js";
 import type { FramingGuide } from "./types";

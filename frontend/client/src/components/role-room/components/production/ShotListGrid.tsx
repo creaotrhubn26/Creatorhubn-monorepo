@@ -21,6 +21,8 @@ function SortableShotListCard({
   onDelete,
   onExport,
   onOpenStoryboard,
+  onOpenStoryboardFrame,
+  onOpenStoryboardMissingFrame,
 }: {
   summary: ShotListSummary;
   selected: boolean;
@@ -32,6 +34,8 @@ function SortableShotListCard({
   onDelete: (id: string) => void;
   onExport: (id: string) => void;
   onOpenStoryboard?: (id: string) => void;
+  onOpenStoryboardFrame?: (id: string, frameId?: string) => void;
+  onOpenStoryboardMissingFrame?: (id: string, frameId?: string) => void;
 }) {
   const {
     attributes,
@@ -58,6 +62,8 @@ function SortableShotListCard({
         onDelete={onDelete}
         onExport={onExport}
         onOpenStoryboard={onOpenStoryboard}
+        onOpenStoryboardFrame={onOpenStoryboardFrame}
+        onOpenStoryboardMissingFrame={onOpenStoryboardMissingFrame}
         dragHandleProps={{ ...attributes, ...listeners }}
         isDragging={isDragging}
       />
@@ -103,6 +109,8 @@ export interface ShotListGridProps {
   onDelete: (id: string) => void;
   onExport: (id: string) => void;
   onOpenStoryboard?: (id: string) => void;
+  onOpenStoryboardFrame?: (id: string, frameId?: string) => void;
+  onOpenStoryboardMissingFrame?: (id: string, frameId?: string) => void;
   /** Called when a Person node is dropped onto a ShotList card */
   onPersonDropped?: (personId: string, shotListId: string) => void;
   /** Called when cards are reordered (returns new ordered IDs) */
@@ -126,6 +134,8 @@ export function ShotListGrid({
   onDelete,
   onExport,
   onOpenStoryboard,
+  onOpenStoryboardFrame,
+  onOpenStoryboardMissingFrame,
   onPersonDropped,
   onReorder,
   people,
@@ -298,6 +308,8 @@ export function ShotListGrid({
                     onDelete={onDelete}
                     onExport={onExport}
                     onOpenStoryboard={onOpenStoryboard}
+                    onOpenStoryboardFrame={onOpenStoryboardFrame}
+                    onOpenStoryboardMissingFrame={onOpenStoryboardMissingFrame}
                   />
                 </Grid>
               ))}
@@ -317,6 +329,8 @@ export function ShotListGrid({
                   onDelete={onDelete}
                   onExport={onExport}
                   onOpenStoryboard={onOpenStoryboard}
+                  onOpenStoryboardFrame={onOpenStoryboardFrame}
+                  onOpenStoryboardMissingFrame={onOpenStoryboardMissingFrame}
                 />
               ))}
             </Box>

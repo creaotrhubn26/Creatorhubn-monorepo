@@ -203,13 +203,13 @@ const normalizeGoogleAuthError = (error: unknown): Error => {
   const combined = `${rawMessage} ${responsePayload}`.toLowerCase();
 
   if (combined.includes('invalid_rapt') || combined.includes('reauth related error')) {
-    return new Error('Google krever ny innlogging for kontraktssignering. Koble Google Workspace til på nytt.');
+    return new Error('Google krever ny innlogging. Koble Google Workspace til på nytt.');
   }
   if (combined.includes('unauthorized_client')) {
-    return new Error('Google OAuth-klienten for kontraktssignering matcher ikke den lagrede tilkoblingen.');
+    return new Error('Google OAuth-klienten matcher ikke den lagrede tilkoblingen.');
   }
   if (combined.includes('invalid_grant')) {
-    return new Error('Google-tilkoblingen for kontraktssignering er utløpt. Koble til Google Workspace på nytt.');
+    return new Error('Google-tilkoblingen er utløpt. Koble til Google Workspace på nytt.');
   }
   return new Error(rawMessage);
 };
@@ -425,6 +425,9 @@ async function ensureContractGoogleSigningSchema(pool: Pool) {
 export async function resolveRoleRoomGoogleConnection(
   pool: Pool,
   preferredUserId?: string | null,
+  options?: {
+    allowFallbackToAnyUser?: boolean;
+  },
 ): Promise<AuthorizedContractGoogleClient> {
   await ensureContractGoogleSigningSchema(pool);
 
@@ -437,9 +440,10 @@ export async function resolveRoleRoomGoogleConnection(
   );
 
   if (!clientId || !clientSecret || !redirectUri) {
-    throw new Error('Google Workspace er ikke konfigurert for kontraktssignering.');
+    throw new Error('Google Workspace er ikke konfigurert.');
   }
 
+  const allowFallbackToAnyUser = options?.allowFallbackToAnyUser !== false;
   const queries = preferredUserId
     ? [
         {
@@ -454,21 +458,25 @@ export async function resolveRoleRoomGoogleConnection(
           `,
           params: [preferredUserId],
         },
-        {
-          sql: `
-            SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes
-            FROM role_room_google_connections
-            WHERE connection_state = 'connected'
-              AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
-            ORDER BY
-              CASE WHEN refresh_token_encrypted IS NOT NULL THEN 0 ELSE 1 END,
-              last_used_at DESC NULLS LAST,
-              updated_at DESC NULLS LAST,
-              created_at DESC NULLS LAST
-            LIMIT 1
-          `,
-          params: [],
-        },
+        ...(allowFallbackToAnyUser
+          ? [
+              {
+                sql: `
+                  SELECT user_id, google_email, google_subject, access_token_encrypted, refresh_token_encrypted, expiry_date, scopes
+                  FROM role_room_google_connections
+                  WHERE connection_state = 'connected'
+                    AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
+                  ORDER BY
+                    CASE WHEN refresh_token_encrypted IS NOT NULL THEN 0 ELSE 1 END,
+                    last_used_at DESC NULLS LAST,
+                    updated_at DESC NULLS LAST,
+                    created_at DESC NULLS LAST
+                  LIMIT 1
+                `,
+                params: [],
+              },
+            ]
+          : []),
       ]
     : [
         {
@@ -505,7 +513,7 @@ export async function resolveRoleRoomGoogleConnection(
   }
 
   if (!connection) {
-    throw new Error('Fant ingen koblet Google Workspace-konto for kontraktssignering.');
+    throw new Error('Fant ingen koblet Google Workspace-konto.');
   }
 
   const oauthClient = new google.auth.OAuth2(clientId, clientSecret, redirectUri);

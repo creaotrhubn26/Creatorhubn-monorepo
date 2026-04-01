@@ -21,6 +21,11 @@ import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC'
 import { useAcademyLocale } from './academyLocale';
 import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
 import AcademyStudentSidebar from './AcademyStudentSidebar';
+import {
+  buildAcademyStudentNextAction,
+  buildAcademyStudentWeekPlan,
+  useAcademyStudentAccessSummary,
+} from './academyStudentExperience';
 
 interface AcademyStudentDashboardStudioProps {
   courseId?: string;
@@ -54,6 +59,17 @@ interface NoteRow {
   text: string;
   context: string;
 }
+
+type StudentExperienceCourse = Course & {
+  assignmentStudio?: {
+    assignments?: Array<{
+      id?: string;
+      status?: string;
+      dueDate?: string;
+    }>;
+    feedback?: Array<unknown>;
+  };
+};
 
 const panelSx = {
   borderRadius: 1.4,
@@ -505,6 +521,126 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
       }));
   }, [courses, enrolledCourseIds]);
 
+  const { data: accessSummary } = useAcademyStudentAccessSummary(
+    focusCourse?.course?.id ? String(focusCourse.course.id) : undefined,
+  );
+
+  const focusCourseStudio = (focusCourse?.course as StudentExperienceCourse | undefined)?.assignmentStudio;
+  const focusAssignments = useMemo(() => {
+    const assignments = Array.isArray(focusCourseStudio?.assignments)
+      ? focusCourseStudio.assignments
+      : [];
+    return assignments.filter((assignment) => String(assignment?.status || '').toLowerCase() !== 'draft');
+  }, [focusCourseStudio?.assignments]);
+
+  const focusAssignmentsDueSoon = useMemo(() => {
+    const now = Date.now();
+    const nextWeek = now + 7 * 86400000;
+    return focusAssignments.filter((assignment) => {
+      const dueAt = new Date(String(assignment.dueDate || '')).getTime();
+      return Number.isFinite(dueAt) && dueAt >= now && dueAt <= nextWeek;
+    }).length;
+  }, [focusAssignments]);
+
+  const focusFeedbackCount = useMemo(
+    () => (Array.isArray(focusCourseStudio?.feedback) ? focusCourseStudio.feedback.length : 0),
+    [focusCourseStudio?.feedback],
+  );
+
+  const isNewStudent = useMemo(
+    () => progressRows.length === 0 || Number(focusCourse?.progressPercent || 0) <= 0,
+    [focusCourse?.progressPercent, progressRows.length],
+  );
+
+  const buildStudentRoute = useCallback(
+    (path: string, extra?: Record<string, string | null | undefined>) => {
+      const params = new URLSearchParams();
+      const safeCourseId = String(focusCourse?.course.id || '').trim();
+      const safeLessonId = String(focusCourse?.nextLesson?.id || '').trim();
+      if (safeCourseId) params.set('courseId', safeCourseId);
+      if (safeLessonId) params.set('lessonId', safeLessonId);
+      params.set('audience', 'student');
+      params.set('returnTo', '/academy/student-dashboard');
+      Object.entries(extra || {}).forEach(([key, value]) => {
+        if (!value) return;
+        params.set(key, value);
+      });
+      return `${path}?${params.toString()}`;
+    },
+    [focusCourse?.course.id, focusCourse?.nextLesson?.id],
+  );
+
+  const continueCourseRoute = useMemo(() => buildStudentRoute('/academy/player-studio'), [buildStudentRoute]);
+  const resourcesRoute = useMemo(() => buildStudentRoute('/academy/media'), [buildStudentRoute]);
+  const assignmentsRoute = useMemo(() => buildStudentRoute('/academy/assignments'), [buildStudentRoute]);
+
+  const studentNextAction = useMemo(
+    () =>
+      buildAcademyStudentNextAction({
+        tt,
+        courseTitle: focusCourse?.course.title,
+        lessonTitle: focusCourse?.nextLesson?.title,
+        pendingAssignments: focusAssignments.length,
+        dueSoonAssignments: focusAssignmentsDueSoon,
+        feedbackCount: focusFeedbackCount,
+        notesToReview: notesTotal + bookmarksTotal,
+        resourceCount: focusCourse?.resourceCount || 0,
+        progressPercent: focusCourse?.progressPercent || 0,
+        isNewStudent,
+      }),
+    [
+      bookmarksTotal,
+      focusAssignments.length,
+      focusAssignmentsDueSoon,
+      focusCourse?.course.title,
+      focusCourse?.nextLesson?.title,
+      focusCourse?.progressPercent,
+      focusCourse?.resourceCount,
+      focusFeedbackCount,
+      isNewStudent,
+      notesTotal,
+      tt,
+    ],
+  );
+
+  const weekPlan = useMemo(
+    () =>
+      buildAcademyStudentWeekPlan({
+        tt,
+        courseTitle: focusCourse?.course.title,
+        lessonTitle: focusCourse?.nextLesson?.title,
+        pendingAssignments: focusAssignments.length,
+        dueSoonAssignments: focusAssignmentsDueSoon,
+        feedbackCount: focusFeedbackCount,
+        notesToReview: notesTotal + bookmarksTotal,
+        resourceCount: focusCourse?.resourceCount || 0,
+        progressPercent: focusCourse?.progressPercent || 0,
+        isNewStudent,
+        approvedBy: accessSummary?.access?.approvedBy || null,
+      }),
+    [
+      accessSummary?.access?.approvedBy,
+      bookmarksTotal,
+      focusAssignments.length,
+      focusAssignmentsDueSoon,
+      focusCourse?.course.title,
+      focusCourse?.nextLesson?.title,
+      focusCourse?.progressPercent,
+      focusCourse?.resourceCount,
+      focusFeedbackCount,
+      isNewStudent,
+      notesTotal,
+      tt,
+    ],
+  );
+
+  const nextActionRoute = useMemo(() => {
+    if (studentNextAction.id === 'assignment') return assignmentsRoute;
+    if (studentNextAction.id === 'resources') return resourcesRoute;
+    if (studentNextAction.id === 'feedback') return '/academy/settings?tab=messages';
+    return continueCourseRoute;
+  }, [assignmentsRoute, continueCourseRoute, resourcesRoute, studentNextAction.id]);
+
   const openCourse = useCallback(
     (card: CourseCardData | null) => {
       if (!card) {
@@ -561,6 +697,22 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
     },
     [courseId, setLocation],
   );
+
+  const handleNextAction = useCallback(() => {
+    if (studentNextAction.id === 'assignment') {
+      setLocation(assignmentsRoute);
+      return;
+    }
+    if (studentNextAction.id === 'resources') {
+      setLocation(resourcesRoute);
+      return;
+    }
+    if (studentNextAction.id === 'feedback') {
+      setLocation('/academy/settings?tab=messages');
+      return;
+    }
+    openCourse(focusCourse);
+  }, [assignmentsRoute, focusCourse, openCourse, resourcesRoute, setLocation, studentNextAction.id]);
 
   const handleSidebarNavigate = useCallback(
     (navId: string, route: string) => {
@@ -658,11 +810,17 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
           studentName={displayName}
           activeCourseId={focusCourse?.course.id || null}
           activeCourseTitle={focusCourse?.course.title}
+          instructorName={focusCourse?.course.instructor?.name || undefined}
           progressPercent={focusCourse?.progressPercent || 0}
           completedLessons={focusCourse?.completedLessons || 0}
           totalLessons={focusCourse?.totalLessons || 0}
           streakDays={streakDays}
           returnTo="/academy/student-dashboard"
+          continueRoute={continueCourseRoute}
+          nextActionTitle={studentNextAction.title}
+          nextActionDetail={studentNextAction.detail}
+          nextActionRoute={nextActionRoute}
+          nextActionLabel={studentNextAction.ctaLabel}
         />
 
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -769,6 +927,11 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
                           'Dette er studentflaten for academy: fullførte kurs, sertifikater, streak og læringspunkter samlet på ett sted.',
                           'This is the learner interface: completed courses, certificates, streak, and learning points gathered in one place.',
                         )
+                      : isNewStudent
+                        ? tt(
+                            'Du er nå inne i studentflyten. Start første leksjon, bruk ukeplanen som guide og hold fokus på ett tydelig neste steg.',
+                            'You are now inside the learner flow. Start the first lesson, use the weekly plan as your guide, and stay focused on one clear next step.',
+                          )
                       : tt(
                           'Dette er studentflaten for academy: fortsett der du slapp, se mine kurs, åpne ressurser og følg egen progresjon uten instruktørverktøyene.',
                           'This is the learner interface: continue where you left off, see your courses, open resources, and track your progress without the instructor tools.',
@@ -820,13 +983,26 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
                         border: 'var(--academy-hairline-width, 1px) solid rgba(108,151,235,0.24)',
                       }}
                     />
+                    {accessSummary?.access?.approvedBy ? (
+                      <Chip
+                        label={tt(
+                          `Godkjent av ${accessSummary.access.approvedBy}`,
+                          `Approved by ${accessSummary.access.approvedBy}`,
+                        )}
+                        sx={{
+                          color: '#edf0f7',
+                          bgcolor: 'rgba(154,210,123,0.12)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(154,210,123,0.26)',
+                        }}
+                      />
+                    ) : null}
                   </Stack>
 
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.9} sx={{ mt: 1.2 }}>
                     <Button
                       variant="contained"
                       startIcon={<PlayArrow />}
-                      onClick={() => openCourse(focusCourse)}
+                      onClick={handleNextAction}
                       sx={{
                         textTransform: 'none',
                         borderRadius: 1,
@@ -836,12 +1012,12 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
                         fontWeight: 700,
                       }}
                     >
-                      {tt('Fortsett kurs', 'Continue course')}
+                      {studentNextAction.ctaLabel}
                     </Button>
                     <Button
                       variant="outlined"
-                      startIcon={<BookmarkBorder />}
-                      onClick={() => openResources(focusCourse)}
+                      startIcon={studentNextAction.id === 'assignment' ? <PlayArrow /> : <BookmarkBorder />}
+                      onClick={() => openCourse(focusCourse)}
                       sx={{
                         textTransform: 'none',
                         borderRadius: 1,
@@ -850,7 +1026,7 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
                         fontWeight: 600,
                       }}
                     >
-                      {tt('Åpne ressurser', 'Open resources')}
+                      {tt('Fortsett kurs', 'Continue course')}
                     </Button>
                   </Stack>
                 </Box>
@@ -874,7 +1050,12 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
                     {focusCourse?.nextLesson?.title || tt('Velg et kurs', 'Choose a course')}
                   </Typography>
                   <Typography sx={{ mt: 0.55, color: 'rgba(237,240,247,0.74)', maxWidth: 420 }}>
-                    {focusCourse?.nextLesson?.description ||
+                    {focusAssignmentsDueSoon > 0
+                      ? tt(
+                          `${focusAssignmentsDueSoon} oppgaver bør følges opp denne uken før du går videre.`,
+                          `${focusAssignmentsDueSoon} assignments should be handled this week before you move on.`,
+                        )
+                      : focusCourse?.nextLesson?.description ||
                       tt(
                         'Her får studenten kun det som trengs for læring: neste ferdighet, ressurser og egen progresjon.',
                         'The learner only gets what is needed for learning: the next skill, resources, and personal progress.',
@@ -1227,7 +1408,7 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
               <Box sx={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Box sx={{ ...panelSx, p: 1 }}>
                   <Typography sx={{ fontSize: 36, lineHeight: 1, fontWeight: 600 }}>
-                    {activeView === 'achievements' ? tt('Læringspoeng', 'Learning points') : tt('I dag', 'Today')}
+                    {activeView === 'achievements' ? tt('Læringspoeng', 'Learning points') : tt('Denne uken', 'This week')}
                   </Typography>
                   {activeView === 'achievements' ? (
                     <>
@@ -1244,74 +1425,37 @@ function AcademyStudentDashboardStudio({ courseId, view }: AcademyStudentDashboa
                   ) : (
                     <>
                       <Stack spacing={0.8} sx={{ mt: 0.9 }}>
-                        <Box
-                          sx={{
-                            px: 0.8,
-                            py: 0.8,
-                            borderRadius: 1,
-                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                            bgcolor: 'rgba(248,179,33,0.08)',
-                          }}
-                        >
-                          <Stack direction="row" justifyContent="space-between" alignItems="center">
-                            <Box minWidth={0}>
-                              <Typography sx={{ fontWeight: 700 }} noWrap>
-                                {focusCourse?.nextLesson?.title || tt('Velg neste ferdighet', 'Choose the next skill')}
-                              </Typography>
-                              <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.66)' }} noWrap>
-                                {focusCourse?.course.title || tt('Ingen aktivt kurs', 'No active course')}
-                              </Typography>
-                            </Box>
-                            <Button
-                              size="small"
-                              onClick={() => openCourse(focusCourse)}
-                              sx={{
-                                textTransform: 'none',
-                                color: '#0f0f0f',
-                                background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
-                                fontWeight: 700,
-                              }}
-                            >
-                              {tt('Start', 'Start')}
-                            </Button>
-                          </Stack>
-                        </Box>
-
-                        <Box
-                          sx={{
-                            px: 0.8,
-                            py: 0.8,
-                            borderRadius: 1,
-                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                            bgcolor: 'rgba(10,14,22,0.72)',
-                          }}
-                        >
-                          <Typography sx={{ fontWeight: 700 }}>{tt('Notater å gå gjennom', 'Notes to review')}</Typography>
-                          <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.66)', mt: 0.2 }}>
-                            {tt(
-                              `${notesTotal} notater og ${bookmarksTotal} bokmerker lagret i videospilleren.`,
-                              `${notesTotal} notes and ${bookmarksTotal} bookmarks saved in the player.`,
-                            )}
-                          </Typography>
-                        </Box>
-
-                        <Box
-                          sx={{
-                            px: 0.8,
-                            py: 0.8,
-                            borderRadius: 1,
-                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
-                            bgcolor: 'rgba(10,14,22,0.72)',
-                          }}
-                        >
-                          <Typography sx={{ fontWeight: 700 }}>{tt('Ressurser klare', 'Resources ready')}</Typography>
-                          <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.66)', mt: 0.2 }}>
-                            {tt(
-                              `${focusCourse?.resourceCount || 0} filer og lenker knyttet til nåværende kurs.`,
-                              `${focusCourse?.resourceCount || 0} files and links tied to the current course.`,
-                            )}
-                          </Typography>
-                        </Box>
+                        {weekPlan.map((item) => (
+                          <Box
+                            key={item.id}
+                            sx={{
+                              px: 0.8,
+                              py: 0.8,
+                              borderRadius: 1,
+                              border:
+                                item.tone === 'attention'
+                                  ? 'var(--academy-hairline-width, 1px) solid rgba(226,117,74,0.24)'
+                                  : item.tone === 'celebrate'
+                                    ? 'var(--academy-hairline-width, 1px) solid rgba(154,210,123,0.24)'
+                                    : item.tone === 'primary'
+                                      ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.24)'
+                                      : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
+                              bgcolor:
+                                item.tone === 'attention'
+                                  ? 'rgba(72,28,21,0.72)'
+                                  : item.tone === 'celebrate'
+                                    ? 'rgba(17,31,22,0.72)'
+                                    : item.tone === 'primary'
+                                      ? 'rgba(248,179,33,0.08)'
+                                      : 'rgba(10,14,22,0.72)',
+                            }}
+                          >
+                            <Typography sx={{ fontWeight: 700 }}>{item.title}</Typography>
+                            <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.66)', mt: 0.2 }}>
+                              {item.detail}
+                            </Typography>
+                          </Box>
+                        ))}
                       </Stack>
                     </>
                   )}

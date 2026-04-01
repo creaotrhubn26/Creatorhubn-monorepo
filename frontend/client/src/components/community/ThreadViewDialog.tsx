@@ -21,18 +21,33 @@ import {
   CircularProgress,
   Paper,
   InputAdornment,
+  Alert,
 } from '@mui/material';
 import {
   Close,
   Send,
   Reply as ReplyIcon,
-  AttachFile,
 } from '@mui/icons-material';
 import { formatDistanceToNow } from 'date-fns';
 import { nb } from 'date-fns/locale';
 import { apiRequest } from '@/lib/queryClient';
 import type { VirtuosoHandle } from 'react-virtuoso';
 import { Virtuoso } from 'react-virtuoso';
+import {
+  COMMUNITY_DIALOG_ACTIONS_SX,
+  COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
+  COMMUNITY_DIALOG_CONTENT_SX,
+  COMMUNITY_DIALOG_FIELD_SX,
+  COMMUNITY_DIALOG_MUTED,
+  COMMUNITY_DIALOG_PAPER_SX,
+  COMMUNITY_DIALOG_PRIMARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SECONDARY_BUTTON_SX,
+  COMMUNITY_DIALOG_SURFACE_SX,
+  COMMUNITY_DIALOG_SURFACE_SUBTLE_SX,
+  COMMUNITY_DIALOG_SX,
+  COMMUNITY_DIALOG_TEXT,
+  COMMUNITY_DIALOG_TITLE_SX,
+} from './communityDialogStyles';
 
 interface ThreadMessage {
   id: string;
@@ -50,7 +65,7 @@ interface ThreadViewDialogProps {
   onClose: () => void;
   messageId: string;
   userId: string;
-  channelId: string;
+  channelId?: string;
 }
 
 export default function ThreadViewDialog({
@@ -87,7 +102,7 @@ export default function ThreadViewDialog({
   };
 
   const handleSendReply = async () => {
-    if (!replyContent.trim() || sending) return;
+    if (!replyContent.trim() || sending || !channelId) return;
 
     try {
       setSending(true);
@@ -100,7 +115,7 @@ export default function ThreadViewDialog({
         }),
       });
 
-      setReplyContent(', ');
+      setReplyContent('');
       await fetchThread(); // Refresh thread
 
       // Scroll to bottom to show new reply
@@ -122,31 +137,41 @@ export default function ThreadViewDialog({
     <Paper
       key={message.id}
       sx={{
-        p: 2,
+        ...(isParent ? COMMUNITY_DIALOG_SURFACE_SX : COMMUNITY_DIALOG_SURFACE_SUBTLE_SX),
+        p: 2.25,
         mb: 2,
-        bgcolor: isParent ? 'primary.light' : 'background.paper',
-        border: isParent ? 2 : 1,
-        borderColor: isParent ? 'primary.main' : 'divider'}}
+        border: isParent
+          ? '1px solid rgba(245, 166, 35, 0.24)'
+          : '1px solid rgba(255,255,255,0.08)',
+      }}
     >
       <Box sx={{ display: 'flex', gap: 2 }}>
-        <Avatar src={message.user_avatar} sx={{ width: 40, height: 40 }}>
+        <Avatar
+          src={message.user_avatar}
+          sx={{
+            width: 40,
+            height: 40,
+            bgcolor: isParent ? 'rgba(245, 166, 35, 0.18)' : 'rgba(255,255,255,0.08)',
+            color: isParent ? '#f5a623' : COMMUNITY_DIALOG_TEXT,
+          }}
+        >
           {message.user_name?.charAt(0).toUpperCase()}
         </Avatar>
         <Box sx={{ flex: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-            <Typography variant="subtitle2" fontWeight={600}>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ color: COMMUNITY_DIALOG_TEXT }}>
               {message.user_name}
             </Typography>
             {isParent && (
-              <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600}}>
+              <Typography variant="caption" sx={{ color: '#ffd27a', fontWeight: 700 }}>
                 Original melding
               </Typography>
             )}
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
               {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: nb })}
             </Typography>
           </Box>
-          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: COMMUNITY_DIALOG_TEXT }}>
             {message.content}
           </Typography>
         </Box>
@@ -155,23 +180,32 @@ export default function ThreadViewDialog({
   );
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      sx={COMMUNITY_DIALOG_SX}
+      PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
+    >
+      <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <ReplyIcon />
-            <Typography variant="h6">Tråd</Typography>
+            <ReplyIcon sx={{ color: '#ffd27a' }} />
+            <Typography variant="h6" sx={{ fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
+              Tråd
+            </Typography>
           </Box>
-          <IconButton onClick={onClose} size="small">
+          <IconButton onClick={onClose} size="small" sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
             <Close />
           </IconButton>
         </Box>
       </DialogTitle>
 
-      <DialogContent dividers>
+      <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX} dividers>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress />
+            <CircularProgress sx={{ color: '#f5a623' }} />
           </Box>
         ) : (
           <>
@@ -179,15 +213,15 @@ export default function ThreadViewDialog({
             {parentMessage && renderMessage(parentMessage, true)}
 
             <Divider sx={{ my: 2 }}>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                 {replies.length} {replies.length === 1 ? 'svar' : 'svar'}
               </Typography>
             </Divider>
 
             {/* Replies - Virtualized for performance */}
             {replies.length === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="body2" color="text.secondary">
+              <Box sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, textAlign: 'center', py: 4 }}>
+                <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                   Ingen svar ennå. Vær den første til å svare!
                 </Typography>
               </Box>
@@ -211,7 +245,12 @@ export default function ThreadViewDialog({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ p: 2 }}>
+      <DialogActions sx={{ ...COMMUNITY_DIALOG_ACTIONS_SX, alignItems: 'stretch' }}>
+        {!channelId && (
+          <Alert severity="warning" sx={{ width: '100%', mr: 1 }}>
+            Velg en kanal først for å kunne sende svar i denne tråden.
+          </Alert>
+        )}
         <TextField
           fullWidth
           multiline
@@ -231,17 +270,18 @@ export default function ThreadViewDialog({
               <InputAdornment position="end">
                 <IconButton
                   onClick={handleSendReply}
-                  disabled={!replyContent.trim() || sending}
-                  color="primary"
+                  disabled={!replyContent.trim() || sending || !channelId}
+                  sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}
                 >
-                  {sending ? <CircularProgress size={24} /> : <Send />}
+                  {sending ? <CircularProgress size={24} sx={{ color: '#f5a623' }} /> : <Send />}
                 </IconButton>
               </InputAdornment>
-            )}}
+            ),
+          }}
+          sx={COMMUNITY_DIALOG_FIELD_SX}
         />
       </DialogActions>
     </Dialog>
   );
 }
-
 

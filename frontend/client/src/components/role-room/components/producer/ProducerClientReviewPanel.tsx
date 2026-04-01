@@ -631,6 +631,17 @@ export default function ProducerClientReviewPanel({
     );
     const workspace = targetEntityType === 'client_material'
       ? 'materials'
+      : targetEntityType === 'storyboard_frame' || review.review_type === 'storyboard'
+        ? 'storyboard'
+      : targetEntityType === 'manuscript'
+        || targetEntityType === 'manuscript_scene'
+        || targetEntityType === 'dialogue_line'
+        || review.review_type === 'manuscript'
+        ? 'manuscript'
+      : targetEntityType === 'shotlist'
+        || targetEntityType === 'shot'
+        || review.review_type === 'shotlist'
+        ? 'shotlist'
       : targetEntityType === 'account_access' || review.review_type === 'account_access'
         ? 'accounts'
       : targetEntityType === 'content_calendar'
@@ -641,9 +652,6 @@ export default function ProducerClientReviewPanel({
           || review.review_type === 'budget_package'
           || review.review_type === 'client_approval'
           || review.review_type === 'change_order'
-          || review.review_type === 'storyboard'
-          || review.review_type === 'manuscript'
-          || review.review_type === 'shotlist'
         ? 'delivery'
         : 'brief';
     const location = getProducerWorkspaceLocationForSurface(producerPlanning?.workspaceNavigation, workspace);

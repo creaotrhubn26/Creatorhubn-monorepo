@@ -55,6 +55,12 @@ type LightroomWorkspaceStatus = {
   warning: string | null;
 };
 
+type LightroomUserWorkspaceRecord = {
+  googleEmail: string | null;
+  storedScopes: string[];
+  connectionState: string | null;
+};
+
 type LightroomAuthSource =
   | 'role_room_connection'
   | 'env_refresh_token'
@@ -817,7 +823,57 @@ async function getRecentRuns(pool: Pool, userId: string): Promise<LightroomSimul
   return result.rows;
 }
 
+async function getUserScopedWorkspaceRecord(
+  pool: Pool,
+  userId: string,
+): Promise<LightroomUserWorkspaceRecord | null> {
+  try {
+    const result = await pool.query<{
+      google_email: string | null;
+      scopes: unknown;
+      connection_state: string | null;
+    }>(
+      `SELECT google_email, scopes, connection_state
+       FROM role_room_google_connections
+       WHERE user_id = $1
+       LIMIT 1`,
+      [userId],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      googleEmail: readString(row.google_email),
+      storedScopes: Array.isArray(row.scopes)
+        ? row.scopes.filter((entry): entry is string => typeof entry === 'string')
+        : [],
+      connectionState: readString(row.connection_state),
+    };
+  } catch (error) {
+    const code = (error as { code?: string } | null)?.code;
+    if (code === '42P01') {
+      return null;
+    }
+    throw error;
+  }
+}
+
 async function resolveWorkspaceStatus(pool: Pool, userId: string): Promise<LightroomWorkspaceStatus> {
+  const userScopedRecord = await getUserScopedWorkspaceRecord(pool, userId);
+  if (!userScopedRecord) {
+    return {
+      connected: false,
+      googleEmail: null,
+      storedScopes: [],
+      error: 'Google Workspace er ikke koblet til denne brukeren.',
+      source: null,
+      warning: 'Koble Google Workspace for denne brukeren før Lightroom publiserer til Google Drive.',
+    };
+  }
+
   try {
     const connection = await resolveLightroomGoogleConnection(pool, userId);
     return {
@@ -833,11 +889,13 @@ async function resolveWorkspaceStatus(pool: Pool, userId: string): Promise<Light
   } catch (error) {
     return {
       connected: false,
-      googleEmail: null,
-      storedScopes: [],
+      googleEmail: userScopedRecord.googleEmail,
+      storedScopes: userScopedRecord.storedScopes,
       error: error instanceof Error ? error.message : 'Google Workspace er ikke koblet til.',
-      source: null,
-      warning: null,
+      source: 'role_room_connection',
+      warning: userScopedRecord.connectionState === 'connected'
+        ? 'Google Workspace-koblingen finnes, men må fornyes før Lightroom kan bruke Google Drive.'
+        : 'Koble Google Workspace på nytt for å aktivere Lightroom-eksport til Google Drive.',
     };
   }
 }
@@ -1318,8 +1376,30 @@ export function createLightroomRouter(pool: Pool): Router {
   router.get('/status', async (req, res) => {
     try {
       const userId = resolveRequesterUserId(req);
-      if (!userId) {
-        res.status(401).json({ error: 'Brukeridentitet mangler.' });
+      if (!userId || userId === 'guest') {
+        res.json({
+          connected: false,
+          pluginVersion: LIGHTROOM_PLUGIN_VERSION,
+          tokenPreview: null,
+          workspaceConnected: false,
+          googleEmail: null,
+          storedScopes: [],
+          workspaceError: 'Brukeridentitet mangler.',
+          workspaceSource: null,
+          workspaceWarning: 'Logg inn eller velg en bruker før Lightroom kobles til.',
+          driveRootFolderId: null,
+          driveRootFolderName: null,
+          driveRootFolderUrl: null,
+          lastSyncAt: null,
+          lastShowcaseItemId: null,
+          lastDriveFileId: null,
+          lastError: null,
+          syncStatus: 'idle',
+          configuration: {},
+          packageDownloadUrl: '/api/lightroom/download-plugin',
+          apiBaseUrl: resolveLightroomApiBase(req),
+          recentRuns: [],
+        });
         return;
       }
 

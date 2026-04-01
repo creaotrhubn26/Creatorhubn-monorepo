@@ -1,388 +1,544 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';
-import { getMissingFolders, getAccessibleFolders } from '../../utils/folderFeatureMapping';
+import React from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Box,
+  Button,
   Card as MuiCard,
   CardContent,
-  Typography,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Alert,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
   CircularProgress,
   Divider,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Stack,
-  Paper,
-  Tabs,
-  Tab,
   IconButton,
-  Switch,
-  FormControlLabel,
-  LinearProgress,
+  InputAdornment,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  MenuItem,
+  Stack,
+  TextField,
   Tooltip,
-  Badge,
-  Grid,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
+  Typography,
 } from '@mui/material';
 import {
+  CheckCircle,
   CloudDone,
+  CloudUpload,
   Folder,
   FolderOpen,
-  CreateNewFolder,
-  Settings,
-  CheckCircle,
-  Warning,
-  Error as ErrorIcon,
-  History,
-  Backup,
-  Sync,
-  Edit,
-  Undo,
-  Redo,
-  RestoreFromTrash,
-  Schedule,
-  Security,
-  Group,
-  Share,
-  Lock,
-  Visibility,
-  MoreVert,
+  Google as GoogleIcon,
+  Link as LinkIcon,
   Refresh,
-  Launch,
-  ContentCopy,
-  ExpandMore,
-  LockOpen,
-  Upgrade,
+  Search,
+  Share,
+  Storage,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { lightroomIntegrationService } from '@/services/lightroomIntegrationService';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';
+
+type SupportedProfession =
+  | 'photographer'
+  | 'videographer'
+  | 'music_producer'
+  | 'vendor'
+  | 'enterprise';
+
+type ProjectLike = {
+  id?: string | null;
+  title?: string | null;
+  name?: string | null;
+  projectName?: string | null;
+  clientName?: string | null;
+  customerName?: string | null;
+  companyName?: string | null;
+  company?: string | null;
+  customerId?: string | null;
+  clientId?: string | null;
+  status?: string | null;
+};
+
+type ProjectRecord = ProjectLike & {
+  id: string;
+  title?: string | null;
+};
 
 interface GoogleDriveManagerProps {
   userId: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
-  // Integration props for universal workflow connectivity
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void
+  profession: SupportedProfession;
+  showWorkspaceReconnectAction?: boolean;
+  onFileUpload?: (file: unknown) => void;
+  onFileDownload?: (file: unknown) => void;
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  selectedProject?: ProjectLike | null;
+  projects?: ProjectLike[];
+  onProjectSelect?: (project: Record<string, unknown>) => void;
 }
 
-interface FolderChange {
+interface GoogleDriveStatusResponse {
+  connected: boolean;
+  status: string;
+  message?: string;
+  syncEnabled?: boolean;
+  accountEmail?: string | null;
+  lastSync?: string | null;
+}
+
+interface DriveSection {
   id: string;
-  originalName: string;
-  newName: string;
-  action: 'rename' | 'create' | 'delete' | 'move';
-  timestamp: Date;
-  projectId: string
+  label: string;
+  description: string;
+  category: string;
+  recommended: boolean;
+  folderId: string | null;
+  folderName: string | null;
+  query: string | null;
+  scope: string | null;
 }
 
-interface BackupStatus {
-  lastBackup: Date;
-  nextBackup: Date;
-  status: 'idle' | 'running' | 'error';
-  totalFiles: number;
-  backedUpFiles: number
-}
-
-interface FolderPermissions {
-  userId: string;
-  email: string;
-  role: 'viewer' | 'editor' | 'owner';
-  expires?: Date
-}
-
-interface ProjectFolder {
+interface DriveFolderSummary {
   id: string;
   name: string;
-  webViewLink: string;
-  createdAt: string;
-  subFolders: {
+  webViewLink: string | null;
+  modifiedTime: string | null;
+}
+
+interface DriveContextResponse {
+  customerFolder?: DriveFolderSummary | null;
+  projectFolder?: DriveFolderSummary | null;
+  sections: DriveSection[];
+  recentFolders: DriveFolderSummary[];
+  folderStructure: {
+    source: string;
+    folders: string[];
+    quoteFolderName: string;
+    contractFolderName: string;
+    primaryFolderId: string | null;
+    primaryFolderName: string | null;
+    primaryScope: string | null;
+  };
+  customerContext: {
+    customerId: string | null;
+    customerName: string | null;
+    companyName: string | null;
+    projectId: string | null;
+    folderId: string | null;
+    folderName: string | null;
+    folderReady: boolean;
+  };
+}
+
+interface DriveFileRecord {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number | null;
+  modifiedTime: string | null;
+  webViewLink: string | null;
+  webContentLink: string | null;
+}
+
+interface DriveFilesResponse {
+  files: DriveFileRecord[];
+}
+
+interface ContextualUploadResponse {
+  success: boolean;
+  destinationFolder?: {
     id: string;
     name: string;
-}[];
+    webViewLink: string | null;
+    scope: string | null;
+  } | null;
+  uploaded: DriveFileRecord[];
 }
 
-interface GoogleDriveStatus {
-  success: boolean;
-  workloadIdentitySuccess: boolean;
-  oauthAvailable: boolean;
-  recommendation: string;
-  message: string
-}
+const readNonEmptyString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
 
-interface Project {
-  id: string;
-  title: string;
-  clientName: string;
-  profession: string;
-  status: string
-}
+const formatDateTime = (value: string | null | undefined): string => {
+  if (!value) {
+    return 'Ikke tilgjengelig';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Ikke tilgjengelig';
+  }
+  return parsed.toLocaleString('no-NO', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const formatFileSize = (value: number | null): string => {
+  if (!Number.isFinite(value) || !value || value <= 0) {
+    return 'Ukjent størrelse';
+  }
+  if (value < 1024 * 1024) {
+    return `${Math.max(1, Math.round(value / 1024))} KB`;
+  }
+  if (value < 1024 * 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+};
+
+const buildProjectLabel = (project: ProjectLike | null | undefined): string => {
+  return (
+    readNonEmptyString(project?.title)
+    || readNonEmptyString(project?.projectName)
+    || readNonEmptyString(project?.name)
+    || 'Velg prosjekt'
+  );
+};
+
+const buildCustomerLabel = (project: ProjectLike | null | undefined): string => {
+  return (
+    readNonEmptyString(project?.clientName)
+    || readNonEmptyString(project?.customerName)
+    || readNonEmptyString(project?.companyName)
+    || readNonEmptyString(project?.company)
+    || 'Ingen kunde valgt'
+  );
+};
 
 export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
   userId,
   profession,
+  showWorkspaceReconnectAction = true,
   onFileUpload,
   onFileDownload,
   onProjectUpdate,
   selectedProject,
-  onProjectSelect
+  projects: providedProjects,
+  onProjectSelect,
 }) => {
-  const [selectedTab, setSelectedTab] = useState(0);
-  const [createFolderOpen, setCreateFolderOpen] = useState(false);
-  const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [showMissingFolders, setShowMissingFolders] = useState(true);
-  const [currentProject, setCurrentProject] = useState<Project | null>(null);
-  const [changeTrackingEnabled, setChangeTrackingEnabled] = useState(true);
-  const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
-  const [selectedFolder, setSelectedFolder] = useState<ProjectFolder | null>(null);
-  const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false);
-  const [backupDialogOpen, setBackupDialogOpen] = useState(false);
-  
   const queryClient = useQueryClient();
-
-  // Master Integration Provider
-  const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
-  
-  // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(profession);
+  const { communication, componentRegistry, dataFlow } = useEnhancedMasterIntegration();
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Check Google Drive hybrid service status
-  const { data: driveStatus, isLoading: statusLoading } = useQuery({
-    queryKey: ['google-drive-status'],
-    queryFn: async () => {
-      const response = await fetch('/test/api/google-drive/hybrid/test');
-      return response.json() as Promise<GoogleDriveStatus>;
+  const [selectedProjectId, setSelectedProjectId] = React.useState<string>(
+    readNonEmptyString(selectedProject?.id) || '',
+  );
+  const [selectedSectionId, setSelectedSectionId] = React.useState<string>('all-drive');
+  const [searchTerm, setSearchTerm] = React.useState('');
+
+  const normalizedSelectedProjectId = readNonEmptyString(selectedProject?.id);
+
+  React.useEffect(() => {
+    if (normalizedSelectedProjectId && normalizedSelectedProjectId !== selectedProjectId) {
+      setSelectedProjectId(normalizedSelectedProjectId);
     }
-  });
+  }, [normalizedSelectedProjectId, selectedProjectId]);
 
-  // Fetch all projects for the user
-  const { data: projects = [], isLoading: projectsLoading } = useQuery({
-    queryKey: ['projects', profession, userId],
+  const projectsQuery = useQuery<ProjectRecord[]>({
+    queryKey: ['dashboard-projects', profession, userId],
     queryFn: async () => {
-      const response = await fetch(`/api/dashboard/${profession}/${userId}`);
-      if (!response.ok) throw new Error('Failed to fetch projects');
-      const data = await response.json();
-      return data.projects as Project[];
-    }
-  });
-
-  // Fetch project folders
-  const { data: projectFolders = [], isLoading: foldersLoading } = useQuery({
-    queryKey: ['google-drive-project-folders', userId],
-    queryFn: async () => {
-      const response = await fetch(`/api/google-drive/project-folders/${userId}`);
-      if (!response.ok) return [];
-      const data = await response.json();
-      // Ensure we always return an array
-      return Array.isArray(data) ? data : [];
-    }
-  });
-
-  // Fetch folder changes for tracking
-  const { data: folderChanges = [], isLoading: changesLoading } = useQuery({
-    queryKey: ['google-drive-changes', userId],
-    queryFn: async () => {
-      const response = await fetch(`/api/google-drive/folder-changes/${userId}`);
-      if (!response.ok) return [];
-      const data = await response.json();
-      // Ensure we always return an array
-      return Array.isArray(data) ? data : [];
+      const response = await apiRequest(`/api/projects?profession=${encodeURIComponent(profession)}&userId=${encodeURIComponent(userId)}`);
+      return Array.isArray(response) ? response as ProjectRecord[] : [];
     },
-    enabled: changeTrackingEnabled
+    enabled: Boolean(userId) && userId !== 'guest',
   });
 
-  // Fetch backup status
-  const { data: backupStatus, isLoading: backupLoading } = useQuery({
-    queryKey: ['google-drive-backup-status', userId],
-    queryFn: async () => {
-      const response = await fetch(`/api/google-drive/backup-status/${userId}`);
-      if (!response.ok) return null;
-      return await response.json() as BackupStatus;
+  const projects = React.useMemo<ProjectRecord[]>(
+    () => {
+      const normalizedProvidedProjects = Array.isArray(providedProjects)
+        ? providedProjects
+          .filter((project): project is ProjectRecord => typeof project?.id === 'string' && project.id.trim().length > 0)
+          .map((project) => ({
+            ...project,
+            id: project.id.trim(),
+          }))
+        : [];
+
+      if (normalizedProvidedProjects.length > 0) {
+        return normalizedProvidedProjects;
+      }
+
+      return Array.isArray(projectsQuery.data) ? projectsQuery.data : [];
     },
-    refetchInterval: 30000 // Update every 30 seconds
-  });
-
-  // Fetch user subscription to determine plan level
-  const { data: userSubscription } = useQuery({
-    queryKey: ['user-subscription'],
-    queryFn: () => apiRequest('/api/user/subscription-status'),
-    staleTime: 30000,
-  });
-
-  // Calculate user plan level
-  const userPlan: 'basic' | 'pro' | 'enterprise' = React.useMemo(() => {
-    if (!userSubscription?.planName) return 'basic';
-    const planName = userSubscription.planName.toLowerCase();
-    if (planName.includes('enterprise')) return 'enterprise';
-    if (planName.includes('pro') || planName.includes('premium')) return 'pro';
-    return 'basic';
-  }, [userSubscription]);
-
-  // Calculate accessible and missing folders
-  const accessibleFolders = React.useMemo(() =>
-    getAccessibleFolders(profession, userPlan),
-    [profession, userPlan]
+    [providedProjects, projectsQuery.data],
   );
 
-  const missingFolders = React.useMemo(() =>
-    getMissingFolders(profession, userPlan),
-    [profession, userPlan]
+  const activeProject = React.useMemo(() => {
+    if (normalizedSelectedProjectId) {
+      return selectedProject ?? projects.find((project) => project.id === normalizedSelectedProjectId) ?? null;
+    }
+    if (selectedProjectId) {
+      return projects.find((project) => project.id === selectedProjectId) ?? null;
+    }
+    return selectedProject ?? null;
+  }, [normalizedSelectedProjectId, projects, selectedProject, selectedProjectId]);
+
+  const activeProjectId = readNonEmptyString(activeProject?.id) || null;
+  const resolvedProjectName =
+    readNonEmptyString(activeProject?.title)
+    || readNonEmptyString(activeProject?.projectName)
+    || readNonEmptyString(activeProject?.name)
+    || null;
+  const projectName = resolvedProjectName || 'Velg prosjekt';
+  const customerName =
+    readNonEmptyString(activeProject?.clientName)
+    || readNonEmptyString(activeProject?.customerName)
+    || null;
+  const companyName =
+    readNonEmptyString(activeProject?.companyName)
+    || readNonEmptyString(activeProject?.company)
+    || null;
+  const customerId =
+    readNonEmptyString(activeProject?.customerId)
+    || readNonEmptyString(activeProject?.clientId)
+    || null;
+
+  const driveStatusQuery = useQuery<GoogleDriveStatusResponse>({
+    queryKey: ['file-management-google-drive-status', userId],
+    queryFn: async () => apiRequest(`/api/file-management/google-drive/status?userId=${encodeURIComponent(userId)}`),
+  });
+
+  const driveContextQuery = useQuery<DriveContextResponse>({
+    queryKey: [
+      'google-drive-context',
+      userId,
+      profession,
+      activeProjectId,
+      customerId,
+      customerName,
+      companyName,
+      resolvedProjectName,
+    ],
+    queryFn: async () => {
+      const search = new URLSearchParams({
+        userId,
+        profession,
+      });
+      if (activeProjectId) search.set('projectId', activeProjectId);
+      if (resolvedProjectName) search.set('projectName', resolvedProjectName);
+      if (customerId) search.set('customerId', customerId);
+      if (customerName) search.set('customerName', customerName);
+      if (companyName) search.set('companyName', companyName);
+      return apiRequest(`/api/google/drive/context?${search.toString()}`);
+    },
+    enabled: driveStatusQuery.data?.connected === true,
+  });
+
+  const sections = driveContextQuery.data?.sections ?? [];
+
+  React.useEffect(() => {
+    if (sections.length === 0) {
+      setSelectedSectionId('all-drive');
+      return;
+    }
+
+    const hasSelected = sections.some((section) => section.id === selectedSectionId);
+    if (!hasSelected) {
+      const recommended =
+        sections.find((section) => section.recommended && section.folderId)
+        || sections.find((section) => section.folderId)
+        || sections[0];
+      setSelectedSectionId(recommended?.id || 'all-drive');
+    }
+  }, [sections, selectedSectionId]);
+
+  const selectedSection = React.useMemo(
+    () => sections.find((section) => section.id === selectedSectionId) ?? null,
+    [sections, selectedSectionId],
   );
 
-  // Initialize OAuth if needed
-  const initOAuthMutation = useMutation({
+  const primaryFolderId = selectedSection?.folderId || driveContextQuery.data?.folderStructure.primaryFolderId || null;
+  const primaryFolderName = selectedSection?.folderName || driveContextQuery.data?.folderStructure.primaryFolderName || null;
+
+  const driveFilesQuery = useQuery<DriveFilesResponse>({
+    queryKey: ['google-drive-files', userId, primaryFolderId, searchTerm],
+    queryFn: async () => {
+      const search = new URLSearchParams({
+        userId,
+        pageSize: '18',
+      });
+      if (primaryFolderId) {
+        search.set('folderId', primaryFolderId);
+      }
+      const normalizedSearch = searchTerm.trim();
+      if (normalizedSearch) {
+        search.set('search', normalizedSearch);
+      }
+      return apiRequest(`/api/google/drive/files?${search.toString()}`);
+    },
+    enabled: driveStatusQuery.data?.connected === true,
+  });
+
+  const refreshMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest('/test/api/google-drive/hybrid/init-oauth', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        
+      return apiRequest('/api/google/drive/context', {
         method: 'POST',
-        body: JSON.stringify({ userId })
+        body: {
+          userId,
+          profession,
+          projectId: activeProjectId,
+          projectName: resolvedProjectName,
+          customerId,
+          customerName,
+          companyName,
+        },
       });
     },
-    onSuccess: (data: any) => {
-      if (data.authUrl) {
-        window.open(data.authUrl, '_blank');
+    onSuccess: (payload: unknown) => {
+      void queryClient.invalidateQueries({ queryKey: ['google-drive-context', userId] });
+      void queryClient.invalidateQueries({ queryKey: ['google-drive-files', userId] });
+      void queryClient.invalidateQueries({ queryKey: ['file-management-google-drive-status', userId] });
+
+      if (
+        onProjectUpdate
+        && payload
+        && typeof payload === 'object'
+        && activeProjectId
+      ) {
+        const data = payload as DriveContextResponse;
+        onProjectUpdate({
+          id: activeProjectId,
+          driveFolderId: data.folderStructure?.primaryFolderId ?? null,
+          driveFolderName: data.folderStructure?.primaryFolderName ?? null,
+          driveCustomerFolderId: data.customerContext?.folderId ?? null,
+          driveCustomerFolderName: data.customerContext?.folderName ?? null,
+        });
       }
-    }
+    },
   });
 
-  // Create project folder with advanced structure
-  const createFolderMutation = useMutation({
-    mutationFn: async (folderData: {
-      userId: string;
-      projectName: string;
-      clientName: string;
-      companyName: string;
-      projectId: string;
-      enableChangeTracking?: boolean;
-      autoBackup?: boolean;
-      clientPermissions?: string;
-}) => {
-      return apiRequest('/api/google-drive/create-project-folder-advanced', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        
+  const reconnectMutation = useMutation({
+    mutationFn: async () => lightroomIntegrationService.startGoogleWorkspaceReconnect(),
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: async (files: File[]) => {
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+      formData.append('userId', userId);
+      formData.append('profession', profession);
+      if (activeProjectId) {
+        formData.append('projectId', activeProjectId);
+      }
+      if (resolvedProjectName) {
+        formData.append('projectName', resolvedProjectName);
+      }
+      if (customerId) {
+        formData.append('customerId', customerId);
+      }
+      if (customerName) {
+        formData.append('customerName', customerName);
+      }
+      if (companyName) {
+        formData.append('companyName', companyName);
+      }
+      if (selectedSection?.id) {
+        formData.append('sectionId', selectedSection.id);
+      }
+      if (selectedSection?.label) {
+        formData.append('sectionLabel', selectedSection.label);
+      }
+      if (selectedSection?.folderId) {
+        formData.append('targetFolderId', selectedSection.folderId);
+      }
+      if (selectedSection?.folderName) {
+        formData.append('targetFolderName', selectedSection.folderName);
+      }
+      if (selectedSection?.scope) {
+        formData.append('targetScope', selectedSection.scope);
+      }
+      return apiRequest('/api/google/drive/upload-contextual', {
         method: 'POST',
-        body: JSON.stringify({
-          ...folderData,
-          enableChangeTracking: changeTrackingEnabled,
-          autoBackup: autoBackupEnabled
-    })
-    });
-  },
-    onSuccess: () => {
-      setCreateFolderOpen(false);
-      setSelectedProjectId('');
-      setCurrentProject(null);
-      queryClient.invalidateQueries({ queryKey: ['google-drive-project-folders', ],});
-      queryClient.invalidateQueries({ queryKey: ['google-drive-changes', ],});
-  }
-});
+        body: formData,
+      });
+    },
+    onSuccess: (payload: unknown) => {
+      void queryClient.invalidateQueries({ queryKey: ['google-drive-files', userId] });
+      void queryClient.invalidateQueries({ queryKey: ['google-drive-context', userId] });
 
-  function handleBackupProject(projectId: string) {
-    manualBackupMutation.mutate(projectId);
-  }
+      const response = payload as ContextualUploadResponse;
+      if (Array.isArray(response?.uploaded)) {
+        response.uploaded.forEach((file) => onFileUpload?.(file));
+      }
+    },
+  });
 
-  // Register component with MasterIntegrationProvider
-  useEffect(() => {
+  const shareMutation = useMutation({
+    mutationFn: async (fileId: string) => {
+      return apiRequest(`/api/google/drive/files/${encodeURIComponent(fileId)}/share`, {
+        method: 'POST',
+        body: {
+          userId,
+          shareMode: 'link',
+          ensureAccessible: true,
+        },
+      });
+    },
+  });
+
+  React.useEffect(() => {
     componentRegistry.registerComponent({
       id: 'GoogleDriveManager',
       name: 'Google Drive Manager',
       type: 'widget',
       category: 'integrations',
       profession,
-      version: '1.0.0',
-      capabilities: ['google-drive', 'file-management', 'project-sync'],
+      version: '2.0.0',
+      capabilities: ['google-drive', 'file-management', 'project-sync', 'file-upload'],
       dependencies: [],
-      events: ['google-drive:init-oauth', 'google-drive:create-folder', 'google-drive:backup', 'google-drive:save-file'],
-      dataKeys: ['drive-status', 'project-folders', 'backup-status'],
-      props: ['userId', 'profession'],
+      events: ['google-drive:init-oauth', 'google-drive:create-folder', 'google-drive:save-file'],
+      dataKeys: ['drive-status', 'drive-context', 'drive-files'],
+      props: ['userId', 'profession', 'selectedProject'],
     });
 
-    // Set up data flow nodes
     const driveStatusNodeId = dataFlow.registerNode({
       type: 'source',
       componentId: 'GoogleDriveManager',
       dataKey: 'drive-status',
     });
-
-    const projectFoldersNodeId = dataFlow.registerNode({
+    const driveContextNodeId = dataFlow.registerNode({
       type: 'source',
       componentId: 'GoogleDriveManager',
-      dataKey: 'project-folders',
+      dataKey: 'drive-context',
     });
-
-    const backupStatusNodeId = dataFlow.registerNode({
+    const driveFilesNodeId = dataFlow.registerNode({
       type: 'source',
       componentId: 'GoogleDriveManager',
-      dataKey: 'backup-status',
+      dataKey: 'drive-files',
     });
 
-    void dataFlow.syncData('drive-status', driveStatus);
-    void dataFlow.syncData('project-folders', projectFolders);
-    void dataFlow.syncData('backup-status', backupStatus);
+    void dataFlow.syncData('drive-status', driveStatusQuery.data ?? null);
+    void dataFlow.syncData('drive-context', driveContextQuery.data ?? null);
+    void dataFlow.syncData('drive-files', driveFilesQuery.data?.files ?? []);
 
-    // Listen for Google Drive events
-    const unsubscribe = communication.onMessage((message: any) => {
+    const unsubscribe = communication.onMessage((message: Record<string, unknown>) => {
       if (message.type === 'google-drive:init-oauth') {
-        initOAuthMutation.mutate();
+        reconnectMutation.mutate();
       }
-      if (message.type === 'google-drive:create-folder' && message.data?.folderData) {
-        createFolderMutation.mutate(message.data.folderData);
+
+      if (message.type === 'google-drive:create-folder') {
+        refreshMutation.mutate();
       }
-      if (message.type === 'google-drive:backup' && message.data?.projectId) {
-        handleBackupProject(message.data.projectId);
-      }
-      if (message.type === 'google-drive:save-file' && message.data) {
-        const { fileName, fileBlob, folderPath, metadata } = message.data;
-        if (fileName && fileBlob) {
-          // Convert blob to base64 for API
-          const reader = new FileReader();
-          reader.onloadend = async () => {
-            try {
-              const response = await fetch('/api/google-drive/save-file', {
-                method: 'POST',
-                headers: { 'Content-Type' : 'application/json' },
-                body: JSON.stringify({
-                  fileName,
-                  fileData: reader.result,
-                  folderPath: folderPath || 'CreatorHub/Split Sheets',
-                  metadata
-                })
-              });
-              if (response.ok) {
-                queryClient.invalidateQueries({ queryKey: ['google-drive-project-folders'] });
-              }
-            } catch (error) {
-              console.error('Error saving file to Google Drive: ', error);
-            }
-          };
-          reader.readAsDataURL(fileBlob);
+
+      if (message.type === 'google-drive:save-file' && message.data && typeof message.data === 'object') {
+        const payload = message.data as Record<string, unknown>;
+        const rawBlob = payload.fileBlob;
+        const fileName = readNonEmptyString(payload.fileName) || `creatorhub-${Date.now()}.bin`;
+        if (rawBlob instanceof Blob) {
+          const file = rawBlob instanceof File
+            ? rawBlob
+            : new File([rawBlob], fileName, { type: rawBlob.type || 'application/octet-stream' });
+          uploadMutation.mutate([file]);
         }
       }
     });
@@ -390,1642 +546,483 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
     return () => {
       componentRegistry.unregisterComponent('GoogleDriveManager');
       dataFlow.unregisterNode(driveStatusNodeId);
-      dataFlow.unregisterNode(projectFoldersNodeId);
-      dataFlow.unregisterNode(backupStatusNodeId);
-      if (unsubscribe) unsubscribe();
-  };
-}, [driveStatus, projectFolders, backupStatus, componentRegistry, dataFlow, communication, initOAuthMutation, createFolderMutation, queryClient]);
+      dataFlow.unregisterNode(driveContextNodeId);
+      dataFlow.unregisterNode(driveFilesNodeId);
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [
+    communication,
+    componentRegistry,
+    dataFlow,
+    driveContextQuery.data,
+    driveFilesQuery.data?.files,
+    driveStatusQuery.data,
+    profession,
+    reconnectMutation,
+    refreshMutation,
+    uploadMutation,
+  ]);
 
-  // Undo folder change mutation
-  const undoChangeMutation = useMutation({
-    mutationFn: async (changeId: string) => {
-      return apiRequest(`/api/google-drive/undo-change/${changeId}`, {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        
-        method: 'POST'
-  });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['google-drive-changes', ],});
-      queryClient.invalidateQueries({ queryKey: ['google-drive-project-folders', ],});
-  }
-});
-
-  // Restore standard structure mutation
-  const restoreStructureMutation = useMutation({
-    mutationFn: async (projectId: string) => {
-      return apiRequest(`/api/google-drive/restore-standard-structure/${projectId}`, {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        
-        method: 'POST'
-  });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['google-drive-project-folders', ],});
-      queryClient.invalidateQueries({ queryKey: ['google-drive-changes', ],});
-  }
-});
-
-  // Manual backup mutation
-  const manualBackupMutation = useMutation({
-    mutationFn: async (projectId: string) => {
-      return apiRequest(`/api/google-drive/manual-backup/${projectId}`, {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        
-        method: 'POST'
-  });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['google-drive-backup-status', ],});
-  }
-});
-
-
-  const handleCreateFolder = () => {
-    if (!currentProject) {
-      return;
-  }
-
-    createFolderMutation.mutate({
-      userId,
-      projectName: currentProject.title,
-      clientName: currentProject.clientName,
-      companyName: getProfessionDefaultCompany(),
-      projectId: currentProject.id
-});
-};
-
-  const handleProjectSelect = (projectId: string) => {
+  const handleProjectChange = (projectId: string) => {
     setSelectedProjectId(projectId);
-    const project = projects?.find(p => p.id === projectId);
-    setCurrentProject(project || null);
-};
+    const project = projects.find((entry) => entry.id === projectId);
+    if (project && onProjectSelect) {
+      onProjectSelect(project);
+    }
+  };
 
-  const getProfessionDefaultCompany = () => {
-    switch (profession) {
-      case 'photographer': return 'Fotostudio';
-      case 'videographer': return 'Videostudio';
-      case 'music_producer': return 'Musikk Studio';
-      case 'vendor': return 'Leverandør';
-      default: return 'Bedrift';
-}
-};
+  const handleOpenLink = (url: string | null | undefined) => {
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
 
-  const getStatusColor = () => {
-    if (!driveStatus) return 'warning';
-    if (driveStatus.success && driveStatus.oauthAvailable) return 'success';
-    if (driveStatus.success) return 'info';
-    return 'error';
-};
+  const handleUploadSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length > 0) {
+      uploadMutation.mutate(files);
+    }
+    event.target.value = '';
+  };
 
-  const getStatusIcon = () => {
-    if (statusLoading) return <CircularProgress size={20} />;
-    if (!driveStatus) return <Warning />;
-    if (driveStatus.success && driveStatus.oauthAvailable) return <CheckCircle />;
-    if (driveStatus.success) return <CloudDone />;
-    return <ErrorIcon />;
-};
-
-  const tabData = [
-    { label: 'Oversikt', icon: <CloudDone /> },
-    { label: 'Mappestruktur', icon: <Folder /> },
-    { label: 'Endringshistorikk', icon: <History />,},
-    { label: 'Backup', icon: <Backup />,},
-    { label: 'Innstillinger', icon: <Settings /> }
-  ];
-
-  const standardFolders = [
-    'RAW - Originale bilder','Bearbeidede bilder','Leveranse til klient','Kontrakter og dokumenter','Kommunikasjon','Timeline og notater','Backup og sikkerhetskopier','Referansebilder og inspirasjon'
-  ];
+  const files = Array.isArray(driveFilesQuery.data?.files) ? driveFilesQuery.data.files : [];
+  const recentFolders = driveContextQuery.data?.recentFolders ?? [];
+  const workspaceConnected = driveStatusQuery.data?.connected === true;
+  const sectionCount = sections.length;
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <Paper elevation={1} sx={{ p:  3, borderRadius:  0 ,  ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+    <MuiCard elevation={0} sx={{ borderRadius: 3, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          spacing={2}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', lg: 'center' }}
+          sx={{ mb: 2.5 }}
+        >
           <Box>
-            <Typography variant="h5" sx={{  display: 'flex', alignItems: 'center', gap: 2, fontWeight: 600}}>
-              <Box
-                component="img"
-                src="https://fonts.gstatic.com/s/i/productlogos/drive_2020q4/v8/web-64dp/logo_drive_2020q4_color_2x_web_64dp.png"
-                alt="Google Drive"
-                sx={{ width: 32, height: 32 }}
-              />
-              Google Drive Mappeadministrasjon
+            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700 }}>
+              <Storage color="primary" />
+              Creatorhub Filsystem
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
-              8-mappestruktur automation med avansert endringssporing og backup
+            <Typography variant="body2" color="text.secondary">
+              Arbeid direkte i Creatorhub Filsystem med valgt prosjektkontekst, filvisning, deling og mappeoppdatering.
             </Typography>
           </Box>
-          
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Chip
-              icon={getStatusIcon()}
-              label={driveStatus?.success ? 'Tilkoblet' : 'Ikke tilkoblet'}
-              color={getStatusColor()}
-              variant="outlined"
-            />
-            
-            {backupStatus && (
-              <Chip
-                icon={<Backup />}
-                label={`Backup: ${backupStatus.status}`}
-                color={backupStatus.status === 'error' ? 'error' : 'success'}
-                variant="outlined"
-              />
-            )}
-            
+
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+            <Tooltip title="Oppdater status og mapper">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    void queryClient.invalidateQueries({ queryKey: ['file-management-google-drive-status', userId] });
+                    void queryClient.invalidateQueries({ queryKey: ['google-drive-context', userId] });
+                    void queryClient.invalidateQueries({ queryKey: ['google-drive-files', userId] });
+                  }}
+                >
+                  <Refresh />
+                </IconButton>
+              </span>
+            </Tooltip>
             <Button
               variant="outlined"
-              startIcon={theming.getThemedIcon('refresh')}
-              onClick={() => queryClient.invalidateQueries()}
+              size="small"
+              startIcon={<CloudDone />}
+              onClick={() => refreshMutation.mutate()}
+              disabled={refreshMutation.isPending || !workspaceConnected}
             >
-              Oppdater
+              {refreshMutation.isPending ? 'Oppdaterer…' : 'Oppdater Drive-kontekst'}
             </Button>
-            
-            <Button variant="contained"
-              startIcon={<CreateNewFolder />}
-              onClick={() => setCreateFolderOpen(true)}
-              disabled={!driveStatus?.oauthAvailable}
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<CloudUpload />}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!workspaceConnected || uploadMutation.isPending}
+              sx={theming.getThemedButtonSx()}
             >
-              Ny Prosjektmappe
+              {uploadMutation.isPending ? 'Laster opp…' : 'Last opp til Drive'}
             </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              multiple
+              onChange={handleUploadSelection}
+            />
           </Stack>
         </Stack>
-      </Paper>
 
-      <Box sx={{ 
-        flex: 1, 
-        display: 'flex', 
-        flexDirection: 'row',
-        gap: 3,
-        minHeight: 0,
-        overflow: 'hidden'
-      }}>
-        {/* Main Content */}
-        <Box sx={{ 
-          flex: 1, 
-          p: { xs: 2, md: 3 },
-          overflow: 'auto',
-          minWidth: 0
-        }}>
-          {/* Tabs */}
-          <Paper sx={{ 
-            mb: 4, 
-            ...theming.getThemedCardSx(),
-            borderRadius: 4,
-            overflow: 'hidden',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-            background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.05) 0%, rgba(33, 203, 243, 0.05) 100%)'
-          }}>
-            <Tabs
-              value={selectedTab}
-              onChange={(_, newValue) => setSelectedTab(newValue)}
-              indicatorColor="primary"
-              textColor="primary"
-              variant="scrollable"
-              scrollButtons="auto"
-              sx={{
-                '& .MuiTab-root': {
-                  minHeight: 72,
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                  textTransform: 'none',
-                  px: 3,
-                  '&.Mui-selected': {
-                    color: theming.colors.primary,
-                    fontWeight: 700
-                  }
-                },
-                '& .MuiTabs-indicator': {
-                  height: 3,
-                  borderRadius: '3px 3px 0 0'
-                }
-              }}
-            >
-              {tabData.map((tab, index) => (
-                <Tab
-                  key={index}
-                  icon={tab.icon}
-                  label={tab.label}
-                  iconPosition="start"
-                />
-              ))}
-            </Tabs>
-          </Paper>
+        {driveStatusQuery.isLoading && (
+          <Box sx={{ py: 2 }}>
+            <CircularProgress size={24} />
+          </Box>
+        )}
 
-          {/* Tab Content */}
-          {selectedTab === 0 && (
-            /* Overview Tab */
-            <Box>
-              <Grid container spacing={3}>
-                <Grid item xs={12} sm={6}>
-                  <MuiCard sx={{ 
-                    height: '100%',
-                    borderRadius: 4,
-                    bgcolor: theming.colors.primary,
-                    boxShadow: `0 8px 24px ${theming.colors.primary}40`,
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    '&:hover': {
-                      transform: 'translateY(-8px) scale(1.02)',
-                      boxShadow: `0 16px 48px ${theming.colors.primary}60`
-                    }
-                  }}>
-                    <CardContent sx={{ p: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                        <Box sx={{ 
-                          p: 1.5, 
-                          borderRadius: 3, 
-                          bgcolor: 'rgba(255,255,255,0.2)',
-                          display: 'flex'
-                        }}>
-                          {theming.getThemedIcon('folder', { sx: { color: '#fff' } })}
-                        </Box>
-                        <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600 }}>
-                          Prosjektmapper
-                        </Typography>
-                      </Box>
-                      <Typography variant="h2" sx={{ color: '#fff', mb: 1, fontWeight: 800, fontSize: '3rem' }}>
-                        {Array.isArray(projectFolders) ? projectFolders.length : 0}
-                      </Typography>
-                      <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
-                        Aktive prosjektmapper med 8-struktur
-                      </Typography>
-                    </CardContent>
-                  </MuiCard>
-                </Grid>
-                
-                <Grid item xs={12} sm={6}>
-                  <MuiCard sx={{ 
-                    height: '100%',
-                    borderRadius: 4,
-                    bgcolor: theming.colors.secondary,
-                    boxShadow: `0 8px 24px ${theming.colors.secondary}40`,
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    '&:hover': {
-                      transform: 'translateY(-8px) scale(1.02)',
-                      boxShadow: `0 16px 48px ${theming.colors.secondary}60`
-                    }
-                  }}>
-                    <CardContent sx={{ p: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                        <Box sx={{ 
-                          p: 1.5, 
-                          borderRadius: 3, 
-                          bgcolor: 'rgba(255,255,255,0.2)',
-                          display: 'flex'
-                        }}>
-                          <History sx={{ color: '#fff' }} />
-                        </Box>
-                        <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600 }}>
-                          Endringer i dag
-                        </Typography>
-                      </Box>
-                      <Typography variant="h2" sx={{ color: '#fff', mb: 1, fontWeight: 800, fontSize: '3rem' }}>
-                        {Array.isArray(folderChanges) ? folderChanges.filter(c => 
-                          new Date(c.timestamp).toDateString() === new Date().toDateString()
-                        ).length : 0}
-                      </Typography>
-                      <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
-                        Mappeendringer registrert
-                      </Typography>
-                    </CardContent>
-                  </MuiCard>
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <MuiCard sx={{ 
-                    borderRadius: 4,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
-                    overflow: 'hidden',
-                    border: '1px solid rgba(33, 150, 243, 0.15)'
-                  }}>
-                    <Box sx={{ 
-                      bgcolor: theming.colors.cardBackground,
-                      borderBottom: `3px solid ${theming.colors.primary}`,
-                      p: 3
-                    }}>
-                      <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 2 }}>
-                        {theming.getThemedIcon('folderOpen')}
-                        Siste prosjektmapper
-                      </Typography>
-                      <Typography variant="body1" sx={{ color: theming.colors.textSecondary, mt: 1 }}>
-                        De 5 nyeste prosjektmappene dine
-                      </Typography>
-                    </Box>
-                    <CardContent sx={{ ...theming.getThemedCardSx(), p: 0 }}>
-                      <List sx={{ '& .MuiListItem-root': { borderRadius: 0 } }}>
-                        {Array.isArray(projectFolders) && projectFolders.length > 0 ? projectFolders.slice(0, 5).map((folder, index) => (
-                        <ListItem 
-                          key={folder.id} 
-                          sx={{ 
-                            py: 3,
-                            px: 3,
-                            borderBottom: index < 4 ? `1px solid ${theming.colors.border}` : 'none',
-                            transition: 'all 0.2s',
-                            borderLeft: '4px solid transparent',
-                            '&:hover': { 
-                              bgcolor: `${theming.colors.primary}08`,
-                              borderLeftColor: theming.colors.primary,
-                              transform: 'translateX(4px)'
-                            }
-                          }}
-                        >
-                          <ListItemIcon>
-                            <Box sx={{ 
-                              p: 1.5, 
-                              borderRadius: 3, 
-                              bgcolor: `${theming.colors.primary}15`,
-                              display: 'flex'
-                            }}>
-                              {theming.getThemedIcon('folderOpen')}
-                            </Box>
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={
-                              <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                                {folder.name}
-                              </Typography>
-                            }
-                            secondary={
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                <Chip 
-                                  icon={<Schedule fontSize="small" />}
-                                  label={new Date(folder.createdAt).toLocaleDateString('nb-NO')} 
-                                  size="small"
-                                  sx={{ fontWeight: 500 }}
-                                />
-                              </Box>
-                            }
-                          />
-                          <Stack direction="row" spacing={1}>
-                            <Tooltip title="Åpne i Google Drive">
-                              <IconButton
-                                size="medium"
-                                onClick={() => window.open(folder.webViewLink, '_blank')}
-                                sx={{ 
-                                  bgcolor: `${theming.colors.primary}20`,
-                                  color: theming.colors.primary,
-                                  '&:hover': { 
-                                    bgcolor: `${theming.colors.primary}40`,
-                                    transform: 'scale(1.1)'
-                                  },
-                                  transition: 'all 0.2s'
-                                }}
-                              >
-                                {theming.getThemedIcon('launch')}
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Administrer tilganger">
-                              <IconButton
-                                size="medium"
-                                onClick={() => {
-                                  setSelectedFolder(folder);
-                                  setPermissionsDialogOpen(true);
-                              }}
-                                sx={{ 
-                                  bgcolor: `${theming.colors.secondary}20`,
-                                  color: theming.colors.secondary,
-                                  '&:hover': { 
-                                    bgcolor: `${theming.colors.secondary}40`,
-                                    transform: 'scale(1.1)'
-                                  },
-                                  transition: 'all 0.2s'
-                                }}
-                              >
-                                {theming.getThemedIcon('group')}
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
-                        </ListItem>
-                      )) : (
-                        <Box sx={{ p: 6, textAlign: 'center' }}>
-                          {theming.getThemedIcon('folderOpen', { sx: { fontSize: 60, color: 'text.secondary', opacity: 0.3, mb: 2 } })}
-                          <Typography variant="h6" color="text.secondary">
-                            Ingen prosjektmapper ennå
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                            Opprett din første prosjektmappe for å komme i gang
-                          </Typography>
-                        </Box>
-                      )}
-                      </List>
-                    </CardContent>
-                  </MuiCard>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-          
-          {selectedTab === 1 && (
-            /* Folder Structure Tab */
-            <Box>
-              <MuiCard sx={{ 
-                mb: 4,
-                borderRadius: 4,
-                overflow: 'hidden',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.1)'
-              }}>
-                <Box sx={{ 
-                  bgcolor: theming.colors.primary,
-                  p: 3
-                }}>
-                  <Typography variant="h4" sx={{ color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Folder sx={{ fontSize: 40, color: '#fff' }} />
-                    Standard 8-mappestruktur
-                  </Typography>
-                  <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.9)', mt: 1 }}>
-                    Alle prosjektmapper opprettes automatisk med denne strukturen
-                  </Typography>
-                </Box>
-                <CardContent sx={{ ...theming.getThemedCardSx(), p: 0 }}>
-                  <List>
-                    {standardFolders.map((folderName, index) => (
-                      <ListItem 
-                        key={index}
-                        sx={{
-                          py: 2.5,
-                          px: 3,
-                          transition: 'all 0.2s',
-                          borderLeft: '4px solid transparent',
-                          '&:hover': {
-                            bgcolor: 'rgba(102, 126, 234, 0.05)',
-                            borderLeftColor: theming.colors.primary
-                          }
-                        }}
-                      >
-                        <ListItemIcon>
-                          <Box sx={{ 
-                            p: 1.5, 
-                            borderRadius: 2, 
-                            background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
-                            display: 'flex'
-                          }}>
-                            <Folder sx={{ color: theming.colors.primary, fontSize: 28 }} />
-                          </Box>
-                        </ListItemIcon>
-                        <ListItemText 
-                          primary={<Typography variant="h6" sx={{ fontWeight: 600 }}>{folderName}</Typography>}
-                          secondary={<Chip label={`${index + 1} av 8`} size="small" sx={{ mt: 0.5 }} />}
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                </CardContent>
-              </MuiCard>
-            </Box>
-          )}
-          
-          {selectedTab === 2 && (
-            /* Change History Tab */
-            <Box>
-              <MuiCard sx={{ 
-                mb: 4,
-                borderRadius: 4,
-                overflow: 'hidden',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.1)'
-              }}>
-                <Box sx={{ 
-                  bgcolor: theming.colors.secondary,
-                  p: 3
-                }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between">
-                    <Box>
-                      <Typography variant="h4" sx={{ color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <History sx={{ fontSize: 40, color: '#fff' }} />
-                        Endringshistorikk
-                      </Typography>
-                      <Typography variant="body1" sx={{ color: '#fff', mt: 1 }}>
-                        Oversikt over alle mappeendringer
-                      </Typography>
-                    </Box>
-                    <Button
-                      variant="contained"
-                      startIcon={<RestoreFromTrash />}
-                      onClick={() => {
-                        if (currentProject) {
-                          restoreStructureMutation.mutate(currentProject.id);
-                      }
-                    }}
-                      disabled={!currentProject || restoreStructureMutation.isPending}
-                      sx={{ 
-                        bgcolor: 'rgba(255,255,255,0.2)',
-                        color: '#fff',
-                        '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' },
-                        fontWeight: 600
-                      }}
-                    >
-                      Gjenopprett standardstruktur
-                    </Button>
-                  </Stack>
-                </Box>
-                <CardContent sx={{ ...theming.getThemedCardSx(), p: 0 }}>
-                  {changesLoading ? (
-                    <Box sx={{ p: 6, textAlign: 'center' }}>
-                      <CircularProgress size={60} sx={{ color: theming.colors.secondary, mb: 2 }} />
-                      <Typography variant="h6" color="text.secondary">
-                        Laster endringshistorikk...
-                      </Typography>
-                    </Box>
-                  ) : !Array.isArray(folderChanges) || folderChanges.length === 0 ? (
-                    <Box sx={{ p: 8, textAlign: 'center' }}>
-                      <Box sx={{ 
-                        display: 'inline-flex',
-                        p: 3,
-                        borderRadius: '50%',
-                        bgcolor: `${theming.colors.secondary}10`,
-                        mb: 3
-                      }}>
-                        <History sx={{ fontSize: 60, color: theming.colors.secondary, opacity: 0.5 }} />
-                      </Box>
-                      <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
-                        Ingen mappeendringer registrert ennå
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Endringer vil vises her når du redigerer mappestrukturen
-                      </Typography>
-                    </Box>
-                  ) : (
-                    <List sx={{ p: 2 }}>
-                      {folderChanges.map((change, index) => (
-                        <ListItem 
-                          key={change.id} 
-                          sx={{ 
-                            py: 3,
-                            px: 3,
-                            mb: 2,
-                            borderRadius: 3,
-                            transition: 'all 0.3s',
-                            border: `2px solid ${theming.colors.border}`,
-                            '&:hover': {
-                              bgcolor: `${theming.colors.secondary}08`,
-                              borderColor: theming.colors.secondary,
-                              transform: 'translateX(8px)',
-                              boxShadow: `0 4px 12px ${theming.colors.secondary}20`
-                            }
-                          }}
-                        >
-                          <ListItemIcon>
-                            <Box sx={{ 
-                              p: 2, 
-                              borderRadius: 3, 
-                              bgcolor: change.action === 'rename' ? theming.colors.primary :
-                                         change.action === 'create' ? theming.colors.success :
-                                         change.action === 'delete' ? theming.colors.error :
-                                         theming.colors.info,
-                              display: 'flex',
-                              color: '#fff',
-                              boxShadow: change.action === 'rename' ? `0 4px 12px ${theming.colors.primary}40` :
-                                          change.action === 'create' ? `0 4px 12px ${theming.colors.success}40` :
-                                          change.action === 'delete' ? `0 4px 12px ${theming.colors.error}40` :
-                                          `0 4px 12px ${theming.colors.info}40`
-                            }}>
-                              {change.action === 'rename' && theming.getThemedIcon('edit', { sx: { fontSize: 28 } })}
-                              {change.action === 'create' && <CreateNewFolder sx={{ fontSize: 28 }} />}
-                              {change.action === 'delete' && <RestoreFromTrash sx={{ fontSize: 28 }} />}
-                              {change.action === 'move' && theming.getThemedIcon('sync', { sx: { fontSize: 28 } })}
-                            </Box>
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={
-                              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
-                                {change.originalName} 
-                                <Box component="span" sx={{ color: theming.colors.secondary, mx: 1 }}>→</Box>
-                                {change.newName}
-                              </Typography>
-                            }
-                            secondary={
-                              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 1 }}>
-                                <Chip 
-                                  label={change.action.toUpperCase()} 
-                                  size="medium" 
-                                  sx={{ 
-                                    fontWeight: 700,
-                                    bgcolor: change.action === 'rename' ? theming.colors.primary :
-                                             change.action === 'create' ? theming.colors.success :
-                                             change.action === 'delete' ? theming.colors.error :
-                                             theming.colors.info,
-                                    color: '#fff'
-                                  }} 
-                                />
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                  {theming.getThemedIcon('schedule', { sx: { fontSize: 16, color: 'text.secondary' } })}
-                                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                                    {new Date(change.timestamp).toLocaleString('nb-NO')}
-                                  </Typography>
-                                </Box>
-                              </Stack>
-                            }
-                          />
-                          <Tooltip title="Angre endring" arrow>
-                            <IconButton
-                              size="large"
-                              onClick={() => undoChangeMutation.mutate(change.id)}
-                              disabled={undoChangeMutation.isPending}
-                              sx={{ 
-                                bgcolor: `${theming.colors.warning}15`,
-                                color: theming.colors.warning,
-                                '&:hover': { 
-                                  bgcolor: `${theming.colors.warning}30`,
-                                  transform: 'rotate(-15deg) scale(1.1)'
-                                },
-                                transition: 'all 0.2s'
-                              }}
-                            >
-                              {theming.getThemedIcon('undo')}
-                            </IconButton>
-                          </Tooltip>
-                        </ListItem>
-                      ))}
-                    </List>
-                  )}
-                </CardContent>
-              </MuiCard>
-            </Box>
-          )}
-          
-          {selectedTab === 3 && (
-            /* Backup Tab */
-            <Box>
-              <MuiCard sx={{ 
-                mb: 4,
-                borderRadius: 4,
-                overflow: 'hidden',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.1)'
-              }}>
-                <Box sx={{ 
-                  bgcolor: theming.colors.info,
-                  p: 3
-                }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between">
-                    <Box>
-                      <Typography variant="h4" sx={{ color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Backup sx={{ fontSize: 40, color: '#fff' }} />
-                        Backup og sikkerhetskopier
-                      </Typography>
-                      <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.9)', mt: 1 }}>
-                        5-lagers forensisk filgjenoppretting
-                      </Typography>
-                    </Box>
-                    <Button 
-                      variant="contained"
-                      startIcon={<Backup />}
-                      onClick={() => setBackupDialogOpen(true)}
-                      sx={{ 
-                        bgcolor: 'rgba(255,255,255,0.2)',
-                        color: '#fff',
-                        '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' },
-                        fontWeight: 600
-                      }}
-                    >
-                      Manuell backup
-                    </Button>
-                  </Stack>
-                </Box>
-              </MuiCard>
-              
-              {backupStatus && (
-                <MuiCard sx={{ mb: 4, borderRadius: 4, boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 700, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {theming.getThemedIcon('assessment')}
-                      Backup-status
-                    </Typography>
-                    
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={6}>
-                        <Stack spacing={3}>
-                          <Box sx={{ 
-                            p: 2.5, 
-                            borderRadius: 3, 
-                            bgcolor: `${theming.colors.success}10`,
-                            border: `2px solid ${theming.colors.success}30`
-                          }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-                              {theming.getThemedIcon('schedule', { sx: { color: theming.colors.success } })}
-                              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: theming.colors.success }}>
-                                Siste backup
-                              </Typography>
-                            </Box>
-                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                              {new Date(backupStatus.lastBackup).toLocaleString('nb-NO')}
-                            </Typography>
-                          </Box>
-                          
-                          <Box sx={{ 
-                            p: 2.5, 
-                            borderRadius: 3, 
-                            bgcolor: `${theming.colors.info}10`,
-                            border: `2px solid ${theming.colors.info}30`
-                          }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-                              {theming.getThemedIcon('schedule', { sx: { color: theming.colors.info } })}
-                              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: theming.colors.info }}>
-                                Neste planlagte backup
-                              </Typography>
-                            </Box>
-                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                              {new Date(backupStatus.nextBackup).toLocaleString('nb-NO')}
-                            </Typography>
-                          </Box>
-                        </Stack>
-                      </Grid>
-                      
-                      <Grid item xs={12} md={6}>
-                        <Stack spacing={3}>
-                          <Box sx={{ 
-                            p: 2.5, 
-                            borderRadius: 3, 
-                            bgcolor: `${theming.colors.primary}10`,
-                            border: `2px solid ${theming.colors.primary}30`
-                          }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                              {theming.getThemedIcon('sync', { sx: { color: theming.colors.primary } })}
-                              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: theming.colors.primary }}>
-                                Fremdrift
-                              </Typography>
-                            </Box>
-                            <LinearProgress 
-                              variant="determinate" 
-                              value={(backupStatus.backedUpFiles / backupStatus.totalFiles) * 100}
-                              sx={{ 
-                                height: 8,
-                                borderRadius: 2,
-                                bgcolor: `${theming.colors.primary}20`,
-                                '& .MuiLinearProgress-bar': {
-                                  borderRadius: 2,
-                                  bgcolor: theming.colors.primary
-                                }
-                              }}
-                            />
-                            <Typography variant="body2" sx={{ mt: 1.5, fontWeight: 600 }}>
-                              {backupStatus.backedUpFiles} av {backupStatus.totalFiles} filer
-                            </Typography>
-                          </Box>
-                          
-                          <Box sx={{ 
-                            p: 2.5, 
-                            borderRadius: 3, 
-                            bgcolor: backupStatus.status === 'error' ? `${theming.colors.error}10` :
-                                      backupStatus.status === 'running' ? `${theming.colors.warning}10` :
-                                      `${theming.colors.success}10`,
-                            border: backupStatus.status === 'error' ? `2px solid ${theming.colors.error}30` :
-                                    backupStatus.status === 'running' ? `2px solid ${theming.colors.warning}30` :
-                                    `2px solid ${theming.colors.success}30`,
-                            textAlign: 'center'
-                          }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-                              Status
-                            </Typography>
-                            <Chip
-                              label={(backupStatus.status || 'unknown').toUpperCase()}
-                              sx={{
-                                fontWeight: 700,
-                                fontSize: '0.9rem',
-                                py: 2.5,
-                                bgcolor: backupStatus.status === 'error' ? theming.colors.error :
-                                         backupStatus.status === 'running' ? theming.colors.warning :
-                                         theming.colors.success,
-                                color: '#fff'
-                              }}
-                            />
-                          </Box>
-                        </Stack>
-                      </Grid>
-                    </Grid>
-                  </CardContent>
-                </MuiCard>
-              )}
-              
-              <MuiCard sx={{ borderRadius: 4, boxShadow: '0 4px 16px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-                <Box sx={{ 
-                  bgcolor: `${theming.colors.info}15`,
-                  p: 2.5,
-                  borderBottom: `2px solid ${theming.colors.info}`
-                }}>
-                  <Typography variant="h6" sx={{ fontWeight: 700, color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {theming.getThemedIcon('security')}
-                    Backup-funksjoner
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-                    5-lagers forensisk filgjenoppretting med automatisk synkronisering hver 4. time
-                  </Typography>
-                </Box>
-                <List>
-                  <ListItem sx={{ 
-                    py: 3, 
-                    px: 3,
-                    transition: 'all 0.2s',
-                    borderLeft: '4px solid transparent',
-                    '&:hover': { 
-                      bgcolor: `${theming.colors.primary}08`,
-                      borderLeftColor: theming.colors.primary
-                    }
-                  }}>
-                    <ListItemIcon>
-                      <Box sx={{ 
-                        p: 1.5, 
-                        borderRadius: 3, 
-                        bgcolor: `${theming.colors.primary}15`,
-                        display: 'flex'
-                      }}>
-                        {theming.getThemedIcon('save', { sx: { color: theming.colors.primary, fontSize: 28 } })}
-                      </Box>
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={<Typography variant="h6" sx={{ fontWeight: 700 }}>Lokal backup</Typography>}
-                      secondary={<Typography variant="body2" color="text.secondary">Sikkerhetskopier lagres lokalt på enheten</Typography>}
-                    />
-                  </ListItem>
-                  <ListItem sx={{ 
-                    py: 3, 
-                    px: 3,
-                    transition: 'all 0.2s',
-                    borderLeft: '4px solid transparent',
-                    '&:hover': { 
-                      bgcolor: `${theming.colors.info}08`,
-                      borderLeftColor: theming.colors.info
-                    }
-                  }}>
-                    <ListItemIcon>
-                      <Box sx={{ 
-                        p: 1.5, 
-                        borderRadius: 3, 
-                        bgcolor: `${theming.colors.info}15`,
-                        display: 'flex'
-                      }}>
-                        {theming.getThemedIcon('cloudDone', { sx: { color: theming.colors.info, fontSize: 28 } })}
-                      </Box>
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={<Typography variant="h6" sx={{ fontWeight: 700 }}>Google Drive backup</Typography>}
-                      secondary={<Typography variant="body2" color="text.secondary">Hovedbackup i separate Google Drive-mapper</Typography>}
-                    />
-                  </ListItem>
-                  <ListItem sx={{ 
-                    py: 3, 
-                    px: 3,
-                    transition: 'all 0.2s',
-                    borderLeft: '4px solid transparent',
-                    '&:hover': { 
-                      bgcolor: `${theming.colors.success}08`,
-                      borderLeftColor: theming.colors.success
-                    }
-                  }}>
-                    <ListItemIcon>
-                      <Box sx={{ 
-                        p: 1.5, 
-                        borderRadius: 3, 
-                        bgcolor: `${theming.colors.success}15`,
-                        display: 'flex'
-                      }}>
-                        {theming.getThemedIcon('schedule', { sx: { color: theming.colors.success, fontSize: 28 } })}
-                      </Box>
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={<Typography variant="h6" sx={{ fontWeight: 700 }}>Automatisk planlegging</Typography>}
-                      secondary={<Typography variant="body2" color="text.secondary">Backup kjører hver 4. time for aktive prosjekter</Typography>}
-                    />
-                  </ListItem>
-                </List>
-              </MuiCard>
-            </Box>
-          )}
-          
-          {selectedTab === 4 && (
-            /* Settings Tab */
-            <Box>
-              <MuiCard sx={{ 
-                mb: 4,
-                borderRadius: 4,
-                overflow: 'hidden',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.1)'
-              }}>
-                <Box sx={{ 
-                  bgcolor: theming.colors.warning,
-                  p: 3
-                }}>
-                  <Typography variant="h4" sx={{ color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 2 }}>
-                    {theming.getThemedIcon('settings', { sx: { fontSize: 40, color: '#fff' } })}
-                    Avanserte innstillinger
-                  </Typography>
-                  <Typography variant="body1" sx={{ color: '#fff', mt: 1 }}>
-                    Konfigurer automatisering og tilkoblinger
-                  </Typography>
-                </Box>
-              </MuiCard>
-              
-              <Stack spacing={3}>
-                <MuiCard sx={{ borderRadius: 4, boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                      {theming.getThemedIcon('autoAwesome')}
-                      Automatisering
-                    </Typography>
-                    <Stack spacing={3}>
-                      <Box sx={{ 
-                        p: 3, 
-                        borderRadius: 3, 
-                        bgcolor: `${theming.colors.primary}08`,
-                        border: `2px solid ${theming.colors.primary}30`,
-                        transition: 'all 0.3s',
-                        '&:hover': { 
-                          borderColor: theming.colors.primary,
-                          bgcolor: `${theming.colors.primary}12`,
-                          transform: 'translateY(-2px)',
-                          boxShadow: `0 4px 12px ${theming.colors.primary}20`
-                        }
-                      }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                          <Box sx={{ 
-                            p: 1.5, 
-                            borderRadius: 2, 
-                            bgcolor: theming.colors.primary,
-                            display: 'flex'
-                          }}>
-                            {theming.getThemedIcon('visibility', { sx: { color: '#fff', fontSize: 24 } })}
-                          </Box>
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Aktiver endringssporing</Typography>
-                            <Typography variant="body2" color="text.secondary">Spor alle endringer i mappestrukturen automatisk</Typography>
-                          </Box>
-                          <Switch
-                            checked={changeTrackingEnabled}
-                            onChange={(e) => setChangeTrackingEnabled(e.target.checked)}
-                            color="primary"
-                            size="medium"
-                          />
-                        </Box>
-                      </Box>
-                      <Box sx={{ 
-                        p: 3, 
-                        borderRadius: 3, 
-                        bgcolor: `${theming.colors.info}08`,
-                        border: `2px solid ${theming.colors.info}30`,
-                        transition: 'all 0.3s',
-                        '&:hover': { 
-                          borderColor: theming.colors.info,
-                          bgcolor: `${theming.colors.info}12`,
-                          transform: 'translateY(-2px)',
-                          boxShadow: `0 4px 12px ${theming.colors.info}20`
-                        }
-                      }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                          <Box sx={{ 
-                            p: 1.5, 
-                            borderRadius: 2, 
-                            bgcolor: theming.colors.info,
-                            display: 'flex'
-                          }}>
-                            {theming.getThemedIcon('backup', { sx: { color: '#fff', fontSize: 24 } })}
-                          </Box>
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Automatisk backup</Typography>
-                            <Typography variant="body2" color="text.secondary">Kjør backup hver 4. time automatisk uten brukerinteraksjon</Typography>
-                          </Box>
-                          <Switch
-                            checked={autoBackupEnabled}
-                            onChange={(e) => setAutoBackupEnabled(e.target.checked)}
-                            color="primary"
-                            size="medium"
-                          />
-                        </Box>
-                      </Box>
-                    </Stack>
-                  </CardContent>
-                </MuiCard>
-                
-                <MuiCard sx={{ borderRadius: 4, boxShadow: '0 4px 16px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-                  <Box sx={{ 
-                    bgcolor: `${theming.colors.success}15`,
-                    p: 2.5,
-                    borderBottom: `2px solid ${theming.colors.success}`
-                  }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Box
-                        component="img"
-                        src="https://fonts.gstatic.com/s/i/productlogos/drive_2020q4/v8/web-64dp/logo_drive_2020q4_color_2x_web_64dp.png"
-                        alt="Google Drive"
-                        sx={{ width: 28, height: 28 }}
-                      />
-                      Google Drive-tilkobling
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      Administrer tilkobling til Google Drive for mappeadministrasjon
-                    </Typography>
-                  </Box>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Stack spacing={2}>
-                      <Button
-                        variant="contained"
-                        size="large"
-                        fullWidth
-                        startIcon={
-                          <Box
-                            component="img"
-                            src="https://fonts.gstatic.com/s/i/productlogos/drive_2020q4/v8/web-64dp/logo_drive_2020q4_color_2x_web_64dp.png"
-                            alt="Google Drive"
-                            sx={{ width: 24, height: 24 }}
-                          />
-                        }
-                        onClick={() => initOAuthMutation.mutate()}
-                        disabled={initOAuthMutation.isPending}
-                        sx={{ 
-                          bgcolor: theming.colors.success,
-                          py: 1.8,
-                          fontWeight: 700,
-                          fontSize: '1rem',
-                          '&:hover': { 
-                            bgcolor: theming.colors.successDark || theming.colors.success,
-                            transform: 'translateY(-2px)',
-                            boxShadow: `0 6px 20px ${theming.colors.success}40`
-                          },
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        {initOAuthMutation.isPending ? 'Kobler til...' : 'Koble til Google Drive'}
-                      </Button>
+        {!driveStatusQuery.isLoading && !workspaceConnected && (
+          <Alert
+            severity="warning"
+            sx={{ mb: 2 }}
+            action={
+              showWorkspaceReconnectAction ? (
+                <Button
+                  size="small"
+                  startIcon={<GoogleIcon />}
+                  onClick={() => reconnectMutation.mutate()}
+                  disabled={reconnectMutation.isPending}
+                >
+                  {reconnectMutation.isPending ? 'Starter…' : 'Koble Google Workspace'}
+                </Button>
+              ) : undefined
+            }
+          >
+            {showWorkspaceReconnectAction
+              ? (driveStatusQuery.data?.message || 'Google Drive er ikke koblet til denne brukeren ennå.')
+              : 'Creatorhub Filsystem bruker samme Google Workspace-kobling som øverst i denne fanen. Koble Workspace én gang der for å aktivere filhåndtering, opplasting og deling.'}
+          </Alert>
+        )}
 
-                      <Button
-                        variant="outlined"
-                        size="large"
-                        fullWidth
-                        startIcon={
-                          <Box
-                            component="img"
-                            src="https://fonts.gstatic.com/s/i/productlogos/drive_2020q4/v8/web-64dp/logo_drive_2020q4_color_2x_web_64dp.png"
-                            alt="Google Drive"
-                            sx={{ width: 24, height: 24 }}
-                          />
-                        }
-                        onClick={() => window.open('https://drive.google.com', '_blank')}
-                        sx={{
-                          py: 1.8,
-                          fontWeight: 600,
-                          fontSize: '1rem',
-                          borderWidth: 2,
-                          '&:hover': {
-                            borderWidth: 2,
-                            transform: 'translateY(-2px)',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                          },
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        Åpne Google Drive
-                      </Button>
-                    </Stack>
-                  </CardContent>
-                </MuiCard>
-              </Stack>
-            </Box>
-          )}
+        {workspaceConnected && (
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
+            <Chip label="Tilkoblet Google Drive" color="success" />
+            {driveStatusQuery.data?.accountEmail && (
+              <Chip label={driveStatusQuery.data.accountEmail} variant="outlined" />
+            )}
+            {driveStatusQuery.data?.lastSync && (
+              <Chip label={`Sist synk: ${formatDateTime(driveStatusQuery.data.lastSync)}`} variant="outlined" />
+            )}
+            <Chip label={`${sectionCount} tilgjengelige seksjoner`} variant="outlined" />
+          </Stack>
+        )}
+
+        {(refreshMutation.isError || uploadMutation.isError || shareMutation.isError || driveContextQuery.isError) && (
+          <Stack spacing={1.5} sx={{ mb: 2 }}>
+            {refreshMutation.isError && (
+              <Alert severity="error">
+                {refreshMutation.error instanceof Error
+                  ? refreshMutation.error.message
+                  : 'Kunne ikke oppdatere Drive-kontekst.'}
+              </Alert>
+            )}
+            {uploadMutation.isError && (
+              <Alert severity="error">
+                {uploadMutation.error instanceof Error
+                  ? uploadMutation.error.message
+                  : 'Kunne ikke laste opp filene til Google Drive.'}
+              </Alert>
+            )}
+            {shareMutation.isError && (
+              <Alert severity="error">
+                {shareMutation.error instanceof Error
+                  ? shareMutation.error.message
+                  : 'Kunne ikke dele Drive-filen.'}
+              </Alert>
+            )}
+            {driveContextQuery.isError && (
+              <Alert severity="warning">
+                {driveContextQuery.error instanceof Error
+                  ? driveContextQuery.error.message
+                  : 'Kunne ikke hente Drive-kontekst.'}
+              </Alert>
+            )}
+          </Stack>
+        )}
+
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
+            gap: 2,
+            mb: 3,
+          }}
+        >
+          <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(25, 118, 210, 0.06)' }}>
+            <Typography variant="caption" color="text.secondary">
+              Aktivt prosjekt
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700}>
+              {projectName}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {buildCustomerLabel(activeProject)}
+            </Typography>
+          </Box>
+          <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(76, 175, 80, 0.08)' }}>
+            <Typography variant="caption" color="text.secondary">
+              Mappegrunnlag
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700}>
+              {primaryFolderName || 'Ikke valgt'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {driveContextQuery.data?.folderStructure.source || 'Ingen Drive-kontekst ennå'}
+            </Typography>
+          </Box>
+          <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255, 152, 0, 0.08)' }}>
+            <Typography variant="caption" color="text.secondary">
+              Filer i visning
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700}>
+              {files.length}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {searchTerm.trim() ? `Filtrert på "${searchTerm.trim()}"` : 'Nyeste elementer fra aktiv mappe'}
+            </Typography>
+          </Box>
         </Box>
 
-        {/* Sidebar */}
-        <Paper sx={{ 
-          width: 340, 
-          borderRadius: 4, 
-          p: 0,
-          ...theming.getThemedCardSx(),
-          boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-          display: { xs: 'none', lg: 'flex' },
-          flexDirection: 'column',
-          maxHeight: '100vh',
-          overflow: 'hidden'
-        }}>
-          <Box sx={{ 
-            bgcolor: theming.colors.primary,
-            p: 3,
-            flexShrink: 0
-          }}>
-            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              {theming.getThemedIcon('bolt', { sx: { color: '#fff' } })}
-              Hurtighandlinger
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 3 }}>
+          <TextField
+            select
+            fullWidth
+            label="Prosjekt"
+            value={activeProjectId || ''}
+            onChange={(event) => handleProjectChange(event.target.value)}
+            helperText="Velg prosjekt for å knytte riktig kundemappe og undermapper."
+          >
+            <MenuItem value="">Ingen prosjektkontekst</MenuItem>
+            {projects.map((project) => (
+              <MenuItem key={project.id} value={project.id}>
+                {buildProjectLabel(project)}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            fullWidth
+            label="Søk i aktiv visning"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+            helperText="Søk i filer i aktiv mappe eller hele Drive når ingen mappe er valgt."
+          />
+        </Stack>
+
+        {workspaceConnected && (
+          <>
+            <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
+              Drive-seksjoner
             </Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', mt: 0.5 }}>
-              Rask tilgang til viktige funksjoner
-            </Typography>
-          </Box>
-          
-          <Box sx={{ p: 2.5, flex: 1, overflowY: 'auto' }}>
-            <Stack spacing={2.5}>
-              {/* Quick Actions */}
-              <MuiCard sx={{ 
-                borderRadius: 3,
-                overflow: 'hidden',
-                border: '2px solid rgba(102, 126, 234, 0.2)',
-                boxShadow: '0 2px 8px rgba(102, 126, 234, 0.1)'
-              }}>
-                <Box sx={{ 
-                  bgcolor: `${theming.colors.primary}15`,
-                  p: 2,
-                  borderBottom: `2px solid ${theming.colors.primary}30`
-                }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <CreateNewFolder sx={{ color: theming.colors.primary }} />
-                    Hurtigopprett
-                  </Typography>
-                </Box>
-                <CardContent sx={{ p: 2 }}>
-                  <Stack spacing={1.5}>
-                    <Button
-                      size="medium"
-                      variant="contained"
-                      startIcon={<CreateNewFolder />}
-                      onClick={() => setCreateFolderOpen(true)}
-                      fullWidth
-                      sx={{ 
-                        justifyContent: 'flex-start',
-                        bgcolor: theming.colors.primary,
-                        fontWeight: 600,
-                        py: 1.2,
-                        '&:hover': {
-                          bgcolor: theming.colors.primaryDark || theming.colors.primary,
-                          transform: 'translateX(4px)'
-                        },
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      Ny prosjektmappe
-                    </Button>
-                    <Button
-                      size="medium"
-                      variant="outlined"
-                      startIcon={<Backup />}
-                      onClick={() => setBackupDialogOpen(true)}
-                      fullWidth
-                      sx={{ 
-                        justifyContent: 'flex-start',
-                        borderWidth: 2,
-                        fontWeight: 600,
-                        py: 1.2,
-                        borderColor: theming.colors.primary,
-                        '&:hover': {
-                          borderWidth: 2,
-                          transform: 'translateX(4px)',
-                          bgcolor: 'rgba(102, 126, 234, 0.05)'
-                        },
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      Kjør backup
-                    </Button>
-                  </Stack>
-                </CardContent>
-              </MuiCard>
-
-              {/* Stats */}
-              <MuiCard sx={{ 
-                borderRadius: 3,
-                overflow: 'hidden',
-                border: '2px solid rgba(240, 147, 251, 0.2)',
-                boxShadow: '0 2px 8px rgba(240, 147, 251, 0.1)'
-              }}>
-                <Box sx={{ 
-                  bgcolor: `${theming.colors.secondary}15`,
-                  p: 2,
-                  borderBottom: `2px solid ${theming.colors.secondary}30`
-                }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {theming.getThemedIcon('assessment')}
-                    Statistikk
-                  </Typography>
-                </Box>
-                <CardContent sx={{ p: 2 }}>
-                  <Stack spacing={2}>
-                    <Box sx={{ 
-                      p: 2, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(102, 126, 234, 0.05)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>Aktive mapper</Typography>
-                      <Chip 
-                        size="medium" 
-                        label={Array.isArray(projectFolders) ? projectFolders.length : 0}
-                        sx={{ 
-                          fontWeight: 700,
-                          bgcolor: theming.colors.primary,
-                          color: '#fff'
-                        }}
-                      />
-                    </Box>
-                    <Box sx={{ 
-                      p: 2, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(76, 175, 80, 0.05)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>Tilgjengelige</Typography>
-                      <Chip 
-                        size="medium" 
-                        label={accessibleFolders.length} 
-                        sx={{ 
-                          fontWeight: 700,
-                          bgcolor: '#4caf50',
-                          color: '#fff'
-                        }}
-                      />
-                    </Box>
-                    <Box sx={{ 
-                      p: 2, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(255, 152, 0, 0.05)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>Låste mapper</Typography>
-                      <Chip 
-                        size="medium" 
-                        label={missingFolders.length} 
-                        sx={{ 
-                          fontWeight: 700,
-                          bgcolor: '#ff9800',
-                          color: '#fff'
-                        }}
-                      />
-                    </Box>
-                    <Box sx={{ 
-                      p: 2, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(240, 147, 251, 0.05)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>Endringer i dag</Typography>
-                      <Chip 
-                        size="medium" 
-                        label={Array.isArray(folderChanges) ? folderChanges.filter(c =>
-                          new Date(c.timestamp).toDateString() === new Date().toDateString()
-                        ).length : 0}
-                        sx={{ 
-                          fontWeight: 700,
-                          bgcolor: theming.colors.secondary,
-                          color: '#fff'
-                        }}
-                      />
-                    </Box>
-                    {backupStatus && (
-                      <Box sx={{ 
-                        p: 2, 
-                        borderRadius: 2, 
-                        bgcolor: backupStatus.status === 'error' ? 'rgba(244, 67, 54, 0.05)' : 'rgba(76, 175, 80, 0.05)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>Backup status</Typography>
-                        <Chip 
-                          size="medium" 
-                          label={backupStatus.status}
-                          sx={{ 
-                            fontWeight: 700,
-                            bgcolor: backupStatus.status === 'error' ? '#f44336' : '#4caf50',
-                            color: '#fff'
-                          }}
-                        />
-                      </Box>
-                    )}
-                  </Stack>
-                </CardContent>
-              </MuiCard>
-
-              {/* Missing Folders Section */}
-              {missingFolders.length > 0 && (
-                <MuiCard sx={{ 
-                  borderRadius: 3,
-                  overflow: 'hidden',
-                  border: `2px solid ${theming.colors.success}`,
-                  boxShadow: `0 4px 16px ${theming.colors.success}20`
-                }}>
-                  <Box sx={{ 
-                    bgcolor: `${theming.colors.success}15`,
-                    p: 2,
-                    borderBottom: `2px solid ${theming.colors.success}`
-                  }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Lock sx={{ color: theming.colors.success }} />
-                      Låste mapper
-                    </Typography>
-                  </Box>
-                  <CardContent sx={{ p: 2 }}>
-                    <Stack spacing={2}>
-                      <Box sx={{ 
-                        p: 2.5, 
-                        borderRadius: 3, 
-                        bgcolor: `${theming.colors.success}10`,
-                        border: `2px solid ${theming.colors.success}30`,
-                        textAlign: 'center'
-                      }}>
-                        <Chip
-                          size="medium"
-                          label={`${missingFolders.length} låste`}
-                          sx={{ 
-                            fontWeight: 700,
-                            bgcolor: theming.colors.success,
-                            color: '#fff',
-                            fontSize: '0.875rem'
-                          }}
-                        />
-                        <Typography variant="body2" color="text.secondary" sx={{ display: 'block', mt: 1.5, fontWeight: 500 }}>
-                          Ikke tilgjengelige med {userPlan}-plan
-                        </Typography>
-                      </Box>
-
-                      <Button
-                        size="medium"
-                        variant="outlined"
-                        startIcon={showMissingFolders ? <ExpandMore /> : <LockOpen />}
-                        onClick={() => setShowMissingFolders(!showMissingFolders)}
-                        fullWidth
-                        sx={{ 
-                          borderWidth: 2,
-                          borderColor: theming.colors.success,
-                          color: theming.colors.success,
-                          fontWeight: 600,
-                          py: 1.2,
-                          '&:hover': { 
-                            borderWidth: 2,
-                            bgcolor: `${theming.colors.success}10`,
-                            transform: 'translateY(-2px)',
-                            boxShadow: `0 4px 12px ${theming.colors.success}20`
-                          }
-                        }}
-                      >
-                        {showMissingFolders ? 'Skjul' : 'Vis'} låste mapper
-                      </Button>
-
-                      {showMissingFolders && (
-                        <Box sx={{ mt: 2, maxHeight: 400, overflowY: 'auto', pr: 1 }}>
-                          <Stack spacing={2}>
-                            {missingFolders.map((folder) => (
-                              <Paper
-                                key={folder.folderId}
-                                sx={{
-                                  p: 3,
-                                  bgcolor: `${theming.colors.success}10`,
-                                  border: `2px solid ${theming.colors.success}`,
-                                  borderRadius: 3,
-                                  transition: 'all 0.3s',
-                                  '&:hover': {
-                                    bgcolor: `${theming.colors.success}15`,
-                                    borderColor: theming.colors.success,
-                                    transform: 'translateX(4px)',
-                                    boxShadow: `0 6px 16px ${theming.colors.success}30`
-                                  }
-                                }}
-                              >
-                                <Stack spacing={1.5}>
-                                  <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1.5, color: theming.colors.success }}>
-                                    <Lock sx={{ fontSize: 24 }} />
-                                    {folder.name}
-                                  </Typography>
-                                  <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-                                    {folder.description}
-                                  </Typography>
-                                  <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
-                                    <Chip
-                                      size="medium"
-                                      label={folder.requiredPlan.toUpperCase()}
-                                      sx={{ 
-                                        fontWeight: 700,
-                                        bgcolor: theming.colors.success,
-                                        color: '#fff',
-                                        fontSize: '0.875rem'
-                                      }}
-                                    />
-                                    {folder.requiredFeatures.length > 0 && (
-                                      <Chip
-                                        size="medium"
-                                        label={`${folder.requiredFeatures.length} funksjoner`}
-                                        variant="outlined"
-                                        sx={{ 
-                                          borderColor: theming.colors.success, 
-                                          color: theming.colors.success,
-                                          borderWidth: 2,
-                                          fontWeight: 600
-                                        }}
-                                      />
-                                    )}
-                                  </Stack>
-                                </Stack>
-                              </Paper>
-                            ))}
-
-                            <Button
-                              variant="contained"
-                              size="large"
-                              startIcon={<Upgrade />}
-                              onClick={() => {
-                                const professionStr = typeof profession === 'string' ? profession : 'photographer';
-                                window.location.href = `/subscription?profession=${professionStr}`;
-                              }}
-                              fullWidth
-                              sx={{ 
-                                mt: 2,
-                                bgcolor: theming.colors.success,
-                                color: '#fff',
-                                fontWeight: 700,
-                                py: 2,
-                                fontSize: '1.1rem',
-                                transition: 'all 0.3s',
-                                boxShadow: `0 4px 12px ${theming.colors.success}30`,
-                                '&:hover': {
-                                  bgcolor: theming.colors.success,
-                                  filter: 'brightness(0.9)',
-                                  transform: 'translateY(-2px)',
-                                  boxShadow: `0 8px 20px ${theming.colors.success}40`
-                                }
-                              }}
-                            >
-                              Oppgrader for å låse opp
-                            </Button>
-                          </Stack>
-                        </Box>
-                      )}
-                    </Stack>
-                  </CardContent>
-                </MuiCard>
-              )}
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 3 }}>
+              {sections.map((section) => (
+                <Chip
+                  key={section.id}
+                  label={section.label}
+                  color={section.id === selectedSectionId ? 'primary' : section.recommended ? 'success' : 'default'}
+                  variant={section.id === selectedSectionId ? 'filled' : 'outlined'}
+                  onClick={() => setSelectedSectionId(section.id)}
+                />
+              ))}
             </Stack>
-          </Box>
-        </Paper>
-      </Box>
+          </>
+        )}
 
-      {/* Create Project Folder Dialog */}
-      <Dialog 
-        open={createFolderOpen}
-        onClose={() => setCreateFolderOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          Opprett Ny Prosjektmappe med 8-struktur
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt:  1 }}>
-            <Alert severity="info" sx={{ mb:  3 }}>
-              Automatisk opprettelse av standardisert 8-mappestruktur med endringssporing og backup
-            </Alert>
-
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Prosjektinformasjon
+        {selectedSection && (
+          <Box
+            sx={{
+              mb: 3,
+              p: 2,
+              borderRadius: 2,
+              border: '1px solid rgba(15, 23, 42, 0.08)',
+              bgcolor: 'rgba(248, 250, 252, 0.9)',
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={2}
+              justifyContent="space-between"
+              alignItems={{ xs: 'flex-start', md: 'center' }}
+            >
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  {selectedSection.label}
                 </Typography>
-                
-                {projectsLoading ? (
-                  <Box display="flex" justifyContent="center" my={2}>
-                    <CircularProgress size={24} />
-                    <Typography variant="body2" sx={{ ml:  2 }}>
-                      Henter prosjekter...
-                    </Typography>
-                  </Box>
-                ) : projects && projects.length > 0 ? (
-                  <FormControl fullWidth margin="normal">
-                    <InputLabel>Velg Prosjekt</InputLabel>
-                    <Select
-                      value={selectedProjectId}
-                      onChange={(e) => handleProjectSelect(e.target.value)}
-                      label="Velg Prosjekt"
-                    >
-                      {projects.map((project) => (
-                        <MenuItem key={project.id} value={project.id}>
-                          <Box>
-                            <Typography variant="body2" fontWeight={500}>
-                              {project.title}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {project.clientName} • ID: {project.id}
-                            </Typography>
-                          </Box>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                ) : (
-                  <Alert severity="warning" sx={{ mb:  2 }}>
-                    Ingen prosjekter funnet. Opprett et prosjekt først.
-                  </Alert>
-                )}
-
-                {currentProject && (
-                  <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(0,0,0,0.05)', borderRadius:  1 }}>
-                    <Typography variant="subtitle2" gutterBottom>
-                      Valgt prosjekt: </Typography>
-                    <Typography variant="body2">
-                      <strong>{currentProject.title}</strong>
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Klient: {currentProject.clientName}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      ID: {currentProject.id}
-                    </Typography>
-                  </Box>
-                )}
-                
-                <Stack spacing={2} sx={{ mt:  3 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={changeTrackingEnabled}
-                        onChange={(e) => setChangeTrackingEnabled(e.target.checked)}
-                      />
-                  }
-                    label="Aktiver endringssporing"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={autoBackupEnabled}
-                        onChange={(e) => setAutoBackupEnabled(e.target.checked)}
-                      />
-                  }
-                    label="Automatisk backup"
-                  />
-                </Stack>
-              </Grid>
-              
-              <Grid item xs={12} md={6}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  8-mappestruktur som opprettes
+                <Typography variant="body2" color="text.secondary">
+                  {selectedSection.folderName || selectedSection.description}
                 </Typography>
-                <List dense>
-                  {standardFolders.map((folderName, index) => (
-                    <ListItem key={index}>
-                      <ListItemIcon>
-                        <Folder fontSize="small" color="primary" />
-                      </ListItemIcon>
-                      <ListItemText 
-                        primary={folderName}
-                        secondary={`Mappe ${index + 1}`}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              </Grid>
-            </Grid>
-
-            {createFolderMutation.error && (
-              <Alert severity="error" sx={{ mt:  2 }}>
-                {createFolderMutation.error.message}
-              </Alert>
-            )}
-
-            {createFolderMutation.data && (
-              <Alert severity="success" sx={{ mt:  2 }}>
-                <Typography variant="body2">
-                  Prosjektmappe opprettet: {createFolderMutation.data.folder?.name}
-                </Typography>
-                {createFolderMutation.data.folder?.webViewLink && (
+              </Box>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                {selectedSection.folderId && (
                   <Button
+                    variant="outlined"
                     size="small"
-                    href={createFolderMutation.data.folder.webViewLink}
-                    target="_blank"
-                    sx={{ mt:  1 }}
-                    startIcon={
-                      <Box
-                        component="img"
-                        src="https://fonts.gstatic.com/s/i/productlogos/drive_2020q4/v8/web-64dp/logo_drive_2020q4_color_2x_web_64dp.png"
-                        alt="Google Drive"
-                        sx={{ width: 16, height: 16 }}
-                      />
-                    }
+                    startIcon={<FolderOpen />}
+                    onClick={() => {
+                      const recentMatch = recentFolders.find((folder) => folder.id === selectedSection.folderId);
+                      handleOpenLink(recentMatch?.webViewLink || driveContextQuery.data?.projectFolder?.webViewLink || null);
+                    }}
                   >
-                    Åpne i Google Drive
+                    Åpne mappe
                   </Button>
                 )}
+                {driveContextQuery.data?.customerFolder?.webViewLink && (
+                  <Button
+                    variant="text"
+                    size="small"
+                    startIcon={<LinkIcon />}
+                    onClick={() => handleOpenLink(driveContextQuery.data?.customerFolder?.webViewLink)}
+                  >
+                    Kundemappe
+                  </Button>
+                )}
+              </Stack>
+            </Stack>
+          </Box>
+        )}
+
+        <Divider sx={{ my: 2 }} />
+
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.7fr) minmax(320px, 0.9fr)' },
+            gap: 2.5,
+          }}
+        >
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
+              Filer i aktiv visning
+            </Typography>
+
+            {driveFilesQuery.isLoading ? (
+              <CircularProgress size={24} />
+            ) : files.length > 0 ? (
+              <List dense>
+                {files.map((file) => (
+                  <ListItem
+                    key={file.id}
+                    divider
+                    secondaryAction={
+                      <Stack direction="row" spacing={1}>
+                        {file.webViewLink && (
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              onFileDownload?.(file);
+                              handleOpenLink(file.webViewLink);
+                            }}
+                          >
+                            Åpne
+                          </Button>
+                        )}
+                        <Tooltip title="Lag delbar lenke">
+                          <span>
+                            <IconButton
+                              size="small"
+                              onClick={() => shareMutation.mutate(file.id)}
+                              disabled={shareMutation.isPending}
+                            >
+                              <Share fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </Stack>
+                    }
+                  >
+                    <ListItemIcon>
+                      {file.mimeType.includes('folder')
+                        ? <Folder color="primary" />
+                        : <CheckCircle color="success" />}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={file.name}
+                      secondary={`${formatFileSize(file.size)} • ${formatDateTime(file.modifiedTime)}`}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            ) : (
+              <Alert severity="info">
+                {primaryFolderId
+                  ? 'Ingen filer funnet i aktiv mappe ennå.'
+                  : 'Koble prosjekt eller oppdater Drive-konteksten for å se filer her.'}
               </Alert>
             )}
           </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateFolderOpen(false)}>
-            Avbryt
-          </Button>
-          <Button variant="contained"
-            onClick={handleCreateFolder}
-            disabled={!currentProject || createFolderMutation.isPending}
-           sx={theming.getThemedButtonSx()}>
-            {createFolderMutation.isPending ? 'Oppretter mappe...' : 'Opprett 8-mappestruktur'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
+              Nylige mapper
+            </Typography>
+
+            {driveContextQuery.isLoading ? (
+              <CircularProgress size={24} />
+            ) : recentFolders.length > 0 ? (
+              <Stack spacing={1.25}>
+                {recentFolders.map((folder) => (
+                  <Box
+                    key={folder.id}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      border: '1px solid rgba(15, 23, 42, 0.08)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 2,
+                    }}
+                  >
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" fontWeight={600} noWrap>
+                        {folder.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Oppdatert {formatDateTime(folder.modifiedTime)}
+                      </Typography>
+                    </Box>
+                    <Button size="small" onClick={() => handleOpenLink(folder.webViewLink)}>
+                      Åpne
+                    </Button>
+                  </Box>
+                ))}
+              </Stack>
+            ) : (
+              <Alert severity="info">Ingen nylige Drive-mapper funnet ennå.</Alert>
+            )}
+
+            <Divider sx={{ my: 2 }} />
+
+            <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
+              Tilgjengelig nå
+            </Typography>
+            <Stack spacing={1.25}>
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(25, 118, 210, 0.06)' }}>
+                <Typography variant="caption" color="text.secondary">
+                  Prosjektmappe
+                </Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {driveContextQuery.data?.projectFolder?.name || 'Ikke funnet ennå'}
+                </Typography>
+              </Box>
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(76, 175, 80, 0.08)' }}>
+                <Typography variant="caption" color="text.secondary">
+                  Kundemappe
+                </Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {driveContextQuery.data?.customerFolder?.name || 'Ikke knyttet ennå'}
+                </Typography>
+              </Box>
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255, 152, 0, 0.08)' }}>
+                <Typography variant="caption" color="text.secondary">
+                  Uploadmål
+                </Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {selectedSection?.folderName || primaryFolderName || 'Velg seksjon eller oppdater konteksten'}
+                </Typography>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
+      </CardContent>
+    </MuiCard>
   );
 };
 

@@ -69,8 +69,10 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
           <Box sx={{ mt: 2 }}>
             {step.content.items?.map((item: string, itemIndex: number) => (
               <Box key={itemIndex} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <CheckCircle color="success" fontSize="small" />
-                <Typography variant="body2">{item}</Typography>
+                <CheckCircle sx={{ color: '#f5a623' }} fontSize="small" />
+                <Typography variant="body2" sx={{ color: 'rgba(248, 241, 231, 0.82)' }}>
+                  {item}
+                </Typography>
               </Box>
             ))}
           </Box>
@@ -79,7 +81,10 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
       case 'text':
       default:
         return (
-          <Typography variant="body1" sx={{ mt: 2, whiteSpace: 'pre-wrap' }}>
+          <Typography
+            variant="body1"
+            sx={{ mt: 2, whiteSpace: 'pre-wrap', color: 'rgba(248, 241, 231, 0.82)' }}
+          >
             {step.content.text || step.description}
           </Typography>
         );
@@ -87,12 +92,42 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
   };
 
   return (
-    <Step completed={isCompleted}>
-      <StepLabel>
-        <Typography variant="h6">{step.title}</Typography>
+    <Step completed={isCompleted} expanded={isActive}>
+      <StepLabel
+        sx={{
+          '& .MuiStepLabel-label': {
+            color: `${isActive || isCompleted ? 'rgba(248, 241, 231, 0.95)' : 'rgba(248, 241, 231, 0.72)'} !important`,
+          },
+          '& .MuiStepIcon-root': {
+            color: isActive || isCompleted ? '#f5a623' : 'rgba(255,255,255,0.18)',
+          },
+          '& .MuiStepIcon-root.Mui-completed': {
+            color: '#f5a623',
+          },
+          '& .MuiStepIcon-root.Mui-active': {
+            color: '#f5a623',
+          },
+          '& .MuiStepIcon-text': {
+            fill: '#05070b',
+            fontWeight: 700,
+          },
+        }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          {step.title}
+        </Typography>
       </StepLabel>
-      <StepContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+      <StepContent
+        sx={{
+          ml: 1.5,
+          pl: 3,
+          borderLeft: '1px solid rgba(255,255,255,0.1)',
+        }}
+      >
+        <Typography
+          variant="body2"
+          sx={{ mb: 2, color: 'rgba(248, 241, 231, 0.62)' }}
+        >
           {step.description}
         </Typography>
 
@@ -105,11 +140,38 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
             disabled={isCompleted}
             startIcon={isCompleted ? <CheckCircle /> : <ArrowForward />}
             aria-label={isCompleted ? 'Fullført' : 'Fullfør dette steget'}
+            sx={{
+              borderRadius: 999,
+              px: 2.25,
+              background: 'linear-gradient(135deg, #f5a623 0%, #ffd27d 100%)',
+              color: '#05070b',
+              fontWeight: 700,
+              '&:hover': {
+                background: 'linear-gradient(135deg, #ffb845 0%, #ffe2a5 100%)',
+              },
+              '&.Mui-disabled': {
+                background: 'rgba(245, 166, 35, 0.24)',
+                color: 'rgba(5, 7, 11, 0.55)',
+              },
+            }}
           >
             {isCompleted ? 'Fullført' : 'Neste'}
           </Button>
           {showPrevious && onPrevious && (
-            <Button onClick={onPrevious} aria-label="Gå til forrige steg">
+            <Button
+              onClick={onPrevious}
+              aria-label="Gå til forrige steg"
+              variant="outlined"
+              sx={{
+                borderRadius: 999,
+                borderColor: 'rgba(255,255,255,0.12)',
+                color: 'rgba(248, 241, 231, 0.82)',
+                '&:hover': {
+                  borderColor: 'rgba(245, 166, 35, 0.24)',
+                  bgcolor: 'rgba(245, 166, 35, 0.08)',
+                },
+              }}
+            >
               Tilbake
             </Button>
           )}
@@ -132,4 +194,3 @@ export const OnboardingStep = memo(OnboardingStepComponent, (prevProps, nextProp
 OnboardingStep.displayName = 'OnboardingStep';
 
 export default OnboardingStep;
-

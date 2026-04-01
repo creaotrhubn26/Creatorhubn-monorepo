@@ -78,6 +78,7 @@
     "db:verify-routes-vs-tables": "tsx server/scripts/verify-routes-vs-tables.ts",
     "db:verify-backend": "tsx server/scripts/verify-backend-complete.ts",
     "db:verify-production": "tsx server/scripts/production-verification.ts",
+    "test:academy-access-approval-flow": "tsx scripts/test-academy-access-approval-flow.ts",
     "db:pre-deployment": "tsx server/scripts/pre-deployment-checklist.ts",
     "db:post-deployment": "tsx server/scripts/post-deployment-verification.ts",
     "db:monitor": "tsx server/scripts/continuous-monitoring.ts",
