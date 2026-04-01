@@ -7,6 +7,10 @@
   "devCommand": "npm run dev",
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "https://creatorhub-backend-rtbl.onrender.com/api/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
