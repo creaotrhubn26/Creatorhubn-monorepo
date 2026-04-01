@@ -140,8 +140,6 @@ export default defineConfig({
         casting: path.resolve(__dirname, 'client/casting.html'),
       },
       external: (id) => {
-        // Exclude unused directory from build
-        if (id.includes('/unused/')) return true;
         // Exclude external drive paths
         if (id.includes('/Volumes/Samsung_T9_4TB1/')) return true;
         // Exclude rgthree dependencies
