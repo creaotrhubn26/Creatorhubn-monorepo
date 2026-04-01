@@ -19,7 +19,7 @@ import { ArrowBack as ArrowBackIcon, Home as HomeIcon } from '@mui/icons-materia
 import SubscriptionSelectionFlow from '../components/subscription/SubscriptionSelectionFlow';
 import PaymentStatusVerification from '../components/subscription/PaymentStatusVerification';
 import GooglePayIntegration from '../components/subscription/GooglePayIntegration';
-import { usePlatformPricing } from '../../services/PlatformPricingService';
+import { usePlatformPricing } from '../services/PlatformPricingService';
 
 export default function SubscriptionSelectionPage() {
   const [, navigate] = useLocation();

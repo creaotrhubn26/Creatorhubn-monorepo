@@ -73,6 +73,7 @@ import LandingDesktop from '@/pages/landing-desktop';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import LandingResponsive from '@/pages/LandingResponsive';
 import About from '@/pages/about';
+import SubscriptionSelectionPage from '@/pages/SubscriptionSelectionPage';
 // import OAuthSetup from '@/pages/oauth-setup'; // File doesn't exist
 import WeddingClient from '@/pages/wedding-client';
 import ShowcaseClient from '@/pages/showcase-client';
@@ -600,6 +601,8 @@ function App() {
                   }} />
                   <Route path="/about" component={About as React.ComponentType<any>} />
                   <Route path="/pricing" component={PricingPage as React.ComponentType<any>} />
+                  <Route path="/subscription" component={SubscriptionSelectionPage as React.ComponentType<any>} />
+                  <Route path="/subscription-selection" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/about-us" component={About as React.ComponentType<any>} />
                   <Route path="/client/gallery/:projectId/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/gallery/:accessToken" component={ClientGallery as React.ComponentType<any>} />
