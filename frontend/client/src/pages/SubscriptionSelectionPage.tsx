@@ -19,7 +19,6 @@ import { ArrowBack as ArrowBackIcon, Home as HomeIcon } from '@mui/icons-materia
 import SubscriptionSelectionFlow from '../components/subscription/SubscriptionSelectionFlow';
 import PaymentStatusVerification from '../components/subscription/PaymentStatusVerification';
 import GooglePayIntegration from '../components/subscription/GooglePayIntegration';
-import { usePlatformPricing } from '../services/PlatformPricingService';
 
 export default function SubscriptionSelectionPage() {
   const [, navigate] = useLocation();
@@ -28,7 +27,6 @@ export default function SubscriptionSelectionPage() {
   const theming = useTheming('photographer');
   const [showPaymentStatus, setShowPaymentStatus] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
-  const { subscriptionPlans, isLoading: plansLoading } = usePlatformPricing();
 
   // Get profession from URL params
   const urlParams = new URLSearchParams(window.location.search);
@@ -242,7 +240,6 @@ export default function SubscriptionSelectionPage() {
 
       <SubscriptionSelectionFlow
         profession={profession}
-        plans={(subscriptionPlans as any) || []}
         onComplete={handlePaymentComplete}
         onBack={handleBack}
       />

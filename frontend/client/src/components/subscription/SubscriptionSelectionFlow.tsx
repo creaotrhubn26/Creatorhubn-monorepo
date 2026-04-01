@@ -156,21 +156,50 @@ export default function SubscriptionSelectionFlow({
 
   // Fetch subscription plans for the profession
   const { data: plansData, isLoading: plansLoading, error: plansError } = useQuery({
-    queryKey: ['/api/billing/plans', activeProfession],
+    queryKey: ['/api/platform/subscription-plans', activeProfession],
     queryFn: async () => {
-      const response = await fetch(`/api/billing/plans?profession=${encodeURIComponent(activeProfession)}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Failed to fetch plans:', response.status, errorText);
-        throw new Error(`Failed to fetch plans: ${response.status} ${errorText}`);
-      }
-      const data = await response.json();
-      console.log('Plans data received:', data);
-      return data;
+      const data = await apiRequest('/api/platform/subscription-plans');
+      const payload = typeof data === 'object' && data !== null ? data as {
+        plans?: Array<{
+          id?: string;
+          name?: string;
+          displayName?: string;
+          price?: number;
+          currency?: string;
+          billingCycle?: string;
+          features?: string[];
+          isActive?: boolean;
+          isPopular?: boolean;
+          popular?: boolean;
+          trialDays?: number;
+          description?: string;
+          limits?: {
+            maxUsers?: number;
+            maxProjects?: number;
+            maxStorageGB?: number;
+          };
+        }>;
+      } : {};
+
+      const plans = Array.isArray(payload.plans)
+        ? payload.plans.map((plan) => ({
+            id: typeof plan.id === 'string' ? plan.id : 'unknown',
+            name: typeof plan.displayName === 'string' ? plan.displayName : (plan.name || 'Ukjent plan'),
+            profession: activeProfession,
+            price: typeof plan.price === 'number' ? Math.round(plan.price * 100) : 0,
+            currency: typeof plan.currency === 'string' ? plan.currency : 'NOK',
+            interval: plan.billingCycle === 'yearly' ? 'year' : 'month',
+            features: Array.isArray(plan.features) ? plan.features : [],
+            maxUsers: typeof plan.limits?.maxUsers === 'number' ? plan.limits.maxUsers : 1,
+            maxProjects: typeof plan.limits?.maxProjects === 'number' ? plan.limits.maxProjects : 0,
+            storageLimit: typeof plan.limits?.maxStorageGB === 'number' ? plan.limits.maxStorageGB : 0,
+            popular: Boolean(plan.isPopular ?? plan.popular),
+            trialDays: typeof plan.trialDays === 'number' ? plan.trialDays : 0,
+            description: typeof plan.description === 'string' ? plan.description : undefined,
+          }))
+        : [];
+
+      return { plans };
     },
     enabled: !!activeProfession,
     retry: 1,
