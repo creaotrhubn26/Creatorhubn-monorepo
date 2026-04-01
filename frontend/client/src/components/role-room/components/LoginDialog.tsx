@@ -70,17 +70,17 @@ const ROLE_CARDS: Record<string, {
   videoPosition?: string;
 }> = {
   admin:             { label: 'Admin',         icon: '/role-room-assets/roleroom_dashboard.webp' },
-  photographer:      { label: 'Fotograf',      icon: '/role-room-assets/roleroom_photographer.webp', video: '/role-room-assets/roleroom_photographer.mp4' },
+  photographer:      { label: 'Fotograf',      icon: '/role-room-assets/roleroom_photographer.webp', video: '/role-room-assets/roleroom_photographer.mov' },
   film_photographer: { label: 'Innholdsprodusent',  icon: '/role-room-assets/roleroom_filmfotograf.webp',     video: '/role-room-assets/roleroom_filmfotograf.mp4' },
-  photo_director:    { label: 'Fotodirektør',  icon: '/role-room-assets/roleroom_photo_director.webp',   video: '/role-room-assets/roleroom_photo_director.mp4' },
-  photo_assistant:   { label: 'Fotoassistent', icon: '/role-room-assets/roleroom_photo_assistant.webp',  video: '/role-room-assets/roleroom_photo_assistant.mp4' },
+  photo_director:    { label: 'Fotodirektør',  icon: '/role-room-assets/roleroom_photo_director.webp',   video: '/role-room-assets/roleroom_photo_director.mov' },
+  photo_assistant:   { label: 'Fotoassistent', icon: '/role-room-assets/roleroom_photo_assistant.webp',  video: '/role-room-assets/roleroom_photo_assistant.mov' },
   director:          { label: 'Regissør',      icon: '/role-room-assets/roleroom_director.webp',         video: '/role-room-assets/roleroom_director.mp4' },
   producer:          { label: 'Produsent',     icon: '/role-room-assets/roleroom_producer.webp', video: '/role-room-assets/roleroom_producer.mp4' },
   casting_director:  { label: 'Casting Director', icon: '/role-room-assets/roleroom_casting_director.webp', video: '/role-room-assets/roleroom_casting_director.mp4', videoPosition: '60% 15%' },
   camera_operator:   { label: 'Kamera',        icon: '/role-room-assets/roleroom_cinemag.webp', video: '/role-room-assets/roleroom_cinemag.mp4' },
-  talent:            { label: 'Skuespiller',   icon: '/role-room-assets/roleroom_skuespiller.webp', video: '/role-room-assets/roleroom_skuespiller.mp4' },
+  talent:            { label: 'Skuespiller',   icon: '/role-room-assets/roleroom_skuespiller.webp', video: '/role-room-assets/roleroom_skuespiller.mov' },
   agent:             { label: 'Agent',         icon: '/role-room-assets/roleroom_agent.webp',            video: '/role-room-assets/roleroom_agent.mp4' },
-  client:            { label: 'Klient',        icon: '/role-room-assets/roleroom_klient.webp',       video: '/role-room-assets/roleroom_klient.mp4' },
+  client:            { label: 'Klient',        icon: '/role-room-assets/roleroom_klient.webp',       video: '/role-room-assets/roleroom_klient.mov' },
 
   // ── Sound ─────────────────────────────────────────────────────────────
   // Drop in icon / video paths once assets are ready
