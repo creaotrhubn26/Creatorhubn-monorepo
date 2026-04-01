@@ -40,6 +40,16 @@ interface GooglePayIntegrationProps {
   onConfigurationUpdate?: (config: any) => void; 
 }
 
+const fallbackGooglePayConfiguration = {
+  merchantId: '7115-4985-8029',
+  walletIssuer: '7115-4985-8029',
+  environment: import.meta.env.PROD ? 'PRODUCTION' : 'TEST',
+};
+
+const fallbackGooglePayProducts = {
+  products: [] as Array<{ name: string; price: number; isActive: boolean }>,
+};
+
 export default function GooglePayIntegration({ onConfigurationUpdate }: GooglePayIntegrationProps) {
   const { auth } = useEnhancedMasterIntegration();
   
@@ -77,6 +87,9 @@ export default function GooglePayIntegration({ onConfigurationUpdate }: GooglePa
           ...headers, 'Content-Type' : 'application/json',
         },
       });
+      if (response.status === 404) {
+        return fallbackGooglePayConfiguration;
+      }
       if (!response.ok) throw new Error('Failed to fetch configuration');
       return response.json();
     },
@@ -93,6 +106,9 @@ export default function GooglePayIntegration({ onConfigurationUpdate }: GooglePa
           ...headers, 'Content-Type': 'application/json',
         },
       });
+      if (response.status === 404) {
+        return fallbackGooglePayProducts;
+      }
       if (!response.ok) throw new Error('Failed to fetch products');
       return response.json();
     },
@@ -212,8 +228,10 @@ export default function GooglePayIntegration({ onConfigurationUpdate }: GooglePa
           mb:  3,
           background: 'linear-gradient(135deg, #4285F4 0%, #34A853 100%)',
           color: 'white',
-          borderRadius:  2}}
-       sx={theming.getThemedCardSx()}>
+          borderRadius:  2,
+          ...theming.getThemedCardSx(),
+        }}
+      >
         <Stack direction="row" alignItems="center" spacing={2}>
           <PaymentIcon sx={{ fontSize: 32}} />
           <Box sx={{ flex:  1 }}>
@@ -412,7 +430,6 @@ export default function GooglePayIntegration({ onConfigurationUpdate }: GooglePa
     </Box>
   );
 }
-
 
 
 
