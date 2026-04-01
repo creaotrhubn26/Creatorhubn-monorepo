@@ -86,13 +86,12 @@ export class GooglePayService {
 
   constructor() {
     this.initializeGooglePay();
-}
+  }
 
   // Initialize Google Pay SDK
   private async initializeGooglePay(): Promise<void> {
     if (typeof window === 'undefined') return;
-    const googlePayEnabled =
-      import.meta.env.PROD || String(import.meta.env.VITE_ENABLE_GOOGLE_PAY).toLowerCase() === 'true';
+    const googlePayEnabled = String(import.meta.env.VITE_ENABLE_GOOGLE_PAY).toLowerCase() === 'true';
     if (!googlePayEnabled) {
       this.isReady = false;
       return;
@@ -565,7 +564,6 @@ export class GooglePayService {
 }
 
 export const googlePayService = GooglePayService.getInstance();
-
 
 
 
