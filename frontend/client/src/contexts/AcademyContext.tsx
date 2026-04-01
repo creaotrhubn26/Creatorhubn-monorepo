@@ -16,6 +16,8 @@ import { useEnhancedMasterIntegration } from "../integration/EnhancedMasterInteg
 import { useDynamicProfessions } from "../components/universal/hooks/useDynamicProfessions";
 import { useProfessionConfigs } from "@/hooks/useProfessionConfigs";
 import { useProfessionAdapter } from "@/hooks/useProfessionAdapter";
+import { useCreatorHubStoredSession } from "@/hooks/useCreatorHubStoredSession";
+import { getAuthHeader } from "@/lib/queryClient";
 import {
   buildUrlMediaFingerprint,
   normalizeMediaAssetId,
@@ -1216,6 +1218,7 @@ const AcademyContext = createContext<AcademyContextType | null>(null);
 export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  const academySession = useCreatorHubStoredSession();
   const [state, dispatch] = useReducer(academyReducer, initialState);
   const hasLoadedCoursesRef = useRef(false);
   const {
@@ -1272,14 +1275,22 @@ export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({
     professionColor,
     professionIcon,
   ]);
+  const canPersistAcademyState = academySession.authenticated
+    && Boolean(academySession.user?.id);
 
   const readAcademyKV = useCallback(
     async <T,>(key: string): Promise<T | null> => {
+      if (!canPersistAcademyState) {
+        return null;
+      }
+
       try {
+        const authHeaders = await getAuthHeader();
         const response = await fetch(
           `/api/user/kv/${encodeURIComponent(key)}`,
           {
             credentials: "include",
+            headers: authHeaders,
           },
         );
         if (!response.ok) return null;
@@ -1296,15 +1307,23 @@ export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({
         return null;
       }
     },
-    [],
+    [canPersistAcademyState],
   );
 
   const writeAcademyKV = useCallback(
     async (key: string, value: unknown): Promise<boolean> => {
+      if (!canPersistAcademyState) {
+        return false;
+      }
+
       try {
+        const authHeaders = await getAuthHeader();
         const response = await fetch("/api/user/kv", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders,
+          },
           credentials: "include",
           body: JSON.stringify({ key, value }),
         });
@@ -1324,7 +1343,7 @@ export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({
         return false;
       }
     },
-    [],
+    [canPersistAcademyState],
   );
 
   const syncCurrentCourseSelection = useCallback(

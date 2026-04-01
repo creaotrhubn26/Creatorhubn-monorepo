@@ -25227,9 +25227,37 @@ function readCompatUserKvParamKey(rawValue: unknown): string | null {
   }
 }
 
+function isProtectedAcademyKvKey(rawKey: unknown): boolean {
+  const normalizedKey = readString(rawKey)?.trim().toLowerCase();
+  return Boolean(normalizedKey && normalizedKey.startsWith("academy"));
+}
+
+function resolveUserKvScope(req: express.Request): {
+  userId: string;
+  authenticated: boolean;
+} {
+  const session = getActiveSessionFromRequest(req);
+  if (session?.userId) {
+    return {
+      userId: session.userId,
+      authenticated: true,
+    };
+  }
+
+  return {
+    userId: "guest",
+    authenticated: false,
+  };
+}
+
 app.get("/api/user/kv", async (req, res) => {
-  const userId = compatResolveUserId(req);
+  const { userId, authenticated } = resolveUserKvScope(req);
   const data = collectCompatUserKvFromMemory(userId);
+  const filteredData = Object.fromEntries(
+    Object.entries(data).filter(
+      ([key]) => authenticated || !isProtectedAcademyKvKey(key),
+    ),
+  );
 
   try {
     const userPrefix = dbCompatUserKvPrefix(userId);
@@ -25241,6 +25269,9 @@ app.get("/api/user/kv", async (req, res) => {
       for (const row of dbRows) {
         const scopedKey = row.key.slice(userPrefix.length);
         if (!scopedKey) continue;
+        if (!authenticated && isProtectedAcademyKvKey(scopedKey)) {
+          continue;
+        }
         const entry = row.value;
         compatUserKvStore.set(compatScopedKey(userId, scopedKey), {
           value: entry?.value ?? null,
@@ -25249,24 +25280,29 @@ app.get("/api/user/kv", async (req, res) => {
               ? entry.updatedAt
               : new Date().toISOString(),
         });
-        data[scopedKey] = entry?.value ?? null;
+        filteredData[scopedKey] = entry?.value ?? null;
       }
     }
-    return res.status(200).json({ success: true, data });
+    return res.status(200).json({ success: true, data: filteredData });
   } catch (error) {
     console.warn("User KV list failed, returning memory fallback:", {
       userId,
       error,
     });
-    return res.status(200).json({ success: true, data });
+    return res.status(200).json({ success: true, data: filteredData });
   }
 });
 
 app.post("/api/user/kv", async (req, res) => {
-  const userId = compatResolveUserId(req);
+  const { userId, authenticated } = resolveUserKvScope(req);
   const key = readString(req.body?.key);
   if (!key) {
     return res.status(400).json({ success: false, error: "key is required" });
+  }
+  if (!authenticated && isProtectedAcademyKvKey(key)) {
+    return res
+      .status(401)
+      .json({ success: false, error: "Innlogging kreves for Academy-data" });
   }
   const scopedKey = compatScopedKey(userId, key);
   const entry = {
@@ -25296,10 +25332,15 @@ app.post("/api/user/kv", async (req, res) => {
 });
 
 app.get("/api/user/kv/:key", async (req, res) => {
-  const userId = compatResolveUserId(req);
+  const { userId, authenticated } = resolveUserKvScope(req);
   const key = readCompatUserKvParamKey(req.params.key);
   if (!key) {
     return res.status(400).json({ success: false, error: "key is required" });
+  }
+  if (!authenticated && isProtectedAcademyKvKey(key)) {
+    return res
+      .status(401)
+      .json({ success: false, error: "Innlogging kreves for Academy-data" });
   }
   const scopedKey = compatScopedKey(userId, key);
   try {
@@ -25342,10 +25383,15 @@ app.get("/api/user/kv/:key", async (req, res) => {
 });
 
 app.post("/api/user/kv/:key", async (req, res) => {
-  const userId = compatResolveUserId(req);
+  const { userId, authenticated } = resolveUserKvScope(req);
   const key = readCompatUserKvParamKey(req.params.key);
   if (!key) {
     return res.status(400).json({ success: false, error: "key is required" });
+  }
+  if (!authenticated && isProtectedAcademyKvKey(key)) {
+    return res
+      .status(401)
+      .json({ success: false, error: "Innlogging kreves for Academy-data" });
   }
   const scopedKey = compatScopedKey(userId, key);
   const entry = {

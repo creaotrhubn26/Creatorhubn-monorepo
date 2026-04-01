@@ -782,6 +782,42 @@ function appendQueryParamsToPath(pathname: string, params: Record<string, string
   return `${basePath}${nextQuery ? `?${nextQuery}` : ''}${hashPart ? `#${hashPart}` : ''}`;
 }
 
+function getRoleRoomPublicAppOrigin(): string | null {
+  const candidates = [
+    readStringValue(process.env.PUBLIC_APP_URL),
+    readStringValue(process.env.APP_URL),
+    ...(process.env.CORS_ALLOW_ORIGINS ?? '')
+      .split(',')
+      .map((entry) => readStringValue(entry)),
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.origin;
+      }
+    } catch {
+      // Ignore malformed origin candidates.
+    }
+  }
+
+  return null;
+}
+
+function resolveRoleRoomBrowserOrigin(
+  req?: Request,
+  browserOrigin?: string | null,
+): string | null {
+  return sanitizeRoleRoomBrowserOrigin(browserOrigin)
+    ?? getRoleRoomPublicAppOrigin()
+    ?? getRoleRoomRequestOrigin(req);
+}
+
 function buildRoleRoomGoogleReturnUrl(
   returnPath: string,
   params: Record<string, string | null | undefined>,
@@ -4013,14 +4049,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     pruneExpiredRoleRoomGoogleState();
     const config = getRoleRoomGoogleConfig(req);
     const fallbackReturnPath = sanitizeRoleRoomReturnPath(req.query.returnPath, req);
-    const requestOrigin = getRoleRoomRequestOrigin(req);
+    const requestOrigin = resolveRoleRoomBrowserOrigin(req);
 
     const redirectWithError = (returnPath: string, message: string, browserOrigin?: string | null) => {
       res.redirect(
         buildRoleRoomGoogleReturnUrl(returnPath, {
           rrGoogleStatus: 'error',
           rrGoogleMessage: message,
-        }, browserOrigin ?? requestOrigin),
+        }, resolveRoleRoomBrowserOrigin(req, browserOrigin) ?? requestOrigin),
       );
     };
 
@@ -4193,7 +4229,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             rrGoogleStatus: 'success',
             rrGoogleMode: 'login',
             rrGoogleTransfer: transferId,
-          }, oauthState.browserOrigin ?? requestOrigin),
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
         );
         return;
       }
@@ -4250,7 +4286,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           rrGoogleStatus: 'success',
           rrGoogleMode: 'link',
           rrGoogleTransfer: transferId,
-        }, oauthState.browserOrigin ?? requestOrigin),
+        }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
       );
     } catch (error) {
       console.error('Role Room Google callback error:', error);
@@ -4511,14 +4547,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     pruneExpiredRoleRoomGoogleState();
     const config = getRoleRoomLinkedInConfig(req);
     const fallbackReturnPath = sanitizeRoleRoomReturnPath(req.query.returnPath, req);
-    const requestOrigin = getRoleRoomRequestOrigin(req);
+    const requestOrigin = resolveRoleRoomBrowserOrigin(req);
 
     const redirectWithError = (returnPath: string, message: string, browserOrigin?: string | null) => {
       res.redirect(
         buildRoleRoomGoogleReturnUrl(returnPath, {
           rrLinkedInStatus: 'error',
           rrLinkedInMessage: message,
-        }, browserOrigin ?? requestOrigin),
+        }, resolveRoleRoomBrowserOrigin(req, browserOrigin) ?? requestOrigin),
       );
     };
 
@@ -4629,7 +4665,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           rrLinkedInStatus: 'success',
           rrLinkedInMode: 'link',
           rrLinkedInTransfer: transferId,
-        }, oauthState.browserOrigin ?? requestOrigin),
+        }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
       );
     } catch (error) {
       console.error('Role Room LinkedIn callback error:', error);

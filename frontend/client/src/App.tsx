@@ -161,6 +161,7 @@ import AcademyUserSettingsStudio from '@/components/academy/AcademyUserSettingsS
 import AcademyToolsOverviewStudio from '@/components/academy/AcademyToolsOverviewStudio';
 import AcademyDesignProvider from '@/components/academy/AcademyDesignProvider';
 import AcademyStudentGoogleGate from '@/components/academy/AcademyStudentGoogleGate';
+import AcademyAccessGate from '@/components/academy/AcademyAccessGate';
 import CommunityHub from '@/components/community/CommunityHub';
 import ReceiptsManager from '@/components/accounting/ReceiptsManager';
 import ShowcaseAmazonDesign from '@/components/universal/misc/ShowcaseAmazonDesign';
@@ -219,7 +220,12 @@ const getAcademyRouteQueryContext = (): AcademyRouteQueryContext => {
   }
 };
 
-const createAcademyRouteWrapper = (Component: React.ComponentType<any>) => {
+type AcademyRouteAccessMode = 'public' | 'authenticated' | 'student' | 'instructor';
+
+const createAcademyRouteWrapper = (
+  Component: React.ComponentType<any>,
+  accessMode: AcademyRouteAccessMode = 'instructor',
+) => {
   const AcademyRouteWrapper = (props: any) => {
     const routeContext = getAcademyRouteQueryContext();
     const mergedProps = {
@@ -237,19 +243,38 @@ const createAcademyRouteWrapper = (Component: React.ComponentType<any>) => {
     const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
     const isStudentAcademyPath =
       pathname === '/academy/student-dashboard' ||
+      pathname === '/academy/dashboard/student' ||
       pathname === '/academy/student-enrollment' ||
       routeContext.audience === 'student' ||
       String(routeContext.returnTo || '').includes('/academy/student-dashboard');
     const academyContent = <Component {...mergedProps} />;
 
+    let gatedContent = academyContent;
+
+    if (accessMode === 'student') {
+      gatedContent = (
+        <AcademyStudentGoogleGate>{academyContent}</AcademyStudentGoogleGate>
+      );
+    } else if (accessMode === 'authenticated') {
+      gatedContent = isStudentAcademyPath ? (
+        <AcademyStudentGoogleGate>{academyContent}</AcademyStudentGoogleGate>
+      ) : (
+        <AcademyAccessGate requirement="authenticated">
+          {academyContent}
+        </AcademyAccessGate>
+      );
+    } else if (accessMode === 'instructor') {
+      gatedContent = (
+        <AcademyAccessGate requirement="instructor">
+          {academyContent}
+        </AcademyAccessGate>
+      );
+    }
+
     return (
       <AcademyDesignProvider>
         <AcademyProvider>
-          {isStudentAcademyPath ? (
-            <AcademyStudentGoogleGate>{academyContent}</AcademyStudentGoogleGate>
-          ) : (
-            academyContent
-          )}
+          {gatedContent}
         </AcademyProvider>
       </AcademyDesignProvider>
     );
@@ -258,27 +283,27 @@ const createAcademyRouteWrapper = (Component: React.ComponentType<any>) => {
   return AcademyRouteWrapper;
 };
 
-const AcademyLandingRouteWrapper = createAcademyRouteWrapper(AcademyLandingPage);
-const AcademyDashboardRouteWrapper = createAcademyRouteWrapper(AcademyDashboardCinematic);
-const AcademyCourseCreatorRouteWrapper = createAcademyRouteWrapper(CourseCreator);
-const AcademyAnnotationEditorRouteWrapper = createAcademyRouteWrapper(VideoAnnotationEditor);
-const AcademyQuizManagerRouteWrapper = createAcademyRouteWrapper(QuizManager);
-const AcademyAssignmentsRouteWrapper = createAcademyRouteWrapper(AcademyAssignmentsStudio);
-const AcademyEnrollmentRouteWrapper = createAcademyRouteWrapper(AcademyEnrollmentStudio);
-const AcademyStudentDashboardRouteWrapper = createAcademyRouteWrapper(AcademyStudentDashboardStudio);
-const AcademyAnalyticsRouteWrapper = createAcademyRouteWrapper(AcademyAnalyticsStudio);
-const AcademyCurriculumRouteWrapper = createAcademyRouteWrapper(AcademyCurriculumStudio);
-const AcademyLessonRouteWrapper = createAcademyRouteWrapper(AcademyLessonStudio);
-const AcademyCohortSettingsRouteWrapper = createAcademyRouteWrapper(AcademyCohortSettingsStudio);
-const AcademyMediaRouteWrapper = createAcademyRouteWrapper(AcademyMediaStudio);
-const AcademyInstructorAdminRouteWrapper = createAcademyRouteWrapper(AcademyInstructorAdminStudio);
-const AcademyUserSettingsRouteWrapper = createAcademyRouteWrapper(AcademyUserSettingsStudio);
-const AcademyToolsOverviewRouteWrapper = createAcademyRouteWrapper(AcademyToolsOverviewStudio);
-const AcademyVideoPlayerRouteWrapper = createAcademyRouteWrapper(AcademyVideoPlayerStudio);
-const AcademyMonetizationRouteWrapper = createAcademyRouteWrapper(AcademyMonetizationStudio);
-const AcademyCTAOverlayRouteWrapper = createAcademyRouteWrapper(AcademyCTAOverlayStudio);
-const AcademyLowerThirdsRouteWrapper = createAcademyRouteWrapper(AcademyLowerThirdsStudio);
-const AcademyPresentationOverlayRouteWrapper = createAcademyRouteWrapper(AcademyPresentationOverlayStudio);
+const AcademyLandingRouteWrapper = createAcademyRouteWrapper(AcademyLandingPage, 'public');
+const AcademyDashboardRouteWrapper = createAcademyRouteWrapper(AcademyDashboardCinematic, 'instructor');
+const AcademyCourseCreatorRouteWrapper = createAcademyRouteWrapper(CourseCreator, 'instructor');
+const AcademyAnnotationEditorRouteWrapper = createAcademyRouteWrapper(VideoAnnotationEditor, 'instructor');
+const AcademyQuizManagerRouteWrapper = createAcademyRouteWrapper(QuizManager, 'instructor');
+const AcademyAssignmentsRouteWrapper = createAcademyRouteWrapper(AcademyAssignmentsStudio, 'authenticated');
+const AcademyEnrollmentRouteWrapper = createAcademyRouteWrapper(AcademyEnrollmentStudio, 'instructor');
+const AcademyStudentDashboardRouteWrapper = createAcademyRouteWrapper(AcademyStudentDashboardStudio, 'student');
+const AcademyAnalyticsRouteWrapper = createAcademyRouteWrapper(AcademyAnalyticsStudio, 'instructor');
+const AcademyCurriculumRouteWrapper = createAcademyRouteWrapper(AcademyCurriculumStudio, 'instructor');
+const AcademyLessonRouteWrapper = createAcademyRouteWrapper(AcademyLessonStudio, 'instructor');
+const AcademyCohortSettingsRouteWrapper = createAcademyRouteWrapper(AcademyCohortSettingsStudio, 'instructor');
+const AcademyMediaRouteWrapper = createAcademyRouteWrapper(AcademyMediaStudio, 'authenticated');
+const AcademyInstructorAdminRouteWrapper = createAcademyRouteWrapper(AcademyInstructorAdminStudio, 'instructor');
+const AcademyUserSettingsRouteWrapper = createAcademyRouteWrapper(AcademyUserSettingsStudio, 'authenticated');
+const AcademyToolsOverviewRouteWrapper = createAcademyRouteWrapper(AcademyToolsOverviewStudio, 'instructor');
+const AcademyVideoPlayerRouteWrapper = createAcademyRouteWrapper(AcademyVideoPlayerStudio, 'authenticated');
+const AcademyMonetizationRouteWrapper = createAcademyRouteWrapper(AcademyMonetizationStudio, 'instructor');
+const AcademyCTAOverlayRouteWrapper = createAcademyRouteWrapper(AcademyCTAOverlayStudio, 'instructor');
+const AcademyLowerThirdsRouteWrapper = createAcademyRouteWrapper(AcademyLowerThirdsStudio, 'instructor');
+const AcademyPresentationOverlayRouteWrapper = createAcademyRouteWrapper(AcademyPresentationOverlayStudio, 'instructor');
 const createShowcaseRouteWrapper = (Component: React.ComponentType<any>) => {
   const ShowcaseRouteWrapper = (props: any) => (
     <AcademyDesignProvider>
