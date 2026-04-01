@@ -95,21 +95,21 @@ const PAYMENT_METHODS: PaymentMethod[] = [
     name: 'Google Pay',
     icon: <GoogleIcon />,
     color: '#4285F0',
-    available: true,
+    available: false,
 },
   {
     id: 'stripe',
     name: 'Kort (Visa/Mastercard, )',
     icon: <CreditCardIcon />,
     color: '#635BF0',
-    available: true,
+    available: false,
 },
   {
     id: 'vipps',
     name: 'Vipps',
     icon: <VippsIcon />,
     color: '#FF5B20',
-    available: true,
+    available: false,
 },
 ];
 
@@ -153,6 +153,7 @@ export default function SubscriptionSelectionFlow({
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('google-pay');
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const availablePaymentMethods = PAYMENT_METHODS.filter((method) => method.available);
 
   // Fetch subscription plans for the profession
   const { data: plansData, isLoading: plansLoading, error: plansError } = useQuery({
@@ -338,6 +339,15 @@ export default function SubscriptionSelectionFlow({
       });
       return;
   }
+
+    if (availablePaymentMethods.length === 0) {
+      toast({
+        title: 'Betaling midlertidig utilgjengelig',
+        description: 'Abonnementsplanene er tilgjengelige, men betalingsgatewayene er ikke aktivert på serveren ennå.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setShowPaymentDialog(true);
 };
 
@@ -693,7 +703,7 @@ export default function SubscriptionSelectionFlow({
           variant="contained"
           size="large"
           onClick={handleContinueToPayment}
-          disabled={!selectedPlan}
+          disabled={!selectedPlan || availablePaymentMethods.length === 0}
           startIcon={<ArrowForwardIcon />}
           sx={{
             background: `linear-gradient(135deg, ${professionColor} 0%, ${professionColor}dd 100%)`,
@@ -717,8 +727,28 @@ export default function SubscriptionSelectionFlow({
             }
           }}
         >
-          Fortsett til betaling
+          {availablePaymentMethods.length === 0 ? 'Betaling kommer snart' : 'Fortsett til betaling'}
         </Button>
+
+        {selectedPlan && availablePaymentMethods.length === 0 && (
+          <Alert
+            severity="warning"
+            sx={{
+              mt: 2,
+              maxWidth: 640,
+              mx: 'auto',
+              textAlign: 'left',
+              backgroundColor: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              borderRadius: '12px',
+              '& .MuiAlert-icon': {
+                color: '#f59e0b',
+              },
+            }}
+          >
+            Online betaling er midlertidig utilgjengelig. Planene kan fortsatt vises, men checkout aktiveres først når betalingsrutene er koblet til backenden.
+          </Alert>
+        )}
       </Box>
 
       {/* Payment Dialog */}
