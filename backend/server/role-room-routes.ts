@@ -740,14 +740,32 @@ function sendRoleRoomGoogleError(res: Response, error: unknown, fallbackMessage:
   });
 }
 
+const ROLE_ROOM_CANONICAL_PATH = '/theroleroom';
+const ROLE_ROOM_LEGACY_PATH = '/casting.html';
+
+function normalizeRoleRoomReturnPath(pathname: string): string {
+  const trimmedPath = pathname.trim();
+  if (!trimmedPath) {
+    return ROLE_ROOM_CANONICAL_PATH;
+  }
+
+  const [pathOnly, hashPart = ''] = trimmedPath.split('#', 2);
+  const [basePath, queryString = ''] = pathOnly.split('?', 2);
+  const normalizedBasePath = basePath.trim().toLowerCase() === ROLE_ROOM_LEGACY_PATH
+    ? ROLE_ROOM_CANONICAL_PATH
+    : basePath;
+
+  return `${normalizedBasePath}${queryString ? `?${queryString}` : ''}${hashPart ? `#${hashPart}` : ''}`;
+}
+
 function sanitizeRoleRoomReturnPath(rawValue: unknown, req?: Request): string {
-  const fallback = '/casting.html';
+  const fallback = ROLE_ROOM_CANONICAL_PATH;
   const value = readStringValue(rawValue);
   if (!value) {
     return fallback;
   }
   if (value.startsWith('/')) {
-    return value;
+    return normalizeRoleRoomReturnPath(value);
   }
   if (req) {
     try {
@@ -757,7 +775,7 @@ function sanitizeRoleRoomReturnPath(rawValue: unknown, req?: Request): string {
       const expectedOrigin = `${protocol}://${host}`;
       const parsed = new URL(value);
       if (parsed.origin === expectedOrigin) {
-        return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        return normalizeRoleRoomReturnPath(`${parsed.pathname}${parsed.search}${parsed.hash}`);
       }
     } catch {
       return fallback;
@@ -767,7 +785,7 @@ function sanitizeRoleRoomReturnPath(rawValue: unknown, req?: Request): string {
 }
 
 function appendQueryParamsToPath(pathname: string, params: Record<string, string | null | undefined>): string {
-  const safePath = pathname.trim().length > 0 ? pathname : '/casting.html';
+  const safePath = normalizeRoleRoomReturnPath(pathname.trim().length > 0 ? pathname : ROLE_ROOM_CANONICAL_PATH);
   const [pathOnly, hashPart = ''] = safePath.split('#', 2);
   const [basePath, queryString = ''] = pathOnly.split('?', 2);
   const searchParams = new URLSearchParams(queryString);

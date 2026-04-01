@@ -49,6 +49,7 @@ import {
   getProducerWorkspaceSurfaceForGoogleFolder,
 } from '../../utils/producerGoogleWorkspace';
 import type { ProjectFileRecord } from '../../utils/projectFiles';
+import { getRoleRoomReturnPath } from '../../utils/runtime';
 
 interface ProducerGoogleWorkspacePanelProps {
   project: CastingProject;
@@ -101,9 +102,9 @@ const formatDateTime = (value?: string | null): string => {
 
 const getReturnPath = (): string => {
   if (typeof window === 'undefined') {
-    return '/casting.html';
+    return getRoleRoomReturnPath(null);
   }
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  return getRoleRoomReturnPath(window.location);
 };
 
 const sortArtifacts = (artifacts: RoleRoomGoogleArtifactRef[]): RoleRoomGoogleArtifactRef[] => (

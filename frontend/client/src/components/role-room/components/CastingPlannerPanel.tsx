@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
-import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
+import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import {
   Box,
   Typography,
@@ -2607,7 +2607,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
     if (!authLoaded) return;
     if (!adminUser && isStandalone) {
       // Only redirect if this is the standalone casting page — prevents redirect loops
-      window.location.href = '/casting.html';
+      window.location.href = getRoleRoomCanonicalPath(window.location);
     }
   }, [adminUser, authLoaded, isStandalone]);
 
@@ -5461,7 +5461,7 @@ const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
                   setProjectToEdit(null);
                   setCurrentProjectId(null);
                   setActiveTab(0);
-                  window.location.assign('/casting.html');
+                  window.location.assign(getRoleRoomCanonicalPath(window.location));
                 }}
                 aria-label={branding.tokens.labels.logoutLabel}
                 title={branding.tokens.labels.logoutLabel}

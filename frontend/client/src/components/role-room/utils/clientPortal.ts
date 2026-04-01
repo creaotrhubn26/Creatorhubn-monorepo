@@ -1,3 +1,5 @@
+import { getRoleRoomCanonicalPath, normalizeRoleRoomStandalonePath } from './runtime';
+
 export type ClientPortalWorkspace =
   | 'brief'
   | 'materials'
@@ -57,7 +59,11 @@ const getClientPortalBaseUrl = (): URL | null => {
     return null;
   }
   try {
-    return new URL(window.location.pathname || '/casting.html', window.location.origin);
+    const pathname = normalizeRoleRoomStandalonePath(
+      window.location.pathname || getRoleRoomCanonicalPath(window.location),
+      window.location,
+    );
+    return new URL(pathname, window.location.origin);
   } catch {
     return null;
   }

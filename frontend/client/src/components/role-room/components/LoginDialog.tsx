@@ -37,7 +37,7 @@ import authSessionService from '../services/authSessionService';
 import { googleWorkspaceApi } from '../services/castingApiService';
 import { parseClientPortalIntentFromWindow } from '../utils/clientPortal';
 import { getRoleRoomVideoPosterUrl, getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
-import { isRoleRoomStandaloneRuntime } from '../utils/runtime';
+import { getRoleRoomReturnPath, isRoleRoomStandaloneRuntime } from '../utils/runtime';
 
 /* ─────────────────────────── types ────────────────────────────── */
 
@@ -1054,14 +1054,8 @@ export default function LoginDialog({
     try {
       const browserOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
       const currentPath = typeof window !== 'undefined'
-        ? (() => {
-            const currentUrl = new URL(window.location.href);
-            const roleRoomPath = currentUrl.pathname.includes('casting')
-              ? currentUrl.pathname
-              : '/casting.html';
-            return `${roleRoomPath}${currentUrl.search}${currentUrl.hash}`;
-          })()
-        : '/casting.html';
+        ? getRoleRoomReturnPath(window.location)
+        : getRoleRoomReturnPath(null);
       const response = await googleWorkspaceApi.startOauth({
         mode: 'login',
         loginAs: loginPersona,

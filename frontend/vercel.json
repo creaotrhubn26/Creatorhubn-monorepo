@@ -5,7 +5,66 @@
   "framework": "vite",
   "installCommand": "npm install --legacy-peer-deps",
   "devCommand": "npm run dev",
+  "redirects": [
+    {
+      "source": "/casting.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/theroleroom",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/theroleroom/",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/casting.html",
+      "destination": "/theroleroom",
+      "permanent": true
+    },
+    {
+      "source": "/theroleroom/",
+      "destination": "/theroleroom",
+      "permanent": true
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/casting.html"
+    },
+    {
+      "source": "/theroleroom",
+      "destination": "/casting.html"
+    },
     {
       "source": "/api/(.*)",
       "destination": "https://creatorhub-backend-rtbl.onrender.com/api/$1"

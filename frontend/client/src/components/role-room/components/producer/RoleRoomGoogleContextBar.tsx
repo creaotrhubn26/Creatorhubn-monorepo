@@ -32,6 +32,7 @@ import {
 } from '../../utils/producerGoogleWorkspace';
 import { normalizeProducerProjectPlanning } from '../../utils/producerProjectPlanning';
 import { normalizeProjectFileRecords, type ProjectFileRecord } from '../../utils/projectFiles';
+import { getRoleRoomReturnPath } from '../../utils/runtime';
 
 interface RoleRoomGoogleContextBarProps {
   project: CastingProject;
@@ -92,9 +93,9 @@ const EMPTY_PRODUCTION_DAYS: NonNullable<CastingProject['productionDays']> = [];
 
 const getReturnPath = (): string => {
   if (typeof window === 'undefined') {
-    return '/casting.html';
+    return getRoleRoomReturnPath(null);
   }
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  return getRoleRoomReturnPath(window.location);
 };
 
 const buildDriveFolderUrl = (folderId?: string | null): string => (
