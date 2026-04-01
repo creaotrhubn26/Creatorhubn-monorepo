@@ -75,14 +75,19 @@ export default function SubscriptionSelectionPage() {
     navigate('/');
 };
 
-  const handlePaymentComplete = (plan: any, paymentMethod: string) => {
+  const handlePaymentComplete = (
+    plan: any,
+    paymentMethod: string,
+    transactionId?: string,
+  ) => {
     // Store payment completion data
-    const paymentData = {
+    const completedPaymentData = {
       plan,
       paymentMethod,
+      transactionId,
       timestamp: new Date().toISOString(),
-  };
-    setPaymentData(paymentData);
+    };
+    setPaymentData(completedPaymentData);
     setShowPaymentStatus(true);
 
     // Mark subscription as selected
@@ -96,7 +101,8 @@ export default function SubscriptionSelectionPage() {
         headers: { 'Content-Type' : 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          transactionId: (paymentData as any).transactionId || 'googlepay',
+          transactionId: transactionId || 'compat',
+          requestId,
           planId: plan?.id || plan?.name || 'unknown',
           amount,
           currency: plan?.currency || 'NOK',
@@ -232,6 +238,8 @@ export default function SubscriptionSelectionPage() {
 
       <SubscriptionSelectionFlow
         profession={profession}
+        requestId={requestId}
+        fromInvite={fromInvite}
         onComplete={handlePaymentComplete}
         onBack={handleBack}
       />

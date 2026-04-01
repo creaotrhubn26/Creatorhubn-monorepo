@@ -96,21 +96,21 @@ const PAYMENT_METHODS: PaymentMethod[] = [
     icon: <GoogleIcon />,
     color: '#4285F0',
     available: false,
-},
+  },
   {
     id: 'stripe',
-    name: 'Kort (Visa/Mastercard, )',
+    name: 'Kort (Visa/Mastercard)',
     icon: <CreditCardIcon />,
     color: '#635BF0',
-    available: false,
-},
+    available: true,
+  },
   {
     id: 'vipps',
     name: 'Vipps',
     icon: <VippsIcon />,
     color: '#FF5B20',
-    available: false,
-},
+    available: true,
+  },
 ];
 
 const PROFESSION_ICONS = {
@@ -129,12 +129,20 @@ const PROFESSION_COLORS = {
 
 interface SubscriptionSelectionFlowProps {
   profession: string;
-  onComplete?: (plan: SubscriptionPlan, paymentMethod: string) => void;
-  onBack?: () => void; 
+  requestId?: string | null;
+  fromInvite?: boolean;
+  onComplete?: (
+    plan: SubscriptionPlan,
+    paymentMethod: string,
+    transactionId?: string,
+  ) => void;
+  onBack?: () => void;
 }
 
 export default function SubscriptionSelectionFlow({
   profession: propProfession,
+  requestId,
+  fromInvite = false,
   onComplete,
   onBack,
 }: SubscriptionSelectionFlowProps) {
@@ -150,10 +158,21 @@ export default function SubscriptionSelectionFlow({
   const theming = useTheming(activeProfession);
 
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('google-pay');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(
+    PAYMENT_METHODS.find((method) => method.available)?.id || '',
+  );
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const availablePaymentMethods = PAYMENT_METHODS.filter((method) => method.available);
+
+  useEffect(() => {
+    if (
+      availablePaymentMethods.length > 0 &&
+      !availablePaymentMethods.some((method) => method.id === selectedPaymentMethod)
+    ) {
+      setSelectedPaymentMethod(availablePaymentMethods[0].id);
+    }
+  }, [availablePaymentMethods, selectedPaymentMethod]);
 
   // Fetch subscription plans for the profession
   const { data: plansData, isLoading: plansLoading, error: plansError } = useQuery({
@@ -225,10 +244,11 @@ export default function SubscriptionSelectionFlow({
           metadata: {
             planId: plan.id,
             profession: activeProfession,
+            requestId,
             recurring: plan.interval === 'month' || plan.interval === 'year',
             billingPeriod: plan.interval,
-        },
-      };
+          },
+        };
 
         const result = await googlePayService.processSubscriptionPayment(
           paymentIntent,
@@ -267,6 +287,7 @@ export default function SubscriptionSelectionFlow({
             amount: plan.price,
             currency: plan.currency,
             userId: user?.id,
+            requestId,
             profession: activeProfession,
           }),
         });
@@ -276,11 +297,12 @@ export default function SubscriptionSelectionFlow({
       }
     },
     onSuccess: (result) => {
+      const transactionId = (result as any).transactionId || (result as any).transactiond;
       // Store payment success (server-first)
       const payload = {
         plan: selectedPlan,
         paymentMethod: selectedPaymentMethod,
-        transactionId: (result as any).transactionId || (result as any).transactiond,
+        transactionId,
         timestamp: new Date().toISOString(),
       };
       fetch('/api/user/kv', {
@@ -295,12 +317,21 @@ export default function SubscriptionSelectionFlow({
         title: 'Betaling fullført, !',
         description: 'Din abonnementsplan er aktivert. Admin vil sende deg en e-post med tilgang.',
         variant: 'default',
-    });
+      });
 
-      // Redirect to success page or back to landing
-      navigate('/?payment=success');
-      onComplete?.(selectedPlan!, selectedPaymentMethod);
-  },
+      const nextParams = new URLSearchParams();
+      nextParams.set('profession', activeProfession);
+      nextParams.set('payment', 'success');
+      if (requestId) {
+        nextParams.set('requestId', requestId);
+      }
+      if (fromInvite) {
+        nextParams.set('fromInvite', 'true');
+      }
+
+      navigate(`/subscription-selection?${nextParams.toString()}`);
+      onComplete?.(selectedPlan!, selectedPaymentMethod, transactionId);
+    },
     onError: (error) => {
       toast({
         title: 'Betaling feilet',

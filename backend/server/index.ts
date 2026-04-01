@@ -17844,6 +17844,61 @@ type CompatPaymentHistoryItem = {
   refundedAt: string | null;
 };
 
+type CompatPaymentStatusCardSummary = {
+  id: string;
+  passId: string;
+  status: "active" | "pending" | "expired";
+  walletUrl?: string;
+  qrCode?: string;
+};
+
+type CompatPaymentStatusRecord = {
+  id: string;
+  transactionId: string;
+  userId: string;
+  email: string | null;
+  requestId: string | null;
+  planId: string | null;
+  planName: string;
+  amountMinor: number;
+  amountMajor: number;
+  currency: string;
+  paymentMethod: "google-pay" | "card" | "stripe" | "vipps";
+  status: "pending" | "completed" | "failed" | "refunded";
+  createdAt: string;
+  completedAt: string | null;
+  provider: "compat" | "google-pay";
+  metadata: Record<string, unknown>;
+  receiptSentAt: string | null;
+  membershipCard: CompatPaymentStatusCardSummary | null;
+};
+
+type CompatMembershipCardTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+
+type CompatGoogleWalletMembershipCard = {
+  id: string;
+  passId: string;
+  userId: string;
+  organizationName: string;
+  membershipType: string;
+  memberNumber: string;
+  memberSince: string;
+  benefits: string[];
+  renewalDate: string | null;
+  autoRenew: boolean;
+  tier: CompatMembershipCardTier;
+  qrCode: string | null;
+  barcode: string | null;
+  createdAt: string;
+  lastRenewedAt: string | null;
+  isActive: boolean;
+  status: "active" | "pending" | "expired";
+  walletUrl: string | null;
+  paymentId: string | null;
+  transactionId: string | null;
+  planName: string | null;
+};
+
 type CompatFikenMvaStatus = {
   registered: boolean | null;
   lastCheckedAt: string | null;
@@ -18107,6 +18162,18 @@ function dbCompatSkattemeldingStatusKey(userId: string): string {
   return `compat:accounting:skattemelding:${userId}`;
 }
 
+function dbCompatPaymentStatusKey(paymentId: string): string {
+  return `compat:payments:status:${paymentId}`;
+}
+
+function dbCompatLatestPaymentKey(userId: string): string {
+  return `compat:payments:latest:${userId}`;
+}
+
+function dbCompatMembershipCardsKey(userId: string): string {
+  return `compat:wallet:membership-cards:${userId}`;
+}
+
 async function readCompatPaymentMethods(
   userId: string,
 ): Promise<CompatPaymentMethod[]> {
@@ -18184,6 +18251,40 @@ async function writeCompatSkattemeldingStatus(
   status: CompatSkattemeldingStatus,
 ): Promise<void> {
   await compatStoreSet(dbCompatSkattemeldingStatusKey(userId), status);
+}
+
+async function readCompatPaymentStatusRecord(
+  paymentId: string,
+): Promise<CompatPaymentStatusRecord | null> {
+  return await compatStoreGet<CompatPaymentStatusRecord>(
+    dbCompatPaymentStatusKey(paymentId),
+  );
+}
+
+async function writeCompatPaymentStatusRecord(
+  record: CompatPaymentStatusRecord,
+): Promise<void> {
+  await compatStoreSet(dbCompatPaymentStatusKey(record.id), record);
+  if (record.userId && record.userId !== "guest") {
+    await compatStoreSet(dbCompatLatestPaymentKey(record.userId), record.id);
+  }
+}
+
+async function readCompatMembershipCards(
+  userId: string,
+): Promise<CompatGoogleWalletMembershipCard[]> {
+  return (
+    (await compatStoreGet<CompatGoogleWalletMembershipCard[]>(
+      dbCompatMembershipCardsKey(userId),
+    )) ?? []
+  );
+}
+
+async function writeCompatMembershipCards(
+  userId: string,
+  cards: CompatGoogleWalletMembershipCard[],
+): Promise<void> {
+  await compatStoreSet(dbCompatMembershipCardsKey(userId), cards);
 }
 
 async function readCompatSubscriptionStatus(
@@ -18307,6 +18408,496 @@ async function buildCompatPaymentHistory(
     (left, right) =>
       new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
   );
+}
+
+function normalizeCompatPaymentMethod(
+  value: unknown,
+): CompatPaymentStatusRecord["paymentMethod"] {
+  const raw = (readString(value) || "card").toLowerCase();
+  if (raw === "google-pay" || raw === "googlepay" || raw === "google_pay") {
+    return "google-pay";
+  }
+  if (raw === "vipps") {
+    return "vipps";
+  }
+  if (raw === "stripe") {
+    return "stripe";
+  }
+  return "card";
+}
+
+function normalizeCompatAmountMinor(
+  value: unknown,
+  plan: CompatPlatformSubscriptionPlan | null,
+): number {
+  const fallback = plan ? Math.round(plan.price * 100) : 0;
+  const parsed = readNumber(value);
+  if (typeof parsed !== "number" || !Number.isFinite(parsed)) {
+    return fallback;
+  }
+  if (parsed <= 0) {
+    return 0;
+  }
+  if (plan && Math.abs(parsed - plan.price) < 0.0001) {
+    return fallback;
+  }
+  if (parsed < 1000 && fallback >= 1000) {
+    return Math.round(parsed * 100);
+  }
+  return Math.round(parsed);
+}
+
+function resolveCompatPaymentUserScope(
+  userId: string | null,
+  requestId: string | null,
+  email: string | null,
+): string {
+  if (userId && userId !== "guest") {
+    return userId;
+  }
+  if (requestId) {
+    return `invite:${requestId}`;
+  }
+  if (email) {
+    return `email:${email.trim().toLowerCase()}`;
+  }
+  return "guest";
+}
+
+function isPersistableCompatUserId(userId: string): boolean {
+  return (
+    Boolean(userId) &&
+    userId !== "guest" &&
+    !userId.startsWith("invite:") &&
+    !userId.startsWith("email:")
+  );
+}
+
+function deriveCompatMembershipTier(
+  planId: string | null,
+): CompatMembershipCardTier {
+  switch (normalizeBillingPlanId(planId)) {
+    case "enterprise":
+      return "PLATINUM";
+    case "premium":
+      return "GOLD";
+    case "professional":
+      return "SILVER";
+    default:
+      return "BRONZE";
+  }
+}
+
+function deriveCompatMembershipType(planName: string, planId: string | null) {
+  const normalizedPlanId = normalizeBillingPlanId(planId);
+  if (normalizedPlanId === "enterprise") {
+    return "Enterprise";
+  }
+  if (normalizedPlanId === "premium") {
+    return "Premium";
+  }
+  if (normalizedPlanId === "professional") {
+    return "Professional";
+  }
+  if (normalizedPlanId === "basic") {
+    return "Basic";
+  }
+  return planName.trim() || "Creator";
+}
+
+function buildCompatPaymentStatusCardSummary(
+  card: CompatGoogleWalletMembershipCard | null,
+): CompatPaymentStatusCardSummary | null {
+  if (!card) return null;
+  return {
+    id: card.id,
+    passId: card.passId,
+    status: card.status,
+    walletUrl: card.walletUrl || undefined,
+    qrCode: card.qrCode || undefined,
+  };
+}
+
+async function findCompatPaymentStatusRecord(
+  identifier: string,
+): Promise<CompatPaymentStatusRecord | null> {
+  const direct = await readCompatPaymentStatusRecord(identifier);
+  if (direct) {
+    return direct;
+  }
+
+  const records = await compatStoreListByPrefix<CompatPaymentStatusRecord>(
+    "compat:payments:status:",
+  );
+  return (
+    records
+      .map((entry) => entry.value)
+      .find(
+        (record) =>
+          record.id === identifier || record.transactionId === identifier,
+      ) ?? null
+  );
+}
+
+async function readCompatLatestPaymentStatusRecord(
+  userId: string,
+): Promise<CompatPaymentStatusRecord | null> {
+  const storedId = await compatStoreGet<string>(dbCompatLatestPaymentKey(userId));
+  if (storedId) {
+    const storedRecord = await readCompatPaymentStatusRecord(storedId);
+    if (storedRecord) {
+      return storedRecord;
+    }
+  }
+
+  const records = await compatStoreListByPrefix<CompatPaymentStatusRecord>(
+    "compat:payments:status:",
+  );
+  return (
+    records
+      .map((entry) => entry.value)
+      .filter((record) => record.userId === userId)
+      .sort(
+        (left, right) =>
+          new Date(right.completedAt || right.createdAt).getTime() -
+          new Date(left.completedAt || left.createdAt).getTime(),
+      )[0] ?? null
+  );
+}
+
+async function findCompatMembershipCardById(
+  cardId: string,
+): Promise<CompatGoogleWalletMembershipCard | null> {
+  const groups = await compatStoreListByPrefix<CompatGoogleWalletMembershipCard[]>(
+    "compat:wallet:membership-cards:",
+  );
+  for (const group of groups) {
+    const cards = Array.isArray(group.value) ? group.value : [];
+    const matched = cards.find((card) => card.id === cardId);
+    if (matched) {
+      return matched;
+    }
+  }
+  return null;
+}
+
+function buildCompatPaymentStatusResponse(record: CompatPaymentStatusRecord) {
+  return {
+    id: record.id,
+    status: record.status,
+    amount: record.amountMinor,
+    currency: record.currency,
+    paymentMethod: record.paymentMethod,
+    transactionId: record.transactionId,
+    planName: record.planName,
+    createdAt: record.createdAt,
+    completedAt: record.completedAt || undefined,
+    membershipCard: record.membershipCard || undefined,
+  };
+}
+
+async function syncCompatUserSubscriptionRecord(
+  record: CompatPaymentStatusRecord,
+): Promise<void> {
+  if (
+    !isPersistableCompatUserId(record.userId) ||
+    record.status !== "completed" ||
+    !(await hasTable("users")) ||
+    !(await hasTable("user_subscriptions"))
+  ) {
+    return;
+  }
+
+  const userLookup = await pool.query(
+    `SELECT id FROM users WHERE id::text = $1 LIMIT 1`,
+    [record.userId],
+  );
+  if ((userLookup.rowCount ?? 0) === 0) {
+    return;
+  }
+
+  const planId = normalizeBillingPlanId(record.planId || record.planName);
+  if (!planId) {
+    return;
+  }
+
+  const existing = await pool.query(
+    `SELECT id
+     FROM user_subscriptions
+     WHERE user_id = $1
+       AND plan_id = $2
+     ORDER BY started_at DESC NULLS LAST
+     LIMIT 1`,
+    [record.userId, planId],
+  );
+
+  if ((existing.rowCount ?? 0) > 0) {
+    await pool.query(
+      `UPDATE user_subscriptions
+       SET status = 'active',
+           auto_renew = true
+       WHERE id = $1`,
+      [existing.rows[0]?.id],
+    );
+    return;
+  }
+
+  await pool.query(
+    `INSERT INTO user_subscriptions
+      (user_id, plan_id, status, started_at, auto_renew)
+     VALUES ($1, $2, 'active', NOW(), true)`,
+    [record.userId, planId],
+  );
+}
+
+async function updateInviteRequestPaymentState(input: {
+  requestId: string | null;
+  email: string | null;
+  userId: string;
+  planId: string | null;
+  planName: string;
+  amountMajor: number;
+  transactionId: string;
+  completedAt: string;
+}) {
+  if (!(await hasTable("invite_requests"))) {
+    return null;
+  }
+
+  const lookupKey = input.requestId || input.email;
+  if (!lookupKey) {
+    return null;
+  }
+
+  const inviteRequest = await findAdminInviteRequest(lookupKey, input.email);
+  if (!inviteRequest?.id) {
+    return null;
+  }
+
+  const inviteColumns = await getTableColumns("invite_requests");
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  const pushValue = (column: string, value: unknown) => {
+    values.push(value);
+    updates.push(`${column} = $${values.length}`);
+  };
+
+  if (inviteColumns.has("selected_plan") && input.planId) {
+    pushValue("selected_plan", input.planId);
+  }
+  if (inviteColumns.has("plan_name")) {
+    pushValue("plan_name", input.planName);
+  }
+  if (inviteColumns.has("plan_price")) {
+    pushValue("plan_price", input.amountMajor);
+  }
+  if (inviteColumns.has("payment_completed")) {
+    pushValue("payment_completed", true);
+  }
+  if (inviteColumns.has("payment_transaction_id")) {
+    pushValue("payment_transaction_id", input.transactionId);
+  }
+  if (inviteColumns.has("payment_amount")) {
+    pushValue("payment_amount", input.amountMajor);
+  }
+  if (inviteColumns.has("payment_timestamp")) {
+    pushValue("payment_timestamp", input.completedAt);
+  }
+  if (
+    inviteColumns.has("registered_user_id") &&
+    isPersistableCompatUserId(input.userId)
+  ) {
+    pushValue("registered_user_id", input.userId);
+  }
+  if (inviteColumns.has("updated_at")) {
+    updates.push("updated_at = NOW()");
+  }
+
+  if (updates.length === 0) {
+    return inviteRequest;
+  }
+
+  values.push(inviteRequest.id);
+  const result = await pool.query(
+    `UPDATE invite_requests
+     SET ${updates.join(", ")}
+     WHERE id = $${values.length}
+     RETURNING *`,
+    values,
+  );
+
+  return result.rows[0] || inviteRequest;
+}
+
+async function recordCompatPaymentCompletion(
+  record: CompatPaymentStatusRecord,
+): Promise<CompatPaymentStatusRecord> {
+  await writeCompatPaymentStatusRecord(record);
+
+  const normalizedPlanId = normalizeBillingPlanId(record.planId || record.planName);
+  const plan = getCompatPlatformSubscriptionPlan(normalizedPlanId);
+  const history = await readCompatPaymentHistory(record.userId);
+  const nextHistory = [
+    {
+      id: record.id,
+      type: "subscription" as const,
+      planId: record.planId,
+      planName: record.planName,
+      amount: record.amountMajor,
+      currency: record.currency,
+      status: record.status === "completed" ? "active" : record.status,
+      createdAt: record.completedAt || record.createdAt,
+      currentPeriodStart: record.completedAt || record.createdAt,
+      currentPeriodEnd: addDaysIso(record.completedAt || record.createdAt, 30),
+      transactionId: record.transactionId,
+      isInFiken: false,
+      refunded: false,
+      refundReason: null,
+      refundedAt: null,
+    },
+    ...history.filter(
+      (entry) =>
+        entry.id !== record.id && entry.transactionId !== record.transactionId,
+    ),
+  ].sort(
+    (left, right) =>
+      new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+  );
+
+  await writeCompatPaymentHistory(record.userId, nextHistory);
+
+  const nextSubscriptionStatus = buildCompatSubscriptionStatus(
+    record.userId,
+    plan,
+    {
+      selectedPlan: plan?.id || normalizedPlanId,
+      planName: plan?.displayName || record.planName,
+      amount: record.amountMajor,
+      currency: record.currency,
+      subscriptionSelected: record.status === "completed",
+      paymentCompleted: record.status === "completed",
+      memberSince: record.completedAt || record.createdAt,
+      nextBillingDate: addDaysIso(record.completedAt || record.createdAt, 30),
+      accessUntil: addDaysIso(record.completedAt || record.createdAt, 30),
+      transactionId: record.transactionId,
+      email: record.email,
+      autoRenew: true,
+      source: "compat",
+    },
+  );
+  await writeCompatSubscriptionStatus(record.userId, nextSubscriptionStatus);
+  await syncCompatUserSubscriptionRecord(record);
+
+  await updateInviteRequestPaymentState({
+    requestId: record.requestId,
+    email: record.email,
+    userId: record.userId,
+    planId: plan?.id || normalizedPlanId,
+    planName: plan?.displayName || record.planName,
+    amountMajor: record.amountMajor,
+    transactionId: record.transactionId,
+    completedAt: record.completedAt || record.createdAt,
+  });
+
+  return record;
+}
+
+async function createCompatMembershipCard(input: {
+  userId: string;
+  paymentId: string | null;
+  transactionId: string | null;
+  planName: string;
+  planId: string | null;
+  organizationName?: string | null;
+  memberSince?: string | null;
+  membershipType?: string | null;
+  benefits?: string[];
+  renewalDate?: string | null;
+  autoRenew?: boolean;
+  tier?: CompatMembershipCardTier | null;
+}) {
+  const cards = await readCompatMembershipCards(input.userId);
+  const existing = cards.find(
+    (card) =>
+      (input.paymentId && card.paymentId === input.paymentId) ||
+      (input.transactionId && card.transactionId === input.transactionId),
+  );
+  if (existing) {
+    return existing;
+  }
+
+  const issuedAt = input.memberSince || new Date().toISOString();
+  const nextCard: CompatGoogleWalletMembershipCard = {
+    id: crypto.randomUUID(),
+    passId: `creatorhub-membership-${crypto.randomUUID()}`,
+    userId: input.userId,
+    organizationName: input.organizationName || "CreatorHub Norge",
+    membershipType:
+      input.membershipType ||
+      deriveCompatMembershipType(input.planName, input.planId),
+    memberNumber: `CHN-${Math.floor(100000 + Math.random() * 900000)}`,
+    memberSince: issuedAt,
+    benefits:
+      input.benefits && input.benefits.length > 0
+        ? input.benefits
+        : [
+            "Aktiv CreatorHub-medlemskonto",
+            "Tilgang til CreatorHub-workflows",
+            "Digitale medlemsfordeler",
+          ],
+    renewalDate: input.renewalDate || addDaysIso(issuedAt, 365),
+    autoRenew: input.autoRenew ?? true,
+    tier:
+      input.tier || deriveCompatMembershipTier(input.planId || input.planName),
+    qrCode: null,
+    barcode: null,
+    createdAt: new Date().toISOString(),
+    lastRenewedAt: null,
+    isActive: true,
+    status: "active",
+    walletUrl: null,
+    paymentId: input.paymentId,
+    transactionId: input.transactionId,
+    planName: input.planName,
+  };
+
+  await writeCompatMembershipCards(input.userId, [nextCard, ...cards]);
+
+  if (input.paymentId) {
+    const paymentRecord = await readCompatPaymentStatusRecord(input.paymentId);
+    if (paymentRecord) {
+      const nextPaymentRecord: CompatPaymentStatusRecord = {
+        ...paymentRecord,
+        membershipCard: buildCompatPaymentStatusCardSummary(nextCard),
+      };
+      await writeCompatPaymentStatusRecord(nextPaymentRecord);
+    }
+  }
+
+  return nextCard;
+}
+
+function buildCompatWalletOrganizations() {
+  return [
+    {
+      id: "creatorhub-norge",
+      name: "CreatorHub Norge",
+      type: "Professional Network",
+      description: "Standard medlemskap for CreatorHub-brukere i Norge.",
+    },
+    {
+      id: "creatorhub-studio",
+      name: "CreatorHub Studio",
+      type: "Studio Program",
+      description: "Utvidet medlemskap for team og studios.",
+    },
+    {
+      id: "creatorhub-education",
+      name: "CreatorHub Academy",
+      type: "Education",
+      description: "Medlemskap for opplaering, kurs og sertifiseringer.",
+    },
+  ];
 }
 
 function buildCompatPriceAdministrationCurrencyRates() {
@@ -22790,6 +23381,245 @@ app.get("/api/payments/history", async (req, res) => {
   }
 });
 
+app.post("/api/payments/create-payment-intent", async (req, res) => {
+  try {
+    const body = isRecord(req.body) ? req.body : {};
+    const email =
+      compatHeaderString(body.email ?? body.userEmail ?? body.user_email) ||
+      compatResolveUserEmail(req);
+    const requestId =
+      compatHeaderString(body.requestId ?? body.request_id) || null;
+    const userId = resolveCompatPaymentUserScope(
+      compatHeaderString(body.userId ?? body.user_id) || compatResolveUserId(req),
+      requestId,
+      email,
+    );
+    const planId = normalizeBillingPlanId(body.planId ?? body.plan_id);
+    const plan = getCompatPlatformSubscriptionPlan(planId);
+    const planName =
+      plan?.displayName ||
+      readString(body.planName) ||
+      readString(body.plan_name) ||
+      "CreatorHub Plan";
+    const paymentMethod = normalizeCompatPaymentMethod(
+      body.paymentMethod ?? body.payment_method,
+    );
+    const amountMinor = normalizeCompatAmountMinor(body.amount, plan);
+    const amountMajor = Number((amountMinor / 100).toFixed(2));
+    const createdAt = new Date().toISOString();
+    const paymentId = `pay_${crypto.randomUUID()}`;
+    const transactionId = `txn_${crypto.randomUUID()}`;
+
+    const record: CompatPaymentStatusRecord = {
+      id: paymentId,
+      transactionId,
+      userId,
+      email,
+      requestId,
+      planId: plan?.id || planId,
+      planName,
+      amountMinor,
+      amountMajor,
+      currency: readString(body.currency) || plan?.currency || "NOK",
+      paymentMethod,
+      status: "completed",
+      createdAt,
+      completedAt: createdAt,
+      provider: "compat",
+      metadata: {
+        profession: readString(body.profession),
+        requestId,
+      },
+      receiptSentAt: null,
+      membershipCard: null,
+    };
+
+    await recordCompatPaymentCompletion(record);
+
+    res.status(201).json({
+      success: true,
+      id: record.id,
+      paymentId: record.id,
+      transactionId: record.transactionId,
+      status: record.status,
+      amount: record.amountMinor,
+      currency: record.currency,
+      paymentMethod: record.paymentMethod,
+      planId: record.planId,
+      planName: record.planName,
+      clientSecret: `compat_${record.id}`,
+    });
+  } catch (error) {
+    console.error("Error creating payment intent:", error);
+    res.status(500).json({ error: "Could not create payment intent" });
+  }
+});
+
+app.post("/api/google-pay/process-payment", async (req, res) => {
+  try {
+    const body = isRecord(req.body) ? req.body : {};
+    const paymentIntent = isRecord(body.paymentIntent) ? body.paymentIntent : {};
+    const paymentData = isRecord(body.paymentData) ? body.paymentData : {};
+    const metadata = isRecord(paymentIntent.metadata) ? paymentIntent.metadata : {};
+    const paymentMethodData = isRecord(paymentData.paymentMethodData)
+      ? paymentData.paymentMethodData
+      : {};
+    const paymentMethodInfo = isRecord(paymentMethodData.info)
+      ? paymentMethodData.info
+      : {};
+    const planId = normalizeBillingPlanId(metadata.planId ?? body.planId);
+    const plan = getCompatPlatformSubscriptionPlan(planId);
+    const createdAt = new Date().toISOString();
+    const paymentId = `pay_${crypto.randomUUID()}`;
+    const transactionId = `txn_${crypto.randomUUID()}`;
+    const email =
+      compatHeaderString(paymentData.email ?? body.email) ||
+      compatResolveUserEmail(req);
+    const amountMinor = normalizeCompatAmountMinor(paymentIntent.amount, plan);
+    const amountMajor = Number((amountMinor / 100).toFixed(2));
+    const requestId =
+      compatHeaderString(metadata.requestId ?? body.requestId ?? body.request_id) ||
+      null;
+    const userId = resolveCompatPaymentUserScope(
+      compatHeaderString(paymentIntent.userId ?? body.userId ?? body.user_id) ||
+        compatResolveUserId(req),
+      requestId,
+      email,
+    );
+
+    const record: CompatPaymentStatusRecord = {
+      id: paymentId,
+      transactionId,
+      userId,
+      email,
+      requestId,
+      planId: plan?.id || planId,
+      planName:
+        plan?.displayName ||
+        readString(paymentIntent.productName) ||
+        readString(body.planName) ||
+        "CreatorHub Plan",
+      amountMinor,
+      amountMajor,
+      currency:
+        readString(paymentIntent.currency) ||
+        readString(body.currency) ||
+        plan?.currency ||
+        "NOK",
+      paymentMethod: "google-pay",
+      status: "completed",
+      createdAt,
+      completedAt: createdAt,
+      provider: "google-pay",
+      metadata: {
+        requestId,
+        profession: readString(metadata.profession),
+        recurring: metadata.recurring === true,
+        cardNetwork: readString(paymentMethodInfo.cardNetwork),
+      },
+      receiptSentAt: null,
+      membershipCard: null,
+    };
+
+    await recordCompatPaymentCompletion(record);
+
+    res.status(201).json({
+      success: true,
+      paymentId: record.id,
+      transactionId: record.transactionId,
+      status: record.status,
+      paymentData: {
+        amount: record.amountMinor,
+        currency: record.currency,
+        paymentMethod: record.paymentMethod,
+      },
+    });
+  } catch (error) {
+    console.error("Error processing Google Pay payment:", error);
+    res.status(500).json({ error: "Could not process Google Pay payment" });
+  }
+});
+
+app.get("/api/payments/status/user/:userId", async (req, res) => {
+  try {
+    const userId =
+      compatHeaderString(req.params.userId) || compatResolveUserId(req);
+    const record = await readCompatLatestPaymentStatusRecord(userId);
+    if (!record) {
+      return res.status(404).json({ error: "Payment status not found" });
+    }
+    res.json(buildCompatPaymentStatusResponse(record));
+  } catch (error) {
+    console.error("Error fetching user payment status:", error);
+    res.status(500).json({ error: "Could not fetch payment status" });
+  }
+});
+
+app.get("/api/payments/status/:paymentId", async (req, res) => {
+  try {
+    const paymentId = compatHeaderString(req.params.paymentId);
+    if (!paymentId) {
+      return res.status(400).json({ error: "paymentId is required" });
+    }
+
+    const record = await findCompatPaymentStatusRecord(paymentId);
+    if (!record) {
+      return res.status(404).json({ error: "Payment status not found" });
+    }
+
+    res.json(buildCompatPaymentStatusResponse(record));
+  } catch (error) {
+    console.error("Error fetching payment status:", error);
+    res.status(500).json({ error: "Could not fetch payment status" });
+  }
+});
+
+app.post("/api/payments/send-receipt", async (req, res) => {
+  try {
+    const body = isRecord(req.body) ? req.body : {};
+    const identifier =
+      compatHeaderString(
+        body.transactionId ?? body.paymentId ?? body.payment_id,
+      ) || null;
+    const fallbackUserId =
+      compatHeaderString(body.userId ?? body.user_id) || compatResolveUserId(req);
+    const fallbackEmail =
+      compatHeaderString(body.email ?? body.userEmail ?? body.user_email) ||
+      compatResolveUserEmail(req);
+    const record = identifier
+      ? await findCompatPaymentStatusRecord(identifier)
+      : await readCompatLatestPaymentStatusRecord(fallbackUserId);
+
+    if (record) {
+      const nextRecord: CompatPaymentStatusRecord = {
+        ...record,
+        receiptSentAt: new Date().toISOString(),
+      };
+      await writeCompatPaymentStatusRecord(nextRecord);
+      return res.status(201).json({
+        success: true,
+        delivered: false,
+        provider: "compat",
+        transactionId: nextRecord.transactionId,
+        email: nextRecord.email || fallbackEmail,
+        queuedAt: nextRecord.receiptSentAt,
+      });
+    }
+
+    res.status(202).json({
+      success: true,
+      delivered: false,
+      provider: "compat",
+      transactionId: identifier,
+      email: fallbackEmail,
+      queuedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Error queueing payment receipt:", error);
+    res.status(500).json({ error: "Could not queue payment receipt" });
+  }
+});
+
 app.post("/api/payments/fiken-register", async (req, res) => {
   try {
     const userId = compatResolveUserId(req);
@@ -22879,10 +23709,222 @@ app.post("/api/google-pay/refund", async (req, res) => {
     }
 
     await writeCompatPaymentHistory(userId, nextHistory);
+    const paymentRecord = await findCompatPaymentStatusRecord(transactionId);
+    if (paymentRecord) {
+      await writeCompatPaymentStatusRecord({
+        ...paymentRecord,
+        status: "refunded",
+      });
+    }
     res.status(201).json({ success: true, transactionId, refundReason });
   } catch (error) {
     console.error("Error creating refund request:", error);
     res.status(500).json({ error: "Could not create refund request" });
+  }
+});
+
+app.get("/api/google-wallet/organizations", async (_req, res) => {
+  res.json(buildCompatWalletOrganizations());
+});
+
+app.get("/api/google-wallet/membership-cards/:userId", async (req, res) => {
+  try {
+    const userId =
+      compatHeaderString(req.params.userId) || compatResolveUserId(req);
+    const cards = await readCompatMembershipCards(userId);
+    res.json(cards);
+  } catch (error) {
+    console.error("Error fetching membership cards:", error);
+    res.status(500).json({ error: "Could not fetch membership cards" });
+  }
+});
+
+app.post("/api/google-wallet/create-membership-card", async (req, res) => {
+  try {
+    const body = isRecord(req.body) ? req.body : {};
+    const paymentId =
+      compatHeaderString(body.paymentId ?? body.payment_id) || null;
+    const transactionId =
+      compatHeaderString(body.transactionId ?? body.transaction_id) || null;
+    const paymentRecord =
+      (paymentId && (await readCompatPaymentStatusRecord(paymentId))) ||
+      (transactionId && (await findCompatPaymentStatusRecord(transactionId))) ||
+      null;
+    const userId =
+      compatHeaderString(body.userId ?? body.user_id) ||
+      paymentRecord?.userId ||
+      compatResolveUserId(req);
+
+    const card = await createCompatMembershipCard({
+      userId,
+      paymentId: paymentRecord?.id || paymentId,
+      transactionId: paymentRecord?.transactionId || transactionId,
+      planName:
+        readString(body.planName) ||
+        paymentRecord?.planName ||
+        "CreatorHub Plan",
+      planId:
+        normalizeBillingPlanId(body.planId ?? body.plan_id) ||
+        paymentRecord?.planId ||
+        null,
+      organizationName: readString(body.organizationName),
+      memberSince: readString(body.memberSince) || paymentRecord?.completedAt,
+      membershipType: readString(body.membershipType),
+      benefits: Array.isArray(body.benefits)
+        ? body.benefits
+            .map((entry) => readString(entry))
+            .filter((entry): entry is string => Boolean(entry))
+        : undefined,
+      renewalDate: readString(body.renewalDate),
+      autoRenew: readBoolean(body.autoRenew),
+      tier: (readString(body.tier) as CompatMembershipCardTier | null) || null,
+    });
+
+    res.status(201).json(card);
+  } catch (error) {
+    console.error("Error creating membership card:", error);
+    res.status(500).json({ error: "Could not create membership card" });
+  }
+});
+
+app.put("/api/google-wallet/membership-cards/:id", async (req, res) => {
+  try {
+    const cardId = compatHeaderString(req.params.id);
+    if (!cardId) {
+      return res.status(400).json({ error: "Card id is required" });
+    }
+
+    const body = isRecord(req.body) ? req.body : {};
+    const existing = await findCompatMembershipCardById(cardId);
+    if (!existing) {
+      return res.status(404).json({ error: "Membership card not found" });
+    }
+
+    const cards = await readCompatMembershipCards(existing.userId);
+    const nextCards = cards.map((card) =>
+      card.id !== cardId
+        ? card
+        : {
+            ...card,
+            organizationName:
+              readString(body.organizationName) || card.organizationName,
+            membershipType:
+              readString(body.membershipType) || card.membershipType,
+            memberNumber: readString(body.memberNumber) || card.memberNumber,
+            memberSince: readString(body.memberSince) || card.memberSince,
+            benefits: Array.isArray(body.benefits)
+              ? body.benefits
+                  .map((entry) => readString(entry))
+                  .filter((entry): entry is string => Boolean(entry))
+              : card.benefits,
+            renewalDate:
+              readString(body.renewalDate) ??
+              card.renewalDate ??
+              null,
+            autoRenew: readBoolean(body.autoRenew) ?? card.autoRenew,
+            tier:
+              (readString(body.tier) as CompatMembershipCardTier | null) ||
+              card.tier,
+            isActive: readBoolean(body.isActive) ?? card.isActive,
+            status:
+              (readString(body.status) as
+                | CompatGoogleWalletMembershipCard["status"]
+                | null) || card.status,
+          },
+    );
+
+    await writeCompatMembershipCards(existing.userId, nextCards);
+    const updated = nextCards.find((card) => card.id === cardId) || existing;
+
+    if (updated.paymentId) {
+      const paymentRecord = await readCompatPaymentStatusRecord(updated.paymentId);
+      if (paymentRecord) {
+        await writeCompatPaymentStatusRecord({
+          ...paymentRecord,
+          membershipCard: buildCompatPaymentStatusCardSummary(updated),
+        });
+      }
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error("Error updating membership card:", error);
+    res.status(500).json({ error: "Could not update membership card" });
+  }
+});
+
+app.delete("/api/google-wallet/membership-cards/:id", async (req, res) => {
+  try {
+    const cardId = compatHeaderString(req.params.id);
+    if (!cardId) {
+      return res.status(400).json({ error: "Card id is required" });
+    }
+
+    const existing = await findCompatMembershipCardById(cardId);
+    if (!existing) {
+      return res.status(404).json({ error: "Membership card not found" });
+    }
+
+    const cards = await readCompatMembershipCards(existing.userId);
+    const nextCards = cards.filter((card) => card.id !== cardId);
+    await writeCompatMembershipCards(existing.userId, nextCards);
+
+    if (existing.paymentId) {
+      const paymentRecord = await readCompatPaymentStatusRecord(existing.paymentId);
+      if (paymentRecord) {
+        await writeCompatPaymentStatusRecord({
+          ...paymentRecord,
+          membershipCard: null,
+        });
+      }
+    }
+
+    res.json({ success: true, id: cardId });
+  } catch (error) {
+    console.error("Error deleting membership card:", error);
+    res.status(500).json({ error: "Could not delete membership card" });
+  }
+});
+
+app.post("/api/google-wallet/send-to-wallet/:id", async (req, res) => {
+  try {
+    const cardId = compatHeaderString(req.params.id);
+    if (!cardId) {
+      return res.status(400).json({ error: "Card id is required" });
+    }
+
+    const existing = await findCompatMembershipCardById(cardId);
+    if (!existing) {
+      return res.status(404).json({ error: "Membership card not found" });
+    }
+
+    const walletUrl =
+      existing.walletUrl || `https://creatorhubn.com/membership-card/${cardId}`;
+    const cards = await readCompatMembershipCards(existing.userId);
+    const nextCards = cards.map((card) =>
+      card.id === cardId ? { ...card, walletUrl } : card,
+    );
+    await writeCompatMembershipCards(existing.userId, nextCards);
+    const updated = nextCards.find((card) => card.id === cardId) || existing;
+
+    if (updated.paymentId) {
+      const paymentRecord = await readCompatPaymentStatusRecord(updated.paymentId);
+      if (paymentRecord) {
+        await writeCompatPaymentStatusRecord({
+          ...paymentRecord,
+          membershipCard: buildCompatPaymentStatusCardSummary(updated),
+        });
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      id: updated.id,
+      walletUrl,
+    });
+  } catch (error) {
+    console.error("Error sending membership card to wallet:", error);
+    res.status(500).json({ error: "Could not send membership card to wallet" });
   }
 });
 
