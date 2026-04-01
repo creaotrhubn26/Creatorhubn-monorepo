@@ -18,7 +18,6 @@ import {
 import { ArrowBack as ArrowBackIcon, Home as HomeIcon } from '@mui/icons-material';
 import SubscriptionSelectionFlow from '../components/subscription/SubscriptionSelectionFlow';
 import PaymentStatusVerification from '../components/subscription/PaymentStatusVerification';
-import GooglePayIntegration from '../components/subscription/GooglePayIntegration';
 
 export default function SubscriptionSelectionPage() {
   const [, navigate] = useLocation();
@@ -230,13 +229,6 @@ export default function SubscriptionSelectionPage() {
           </Button>
         </Stack>
       </Paper>
-
-      {/* Google Pay Integration Status */}
-      <GooglePayIntegration 
-        onConfigurationUpdate={(config) => {
-          console.log('Google Pay configuration updated:', config);
-      }}
-      />
 
       <SubscriptionSelectionFlow
         profession={profession}
