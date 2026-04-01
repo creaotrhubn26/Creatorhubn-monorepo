@@ -8,6 +8,11 @@ import { Buffer } from 'buffer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const muiSystemAlias = [
+  path.resolve(__dirname, 'node_modules/@mui/system'),
+  path.resolve(__dirname, '../node_modules/@mui/material/node_modules/@mui/system'),
+  path.resolve(__dirname, '../node_modules/@mui/system'),
+].find((candidate) => existsSync(candidate)) || path.resolve(__dirname, 'node_modules/@mui/system');
 const backendProxyTarget =
   process.env.VITE_API_PROXY_TARGET ||
   process.env.API_PROXY_TARGET ||
@@ -117,10 +122,7 @@ export default defineConfig({
       '@assets': path.resolve(__dirname, 'client/src/assets'),
       '@server': path.resolve(__dirname, 'shared'),
       // Keep @mui/system aligned with @mui/material's major version (v6 here).
-      '@mui/system': path.resolve(
-        __dirname,
-        '../node_modules/@mui/material/node_modules/@mui/system'
-      ),
+      '@mui/system': muiSystemAlias,
       'react-quill$': path.resolve(__dirname, 'client/src/components/QuillWrapper.tsx'),
       'react-quill': path.resolve(__dirname, 'client/src/components/QuillWrapper.tsx'),
       // Buffer polyfill for browser

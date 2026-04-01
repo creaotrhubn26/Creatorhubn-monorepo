@@ -43,7 +43,7 @@ import {
   projectAgreementsApi,
   type ProjectAgreement,
 } from '../../services/castingApiService';
-import castingService from '../../services/castingService';
+import { castingService } from '../../services/castingService';
 import {
   emitProjectAgreementEvent,
   onProjectAgreementEvent,
