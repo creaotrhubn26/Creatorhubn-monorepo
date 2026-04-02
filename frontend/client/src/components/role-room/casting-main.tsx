@@ -24,7 +24,7 @@ const castingQueryClient = new QueryClient({
 });
 
 const ROLE_ROOM_DOCUMENT_TITLE = 'The Role Room - CreatorHub';
-const ROLE_ROOM_FAVICON_URL = '/role-room-assets/TheRoleRoom_App_Logo.png';
+const ROLE_ROOM_FAVICON_URL = '/TheRoleRoom_App_Logo.png';
 
 function upsertHeadLink(rel: string, href: string) {
   if (typeof document === 'undefined') {
@@ -33,12 +33,20 @@ function upsertHeadLink(rel: string, href: string) {
 
   const existingLink = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
   if (existingLink) {
+    if (rel !== 'apple-touch-icon') {
+      existingLink.type = href.toLowerCase().endsWith('.svg') ? 'image/svg+xml' : 'image/png';
+    } else {
+      existingLink.removeAttribute('type');
+    }
     existingLink.href = href;
     return;
   }
 
   const link = document.createElement('link');
   link.rel = rel;
+  if (rel !== 'apple-touch-icon') {
+    link.type = href.toLowerCase().endsWith('.svg') ? 'image/svg+xml' : 'image/png';
+  }
   link.href = href;
   document.head.appendChild(link);
 }
@@ -289,6 +297,7 @@ export default function CastingStandaloneApp() {
 
     document.title = ROLE_ROOM_DOCUMENT_TITLE;
     upsertHeadLink('icon', ROLE_ROOM_FAVICON_URL);
+    upsertHeadLink('shortcut icon', ROLE_ROOM_FAVICON_URL);
     upsertHeadLink('apple-touch-icon', ROLE_ROOM_FAVICON_URL);
   }, []);
 

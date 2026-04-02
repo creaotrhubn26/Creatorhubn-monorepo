@@ -444,6 +444,38 @@ const SmartFileManagerWidget = ({ profession }: { profession?: ValidProfession }
   return <UnifiedFileManagerWidget profession={targetProfession} />;
 };
 
+const CREATORHUB_FAVICON_URL = '/creatorhub-logo-amber.svg';
+const ACADEMY_FAVICON_URL = '/academy-favicon.svg';
+
+function upsertHeadLink(rel: string, href: string) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  let link = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = rel;
+    document.head.appendChild(link);
+  }
+
+  if (rel !== 'apple-touch-icon') {
+    link.type = href.toLowerCase().endsWith('.svg') ? 'image/svg+xml' : 'image/png';
+  } else {
+    link.removeAttribute('type');
+  }
+  link.href = href;
+}
+
+function syncAppFavicon(location: string) {
+  const isAcademyRoute = /^\/academy(?:$|[/-])/.test(location);
+  const faviconHref = isAcademyRoute ? ACADEMY_FAVICON_URL : CREATORHUB_FAVICON_URL;
+
+  upsertHeadLink('icon', faviconHref);
+  upsertHeadLink('shortcut icon', faviconHref);
+  upsertHeadLink('apple-touch-icon', faviconHref);
+}
+
 function App() {
   const [location] = useLocation();
 
@@ -467,6 +499,10 @@ function App() {
       document.body.classList.remove('academy-route');
       document.body.classList.remove('community-route');
     };
+  }, [location]);
+
+  React.useEffect(() => {
+    syncAppFavicon(location);
   }, [location]);
 
   return (

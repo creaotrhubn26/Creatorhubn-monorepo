@@ -5,10 +5,36 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <link rel="icon" type="image/svg+xml" href="/academy-favicon.svg" />
-    <link rel="apple-touch-icon" href="/academy-favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/creatorhub-logo-amber.svg" />
+    <link rel="shortcut icon" type="image/svg+xml" href="/creatorhub-logo-amber.svg" />
+    <link rel="apple-touch-icon" href="/creatorhub-logo-amber.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CreatorHub Norge - Professional Creative Platform</title>
+
+    <script>
+      (function setInitialBrandFavicon() {
+        var pathname = window.location.pathname || '/';
+        var isAcademyRoute = /^\/academy(?:$|[/-])/.test(pathname);
+        var faviconHref = isAcademyRoute ? '/academy-favicon.svg' : '/creatorhub-logo-amber.svg';
+        var faviconType = faviconHref.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
+        var rels = ['icon', 'shortcut icon', 'apple-touch-icon'];
+
+        rels.forEach(function (rel) {
+          var link = document.head.querySelector('link[rel="' + rel + '"]');
+          if (!link) {
+            link = document.createElement('link');
+            link.setAttribute('rel', rel);
+            document.head.appendChild(link);
+          }
+          if (rel !== 'apple-touch-icon') {
+            link.setAttribute('type', faviconType);
+          } else {
+            link.removeAttribute('type');
+          }
+          link.setAttribute('href', faviconHref);
+        });
+      })();
+    </script>
 
     <script>
       window.dataLayer = window.dataLayer || [];
