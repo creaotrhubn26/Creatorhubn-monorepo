@@ -5,12 +5,14 @@ import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/st
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
+import TalentPortalView from './components/TalentPortalView';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
 import { googleWorkspaceApi } from './services/castingApiService';
 import { EnhancedMasterIntegrationProvider } from '@/integration/EnhancedMasterIntegrationProvider';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ROLE_ROOM_LANDING_CONFIG } from './config/landing';
+import { parseTalentPortalIntentFromWindow } from './utils/talentPortal';
 
 const castingQueryClient = new QueryClient({
   defaultOptions: {
@@ -204,6 +206,19 @@ function CastingStandaloneAppContent() {
     setGuestMode(true);
   };
 
+  const talentPortalIntent = useMemo(
+    () => parseTalentPortalIntentFromWindow(),
+    [],
+  );
+  const sessionAdminUser = authSessionService.getSessionSync().adminUser;
+  const normalizedRole = String(sessionAdminUser?.role || '').trim().toLowerCase();
+  const normalizedRequestedRole = String(sessionAdminUser?.requestedRole || '').trim().toLowerCase();
+  const shouldRenderTalentPortal = !guestMode && (
+    Boolean(talentPortalIntent)
+    || normalizedRole === 'talent'
+    || normalizedRequestedRole === 'talent'
+  );
+
   return (
     <Box sx={{ width: '100%', minHeight: '100vh', position: 'relative' }}>
       {!authResolved || processingGoogleLogin ? (
@@ -228,18 +243,27 @@ function CastingStandaloneAppContent() {
           <CastingLandingPage onEnter={handleEnter} onGuestEnter={handleGuestEnter} />
         ) : (
           <ToastProvider position="bottom-right">
-            <CastingPlannerPanel 
-              onClose={() => {
-                void handleReturnToLanding();
-              }}
-              isFullscreen={true}
-              onToggleFullscreen={() => {
-                // Not applicable in standalone mode - already fullscreen
-                console.log('Fullscreen toggle not available in standalone mode');
-              }}
-              isStandalone={!guestMode}
-              isGuestMode={guestMode}
-            />
+            {shouldRenderTalentPortal ? (
+              <TalentPortalView
+                intent={talentPortalIntent}
+                onClose={() => {
+                  void handleReturnToLanding();
+                }}
+              />
+            ) : (
+              <CastingPlannerPanel 
+                onClose={() => {
+                  void handleReturnToLanding();
+                }}
+                isFullscreen={true}
+                onToggleFullscreen={() => {
+                  // Not applicable in standalone mode - already fullscreen
+                  console.log('Fullscreen toggle not available in standalone mode');
+                }}
+                isStandalone={!guestMode}
+                isGuestMode={guestMode}
+              />
+            )}
           </ToastProvider>
         )}
     </Box>

@@ -20635,9 +20635,23 @@ app.post("/api/auth/login", async (req, res) => {
       ? prototypeGuestPassword
       : password;
 
+    // Local environments are not guaranteed to have every optional users column.
+    const userColumns = await getTableColumns("users");
+    const userSelectColumns = [
+      "id",
+      "email",
+      userColumns.has("username") ? "username" : "NULL::text AS username",
+      userColumns.has("first_name") ? "first_name" : "NULL::text AS first_name",
+      userColumns.has("last_name") ? "last_name" : "NULL::text AS last_name",
+      userColumns.has("password") ? "password" : "NULL::text AS password",
+      userColumns.has("role") ? "role" : "NULL::text AS role",
+      userColumns.has("profession") ? "profession" : "NULL::text AS profession",
+      userColumns.has("company_name") ? "company_name" : "NULL::text AS company_name",
+    ];
+
     // Look up user by email
     let result = await pool.query(
-      "SELECT id, email, username, first_name, last_name, password, role, profession, company_name FROM users WHERE email = $1",
+      `SELECT ${userSelectColumns.join(", ")} FROM users WHERE email = $1`,
       [normalizedEmail],
     );
 
@@ -20671,7 +20685,7 @@ app.post("/api/auth/login", async (req, res) => {
              username = COALESCE(NULLIF(users.username, ''), EXCLUDED.username),
              first_name = COALESCE(NULLIF(users.first_name, ''), EXCLUDED.first_name),
              updated_at = NOW()
-         RETURNING id, email, username, first_name, last_name, password, role, profession, company_name`,
+         RETURNING ${userSelectColumns.join(", ")}`,
         [normalizedEmail, inferredUsername, inferredFirstName, hashedPassword],
       );
     }

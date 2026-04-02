@@ -36,6 +36,7 @@ import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
 import authSessionService from '../services/authSessionService';
 import { googleWorkspaceApi } from '../services/castingApiService';
 import { parseClientPortalIntentFromWindow } from '../utils/clientPortal';
+import { parseTalentPortalIntentFromWindow } from '../utils/talentPortal';
 import { getRoleRoomVideoPosterUrl, getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
 import { getRoleRoomReturnPath, isRoleRoomStandaloneRuntime } from '../utils/runtime';
 
@@ -58,6 +59,20 @@ interface LoginDialogProps {
 }
 
 type LoginPersona = '' | 'production_team' | 'content_producer';
+
+interface RoleRoomPublicStats {
+  kreative: number;
+  produksjoner: number;
+  rollerBesatt: number;
+}
+
+interface RoleRoomPublicTestimonial {
+  id: string;
+  roleId: string;
+  quote: string;
+  author: string;
+  title: string;
+}
 
 /* ─────────────────────────── per-card config ───────────────────────────
  * Add a new card by adding one entry here — label, icon, video and focal
@@ -168,6 +183,15 @@ const DEFAULT_STATS: { value: string; label: string }[] = [
   { value: '326',   label: 'produksjoner' },
   { value: '4 891', label: 'roller besatt' },
 ];
+
+const ROLE_ROOM_PUBLIC_STATS_ENDPOINT = '/api/role-room/public/stats';
+const ROLE_ROOM_STATS_REFRESH_MS = 15_000;
+const ROLE_ROOM_PUBLIC_TESTIMONIALS_ENDPOINT = '/api/role-room/public/testimonials';
+const ROLE_ROOM_TESTIMONIALS_REFRESH_MS = 60_000;
+
+function formatRoleRoomStatValue(value: number): string {
+  return value.toLocaleString('nb-NO');
+}
 
 /* ── categories: list role ids — all card data lives in ROLE_CARDS ─── *
  * HOW TO ADD A NEW CATEGORY:                                         *
@@ -791,8 +815,11 @@ export default function LoginDialog({
   const [testimonialVisible, setTestimonialVisible] = useState(true);
   const [backdropVideoReady, setBackdropVideoReady] = useState(false);
   const [backdropVideoFailed, setBackdropVideoFailed] = useState(false);
+  const [roleRoomPublicStats, setRoleRoomPublicStats] = useState<RoleRoomPublicStats | null>(null);
+  const [roleRoomPublicTestimonials, setRoleRoomPublicTestimonials] = useState<RoleRoomPublicTestimonial[] | null>(null);
   const hasSeenHint = useRef(false);
   const clientPortalIntent = parseClientPortalIntentFromWindow();
+  const talentPortalIntent = parseTalentPortalIntentFromWindow();
   const backdropStillUrl = getRoleRoomVideoStillUrl(DESIGN.backdrop.src, '/role-room-assets/landing_backdrop.webp');
 
   useEffect(() => {
@@ -827,11 +854,21 @@ export default function LoginDialog({
 
   /* ── stats: live DB → visual editor override → hardcoded defaults ── */
   const activeStats: { value: string; label: string }[] = (() => {
+    if (roleRoomPublicStats) {
+      return [
+        { value: formatRoleRoomStatValue(roleRoomPublicStats.kreative), label: 'kreative' },
+        { value: formatRoleRoomStatValue(roleRoomPublicStats.produksjoner), label: 'produksjoner' },
+        { value: formatRoleRoomStatValue(roleRoomPublicStats.rollerBesatt), label: 'roller besatt' },
+      ];
+    }
     return DEFAULT_STATS;
   })();
 
   /* ── testimonials from visual editor or defaults ── */
   const activeTestimonials = (() => {
+    if (Array.isArray(roleRoomPublicTestimonials) && roleRoomPublicTestimonials.length > 0) {
+      return roleRoomPublicTestimonials;
+    }
     return DEFAULT_TESTIMONIALS;
   })();
 
@@ -898,12 +935,121 @@ export default function LoginDialog({
   }, [open]);
 
   useEffect(() => {
+    if (testimonialIdx < activeTestimonials.length) {
+      return;
+    }
+    setTestimonialIdx(0);
+  }, [activeTestimonials.length, testimonialIdx]);
+
+  useEffect(() => {
+    if (!open || !isLandingPage) {
+      return;
+    }
+
+    let disposed = false;
+
+    const fetchStats = async () => {
+      try {
+        const response = await fetch(ROLE_ROOM_PUBLIC_STATS_ENDPOINT);
+        if (!response.ok) {
+          throw new Error(`Role Room stats request failed with ${response.status}`);
+        }
+        const data = (await response.json()) as Partial<RoleRoomPublicStats>;
+        if (disposed) {
+          return;
+        }
+        setRoleRoomPublicStats({
+          kreative: Number.isFinite(data.kreative) ? Number(data.kreative) : 0,
+          produksjoner: Number.isFinite(data.produksjoner) ? Number(data.produksjoner) : 0,
+          rollerBesatt: Number.isFinite(data.rollerBesatt) ? Number(data.rollerBesatt) : 0,
+        });
+      } catch (statsError) {
+        if (!disposed) {
+          console.debug('Role Room login stats fallback:', statsError);
+        }
+      }
+    };
+
+    void fetchStats();
+    const intervalId = window.setInterval(() => {
+      void fetchStats();
+    }, ROLE_ROOM_STATS_REFRESH_MS);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [isLandingPage, open]);
+
+  useEffect(() => {
+    if (!open || !isLandingPage) {
+      return;
+    }
+
+    let disposed = false;
+
+    const fetchTestimonials = async () => {
+      try {
+        const response = await fetch(ROLE_ROOM_PUBLIC_TESTIMONIALS_ENDPOINT);
+        if (!response.ok) {
+          throw new Error(`Role Room testimonials request failed with ${response.status}`);
+        }
+        const data = (await response.json()) as RoleRoomPublicTestimonial[];
+        if (disposed || !Array.isArray(data)) {
+          return;
+        }
+
+        const normalized = data
+          .filter((entry) =>
+            entry
+            && typeof entry.quote === 'string'
+            && typeof entry.author === 'string'
+            && typeof entry.title === 'string'
+            && typeof entry.roleId === 'string',
+          )
+          .map((entry, index) => ({
+            id: typeof entry.id === 'string' && entry.id.trim() ? entry.id : `testimonial-${index}`,
+            roleId: entry.roleId.trim().toLowerCase(),
+            quote: entry.quote.trim(),
+            author: entry.author.trim(),
+            title: entry.title.trim(),
+          }))
+          .filter((entry) => entry.quote && entry.author && entry.title && entry.roleId);
+
+        setRoleRoomPublicTestimonials(normalized.length > 0 ? normalized : null);
+      } catch (testimonialError) {
+        if (!disposed) {
+          console.debug('Role Room login testimonials fallback:', testimonialError);
+        }
+      }
+    };
+
+    void fetchTestimonials();
+    const intervalId = window.setInterval(() => {
+      void fetchTestimonials();
+    }, ROLE_ROOM_TESTIMONIALS_REFRESH_MS);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [isLandingPage, open]);
+
+  useEffect(() => {
     if (!open || !clientPortalIntent) {
       return;
     }
     setLoginPersona('content_producer');
     setSelectedRole('client');
   }, [clientPortalIntent, open]);
+
+  useEffect(() => {
+    if (!open || !talentPortalIntent || clientPortalIntent) {
+      return;
+    }
+    setLoginPersona('production_team');
+    setSelectedRole('talent');
+  }, [clientPortalIntent, open, talentPortalIntent]);
 
   useEffect(() => {
     if (loginPersona === 'content_producer') {

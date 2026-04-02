@@ -17,6 +17,7 @@ import { existsSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import { Readable } from 'stream';
+import multer from 'multer';
 import QRCode from 'qrcode';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -271,6 +272,131 @@ interface ApiKeyUserContext {
   scopes: string[];
 }
 
+interface RoleRoomPublicTestimonialRow {
+  id: string;
+  role_id: string;
+  quote_text: string;
+  author_name: string;
+  author_title: string | null;
+  author_user_id: string | null;
+  author_email: string | null;
+  status: string;
+  is_featured: boolean;
+  sort_order: number;
+  metadata: Record<string, unknown> | null;
+  approved_by_user_id: string | null;
+  approved_at: string | null;
+  rejected_reason: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface RoleRoomTalentPortalCandidateRow {
+  id: string;
+  project_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  agency: string | null;
+  photos: unknown;
+  videos: unknown;
+  notes: string | null;
+  status: string | null;
+  assigned_roles: unknown;
+  rating: number | null;
+  metadata: Record<string, unknown> | null;
+  emergency_contact: Record<string, unknown> | null;
+  consent_status: string | null;
+  created_at: string;
+  updated_at: string;
+  project_name?: string;
+  project_description?: string | null;
+  project_status?: string | null;
+  project_type?: string | null;
+  project_start_date?: string | null;
+  project_end_date?: string | null;
+}
+
+interface RoleRoomTalentPortalRoleRow {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  age_range: string | null;
+  gender: string | null;
+  role_type: string | null;
+  requirements: Record<string, unknown> | null;
+  status: string | null;
+  assigned_candidate_id: string | null;
+  candidate_ids: unknown;
+}
+
+interface RoleRoomTalentPortalScheduleRow {
+  id: string;
+  project_id: string;
+  candidate_id: string | null;
+  role_id: string | null;
+  date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  type: string | null;
+  status: string | null;
+  notes: string | null;
+  location: string | null;
+  created_at: string;
+  updated_at: string;
+  role_name?: string | null;
+}
+
+interface RoleRoomTalentInviteRow {
+  id: string;
+  project_id: string;
+  candidate_id: string;
+  email: string | null;
+  token_hash: string;
+  status: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  last_sent_at: string | null;
+  last_viewed_at: string | null;
+  accepted_at: string | null;
+  expires_at: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+interface RoleRoomTalentActivityRow {
+  id: string;
+  project_id: string;
+  candidate_id: string;
+  entry_type: string | null;
+  title: string;
+  body: string | null;
+  visibility: string | null;
+  metadata: Record<string, unknown> | null;
+  created_by_user_id: string | null;
+  created_by_role: string | null;
+  created_at: string;
+}
+
+interface RoleRoomTalentUploadRow {
+  id: string;
+  project_id: string;
+  candidate_id: string;
+  media_kind: string | null;
+  original_name: string;
+  stored_name: string;
+  storage_path: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  access_token_hash: string | null;
+  metadata: Record<string, unknown> | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 function buildSessionScopes(role?: string): string[] {
   const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : '';
 
@@ -278,7 +404,14 @@ function buildSessionScopes(role?: string): string[] {
     return ['read', 'write', 'admin'];
   }
 
-  if (normalizedRole === 'client' || normalizedRole === 'client_reviewer') {
+  if (
+    normalizedRole === 'client'
+    || normalizedRole === 'client_reviewer'
+    || normalizedRole === 'agency'
+    || normalizedRole === 'reader'
+    || normalizedRole === 'talent'
+    || normalizedRole === 'actor'
+  ) {
     return ['read'];
   }
 
@@ -307,8 +440,58 @@ function makeId(): string {
   return crypto.randomUUID();
 }
 
+function sanitizeRoleRoomTalentFileSegment(value: string, fallback = 'file'): string {
+  const normalized = value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80);
+  return normalized || fallback;
+}
+
+function buildRoleRoomTalentInviteToken(): string {
+  return `rrtal_${crypto.randomBytes(24).toString('hex')}`;
+}
+
+function hashRoleRoomTalentInviteToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PROJECT_FILE_STORAGE_ROOT = path.join(REPO_ROOT, 'uploads', 'project-files');
+const ROLE_ROOM_TALENT_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-talent');
+const ROLE_ROOM_TALENT_UPLOAD_MAX_BYTES = 512 * 1024 * 1024;
+const DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN = 'https://theroleroom.com';
+const roleRoomTalentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: ROLE_ROOM_TALENT_UPLOAD_MAX_BYTES,
+  },
+  fileFilter: (_req, file, cb) => {
+    const mimetype = String(file.mimetype || '').toLowerCase();
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const allowedMimetypes = [
+      'video/mp4',
+      'video/quicktime',
+      'video/x-m4v',
+      'video/webm',
+      'video/mpeg',
+      'video/3gpp',
+      'video/x-msvideo',
+      'video/x-ms-wmv',
+    ];
+    const allowedExtensions = ['.mp4', '.mov', '.m4v', '.webm', '.mpeg', '.mpg', '.3gp', '.avi', '.wmv'];
+
+    if (allowedMimetypes.includes(mimetype) || allowedExtensions.includes(extension)) {
+      cb(null, true);
+      return;
+    }
+
+    cb(new Error('Ugyldig self tape-format. Bruk MP4, MOV, WebM eller lignende videofil.'));
+  },
+});
 const ROLE_ROOM_GOOGLE_SCOPES = [
   'openid',
   'email',
@@ -384,6 +567,38 @@ function readJsonObject(value: unknown): Record<string, unknown> {
     }
   }
   return {};
+}
+
+function readJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function readExternalUrlValue(value: unknown): string | null {
+  const raw = readStringValue(value);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 function readStringArray(value: unknown): string[] {
@@ -3924,6 +4139,756 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return producerWorkflowTablesReadyPromise;
   }
 
+  let roleRoomPublicProofTablesReadyPromise: Promise<boolean> | null = null;
+  async function ensureRoleRoomPublicProofTables(): Promise<boolean> {
+    if (roleRoomPublicProofTablesReadyPromise) return roleRoomPublicProofTablesReadyPromise;
+    roleRoomPublicProofTablesReadyPromise = (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS role_room_testimonials (
+            id UUID PRIMARY KEY,
+            role_id VARCHAR(100) NOT NULL,
+            quote_text TEXT NOT NULL,
+            author_name VARCHAR(255) NOT NULL,
+            author_title VARCHAR(255),
+            author_user_id VARCHAR(255),
+            author_email VARCHAR(255),
+            status VARCHAR(40) NOT NULL DEFAULT 'pending',
+            is_featured BOOLEAN NOT NULL DEFAULT FALSE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            approved_by_user_id VARCHAR(255),
+            approved_at TIMESTAMPTZ,
+            rejected_reason TEXT,
+            published_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_testimonials_status ON role_room_testimonials(status);
+          CREATE INDEX IF NOT EXISTS idx_rr_testimonials_role ON role_room_testimonials(role_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_testimonials_sort ON role_room_testimonials(is_featured DESC, sort_order ASC, published_at DESC, created_at DESC);
+        `);
+        return true;
+      } catch (error) {
+        console.warn('Role Room public proof tables unavailable:', error);
+        return false;
+      }
+    })();
+    return roleRoomPublicProofTablesReadyPromise;
+  }
+
+  let roleRoomTalentPortalTablesReadyPromise: Promise<boolean> | null = null;
+  async function ensureRoleRoomTalentPortalTables(): Promise<boolean> {
+    if (roleRoomTalentPortalTablesReadyPromise) return roleRoomTalentPortalTablesReadyPromise;
+    roleRoomTalentPortalTablesReadyPromise = (async () => {
+      try {
+        const castingProjectsReady = await ensureCastingProjectsTable();
+        if (!castingProjectsReady) {
+          return false;
+        }
+
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS role_room_talent_invites (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            candidate_id VARCHAR(255) NOT NULL REFERENCES casting_candidates(id) ON DELETE CASCADE,
+            email VARCHAR(255),
+            token_hash VARCHAR(255) NOT NULL UNIQUE,
+            status VARCHAR(40) NOT NULL DEFAULT 'sent',
+            created_by_user_id VARCHAR(255),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_sent_at TIMESTAMPTZ,
+            last_viewed_at TIMESTAMPTZ,
+            accepted_at TIMESTAMPTZ,
+            expires_at TIMESTAMPTZ,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_talent_invites_project ON role_room_talent_invites(project_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_talent_invites_candidate ON role_room_talent_invites(candidate_id);
+          CREATE INDEX IF NOT EXISTS idx_rr_talent_invites_email ON role_room_talent_invites(email);
+          CREATE INDEX IF NOT EXISTS idx_rr_talent_invites_status ON role_room_talent_invites(status);
+
+          CREATE TABLE IF NOT EXISTS role_room_talent_activity (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            candidate_id VARCHAR(255) NOT NULL REFERENCES casting_candidates(id) ON DELETE CASCADE,
+            entry_type VARCHAR(80) NOT NULL DEFAULT 'update',
+            title TEXT NOT NULL,
+            body TEXT,
+            visibility VARCHAR(40) NOT NULL DEFAULT 'shared',
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_by_user_id VARCHAR(255),
+            created_by_role VARCHAR(100),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_talent_activity_candidate ON role_room_talent_activity(candidate_id, created_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_rr_talent_activity_project ON role_room_talent_activity(project_id, created_at DESC);
+
+          CREATE TABLE IF NOT EXISTS role_room_talent_uploads (
+            id UUID PRIMARY KEY,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            candidate_id VARCHAR(255) NOT NULL REFERENCES casting_candidates(id) ON DELETE CASCADE,
+            media_kind VARCHAR(40) NOT NULL DEFAULT 'video',
+            original_name TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            storage_path TEXT NOT NULL,
+            mime_type VARCHAR(255),
+            size_bytes BIGINT,
+            access_token_hash VARCHAR(255),
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_by_user_id VARCHAR(255),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_talent_uploads_candidate ON role_room_talent_uploads(candidate_id, created_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_rr_talent_uploads_project ON role_room_talent_uploads(project_id, created_at DESC);
+        `);
+
+        await fs.mkdir(ROLE_ROOM_TALENT_UPLOAD_ROOT, { recursive: true });
+        return true;
+      } catch (error) {
+        console.warn('Role Room talent portal tables unavailable:', error);
+        return false;
+      }
+    })();
+    return roleRoomTalentPortalTablesReadyPromise;
+  }
+
+  function normalizeRoleRoomTestimonialRoleId(value: unknown): string {
+    const normalized = readStringValue(value)?.trim().toLowerCase() ?? '';
+    if (!normalized) {
+      return 'talent';
+    }
+
+    const aliases: Record<string, string> = {
+      reader: 'talent',
+      actor: 'talent',
+      skuespiller: 'talent',
+      content_producer: 'film_photographer',
+      client_reviewer: 'client',
+      camera_team: 'camera_operator',
+      photo_assistant: 'photo_assistant',
+    };
+
+    return aliases[normalized] ?? normalized;
+  }
+
+  function getRoleRoomTestimonialDefaultTitle(roleId: string): string {
+    switch (roleId) {
+      case 'casting_director':
+        return 'Casting Director';
+      case 'director':
+        return 'Regissor';
+      case 'producer':
+        return 'Produsent';
+      case 'film_photographer':
+        return 'Innholdsprodusent';
+      case 'photographer':
+        return 'Fotograf';
+      case 'photo_director':
+        return 'Fotodirektor';
+      case 'photo_assistant':
+        return 'Fotoassistent';
+      case 'camera_operator':
+        return 'Kamera';
+      case 'talent':
+        return 'Skuespiller';
+      case 'agent':
+        return 'Agent';
+      case 'client':
+        return 'Klient';
+      default:
+        return 'Creator';
+    }
+  }
+
+  function mapRoleRoomPublicTestimonial(row: Partial<RoleRoomPublicTestimonialRow>) {
+    const roleId = normalizeRoleRoomTestimonialRoleId(row.role_id);
+    return {
+      id: readStringValue(row.id) ?? makeId(),
+      roleId,
+      quote: readStringValue(row.quote_text) ?? '',
+      author: readStringValue(row.author_name) ?? 'Anonym',
+      title: readStringValue(row.author_title) ?? getRoleRoomTestimonialDefaultTitle(roleId),
+      featured: row.is_featured === true,
+      publishedAt: readStringValue(row.published_at) ?? readStringValue(row.created_at),
+    };
+  }
+
+  function normalizeRoleRoomTalentMediaEntry(
+    entry: unknown,
+    kind: 'video' | 'photo',
+  ): Record<string, unknown> | null {
+    if (typeof entry === 'string') {
+      const url = readExternalUrlValue(entry);
+      if (!url) {
+        return null;
+      }
+      return {
+        id: makeId(),
+        kind,
+        title: kind === 'video' ? 'Innsendt video' : 'Profilbilde',
+        url,
+      };
+    }
+
+    const record = readRecordValue(entry);
+    if (!record) {
+      return null;
+    }
+
+    const internalUrl = readStringValue(record.url)?.startsWith('/api/')
+      ? readStringValue(record.url)
+      : readStringValue(record.downloadUrl)?.startsWith('/api/')
+        ? readStringValue(record.downloadUrl)
+        : null;
+    const url = internalUrl
+      ?? readExternalUrlValue(record.url)
+      ?? readExternalUrlValue(record.downloadUrl)
+      ?? readExternalUrlValue(record.videoUrl)
+      ?? readExternalUrlValue(record.photoUrl)
+      ?? readExternalUrlValue(record.src)
+      ?? readExternalUrlValue(record.href)
+      ?? readExternalUrlValue(record.link);
+
+    if (!url) {
+      return null;
+    }
+
+    return {
+      id: readStringValue(record.id) ?? makeId(),
+      kind,
+      title: readStringValue(record.title)
+        ?? readStringValue(record.name)
+        ?? (kind === 'video' ? 'Innsendt video' : 'Profilbilde'),
+      url,
+      thumbnailUrl: readExternalUrlValue(record.thumbnailUrl)
+        ?? readExternalUrlValue(record.posterUrl)
+        ?? readExternalUrlValue(record.previewUrl),
+      notes: readStringValue(record.notes),
+      source: readStringValue(record.source) ?? 'talent_portal',
+      submittedAt: readStringValue(record.submittedAt)
+        ?? readStringValue(record.createdAt)
+        ?? readStringValue(record.updatedAt),
+      requiresAuth: readBooleanValue(record.requiresAuth) ?? internalUrl !== null,
+      mimeType: readStringValue(record.mimeType),
+      sizeBytes:
+        typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes)
+          ? record.sizeBytes
+          : typeof record.size === 'number' && Number.isFinite(record.size)
+            ? record.size
+            : null,
+      downloadName: readStringValue(record.downloadName) ?? readStringValue(record.originalName),
+      durationSeconds:
+        typeof record.durationSeconds === 'number' && Number.isFinite(record.durationSeconds)
+          ? record.durationSeconds
+          : typeof record.duration === 'number' && Number.isFinite(record.duration)
+            ? record.duration
+            : null,
+    };
+  }
+
+  function normalizeRoleRoomTalentMediaList(
+    value: unknown,
+    kind: 'video' | 'photo',
+  ): Record<string, unknown>[] {
+    return readJsonArray(value)
+      .map((entry) => normalizeRoleRoomTalentMediaEntry(entry, kind))
+      .filter((entry): entry is Record<string, unknown> => Boolean(entry));
+  }
+
+  function buildRoleRoomTalentPortalCandidate(row: RoleRoomTalentPortalCandidateRow) {
+    const metadata = readJsonObject(row.metadata);
+    const talentProfile = readJsonObject(metadata.talentProfile);
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      name: readStringValue(row.name) ?? 'Talent',
+      email: normalizeEmailValue(row.email),
+      phone: readStringValue(row.phone),
+      agency: readStringValue(row.agency),
+      notes: readStringValue(row.notes),
+      status: readStringValue(row.status) ?? 'pending',
+      rating: typeof row.rating === 'number' && Number.isFinite(row.rating) ? row.rating : null,
+      assignedRoleIds: toStringArray(row.assigned_roles),
+      consentStatus: readStringValue(row.consent_status),
+      emergencyContact: readJsonObject(row.emergency_contact),
+      photos: normalizeRoleRoomTalentMediaList(row.photos, 'photo'),
+      videos: normalizeRoleRoomTalentMediaList(row.videos, 'video'),
+      profile: {
+        bio: readStringValue(talentProfile.bio),
+        city: readStringValue(talentProfile.city),
+        baseLocation: readStringValue(talentProfile.baseLocation),
+        website: readExternalUrlValue(talentProfile.website),
+        instagram: readExternalUrlValue(talentProfile.instagram),
+        portfolioUrl: readExternalUrlValue(talentProfile.portfolioUrl),
+        showreelUrl: readExternalUrlValue(talentProfile.showreelUrl),
+        languages: toStringArray(talentProfile.languages),
+      },
+      metadata,
+      createdAt: readStringValue(row.created_at),
+      updatedAt: readStringValue(row.updated_at),
+    };
+  }
+
+  function buildRoleRoomTalentPortalRole(row: RoleRoomTalentPortalRoleRow) {
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      name: readStringValue(row.name) ?? 'Ukjent rolle',
+      description: readStringValue(row.description),
+      ageRange: readStringValue(row.age_range),
+      gender: readStringValue(row.gender),
+      roleType: readStringValue(row.role_type),
+      status: readStringValue(row.status) ?? 'open',
+      assignedCandidateId: readStringValue(row.assigned_candidate_id),
+      candidateIds: toStringArray(row.candidate_ids),
+      requirements: readJsonObject(row.requirements),
+    };
+  }
+
+  function buildRoleRoomTalentPortalSchedule(row: RoleRoomTalentPortalScheduleRow) {
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      candidateId: readStringValue(row.candidate_id),
+      roleId: readStringValue(row.role_id),
+      roleName: readStringValue(row.role_name),
+      date: readStringValue(row.date),
+      startTime: readStringValue(row.start_time),
+      endTime: readStringValue(row.end_time),
+      type: readStringValue(row.type) ?? 'audition',
+      status: readStringValue(row.status) ?? 'scheduled',
+      notes: readStringValue(row.notes),
+      location: readStringValue(row.location),
+      createdAt: readStringValue(row.created_at),
+      updatedAt: readStringValue(row.updated_at),
+    };
+  }
+
+  function isTalentScopedRole(role: string | null | undefined): boolean {
+    const normalized = readStringValue(role)?.toLowerCase() ?? '';
+    return ['talent', 'actor', 'reader'].includes(normalized);
+  }
+
+  function isTalentScopedRequest(req: Request): boolean {
+    return isTalentScopedRole(getOptionalRequestUser(req)?.role);
+  }
+
+  async function createRoleRoomTalentActivityEntry(payload: {
+    projectId: string;
+    candidateId: string;
+    entryType: string;
+    title: string;
+    body?: string | null;
+    visibility?: string | null;
+    metadata?: Record<string, unknown> | null;
+    createdByUserId?: string | null;
+    createdByRole?: string | null;
+  }): Promise<void> {
+    if (!(await ensureRoleRoomTalentPortalTables())) {
+      return;
+    }
+
+    await pool.query(
+      `INSERT INTO role_room_talent_activity (
+        id, project_id, candidate_id, entry_type, title, body, visibility, metadata, created_by_user_id, created_by_role
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)`,
+      [
+        makeId(),
+        payload.projectId,
+        payload.candidateId,
+        payload.entryType,
+        payload.title,
+        payload.body ?? null,
+        readStringValue(payload.visibility) ?? 'shared',
+        JSON.stringify(payload.metadata ?? {}),
+        payload.createdByUserId ?? null,
+        payload.createdByRole ?? null,
+      ],
+    );
+  }
+
+  async function getRoleRoomTalentScopedCandidates(
+    projectId: string,
+    requestEmail: string,
+  ): Promise<RoleRoomTalentPortalCandidateRow[]> {
+    const normalizedEmail = normalizeEmailValue(requestEmail);
+    if (!normalizedEmail) {
+      return [];
+    }
+
+    const result = await pool.query<RoleRoomTalentPortalCandidateRow>(
+      `SELECT cc.*, cp.name AS project_name
+         FROM casting_candidates cc
+         INNER JOIN casting_projects cp
+           ON cp.id = cc.project_id
+        WHERE cc.project_id = $1
+          AND LOWER(COALESCE(cc.email, '')) = LOWER($2)
+        ORDER BY cc.updated_at DESC, cc.created_at DESC`,
+      [projectId, normalizedEmail],
+    );
+
+    return result.rows;
+  }
+
+  function buildRoleRoomTalentPortalInvite(
+    row: RoleRoomTalentInviteRow,
+    options?: {
+      inviteUrl?: string | null;
+      previewUrl?: string | null;
+    },
+  ) {
+    return {
+      id: row.id,
+      email: normalizeEmailValue(row.email),
+      status: readStringValue(row.status) ?? 'sent',
+      expiresAt: readStringValue(row.expires_at),
+      lastSentAt: readStringValue(row.last_sent_at),
+      lastViewedAt: readStringValue(row.last_viewed_at),
+      acceptedAt: readStringValue(row.accepted_at),
+      metadata: readJsonObject(row.metadata),
+      inviteUrl: readStringValue(options?.inviteUrl ?? null),
+      previewUrl: readStringValue(options?.previewUrl ?? null),
+    };
+  }
+
+  function buildRoleRoomTalentPortalActivity(row: RoleRoomTalentActivityRow) {
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      candidateId: row.candidate_id,
+      entryType: readStringValue(row.entry_type) ?? 'update',
+      title: row.title,
+      body: readStringValue(row.body),
+      visibility: readStringValue(row.visibility) ?? 'shared',
+      metadata: readJsonObject(row.metadata),
+      createdByRole: readStringValue(row.created_by_role),
+      createdAt: readStringValue(row.created_at),
+    };
+  }
+
+  function getRoleRoomTalentUploadDownloadPath(uploadId: string): string {
+    return `/api/role-room/talent/uploads/${uploadId}/content`;
+  }
+
+  function buildRoleRoomTalentUploadVideoRecord(options: {
+    uploadId: string;
+    title: string;
+    notes?: string | null;
+    mimeType?: string | null;
+    sizeBytes?: number | null;
+    originalName?: string | null;
+    submittedAt: string;
+  }): Record<string, unknown> {
+    return {
+      id: options.uploadId,
+      kind: 'video',
+      title: options.title,
+      url: getRoleRoomTalentUploadDownloadPath(options.uploadId),
+      notes: options.notes ?? null,
+      source: 'talent_upload',
+      submittedAt: options.submittedAt,
+      requiresAuth: true,
+      mimeType: options.mimeType ?? null,
+      sizeBytes: options.sizeBytes ?? null,
+      downloadName: options.originalName ?? null,
+    };
+  }
+
+  async function ensureRoleRoomTalentUploadDirectory(projectId: string, candidateId: string): Promise<string> {
+    const directory = path.join(
+      ROLE_ROOM_TALENT_UPLOAD_ROOT,
+      sanitizeRoleRoomTalentFileSegment(projectId, 'project'),
+      sanitizeRoleRoomTalentFileSegment(candidateId, 'candidate'),
+    );
+    await fs.mkdir(directory, { recursive: true });
+    return directory;
+  }
+
+  function buildRoleRoomTalentInviteUrl(req: Request, options: {
+    projectId: string;
+    candidateId: string;
+    inviteToken: string;
+    browserOrigin?: string | null;
+  }): string {
+    const configuredOrigin = sanitizeRoleRoomBrowserOrigin(
+      process.env.ROLE_ROOM_TALENT_PORTAL_ORIGIN
+      ?? process.env.ROLE_ROOM_PUBLIC_ORIGIN
+      ?? process.env.ROLE_ROOM_FRONTEND_ORIGIN,
+    );
+    const origin = sanitizeRoleRoomBrowserOrigin(options.browserOrigin)
+      ?? configuredOrigin
+      ?? getRoleRoomRequestOrigin(req)
+      ?? DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN;
+    const url = new URL('/theroleroom', origin);
+    url.searchParams.set('portal', 'talent');
+    url.searchParams.set('projectId', options.projectId);
+    url.searchParams.set('candidateId', options.candidateId);
+    url.searchParams.set('inviteToken', options.inviteToken);
+    url.searchParams.set('section', 'overview');
+    return url.toString();
+  }
+
+  async function getRoleRoomTalentInviteByToken(inviteToken: string): Promise<RoleRoomTalentInviteRow | null> {
+    if (!(await ensureRoleRoomTalentPortalTables())) {
+      return null;
+    }
+
+    const tokenHash = hashRoleRoomTalentInviteToken(inviteToken);
+    const result = await pool.query<RoleRoomTalentInviteRow>(
+      `SELECT *
+         FROM role_room_talent_invites
+        WHERE token_hash = $1
+        LIMIT 1`,
+      [tokenHash],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  function isRoleRoomTalentInviteExpired(invite: RoleRoomTalentInviteRow | null | undefined): boolean {
+    const expiresAt = readStringValue(invite?.expires_at);
+    if (!expiresAt) {
+      return false;
+    }
+    const parsed = Date.parse(expiresAt);
+    return Number.isFinite(parsed) && parsed < Date.now();
+  }
+
+  async function getRoleRoomTalentInvitePreview(invite: RoleRoomTalentInviteRow) {
+    const candidateResult = await pool.query<RoleRoomTalentPortalCandidateRow>(
+      `SELECT
+         cc.*,
+         cp.name AS project_name,
+         cp.description AS project_description,
+         cp.status AS project_status,
+         cp.project_type AS project_type,
+         cp.start_date::text AS project_start_date,
+         cp.end_date::text AS project_end_date
+       FROM casting_candidates cc
+       INNER JOIN casting_projects cp
+         ON cp.id = cc.project_id
+      WHERE cc.id = $1
+        AND cc.project_id = $2
+      LIMIT 1`,
+      [invite.candidate_id, invite.project_id],
+    );
+
+    const candidateRow = candidateResult.rows[0] ?? null;
+    if (!candidateRow) {
+      return null;
+    }
+
+    const roleResult = await pool.query<RoleRoomTalentPortalRoleRow>(
+      `SELECT *
+         FROM casting_roles
+        WHERE project_id = $1`,
+      [invite.project_id],
+    );
+
+    const candidate = buildRoleRoomTalentPortalCandidate(candidateRow);
+    const roles = roleResult.rows
+      .filter((row) => {
+        if (readStringValue(row.assigned_candidate_id) === invite.candidate_id) {
+          return true;
+        }
+
+        if (toStringArray(row.candidate_ids).includes(invite.candidate_id)) {
+          return true;
+        }
+
+        return candidate.assignedRoleIds.includes(row.id);
+      })
+      .map((row) => buildRoleRoomTalentPortalRole(row));
+
+    return {
+      invite: buildRoleRoomTalentPortalInvite(invite),
+      project: {
+        id: candidateRow.project_id,
+        name: readStringValue(candidateRow.project_name) ?? 'Ukjent prosjekt',
+        description: readStringValue(candidateRow.project_description),
+        status: readStringValue(candidateRow.project_status) ?? 'active',
+        type: readStringValue(candidateRow.project_type),
+        startDate: readStringValue(candidateRow.project_start_date),
+        endDate: readStringValue(candidateRow.project_end_date),
+      },
+      candidate,
+      roles,
+    };
+  }
+
+  async function resolveRoleRoomTalentAssignmentsForEmail(
+    email: string,
+    options?: {
+      projectId?: string | null;
+      candidateId?: string | null;
+      req?: Request;
+    },
+  ) {
+    const normalizedEmail = normalizeEmailValue(email);
+    if (!normalizedEmail) {
+      return [];
+    }
+
+    const candidateResult = await pool.query<RoleRoomTalentPortalCandidateRow>(
+      `SELECT
+         cc.*,
+         cp.name AS project_name,
+         cp.description AS project_description,
+         cp.status AS project_status,
+         cp.project_type AS project_type,
+         cp.start_date::text AS project_start_date,
+         cp.end_date::text AS project_end_date
+       FROM casting_candidates cc
+       INNER JOIN casting_projects cp
+         ON cp.id = cc.project_id
+      WHERE LOWER(COALESCE(cc.email, '')) = LOWER($1)
+        AND ($2::text IS NULL OR cc.project_id = $2)
+        AND ($3::text IS NULL OR cc.id = $3)
+      ORDER BY cp.start_date ASC NULLS LAST, cp.created_at DESC, cc.created_at DESC`,
+      [normalizedEmail, options?.projectId ?? null, options?.candidateId ?? null],
+    );
+
+    if (!candidateResult.rowCount) {
+      return [];
+    }
+
+    const candidateRows = candidateResult.rows;
+    const projectIds = Array.from(new Set(candidateRows.map((row) => row.project_id)));
+    const candidateIds = Array.from(new Set(candidateRows.map((row) => row.id)));
+
+    const talentTablesReady = await ensureRoleRoomTalentPortalTables();
+
+    const [roleResult, scheduleResult, inviteResult, activityResult] = await Promise.all([
+      pool.query<RoleRoomTalentPortalRoleRow>(
+        `SELECT *
+           FROM casting_roles
+          WHERE project_id = ANY($1::text[])`,
+        [projectIds],
+      ),
+      pool.query<RoleRoomTalentPortalScheduleRow>(
+        `SELECT
+           cs.*,
+           cr.name AS role_name
+         FROM casting_schedules cs
+         LEFT JOIN casting_roles cr
+           ON cr.id = cs.role_id
+        WHERE cs.candidate_id = ANY($1::text[])
+        ORDER BY cs.date ASC NULLS LAST, cs.start_time ASC NULLS LAST, cs.created_at DESC`,
+        [candidateIds],
+      ),
+      talentTablesReady
+        ? pool.query<RoleRoomTalentInviteRow>(
+            `SELECT DISTINCT ON (candidate_id) *
+               FROM role_room_talent_invites
+              WHERE candidate_id = ANY($1::text[])
+              ORDER BY candidate_id, created_at DESC`,
+            [candidateIds],
+          )
+        : Promise.resolve({ rows: [] } as { rows: RoleRoomTalentInviteRow[] }),
+      talentTablesReady
+        ? pool.query<RoleRoomTalentActivityRow>(
+            `SELECT *
+               FROM role_room_talent_activity
+              WHERE candidate_id = ANY($1::text[])
+              ORDER BY created_at DESC
+              LIMIT 200`,
+            [candidateIds],
+          )
+        : Promise.resolve({ rows: [] } as { rows: RoleRoomTalentActivityRow[] }),
+    ]);
+
+    const latestInviteByCandidate = new Map(
+      inviteResult.rows.map((row) => [row.candidate_id, row] as const),
+    );
+
+    return candidateRows.map((candidateRow) => {
+      const candidate = buildRoleRoomTalentPortalCandidate(candidateRow);
+      const schedules = scheduleResult.rows
+        .filter((row) => readStringValue(row.candidate_id) === candidateRow.id)
+        .map((row) => buildRoleRoomTalentPortalSchedule(row));
+
+      const candidateRoleIds = new Set(candidate.assignedRoleIds);
+      const scheduleRoleIds = new Set(
+        schedules
+          .map((schedule) => schedule.roleId)
+          .filter((roleId): roleId is string => typeof roleId === 'string' && roleId.length > 0),
+      );
+
+      const roles = roleResult.rows
+        .filter((row) => {
+          if (row.project_id !== candidateRow.project_id) {
+            return false;
+          }
+
+          if (candidateRoleIds.has(row.id) || scheduleRoleIds.has(row.id)) {
+            return true;
+          }
+
+          if (readStringValue(row.assigned_candidate_id) === candidateRow.id) {
+            return true;
+          }
+
+          return toStringArray(row.candidate_ids).includes(candidateRow.id);
+        })
+        .map((row) => buildRoleRoomTalentPortalRole(row));
+
+      const inviteRow = latestInviteByCandidate.get(candidateRow.id) ?? null;
+      const activities = activityResult.rows
+        .filter((row) => row.candidate_id === candidateRow.id)
+        .map((row) => buildRoleRoomTalentPortalActivity(row));
+
+      return {
+        project: {
+          id: candidateRow.project_id,
+          name: readStringValue(candidateRow.project_name) ?? 'Ukjent prosjekt',
+          description: readStringValue(candidateRow.project_description),
+          status: readStringValue(candidateRow.project_status) ?? 'active',
+          type: readStringValue(candidateRow.project_type),
+          startDate: readStringValue(candidateRow.project_start_date),
+          endDate: readStringValue(candidateRow.project_end_date),
+        },
+        candidate,
+        roles,
+        schedules,
+        invite: inviteRow ? buildRoleRoomTalentPortalInvite(inviteRow) : null,
+        activity: activities,
+        stats: {
+          roleCount: roles.length,
+          scheduleCount: schedules.length,
+          selfTapeCount: candidate.videos.length,
+          photoCount: candidate.photos.length,
+          activityCount: activities.length,
+        },
+      };
+    });
+  }
+
+  async function resolveRoleRoomTalentCandidateForRequest(
+    req: Request,
+    projectId: string,
+    candidateId: string,
+  ): Promise<RoleRoomTalentPortalCandidateRow | null> {
+    const requestUser = getOptionalRequestUser(req);
+    const requestEmail = normalizeEmailValue(requestUser?.email);
+    if (!requestEmail) {
+      return null;
+    }
+
+    const result = await pool.query<RoleRoomTalentPortalCandidateRow>(
+      `SELECT *
+         FROM casting_candidates
+        WHERE id = $1
+          AND project_id = $2
+          AND LOWER(COALESCE(email, '')) = LOWER($3)
+        LIMIT 1`,
+      [candidateId, projectId, requestEmail],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
   // Apply CORS to all Role Room routes
   router.use(cors(buildCorsOptions()));
 
@@ -5993,6 +6958,26 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.get('/projects', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const userId = getUserId(req);
     try {
+      if (isTalentScopedRequest(req)) {
+        const requestEmail = normalizeEmailValue(getOptionalRequestUser(req)?.email);
+        if (!requestEmail) {
+          res.status(401).json({ error: 'Innlogging med gyldig e-post kreves for talentprosjekter' });
+          return;
+        }
+
+        const result = await pool.query<CastingProjectRow>(
+          `SELECT DISTINCT cp.*
+             FROM casting_projects cp
+             INNER JOIN casting_candidates cc
+               ON cc.project_id = cp.id
+            WHERE LOWER(COALESCE(cc.email, '')) = LOWER($1)
+            ORDER BY cp.updated_at DESC`,
+          [requestEmail],
+        );
+        res.json(result.rows);
+        return;
+      }
+
       const result = await pool.query<CastingProjectRow>(
         `SELECT cp.* FROM casting_projects cp
          LEFT JOIN casting_user_roles cur ON cp.id = cur.project_id AND cur.user_id = $1
@@ -6009,6 +6994,37 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.get('/projects/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      if (isTalentScopedRequest(req)) {
+        const requestEmail = normalizeEmailValue(getOptionalRequestUser(req)?.email);
+        if (!requestEmail) {
+          res.status(401).json({ error: 'Innlogging med gyldig e-post kreves for talentprosjekter' });
+          return;
+        }
+
+        const assignments = await resolveRoleRoomTalentAssignmentsForEmail(requestEmail, {
+          projectId: req.params.id,
+          req,
+        });
+        const assignment = assignments[0];
+        if (!assignment) {
+          res.status(404).json({ error: 'Prosjekt ikke funnet for innlogget talent' });
+          return;
+        }
+
+        res.json({
+          ...assignment.project,
+          roles: assignment.roles,
+          candidates: [assignment.candidate],
+          crew: [],
+          schedules: assignment.schedules,
+          locations: [],
+          props: [],
+          shotLists: [],
+          userRoles: [],
+        });
+        return;
+      }
+
       const result = await pool.query<CastingProjectRow>(
         'SELECT * FROM casting_projects WHERE id = $1', [req.params.id]
       );
@@ -6148,6 +7164,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.get('/projects/:projectId/roles', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      if (isTalentScopedRequest(req)) {
+        res.json([]);
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_user_roles WHERE project_id = $1 ORDER BY created_at',
         [req.params.projectId]
@@ -7355,6 +8376,26 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.get('/projects/:projectId/casting-roles', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      if (isTalentScopedRequest(req)) {
+        const requestEmail = normalizeEmailValue(getOptionalRequestUser(req)?.email);
+        if (!requestEmail) {
+          res.status(401).json({ error: 'Innlogging med gyldig e-post kreves for talentroller' });
+          return;
+        }
+
+        const assignments = await resolveRoleRoomTalentAssignmentsForEmail(requestEmail, {
+          projectId: req.params.projectId,
+          req,
+        });
+        const allowedRoleIds = new Set(assignments.flatMap((assignment) => assignment.roles.map((role) => role.id)));
+        const result = await pool.query(
+          'SELECT * FROM casting_roles WHERE project_id = $1 ORDER BY created_at',
+          [req.params.projectId],
+        );
+        res.json(result.rows.filter((row) => allowedRoleIds.has(String(row.id))));
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_roles WHERE project_id = $1 ORDER BY created_at',
         [req.params.projectId]
@@ -7390,6 +8431,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.get('/projects/:projectId/candidates', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      if (isTalentScopedRequest(req)) {
+        const requestEmail = normalizeEmailValue(getOptionalRequestUser(req)?.email);
+        if (!requestEmail) {
+          res.status(401).json({ error: 'Innlogging med gyldig e-post kreves for talentkandidater' });
+          return;
+        }
+
+        const rows = await getRoleRoomTalentScopedCandidates(req.params.projectId, requestEmail);
+        res.json(rows);
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_candidates WHERE project_id = $1 ORDER BY name',
         [req.params.projectId]
@@ -7425,6 +8478,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.get('/projects/:projectId/crew', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      if (isTalentScopedRequest(req)) {
+        res.status(403).json({ error: 'Talentportalen har ikke tilgang til crewlisten' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_crew WHERE project_id = $1 ORDER BY name',
         [req.params.projectId]
@@ -7460,6 +8518,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.get('/projects/:projectId/locations', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      if (isTalentScopedRequest(req)) {
+        res.status(403).json({ error: 'Talentportalen har ikke tilgang til lokasjoner' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_locations WHERE project_id = $1 ORDER BY name',
         [req.params.projectId]
@@ -7571,6 +8634,94 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
     try {
+      if (isTalentScopedRequest(req)) {
+        const requestEmail = normalizeEmailValue(getOptionalRequestUser(req)?.email);
+        if (!requestEmail) {
+          res.status(401).json({ error: 'Innlogging med gyldig e-post kreves for audition-oversikten' });
+          return;
+        }
+
+        const scopedCandidates = await getRoleRoomTalentScopedCandidates(projectId, requestEmail);
+        const scopedCandidateIds = scopedCandidates.map((row) => row.id);
+        if (scopedCandidateIds.length === 0) {
+          res.json({
+            items: [],
+            totalCount: 0,
+            counts: {
+              total: 0,
+              scheduled: 0,
+              completed: 0,
+              cancelled: 0,
+              pool: 0,
+              today: 0,
+              favorites: 0,
+            },
+          });
+          return;
+        }
+
+        const result = await pool.query(
+          `SELECT
+             cs.id, cs.project_id, cs.candidate_id, cs.role_id, cs.scene_id,
+             cs.location_id, cs.date, cs.start_time AS time, cs.end_time,
+             cs.type, cs.status, cs.notes, cs.location, cs.created_at, cs.updated_at,
+             COALESCE(cc.name, 'Ukjent kandidat') AS candidate_name,
+             COALESCE(cr.name, 'Ukjent rolle')    AS role_name
+           FROM casting_schedules cs
+           LEFT JOIN casting_candidates cc ON cc.id = cs.candidate_id
+           LEFT JOIN casting_roles cr ON cr.id = cs.role_id
+           WHERE cs.project_id = $1
+             AND cs.candidate_id = ANY($2::text[])
+           ORDER BY cs.date ASC NULLS LAST, cs.start_time ASC NULLS LAST, cs.created_at DESC`,
+          [projectId, scopedCandidateIds],
+        );
+
+        const searchTerm = typeof search === 'string' && search.trim().length > 0
+          ? search.trim().toLowerCase()
+          : null;
+        const filteredItems = result.rows.filter((row) => {
+          if (status === 'pool' && row.date !== null) return false;
+          if (status && status !== 'pool' && String(row.status || '') !== status) return false;
+          if (roleId && String(row.role_id || '') !== roleId) return false;
+          if (candidateId && String(row.candidate_id || '') !== candidateId) return false;
+          if (dateFrom && String(row.date || '') < dateFrom) return false;
+          if (dateTo && String(row.date || '') > dateTo) return false;
+          if (searchTerm) {
+            const haystack = [
+              row.candidate_name,
+              row.role_name,
+              row.location,
+              row.notes,
+            ]
+              .map((value) => String(value || '').toLowerCase())
+              .join(' ');
+            if (!haystack.includes(searchTerm)) {
+              return false;
+            }
+          }
+          return true;
+        });
+
+        const lim = Math.min(parseInt(limit, 10) || 200, 500);
+        const off = parseInt(offset, 10) || 0;
+        const pagedItems = filteredItems.slice(off, off + lim);
+
+        res.json({
+          items: pagedItems,
+          totalCount: filteredItems.length,
+          counts: {
+            total: filteredItems.length,
+            scheduled: filteredItems.filter((row) => String(row.status || '') === 'scheduled').length,
+            completed: filteredItems.filter((row) => String(row.status || '') === 'completed').length,
+            cancelled: filteredItems.filter((row) => String(row.status || '') === 'cancelled').length,
+            pool: filteredItems.filter((row) => row.date === null).length,
+            today: filteredItems.filter((row) => String(row.date || '') === today && String(row.status || '') === 'scheduled').length,
+            favorites: 0,
+          },
+        });
+        return;
+      }
+
       // ── Build dynamic WHERE conditions ──────────────────────
       const conditions: string[] = ['cs.project_id = $1'];
       const params: unknown[] = [projectId];
@@ -7899,6 +9050,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.get('/projects/:projectId/calendar-events', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
+    if (isTalentScopedRequest(req)) {
+      res.status(403).json({ success: false, error: 'Talentportalen har ikke tilgang til produksjonskalenderen' });
+      return;
+    }
     const hasProjectAccess = await ensureProjectAccess(projectId);
     if (!hasProjectAccess) {
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
@@ -8400,18 +9555,28 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // Public Stats — no auth, used on landing page stats bar
   // ═══════════════════════════════════════════════════════════
 
+  const getRoleRoomStatsSummary = async () => {
+    const [kreativeRes, prodRes, rolesRes] = await Promise.all([
+      pool.query(`SELECT COUNT(DISTINCT user_id) AS n FROM casting_user_roles`),
+      pool.query(`SELECT COUNT(*) AS n FROM casting_projects`),
+      pool.query(
+        `SELECT COUNT(*) AS n
+         FROM casting_roles
+         WHERE assigned_candidate_id IS NOT NULL
+            OR LOWER(COALESCE(status, '')) IN ('filled', 'cast', 'booked', 'assigned')`
+      ),
+    ]);
+
+    return {
+      kreative: parseInt(kreativeRes.rows[0]?.n ?? '0', 10),
+      produksjoner: parseInt(prodRes.rows[0]?.n ?? '0', 10),
+      rollerBesatt: parseInt(rolesRes.rows[0]?.n ?? '0', 10),
+    };
+  };
+
   router.get('/public/stats', async (_req: Request, res: Response) => {
     try {
-      const [kreativeRes, prodRes, rolesRes] = await Promise.all([
-        pool.query(`SELECT COUNT(DISTINCT user_id) AS n FROM casting_user_roles`),
-        pool.query(`SELECT COUNT(*) AS n FROM casting_projects`),
-        pool.query(`SELECT COUNT(*) AS n FROM casting_roles`),
-      ]);
-      res.json({
-        kreative:     parseInt(kreativeRes.rows[0]?.n  ?? '0', 10),
-        produksjoner: parseInt(prodRes.rows[0]?.n      ?? '0', 10),
-        rollerBesatt: parseInt(rolesRes.rows[0]?.n     ?? '0', 10),
-      });
+      res.json(await getRoleRoomStatsSummary());
     } catch (err) {
       console.error('Role Room public stats error:', err);
       // Return sensible zeros on DB error — UI shows DEFAULT_STATS as fallback
@@ -8419,25 +9584,886 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  router.get('/public/testimonials', async (_req: Request, res: Response) => {
+    try {
+      if (!(await ensureRoleRoomPublicProofTables())) {
+        res.json([]);
+        return;
+      }
+
+      const result = await pool.query<RoleRoomPublicTestimonialRow>(
+        `SELECT *
+           FROM role_room_testimonials
+          WHERE status = 'published'
+          ORDER BY is_featured DESC, sort_order ASC, published_at DESC NULLS LAST, created_at DESC
+          LIMIT 12`,
+      );
+
+      res.json(result.rows.map((row) => mapRoleRoomPublicTestimonial(row)));
+    } catch (error) {
+      console.error('Role Room public testimonials error:', error);
+      res.json([]);
+    }
+  });
+
+  router.post('/testimonials/submissions', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      if (!(await ensureRoleRoomPublicProofTables())) {
+        res.status(503).json({ error: 'Testimonials er midlertidig utilgjengelig' });
+        return;
+      }
+
+      const requestUser = getOptionalRequestUser(req);
+      if (!requestUser?.userId) {
+        res.status(401).json({ error: 'Innlogging kreves for a sende inn testimonial' });
+        return;
+      }
+
+      const quote = readStringValue(req.body?.quote)?.trim();
+      if (!quote || quote.length < 20) {
+        res.status(400).json({ error: 'Testimonial ma vaere minst 20 tegn' });
+        return;
+      }
+
+      const roleId = normalizeRoleRoomTestimonialRoleId(
+        req.body?.roleId
+        ?? req.body?.requestedRole
+        ?? requestUser.role,
+      );
+      const authorName = readStringValue(req.body?.author)?.trim()
+        ?? readStringValue(req.body?.authorName)?.trim()
+        ?? readStringValue(req.body?.displayName)?.trim()
+        ?? readStringValue(requestUser.email)?.split('@')[0]
+        ?? 'Anonym';
+      const authorTitle = readStringValue(req.body?.title)?.trim()
+        ?? readStringValue(req.body?.authorTitle)?.trim()
+        ?? getRoleRoomTestimonialDefaultTitle(roleId);
+      const metadata = readJsonObject(req.body?.metadata);
+      const id = makeId();
+
+      await pool.query(
+        `INSERT INTO role_room_testimonials (
+          id, role_id, quote_text, author_name, author_title, author_user_id, author_email, status, metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8::jsonb)`,
+        [
+          id,
+          roleId,
+          quote,
+          authorName,
+          authorTitle,
+          requestUser.userId,
+          requestUser.email ?? null,
+          JSON.stringify(metadata),
+        ],
+      );
+
+      res.status(201).json({
+        success: true,
+        submission: {
+          id,
+          roleId,
+          quote,
+          author: authorName,
+          title: authorTitle,
+          status: 'pending',
+        },
+      });
+    } catch (error) {
+      console.error('Role Room testimonial submission error:', error);
+      res.status(500).json({ error: 'Kunne ikke sende inn testimonial' });
+    }
+  });
+
+  router.get('/projects/:projectId/talent-invites', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      if (!(await ensureRoleRoomTalentPortalTables())) {
+        res.status(503).json({ error: 'Talentinvitasjoner er midlertidig utilgjengelig' });
+        return;
+      }
+
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord) && !canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til talentinvitasjoner' });
+        return;
+      }
+
+      const result = await pool.query(
+        `SELECT rti.*, cc.name AS candidate_name
+           FROM role_room_talent_invites rti
+           INNER JOIN casting_candidates cc
+             ON cc.id = rti.candidate_id
+          WHERE rti.project_id = $1
+          ORDER BY rti.created_at DESC`,
+        [projectId],
+      );
+
+      res.json({
+        invites: result.rows.map((row) => ({
+          ...buildRoleRoomTalentPortalInvite(row as RoleRoomTalentInviteRow),
+          projectId: row.project_id,
+          candidateId: row.candidate_id,
+          candidateName: readStringValue(row.candidate_name) ?? 'Talent',
+        })),
+      });
+    } catch (error) {
+      console.error('Role Room talent invites fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente talentinvitasjoner' });
+    }
+  });
+
+  router.post('/projects/:projectId/talent-invites', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      if (!(await ensureRoleRoomTalentPortalTables())) {
+        res.status(503).json({ error: 'Talentinvitasjoner er midlertidig utilgjengelig' });
+        return;
+      }
+
+      const { projectId } = req.params;
+      if (!(await ensureProjectAccess(projectId))) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å invitere talent' });
+        return;
+      }
+
+      const candidateId = readStringValue(req.body?.candidateId);
+      if (!candidateId) {
+        res.status(400).json({ error: 'candidateId er påkrevd' });
+        return;
+      }
+
+      const candidateResult = await pool.query<RoleRoomTalentPortalCandidateRow>(
+        `SELECT *
+           FROM casting_candidates
+          WHERE id = $1
+            AND project_id = $2
+          LIMIT 1`,
+        [candidateId, projectId],
+      );
+      const candidateRow = candidateResult.rows[0] ?? null;
+      if (!candidateRow) {
+        res.status(404).json({ error: 'Fant ikke talentprofilen som skal inviteres' });
+        return;
+      }
+
+      const targetEmail = normalizeEmailValue(req.body?.email) ?? normalizeEmailValue(candidateRow.email);
+      if (!targetEmail) {
+        res.status(400).json({ error: 'Invitasjonen trenger en gyldig e-postadresse' });
+        return;
+      }
+
+      if (normalizeEmailValue(candidateRow.email) !== targetEmail) {
+        await pool.query(
+          `UPDATE casting_candidates
+              SET email = $1,
+                  updated_at = NOW()
+            WHERE id = $2
+              AND project_id = $3`,
+          [targetEmail, candidateId, projectId],
+        );
+      }
+
+      const requestedExpiresAt = readStringValue(req.body?.expiresAt);
+      const fallbackDays = typeof req.body?.expiresInDays === 'number' && Number.isFinite(req.body.expiresInDays)
+        ? Math.max(1, Math.min(30, Math.floor(req.body.expiresInDays)))
+        : 14;
+      const requestedExpiryTime = requestedExpiresAt ? Date.parse(requestedExpiresAt) : NaN;
+      if (requestedExpiresAt && !Number.isFinite(requestedExpiryTime)) {
+        res.status(400).json({ error: 'expiresAt er ugyldig' });
+        return;
+      }
+      const expiresAt = Number.isFinite(requestedExpiryTime)
+        ? new Date(requestedExpiryTime).toISOString()
+        : new Date(Date.now() + fallbackDays * 24 * 60 * 60 * 1000).toISOString();
+
+      const inviteToken = buildRoleRoomTalentInviteToken();
+      const inviteId = makeId();
+      const inviteMetadata = {
+        message: readStringValue(req.body?.message),
+        createdFrom: 'producer_portal',
+      };
+      const requestUser = getOptionalRequestUser(req);
+
+      await pool.query(
+        `INSERT INTO role_room_talent_invites (
+          id, project_id, candidate_id, email, token_hash, status, created_by_user_id, last_sent_at, expires_at, metadata
+        ) VALUES ($1, $2, $3, $4, $5, 'sent', $6, NOW(), $7, $8::jsonb)`,
+        [
+          inviteId,
+          projectId,
+          candidateId,
+          targetEmail,
+          hashRoleRoomTalentInviteToken(inviteToken),
+          requestUser?.userId ?? null,
+          expiresAt,
+          JSON.stringify(inviteMetadata),
+        ],
+      );
+
+      await createRoleRoomTalentActivityEntry({
+        projectId,
+        candidateId,
+        entryType: 'invite_sent',
+        title: 'Invitasjon sendt',
+        body: readStringValue(req.body?.message) ?? 'Talentet fikk en invitasjonslenke til Talent Portal.',
+        visibility: 'shared',
+        metadata: {
+          inviteId,
+          email: targetEmail,
+        },
+        createdByUserId: requestUser?.userId ?? null,
+        createdByRole: requestUser?.role ?? null,
+      });
+
+      const inviteUrl = buildRoleRoomTalentInviteUrl(req, {
+        projectId,
+        candidateId,
+        inviteToken,
+        browserOrigin: sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin),
+      });
+
+      res.status(201).json({
+        invite: {
+          ...buildRoleRoomTalentPortalInvite({
+            id: inviteId,
+            project_id: projectId,
+            candidate_id: candidateId,
+            email: targetEmail,
+            token_hash: '',
+            status: 'sent',
+            created_by_user_id: requestUser?.userId ?? null,
+            created_at: nowISO(),
+            updated_at: nowISO(),
+            last_sent_at: nowISO(),
+            last_viewed_at: null,
+            accepted_at: null,
+            expires_at: expiresAt,
+            metadata: inviteMetadata,
+          } as RoleRoomTalentInviteRow, {
+            inviteUrl,
+            previewUrl: `${getRoleRoomRequestOrigin(req) ?? DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN}/api/role-room/talent/invites/${inviteToken}`,
+          }),
+          projectId,
+          candidateId,
+          candidateName: readStringValue(candidateRow.name) ?? 'Talent',
+          inviteToken,
+        },
+      });
+    } catch (error) {
+      console.error('Role Room talent invite create error:', error);
+      res.status(500).json({ error: 'Kunne ikke opprette talentinvitasjon' });
+    }
+  });
+
+  router.get('/talent/invites/:inviteToken', async (req: Request, res: Response) => {
+    try {
+      const inviteToken = readStringValue(req.params.inviteToken);
+      if (!inviteToken) {
+        res.status(400).json({ error: 'inviteToken er påkrevd' });
+        return;
+      }
+
+      const invite = await getRoleRoomTalentInviteByToken(inviteToken);
+      if (!invite) {
+        res.status(404).json({ error: 'Fant ikke invitasjonen' });
+        return;
+      }
+      if (['cancelled', 'revoked'].includes(String(invite.status || '').trim().toLowerCase())) {
+        res.status(410).json({ error: 'Invitasjonen er ikke lenger aktiv' });
+        return;
+      }
+
+      if (isRoleRoomTalentInviteExpired(invite)) {
+        res.status(410).json({ error: 'Invitasjonen har utløpt' });
+        return;
+      }
+
+      const preview = await getRoleRoomTalentInvitePreview(invite);
+      if (!preview) {
+        res.status(404).json({ error: 'Fant ikke talentinvitasjonen' });
+        return;
+      }
+
+      await pool.query(
+        `UPDATE role_room_talent_invites
+            SET last_viewed_at = NOW(),
+                status = CASE WHEN status = 'sent' THEN 'viewed' ELSE status END,
+                updated_at = NOW()
+          WHERE id = $1`,
+        [invite.id],
+      );
+
+      res.json({
+        ...preview,
+        requiresLogin: true,
+      });
+    } catch (error) {
+      console.error('Role Room talent invite preview error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente talentinvitasjonen' });
+    }
+  });
+
+  router.get('/talent/portal', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const requestUser = getOptionalRequestUser(req);
+      const requestEmail = normalizeEmailValue(requestUser?.email);
+      if (!requestEmail) {
+        res.status(401).json({ error: 'Innlogging med gyldig e-post kreves for talentportalen' });
+        return;
+      }
+
+      let projectId = readStringValue(req.query?.projectId);
+      let candidateId = readStringValue(req.query?.candidateId);
+      const inviteToken = readStringValue(req.query?.inviteToken);
+
+      if (inviteToken) {
+        const invite = await getRoleRoomTalentInviteByToken(inviteToken);
+        if (!invite) {
+          res.status(404).json({ error: 'Fant ikke invitasjonen til talentportalen' });
+          return;
+        }
+        if (['cancelled', 'revoked'].includes(String(invite.status || '').trim().toLowerCase())) {
+          res.status(410).json({ error: 'Invitasjonen er ikke lenger aktiv' });
+          return;
+        }
+        if (isRoleRoomTalentInviteExpired(invite)) {
+          res.status(410).json({ error: 'Invitasjonen til talentportalen har utløpt' });
+          return;
+        }
+
+        const candidateResult = await pool.query<RoleRoomTalentPortalCandidateRow>(
+          `SELECT *
+             FROM casting_candidates
+            WHERE id = $1
+              AND project_id = $2
+            LIMIT 1`,
+          [invite.candidate_id, invite.project_id],
+        );
+        const candidateRow = candidateResult.rows[0] ?? null;
+        if (!candidateRow) {
+          res.status(404).json({ error: 'Fant ikke talentprofilen for invitasjonen' });
+          return;
+        }
+
+        const expectedEmail = normalizeEmailValue(invite.email) ?? normalizeEmailValue(candidateRow.email);
+        if (expectedEmail && expectedEmail !== requestEmail) {
+          res.status(403).json({ error: 'Invitasjonen er knyttet til en annen e-postadresse' });
+          return;
+        }
+
+        if (normalizeEmailValue(candidateRow.email) !== requestEmail) {
+          await pool.query(
+            `UPDATE casting_candidates
+                SET email = $1,
+                    updated_at = NOW()
+              WHERE id = $2
+                AND project_id = $3`,
+            [requestEmail, invite.candidate_id, invite.project_id],
+          );
+        }
+
+        const inviteWasAccepted = Boolean(readStringValue(invite.accepted_at));
+        await pool.query(
+          `UPDATE role_room_talent_invites
+              SET last_viewed_at = NOW(),
+                  accepted_at = COALESCE(accepted_at, NOW()),
+                  status = CASE WHEN status IN ('sent', 'viewed') THEN 'accepted' ELSE status END,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [invite.id],
+        );
+
+        if (!inviteWasAccepted) {
+          await createRoleRoomTalentActivityEntry({
+            projectId: invite.project_id,
+            candidateId: invite.candidate_id,
+            entryType: 'invite_accepted',
+            title: 'Invitasjon aktivert',
+            body: 'Talentet logget inn og aktiverte portalen for denne auditionen.',
+            visibility: 'shared',
+            metadata: { inviteId: invite.id },
+            createdByUserId: requestUser?.userId ?? null,
+            createdByRole: requestUser?.role ?? 'talent',
+          });
+        }
+
+        projectId = projectId ?? invite.project_id;
+        candidateId = candidateId ?? invite.candidate_id;
+      }
+
+      const assignments = await resolveRoleRoomTalentAssignmentsForEmail(requestEmail, {
+        projectId,
+        candidateId,
+        req,
+      });
+
+      res.json({
+        assignments,
+        summary: {
+          projectCount: assignments.length,
+          auditionCount: assignments.reduce((sum, assignment) => sum + assignment.schedules.length, 0),
+          selfTapeCount: assignments.reduce((sum, assignment) => sum + assignment.candidate.videos.length, 0),
+        },
+      });
+    } catch (error) {
+      console.error('Role Room talent portal fetch error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente talentportal' });
+    }
+  });
+
+  router.patch('/talent/portal/profile', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const projectId = readStringValue(req.body?.projectId);
+      const candidateId = readStringValue(req.body?.candidateId);
+      if (!projectId || !candidateId) {
+        res.status(400).json({ error: 'projectId og candidateId er påkrevd' });
+        return;
+      }
+
+      const candidateRow = await resolveRoleRoomTalentCandidateForRequest(req, projectId, candidateId);
+      if (!candidateRow) {
+        res.status(404).json({ error: 'Talentprofil ikke funnet for denne brukeren' });
+        return;
+      }
+
+      const currentMetadata = readJsonObject(candidateRow.metadata);
+      const currentTalentProfile = readJsonObject(currentMetadata.talentProfile);
+      const currentEmergencyContact = readJsonObject(candidateRow.emergency_contact);
+
+      const nextTalentProfile = {
+        ...currentTalentProfile,
+        bio: readStringValue(req.body?.bio) ?? readStringValue(currentTalentProfile.bio),
+        city: readStringValue(req.body?.city) ?? readStringValue(currentTalentProfile.city),
+        baseLocation: readStringValue(req.body?.baseLocation) ?? readStringValue(currentTalentProfile.baseLocation),
+        website: readExternalUrlValue(req.body?.website) ?? readExternalUrlValue(currentTalentProfile.website),
+        instagram: readExternalUrlValue(req.body?.instagram) ?? readExternalUrlValue(currentTalentProfile.instagram),
+        portfolioUrl: readExternalUrlValue(req.body?.portfolioUrl) ?? readExternalUrlValue(currentTalentProfile.portfolioUrl),
+        showreelUrl: readExternalUrlValue(req.body?.showreelUrl) ?? readExternalUrlValue(currentTalentProfile.showreelUrl),
+        languages:
+          toStringArray(req.body?.languages).length > 0
+            ? toStringArray(req.body?.languages)
+            : toStringArray(currentTalentProfile.languages),
+      };
+
+      const nextMetadata = {
+        ...currentMetadata,
+        talentProfile: nextTalentProfile,
+        talentPortal: {
+          ...readJsonObject(currentMetadata.talentPortal),
+          lastProfileUpdateAt: nowISO(),
+        },
+      };
+
+      const nextEmergencyContact = {
+        ...currentEmergencyContact,
+        name: readStringValue(req.body?.emergencyContact?.name)
+          ?? readStringValue(req.body?.emergencyContactName)
+          ?? readStringValue(currentEmergencyContact.name),
+        phone: readStringValue(req.body?.emergencyContact?.phone)
+          ?? readStringValue(req.body?.emergencyContactPhone)
+          ?? readStringValue(currentEmergencyContact.phone),
+        relationship: readStringValue(req.body?.emergencyContact?.relationship)
+          ?? readStringValue(req.body?.emergencyContactRelationship)
+          ?? readStringValue(currentEmergencyContact.relationship),
+      };
+
+      const phone = readStringValue(req.body?.phone) ?? readStringValue(candidateRow.phone);
+      const agency = readStringValue(req.body?.agency) ?? readStringValue(candidateRow.agency);
+      const requestUser = getOptionalRequestUser(req);
+
+      await pool.query(
+        `UPDATE casting_candidates
+            SET phone = $1,
+                agency = $2,
+                emergency_contact = $3::jsonb,
+                metadata = $4::jsonb,
+                updated_at = NOW()
+          WHERE id = $5
+            AND project_id = $6`,
+        [
+          phone,
+          agency,
+          JSON.stringify(nextEmergencyContact),
+          JSON.stringify(nextMetadata),
+          candidateId,
+          projectId,
+        ],
+      );
+
+      await createRoleRoomTalentActivityEntry({
+        projectId,
+        candidateId,
+        entryType: 'profile_updated',
+        title: 'Profil oppdatert',
+        body: 'Kontaktinfo og profilfelt ble oppdatert i Talent Portal.',
+        visibility: 'shared',
+        metadata: {
+          fields: ['phone', 'agency', 'bio', 'city', 'baseLocation', 'website', 'instagram', 'portfolioUrl', 'showreelUrl', 'languages'],
+        },
+        createdByUserId: requestUser?.userId ?? null,
+        createdByRole: requestUser?.role ?? 'talent',
+      });
+
+      const refreshed = await resolveRoleRoomTalentCandidateForRequest(req, projectId, candidateId);
+      res.json({
+        success: true,
+        candidate: refreshed ? buildRoleRoomTalentPortalCandidate(refreshed) : null,
+      });
+    } catch (error) {
+      console.error('Role Room talent profile update error:', error);
+      res.status(500).json({ error: 'Kunne ikke oppdatere talentprofilen' });
+    }
+  });
+
+  router.post('/talent/portal/self-tapes', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const projectId = readStringValue(req.body?.projectId);
+      const candidateId = readStringValue(req.body?.candidateId);
+      if (!projectId || !candidateId) {
+        res.status(400).json({ error: 'projectId og candidateId er påkrevd' });
+        return;
+      }
+
+      const candidateRow = await resolveRoleRoomTalentCandidateForRequest(req, projectId, candidateId);
+      if (!candidateRow) {
+        res.status(404).json({ error: 'Talentprofil ikke funnet for denne brukeren' });
+        return;
+      }
+
+      const title = readStringValue(req.body?.title) ?? 'Ny self tape';
+      const videoUrl = readExternalUrlValue(req.body?.videoUrl ?? req.body?.url);
+      if (!videoUrl) {
+        res.status(400).json({ error: 'Gyldig videoUrl er påkrevd' });
+        return;
+      }
+
+      const existingVideos = normalizeRoleRoomTalentMediaList(candidateRow.videos, 'video');
+      const nextVideo = {
+        id: makeId(),
+        kind: 'video',
+        title,
+        url: videoUrl,
+        thumbnailUrl: readExternalUrlValue(req.body?.thumbnailUrl),
+        notes: readStringValue(req.body?.notes),
+        source: 'talent_portal',
+        submittedAt: nowISO(),
+        durationSeconds:
+          typeof req.body?.durationSeconds === 'number' && Number.isFinite(req.body.durationSeconds)
+            ? req.body.durationSeconds
+            : null,
+      };
+      const currentMetadata = readJsonObject(candidateRow.metadata);
+      const nextMetadata = {
+        ...currentMetadata,
+        talentPortal: {
+          ...readJsonObject(currentMetadata.talentPortal),
+          lastSelfTapeSubmissionAt: nextVideo.submittedAt,
+        },
+      };
+
+      await pool.query(
+        `UPDATE casting_candidates
+            SET videos = $1::jsonb,
+                metadata = $2::jsonb,
+                updated_at = NOW()
+          WHERE id = $3
+            AND project_id = $4`,
+        [
+          JSON.stringify([...existingVideos, nextVideo]),
+          JSON.stringify(nextMetadata),
+          candidateId,
+          projectId,
+        ],
+      );
+
+      const requestUser = getOptionalRequestUser(req);
+      await createRoleRoomTalentActivityEntry({
+        projectId,
+        candidateId,
+        entryType: 'self_tape_link',
+        title: 'Self tape sendt inn',
+        body: readStringValue(req.body?.notes) ?? 'Talentet leverte en self tape via sikker videolenke.',
+        visibility: 'shared',
+        metadata: {
+          videoTitle: title,
+          source: 'link',
+        },
+        createdByUserId: requestUser?.userId ?? null,
+        createdByRole: requestUser?.role ?? 'talent',
+      });
+
+      const refreshed = await resolveRoleRoomTalentCandidateForRequest(req, projectId, candidateId);
+      res.status(201).json({
+        success: true,
+        video: nextVideo,
+        candidate: refreshed ? buildRoleRoomTalentPortalCandidate(refreshed) : null,
+      });
+    } catch (error) {
+      console.error('Role Room self tape submission error:', error);
+      res.status(500).json({ error: 'Kunne ikke sende inn self tape' });
+    }
+  });
+
+  router.post('/talent/portal/messages', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const projectId = readStringValue(req.body?.projectId);
+      const candidateId = readStringValue(req.body?.candidateId);
+      const body = readStringValue(req.body?.body ?? req.body?.message);
+      if (!projectId || !candidateId) {
+        res.status(400).json({ error: 'projectId og candidateId er påkrevd' });
+        return;
+      }
+      if (!body || body.length < 5) {
+        res.status(400).json({ error: 'Skriv en litt tydeligere melding til teamet' });
+        return;
+      }
+
+      const candidateRow = await resolveRoleRoomTalentCandidateForRequest(req, projectId, candidateId);
+      if (!candidateRow) {
+        res.status(404).json({ error: 'Talentprofil ikke funnet for denne brukeren' });
+        return;
+      }
+
+      const requestUser = getOptionalRequestUser(req);
+      await createRoleRoomTalentActivityEntry({
+        projectId,
+        candidateId,
+        entryType: 'message',
+        title: 'Ny melding til teamet',
+        body,
+        visibility: 'shared',
+        metadata: {
+          channel: 'talent_portal',
+        },
+        createdByUserId: requestUser?.userId ?? null,
+        createdByRole: requestUser?.role ?? 'talent',
+      });
+
+      res.status(201).json({
+        success: true,
+        activity: {
+          projectId,
+          candidateId,
+          entryType: 'message',
+          title: 'Ny melding til teamet',
+          body,
+          visibility: 'shared',
+          createdByRole: requestUser?.role ?? 'talent',
+          createdAt: nowISO(),
+        },
+      });
+    } catch (error) {
+      console.error('Role Room talent message error:', error);
+      res.status(500).json({ error: 'Kunne ikke sende meldingen' });
+    }
+  });
+
+  router.post('/talent/portal/self-tapes/upload', apiKeyAuth(pool, activeSessions), roleRoomTalentUpload.single('file'), async (req: Request, res: Response) => {
+    try {
+      const projectId = readStringValue(req.body?.projectId);
+      const candidateId = readStringValue(req.body?.candidateId);
+      if (!projectId || !candidateId) {
+        res.status(400).json({ error: 'projectId og candidateId er påkrevd' });
+        return;
+      }
+      if (!req.file) {
+        res.status(400).json({ error: 'Videofil er påkrevd' });
+        return;
+      }
+
+      if (!(await ensureRoleRoomTalentPortalTables())) {
+        res.status(503).json({ error: 'Videoopplasting er midlertidig utilgjengelig' });
+        return;
+      }
+
+      const candidateRow = await resolveRoleRoomTalentCandidateForRequest(req, projectId, candidateId);
+      if (!candidateRow) {
+        res.status(404).json({ error: 'Talentprofil ikke funnet for denne brukeren' });
+        return;
+      }
+
+      const requestUser = getOptionalRequestUser(req);
+      const title = readStringValue(req.body?.title) ?? path.parse(req.file.originalname).name ?? 'Self tape';
+      const notes = readStringValue(req.body?.notes);
+      const submittedAt = nowISO();
+      const uploadId = makeId();
+      const storageDirectory = await ensureRoleRoomTalentUploadDirectory(projectId, candidateId);
+      const safeExtension = path.extname(req.file.originalname || '').slice(0, 20) || '.mp4';
+      const storedName = `${uploadId}-${sanitizeRoleRoomTalentFileSegment(path.parse(req.file.originalname || 'self-tape').name, 'self-tape')}${safeExtension}`;
+      const storagePath = path.join(storageDirectory, storedName);
+
+      await fs.writeFile(storagePath, req.file.buffer);
+
+      const uploadMetadata = {
+        title,
+        notes,
+      };
+
+      await pool.query(
+        `INSERT INTO role_room_talent_uploads (
+          id, project_id, candidate_id, media_kind, original_name, stored_name, storage_path, mime_type, size_bytes, metadata, created_by_user_id
+        ) VALUES ($1, $2, $3, 'video', $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+        [
+          uploadId,
+          projectId,
+          candidateId,
+          req.file.originalname,
+          storedName,
+          storagePath,
+          req.file.mimetype || 'application/octet-stream',
+          req.file.size,
+          JSON.stringify(uploadMetadata),
+          requestUser?.userId ?? null,
+        ],
+      );
+
+      const existingVideos = normalizeRoleRoomTalentMediaList(candidateRow.videos, 'video');
+      const nextVideo = buildRoleRoomTalentUploadVideoRecord({
+        uploadId,
+        title,
+        notes,
+        mimeType: req.file.mimetype,
+        sizeBytes: req.file.size,
+        originalName: req.file.originalname,
+        submittedAt,
+      });
+      const currentMetadata = readJsonObject(candidateRow.metadata);
+      const nextMetadata = {
+        ...currentMetadata,
+        talentPortal: {
+          ...readJsonObject(currentMetadata.talentPortal),
+          lastSelfTapeSubmissionAt: submittedAt,
+          lastUploadAt: submittedAt,
+        },
+      };
+
+      await pool.query(
+        `UPDATE casting_candidates
+            SET videos = $1::jsonb,
+                metadata = $2::jsonb,
+                updated_at = NOW()
+          WHERE id = $3
+            AND project_id = $4`,
+        [
+          JSON.stringify([...existingVideos, nextVideo]),
+          JSON.stringify(nextMetadata),
+          candidateId,
+          projectId,
+        ],
+      );
+
+      await createRoleRoomTalentActivityEntry({
+        projectId,
+        candidateId,
+        entryType: 'self_tape_upload',
+        title: 'Self tape lastet opp',
+        body: notes ?? 'Talentet lastet opp en self tape direkte i portalen.',
+        visibility: 'shared',
+        metadata: {
+          uploadId,
+          originalName: req.file.originalname,
+          mimeType: req.file.mimetype,
+          sizeBytes: req.file.size,
+        },
+        createdByUserId: requestUser?.userId ?? null,
+        createdByRole: requestUser?.role ?? 'talent',
+      });
+
+      const refreshed = await resolveRoleRoomTalentCandidateForRequest(req, projectId, candidateId);
+      res.status(201).json({
+        success: true,
+        upload: {
+          id: uploadId,
+          url: getRoleRoomTalentUploadDownloadPath(uploadId),
+          title,
+          originalName: req.file.originalname,
+          mimeType: req.file.mimetype || 'application/octet-stream',
+          sizeBytes: req.file.size,
+          requiresAuth: true,
+          submittedAt,
+        },
+        video: nextVideo,
+        candidate: refreshed ? buildRoleRoomTalentPortalCandidate(refreshed) : null,
+      });
+    } catch (error) {
+      console.error('Role Room self tape upload error:', error);
+      res.status(500).json({ error: 'Kunne ikke laste opp self tape' });
+    }
+  });
+
+  router.get('/talent/uploads/:uploadId/content', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const uploadId = readStringValue(req.params.uploadId);
+      if (!uploadId || !(await ensureRoleRoomTalentPortalTables())) {
+        res.status(404).json({ error: 'Fant ikke opplastingen' });
+        return;
+      }
+
+      const uploadResult = await pool.query<RoleRoomTalentUploadRow & { candidate_email?: string | null }>(
+        `SELECT rtu.*, cc.email AS candidate_email
+           FROM role_room_talent_uploads rtu
+           INNER JOIN casting_candidates cc
+             ON cc.id = rtu.candidate_id
+            AND cc.project_id = rtu.project_id
+          WHERE rtu.id = $1
+          LIMIT 1`,
+        [uploadId],
+      );
+      const uploadRow = uploadResult.rows[0] ?? null;
+      if (!uploadRow) {
+        res.status(404).json({ error: 'Fant ikke opplastingen' });
+        return;
+      }
+
+      const requestEmail = normalizeEmailValue(getOptionalRequestUser(req)?.email);
+      if (!requestEmail || normalizeEmailValue(uploadRow.candidate_email) !== requestEmail) {
+        res.status(403).json({ error: 'Du har ikke tilgang til denne self tapen' });
+        return;
+      }
+
+      if (!existsSync(uploadRow.storage_path)) {
+        res.status(404).json({ error: 'Fant ikke videofilen' });
+        return;
+      }
+
+      res.setHeader('Content-Type', readStringValue(uploadRow.mime_type) ?? 'application/octet-stream');
+      res.setHeader('Content-Disposition', `inline; filename="${sanitizeRoleRoomTalentFileSegment(uploadRow.original_name, 'self-tape')}"`);
+      res.sendFile(uploadRow.storage_path);
+    } catch (error) {
+      console.error('Role Room talent upload download error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente self tape' });
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════
   // Admin Stats — full breakdown for AdminStats dashboard
   // ═══════════════════════════════════════════════════════════
 
-  router.get('/admin/stats', async (_req: Request, res: Response) => {
+  router.get('/admin/stats', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      if (!requireScope(req, 'admin')) {
+        res.status(403).json({ error: 'Admin-tilgang kreves for Role Room-statistikk' });
+        return;
+      }
+
+      const summary = await getRoleRoomStatsSummary();
       const [
-        kreativeRes,
-        prodRes,
-        rolesRes,
         candidatesRes,
         marketplaceRes,
         activeKeysRes,
         recentProjectsRes,
         professionRes,
       ] = await Promise.all([
-        pool.query(`SELECT COUNT(DISTINCT user_id) AS n FROM casting_user_roles`),
-        pool.query(`SELECT COUNT(*) AS n FROM casting_projects`),
-        pool.query(`SELECT COUNT(*) AS n FROM casting_roles`),
         pool.query(`SELECT COUNT(*) AS n FROM casting_candidates`),
         pool.query(
           `SELECT COUNT(*) AS n FROM marketplace_installations
@@ -8457,9 +10483,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       ]);
 
       res.json({
-        kreative:            parseInt(kreativeRes.rows[0]?.n       ?? '0', 10),
-        produksjoner:        parseInt(prodRes.rows[0]?.n           ?? '0', 10),
-        rollerBesatt:        parseInt(rolesRes.rows[0]?.n          ?? '0', 10),
+        ...summary,
         kandidater:          parseInt(candidatesRes.rows[0]?.n     ?? '0', 10),
         marketplaceInstalls: parseInt(marketplaceRes.rows[0]?.n    ?? '0', 10),
         activeApiKeys:       parseInt(activeKeysRes.rows[0]?.n     ?? '0', 10),
@@ -8469,6 +10493,131 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (err) {
       console.error('Role Room admin stats error:', err);
       res.status(500).json({ error: 'Kunne ikke hente statistikk' });
+    }
+  });
+
+  router.get('/admin/testimonials', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      if (!requireScope(req, 'admin')) {
+        res.status(403).json({ error: 'Admin-tilgang kreves for testimonials' });
+        return;
+      }
+
+      if (!(await ensureRoleRoomPublicProofTables())) {
+        res.status(503).json({ error: 'Testimonials er midlertidig utilgjengelig' });
+        return;
+      }
+
+      const result = await pool.query<RoleRoomPublicTestimonialRow>(
+        `SELECT *
+           FROM role_room_testimonials
+          ORDER BY
+            CASE status
+              WHEN 'pending' THEN 0
+              WHEN 'published' THEN 1
+              WHEN 'rejected' THEN 2
+              ELSE 3
+            END,
+            is_featured DESC,
+            sort_order ASC,
+            created_at DESC`,
+      );
+
+      res.json(result.rows.map((row) => ({
+        ...mapRoleRoomPublicTestimonial(row),
+        status: readStringValue(row.status) ?? 'pending',
+        authorEmail: readStringValue(row.author_email),
+        authorUserId: readStringValue(row.author_user_id),
+        metadata: readJsonObject(row.metadata),
+        approvedAt: readStringValue(row.approved_at),
+        rejectedReason: readStringValue(row.rejected_reason),
+        sortOrder: typeof row.sort_order === 'number' ? row.sort_order : 0,
+      })));
+    } catch (error) {
+      console.error('Role Room admin testimonials error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente testimonials' });
+    }
+  });
+
+  router.patch('/admin/testimonials/:testimonialId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      if (!requireScope(req, 'admin')) {
+        res.status(403).json({ error: 'Admin-tilgang kreves for testimonials' });
+        return;
+      }
+
+      if (!(await ensureRoleRoomPublicProofTables())) {
+        res.status(503).json({ error: 'Testimonials er midlertidig utilgjengelig' });
+        return;
+      }
+
+      const testimonialId = readStringValue(req.params.testimonialId);
+      if (!testimonialId) {
+        res.status(400).json({ error: 'Mangler testimonial-id' });
+        return;
+      }
+
+      const nextStatus = readStringValue(req.body?.status)?.trim().toLowerCase();
+      const isFeatured = readBooleanValue(req.body?.isFeatured);
+      const sortOrderRaw = Number(req.body?.sortOrder);
+      const rejectedReason = readStringValue(req.body?.rejectedReason);
+      const updates: string[] = [];
+      const values: unknown[] = [];
+
+      const push = (sqlFragment: string, value: unknown) => {
+        values.push(value);
+        updates.push(`${sqlFragment} = $${values.length}`);
+      };
+
+      if (nextStatus && ['pending', 'published', 'rejected'].includes(nextStatus)) {
+        push('status', nextStatus);
+        if (nextStatus === 'published') {
+          updates.push('published_at = NOW()');
+          updates.push('approved_at = NOW()');
+          push('approved_by_user_id', getUserId(req));
+          updates.push('rejected_reason = NULL');
+        } else if (nextStatus === 'rejected') {
+          push('rejected_reason', rejectedReason ?? 'Ikke godkjent');
+        }
+      }
+
+      if (typeof isFeatured === 'boolean') {
+        push('is_featured', isFeatured);
+      }
+
+      if (Number.isFinite(sortOrderRaw)) {
+        push('sort_order', Math.max(0, Math.floor(sortOrderRaw)));
+      }
+
+      if (updates.length === 0) {
+        res.status(400).json({ error: 'Ingen gyldige oppdateringer sendt inn' });
+        return;
+      }
+
+      values.push(testimonialId);
+      const result = await pool.query<RoleRoomPublicTestimonialRow>(
+        `UPDATE role_room_testimonials
+            SET ${updates.join(', ')}, updated_at = NOW()
+          WHERE id = $${values.length}
+          RETURNING *`,
+        values,
+      );
+
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke testimonial' });
+        return;
+      }
+
+      res.json({
+        success: true,
+        testimonial: {
+          ...mapRoleRoomPublicTestimonial(result.rows[0]),
+          status: readStringValue(result.rows[0]?.status) ?? 'pending',
+        },
+      });
+    } catch (error) {
+      console.error('Role Room testimonial patch error:', error);
+      res.status(500).json({ error: 'Kunne ikke oppdatere testimonial' });
     }
   });
 

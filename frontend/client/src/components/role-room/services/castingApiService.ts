@@ -34,20 +34,59 @@ export class CastingApiError extends Error {
 }
 
 function getAuthHeaders(): Record<string, string> {
-  return authSessionService.getAuthHeadersSync();
+  const headers = authSessionService.getAuthHeadersSync();
+  const session = authSessionService.getSessionSync();
+  const adminUser = session.adminUser;
+
+  if (typeof session.currentUserId === 'string' && session.currentUserId.trim().length > 0) {
+    headers['x-role-room-user-id'] = session.currentUserId.trim();
+  }
+  if (typeof adminUser?.email === 'string' && adminUser.email.trim().length > 0) {
+    headers['x-role-room-email'] = adminUser.email.trim();
+  }
+  if (typeof adminUser?.role === 'string' && adminUser.role.trim().length > 0) {
+    headers['x-role-room-role'] = adminUser.role.trim();
+  }
+  if (typeof adminUser?.loginAs === 'string' && adminUser.loginAs.trim().length > 0) {
+    headers['x-role-room-login-as'] = adminUser.loginAs.trim();
+  }
+  if (typeof adminUser?.requestedRole === 'string' && adminUser.requestedRole.trim().length > 0) {
+    headers['x-role-room-requested-role'] = adminUser.requestedRole.trim();
+  }
+
+  return headers;
+}
+
+function buildRequestHeaders(options: RequestInit = {}): Headers {
+  const headers = new Headers(options.headers ?? undefined);
+  Object.entries(getAuthHeaders()).forEach(([key, value]) => {
+    if (!headers.has(key)) {
+      headers.set(key, value);
+    }
+  });
+
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  if (!isFormData && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  return headers;
+}
+
+function resolveApiEndpoint(endpoint: string): string {
+  if (/^https?:\/\//i.test(endpoint) || endpoint.startsWith('/api/')) {
+    return endpoint;
+  }
+  return `${API_BASE}${endpoint}`;
 }
 
 async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await fetch(resolveApiEndpoint(endpoint), {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-      ...options.headers,
-    },
+    headers: buildRequestHeaders(options),
   });
   
   if (!response.ok) {
@@ -72,6 +111,23 @@ async function apiRequest<T>(
   }
   
   return response.json();
+}
+
+async function apiBlobRequest(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<Blob> {
+  const response = await fetch(resolveApiEndpoint(endpoint), {
+    ...options,
+    headers: buildRequestHeaders(options),
+  });
+
+  if (!response.ok) {
+    const rawBody = await response.text().catch(() => '');
+    throw new CastingApiError(rawBody || `Request failed (${response.status})`, response.status, endpoint, rawBody);
+  }
+
+  return response.blob();
 }
 
 const googleBindingBootstrapRequests = new Map<string, Promise<RoleRoomGoogleBindingResponse>>();
@@ -170,6 +226,144 @@ export interface RoleRoomGoogleStatusResponse {
 export interface RoleRoomGoogleBindingResponse {
   binding: RoleRoomGoogleProjectBinding | null;
   artifacts: RoleRoomGoogleArtifactRef[];
+}
+
+export interface RoleRoomTalentPortalMediaItem {
+  id: string;
+  kind?: 'video' | 'photo';
+  title: string;
+  url: string;
+  thumbnailUrl?: string | null;
+  notes?: string | null;
+  source?: string | null;
+  submittedAt?: string | null;
+  requiresAuth?: boolean;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  downloadName?: string | null;
+  durationSeconds?: number | null;
+}
+
+export interface RoleRoomTalentPortalCandidateProfile {
+  bio?: string | null;
+  city?: string | null;
+  baseLocation?: string | null;
+  website?: string | null;
+  instagram?: string | null;
+  portfolioUrl?: string | null;
+  showreelUrl?: string | null;
+  languages: string[];
+}
+
+export interface RoleRoomTalentPortalCandidate {
+  id: string;
+  projectId: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  agency?: string | null;
+  notes?: string | null;
+  status: string;
+  rating?: number | null;
+  assignedRoleIds: string[];
+  consentStatus?: string | null;
+  emergencyContact: Record<string, unknown>;
+  photos: RoleRoomTalentPortalMediaItem[];
+  videos: RoleRoomTalentPortalMediaItem[];
+  profile: RoleRoomTalentPortalCandidateProfile;
+  metadata: Record<string, unknown>;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface RoleRoomTalentPortalRole {
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string | null;
+  ageRange?: string | null;
+  gender?: string | null;
+  roleType?: string | null;
+  status: string;
+  assignedCandidateId?: string | null;
+  candidateIds: string[];
+  requirements: Record<string, unknown>;
+}
+
+export interface RoleRoomTalentPortalSchedule {
+  id: string;
+  projectId: string;
+  candidateId?: string | null;
+  roleId?: string | null;
+  roleName?: string | null;
+  date?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  type: string;
+  status: string;
+  notes?: string | null;
+  location?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface RoleRoomTalentPortalInvite {
+  id: string;
+  email?: string | null;
+  status: string;
+  expiresAt?: string | null;
+  lastSentAt?: string | null;
+  lastViewedAt?: string | null;
+  acceptedAt?: string | null;
+  metadata: Record<string, unknown>;
+  inviteUrl?: string | null;
+  previewUrl?: string | null;
+}
+
+export interface RoleRoomTalentPortalActivity {
+  id: string;
+  projectId: string;
+  candidateId: string;
+  entryType: string;
+  title: string;
+  body?: string | null;
+  visibility: string;
+  metadata: Record<string, unknown>;
+  createdByRole?: string | null;
+  createdAt?: string | null;
+}
+
+export interface RoleRoomTalentPortalAssignment {
+  project: {
+    id: string;
+    name: string;
+    description?: string | null;
+    status: string;
+    type?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+  };
+  candidate: RoleRoomTalentPortalCandidate;
+  roles: RoleRoomTalentPortalRole[];
+  schedules: RoleRoomTalentPortalSchedule[];
+  invite?: RoleRoomTalentPortalInvite | null;
+  activity: RoleRoomTalentPortalActivity[];
+  stats: {
+    roleCount: number;
+    scheduleCount: number;
+    selfTapeCount: number;
+    photoCount: number;
+    activityCount: number;
+  };
+}
+
+export interface RoleRoomTalentPortalResponse {
+  assignments: RoleRoomTalentPortalAssignment[];
+  summary: {
+    projectCount: number;
+    auditionCount: number;
+    selfTapeCount: number;
+  };
 }
 
 export interface RoleRoomLinkedInStatusResponse {
@@ -457,6 +651,148 @@ export const schedulesApi = {
     await apiRequest(`/schedules/${scheduleId}`, { method: 'DELETE' });
     return true;
   },
+};
+
+export const talentPortalApi = {
+  getOverview: async (options?: {
+    projectId?: string;
+    candidateId?: string;
+    inviteToken?: string;
+  }): Promise<RoleRoomTalentPortalResponse> => {
+    const params = new URLSearchParams();
+    if (options?.projectId) {
+      params.set('projectId', options.projectId);
+    }
+    if (options?.candidateId) {
+      params.set('candidateId', options.candidateId);
+    }
+    if (options?.inviteToken) {
+      params.set('inviteToken', options.inviteToken);
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    return apiRequest<RoleRoomTalentPortalResponse>(`/talent/portal${suffix}`);
+  },
+
+  updateProfile: async (payload: {
+    projectId: string;
+    candidateId: string;
+    phone?: string;
+    agency?: string;
+    bio?: string;
+    city?: string;
+    baseLocation?: string;
+    website?: string;
+    instagram?: string;
+    portfolioUrl?: string;
+    showreelUrl?: string;
+    languages?: string[];
+    emergencyContact?: {
+      name?: string;
+      phone?: string;
+      relationship?: string;
+    };
+  }): Promise<RoleRoomTalentPortalCandidate | null> => {
+    const result = await apiRequest<{ success: boolean; candidate: RoleRoomTalentPortalCandidate | null }>(
+      '/talent/portal/profile',
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+    );
+    return result.candidate;
+  },
+
+  submitSelfTape: async (payload: {
+    projectId: string;
+    candidateId: string;
+    title: string;
+    videoUrl: string;
+    thumbnailUrl?: string;
+    notes?: string;
+  }): Promise<{
+    success: boolean;
+    video: RoleRoomTalentPortalMediaItem;
+    candidate: RoleRoomTalentPortalCandidate | null;
+  }> => (
+    apiRequest('/talent/portal/self-tapes', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  ),
+
+  submitTestimonial: async (payload: {
+    quote: string;
+    roleId?: string;
+    author?: string;
+    title?: string;
+  }): Promise<{
+    success: boolean;
+    submission: {
+      id: string;
+      roleId: string;
+      quote: string;
+      author: string;
+      title: string;
+      status: string;
+    };
+    }> => (
+    apiRequest('/testimonials/submissions', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  ),
+
+  sendMessage: async (payload: {
+    projectId: string;
+    candidateId: string;
+    body: string;
+  }): Promise<{
+    success: boolean;
+    activity: Omit<RoleRoomTalentPortalActivity, 'id' | 'metadata'> & { createdAt: string };
+  }> => (
+    apiRequest('/talent/portal/messages', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  ),
+
+  uploadSelfTapeFile: async (payload: {
+    projectId: string;
+    candidateId: string;
+    title: string;
+    notes?: string;
+    file: File;
+  }): Promise<{
+    success: boolean;
+    upload: {
+      id: string;
+      url: string;
+      title: string;
+      originalName: string;
+      mimeType: string;
+      sizeBytes: number;
+      requiresAuth: boolean;
+      submittedAt: string;
+    };
+    video: RoleRoomTalentPortalMediaItem;
+    candidate: RoleRoomTalentPortalCandidate | null;
+  }> => {
+    const formData = new FormData();
+    formData.set('projectId', payload.projectId);
+    formData.set('candidateId', payload.candidateId);
+    formData.set('title', payload.title);
+    if (payload.notes) {
+      formData.set('notes', payload.notes);
+    }
+    formData.set('file', payload.file);
+
+    return apiRequest('/talent/portal/self-tapes/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  fetchProtectedMediaBlob: async (url: string): Promise<Blob> => apiBlobRequest(url),
 };
 
 export type WorkflowStatus = 'pending' | 'auditioned' | 'selected' | 'offer_sent' | 'confirmed' | 'declined' | 'contracted' | 'production';
@@ -1857,6 +2193,7 @@ export const castingApi = {
   locations: locationsApi,
   props: propsApi,
   schedules: schedulesApi,
+  talentPortal: talentPortalApi,
   workflow: workflowApi,
   offers: offersApi,
   contracts: contractsApi,
