@@ -1613,10 +1613,10 @@ export default function LoginDialog({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center',
-            px: { xs: 2.5, sm: 4 },
-            pt: isMobile ? 2.75 : 5,
-            pb: isMobile ? 2.25 : 5,
+            justifyContent: isMobile ? 'flex-start' : 'center',
+            px: { xs: 2, sm: 4 },
+            pt: isMobile ? 1.5 : 5,
+            pb: isMobile ? 1.15 : 5,
             borderRight: isMobile ? 'none' : `1px solid rgba(255,255,255,0.07)`,
             borderBottom: isMobile ? `1px solid rgba(255,255,255,0.07)` : 'none',
             overflow: 'hidden',
@@ -1665,10 +1665,10 @@ export default function LoginDialog({
             src={ROLE_ROOM_BRAND_ASSETS.wordmark}
             alt="The Role Room"
             sx={{
-              width: { xs: 'min(168px, 46vw)', sm: '60%', md: '72%', lg: '82%' },
+              width: { xs: 'min(144px, 40vw)', sm: '60%', md: '72%', lg: '82%' },
               height: 'auto',
               objectFit: 'contain',
-              mb: { xs: 1.25, sm: 2 },
+              mb: { xs: 0.85, sm: 2 },
               position: 'relative',
               zIndex: 1,
               filter: 'drop-shadow(0 6px 28px rgba(130,110,255,0.28))',
@@ -1679,12 +1679,12 @@ export default function LoginDialog({
           <Typography
             sx={{
               letterSpacing: '0.2em',
-              fontSize: { xs: '0.6rem', sm: '0.75rem', md: '0.85rem', lg: '0.95rem' },
+              fontSize: { xs: '0.54rem', sm: '0.75rem', md: '0.85rem', lg: '0.95rem' },
               fontWeight: 600,
               textTransform: 'uppercase',
               color: 'rgba(180,165,255,0.55)',
               textAlign: 'center',
-              mb: 0.15,
+              mb: { xs: 0.05, sm: 0.15 },
               position: 'relative',
               zIndex: 1,
             }}
@@ -1696,7 +1696,7 @@ export default function LoginDialog({
           <Typography
             sx={{
               fontWeight: 700,
-              fontSize: { xs: '1.34rem', sm: '2rem', md: '2.4rem', lg: '2.8rem' },
+              fontSize: { xs: '1.16rem', sm: '2rem', md: '2.4rem', lg: '2.8rem' },
               letterSpacing: '-0.03em',
               textAlign: 'center',
               lineHeight: 1.15,
@@ -1717,14 +1717,14 @@ export default function LoginDialog({
           {/* subtitle */}
           <Typography
             sx={{
-              mt: 0.6,
+              mt: { xs: 0.35, sm: 0.6 },
               color: 'rgba(200,195,220,0.65)',
-              fontSize: { xs: '0.78rem', sm: '0.95rem', md: '1.05rem', lg: '1.15rem' },
+              fontSize: { xs: '0.72rem', sm: '0.95rem', md: '1.05rem', lg: '1.15rem' },
               fontWeight: 300,
               letterSpacing: '0.015em',
               textAlign: 'center',
-              maxWidth: { xs: 250, md: 300, lg: 340 },
-              lineHeight: 1.45,
+              maxWidth: { xs: 230, md: 300, lg: 340 },
+              lineHeight: { xs: 1.35, sm: 1.45 },
               position: 'relative',
               zIndex: 1,
             }}
@@ -2444,27 +2444,41 @@ export default function LoginDialog({
 
           {/* ── OAuth row ── */}
           {isLandingPage && (
-            <Box sx={{ display: 'flex', gap: 1.25, mt: 0.25 }}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 1,
+                mt: 0.35,
+              }}
+            >
               {/* Google */}
               <Button
                 fullWidth
                 onClick={handleGoogleLogin}
                 sx={{
                   textTransform: 'none',
-                  fontSize: '0.8rem',
+                  fontSize: { xs: '0.76rem', sm: '0.8rem' },
                   fontWeight: 500,
                   borderRadius: '14px',
-                  py: 1.1,
+                  minHeight: 48,
+                  py: { xs: 0.95, sm: 1.1 },
+                  px: { xs: 1, sm: 1.5 },
                   bgcolor: 'rgba(255,255,255,0.06)',
                   border: '1px solid rgba(255,255,255,0.12)',
                   color: 'rgba(240,235,255,0.85)',
                   backdropFilter: 'blur(10px)',
-                  gap: 0.9,
+                  gap: 0.7,
+                  justifyContent: 'center',
                   transition: 'all 0.25s ease',
                   '&:hover': { bgcolor: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.22)', transform: 'translateY(-1px)' },
+                  '& .MuiButton-startIcon': {
+                    marginRight: 0.7,
+                    marginLeft: 0,
+                  },
                 }}
                 startIcon={
-                  <Box component="svg" viewBox="0 0 24 24" sx={{ width: 17, height: 17, flexShrink: 0 }}>
+                  <Box component="svg" viewBox="0 0 24 24" sx={{ width: 16, height: 16, flexShrink: 0 }}>
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
@@ -2480,20 +2494,27 @@ export default function LoginDialog({
                 onClick={() => { window.location.href = '/api/auth/linkedin'; }}
                 sx={{
                   textTransform: 'none',
-                  fontSize: '0.8rem',
+                  fontSize: { xs: '0.76rem', sm: '0.8rem' },
                   fontWeight: 500,
                   borderRadius: '14px',
-                  py: 1.1,
+                  minHeight: 48,
+                  py: { xs: 0.95, sm: 1.1 },
+                  px: { xs: 1, sm: 1.5 },
                   bgcolor: 'rgba(10,102,194,0.14)',
                   border: '1px solid rgba(10,102,194,0.28)',
                   color: 'rgba(130,190,255,0.9)',
                   backdropFilter: 'blur(10px)',
-                  gap: 0.9,
+                  gap: 0.7,
+                  justifyContent: 'center',
                   transition: 'all 0.25s ease',
                   '&:hover': { bgcolor: 'rgba(10,102,194,0.22)', border: '1px solid rgba(10,102,194,0.45)', transform: 'translateY(-1px)' },
+                  '& .MuiButton-startIcon': {
+                    marginRight: 0.7,
+                    marginLeft: 0,
+                  },
                 }}
                 startIcon={
-                  <Box component="svg" viewBox="0 0 24 24" sx={{ width: 17, height: 17, flexShrink: 0 }}>
+                  <Box component="svg" viewBox="0 0 24 24" sx={{ width: 16, height: 16, flexShrink: 0 }}>
                     <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" fill="#0A66C2"/>
                   </Box>
                 }
