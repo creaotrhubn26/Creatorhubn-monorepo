@@ -188,9 +188,31 @@ const ROLE_ROOM_PUBLIC_STATS_ENDPOINT = '/api/role-room/public/stats';
 const ROLE_ROOM_STATS_REFRESH_MS = 15_000;
 const ROLE_ROOM_PUBLIC_TESTIMONIALS_ENDPOINT = '/api/role-room/public/testimonials';
 const ROLE_ROOM_TESTIMONIALS_REFRESH_MS = 60_000;
+const CONTENT_PRODUCER_ROLE_IDS = new Set(['film_photographer', 'client']);
 
 function formatRoleRoomStatValue(value: number): string {
   return value.toLocaleString('nb-NO');
+}
+
+function deriveLoginPersonaForRole(roleId: string): LoginPersona {
+  if (!roleId) {
+    return '';
+  }
+
+  return CONTENT_PRODUCER_ROLE_IDS.has(roleId)
+    ? 'content_producer'
+    : 'production_team';
+}
+
+function getEffectiveLoginPersona(
+  selectedRole: string,
+  loginPersona: LoginPersona,
+): LoginPersona {
+  if (loginPersona) {
+    return loginPersona;
+  }
+
+  return deriveLoginPersonaForRole(selectedRole);
 }
 
 /* ── categories: list role ids — all card data lives in ROLE_CARDS ─── *
@@ -1068,9 +1090,21 @@ export default function LoginDialog({
     }
   }, [isLandingPage, loginPersona, selectedRole]);
 
+  useEffect(() => {
+    if (!isLandingPage || !selectedRole) {
+      return;
+    }
+
+    const derivedPersona = deriveLoginPersonaForRole(selectedRole);
+    if (derivedPersona && loginPersona !== derivedPersona) {
+      setLoginPersona(derivedPersona);
+    }
+  }, [isLandingPage, loginPersona, selectedRole]);
+
   /* submit */
   const handleLogin = useCallback(async () => {
     if (loading) return;
+    const effectiveLoginPersona = getEffectiveLoginPersona(selectedRole, loginPersona);
 
     if (!email.trim() || !password) {
       setError('E-post og passord er påkrevd');
@@ -1084,7 +1118,7 @@ export default function LoginDialog({
       setError('Velg en rolle for å fortsette');
       return;
     }
-    if (!loginPersona) {
+    if (!effectiveLoginPersona) {
       setError('Velg om du logger inn som Produksjonsteam eller Innholdsprodusent');
       return;
     }
@@ -1101,10 +1135,10 @@ export default function LoginDialog({
         id: normalizedSessionUserId,
         email: email.trim(),
         role:
-          loginPersona === 'content_producer'
+          effectiveLoginPersona === 'content_producer'
             ? (selectedRole === 'client' ? 'client_reviewer' : 'content_producer')
             : (selectedRole || 'producer'),
-        loginAs: loginPersona || undefined,
+        loginAs: effectiveLoginPersona || undefined,
         requestedRole: selectedRole || null,
         display_name: email.trim().split('@')[0],
       };
@@ -1133,7 +1167,7 @@ export default function LoginDialog({
           email: email.trim(),
           password,
           role: selectedRole,
-          loginAs: loginPersona || undefined,
+          loginAs: effectiveLoginPersona || undefined,
         }),
         credentials: 'include',
       }).then((r) => r.json());
@@ -1156,13 +1190,13 @@ export default function LoginDialog({
 
       if (data.success) {
         const resolvedRole =
-          loginPersona === 'content_producer'
+          effectiveLoginPersona === 'content_producer'
             ? (selectedRole === 'client' ? 'client_reviewer' : 'content_producer')
             : (data.user.requestedRole?.trim() || data.user.role);
         const normalizedUser = {
           ...data.user,
           role: resolvedRole,
-          loginAs: data.user.loginAs || loginPersona || undefined,
+          loginAs: data.user.loginAs || effectiveLoginPersona || undefined,
           requestedRole: data.user.requestedRole ?? selectedRole ?? null,
           display_name:
             data.user.display_name ||
@@ -1185,7 +1219,8 @@ export default function LoginDialog({
 
   const handleGoogleLogin = useCallback(async () => {
     if (loading) return;
-    if (!loginPersona) {
+    const effectiveLoginPersona = getEffectiveLoginPersona(selectedRole, loginPersona);
+    if (!effectiveLoginPersona) {
       setError('Velg om du logger inn som Produksjonsteam eller Innholdsprodusent');
       return;
     }
@@ -1204,7 +1239,7 @@ export default function LoginDialog({
         : getRoleRoomReturnPath(null);
       const response = await googleWorkspaceApi.startOauth({
         mode: 'login',
-        loginAs: loginPersona,
+        loginAs: effectiveLoginPersona,
         requestedRole: selectedRole || null,
         projectId: clientPortalIntent?.projectId,
         returnPath: currentPath,
