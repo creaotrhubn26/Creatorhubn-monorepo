@@ -96,12 +96,16 @@ function buildApiUrlCandidates(url: string): string[] {
     return [normalizedUrl];
   }
 
+  const sameOriginCandidate = normalizedUrl.startsWith('/') ? normalizedUrl : null;
+  const remoteCandidate = `${API_BASE_URL}${normalizedUrl}`;
+
   if (!IS_DEVELOPMENT) {
-    return [`${API_BASE_URL}${normalizedUrl}`];
+    return sameOriginCandidate && sameOriginCandidate !== remoteCandidate
+      ? [sameOriginCandidate, remoteCandidate]
+      : [remoteCandidate];
   }
 
   const localCandidate = normalizedUrl;
-  const remoteCandidate = `${API_BASE_URL}${normalizedUrl}`;
 
   return localCandidate === remoteCandidate
     ? [localCandidate]

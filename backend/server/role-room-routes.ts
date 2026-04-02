@@ -1083,10 +1083,19 @@ function getRoleRoomGoogleFolderKeyForFile(fileRecord: Record<string, unknown>):
 
 function buildCorsOptions(): cors.CorsOptions {
   const raw = process.env.CORS_ALLOW_ORIGINS ?? '';
-  const allowList = raw
+  const configuredOrigins = raw
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
+  const allowList = Array.from(
+    new Set(
+      [
+        ...configuredOrigins,
+        DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN,
+        'https://www.theroleroom.com',
+      ].filter((entry): entry is string => Boolean(readStringValue(entry))),
+    ),
+  );
 
   if (allowList.length === 0) {
     // Default: allow same-origin only (no wildcard) 
