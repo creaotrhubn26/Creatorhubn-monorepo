@@ -21,6 +21,26 @@ const castingQueryClient = new QueryClient({
   },
 });
 
+const ROLE_ROOM_DOCUMENT_TITLE = 'The Role Room - CreatorHub';
+const ROLE_ROOM_FAVICON_URL = '/role-room-assets/TheRoleRoom_App_Logo.png';
+
+function upsertHeadLink(rel: string, href: string) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const existingLink = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+  if (existingLink) {
+    existingLink.href = href;
+    return;
+  }
+
+  const link = document.createElement('link');
+  link.rel = rel;
+  link.href = href;
+  document.head.appendChild(link);
+}
+
 function CastingStandaloneAppContent() {
   // Check if user is logged in - determines which view to show
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -236,6 +256,16 @@ export default function CastingStandaloneApp() {
     if (typeof document !== 'undefined') {
       document.documentElement.style.colorScheme = 'dark';
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    document.title = ROLE_ROOM_DOCUMENT_TITLE;
+    upsertHeadLink('icon', ROLE_ROOM_FAVICON_URL);
+    upsertHeadLink('apple-touch-icon', ROLE_ROOM_FAVICON_URL);
   }, []);
 
   const muiTheme = useMemo(() => createTheme({
