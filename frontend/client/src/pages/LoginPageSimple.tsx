@@ -25,6 +25,9 @@ import {
 
 const ADMIN_DEMO_EMAIL = 'academy-guest@creatorhubn.com';
 const ADMIN_DEMO_PASSWORD = 'guest-access';
+const IS_DEVELOPMENT =
+  typeof window !== 'undefined' &&
+  (import.meta.env.DEV || window.location.hostname === 'localhost');
 
 export default function LoginPageSimple() {
   const { login, isAuthenticated, user } = useAuth();
@@ -66,7 +69,9 @@ export default function LoginPageSimple() {
     try {
       const normalizedEmail = email.trim().toLowerCase();
       const effectivePassword =
-        !password.trim() && normalizedEmail === ADMIN_DEMO_EMAIL
+        IS_DEVELOPMENT &&
+        !password.trim() &&
+        normalizedEmail === ADMIN_DEMO_EMAIL
           ? ADMIN_DEMO_PASSWORD
           : password || 'auto';
       const data = await login(email, effectivePassword);
@@ -154,7 +159,11 @@ export default function LoginPageSimple() {
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); setError(''); }}
                   disabled={isLoading}
-                  helperText={`Admin demo: ${ADMIN_DEMO_EMAIL} / ${ADMIN_DEMO_PASSWORD}`}
+                  helperText={
+                    IS_DEVELOPMENT
+                      ? `Admin demo: ${ADMIN_DEMO_EMAIL} / ${ADMIN_DEMO_PASSWORD}`
+                      : undefined
+                  }
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -193,7 +202,8 @@ export default function LoginPageSimple() {
               </Box>
             </form>
 
-            <Box sx={{ mt: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
+            {IS_DEVELOPMENT ? (
+              <Box sx={{ mt: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 600 }}>
                 Demo-kontoer:
               </Typography>
@@ -206,7 +216,8 @@ export default function LoginPageSimple() {
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                 Tomt passord fungerer også for denne demo-kontoen.
               </Typography>
-            </Box>
+              </Box>
+            ) : null}
           </CardContent>
         </Card>
       </Container>

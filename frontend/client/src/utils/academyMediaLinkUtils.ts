@@ -5,6 +5,42 @@ import type {
   LessonResource,
 } from "@/contexts/AcademyContext";
 
+const ACADEMY_MEDIA_URL_PATTERN = /^\/api\/academy\/media-assets\/[^/]+\/(?:file|poster)$/;
+
+export const appendAcademyMediaSessionToken = (
+  value: string | undefined | null,
+): string => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const normalized =
+      typeof window !== "undefined"
+        ? new URL(raw, window.location.origin)
+        : new URL(raw, "https://academy.local");
+    if (!ACADEMY_MEDIA_URL_PATTERN.test(normalized.pathname)) {
+      return normalized.toString();
+    }
+    if (normalized.searchParams.has("sessionToken")) {
+      return normalized.toString();
+    }
+    if (typeof window === "undefined") {
+      return normalized.toString();
+    }
+
+    const sessionToken =
+      window.localStorage.getItem("creatorhub_auth_token") || "";
+    if (!sessionToken.trim()) {
+      return normalized.toString();
+    }
+
+    normalized.searchParams.set("sessionToken", sessionToken.trim());
+    return normalized.toString();
+  } catch {
+    return raw;
+  }
+};
+
 type LinkedVideoCarrier =
   | Pick<
       Course,
@@ -79,9 +115,9 @@ const normalizeLinkUrl = (value: string | undefined | null): string => {
       typeof window !== "undefined"
         ? new URL(raw, window.location.origin)
         : new URL(raw, "https://academy.local");
-    return normalized.toString();
+    return appendAcademyMediaSessionToken(normalized.toString());
   } catch {
-    return raw;
+    return appendAcademyMediaSessionToken(raw);
   }
 };
 
@@ -343,4 +379,3 @@ export const resolveLinkedVideoVersionState = ({
     currentSnapshot: inferredSnapshot,
   };
 };
-

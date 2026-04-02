@@ -27,6 +27,8 @@ services:
         sync: false
       - key: GOOGLE_REDIRECT_URI
         sync: false
+      - key: ROLE_ROOM_GOOGLE_REDIRECT_URI
+        sync: false
       - key: GOOGLE_API_KEY
         sync: false
       - key: GOOGLE_ADMIN_EMAIL
@@ -60,6 +62,12 @@ services:
       - key: ROLE_ROOM_LINKEDIN_CLIENT_SECRET
         sync: false
       - key: ROLE_ROOM_LINKEDIN_REDIRECT_URI
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
         sync: false
       - key: VAPID_PUBLIC_KEY
         sync: false

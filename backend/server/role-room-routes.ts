@@ -902,7 +902,18 @@ function buildCorsOptions(): cors.CorsOptions {
 
 // ── Auth Session Type ────────────────────────────────────────
 
-type SessionData = { userId: string; email: string; name: string; role: string; loginAt: string };
+type SessionData = {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  loginAt: string;
+  displayName?: string;
+  picture?: string;
+  verified_email?: boolean;
+  requestedRole?: string | null;
+  loginAs?: string;
+};
 
 function isRoleRoomDevBypassEnabled(): boolean {
   if (process.env.ROLE_ROOM_DEV_AUTH_BYPASS === '1') return true;
@@ -4215,6 +4226,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           email: resolvedUser.email,
           name: resolvedUser.name,
           role: resolvedUser.role,
+          displayName: resolvedUser.name,
+          picture: readStringValue(googleProfile?.picture) || undefined,
+          verified_email: googleProfile?.verified_email === true,
+          requestedRole: oauthState.requestedRole ?? null,
+          loginAs: oauthState.loginAs ?? undefined,
           loginAt: new Date().toISOString(),
         };
         activeSessions?.set(sessionToken, sessionData);

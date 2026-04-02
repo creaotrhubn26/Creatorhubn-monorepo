@@ -69,6 +69,7 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import { academyGoogleWorkspaceService } from '@/services/academyGoogleWorkspaceService';
 import {
+  appendAcademyMediaSessionToken,
   buildMediaUploadFingerprint,
   buildUrlMediaFingerprint,
   extractMediaDisplayName,
@@ -414,9 +415,9 @@ const normalizeAssetUrl = (value: string | undefined | null): string => {
       typeof window !== 'undefined'
         ? new URL(raw, window.location.origin)
         : new URL(raw, 'https://academy.local');
-    return normalized.toString();
+    return appendAcademyMediaSessionToken(normalized.toString());
   } catch {
-    return raw;
+    return appendAcademyMediaSessionToken(raw);
   }
 };
 
@@ -522,9 +523,9 @@ const getAssetIcon = (type: MediaAssetType) => {
 
 const resolveAssetPreviewImageUrl = (asset: MediaAsset): string => {
   if (asset.type === 'image') {
-    return String(asset.url || '').trim();
+    return normalizeAssetUrl(asset.url);
   }
-  return String(asset.posterUrl || '').trim();
+  return normalizeAssetUrl(asset.posterUrl);
 };
 
 const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
@@ -2220,7 +2221,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
       return;
     }
     const anchor = document.createElement('a');
-    anchor.href = selectedAsset.url;
+    anchor.href = normalizeAssetUrl(selectedAsset.url);
     anchor.download = selectedAsset.name;
     anchor.target = '_blank';
     anchor.rel = 'noreferrer';
@@ -2396,7 +2397,9 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
         return;
       }
 
-      const detectedDuration = await probeVideoDurationSeconds(assetToBind.url);
+      const detectedDuration = await probeVideoDurationSeconds(
+        normalizeAssetUrl(assetToBind.url),
+      );
       const resolvedDuration =
         (Number.isFinite(Number(detectedDuration)) && Number(detectedDuration) > 0
           ? Number(detectedDuration)

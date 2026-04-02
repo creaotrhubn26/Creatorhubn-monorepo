@@ -35,6 +35,7 @@ import { useLocation } from 'wouter';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { apiRequest } from '@/lib/queryClient';
 import { academyPdfExportService } from '@/services/academyPdfExportService';
 import { useAcademyLocale } from './academyLocale';
 import AcademyLocaleSwitcher from './AcademyLocaleSwitcher';
@@ -272,21 +273,13 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
       }
 
       try {
-        const response = await fetch('/api/academy/cohort-settings', {
+        await apiRequest('/api/academy/cohort-settings', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
+          body: {
             ...payload,
             publish,
-          }),
+          },
         });
-
-        if (!response.ok) {
-          throw new Error(
-            tt('Kunne ikke lagre kohortinnstillinger.', 'Could not save cohort settings.'),
-          );
-        }
         return true;
       } catch (error) {
         if (!silent) {
@@ -329,16 +322,9 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
     hasLoadedCourseSettingsRef.current = false;
 
     try {
-      const response = await fetch(
+      const payload = (await apiRequest(
         `/api/academy/cohort-settings?courseId=${encodeURIComponent(targetCourseId)}`,
-        { credentials: 'include' },
-      );
-      if (!response.ok) {
-        throw new Error(
-          tt('Kunne ikke hente kohortinnstillinger.', 'Could not load cohort settings.'),
-        );
-      }
-      const payload = (await response.json().catch(() => null)) as CohortSettingsResponse | null;
+      )) as CohortSettingsResponse | null;
       const data = payload?.data;
 
       setCohortItems(Array.isArray(data?.cohorts) ? data.cohorts : []);

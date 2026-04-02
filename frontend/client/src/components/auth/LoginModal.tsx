@@ -34,6 +34,9 @@ const AUTH_TOKEN_KEY = 'creatorhub_auth_token';
 const AUTH_USER_KEY = 'creatorhub_auth_user';
 const PROTOTYPE_GUEST_EMAIL = 'academy-guest@creatorhubn.com';
 const PROTOTYPE_GUEST_PASSWORD = 'guest-access';
+const IS_DEVELOPMENT =
+  typeof window !== 'undefined' &&
+  (import.meta.env.DEV || window.location.hostname === 'localhost');
 
 // Context-based title mapping
 const getContextTitle = (context?: string) => {
@@ -415,7 +418,7 @@ export function LoginModal({
               </Button>
             </Box>
 
-            {loginType === 'prototype' && context === 'academy' && (
+            {IS_DEVELOPMENT && loginType === 'prototype' && context === 'academy' && (
               <Box sx={{ textAlign: 'center' }}>
                 <Typography
                   variant="caption"

@@ -1,5 +1,29 @@
 import { expect, test, type Page } from '@playwright/test';
 
+const DEV_ACADEMY_SESSION = {
+  token: 'dev-admin-local-session',
+  user: {
+    id: 'local-admin',
+    email: 'admin@local.dev',
+    name: 'Local Admin',
+    displayName: 'Local Admin',
+    role: 'admin',
+    roleLabel: 'Admin',
+    profession: 'photographer',
+    userType: 'photographer',
+    permissions: [
+      'users:read',
+      'users:write',
+      'roles:write',
+      'academy:admin',
+      'billing:admin',
+      'impersonate',
+    ],
+    isAdmin: true,
+    verified_email: true,
+  },
+};
+
 const isIgnorablePageError = (message: string): boolean => {
   const normalized = String(message || '');
   return (
@@ -7,6 +31,9 @@ const isIgnorablePageError = (message: string): boolean => {
     /Non-Error promise rejection captured/i.test(normalized)
   );
 };
+
+const academyValidationPattern =
+  /Verifiserer Academy-tilgang|Verifiserer studenttilgang/i;
 
 const clickFirstVisibleButton = async (page: Page, name: RegExp): Promise<boolean> => {
   const button = page.getByRole('button', { name }).first();
@@ -17,16 +44,38 @@ const clickFirstVisibleButton = async (page: Page, name: RegExp): Promise<boolea
   return true;
 };
 
+const readBodyText = async (page: Page): Promise<string> =>
+  (await page.locator('body').innerText()).replace(/\s+/g, ' ').trim();
+
 const waitForAcademyPageReady = async (page: Page): Promise<void> => {
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(1200);
-  const textLength = await page.evaluate(() => (document.body?.innerText || '').trim().length);
-  expect(textLength).toBeGreaterThan(20);
+
+  const startedAt = Date.now();
+  let bodyText = '';
+  while (Date.now() - startedAt < 30_000) {
+    bodyText = await readBodyText(page);
+    if (bodyText.length > 20 && !academyValidationPattern.test(bodyText)) {
+      return;
+    }
+    await page.waitForTimeout(300);
+  }
+
+  throw new Error(`Academy route did not become ready. Last body: ${bodyText.slice(0, 240)}`);
+};
+
+const seedDevAcademySession = async (page: Page): Promise<void> => {
+  await page.addInitScript((session) => {
+    window.localStorage.setItem('creatorhub_auth_token', session.token);
+    window.localStorage.setItem('creatorhub_auth_user', JSON.stringify(session.user));
+    window.localStorage.setItem('userId', session.user.id);
+    window.localStorage.setItem('userEmail', session.user.email);
+  }, DEV_ACADEMY_SESSION);
 };
 
 test.describe('Academy A-Z E2E', () => {
   test('core academy tools are interactive end-to-end', async ({ page }) => {
     test.setTimeout(12 * 60 * 1000);
+    await seedDevAcademySession(page);
 
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => {
@@ -132,6 +181,7 @@ test.describe('Academy A-Z E2E', () => {
       {
         route: '/academy/presentation-overlay',
         run: async () => {
+          await clickFirstVisibleButton(page, /Pro mode/i);
           await expect(page.getByRole('button', { name: /Ny presentasjon|New deck/i }).first()).toBeVisible({
             timeout: 40_000,
           });
@@ -161,7 +211,10 @@ test.describe('Academy A-Z E2E', () => {
             );
           }, { timeout: 120_000 });
 
-          await clickFirstVisibleButton(page, /Generer plan|Generate plan/i);
+          await clickFirstVisibleButton(
+            page,
+            /Generer plan|Generate plan|Generate design structure|Generer designstruktur/i,
+          );
           await designPlanResponsePromise;
           await expect(page.getByRole('button', { name: /Apply all/i }).first()).toBeVisible({
             timeout: 20_000,

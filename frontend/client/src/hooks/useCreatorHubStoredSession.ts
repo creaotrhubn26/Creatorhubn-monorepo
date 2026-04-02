@@ -1,28 +1,56 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CREATORHUB_AUTH_TOKEN_KEY,
   CREATORHUB_AUTH_USER_KEY,
   CREATORHUB_GOOGLE_LOGIN_ERROR_KEY,
   consumeCreatorHubGoogleLoginError,
   readCreatorHubSessionSnapshot,
+  validateCreatorHubStoredSession,
   type CreatorHubSessionSnapshot,
 } from '@/lib/creatorhubGoogleAuth';
 
 type CreatorHubStoredSession = CreatorHubSessionSnapshot & {
   googleLoginError: string | null;
   clearGoogleLoginError: () => void;
+  isValidating: boolean;
 };
 
 export function useCreatorHubStoredSession(): CreatorHubStoredSession {
   const [snapshot, setSnapshot] = useState<CreatorHubSessionSnapshot>(() =>
     readCreatorHubSessionSnapshot(),
   );
+  const [isValidating, setIsValidating] = useState<boolean>(() =>
+    Boolean(readCreatorHubSessionSnapshot().token),
+  );
   const [googleLoginError, setGoogleLoginError] = useState<string | null>(() =>
     consumeCreatorHubGoogleLoginError(),
   );
+  const validationRequestRef = useRef(0);
 
-  const syncSnapshot = useCallback(() => {
-    setSnapshot(readCreatorHubSessionSnapshot());
+  const syncSnapshot = useCallback((options?: { validate?: boolean }) => {
+    const nextSnapshot = readCreatorHubSessionSnapshot();
+    setSnapshot(nextSnapshot);
+
+    if (options?.validate === false || !nextSnapshot.token) {
+      validationRequestRef.current += 1;
+      setIsValidating(false);
+      return;
+    }
+
+    const requestId = validationRequestRef.current + 1;
+    validationRequestRef.current = requestId;
+    setIsValidating(true);
+    void validateCreatorHubStoredSession()
+      .then((validatedSnapshot) => {
+        if (validationRequestRef.current === requestId) {
+          setSnapshot(validatedSnapshot);
+        }
+      })
+      .finally(() => {
+        if (validationRequestRef.current === requestId) {
+          setIsValidating(false);
+        }
+      });
   }, []);
 
   const clearGoogleLoginError = useCallback(() => {
@@ -74,5 +102,6 @@ export function useCreatorHubStoredSession(): CreatorHubStoredSession {
     ...snapshot,
     googleLoginError,
     clearGoogleLoginError,
+    isValidating,
   };
 }

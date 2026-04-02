@@ -4,6 +4,7 @@ import type {
   Lesson,
   LessonResource,
 } from "@/contexts/AcademyContext";
+import { appendAcademyMediaSessionToken } from "@/utils/academyMediaLinkUtils";
 
 type VideoResource = CourseResource | LessonResource;
 type VideoCarrierLike = {
@@ -34,7 +35,9 @@ const GOOGLE_VIDEO_PLAYBACK_HOST_HINT_PATTERN =
   /(googleusercontent\.com|driveusercontent\.google\.com)/i;
 
 const normalizeUrl = (value: unknown): string =>
-  typeof value === "string" ? value.trim() : "";
+  typeof value === "string"
+    ? appendAcademyMediaSessionToken(value.trim())
+    : "";
 
 const getCarrierVideoUrl = (
   carrier: Pick<VideoCarrierLike, "videoUrl" | "url"> | null | undefined,

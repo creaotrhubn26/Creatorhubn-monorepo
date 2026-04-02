@@ -57,6 +57,24 @@ export interface CreatorHubSessionSnapshot {
   userProfession: string | null;
 }
 
+type SessionValidationCacheEntry = {
+  key: string;
+  snapshot: CreatorHubSessionSnapshot;
+  validatedAt: number;
+};
+
+type CreatorHubAuthSessionPayload = {
+  authenticated?: boolean;
+  user?: Record<string, unknown> | null;
+};
+
+const SESSION_VALIDATION_TTL_MS = 30_000;
+
+let sessionValidationCache: SessionValidationCacheEntry | null = null;
+let sessionValidationPromise:
+  | { key: string; promise: Promise<CreatorHubSessionSnapshot> }
+  | null = null;
+
 type RoleRoomGoogleTransferResponse = {
   mode?: string | null;
   sessionToken?: string | null;
@@ -351,9 +369,79 @@ export function readCreatorHubSessionSnapshot(): CreatorHubSessionSnapshot {
   };
 }
 
-export function storeCreatorHubAuthSession(
+function buildCreatorHubSessionSnapshot(
+  token: string | null,
+  user: CreatorHubAuthUser | null,
+): CreatorHubSessionSnapshot {
+  const authenticated = Boolean(token && user);
+  return {
+    token,
+    user: authenticated ? user : null,
+    authenticated,
+    isAdmin: Boolean(user?.isAdmin),
+    userProfession: user?.profession ?? user?.userType ?? null,
+  };
+}
+
+function buildSessionValidationKey(
+  token: string | null,
+  user: CreatorHubAuthUser | null,
+): string | null {
+  if (!token || !user) {
+    return null;
+  }
+
+  return JSON.stringify({
+    token,
+    id: user.id,
+    email: user.email,
+    role: user.role ?? null,
+    requestedRole: user.requestedRole ?? null,
+    verified_email: user.verified_email === true,
+    impersonatedByAdmin: user.impersonatedByAdmin === true,
+  });
+}
+
+function readValidatedSessionCache(
+  key: string | null,
+): CreatorHubSessionSnapshot | null {
+  if (!key || !sessionValidationCache || sessionValidationCache.key !== key) {
+    return null;
+  }
+
+  if (Date.now() - sessionValidationCache.validatedAt > SESSION_VALIDATION_TTL_MS) {
+    sessionValidationCache = null;
+    return null;
+  }
+
+  return sessionValidationCache.snapshot;
+}
+
+function writeValidatedSessionCache(
+  key: string | null,
+  snapshot: CreatorHubSessionSnapshot,
+): void {
+  if (!key) {
+    sessionValidationCache = null;
+    return;
+  }
+
+  sessionValidationCache = {
+    key,
+    snapshot,
+    validatedAt: Date.now(),
+  };
+}
+
+function clearValidatedSessionCache(): void {
+  sessionValidationCache = null;
+  sessionValidationPromise = null;
+}
+
+function persistCreatorHubAuthSession(
   sessionToken: string,
   user: CreatorHubAuthUser,
+  dispatchEvent: boolean,
 ): void {
   if (typeof window === 'undefined') {
     return;
@@ -364,10 +452,129 @@ export function storeCreatorHubAuthSession(
     window.localStorage.setItem(CREATORHUB_AUTH_USER_KEY, JSON.stringify(user));
     window.localStorage.setItem(CREATORHUB_USER_ID_KEY, user.id);
     window.localStorage.setItem(CREATORHUB_USER_EMAIL_KEY, user.email);
-    window.dispatchEvent(new Event('auth-changed'));
+    if (dispatchEvent) {
+      window.dispatchEvent(new Event('auth-changed'));
+    }
   } catch {
     // Ignore storage failures.
   }
+}
+
+export function storeCreatorHubAuthSession(
+  sessionToken: string,
+  user: CreatorHubAuthUser,
+): void {
+  clearValidatedSessionCache();
+  persistCreatorHubAuthSession(sessionToken, user, true);
+}
+
+export function clearCreatorHubAuthSession(options?: { dispatch?: boolean }): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  clearValidatedSessionCache();
+
+  try {
+    window.localStorage.removeItem(CREATORHUB_AUTH_TOKEN_KEY);
+    window.localStorage.removeItem(CREATORHUB_AUTH_USER_KEY);
+    window.localStorage.removeItem(CREATORHUB_USER_ID_KEY);
+    window.localStorage.removeItem(CREATORHUB_USER_EMAIL_KEY);
+    if (options?.dispatch !== false) {
+      window.dispatchEvent(new Event('auth-changed'));
+    }
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+export async function validateCreatorHubStoredSession(): Promise<CreatorHubSessionSnapshot> {
+  const token = readCreatorHubStoredToken();
+  const storedUser = readCreatorHubStoredUser();
+
+  if (!token || !storedUser) {
+    clearValidatedSessionCache();
+    return buildCreatorHubSessionSnapshot(null, null);
+  }
+
+  const validationKey = buildSessionValidationKey(token, storedUser);
+  const cachedSnapshot = readValidatedSessionCache(validationKey);
+  if (cachedSnapshot) {
+    return cachedSnapshot;
+  }
+
+  if (sessionValidationPromise?.key === validationKey) {
+    return sessionValidationPromise.promise;
+  }
+
+  const validationPromise = (async () => {
+    try {
+    const payload = await fetchCreatorHubJson<CreatorHubAuthSessionPayload>(
+      '/api/auth/user',
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+    const normalizedServerUser = payload.user
+      ? normalizeCreatorHubAuthUser(payload.user, storedUser.email)
+      : null;
+
+      if (!payload.authenticated || !normalizedServerUser) {
+      clearCreatorHubAuthSession({ dispatch: false });
+        const nextSnapshot = buildCreatorHubSessionSnapshot(null, null);
+        writeValidatedSessionCache(null, nextSnapshot);
+        return nextSnapshot;
+      }
+
+      const mergedUser: CreatorHubAuthUser = {
+        ...storedUser,
+        ...normalizedServerUser,
+        id: normalizedServerUser.id,
+        email: normalizedServerUser.email,
+        name: normalizedServerUser.name,
+        displayName: normalizedServerUser.displayName ?? storedUser.displayName,
+        role: normalizedServerUser.role ?? storedUser.role,
+        roleLabel: normalizedServerUser.roleLabel ?? storedUser.roleLabel,
+        profession: normalizedServerUser.profession ?? storedUser.profession,
+        userType: normalizedServerUser.userType ?? storedUser.userType,
+        requestedRole:
+          normalizedServerUser.requestedRole ?? storedUser.requestedRole ?? null,
+        loginAs: normalizedServerUser.loginAs ?? storedUser.loginAs,
+        isAdmin: normalizedServerUser.isAdmin,
+        permissions: normalizedServerUser.permissions ?? storedUser.permissions,
+        vendorId: normalizedServerUser.vendorId ?? storedUser.vendorId,
+        businessName:
+          normalizedServerUser.businessName ?? storedUser.businessName,
+        coupleProfileId:
+          normalizedServerUser.coupleProfileId ?? storedUser.coupleProfileId,
+        picture: normalizedServerUser.picture ?? storedUser.picture,
+        verified_email: normalizedServerUser.verified_email === true,
+        impersonatedByAdmin: normalizedServerUser.impersonatedByAdmin === true,
+      };
+
+      persistCreatorHubAuthSession(token, mergedUser, false);
+      const nextSnapshot = buildCreatorHubSessionSnapshot(token, mergedUser);
+      writeValidatedSessionCache(validationKey, nextSnapshot);
+      return nextSnapshot;
+    } catch {
+      const nextSnapshot = buildCreatorHubSessionSnapshot(token, null);
+      writeValidatedSessionCache(validationKey, nextSnapshot);
+      return nextSnapshot;
+    } finally {
+      if (sessionValidationPromise?.key === validationKey) {
+        sessionValidationPromise = null;
+      }
+    }
+  })();
+
+  sessionValidationPromise = {
+    key: validationKey ?? token,
+    promise: validationPromise,
+  };
+
+  return validationPromise;
 }
 
 export function isCreatorHubAdminImpersonation(

@@ -490,10 +490,38 @@ app.use((req, _res, next) => {
 });
 
 // ── Role Room API (x-api-key or Bearer session token) ────
-const activeSessions: Map<
-  string,
-  { userId: string; email: string; name: string; role: string; loginAt: string }
-> = new Map();
+type ActiveSessionData = {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  loginAt: string;
+  roleLabel?: string;
+  permissions?: string[];
+  profession?: string;
+  userType?: string;
+  displayName?: string;
+  picture?: string;
+  verified_email?: boolean;
+  impersonatedByAdmin?: boolean;
+  isAdmin?: boolean;
+  vendorId?: string;
+  businessName?: string;
+  coupleProfileId?: string;
+  requestedRole?: string | null;
+  loginAs?: string;
+};
+
+const activeSessions: Map<string, ActiveSessionData> = new Map();
+const DEV_LOCAL_ADMIN_SESSION_TOKEN = "dev-admin-local-session";
+const DEV_LOCAL_ADMIN_PERMISSIONS = [
+  "users:read",
+  "users:write",
+  "roles:write",
+  "academy:admin",
+  "billing:admin",
+  "impersonate",
+];
 
 const ADMIN_SESSION_ROLES = new Set(["admin", "super_admin"]);
 const INVITE_REQUEST_APPROVER_ROLES = new Set([
@@ -502,22 +530,55 @@ const INVITE_REQUEST_APPROVER_ROLES = new Set([
   "instructor",
 ]);
 
-function getActiveSessionFromRequest(req: express.Request) {
+function readActiveSessionToken(req: express.Request): string | null {
   const authorizationHeader = readString(req.headers.authorization);
   const bearerToken =
     authorizationHeader && authorizationHeader.startsWith("Bearer ")
       ? authorizationHeader.slice("Bearer ".length).trim()
       : null;
-  const sessionToken =
+
+  return (
     bearerToken ||
     readString(req.headers["x-session-token"]) ||
-    readString(req.headers["x-auth-token"]);
+    readString(req.headers["x-auth-token"]) ||
+    null
+  );
+}
 
+function getLocalDevelopmentSession(
+  sessionToken: string | null,
+): ActiveSessionData | null {
+  if (
+    process.env.NODE_ENV === "production" ||
+    !sessionToken ||
+    sessionToken !== DEV_LOCAL_ADMIN_SESSION_TOKEN
+  ) {
+    return null;
+  }
+
+  return {
+    userId: "local-admin",
+    email: "admin@local.dev",
+    name: "Local Admin",
+    role: "admin",
+    roleLabel: "Admin",
+    permissions: [...DEV_LOCAL_ADMIN_PERMISSIONS],
+    profession: "photographer",
+    userType: "photographer",
+    displayName: "Local Admin",
+    verified_email: true,
+    isAdmin: true,
+    loginAt: new Date().toISOString(),
+  };
+}
+
+function getActiveSessionFromRequest(req: express.Request) {
+  const sessionToken = readActiveSessionToken(req);
   if (!sessionToken) {
     return null;
   }
 
-  return activeSessions.get(sessionToken) || null;
+  return activeSessions.get(sessionToken) || getLocalDevelopmentSession(sessionToken);
 }
 
 function requireAdminSession(
@@ -20558,7 +20619,15 @@ app.post("/api/auth/login", async (req, res) => {
       process.env.PROTOTYPE_GUEST_PASSWORD || "guest-access";
     if (!email) return res.status(400).json({ error: "E-post er påkrevd" });
     const normalizedEmail = email.toLowerCase().trim();
-    const prototypeGuestEmails = new Set(["academy-guest@creatorhubn.com"]);
+    const prototypeGuestEmails = new Set(
+      String(
+        process.env.PROTOTYPE_GUEST_EMAILS ||
+          (!isProductionEnv ? "academy-guest@creatorhubn.com" : ""),
+      )
+        .split(",")
+        .map((entry) => entry.trim().toLowerCase())
+        .filter(Boolean),
+    );
     const canUseGeneralGuestPassword =
       prototypeGuestEmails.has(normalizedEmail) &&
       (password === "auto" || password === "" || password == null);
@@ -20568,7 +20637,7 @@ app.post("/api/auth/login", async (req, res) => {
 
     // Look up user by email
     let result = await pool.query(
-      "SELECT id, email, username, first_name, last_name, password, role FROM users WHERE email = $1",
+      "SELECT id, email, username, first_name, last_name, password, role, profession, company_name FROM users WHERE email = $1",
       [normalizedEmail],
     );
 
@@ -20602,7 +20671,7 @@ app.post("/api/auth/login", async (req, res) => {
              username = COALESCE(NULLIF(users.username, ''), EXCLUDED.username),
              first_name = COALESCE(NULLIF(users.first_name, ''), EXCLUDED.first_name),
              updated_at = NOW()
-         RETURNING id, email, username, first_name, last_name, password, role`,
+         RETURNING id, email, username, first_name, last_name, password, role, profession, company_name`,
         [normalizedEmail, inferredUsername, inferredFirstName, hashedPassword],
       );
     }
@@ -20659,15 +20728,7 @@ app.post("/api/auth/login", async (req, res) => {
     // Determine role
     let role = "user";
     const dbRole = String(dbUser.role || "").toLowerCase();
-    const fullAccessGuestEmails = new Set([
-      "daniel@creatorhubn.com",
-      "academy-guest@creatorhubn.com",
-    ]);
-    if (
-      dbRole === "admin" ||
-      dbRole === "super_admin" ||
-      fullAccessGuestEmails.has(dbUser.email)
-    ) {
+    if (dbRole === "admin" || dbRole === "super_admin") {
       role = "admin";
     }
     if (loginType === "prototype") {
@@ -20720,13 +20781,36 @@ app.post("/api/auth/login", async (req, res) => {
         : normalizedRequestedRole || role
       : role;
 
-    const sessionData = {
+    const normalizedSessionRole = normalizeAdminRoleId(roleRoomSessionRole);
+    const sessionRoleEntry = buildAdminRoleEntry(normalizedSessionRole);
+    const sessionProfession = normalizeAdminProfession(
+      dbUser.profession,
+      normalizedSessionRole,
+    );
+    const sessionData: ActiveSessionData = {
       userId: dbUser.id,
       email: dbUser.email,
       name,
-      role: roleRoomSessionRole,
+      role: normalizedSessionRole,
+      roleLabel: sessionRoleEntry.name,
+      permissions: sessionRoleEntry.permissions,
+      profession: sessionProfession || undefined,
+      userType: sessionProfession || undefined,
+      displayName: name,
+      isAdmin: ADMIN_SESSION_ROLES.has(normalizedSessionRole),
+      loginAs: loginAs || undefined,
+      requestedRole: normalizedRequestedRole,
       loginAt: new Date().toISOString(),
     };
+    if (role === "vendor" && vendorCheck.rows.length > 0) {
+      sessionData.vendorId = vendorCheck.rows[0].id;
+      sessionData.businessName = vendorCheck.rows[0].business_name;
+    }
+    if (role === "couple" && coupleCheck.rows.length > 0) {
+      sessionData.coupleProfileId = coupleCheck.rows[0].id;
+      sessionData.displayName =
+        coupleCheck.rows[0].display_name || sessionData.displayName;
+    }
     activeSessions.set(sessionToken, sessionData);
 
     console.log(
@@ -20740,7 +20824,12 @@ app.post("/api/auth/login", async (req, res) => {
         id: dbUser.id,
         email: dbUser.email,
         name,
-        role: roleRoomSessionRole,
+        role: normalizedSessionRole,
+        roleLabel: sessionRoleEntry.name,
+        profession: sessionProfession || undefined,
+        userType: sessionProfession || undefined,
+        permissions: sessionRoleEntry.permissions,
+        isAdmin: ADMIN_SESSION_ROLES.has(normalizedSessionRole),
         ...(isRoleRoomLogin
           ? {
               requestedRole: normalizedRequestedRole,
@@ -20820,11 +20909,18 @@ app.post("/api/couples/login", async (req, res) => {
 
     // Create session
     const sessionToken = crypto.randomUUID();
-    const sessionData = {
+    const coupleRoleEntry = buildAdminRoleEntry("couple");
+    const sessionData: ActiveSessionData = {
       userId,
       email: couple.email,
       name: couple.display_name || email,
       role: "couple" as const,
+      roleLabel: coupleRoleEntry.name,
+      permissions: coupleRoleEntry.permissions,
+      profession: "couple",
+      userType: "couple",
+      displayName: couple.display_name || email,
+      coupleProfileId: couple.id,
       loginAt: new Date().toISOString(),
     };
     activeSessions.set(sessionToken, sessionData);
@@ -21139,34 +21235,38 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 // GET /api/auth/user — Get current user from session
-app.get("/api/auth/user", (req, res) => {
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  if (token && activeSessions.has(token)) {
-    const session = activeSessions.get(token)!;
+app.get("/api/auth/user", async (req, res) => {
+  const session = getActiveSessionFromRequest(req);
+  if (!session) {
+    return res.json({ user: null, authenticated: false });
+  }
+
+  try {
+    const user = await buildSessionUserFromActiveSession(session);
     return res.json({
-      user: {
-        id: session.userId,
-        email: session.email,
-        name: session.name,
-        role: session.role,
-      },
+      user,
       authenticated: true,
     });
+  } catch (error) {
+    console.error("Auth user session resolution error:", error);
+    return res.status(500).json({
+      user: null,
+      authenticated: false,
+      error: "Could not resolve session user",
+    });
   }
-  res.json({ user: null, authenticated: false });
 });
 
 app.get("/api/auth/status", (req, res) => {
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  if (token && activeSessions.has(token)) {
-    return res.json({ authenticated: true, user: activeSessions.get(token) });
+  const session = getActiveSessionFromRequest(req);
+  if (session) {
+    return res.json({ authenticated: true, user: session });
   }
   res.json({ authenticated: false, user: null });
 });
 
 app.get("/api/auth/session-status", (req, res) => {
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  if (token && activeSessions.has(token)) {
+  if (getActiveSessionFromRequest(req)) {
     return res.json({ active: true, authenticated: true });
   }
   res.json({ active: false, authenticated: false });
@@ -21178,34 +21278,17 @@ app.post("/api/auth/google/token", (req, res) => {
 
 // GET /api/auth/public-session — minimal public session details for dashboard bootstrap
 app.get("/api/auth/public-session", (req, res) => {
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  const session = token ? activeSessions.get(token) : undefined;
-  const headerUserId = readString(req.headers["x-user-id"]);
-  const headerEmail = readString(req.headers["x-user-email"]);
-  const headerRole = readString(req.headers["x-user-role"]) || "user";
-  const headerName = readString(req.headers["x-user-name"]) || null;
+  const session = getActiveSessionFromRequest(req);
 
   if (session) {
     return res.json({
       authenticated: true,
-      sessionId: token || null,
+      sessionId: readActiveSessionToken(req),
       userId: session.userId,
       email: session.email,
-      name: session.name,
+      name: session.displayName || session.name,
       role: session.role,
       loginAt: session.loginAt,
-    });
-  }
-
-  if (headerUserId || headerEmail) {
-    return res.json({
-      authenticated: true,
-      sessionId: null,
-      userId: headerUserId || "local-user",
-      email: headerEmail,
-      name: headerName,
-      role: headerRole,
-      loginAt: new Date().toISOString(),
     });
   }
 
@@ -25025,22 +25108,18 @@ app.delete("/api/vendor-types/:id/categories/:categoryId", async (req, res) => {
 
 // Public session endpoint used by multiple dashboard modules
 app.get("/api/auth/public-session", (req, res) => {
-  const authHeader = compatHeaderString(req.headers?.authorization);
-  const token = authHeader?.startsWith("Bearer ")
-    ? authHeader.slice("Bearer ".length).trim()
-    : null;
-  const session = token ? activeSessions.get(token) : null;
-  const userId = session?.userId || compatResolveUserId(req);
-  const email = session?.email || compatResolveUserEmail(req);
+  const session = getActiveSessionFromRequest(req);
   const isAuthenticated = Boolean(
     session && session.userId && session.userId !== "guest",
   );
+  const userId = isAuthenticated ? session!.userId : "guest";
+  const email = isAuthenticated ? session!.email : null;
 
   res.json({
-    id: isAuthenticated ? session!.userId : userId,
+    id: userId,
     userId,
     email,
-    name: session?.name || null,
+    name: session?.displayName || session?.name || null,
     role: session?.role || (isAuthenticated ? "user" : "guest"),
     isAuthenticated,
     authenticated: isAuthenticated,
@@ -29133,6 +29212,9 @@ const academyPresentationTryLlmDesignPlan = async (
 
 app.post("/api/academy/presentation/design-plan", async (req, res) => {
   try {
+    if (!(await requireAcademySession(req, res, "instructor"))) {
+      return;
+    }
     const body = academyPresentationIsRecord(req.body) ? req.body : {};
     const scope: AcademyPresentationScope =
       readString(body.scope) === "skill" ? "skill" : "course";
@@ -30260,6 +30342,9 @@ const academyPresentationTryHuggingFaceCritique = async (params: {
 
 app.post("/api/academy/presentation/critique", async (req, res) => {
   try {
+    if (!(await requireAcademySession(req, res, "instructor"))) {
+      return;
+    }
     const body = academyPresentationIsRecord(req.body) ? req.body : {};
     const scope: AcademyPresentationScope =
       readString(body.scope) === "skill" ? "skill" : "course";
@@ -36059,6 +36144,9 @@ const academyCurriculumTryQwenFoundationAssistant = async (params: {
 
 app.post("/api/academy/curriculum/foundation-assistant", async (req, res) => {
   try {
+    if (!(await requireAcademySession(req, res, "instructor"))) {
+      return;
+    }
     const body = academyPresentationIsRecord(req.body) ? req.body : {};
     const useNorwegian = readBoolean(body.useNorwegian) === true;
     const courseTitle = academyCurriculumTrimText(body.courseTitle, 220);
@@ -36559,6 +36647,9 @@ const academyAnnotationTryQwenRecommendations = async (params: {
 
 app.post("/api/academy/annotation/recommendations", async (req, res) => {
   try {
+    if (!(await requireAcademySession(req, res, "instructor"))) {
+      return;
+    }
     const body = academyPresentationIsRecord(req.body) ? req.body : {};
     const intent = String(readString(body.intent) || "interactive-lesson")
       .trim()
@@ -37018,6 +37109,9 @@ const academyPresentationRequestHfRerankerScores = async (params: {
 
 app.post("/api/academy/presentation/semantic-search", async (req, res) => {
   try {
+    if (!(await requireAcademySession(req, res, "instructor"))) {
+      return;
+    }
     const body = academyPresentationIsRecord(req.body) ? req.body : {};
     const query = String(readString(body.query) || "")
       .trim()
@@ -37338,7 +37432,15 @@ async function ensureAcademyCohortSettingsTable(): Promise<void> {
 
 app.get("/api/academy/cohort-settings", async (req, res) => {
   try {
-    const userId = compatResolveUserId(req);
+    const academySession = await requireAcademySession(
+      req,
+      res,
+      "instructor",
+    );
+    if (!academySession) {
+      return;
+    }
+    const userId = academySession.user.id;
     const courseId = readString(req.query?.courseId);
     if (!courseId) {
       return res
@@ -37381,7 +37483,15 @@ app.get("/api/academy/cohort-settings", async (req, res) => {
 
 app.post("/api/academy/cohort-settings", async (req, res) => {
   try {
-    const userId = compatResolveUserId(req);
+    const academySession = await requireAcademySession(
+      req,
+      res,
+      "instructor",
+    );
+    if (!academySession) {
+      return;
+    }
+    const userId = academySession.user.id;
     const courseId = readString(req.body?.courseId);
     if (!courseId) {
       return res
@@ -38950,6 +39060,129 @@ async function findAdminAccountUser(
   return (accountResult.rows[0] as Record<string, unknown> | undefined) || null;
 }
 
+function normalizeSessionPermissions(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => toAdminString(entry)?.trim().toLowerCase() || null)
+        .filter((entry): entry is string => Boolean(entry)),
+    ),
+  );
+}
+
+async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
+  const accountUser = await findAdminAccountUser(session.userId, session.email).catch(
+    () => null,
+  );
+  const sessionRoleId = normalizeAdminRoleId(
+    session.role || inferAdminRoleFromProfession(session.profession),
+  );
+  const accountRoleId = accountUser
+    ? normalizeAdminRoleId(
+        accountUser.role || inferAdminRoleFromProfession(accountUser.profession),
+      )
+    : "user";
+  const roleId =
+    sessionRoleId === "user" && accountRoleId !== "user"
+      ? accountRoleId
+      : sessionRoleId || accountRoleId;
+  const roleEntry = buildAdminRoleEntry(roleId);
+  const permissions = (() => {
+    const normalized = normalizeSessionPermissions(session.permissions);
+    return normalized.length > 0 ? normalized : roleEntry.permissions;
+  })();
+  const profession =
+    normalizeAdminProfession(session.profession, roleId) ||
+    normalizeAdminProfession(accountUser?.profession, roleId) ||
+    undefined;
+  const displayName =
+    toAdminString(session.displayName) ||
+    formatAdminUserIdentity(accountUser) ||
+    session.name ||
+    session.email;
+
+  return {
+    id: session.userId,
+    email: session.email,
+    name: session.name,
+    displayName,
+    role: roleId,
+    roleLabel: toAdminString(session.roleLabel) || roleEntry.name,
+    profession,
+    userType: toAdminString(session.userType) || profession,
+    permissions,
+    requestedRole: toAdminString(session.requestedRole) || null,
+    loginAs: toAdminString(session.loginAs) || undefined,
+    isAdmin:
+      session.isAdmin === true || ADMIN_SESSION_ROLES.has(roleId),
+    vendorId: toAdminString(session.vendorId) || undefined,
+    businessName:
+      toAdminString(session.businessName) ||
+      toAdminString(accountUser?.company_name) ||
+      undefined,
+    coupleProfileId: toAdminString(session.coupleProfileId) || undefined,
+    picture: toAdminString(session.picture) || undefined,
+    verified_email: session.verified_email === true,
+    impersonatedByAdmin: session.impersonatedByAdmin === true,
+    loginAt: session.loginAt,
+  };
+}
+
+type AcademySessionRequirement = "authenticated" | "instructor";
+
+async function requireAcademySession(
+  req: express.Request,
+  res: express.Response,
+  requirement: AcademySessionRequirement = "authenticated",
+): Promise<
+  | {
+      session: ActiveSessionData;
+      user: Awaited<ReturnType<typeof buildSessionUserFromActiveSession>>;
+      roleId: string;
+      isInstructor: boolean;
+    }
+  | null
+> {
+  const querySessionToken =
+    readString(req.query?.sessionToken) || readString(req.query?.token);
+  const session =
+    getActiveSessionFromRequest(req) ||
+    (querySessionToken
+      ? activeSessions.get(querySessionToken) ||
+        getLocalDevelopmentSession(querySessionToken)
+      : null);
+
+  if (!session) {
+    res.status(401).json({ error: "Academy-innlogging kreves" });
+    return null;
+  }
+
+  const user = await buildSessionUserFromActiveSession(session);
+  const roleId = normalizeAdminRoleId(user.role);
+  const permissionSet = new Set(normalizeSessionPermissions(user.permissions));
+  const isInstructor =
+    ADMIN_SESSION_ROLES.has(roleId) ||
+    roleId === "instructor" ||
+    permissionSet.has("academy:admin") ||
+    permissionSet.has("academy:write");
+
+  if (requirement === "instructor" && !isInstructor) {
+    res.status(403).json({ error: "Instruktør- eller admin-tilgang kreves" });
+    return null;
+  }
+
+  return {
+    session,
+    user,
+    roleId,
+    isInstructor,
+  };
+}
+
 async function upsertAdminAccountUser(input: {
   email: string;
   firstName?: string | null;
@@ -39262,12 +39495,21 @@ async function resolveAdminUserView(
 
 app.get("/api/academy/access-summary", async (req, res) => {
   try {
-    const resolvedUserId = compatResolveUserId(req);
+    const academySession = await requireAcademySession(
+      req,
+      res,
+      "authenticated",
+    );
+    if (!academySession) {
+      return;
+    }
+    const resolvedUserId = academySession.user.id;
     const normalizedUserId =
       resolvedUserId && resolvedUserId !== "guest"
         ? resolvedUserId.trim().toLowerCase()
         : null;
-    const normalizedEmail = compatResolveUserEmail(req)?.trim().toLowerCase() || null;
+    const normalizedEmail =
+      academySession.user.email?.trim().toLowerCase() || null;
 
     const users = await listAdminUsersSnapshot();
     const matchedUser =
@@ -39786,6 +40028,22 @@ app.post("/api/admin/impersonate/start", async (req, res) => {
         String(userView?.email || "").split("@")[0] ||
         "CreatorHub User",
       role: targetRole,
+      roleLabel: targetRoleEntry.name,
+      permissions: targetRoleEntry.permissions,
+      profession: targetProfession || undefined,
+      userType: targetProfession || undefined,
+      displayName:
+        [
+          toAdminString(targetAccount.first_name),
+          toAdminString(targetAccount.last_name),
+        ]
+          .filter(Boolean)
+          .join(" ") ||
+        toAdminString(targetAccount.username) ||
+        String(userView?.email || "").split("@")[0] ||
+        "CreatorHub User",
+      impersonatedByAdmin: true,
+      isAdmin: ADMIN_SESSION_ROLES.has(targetRole),
       loginAt: new Date().toISOString(),
     };
 
@@ -88575,10 +88833,15 @@ app.post("/api/notebooklm/workspace/sync", async (req, res) => {
 
 app.get("/api/academy/google-vids/status", async (req, res) => {
   try {
-    const userId =
-      readString(req.query.userId) ||
-      getUserIdFromAuth(req) ||
-      compatResolveUserId(req);
+    const academySession = await requireAcademySession(
+      req,
+      res,
+      "instructor",
+    );
+    if (!academySession) {
+      return;
+    }
+    const userId = academySession.user.id;
     const status = await getAcademyGoogleVidsWorkspaceStatus(pool, {
       userId,
       courseId: readString(req.query.courseId),
@@ -88596,10 +88859,15 @@ app.get("/api/academy/google-vids/status", async (req, res) => {
 
 app.post("/api/academy/google-vids/sync", async (req, res) => {
   try {
-    const userId =
-      readString(req.body?.userId) ||
-      getUserIdFromAuth(req) ||
-      compatResolveUserId(req);
+    const academySession = await requireAcademySession(
+      req,
+      res,
+      "instructor",
+    );
+    if (!academySession) {
+      return;
+    }
+    const userId = academySession.user.id;
     const workspace = await syncAcademyGoogleVidsWorkspace(pool, {
       userId,
       courseId: readString(req.body?.courseId),
@@ -88627,10 +88895,15 @@ app.post("/api/academy/google-vids/sync", async (req, res) => {
 
 app.get("/api/academy/notebooklm/status", async (req, res) => {
   try {
-    const userId =
-      readString(req.query.userId) ||
-      getUserIdFromAuth(req) ||
-      compatResolveUserId(req);
+    const academySession = await requireAcademySession(
+      req,
+      res,
+      "instructor",
+    );
+    if (!academySession) {
+      return;
+    }
+    const userId = academySession.user.id;
     const status = await getAcademyNotebookLmWorkspaceStatus(pool, {
       userId,
       courseId: readString(req.query.courseId),
@@ -88649,10 +88922,15 @@ app.get("/api/academy/notebooklm/status", async (req, res) => {
 
 app.post("/api/academy/notebooklm/sync", async (req, res) => {
   try {
-    const userId =
-      readString(req.body?.userId) ||
-      getUserIdFromAuth(req) ||
-      compatResolveUserId(req);
+    const academySession = await requireAcademySession(
+      req,
+      res,
+      "instructor",
+    );
+    if (!academySession) {
+      return;
+    }
+    const userId = academySession.user.id;
     const workspace = await syncAcademyNotebookLmWorkspace(pool, {
       userId,
       courseId: readString(req.body?.courseId),
@@ -92965,6 +93243,9 @@ app.post(
   academyMediaUpload.array("files", 20),
   async (req, res) => {
     try {
+      if (!(await requireAcademySession(req, res, "instructor"))) {
+        return;
+      }
       const files = Array.isArray(req.files)
         ? (req.files as Array<{
             originalname: string;
@@ -93038,6 +93319,9 @@ app.post(
   academyMediaUpload.single("file"),
   async (req, res) => {
     try {
+      if (!(await requireAcademySession(req, res, "instructor"))) {
+        return;
+      }
       const assetId = String(req.params.assetId || "").trim();
       if (!assetId) {
         return res.status(400).json({ error: "Missing asset id" });
@@ -93142,6 +93426,9 @@ app.post(
 
 app.delete("/api/academy/media-assets/:assetId", async (req, res) => {
   try {
+    if (!(await requireAcademySession(req, res, "instructor"))) {
+      return;
+    }
     const assetId = String(req.params.assetId || "").trim();
     if (!assetId) {
       return res.status(400).json({ error: "Missing asset id" });
@@ -93174,6 +93461,9 @@ app.delete("/api/academy/media-assets/:assetId", async (req, res) => {
 
 app.get("/api/academy/media-assets/:assetId/file", async (req, res) => {
   try {
+    if (!(await requireAcademySession(req, res, "authenticated"))) {
+      return;
+    }
     const assetId = String(req.params.assetId || "").trim();
     const requestedVersion = Number(req.query.version || 0);
     const manifest = await loadAcademyMediaManifest();
@@ -93212,6 +93502,9 @@ app.get("/api/academy/media-assets/:assetId/file", async (req, res) => {
 
 app.get("/api/academy/media-assets/:assetId/poster", async (req, res) => {
   try {
+    if (!(await requireAcademySession(req, res, "authenticated"))) {
+      return;
+    }
     const assetId = String(req.params.assetId || "").trim();
     const requestedVersion = Number(req.query.version || 0);
     const manifest = await loadAcademyMediaManifest();

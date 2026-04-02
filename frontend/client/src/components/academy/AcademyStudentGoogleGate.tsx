@@ -17,9 +17,11 @@ interface AcademyStudentGoogleGateProps {
 function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
   const {
     authenticated,
+    token,
     user,
     googleLoginError,
     clearGoogleLoginError,
+    isValidating,
   } = useCreatorHubStoredSession();
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -79,6 +81,29 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
 
   if (canOpenStudentAcademy) {
     return <>{children}</>;
+  }
+
+  if (isValidating && token) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'grid',
+          placeItems: 'center',
+          px: 2,
+          py: 4,
+          background:
+            'radial-gradient(circle at 82% 18%, rgba(248,179,33,0.18), rgba(0,0,0,0) 38%), linear-gradient(180deg, rgba(10,13,20,0.96), rgba(6,8,13,1))',
+        }}
+      >
+        <Stack spacing={1.25} alignItems="center" sx={{ color: '#edf0f7' }}>
+          <CircularProgress size={26} sx={{ color: '#f8d56f' }} />
+          <Typography sx={{ fontWeight: 600 }}>
+            Verifiserer studenttilgang...
+          </Typography>
+        </Stack>
+      </Box>
+    );
   }
 
   const roleLabel = user?.roleLabel || user?.role || 'bruker';

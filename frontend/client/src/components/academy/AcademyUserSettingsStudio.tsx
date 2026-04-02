@@ -59,7 +59,7 @@ const USER_SETTINGS_KV_KEY = 'academy_user_settings_v1';
 
 const defaultState: UserSettingsState = {
   displayName: 'Creator Studio User',
-  email: 'academy-guest@creatorhubn.com',
+  email: 'creator@creatorhubn.com',
   avatarUrl: '',
   locale: 'nb-NO',
   timezone: 'Europe/Oslo',

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Alert, Box, Button, Chip, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material';
 import { LockOutlined, SchoolOutlined } from '@mui/icons-material';
 import { useCreatorHubStoredSession } from '@/hooks/useCreatorHubStoredSession';
 import { resolveCreatorHubAcademyAudience } from '@/lib/creatorhubGoogleAuth';
@@ -27,7 +27,7 @@ export default function AcademyAccessGate({
   children,
   requirement = 'authenticated',
 }: AcademyAccessGateProps) {
-  const { authenticated, user } = useCreatorHubStoredSession();
+  const { authenticated, user, token, isValidating } = useCreatorHubStoredSession();
   const audience = useMemo(
     () => resolveCreatorHubAcademyAudience(user),
     [user],
@@ -44,6 +44,29 @@ export default function AcademyAccessGate({
 
     return true;
   }, [audience, authenticated, requirement, user]);
+
+  if (isValidating && token) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'grid',
+          placeItems: 'center',
+          px: 2,
+          py: 4,
+          background:
+            'radial-gradient(circle at 82% 18%, rgba(248,179,33,0.18), rgba(0,0,0,0) 38%), linear-gradient(180deg, rgba(10,13,20,0.96), rgba(6,8,13,1))',
+        }}
+      >
+        <Stack spacing={1.25} alignItems="center" sx={{ color: '#edf0f7' }}>
+          <CircularProgress size={26} sx={{ color: '#f8d56f' }} />
+          <Typography sx={{ fontWeight: 600 }}>
+            Verifiserer Academy-tilgang...
+          </Typography>
+        </Stack>
+      </Box>
+    );
+  }
 
   if (hasRequiredAccess) {
     return <>{children}</>;
