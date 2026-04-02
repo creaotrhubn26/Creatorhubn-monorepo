@@ -7,17 +7,6 @@
   "devCommand": "npm run dev",
   "redirects": [
     {
-      "source": "/",
-      "has": [
-        {
-          "type": "host",
-          "value": "(www\\.)?theroleroom\\.com"
-        }
-      ],
-      "destination": "/theroleroom",
-      "permanent": true
-    },
-    {
       "source": "/casting.html",
       "has": [
         {
@@ -25,7 +14,18 @@
           "value": "(www\\.)?theroleroom\\.com"
         }
       ],
-      "destination": "/theroleroom",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/theroleroom",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/",
       "permanent": true
     },
     {
@@ -36,7 +36,7 @@
           "value": "(www\\.)?theroleroom\\.com"
         }
       ],
-      "destination": "/theroleroom",
+      "destination": "/",
       "permanent": true
     },
     {
