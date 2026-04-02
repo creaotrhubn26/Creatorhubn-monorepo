@@ -7,6 +7,7 @@ import ReactDOM from 'react-dom/client';
 import { initSentry } from './utils/sentry';
 import { bootstrapCreatorHubGoogleLoginRedirect } from './lib/creatorhubGoogleAuth';
 import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
+import { isRoleRoomDedicatedHost } from './components/role-room/utils/runtime';
 import './styles/academy-responsive.css';
 
 declare global {
@@ -29,7 +30,16 @@ const shouldUseVisualEditorBootstrap = (pathname: string): boolean =>
 const shouldUseAdminBootstrap = (pathname: string): boolean =>
   ADMIN_ROUTE_PATTERN.test(pathname);
 
+const shouldUseRoleRoomDedicatedHostBootstrap = (
+  locationLike: Pick<Location, 'hostname'>,
+): boolean => isRoleRoomDedicatedHost(locationLike.hostname);
+
 const resolveRootComponent = async (): Promise<React.ComponentType> => {
+  if (shouldUseRoleRoomDedicatedHostBootstrap(window.location)) {
+    const module = await import('./components/role-room/casting-main');
+    return module.default;
+  }
+
   if (shouldUseVisualEditorBootstrap(window.location.pathname)) {
     const module = await import('./visual-editor-entry');
     return module.default;
@@ -92,7 +102,9 @@ console.log('[main.tsx] React:', typeof React);
 console.log('[main.tsx] ReactDOM:', typeof ReactDOM);
 console.log(
   '[main.tsx] Bootstrap mode:',
-  shouldUseVisualEditorBootstrap(window.location.pathname)
+  shouldUseRoleRoomDedicatedHostBootstrap(window.location)
+    ? 'role-room-host'
+    : shouldUseVisualEditorBootstrap(window.location.pathname)
     ? 'visual-editor'
     : shouldUseAdminBootstrap(window.location.pathname)
       ? 'admin'
@@ -126,12 +138,15 @@ if (!rootElement) {
   document.body.innerHTML = '<div style="padding: 40px; background: red; color: white;">ERROR: Root element not found!</div>';
 } else {
   const root = ReactDOM.createRoot(rootElement);
+  const shouldBootstrapCreatorHubGoogleRedirect = !shouldUseRoleRoomDedicatedHostBootstrap(window.location);
 
   // #region agent log
   console.log('[main.tsx] Creating root, about to render');
   // #endregion
 
-  void bootstrapCreatorHubGoogleLoginRedirect()
+  void (shouldBootstrapCreatorHubGoogleRedirect
+    ? bootstrapCreatorHubGoogleLoginRedirect()
+    : Promise.resolve())
     .catch((error) => {
       console.error('[main.tsx] Google login bootstrap failed:', error);
     })

@@ -226,7 +226,7 @@ function CastingStandaloneAppContent() {
   );
 }
 
-function CastingStandaloneApp() {
+export default function CastingStandaloneApp() {
   useEffect(() => {
     try {
       localStorage.setItem('casting-theme-mode', 'dark');
