@@ -88,6 +88,29 @@ convert_videos() {
     base=$(basename "$src")
     name="${base%.*}"
     dest="$OUT/${name,,}.mp4"           # lowercase output name
+    lower_name="${name,,}"
+    local -a ffmpeg_video_args=(
+      -c:v libx264
+      -preset fast
+      -crf 23
+      -movflags +faststart
+      -pix_fmt yuv420p
+      -an
+    )
+
+    # The landing intro is shown full-screen with object-fit: cover, so it
+    # needs a denser web master than the rest of the short role clips.
+    if [[ "$lower_name" == "the_role_room_intro" ]]; then
+      ffmpeg_video_args=(
+        -vf "scale=1080:1080:flags=lanczos,unsharp=5:5:0.8:3:3:0.4"
+        -c:v libx264
+        -preset slow
+        -crf 18
+        -movflags +faststart
+        -pix_fmt yuv420p
+        -an
+      )
+    fi
 
     if [[ -f "$dest" && "$FORCE" -eq 0 ]]; then
       echo "  — skip (exists): $(basename "$dest")"
@@ -96,7 +119,7 @@ convert_videos() {
 
     echo "  ⟳  converting: $base → $(basename "$dest")"
     "$FFMPEG" -y -i "$src" \
-      -c:v libx264 -preset fast -crf 23 -movflags +faststart -an \
+      "${ffmpeg_video_args[@]}" \
       "$dest" 2>/dev/null
     kb=$(du -k "$dest" | cut -f1)
     echo "  ✓ done: $(basename "$dest") (${kb}KB)"
