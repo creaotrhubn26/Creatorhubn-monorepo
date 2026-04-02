@@ -157,7 +157,6 @@ function CastingStandaloneAppContent() {
 
     await authSessionService.clearSession();
 
-    setGuestMode(false);
     setIsAuthenticated(false);
     setAuthResolved(true);
     setProcessingGoogleLogin(false);
