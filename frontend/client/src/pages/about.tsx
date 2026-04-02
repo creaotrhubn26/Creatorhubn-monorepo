@@ -30,6 +30,7 @@ const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
 const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
 const COMMUNITY_ICON_URL = '/creatorhub-community-icon.svg';
 const ABOUT_BACKDROP_URL = '/role-room-assets/landing_backdrop.webp';
+const ROLE_ROOM_EXTERNAL_URL = 'https://theroleroom.com';
 
 const localeOptions = [
   { value: 'no' as const, flag: '🇳🇴', no: 'Norsk', en: 'Norwegian' },
@@ -333,6 +334,11 @@ function AboutComponent() {
     setLocation(path);
   };
 
+  const openExternalUrl = (url: string) => {
+    setMenuOpen(false);
+    window.location.href = url;
+  };
+
   return (
     <Box sx={{ bgcolor: '#05060a', color: '#f6f2ea', minHeight: '100vh' }}>
       <GlobalStyles
@@ -399,7 +405,7 @@ function AboutComponent() {
                 <Button onClick={() => navigate('/')} sx={{ color: 'rgba(246,242,234,0.74)' }}>
                   {copy.nav.home}
                 </Button>
-                <Button onClick={() => navigate('/theroleroom')} sx={{ color: 'rgba(246,242,234,0.74)' }}>
+                <Button onClick={() => openExternalUrl(ROLE_ROOM_EXTERNAL_URL)} sx={{ color: 'rgba(246,242,234,0.74)' }}>
                   {copy.nav.roleRoom}
                 </Button>
                 <Button onClick={() => navigate('/academy')} sx={{ color: 'rgba(246,242,234,0.74)' }}>
@@ -840,7 +846,7 @@ function AboutComponent() {
           <Button onClick={() => navigate('/')} sx={{ justifyContent: 'space-between', color: '#fbf5ee' }} endIcon={<ArrowForward />}>
             {copy.nav.home}
           </Button>
-          <Button onClick={() => navigate('/theroleroom')} sx={{ justifyContent: 'space-between', color: '#fbf5ee' }} endIcon={<ArrowForward />}>
+          <Button onClick={() => openExternalUrl(ROLE_ROOM_EXTERNAL_URL)} sx={{ justifyContent: 'space-between', color: '#fbf5ee' }} endIcon={<ArrowForward />}>
             {copy.nav.roleRoom}
           </Button>
           <Button onClick={() => navigate('/academy')} sx={{ justifyContent: 'space-between', color: '#fbf5ee' }} endIcon={<ArrowForward />}>

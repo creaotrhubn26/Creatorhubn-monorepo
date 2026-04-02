@@ -35,11 +35,10 @@ interface CreatorHubInvestorLandingProps {
 }
 
 const CREATORHUB_ICON_URL = '/creatorhub-logo-amber.svg';
-const HERO_BACKDROP_URL = '/role-room-assets/landing_backdrop.webp';
 const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
-const ROLE_ROOM_PREVIEW_URL = '/role-room-assets/roleroom_dashboard.webp';
 const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
 const COMMUNITY_ICON_URL = '/creatorhub-community-icon.svg';
+const ROLE_ROOM_EXTERNAL_URL = 'https://theroleroom.com';
 
 const localeOptions: Array<{ value: Locale; flag: string; no: string; en: string }> = [
   { value: 'no', flag: '🇳🇴', no: 'Norsk', en: 'Norwegian' },
@@ -62,10 +61,10 @@ const landingCopy = {
       subtitle:
         'Administrer prosjekter, samarbeid med team og gjennomfør produksjon i ett system.',
       support:
-        'Creatorhub er en plattform for å administrere, gjennomføre og skalere kreativt arbeid med innebygde verktøy, produkter og community.',
+        'Creatorhub er en plattform for å administrere, gjennomføre og skalere kreativt arbeid med innebygde verktøy, produkter og fellesskap.',
       primaryCta: 'Se plattformen',
       secondaryCta: 'Se produktene',
-      systemLine: 'Core platform / Products / Community layer',
+      systemLine: 'Kjerneplattform / Produkter / Community-lag',
       architectureTitle: 'Creatorhub AS',
       architectureLead:
         'Et strukturert system der kjerneplattformen driver produkter, læring og nettverkseffekter.',
@@ -73,7 +72,7 @@ const landingCopy = {
     architecture: {
       core: {
         title: 'Kjerneplattform',
-        subtitle: 'Project Management System',
+        subtitle: 'Prosjektstyringssystem',
         items: [
           'Prosjektstyring for kreative fag og team',
           'Team-samarbeid på tvers av roller',
@@ -86,13 +85,13 @@ const landingCopy = {
         items: ['The Role Room', 'Creatorhub Academy'],
       },
       community: {
-        title: 'Community Layer',
+        title: 'Community-lag',
         subtitle: 'Retensjon, nettverk og samarbeid',
         items: ['Kreatører', 'Team', 'Fagpersoner'],
       },
     },
     platform: {
-      label: 'Core Platform',
+      label: 'Kjerneplattform',
       title: 'Et system bygget for kreative arbeidsflyter',
       body:
         'Creatorhub gir et strukturert miljø for å administrere kreativt arbeid på tvers av fag, team og produksjoner.',
@@ -105,14 +104,17 @@ const landingCopy = {
       foundation: 'Dette er fundamentet. Role Room og Academy bygges på toppen av denne kjernen.',
     },
     products: {
-      label: 'Products',
+      label: 'Produkter',
       title: 'Bygget på toppen av plattformen',
       body:
         'Produktene utdyper bruksmønstre, utvider plattformen og gir flere innganger inn i økosystemet.',
       roleRoom: {
         title: 'The Role Room',
-        body: 'Et produksjonssystem for planlegging, casting og gjennomføring av kreative prosjekter.',
+        body:
+          'Et produksjonssystem for storskala videoproduksjonsteam og innholdsprodusenter som vil samarbeide tett med klienter fra planlegging til levering.',
         cta: 'Åpne The Role Room',
+        metaLabel: 'For produksjonsteam',
+        metaValue: 'Planlegging / Klientsamarbeid / Levering',
       },
       academy: {
         title: 'Creatorhub Academy',
@@ -121,7 +123,7 @@ const landingCopy = {
       },
     },
     community: {
-      label: 'Community',
+      label: 'Kreativt økosystem',
       title: 'Et sammenkoblet kreativt økosystem',
       body:
         'Kreatører, team og fagpersoner kobles sammen gjennom Creatorhub for samarbeid, læring og reell produksjon.',
@@ -130,13 +132,14 @@ const landingCopy = {
         'Team som skal koordinere arbeid og leveranser',
         'Fagpersoner som skal lære, bidra og skape nye muligheter',
       ],
+      panelItems: ['Kreatører', 'Team', 'Fagpersoner'],
       cta: 'Utforsk Community',
     },
     differentiation: {
-      label: 'Differentiation',
+      label: 'Hvorfor Creatorhub skiller seg ut',
       title: 'Mer enn verktøy, et strukturert system',
       body:
-        'Creatorhub samler prosjektstyring, produksjonsverktøy, læring og community i en samlet plattform.',
+        'Creatorhub samler prosjektstyring, produksjonsverktøy, læring og fellesskap i en samlet plattform.',
       pillars: [
         { title: 'Prosjektstyring', body: 'Arbeidsflyt, struktur og ansvar for kreative team.' },
         { title: 'Produksjonsverktøy', body: 'Dype verktøy som driver gjennomføring.' },
@@ -145,7 +148,7 @@ const landingCopy = {
       ],
     },
     why: {
-      label: 'Why This Is Powerful',
+      label: 'Hvorfor dette er kraftfullt',
       title: 'Hvorfor dette er kraftfullt',
       items: [
         'Kjerneplattform - sterkere produktbruk',
@@ -227,8 +230,11 @@ const landingCopy = {
         'The product layer deepens usage, expands the surface area of the platform and creates multiple entry points into the ecosystem.',
       roleRoom: {
         title: 'The Role Room',
-        body: 'A production system for planning, casting and executing creative projects.',
+        body:
+          'A production system for large-scale video production teams and content producers who need close collaboration with clients from planning through delivery.',
         cta: 'Open The Role Room',
+        metaLabel: 'Built for production teams',
+        metaValue: 'Planning / Client collaboration / Delivery',
       },
       academy: {
         title: 'Creatorhub Academy',
@@ -246,6 +252,7 @@ const landingCopy = {
         'Teams coordinating delivery across disciplines',
         'Professionals looking to learn, contribute and grow',
       ],
+      panelItems: ['Creators', 'Teams', 'Professionals'],
       cta: 'Explore Community',
     },
     differentiation: {
@@ -408,6 +415,12 @@ export default function CreatorHubInvestorLanding({
     setLocation(path);
   };
 
+  const openExternalUrl = (url: string) => {
+    if (typeof window !== 'undefined') {
+      window.location.href = url;
+    }
+  };
+
   const navigationItems = [
     { id: 'platform', label: copy.nav.platform },
     { id: 'role-room', label: copy.nav.roleRoom },
@@ -442,11 +455,9 @@ export default function CreatorHubInvestorLanding({
           sx={{
             position: 'absolute',
             inset: 0,
-            backgroundImage: `linear-gradient(180deg, rgba(5,6,10,0.22) 0%, rgba(5,6,10,0.68) 52%, rgba(5,6,10,1) 100%), url(${HERO_BACKDROP_URL})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: 0.42,
-            transform: 'scale(1.04)',
+            background:
+              'radial-gradient(circle at 78% 18%, rgba(255,186,108,0.16), transparent 24%), radial-gradient(circle at 22% 72%, rgba(208,120,56,0.14), transparent 28%), linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 24%, rgba(255,255,255,0) 24%, rgba(255,255,255,0) 100%)',
+            opacity: 0.92,
           }}
         />
         <Box
@@ -454,7 +465,7 @@ export default function CreatorHubInvestorLanding({
             position: 'absolute',
             inset: 0,
             background:
-              'linear-gradient(120deg, rgba(5,6,10,0.9) 12%, rgba(5,6,10,0.5) 44%, rgba(5,6,10,0.92) 92%)',
+              'linear-gradient(120deg, rgba(5,6,10,0.94) 10%, rgba(5,6,10,0.72) 46%, rgba(5,6,10,0.96) 92%)',
           }}
         />
 
@@ -473,8 +484,8 @@ export default function CreatorHubInvestorLanding({
               <Button
                 onClick={() => navigateToSection('hero')}
                 sx={{
-                  gap: 1.25,
                   px: 0,
+                  minWidth: 0,
                   color: '#fff5e8',
                   textTransform: 'none',
                   '&:hover': { bgcolor: 'transparent' },
@@ -484,23 +495,14 @@ export default function CreatorHubInvestorLanding({
                   component="img"
                   src={CREATORHUB_ICON_URL}
                   alt="Creatorhub"
-                  sx={{ width: 34, height: 34 }}
+                  sx={{
+                    width: { xs: 148, md: 186 },
+                    maxWidth: '100%',
+                    height: 'auto',
+                    display: 'block',
+                    filter: 'drop-shadow(0 8px 20px rgba(0,0,0,0.35))',
+                  }}
                 />
-                <Stack spacing={0.2} sx={{ alignItems: 'flex-start' }}>
-                  <Typography
-                    sx={{
-                      fontFamily: '"Space Grotesk", "Manrope", sans-serif',
-                      fontSize: '1rem',
-                      fontWeight: 700,
-                      letterSpacing: '-0.04em',
-                    }}
-                  >
-                    Creatorhub
-                  </Typography>
-                  <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,245,232,0.56)' }}>
-                    Creatorhub AS
-                  </Typography>
-                </Stack>
               </Button>
 
               {!isMobile ? (
@@ -633,8 +635,18 @@ export default function CreatorHubInvestorLanding({
                   {copy.hero.eyebrow}
                 </Typography>
 
-                <Box component="img" src={CREATORHUB_ICON_URL} alt="Creatorhub" sx={{ width: { xs: 96, md: 132 }, height: 'auto' }} />
-
+                <Box
+                  component="img"
+                  src={CREATORHUB_ICON_URL}
+                  alt="Creatorhub"
+                  sx={{
+                    width: { xs: 210, md: 280 },
+                    maxWidth: '100%',
+                    height: 'auto',
+                    display: 'block',
+                    filter: 'drop-shadow(0 18px 38px rgba(0,0,0,0.3))',
+                  }}
+                />
                 <Typography
                   variant="h1"
                   sx={{
@@ -826,14 +838,20 @@ export default function CreatorHubInvestorLanding({
       </Box>
 
       <Box component="main" sx={{ position: 'relative', zIndex: 1 }}>
-        <Container maxWidth="xl" sx={{ py: { xs: 10, md: 14 } }}>
+        <Container
+          maxWidth="xl"
+          sx={{
+            pt: { xs: 6, md: 8 },
+            pb: { xs: 10, md: 14 },
+          }}
+        >
           <MotionDiv
             initial={{ opacity: 0, y: 28 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
             transition={{ duration: 0.65 }}
           >
-            <Box id="platform" sx={{ py: { xs: 2, md: 4 } }}>
+            <Box id="platform" sx={{ pt: 0, pb: { xs: 8, md: 10 } }}>
               <SectionHeading
                 label={copy.platform.label}
                 title={copy.platform.title}
@@ -945,10 +963,9 @@ export default function CreatorHubInvestorLanding({
                     sx={{
                       position: 'absolute',
                       inset: 0,
-                      backgroundImage: `linear-gradient(90deg, rgba(12,12,18,0.92) 8%, rgba(12,12,18,0.44) 58%, rgba(12,12,18,0.94) 100%), url(${ROLE_ROOM_PREVIEW_URL})`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                      opacity: 0.6,
+                      background:
+                        'radial-gradient(circle at 82% 18%, rgba(255,186,108,0.18), transparent 22%), radial-gradient(circle at 18% 78%, rgba(147,99,255,0.12), transparent 26%), linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
+                      opacity: 0.96,
                     }}
                   />
                   <Box
@@ -975,7 +992,7 @@ export default function CreatorHubInvestorLanding({
                         {copy.products.roleRoom.body}
                       </Typography>
                       <Button
-                        onClick={() => openRoute('/theroleroom')}
+                        onClick={() => openExternalUrl(ROLE_ROOM_EXTERNAL_URL)}
                         endIcon={<NorthEast />}
                         sx={{
                           alignSelf: 'flex-start',
@@ -999,10 +1016,10 @@ export default function CreatorHubInvestorLanding({
                     >
                       <Stack spacing={1.1}>
                         <Typography sx={{ fontSize: '0.82rem', color: 'rgba(255,186,108,0.8)', letterSpacing: '0.18em', textTransform: 'uppercase' }}>
-                          Production system
+                          {copy.products.roleRoom.metaLabel}
                         </Typography>
                         <Typography sx={{ fontSize: '1rem', color: '#f9f4ea', lineHeight: 1.65 }}>
-                          Planning  /  Casting  /  Execution
+                          {copy.products.roleRoom.metaValue}
                         </Typography>
                       </Stack>
                     </Box>
@@ -1136,9 +1153,9 @@ export default function CreatorHubInvestorLanding({
                   <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
                   <Stack spacing={2.2}>
                     {[
-                      { icon: <AccountTree sx={{ color: '#ffba6c' }} />, label: 'Creators' },
-                      { icon: <AutoAwesome sx={{ color: '#ffba6c' }} />, label: 'Teams' },
-                      { icon: <Insights sx={{ color: '#ffba6c' }} />, label: 'Professionals' },
+                      { icon: <AccountTree sx={{ color: '#ffba6c' }} />, label: copy.community.panelItems[0] },
+                      { icon: <AutoAwesome sx={{ color: '#ffba6c' }} />, label: copy.community.panelItems[1] },
+                      { icon: <Insights sx={{ color: '#ffba6c' }} />, label: copy.community.panelItems[2] },
                     ].map((entry) => (
                       <Stack key={entry.label} direction="row" spacing={1.5} alignItems="center">
                         {entry.icon}

@@ -45,6 +45,7 @@ import { withUniversalIntegration } from "@/integration/UniversalIntegrationHOC"
 import { withVisualEditor } from "@/components/admin/visual-editor/withVisualEditor";
 import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
+import AcademyBrandMark from "./AcademyBrandMark";
 
 interface LandingCourse {
   id: string;
@@ -515,45 +516,21 @@ function AcademyLandingPage() {
             display: "grid",
             gridTemplateColumns: {
               xs: "1fr",
-              lg: "330px minmax(320px,1fr) 280px",
+              lg: "380px minmax(320px,1fr) 280px",
             },
             gap: 2,
             alignItems: "center",
             borderBottom: `var(--academy-hairline-width, 1px) solid ${alpha("#f5a623", 0.18)}`,
           }}
         >
-          <Stack direction="row" spacing={1.2} alignItems="center">
-            <Box
-              sx={{
-                width: 30,
-                height: 30,
-                borderRadius: "7px",
-                background:
-                  "linear-gradient(135deg, #f5a623 0%, #f59e0b 65%, #d97706 100%)",
-                boxShadow: "0 0 18px rgba(245,166,35,0.45)",
-              }}
-            />
-            <Box>
-              <Typography
-                sx={{
-                  fontFamily: "Barlow Condensed, sans-serif",
-                  letterSpacing: "0.08em",
-                  fontWeight: 700,
-                  fontSize: { xs: "1rem", md: "1.15rem" },
-                }}
-              >
-                CREATORHUB{" "}
-                <Box component="span" sx={{ opacity: 0.75 }}>
-                  ACADEMY
-                </Box>
-              </Typography>
-              <Typography sx={{ fontSize: 11, opacity: 0.58 }}>
-                {tt(
-                  "Et produkt av CreatorHub Norge",
-                  "A product by CreatorHub Norway",
-                )}
-              </Typography>
-            </Box>
+          <Stack spacing={0.6} alignItems="flex-start">
+            <AcademyBrandMark width={{ xs: 214, sm: 236, md: 268 }} />
+            <Typography sx={{ fontSize: 11, opacity: 0.58, pl: 0.5 }}>
+              {tt(
+                "Et produkt av CreatorHub Norge",
+                "A product by CreatorHub Norway",
+              )}
+            </Typography>
           </Stack>
 
           <TextField
