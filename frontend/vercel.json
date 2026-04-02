@@ -40,6 +40,17 @@
       "permanent": true
     },
     {
+      "source": "/talentportal/",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/talentportal",
+      "permanent": true
+    },
+    {
       "source": "/casting.html",
       "destination": "/theroleroom",
       "permanent": true
@@ -53,6 +64,16 @@
   "rewrites": [
     {
       "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?theroleroom\\.com"
+        }
+      ],
+      "destination": "/theroleroom.html"
+    },
+    {
+      "source": "/talentportal",
       "has": [
         {
           "type": "host",

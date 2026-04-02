@@ -367,13 +367,13 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
   }, [selectedAssignment]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !selectedAssignment) {
+    if (typeof window === 'undefined') {
       return;
     }
 
     const nextUrl = buildTalentPortalUrl({
-      projectId: selectedAssignment.project.id,
-      candidateId: selectedAssignment.candidate.id,
+      projectId: selectedAssignment?.project.id,
+      candidateId: selectedAssignment?.candidate.id,
       inviteToken: intent?.inviteToken,
       section: activeSection,
     });

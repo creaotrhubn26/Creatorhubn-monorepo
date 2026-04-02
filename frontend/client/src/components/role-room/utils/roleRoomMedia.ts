@@ -24,6 +24,6 @@ export function getRoleRoomVideoStillUrl(
   fallbackUrl?: string,
 ): string | undefined {
   return fallbackUrl
-    || replaceVideoExtension(videoUrl, '.webp')
-    || replaceVideoExtension(videoUrl, '_thumb.webp');
+    || replaceVideoExtension(videoUrl, '_thumb.webp')
+    || replaceVideoExtension(videoUrl, '.webp');
 }

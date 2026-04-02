@@ -100,7 +100,7 @@ const ROLE_CARDS: Record<string, {
   // ── Sound ─────────────────────────────────────────────────────────────
   // Drop in icon / video paths once assets are ready
   sound_designer:    { label: 'Lyddesigner',  icon: '/role-room-assets/roleroom_sound_designer.webp', video: '/role-room-assets/roleroom_sound_designer.mp4' },
-  sound_mixer:       { label: 'Lydmikser'    /*, icon: '/role-room-assets/roleroom_sound_mixer.webp'     */ },
+  sound_mixer:       { label: 'Lydmikser', icon: '/role-room-assets/roleroom_sound_designer.webp' },
   boom_operator:     { label: 'Bom-operator', video: '/role-room-assets/roleroom_boom_operator.mp4' },
   composer:          { label: 'Komponist'    , video: '/role-room-assets/roleroom_composer.mp4' },
 
@@ -175,13 +175,6 @@ const DEFAULT_TESTIMONIALS: { roleId: string; quote: string; author: string; tit
   { roleId: 'talent',           quote: 'Jeg fikk min første rolle via audition-portalen her.',    author: 'Camilla R.', title: 'Skuespiller' },
   { roleId: 'agent',            quote: 'Klientene mine finner riktige auditions automatisk.',      author: 'Henrik B.',  title: 'Agent' },
   { roleId: 'client',           quote: 'Full oversikt fra dag én — uten e-postkjeder.',           author: 'Sofie N.',   title: 'Klient' },
-];
-
-/* ── default social proof stats ───────────────────────────────── */
-const DEFAULT_STATS: { value: string; label: string }[] = [
-  { value: '1 247', label: 'kreative' },
-  { value: '326',   label: 'produksjoner' },
-  { value: '4 891', label: 'roller besatt' },
 ];
 
 const ROLE_ROOM_PUBLIC_STATS_ENDPOINT = '/api/role-room/public/stats';
@@ -408,12 +401,14 @@ function RoleChip({
   onSelect,
   video,
   videoPosition,
+  compact = false,
 }: {
   role: { id: string; label: string };
   selected: boolean;
   onSelect: (id: string) => void;
   video?: string;
   videoPosition?: string;
+  compact?: boolean;
 }) {
   const shortLabel = role.label.split(' ')[0];
   const videoRef   = useRef<HTMLVideoElement>(null);
@@ -482,8 +477,8 @@ function RoleChip({
       sx={{
         position: 'relative',
         cursor: 'pointer',
-        aspectRatio: DESIGN.card.aspectRatio,
-        borderRadius: DESIGN.card.borderRadius,
+        aspectRatio: compact ? '1 / 1.08' : DESIGN.card.aspectRatio,
+        borderRadius: compact ? '12px' : DESIGN.card.borderRadius,
         overflow: 'hidden',
         outline: 'none',
         p: 0,
@@ -498,7 +493,7 @@ function RoleChip({
           : `0 4px 24px rgba(0,0,0,0.7), 0 1px 0 ${DESIGN.p.shadowIdle} inset`,
         animation: selected ? `${pulseGlow} ${DESIGN.card.pulseGlowDuration} ease-in-out infinite` : 'none',
         '&:hover': {
-          transform: DESIGN.card.hoverTransform,
+          transform: compact ? 'translateY(-4px) scale(1.02)' : DESIGN.card.hoverTransform,
           borderColor: DESIGN.p.borderHover,
           boxShadow: `0 20px 60px ${DESIGN.p.glowHover}, 0 0 0 1px ${DESIGN.p.shadowRingHover}`,
           '& .card-shimmer': {
@@ -508,7 +503,7 @@ function RoleChip({
             filter: `brightness(1.15) saturate(1.3) drop-shadow(0 0 18px ${DESIGN.p.iconDropHover})`,
           },
         },
-        '&:active': { transform: DESIGN.card.activeTransform },
+        '&:active': { transform: compact ? 'scale(0.985)' : DESIGN.card.activeTransform },
       }}
     >
       {/* ── full-bleed video or icon fills entire card ── */}
@@ -613,67 +608,71 @@ function RoleChip({
       }} />
 
       {/* ── top-left corner index ── */}
-      <Box sx={{
-        position: 'absolute', top: 6, left: 7, zIndex: 3,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-      }}>
-        <Typography sx={{
-          fontSize: DESIGN.card.cornerFontSize, fontWeight: 900, lineHeight: 1,
-          color: selected ? DESIGN.p.textSelected : DESIGN.p.textIdle,
-          textShadow: selected ? `0 0 8px ${DESIGN.p.textGlow}` : '0 1px 3px rgba(0,0,0,0.9)',
-          letterSpacing: '0.02em',
-          fontFamily: DESIGN.card.labelFont,
-          whiteSpace: 'nowrap',
-          maxWidth: '30px', overflow: 'hidden', textOverflow: 'ellipsis',
+      {!compact && (
+        <Box sx={{
+          position: 'absolute', top: 6, left: 7, zIndex: 3,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
         }}>
-          {shortLabel}
-        </Typography>
-        {roleIcons[role.id] && (
-          <Box component="img" src={roleIcons[role.id]} alt=""
-            sx={{ width: 11, height: 11, objectFit: 'contain', opacity: selected ? 0.95 : 0.55,
-              filter: selected ? 'hue-rotate(230deg) saturate(1.5)' : 'none' }}
-          />
-        )}
-      </Box>
+          <Typography sx={{
+            fontSize: DESIGN.card.cornerFontSize, fontWeight: 900, lineHeight: 1,
+            color: selected ? DESIGN.p.textSelected : DESIGN.p.textIdle,
+            textShadow: selected ? `0 0 8px ${DESIGN.p.textGlow}` : '0 1px 3px rgba(0,0,0,0.9)',
+            letterSpacing: '0.02em',
+            fontFamily: DESIGN.card.labelFont,
+            whiteSpace: 'nowrap',
+            maxWidth: '30px', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {shortLabel}
+          </Typography>
+          {roleIcons[role.id] && (
+            <Box component="img" src={roleIcons[role.id]} alt=""
+              sx={{ width: 11, height: 11, objectFit: 'contain', opacity: selected ? 0.95 : 0.55,
+                filter: selected ? 'hue-rotate(230deg) saturate(1.5)' : 'none' }}
+            />
+          )}
+        </Box>
+      )}
 
       {/* ── bottom-right corner index (rotated 180°) ── */}
-      <Box sx={{
-        position: 'absolute', bottom: 6, right: 7, zIndex: 3,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-        transform: 'rotate(180deg)',
-      }}>
-        <Typography sx={{
-          fontSize: DESIGN.card.cornerFontSize, fontWeight: 900, lineHeight: 1,
-          color: selected ? DESIGN.p.textSelected : DESIGN.p.textIdle,
-          textShadow: selected ? `0 0 8px ${DESIGN.p.textGlow}` : '0 1px 3px rgba(0,0,0,0.9)',
-          letterSpacing: '0.02em',
-          fontFamily: DESIGN.card.labelFont,
-          whiteSpace: 'nowrap',
-          maxWidth: '30px', overflow: 'hidden', textOverflow: 'ellipsis',
+      {!compact && (
+        <Box sx={{
+          position: 'absolute', bottom: 6, right: 7, zIndex: 3,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
+          transform: 'rotate(180deg)',
         }}>
-          {shortLabel}
-        </Typography>
-        {roleIcons[role.id] && (
-          <Box component="img" src={roleIcons[role.id]} alt=""
-            sx={{ width: 11, height: 11, objectFit: 'contain', opacity: selected ? 0.95 : 0.55,
-              filter: selected ? 'hue-rotate(230deg) saturate(1.5)' : 'none' }}
-          />
-        )}
-      </Box>
+          <Typography sx={{
+            fontSize: DESIGN.card.cornerFontSize, fontWeight: 900, lineHeight: 1,
+            color: selected ? DESIGN.p.textSelected : DESIGN.p.textIdle,
+            textShadow: selected ? `0 0 8px ${DESIGN.p.textGlow}` : '0 1px 3px rgba(0,0,0,0.9)',
+            letterSpacing: '0.02em',
+            fontFamily: DESIGN.card.labelFont,
+            whiteSpace: 'nowrap',
+            maxWidth: '30px', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {shortLabel}
+          </Typography>
+          {roleIcons[role.id] && (
+            <Box component="img" src={roleIcons[role.id]} alt=""
+              sx={{ width: 11, height: 11, objectFit: 'contain', opacity: selected ? 0.95 : 0.55,
+                filter: selected ? 'hue-rotate(230deg) saturate(1.5)' : 'none' }}
+            />
+          )}
+        </Box>
+      )}
 
       {/* ── bottom label band ── */}
       <Box sx={{
         position: 'absolute', bottom: 0, left: 0, right: 0,
-        height: '30%', zIndex: 2,
+        height: compact ? '27%' : '30%', zIndex: 2,
         background: selected
           ? `linear-gradient(to top, ${DESIGN.p.labelBgSelInner} 0%, ${DESIGN.p.labelBgSelOuter} 55%, transparent 100%)`
           : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 55%, transparent 100%)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        px: 0.75, pt: 2,
+        px: compact ? 0.6 : 0.75, pt: compact ? 1.4 : 2,
         borderTop: selected ? `1px solid ${DESIGN.p.labelBorderSelected}` : `1px solid ${DESIGN.p.labelBorderIdle}`,
       }}>
         <Typography sx={{
-          fontSize: DESIGN.card.labelFontSize,
+          fontSize: compact ? '0.6rem' : DESIGN.card.labelFontSize,
           fontWeight: 700,
           lineHeight: 1.1,
           textAlign: 'center',
@@ -708,11 +707,13 @@ function CategorySection({
   selectedRole,
   onSelect,
   isMobile,
+  compact = false,
 }: {
   category: (typeof professionCategories)[number];
   selectedRole: string;
   onSelect: (id: string) => void;
   isMobile: boolean;
+  compact?: boolean;
 }) {
   // 4 cols desktop / 2 mobile — all roles in one row
   const cols = isMobile ? DESIGN.grid.colsMobile : DESIGN.grid.colsDesktop;
@@ -750,6 +751,7 @@ function CategorySection({
               onSelect={onSelect}
               video={card.video}
               videoPosition={card.videoPosition}
+              compact={compact}
             />
           );
         })}
@@ -874,16 +876,22 @@ export default function LoginDialog({
   const { r: aR = 130, g: aG = 110, b: aB = 255 } =
     (selectedRole && ROLE_COLOURS[selectedRole]) || {};
 
-  /* ── stats: live DB → visual editor override → hardcoded defaults ── */
+  const shouldShowRoleRoomStats = Boolean(
+    roleRoomPublicStats
+    && Number.isFinite(roleRoomPublicStats.produksjoner)
+    && roleRoomPublicStats.produksjoner >= 100,
+  );
+
+  /* ── stats: only show after real traction ── */
   const activeStats: { value: string; label: string }[] = (() => {
-    if (roleRoomPublicStats) {
+    if (shouldShowRoleRoomStats && roleRoomPublicStats) {
       return [
         { value: formatRoleRoomStatValue(roleRoomPublicStats.kreative), label: 'kreative' },
         { value: formatRoleRoomStatValue(roleRoomPublicStats.produksjoner), label: 'produksjoner' },
         { value: formatRoleRoomStatValue(roleRoomPublicStats.rollerBesatt), label: 'roller besatt' },
       ];
     }
-    return DEFAULT_STATS;
+    return [];
   })();
 
   /* ── testimonials from visual editor or defaults ── */
@@ -1295,7 +1303,15 @@ export default function LoginDialog({
             <Button
               key={option.id}
               type="button"
-              onClick={() => setLoginPersona(option.id)}
+              onClick={() => {
+                setLoginPersona(option.id);
+                if (option.id === 'production_team' && CONTENT_PRODUCER_ROLE_IDS.has(selectedRole)) {
+                  setSelectedRole('producer');
+                }
+                if (option.id === 'content_producer' && !CONTENT_PRODUCER_ROLE_IDS.has(selectedRole)) {
+                  setSelectedRole('film_photographer');
+                }
+              }}
               aria-pressed={isSelected}
               sx={{
                 textTransform: 'none',
@@ -1598,9 +1614,9 @@ export default function LoginDialog({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            px: { xs: 3, sm: 4 },
-            pt: isMobile ? 4 : 5,
-            pb: isMobile ? 3 : 5,
+            px: { xs: 2.5, sm: 4 },
+            pt: isMobile ? 2.75 : 5,
+            pb: isMobile ? 2.25 : 5,
             borderRight: isMobile ? 'none' : `1px solid rgba(255,255,255,0.07)`,
             borderBottom: isMobile ? `1px solid rgba(255,255,255,0.07)` : 'none',
             overflow: 'hidden',
@@ -1649,10 +1665,10 @@ export default function LoginDialog({
             src={ROLE_ROOM_BRAND_ASSETS.wordmark}
             alt="The Role Room"
             sx={{
-              width: { xs: 'min(200px, 55vw)', sm: '60%', md: '72%', lg: '82%' },
+              width: { xs: 'min(168px, 46vw)', sm: '60%', md: '72%', lg: '82%' },
               height: 'auto',
               objectFit: 'contain',
-              mb: { xs: 2, sm: 2 },
+              mb: { xs: 1.25, sm: 2 },
               position: 'relative',
               zIndex: 1,
               filter: 'drop-shadow(0 6px 28px rgba(130,110,255,0.28))',
@@ -1663,12 +1679,12 @@ export default function LoginDialog({
           <Typography
             sx={{
               letterSpacing: '0.2em',
-              fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.85rem', lg: '0.95rem' },
+              fontSize: { xs: '0.6rem', sm: '0.75rem', md: '0.85rem', lg: '0.95rem' },
               fontWeight: 600,
               textTransform: 'uppercase',
               color: 'rgba(180,165,255,0.55)',
               textAlign: 'center',
-              mb: -0.25,
+              mb: 0.15,
               position: 'relative',
               zIndex: 1,
             }}
@@ -1680,7 +1696,7 @@ export default function LoginDialog({
           <Typography
             sx={{
               fontWeight: 700,
-              fontSize: { xs: '1.55rem', sm: '2rem', md: '2.4rem', lg: '2.8rem' },
+              fontSize: { xs: '1.34rem', sm: '2rem', md: '2.4rem', lg: '2.8rem' },
               letterSpacing: '-0.03em',
               textAlign: 'center',
               lineHeight: 1.15,
@@ -1701,14 +1717,14 @@ export default function LoginDialog({
           {/* subtitle */}
           <Typography
             sx={{
-              mt: 1,
+              mt: 0.6,
               color: 'rgba(200,195,220,0.65)',
-              fontSize: { xs: '0.85rem', sm: '0.95rem', md: '1.05rem', lg: '1.15rem' },
+              fontSize: { xs: '0.78rem', sm: '0.95rem', md: '1.05rem', lg: '1.15rem' },
               fontWeight: 300,
               letterSpacing: '0.015em',
               textAlign: 'center',
-              maxWidth: { xs: 230, md: 300, lg: 340 },
-              lineHeight: 1.6,
+              maxWidth: { xs: 250, md: 300, lg: 340 },
+              lineHeight: 1.45,
               position: 'relative',
               zIndex: 1,
             }}
@@ -1734,12 +1750,12 @@ export default function LoginDialog({
           )}
 
           {/* ── social proof stats bar ── */}
-          {isLandingPage && (
+          {isLandingPage && activeStats.length > 0 && (
             <Box
               sx={{
                 display: 'flex',
-                gap: { xs: 2.5, md: 3.5, lg: 4 },
-                mt: { xs: 2, md: 2.5 },
+                gap: { xs: 1.5, md: 3.5, lg: 4 },
+                mt: { xs: 1.35, md: 2.5 },
                 px: 1,
                 position: 'relative',
                 zIndex: 1,
@@ -1749,7 +1765,7 @@ export default function LoginDialog({
                 <Box key={i} sx={{ textAlign: 'center' }}>
                   <Typography
                     sx={{
-                      fontSize: { xs: '1.1rem', md: '1.35rem', lg: '1.7rem' },
+                      fontSize: { xs: '0.98rem', md: '1.35rem', lg: '1.7rem' },
                       fontWeight: 700,
                       color: `rgba(${aR},${aG + 20},${aB + 20},0.95)`,
                       letterSpacing: '-0.04em',
@@ -1762,7 +1778,7 @@ export default function LoginDialog({
                   </Typography>
                   <Typography
                     sx={{
-                      fontSize: { xs: '0.58rem', md: '0.65rem', lg: '0.73rem' },
+                      fontSize: { xs: '0.52rem', md: '0.65rem', lg: '0.73rem' },
                       color: 'rgba(200,190,255,0.5)',
                       textTransform: 'uppercase',
                       letterSpacing: '0.12em',
@@ -2086,11 +2102,11 @@ export default function LoginDialog({
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
-            px: { xs: 3, sm: 4, md: 5 },
-            py: { xs: 3, sm: 3 },
+            px: { xs: 2.25, sm: 4, md: 5 },
+            py: { xs: 2.25, sm: 3 },
             gap: isLandingPage ? 1.5 : 2,
             overflowY: 'auto',
-            maxHeight: isFullScreen ? 'calc(100vh - 160px)' : '100%',
+            maxHeight: isFullScreen ? 'calc(100vh - 132px)' : '100%',
           }}
         >
           {/* error */}
@@ -2121,7 +2137,21 @@ export default function LoginDialog({
 
           {/* ── role picker ── */}
           {isLandingPage && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1.25,
+                ...(isMobile
+                  ? {
+                      p: 1.2,
+                      borderRadius: '18px',
+                      bgcolor: 'rgba(255,255,255,0.035)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }
+                  : {}),
+              }}
+            >
               {/* onboarding hint arrow */}
               {!hasSeenHint.current && !selectedRole && (
                 <Box
@@ -2168,7 +2198,21 @@ export default function LoginDialog({
               >
                 Velg din rolle
               </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1.15,
+                  ...(isMobile
+                    ? {
+                        maxHeight: 'min(42vh, 360px)',
+                        overflowY: 'auto',
+                        pr: 0.5,
+                        overscrollBehavior: 'contain',
+                      }
+                    : {}),
+                }}
+              >
                 {visibleProfessionCategories.map((cat) => (
                   <CategorySection
                     key={cat.id}
@@ -2176,6 +2220,7 @@ export default function LoginDialog({
                     selectedRole={selectedRole}
                     onSelect={setSelectedRole}
                     isMobile={isMobile}
+                    compact={isMobile}
                   />
                 ))}
               </Box>

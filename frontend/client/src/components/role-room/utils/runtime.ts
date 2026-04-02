@@ -1,5 +1,6 @@
 export const ROLE_ROOM_CANONICAL_PATH = '/theroleroom';
 export const ROLE_ROOM_LEGACY_PATH = '/casting.html';
+export const ROLE_ROOM_TALENT_PORTAL_PATH = '/talentportal';
 const ROLE_ROOM_DEDICATED_HOSTS = new Set(['theroleroom.com', 'www.theroleroom.com']);
 
 export function isRoleRoomDedicatedHost(hostname: string | null | undefined): boolean {
@@ -31,6 +32,12 @@ export function normalizeRoleRoomStandalonePath(
   ) {
     return fallbackPath;
   }
+  if (
+    isRoleRoomDedicatedHost(locationLike?.hostname)
+    && (lowerPath === ROLE_ROOM_TALENT_PORTAL_PATH || lowerPath === `${ROLE_ROOM_TALENT_PORTAL_PATH}/`)
+  ) {
+    return ROLE_ROOM_TALENT_PORTAL_PATH;
+  }
   if (isRoleRoomDedicatedHost(locationLike?.hostname) && lowerPath === '/') {
     return '/';
   }
@@ -44,6 +51,12 @@ export function isRoleRoomStandalonePathname(
 ): boolean {
   const normalizedPath = pathname.trim().toLowerCase();
   if (isRoleRoomDedicatedHost(locationLike?.hostname) && (normalizedPath === '' || normalizedPath === '/')) {
+    return true;
+  }
+  if (
+    isRoleRoomDedicatedHost(locationLike?.hostname)
+    && (normalizedPath === ROLE_ROOM_TALENT_PORTAL_PATH || normalizedPath === `${ROLE_ROOM_TALENT_PORTAL_PATH}/`)
+  ) {
     return true;
   }
   return normalizedPath === ROLE_ROOM_CANONICAL_PATH

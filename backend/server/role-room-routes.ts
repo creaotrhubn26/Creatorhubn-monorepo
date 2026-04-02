@@ -9564,15 +9564,64 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // Public Stats — no auth, used on landing page stats bar
   // ═══════════════════════════════════════════════════════════
 
+  const ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN = '(demo|test|verification|null|playwright|holy crust|invite test|storyboard test|subtabproject|ui-to-api|producer demo|content producer demo|troll project)';
+  const ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN = '(demo|test|verification|invite-test|holy-crust|troll-project|producer-demo|content-producer-demo|null)';
+  const ROLE_ROOM_NON_LIVE_CREATOR_PATTERN = '^(e2e-test-user|dev-local-user|producer-verification|phase2-producer-)';
+
   const getRoleRoomStatsSummary = async () => {
     const [kreativeRes, prodRes, rolesRes] = await Promise.all([
-      pool.query(`SELECT COUNT(DISTINCT user_id) AS n FROM casting_user_roles`),
-      pool.query(`SELECT COUNT(*) AS n FROM casting_projects`),
+      pool.query(
+        `WITH live_projects AS (
+           SELECT id
+           FROM casting_projects
+           WHERE COALESCE(name, '') !~* $1
+             AND COALESCE(id, '') !~* $2
+             AND COALESCE(created_by, '') <> ''
+             AND COALESCE(created_by, '') !~* $3
+         )
+         SELECT COUNT(DISTINCT COALESCE(NULLIF(cur.email, ''), NULLIF(cur.user_id::text, ''))) AS n
+         FROM casting_user_roles cur
+         INNER JOIN live_projects lp ON lp.id = cur.project_id
+         WHERE COALESCE(cur.role, '') <> 'admin'`,
+        [
+          ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN,
+          ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN,
+          ROLE_ROOM_NON_LIVE_CREATOR_PATTERN,
+        ],
+      ),
       pool.query(
         `SELECT COUNT(*) AS n
+         FROM casting_projects
+         WHERE COALESCE(name, '') !~* $1
+           AND COALESCE(id, '') !~* $2
+           AND COALESCE(created_by, '') <> ''
+           AND COALESCE(created_by, '') !~* $3`,
+        [
+          ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN,
+          ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN,
+          ROLE_ROOM_NON_LIVE_CREATOR_PATTERN,
+        ],
+      ),
+      pool.query(
+        `WITH live_projects AS (
+           SELECT id
+           FROM casting_projects
+           WHERE COALESCE(name, '') !~* $1
+             AND COALESCE(id, '') !~* $2
+             AND COALESCE(created_by, '') <> ''
+             AND COALESCE(created_by, '') !~* $3
+         )
+         SELECT COUNT(*) AS n
          FROM casting_roles
+         INNER JOIN live_projects lp ON lp.id = casting_roles.project_id
          WHERE assigned_candidate_id IS NOT NULL
             OR LOWER(COALESCE(status, '')) IN ('filled', 'cast', 'booked', 'assigned')`
+        ,
+        [
+          ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN,
+          ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN,
+          ROLE_ROOM_NON_LIVE_CREATOR_PATTERN,
+        ],
       ),
     ]);
 

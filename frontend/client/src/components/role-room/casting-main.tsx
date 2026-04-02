@@ -11,7 +11,6 @@ import authSessionService from './services/authSessionService';
 import { googleWorkspaceApi } from './services/castingApiService';
 import { EnhancedMasterIntegrationProvider } from '@/integration/EnhancedMasterIntegrationProvider';
 import { AuthProvider } from '@/contexts/AuthContext';
-import { ROLE_ROOM_LANDING_CONFIG } from './config/landing';
 import { parseTalentPortalIntentFromWindow } from './utils/talentPortal';
 
 const castingQueryClient = new QueryClient({
@@ -56,35 +55,9 @@ function CastingStandaloneAppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authResolved, setAuthResolved] = useState(false);
   const [processingGoogleLogin, setProcessingGoogleLogin] = useState(false);
-  const demoModeEnabled = ROLE_ROOM_LANDING_CONFIG.demoModeEnabled;
   const handledGoogleTransferRef = useRef<string | null>(null);
 
-  // Guest / bypass mode — no login required (only honoured when demoMode is on)
-  const [guestMode, setGuestMode] = useState(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('bypass') === '1' || params.get('guest') === '1') {
-          sessionStorage.setItem('rrg', '1');
-          return true;
-        }
-        return sessionStorage.getItem('rrg') === '1';
-      }
-    } catch {
-      // Ignore malformed guest-mode state.
-    }
-    return false;
-  });
-
-  // If admin disables demoMode after a guest has entered, kick them back to landing
-  useEffect(() => {
-    if (!demoModeEnabled && guestMode) {
-      try { sessionStorage.removeItem('rrg'); } catch {
-        // Ignore storage cleanup failures.
-      }
-      setGuestMode(false);
-    }
-  }, [demoModeEnabled, guestMode]);
+  const guestMode = false;
 
   useEffect(() => {
     let isMounted = true;
@@ -207,13 +180,6 @@ function CastingStandaloneAppContent() {
     window.location.reload();
   };
 
-  const handleGuestEnter = () => {
-    try { sessionStorage.setItem('rrg', '1'); } catch {
-      // Ignore storage persistence failures.
-    }
-    setGuestMode(true);
-  };
-
   const talentPortalIntent = useMemo(
     () => parseTalentPortalIntentFromWindow(),
     [],
@@ -247,8 +213,8 @@ function CastingStandaloneAppContent() {
             {processingGoogleLogin ? 'Fullfører Google-innlogging…' : 'Laster Role Room…'}
           </Typography>
         </Box>
-      ) : !isAuthenticated && !guestMode ? (
-          <CastingLandingPage onEnter={handleEnter} onGuestEnter={handleGuestEnter} />
+      ) : !isAuthenticated ? (
+          <CastingLandingPage onEnter={handleEnter} />
         ) : (
           <ToastProvider position="bottom-right">
             {shouldRenderTalentPortal ? (
@@ -268,8 +234,8 @@ function CastingStandaloneAppContent() {
                   // Not applicable in standalone mode - already fullscreen
                   console.log('Fullscreen toggle not available in standalone mode');
                 }}
-                isStandalone={!guestMode}
-                isGuestMode={guestMode}
+                isStandalone={true}
+                isGuestMode={false}
               />
             )}
           </ToastProvider>

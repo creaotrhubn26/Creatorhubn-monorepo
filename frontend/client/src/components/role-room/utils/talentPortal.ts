@@ -1,4 +1,9 @@
-import { getRoleRoomCanonicalPath, normalizeRoleRoomStandalonePath } from './runtime';
+import {
+  ROLE_ROOM_TALENT_PORTAL_PATH,
+  getRoleRoomCanonicalPath,
+  isRoleRoomDedicatedHost,
+  normalizeRoleRoomStandalonePath,
+} from './runtime';
 
 export type TalentPortalSection = 'overview' | 'auditions' | 'selftapes' | 'activity' | 'profile';
 
@@ -25,16 +30,27 @@ const isTalentPortalSection = (value: string | null): value is TalentPortalSecti
   hasText(value) && TALENT_PORTAL_SECTIONS.includes(value as TalentPortalSection)
 );
 
+const isDedicatedTalentPortalPath = (
+  pathname: string,
+  locationLike?: Pick<Location, 'hostname'> | null,
+): boolean => {
+  const normalized = pathname.trim().toLowerCase();
+  return isRoleRoomDedicatedHost(locationLike?.hostname)
+    && (normalized === ROLE_ROOM_TALENT_PORTAL_PATH || normalized === `${ROLE_ROOM_TALENT_PORTAL_PATH}/`);
+};
+
 const getTalentPortalBaseUrl = (): URL | null => {
   if (typeof window === 'undefined') {
     return null;
   }
 
   try {
-    const pathname = normalizeRoleRoomStandalonePath(
-      window.location.pathname || getRoleRoomCanonicalPath(window.location),
-      window.location,
-    );
+    const pathname = isRoleRoomDedicatedHost(window.location.hostname)
+      ? ROLE_ROOM_TALENT_PORTAL_PATH
+      : normalizeRoleRoomStandalonePath(
+          window.location.pathname || getRoleRoomCanonicalPath(window.location),
+          window.location,
+        );
     return new URL(pathname, window.location.origin);
   } catch {
     return null;
@@ -48,7 +64,9 @@ export const parseTalentPortalIntentFromWindow = (): TalentPortalIntent | null =
 
   try {
     const params = new URLSearchParams(window.location.search);
-    if ((params.get('portal') || '').trim().toLowerCase() !== 'talent') {
+    const isLegacyTalentPortal = (params.get('portal') || '').trim().toLowerCase() === 'talent';
+    const isPathTalentPortal = isDedicatedTalentPortalPath(window.location.pathname, window.location);
+    if (!isLegacyTalentPortal && !isPathTalentPortal) {
       return null;
     }
 
@@ -75,7 +93,12 @@ export const buildTalentPortalUrl = (options?: {
   }
 
   const url = new URL(baseUrl.toString());
-  url.searchParams.set('portal', 'talent');
+  if (typeof window !== 'undefined' && isRoleRoomDedicatedHost(window.location.hostname)) {
+    url.pathname = ROLE_ROOM_TALENT_PORTAL_PATH;
+    url.searchParams.delete('portal');
+  } else {
+    url.searchParams.set('portal', 'talent');
+  }
   if (hasText(options?.projectId)) {
     url.searchParams.set('projectId', options.projectId.trim());
   } else {
