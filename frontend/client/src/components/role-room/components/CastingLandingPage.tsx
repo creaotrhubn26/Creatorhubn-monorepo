@@ -480,9 +480,17 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
               color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
             }}>
-              <Typography>En del av</Typography>
-              <img src="/the-role-room-logo-purple.png" alt="The Role Room"
-                style={{ height: 40, opacity: 0.5, filter: 'brightness(1.2)' }} />
+              <Typography>Et produkt av</Typography>
+              <Box
+                component="img"
+                src="/creatorhub-logo-amber.svg"
+                alt="CreatorHub"
+                sx={{
+                  height: { xs: 24, sm: 28 },
+                  width: 'auto',
+                  opacity: 0.78,
+                }}
+              />
             </Box>
           </motion.div>
 
