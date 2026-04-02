@@ -1,0 +1,1444 @@
+import React, { useEffect, useState } from 'react';
+import {
+  AccountTree,
+  ArrowForward,
+  AutoAwesome,
+  Close,
+  Groups,
+  Insights,
+  Menu,
+  NorthEast,
+  PlayArrow,
+  School,
+} from '@mui/icons-material';
+import {
+  Box,
+  Button,
+  Container,
+  Divider,
+  Drawer,
+  GlobalStyles,
+  IconButton,
+  Stack,
+  Typography,
+} from '@mui/material';
+import { motion } from 'framer-motion';
+import { useLocation } from 'wouter';
+import { GdprNotice } from '@/components/common/GdprNotice';
+import { useLanguage } from '@/components/language-provider';
+
+type Locale = 'no' | 'en';
+type LandingMode = 'desktop' | 'mobile';
+
+interface CreatorHubInvestorLandingProps {
+  mode: LandingMode;
+}
+
+const CREATORHUB_ICON_URL = '/creatorhub-logo-amber.svg';
+const HERO_BACKDROP_URL = '/role-room-assets/landing_backdrop.webp';
+const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
+const ROLE_ROOM_PREVIEW_URL = '/role-room-assets/roleroom_dashboard.webp';
+const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
+const COMMUNITY_ICON_URL = '/creatorhub-community-icon.svg';
+
+const localeOptions: Array<{ value: Locale; flag: string; no: string; en: string }> = [
+  { value: 'no', flag: '🇳🇴', no: 'Norsk', en: 'Norwegian' },
+  { value: 'en', flag: '🇬🇧', no: 'Engelsk', en: 'English' },
+];
+
+const landingCopy = {
+  no: {
+    title: 'Creatorhub | Plattformen for kreativt arbeid',
+    nav: {
+      platform: 'Plattform',
+      roleRoom: 'Role Room',
+      academy: 'Academy',
+      community: 'Community',
+      signIn: 'Logg inn',
+    },
+    hero: {
+      eyebrow: 'Bygget av kreative, for kreative.',
+      title: 'Plattformen for kreativt arbeid',
+      subtitle:
+        'Administrer prosjekter, samarbeid med team og gjennomfør produksjon i ett system.',
+      support:
+        'Creatorhub er en plattform for å administrere, gjennomføre og skalere kreativt arbeid med innebygde verktøy, produkter og community.',
+      primaryCta: 'Se plattformen',
+      secondaryCta: 'Se produktene',
+      systemLine: 'Core platform / Products / Community layer',
+      architectureTitle: 'Creatorhub AS',
+      architectureLead:
+        'Et strukturert system der kjerneplattformen driver produkter, læring og nettverkseffekter.',
+    },
+    architecture: {
+      core: {
+        title: 'Kjerneplattform',
+        subtitle: 'Project Management System',
+        items: [
+          'Prosjektstyring for kreative fag og team',
+          'Team-samarbeid på tvers av roller',
+          'Struktur for arbeidsflyt og produksjon',
+        ],
+      },
+      products: {
+        title: 'Produkter',
+        subtitle: 'Utvidelser bygget på plattformen',
+        items: ['The Role Room', 'Creatorhub Academy'],
+      },
+      community: {
+        title: 'Community Layer',
+        subtitle: 'Retensjon, nettverk og samarbeid',
+        items: ['Kreatører', 'Team', 'Fagpersoner'],
+      },
+    },
+    platform: {
+      label: 'Core Platform',
+      title: 'Et system bygget for kreative arbeidsflyter',
+      body:
+        'Creatorhub gir et strukturert miljø for å administrere kreativt arbeid på tvers av fag, team og produksjoner.',
+      items: [
+        'Prosjektstyring tilpasset kreativt arbeid',
+        'Samarbeid mellom team og profesjoner',
+        'Arbeidsflyt med tydelig struktur',
+        'Oppgave- og produksjonsoppfølging',
+      ],
+      foundation: 'Dette er fundamentet. Role Room og Academy bygges på toppen av denne kjernen.',
+    },
+    products: {
+      label: 'Products',
+      title: 'Bygget på toppen av plattformen',
+      body:
+        'Produktene utdyper bruksmønstre, utvider plattformen og gir flere innganger inn i økosystemet.',
+      roleRoom: {
+        title: 'The Role Room',
+        body: 'Et produksjonssystem for planlegging, casting og gjennomføring av kreative prosjekter.',
+        cta: 'Åpne The Role Room',
+      },
+      academy: {
+        title: 'Creatorhub Academy',
+        body: 'En læringsplattform designet for å utvikle ferdigheter og koble sammen skapere.',
+        cta: 'Åpne Academy',
+      },
+    },
+    community: {
+      label: 'Community',
+      title: 'Et sammenkoblet kreativt økosystem',
+      body:
+        'Kreatører, team og fagpersoner kobles sammen gjennom Creatorhub for samarbeid, læring og reell produksjon.',
+      points: [
+        'Kreatører med prosjekter og ideer',
+        'Team som skal koordinere arbeid og leveranser',
+        'Fagpersoner som skal lære, bidra og skape nye muligheter',
+      ],
+      cta: 'Utforsk Community',
+    },
+    differentiation: {
+      label: 'Differentiation',
+      title: 'Mer enn verktøy, et strukturert system',
+      body:
+        'Creatorhub samler prosjektstyring, produksjonsverktøy, læring og community i en samlet plattform.',
+      pillars: [
+        { title: 'Prosjektstyring', body: 'Arbeidsflyt, struktur og ansvar for kreative team.' },
+        { title: 'Produksjonsverktøy', body: 'Dype verktøy som driver gjennomføring.' },
+        { title: 'Læring', body: 'Academy som bygger ferdigheter og vekst.' },
+        { title: 'Community', body: 'Et lag for tilknytning, samarbeid og retensjon.' },
+      ],
+    },
+    why: {
+      label: 'Why This Is Powerful',
+      title: 'Hvorfor dette er kraftfullt',
+      items: [
+        'Kjerneplattform - sterkere produktbruk',
+        'Produkter - utvidelse og dypere verdi',
+        'Academy - rekruttering og vekst',
+        'Community - retensjon og nettverkseffekt',
+      ],
+    },
+    finalCta: {
+      title: 'Ett system for å styre og skalere kreativt arbeid.',
+      body:
+        'Creatorhub er laget for kreative profesjoner som trenger struktur, produkter og et økosystem rundt arbeidet sitt.',
+      primary: 'Logg inn',
+      secondary: 'Åpne Community',
+    },
+    footer: 'Creatorhub AS - laget av kreative, for kreative.',
+  },
+  en: {
+    title: 'Creatorhub | The platform for creative work',
+    nav: {
+      platform: 'Platform',
+      roleRoom: 'Role Room',
+      academy: 'Academy',
+      community: 'Community',
+      signIn: 'Sign in',
+    },
+    hero: {
+      eyebrow: 'Built by creatives, for creatives.',
+      title: 'The platform for creative work',
+      subtitle: 'Manage projects, collaborate with teams and execute production in one system.',
+      support:
+        'Creatorhub is a platform for managing, executing and scaling creative work with built-in tools, products and community.',
+      primaryCta: 'Explore the platform',
+      secondaryCta: 'See the products',
+      systemLine: 'Core platform / Products / Community layer',
+      architectureTitle: 'Creatorhub AS',
+      architectureLead:
+        'A structured system where the core platform drives products, learning and long-term network effects.',
+    },
+    architecture: {
+      core: {
+        title: 'Core Platform',
+        subtitle: 'Project Management System',
+        items: [
+          'Project management tailored for creative professions',
+          'Team collaboration across roles and disciplines',
+          'Workflow structure for production and delivery',
+        ],
+      },
+      products: {
+        title: 'Products',
+        subtitle: 'Extensions built on top of the platform',
+        items: ['The Role Room', 'Creatorhub Academy'],
+      },
+      community: {
+        title: 'Community Layer',
+        subtitle: 'Retention, network and collaboration',
+        items: ['Creators', 'Teams', 'Professionals'],
+      },
+    },
+    platform: {
+      label: 'Core Platform',
+      title: 'A system built for creative workflows',
+      body:
+        'Creatorhub provides a structured environment for managing creative work across professions, teams and productions.',
+      items: [
+        'Project management tailored for creative work',
+        'Team collaboration',
+        'Workflow structure',
+        'Task and production tracking',
+      ],
+      foundation:
+        'This is the foundation. Role Room and Academy sit on top of the platform rather than competing with it.',
+    },
+    products: {
+      label: 'Products',
+      title: 'Built on top of the platform',
+      body:
+        'The product layer deepens usage, expands the surface area of the platform and creates multiple entry points into the ecosystem.',
+      roleRoom: {
+        title: 'The Role Room',
+        body: 'A production system for planning, casting and executing creative projects.',
+        cta: 'Open The Role Room',
+      },
+      academy: {
+        title: 'Creatorhub Academy',
+        body: 'A learning platform designed to develop skills and connect creators.',
+        cta: 'Open Academy',
+      },
+    },
+    community: {
+      label: 'Community',
+      title: 'A connected creative ecosystem',
+      body:
+        'Creators, teams and professionals are connected through Creatorhub, enabling collaboration, learning and real-world production.',
+      points: [
+        'Creators with projects, ideas and momentum',
+        'Teams coordinating delivery across disciplines',
+        'Professionals looking to learn, contribute and grow',
+      ],
+      cta: 'Explore Community',
+    },
+    differentiation: {
+      label: 'Differentiation',
+      title: 'More than tools, a structured system',
+      body:
+        'Creatorhub combines project management, production tools, learning and community into one unified platform.',
+      pillars: [
+        { title: 'Project management', body: 'Workflow, structure and accountability for creative teams.' },
+        { title: 'Production tools', body: 'Deep product layers designed for execution.' },
+        { title: 'Learning', body: 'Academy as a growth and acquisition layer.' },
+        { title: 'Community', body: 'A retention layer built around connection and real work.' },
+      ],
+    },
+    why: {
+      label: 'Why This Is Powerful',
+      title: 'Why this is powerful',
+      items: [
+        'Core platform - sticky product usage',
+        'Products - expansion and monetizable depth',
+        'Academy - acquisition and growth',
+        'Community - retention and network effect',
+      ],
+    },
+    finalCta: {
+      title: 'One system for managing and scaling creative work.',
+      body:
+        'Creatorhub is built for creative professionals who need structure, products and a connected ecosystem around their work.',
+      primary: 'Sign in',
+      secondary: 'Open Community',
+    },
+    footer: 'Creatorhub AS - built by creatives, for creatives.',
+  },
+} as const;
+
+const sectionOrder = ['platform', 'role-room', 'academy', 'community'] as const;
+
+const MotionDiv = motion.div;
+
+function upsertHeadLink(rel: string, href: string) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const existing = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+  if (existing) {
+    existing.href = href;
+    return;
+  }
+
+  const next = document.createElement('link');
+  next.rel = rel;
+  next.href = href;
+  document.head.appendChild(next);
+}
+
+function ensureLandingFonts() {
+  if (typeof document === 'undefined' || document.getElementById('creatorhub-investor-fonts')) {
+    return;
+  }
+
+  const link = document.createElement('link');
+  link.id = 'creatorhub-investor-fonts';
+  link.rel = 'stylesheet';
+  link.href =
+    'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap';
+  document.head.appendChild(link);
+}
+
+function SectionHeading({
+  label,
+  title,
+  body,
+  align = 'left',
+}: {
+  label: string;
+  title: string;
+  body: string;
+  align?: 'left' | 'center';
+}) {
+  return (
+    <Stack
+      spacing={2}
+      sx={{
+        maxWidth: align === 'center' ? 760 : 680,
+        mx: align === 'center' ? 'auto' : 0,
+        textAlign: align,
+      }}
+    >
+      <Typography
+        sx={{
+          fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+          fontSize: '0.8rem',
+          letterSpacing: '0.24em',
+          textTransform: 'uppercase',
+          color: 'rgba(255,186,108,0.84)',
+        }}
+      >
+        {label}
+      </Typography>
+      <Typography
+        variant="h2"
+        sx={{
+          fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+          fontWeight: 700,
+          fontSize: { xs: '2rem', md: '3.2rem' },
+          lineHeight: 1.02,
+          color: '#f7f1e8',
+          letterSpacing: '-0.04em',
+        }}
+      >
+        {title}
+      </Typography>
+      <Typography
+        sx={{
+          fontSize: { xs: '1rem', md: '1.12rem' },
+          lineHeight: 1.75,
+          color: 'rgba(242,234,223,0.72)',
+          maxWidth: 620,
+          mx: align === 'center' ? 'auto' : 0,
+        }}
+      >
+        {body}
+      </Typography>
+    </Stack>
+  );
+}
+
+export default function CreatorHubInvestorLanding({
+  mode,
+}: CreatorHubInvestorLandingProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [, setLocation] = useLocation();
+  const { language, setLanguage } = useLanguage();
+  const isMobile = mode === 'mobile';
+  const locale = language as Locale;
+  const copy = landingCopy[locale];
+
+  useEffect(() => {
+    ensureLandingFonts();
+    document.title = copy.title;
+    upsertHeadLink('icon', CREATORHUB_ICON_URL);
+    upsertHeadLink('apple-touch-icon', CREATORHUB_ICON_URL);
+  }, [copy.title]);
+
+  const navigateToSection = (id: string) => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const target = document.getElementById(id);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    setMenuOpen(false);
+  };
+
+  const openRoute = (path: string) => {
+    setMenuOpen(false);
+    setLocation(path);
+  };
+
+  const navigationItems = [
+    { id: 'platform', label: copy.nav.platform },
+    { id: 'role-room', label: copy.nav.roleRoom },
+    { id: 'academy', label: copy.nav.academy },
+    { id: 'community', label: copy.nav.community },
+  ];
+
+  return (
+    <Box sx={{ bgcolor: '#05060a', color: '#f6f2ea' }}>
+      <GlobalStyles
+        styles={{
+          html: { scrollBehavior: 'smooth' },
+          body: {
+            backgroundColor: '#05060a',
+            color: '#f6f2ea',
+          },
+          '#root': {
+            backgroundColor: '#05060a',
+          },
+        }}
+      />
+
+      <Box
+        sx={{
+          position: 'relative',
+          overflow: 'hidden',
+          background:
+            'radial-gradient(circle at top right, rgba(255,163,72,0.22), transparent 32%), radial-gradient(circle at left 20%, rgba(218,120,49,0.14), transparent 36%), #05060a',
+        }}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `linear-gradient(180deg, rgba(5,6,10,0.22) 0%, rgba(5,6,10,0.68) 52%, rgba(5,6,10,1) 100%), url(${HERO_BACKDROP_URL})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.42,
+            transform: 'scale(1.04)',
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(120deg, rgba(5,6,10,0.9) 12%, rgba(5,6,10,0.5) 44%, rgba(5,6,10,0.92) 92%)',
+          }}
+        />
+
+        <Box
+          sx={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 20,
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            backdropFilter: 'blur(22px)',
+            background: 'rgba(5,6,10,0.58)',
+          }}
+        >
+          <Container maxWidth="xl" sx={{ py: 1.5 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+              <Button
+                onClick={() => navigateToSection('hero')}
+                sx={{
+                  gap: 1.25,
+                  px: 0,
+                  color: '#fff5e8',
+                  textTransform: 'none',
+                  '&:hover': { bgcolor: 'transparent' },
+                }}
+              >
+                <Box
+                  component="img"
+                  src={CREATORHUB_ICON_URL}
+                  alt="Creatorhub"
+                  sx={{ width: 34, height: 34 }}
+                />
+                <Stack spacing={0.2} sx={{ alignItems: 'flex-start' }}>
+                  <Typography
+                    sx={{
+                      fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                      fontSize: '1rem',
+                      fontWeight: 700,
+                      letterSpacing: '-0.04em',
+                    }}
+                  >
+                    Creatorhub
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,245,232,0.56)' }}>
+                    Creatorhub AS
+                  </Typography>
+                </Stack>
+              </Button>
+
+              {!isMobile ? (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  {navigationItems.map((item) => (
+                    <Button
+                      key={item.id}
+                      onClick={() => navigateToSection(item.id)}
+                      sx={{
+                        color: 'rgba(246,242,234,0.74)',
+                        fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                        fontSize: '0.82rem',
+                        letterSpacing: '0.16em',
+                        textTransform: 'uppercase',
+                        '&:hover': { color: '#fff5e8', bgcolor: 'transparent' },
+                      }}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </Stack>
+              ) : null}
+
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  sx={{
+                    p: 0.5,
+                    borderRadius: '999px',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    bgcolor: 'rgba(255,255,255,0.03)',
+                  }}
+                >
+                  {localeOptions.map((option) => (
+                    <Button
+                      key={option.value}
+                      onClick={() => setLanguage(option.value)}
+                      startIcon={<span>{option.flag}</span>}
+                      sx={{
+                        minWidth: 0,
+                        px: 1.4,
+                        py: 0.65,
+                        borderRadius: '999px',
+                        color: locale === option.value ? '#150d05' : 'rgba(246,242,234,0.72)',
+                        backgroundColor:
+                          locale === option.value ? '#ffba6c' : 'transparent',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        textTransform: 'none',
+                        '&:hover': {
+                          backgroundColor:
+                            locale === option.value ? '#ffba6c' : 'rgba(255,255,255,0.06)',
+                        },
+                      }}
+                    >
+                      {locale === 'no' ? option.no : option.en}
+                    </Button>
+                  ))}
+                </Stack>
+
+                {!isMobile ? (
+                  <Button
+                    onClick={() => openRoute('/login')}
+                    variant="outlined"
+                    endIcon={<ArrowForward />}
+                    sx={{
+                      borderColor: 'rgba(255,186,108,0.4)',
+                      color: '#ffba6c',
+                      borderRadius: '999px',
+                      px: 2.2,
+                      '&:hover': {
+                        borderColor: '#ffba6c',
+                        bgcolor: 'rgba(255,186,108,0.08)',
+                      },
+                    }}
+                  >
+                    {copy.nav.signIn}
+                  </Button>
+                ) : (
+                  <IconButton
+                    onClick={() => setMenuOpen(true)}
+                    sx={{ color: '#fff5e8' }}
+                    aria-label="Open navigation"
+                  >
+                    <Menu />
+                  </IconButton>
+                )}
+              </Stack>
+            </Stack>
+          </Container>
+        </Box>
+
+        <Container
+          id="hero"
+          maxWidth="xl"
+          sx={{
+            position: 'relative',
+            zIndex: 2,
+            minHeight: { xs: 'calc(100svh - 74px)', md: 'calc(100svh - 82px)' },
+            display: 'flex',
+            alignItems: 'center',
+            py: { xs: 8, md: 10 },
+          }}
+        >
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1.08fr) minmax(360px, 0.92fr)' },
+              gap: { xs: 6, md: 8 },
+              alignItems: 'end',
+              width: '100%',
+            }}
+          >
+            <MotionDiv
+              initial={{ opacity: 0, y: 36 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, ease: 'easeOut' }}
+            >
+              <Stack spacing={3.2} sx={{ maxWidth: 760 }}>
+                <Typography
+                  sx={{
+                    fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                    fontSize: '0.82rem',
+                    letterSpacing: '0.26em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255,186,108,0.88)',
+                  }}
+                >
+                  {copy.hero.eyebrow}
+                </Typography>
+
+                <Box component="img" src={CREATORHUB_ICON_URL} alt="Creatorhub" sx={{ width: { xs: 96, md: 132 }, height: 'auto' }} />
+
+                <Typography
+                  variant="h1"
+                  sx={{
+                    fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                    fontWeight: 700,
+                    fontSize: { xs: '3.1rem', sm: '4.4rem', md: '6.2rem' },
+                    lineHeight: { xs: 0.95, md: 0.92 },
+                    letterSpacing: '-0.06em',
+                    maxWidth: 720,
+                    color: '#fbf5ee',
+                  }}
+                >
+                  {copy.hero.title}
+                </Typography>
+
+                <Typography
+                  sx={{
+                    fontSize: { xs: '1.08rem', md: '1.28rem' },
+                    lineHeight: 1.7,
+                    color: 'rgba(246,242,234,0.76)',
+                    maxWidth: 620,
+                  }}
+                >
+                  {copy.hero.subtitle}
+                </Typography>
+
+                <Typography
+                  sx={{
+                    maxWidth: 620,
+                    fontSize: { xs: '0.98rem', md: '1.02rem' },
+                    lineHeight: 1.8,
+                    color: 'rgba(246,242,234,0.58)',
+                  }}
+                >
+                  {copy.hero.support}
+                </Typography>
+
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                  <Button
+                    onClick={() => navigateToSection('platform')}
+                    variant="contained"
+                    endIcon={<ArrowForward />}
+                    sx={{
+                      borderRadius: '999px',
+                      px: 3.2,
+                      py: 1.4,
+                      bgcolor: '#ffba6c',
+                      color: '#150d05',
+                      fontWeight: 800,
+                      '&:hover': { bgcolor: '#ffc788' },
+                    }}
+                  >
+                    {copy.hero.primaryCta}
+                  </Button>
+                  <Button
+                    onClick={() => navigateToSection('role-room')}
+                    variant="text"
+                    endIcon={<PlayArrow />}
+                    sx={{
+                      alignSelf: { xs: 'stretch', sm: 'center' },
+                      justifyContent: { xs: 'space-between', sm: 'center' },
+                      color: '#f6f2ea',
+                      borderRadius: '999px',
+                      px: { xs: 0, sm: 2.6 },
+                      '&:hover': { bgcolor: 'transparent', color: '#ffcf95' },
+                    }}
+                  >
+                    {copy.hero.secondaryCta}
+                  </Button>
+                </Stack>
+
+                <Typography
+                  sx={{
+                    fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                    fontSize: '0.76rem',
+                    letterSpacing: '0.24em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(246,242,234,0.48)',
+                  }}
+                >
+                  {copy.hero.systemLine}
+                </Typography>
+              </Stack>
+            </MotionDiv>
+
+            <MotionDiv
+              initial={{ opacity: 0, y: 42 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.75, delay: 0.16, ease: 'easeOut' }}
+            >
+              <Box
+                sx={{
+                  position: 'relative',
+                  overflow: 'hidden',
+                  borderRadius: '32px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background:
+                    'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)',
+                  boxShadow: '0 36px 120px rgba(0,0,0,0.32)',
+                  p: { xs: 2.8, md: 3.6 },
+                }}
+              >
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    background:
+                      'radial-gradient(circle at top right, rgba(255,186,108,0.24), transparent 28%), radial-gradient(circle at bottom left, rgba(208,120,56,0.16), transparent 34%)',
+                  }}
+                />
+                <Stack spacing={2.6} sx={{ position: 'relative' }}>
+                  <Stack spacing={1.2}>
+                    <Typography
+                      sx={{
+                        fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                        fontSize: '0.82rem',
+                        letterSpacing: '0.18em',
+                        textTransform: 'uppercase',
+                        color: 'rgba(255,186,108,0.8)',
+                      }}
+                    >
+                      {copy.hero.architectureTitle}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.98rem', lineHeight: 1.75, color: 'rgba(246,242,234,0.72)' }}>
+                      {copy.hero.architectureLead}
+                    </Typography>
+                  </Stack>
+
+                  {[
+                    copy.architecture.core,
+                    copy.architecture.products,
+                    copy.architecture.community,
+                  ].map((layer, index) => (
+                    <Box
+                      key={layer.title}
+                      sx={{
+                        p: 2.2,
+                        borderRadius: '22px',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        backgroundColor: index === 0 ? 'rgba(255,186,108,0.14)' : 'rgba(255,255,255,0.04)',
+                      }}
+                    >
+                      <Stack spacing={1.2}>
+                        <Stack direction="row" justifyContent="space-between" spacing={2}>
+                          <Typography
+                            sx={{
+                              fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                              fontSize: '1rem',
+                              fontWeight: 700,
+                              color: '#fbf5ee',
+                            }}
+                          >
+                            {layer.title}
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.8rem', color: 'rgba(246,242,234,0.56)' }}>
+                            0{index + 1}
+                          </Typography>
+                        </Stack>
+                        <Typography sx={{ fontSize: '0.92rem', color: 'rgba(246,242,234,0.62)' }}>
+                          {layer.subtitle}
+                        </Typography>
+                        <Stack spacing={0.85}>
+                          {layer.items.map((item) => (
+                            <Stack key={item} direction="row" spacing={1} alignItems="flex-start">
+                              <Box
+                                sx={{
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: '999px',
+                                  mt: 0.95,
+                                  flexShrink: 0,
+                                  bgcolor: index === 0 ? '#ffba6c' : 'rgba(246,242,234,0.72)',
+                                }}
+                              />
+                              <Typography sx={{ fontSize: '0.92rem', color: 'rgba(246,242,234,0.82)' }}>
+                                {item}
+                              </Typography>
+                            </Stack>
+                          ))}
+                        </Stack>
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            </MotionDiv>
+          </Box>
+        </Container>
+      </Box>
+
+      <Box component="main" sx={{ position: 'relative', zIndex: 1 }}>
+        <Container maxWidth="xl" sx={{ py: { xs: 10, md: 14 } }}>
+          <MotionDiv
+            initial={{ opacity: 0, y: 28 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.2 }}
+            transition={{ duration: 0.65 }}
+          >
+            <Box id="platform" sx={{ py: { xs: 2, md: 4 } }}>
+              <SectionHeading
+                label={copy.platform.label}
+                title={copy.platform.title}
+                body={copy.platform.body}
+              />
+
+              <Box
+                sx={{
+                  mt: 6,
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 0.92fr) minmax(0, 1.08fr)' },
+                  gap: { xs: 4, md: 7 },
+                  alignItems: 'start',
+                }}
+              >
+                <Stack spacing={3.5}>
+                  <Typography
+                    sx={{
+                      fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                      fontSize: { xs: '1.42rem', md: '1.8rem' },
+                      fontWeight: 700,
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {copy.platform.foundation}
+                  </Typography>
+                  <Box
+                    sx={{
+                      borderLeft: '1px solid rgba(255,186,108,0.32)',
+                      pl: 2.4,
+                    }}
+                  >
+                    <Typography sx={{ color: 'rgba(246,242,234,0.62)', lineHeight: 1.85 }}>
+                      {copy.hero.support}
+                    </Typography>
+                  </Box>
+                </Stack>
+
+                <Stack
+                  spacing={0}
+                  sx={{
+                    borderTop: '1px solid rgba(255,255,255,0.08)',
+                    borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  {copy.platform.items.map((item, index) => (
+                    <Stack
+                      key={item}
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={2}
+                      alignItems={{ xs: 'flex-start', sm: 'center' }}
+                      sx={{
+                        py: 2.6,
+                        borderBottom:
+                          index === copy.platform.items.length - 1
+                            ? 'none'
+                            : '1px solid rgba(255,255,255,0.08)',
+                      }}
+                    >
+                      <Typography
+                        sx={{
+                          minWidth: 54,
+                          fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                          fontSize: '0.82rem',
+                          letterSpacing: '0.18em',
+                          textTransform: 'uppercase',
+                          color: 'rgba(255,186,108,0.84)',
+                        }}
+                      >
+                        0{index + 1}
+                      </Typography>
+                      <Typography sx={{ fontSize: { xs: '1.02rem', md: '1.16rem' }, color: '#fbf5ee' }}>
+                        {item}
+                      </Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Box>
+            </Box>
+          </MotionDiv>
+
+          <MotionDiv
+            initial={{ opacity: 0, y: 28 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.18 }}
+            transition={{ duration: 0.65 }}
+          >
+            <Box sx={{ py: { xs: 10, md: 14 } }}>
+              <SectionHeading
+                label={copy.products.label}
+                title={copy.products.title}
+                body={copy.products.body}
+              />
+
+              <Stack spacing={4} sx={{ mt: 6 }}>
+                <Box
+                  id="role-room"
+                  sx={{
+                    position: 'relative',
+                    overflow: 'hidden',
+                    borderRadius: '30px',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    background:
+                      'linear-gradient(120deg, rgba(20,12,28,0.92) 0%, rgba(12,12,18,0.92) 100%)',
+                    p: { xs: 3, md: 4.5 },
+                  }}
+                >
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      backgroundImage: `linear-gradient(90deg, rgba(12,12,18,0.92) 8%, rgba(12,12,18,0.44) 58%, rgba(12,12,18,0.94) 100%), url(${ROLE_ROOM_PREVIEW_URL})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                      opacity: 0.6,
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 0.92fr) minmax(260px, 0.72fr)' },
+                      gap: { xs: 3, md: 5 },
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Stack spacing={2.2} sx={{ maxWidth: 560 }}>
+                      <Box component="img" src={ROLE_ROOM_LOGO_URL} alt="The Role Room" sx={{ width: { xs: 220, md: 300 }, height: 'auto' }} />
+                      <Typography
+                        sx={{
+                          fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                          fontSize: { xs: '1.6rem', md: '2rem' },
+                          fontWeight: 700,
+                        }}
+                      >
+                        {copy.products.roleRoom.title}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(246,242,234,0.7)', lineHeight: 1.85 }}>
+                        {copy.products.roleRoom.body}
+                      </Typography>
+                      <Button
+                        onClick={() => openRoute('/theroleroom')}
+                        endIcon={<NorthEast />}
+                        sx={{
+                          alignSelf: 'flex-start',
+                          color: '#ffba6c',
+                          px: 0,
+                          '&:hover': { bgcolor: 'transparent', color: '#ffd59f' },
+                        }}
+                      >
+                        {copy.products.roleRoom.cta}
+                      </Button>
+                    </Stack>
+
+                    <Box
+                      sx={{
+                        justifySelf: { xs: 'stretch', md: 'end' },
+                        borderRadius: '24px',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        p: 2.6,
+                      }}
+                    >
+                      <Stack spacing={1.1}>
+                        <Typography sx={{ fontSize: '0.82rem', color: 'rgba(255,186,108,0.8)', letterSpacing: '0.18em', textTransform: 'uppercase' }}>
+                          Production system
+                        </Typography>
+                        <Typography sx={{ fontSize: '1rem', color: '#f9f4ea', lineHeight: 1.65 }}>
+                          Planning  /  Casting  /  Execution
+                        </Typography>
+                      </Stack>
+                    </Box>
+                  </Box>
+                </Box>
+
+                <Box
+                  id="academy"
+                  sx={{
+                    overflow: 'hidden',
+                    borderRadius: '30px',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    background:
+                      'linear-gradient(135deg, rgba(33,26,13,0.96) 0%, rgba(12,12,18,0.96) 100%)',
+                    p: { xs: 3, md: 4.5 },
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', md: 'minmax(220px, 0.72fr) minmax(0, 1fr)' },
+                      gap: { xs: 3, md: 5 },
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        borderRadius: '24px',
+                        border: '1px solid rgba(255,186,108,0.16)',
+                        bgcolor: 'rgba(255,186,108,0.06)',
+                        p: { xs: 3, md: 4 },
+                        minHeight: { xs: 180, md: 220 },
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Box component="img" src={ACADEMY_LOGO_URL} alt="Creatorhub Academy" sx={{ width: '100%', maxWidth: 260, height: 'auto' }} />
+                    </Box>
+
+                    <Stack spacing={2.2} sx={{ maxWidth: 560 }}>
+                      <Typography
+                        sx={{
+                          fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                          fontSize: { xs: '1.6rem', md: '2rem' },
+                          fontWeight: 700,
+                        }}
+                      >
+                        {copy.products.academy.title}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(246,242,234,0.7)', lineHeight: 1.85 }}>
+                        {copy.products.academy.body}
+                      </Typography>
+                      <Button
+                        onClick={() => openRoute('/academy')}
+                        endIcon={<NorthEast />}
+                        sx={{
+                          alignSelf: 'flex-start',
+                          color: '#ffba6c',
+                          px: 0,
+                          '&:hover': { bgcolor: 'transparent', color: '#ffd59f' },
+                        }}
+                      >
+                        {copy.products.academy.cta}
+                      </Button>
+                    </Stack>
+                  </Box>
+                </Box>
+              </Stack>
+            </Box>
+          </MotionDiv>
+
+          <MotionDiv
+            initial={{ opacity: 0, y: 28 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.2 }}
+            transition={{ duration: 0.65 }}
+          >
+            <Box
+              id="community"
+              sx={{
+                py: { xs: 10, md: 14 },
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 0.9fr) minmax(320px, 0.72fr)' },
+                gap: { xs: 5, md: 7 },
+                alignItems: 'center',
+              }}
+            >
+              <Box>
+                <SectionHeading
+                  label={copy.community.label}
+                  title={copy.community.title}
+                  body={copy.community.body}
+                />
+                <Stack spacing={2.2} sx={{ mt: 5 }}>
+                  {copy.community.points.map((point) => (
+                    <Stack key={point} direction="row" spacing={1.5}>
+                      <Groups sx={{ color: '#ffba6c', mt: 0.2 }} />
+                      <Typography sx={{ color: 'rgba(246,242,234,0.72)', lineHeight: 1.8 }}>
+                        {point}
+                      </Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+                <Button
+                  onClick={() => openRoute('/community')}
+                  variant="text"
+                  endIcon={<NorthEast />}
+                  sx={{
+                    mt: 4,
+                    color: '#ffba6c',
+                    px: 0,
+                    '&:hover': { bgcolor: 'transparent', color: '#ffd59f' },
+                  }}
+                >
+                  {copy.community.cta}
+                </Button>
+              </Box>
+
+              <Box
+                sx={{
+                  borderRadius: '32px',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  background:
+                    'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
+                  p: { xs: 3, md: 4 },
+                }}
+              >
+                <Stack spacing={3}>
+                  <Box component="img" src={COMMUNITY_ICON_URL} alt="Creatorhub Community" sx={{ width: 72, height: 72 }} />
+                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+                  <Stack spacing={2.2}>
+                    {[
+                      { icon: <AccountTree sx={{ color: '#ffba6c' }} />, label: 'Creators' },
+                      { icon: <AutoAwesome sx={{ color: '#ffba6c' }} />, label: 'Teams' },
+                      { icon: <Insights sx={{ color: '#ffba6c' }} />, label: 'Professionals' },
+                    ].map((entry) => (
+                      <Stack key={entry.label} direction="row" spacing={1.5} alignItems="center">
+                        {entry.icon}
+                        <Typography sx={{ fontSize: '1rem', color: '#f7f1e8' }}>{entry.label}</Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Stack>
+              </Box>
+            </Box>
+          </MotionDiv>
+
+          <MotionDiv
+            initial={{ opacity: 0, y: 28 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.18 }}
+            transition={{ duration: 0.65 }}
+          >
+            <Box sx={{ py: { xs: 6, md: 10 } }}>
+              <SectionHeading
+                label={copy.differentiation.label}
+                title={copy.differentiation.title}
+                body={copy.differentiation.body}
+              />
+
+              <Box
+                sx={{
+                  mt: 5,
+                  borderRadius: '30px',
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' },
+                }}
+              >
+                {copy.differentiation.pillars.map((pillar, index) => (
+                  <Box
+                    key={pillar.title}
+                    sx={{
+                      p: { xs: 3, md: 3.5 },
+                      borderRight: {
+                        xs: 'none',
+                        md:
+                          index === copy.differentiation.pillars.length - 1
+                            ? 'none'
+                            : '1px solid rgba(255,255,255,0.08)',
+                      },
+                      borderBottom: {
+                        xs:
+                          index === copy.differentiation.pillars.length - 1
+                            ? 'none'
+                            : '1px solid rgba(255,255,255,0.08)',
+                        md: 'none',
+                      },
+                      backgroundColor: index === 0 ? 'rgba(255,186,108,0.08)' : 'transparent',
+                    }}
+                  >
+                    <Stack spacing={1.25}>
+                      <Typography
+                        sx={{
+                          fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                          fontSize: '1.05rem',
+                          fontWeight: 700,
+                          color: '#fbf5ee',
+                        }}
+                      >
+                        {pillar.title}
+                      </Typography>
+                      <Typography sx={{ color: 'rgba(246,242,234,0.68)', lineHeight: 1.8 }}>
+                        {pillar.body}
+                      </Typography>
+                    </Stack>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </MotionDiv>
+
+          <MotionDiv
+            initial={{ opacity: 0, y: 28 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.18 }}
+            transition={{ duration: 0.65 }}
+          >
+            <Box sx={{ py: { xs: 6, md: 10 } }}>
+              <SectionHeading
+                label={copy.why.label}
+                title={copy.why.title}
+                body={copy.differentiation.body}
+              />
+
+              <Box
+                sx={{
+                  mt: 5,
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' },
+                  gap: 1.5,
+                }}
+              >
+                {copy.why.items.map((item, index) => (
+                  <Box
+                    key={item}
+                    sx={{
+                      p: 2.6,
+                      borderRadius: '22px',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      background:
+                        index === 0
+                          ? 'linear-gradient(180deg, rgba(255,186,108,0.12) 0%, rgba(255,186,108,0.04) 100%)'
+                          : 'rgba(255,255,255,0.03)',
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                        fontSize: '0.82rem',
+                        letterSpacing: '0.18em',
+                        textTransform: 'uppercase',
+                        color: 'rgba(255,186,108,0.84)',
+                        mb: 1.1,
+                      }}
+                    >
+                      0{index + 1}
+                    </Typography>
+                    <Typography sx={{ color: '#fbf5ee', lineHeight: 1.7 }}>{item}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </MotionDiv>
+        </Container>
+
+        <Box
+          sx={{
+            px: { xs: 2, md: 4 },
+            pb: { xs: 10, md: 14 },
+          }}
+        >
+          <Box
+            sx={{
+              maxWidth: 1480,
+              mx: 'auto',
+              borderRadius: '36px',
+              overflow: 'hidden',
+              border: '1px solid rgba(255,186,108,0.14)',
+              background:
+                'linear-gradient(135deg, rgba(255,186,108,0.16) 0%, rgba(27,18,9,0.96) 55%, rgba(10,10,16,0.98) 100%)',
+              p: { xs: 3, md: 5 },
+            }}
+          >
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) auto' },
+                gap: { xs: 3, md: 4 },
+                alignItems: 'center',
+              }}
+            >
+              <Stack spacing={2}>
+                <Typography
+                  sx={{
+                    fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                    fontWeight: 700,
+                    fontSize: { xs: '2rem', md: '3.4rem' },
+                    lineHeight: 1,
+                    letterSpacing: '-0.05em',
+                    maxWidth: 780,
+                  }}
+                >
+                  {copy.finalCta.title}
+                </Typography>
+                <Typography sx={{ maxWidth: 720, color: 'rgba(246,242,234,0.72)', lineHeight: 1.85 }}>
+                  {copy.finalCta.body}
+                </Typography>
+              </Stack>
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
+                <Button
+                  onClick={() => openRoute('/login')}
+                  variant="contained"
+                  endIcon={<ArrowForward />}
+                  sx={{
+                    borderRadius: '999px',
+                    px: 3,
+                    py: 1.3,
+                    bgcolor: '#ffba6c',
+                    color: '#150d05',
+                    fontWeight: 800,
+                    '&:hover': { bgcolor: '#ffcb91' },
+                  }}
+                >
+                  {copy.finalCta.primary}
+                </Button>
+                <Button
+                  onClick={() => openRoute('/community')}
+                  variant="outlined"
+                  endIcon={<NorthEast />}
+                  sx={{
+                    borderRadius: '999px',
+                    px: 3,
+                    py: 1.3,
+                    borderColor: 'rgba(255,245,232,0.22)',
+                    color: '#fff5e8',
+                    '&:hover': {
+                      borderColor: '#fff5e8',
+                      bgcolor: 'rgba(255,255,255,0.04)',
+                    },
+                  }}
+                >
+                  {copy.finalCta.secondary}
+                </Button>
+              </Stack>
+            </Box>
+          </Box>
+        </Box>
+
+        <Container maxWidth="xl" sx={{ pb: 5 }}>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            justifyContent="space-between"
+            spacing={1.5}
+            sx={{
+              pt: 2,
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              color: 'rgba(246,242,234,0.52)',
+            }}
+          >
+            <Typography sx={{ fontSize: '0.88rem' }}>{copy.footer}</Typography>
+            <Typography sx={{ fontSize: '0.88rem' }}>
+              {sectionOrder.map((item) => navigationItems.find((nav) => nav.id === item)?.label).join('  /  ')}
+            </Typography>
+          </Stack>
+        </Container>
+      </Box>
+
+      <Drawer
+        anchor="right"
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 300,
+            bgcolor: '#0b0d12',
+            color: '#f6f2ea',
+            p: 2,
+          },
+        }}
+      >
+        <Stack spacing={2}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Stack direction="row" spacing={1.2} alignItems="center">
+              <Box component="img" src={CREATORHUB_ICON_URL} alt="Creatorhub" sx={{ width: 28, height: 28 }} />
+              <Typography sx={{ fontFamily: '"Space Grotesk", "Manrope", sans-serif', fontWeight: 700 }}>
+                Creatorhub
+              </Typography>
+            </Stack>
+            <IconButton onClick={() => setMenuOpen(false)} sx={{ color: '#f6f2ea' }}>
+              <Close />
+            </IconButton>
+          </Stack>
+
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+
+          {navigationItems.map((item) => (
+            <Button
+              key={item.id}
+              onClick={() => navigateToSection(item.id)}
+              sx={{
+                justifyContent: 'space-between',
+                color: '#fbf5ee',
+                py: 1.4,
+                px: 0,
+                textTransform: 'none',
+                '&:hover': { bgcolor: 'transparent', color: '#ffba6c' },
+              }}
+              endIcon={<ArrowForward />}
+            >
+              {item.label}
+            </Button>
+          ))}
+
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+
+          <Button
+            onClick={() => openRoute('/login')}
+            variant="contained"
+            sx={{
+              borderRadius: '999px',
+              bgcolor: '#ffba6c',
+              color: '#150d05',
+              fontWeight: 800,
+              '&:hover': { bgcolor: '#ffcb91' },
+            }}
+          >
+            {copy.nav.signIn}
+          </Button>
+        </Stack>
+      </Drawer>
+
+      <GdprNotice position="bottom" />
+    </Box>
+  );
+}

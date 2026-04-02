@@ -1,1297 +1,874 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import {
+  AccountTree,
+  ArrowForward,
+  AutoAwesome,
+  Close,
+  Groups,
+  Menu,
+  NorthEast,
+  School,
+} from '@mui/icons-material';
+import {
+  Box,
+  Button,
+  Container,
+  Divider,
+  Drawer,
+  GlobalStyles,
+  IconButton,
+  Stack,
+  Typography,
+} from '@mui/material';
+import { motion } from 'framer-motion';
 import { useLocation } from 'wouter';
 import { useLanguage } from '@/components/language-provider';
 import { withVisualEditor } from '@/components/admin/visual-editor/withVisualEditor';
-import {
-  Box,
-  Container,
-  Typography,
-  Button,
-  Grid,
-  Stack,
-  IconButton,
-} from '@mui/material';
-import {
-  PhotoCamera,
-  VideoLibrary,
-  LibraryMusic,
-  Business,
-  Email,
-  LocationOn,
-  Home,
-  School,
-  Group,
-  ArrowForward,
-  RocketLaunch as Rocket,
-  Security,
-  Speed as Speed,
-  Support,
-  EmojiEvents,
-  LinkedIn,
-  Instagram,
-  CheckCircle,
-  IntegrationInstructions,
-  Language,
-  Verified,
-} from '@mui/icons-material';
 
-// Custom hook for scroll-triggered reveal animations
-const useScrollReveal = () => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [hasAnimated, setHasAnimated] = useState(false);
-  const elementRef = useRef<HTMLDivElement>(null);
+const CREATORHUB_ICON_URL = '/creatorhub-logo-amber.svg';
+const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
+const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
+const COMMUNITY_ICON_URL = '/creatorhub-community-icon.svg';
+const ABOUT_BACKDROP_URL = '/role-room-assets/landing_backdrop.webp';
 
-  useEffect(() => {
-    const element = elementRef.current;
-    if (element) {
-      const rect = element.getBoundingClientRect();
-      if (rect.top < window.innerHeight && rect.bottom > 0) {
-        setIsVisible(true);
-        setHasAnimated(true);
-        return;
-      }
-    }
+const localeOptions = [
+  { value: 'no' as const, flag: '🇳🇴', no: 'Norsk', en: 'Norwegian' },
+  { value: 'en' as const, flag: '🇬🇧', no: 'Engelsk', en: 'English' },
+];
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !hasAnimated) {
-          setIsVisible(true);
-          setHasAnimated(true);
-        }
+const aboutCopy = {
+  no: {
+    title: 'Creatorhub | Om Creatorhub AS',
+    nav: {
+      home: 'Hjem',
+      platform: 'Plattform',
+      roleRoom: 'Role Room',
+      academy: 'Academy',
+      community: 'Community',
+      signIn: 'Logg inn',
+    },
+    hero: {
+      eyebrow: 'Creatorhub AS',
+      title: 'Om Creatorhub AS',
+      subtitle:
+        'Creatorhub bygger en strukturert plattform for å administrere, gjennomføre og skalere kreativt arbeid.',
+      body:
+        'Vi bygger for kreative profesjoner som trenger mer enn enkeltverktøy. Creatorhub kombinerer kjerneplattform, produkter og community i ett sammenhengende system.',
+      primary: 'Tilbake til forsiden',
+      secondary: 'Åpne plattformen',
+    },
+    story: {
+      label: 'Why Creatorhub Exists',
+      title: 'Vi bygger et system, ikke bare flere funksjoner.',
+      body:
+        'Kreativt arbeid blir ofte spredt mellom prosjektstyring, produksjonsverktøy, læring og relasjoner. Creatorhub samler dette i ett system med en tydelig kjerne, produkter bygget på toppen og et community-lag som holder økosystemet levende.',
+    },
+    structure: {
+      label: 'Company Structure',
+      title: 'Slik er Creatorhub strukturert',
+      body:
+        'Creatorhub AS organiseres som en plattformbedrift der kjerneplattformen er motoren, og produktene er utvidelser av samme system.',
+      items: [
+        {
+          title: 'Kjerneplattform',
+          subtitle: 'Project Management System',
+          description: 'Prosjektstyring, team-samarbeid, arbeidsflyt og produksjonsoppfølging for kreative fag.',
+        },
+        {
+          title: 'Produkter',
+          subtitle: 'The Role Room og Creatorhub Academy',
+          description: 'To tydelige produktlag som utdyper bruk og utvider plattformens verdi.',
+        },
+        {
+          title: 'Community Layer',
+          subtitle: 'Nettverk, læring og retensjon',
+          description: 'Et lag som kobler kreatører, team og fagpersoner sammen over tid.',
+        },
+      ],
+    },
+    principles: {
+      label: 'Principles',
+      title: 'Hva som gjør Creatorhub annerledes',
+      items: [
+        'Plattform først. Produkter bygges på toppen av kjernen.',
+        'Bygget av kreative, for kreative arbeidsflyter.',
+        'Læring og community er integrert i systemet, ikke separate sideprosjekter.',
+        'Struktur, gjennomføring og vekst henger sammen i samme plattform.',
+      ],
+    },
+    layers: {
+      label: 'Platform Layers',
+      title: 'Lagene i økosystemet',
+      body:
+        'Hvert lag har en tydelig rolle i selskapet: kjernen driver arbeidsflyt, produktene utdyper bruk, og community-laget skaper langsiktig tilknytning.',
+      platform: {
+        title: 'Core Platform',
+        body: 'Basen for planlegging, prosjektstyring, samarbeid og produksjonskontroll.',
       },
-      { threshold: 0.05, rootMargin: '50px 0px 50px 0px' }
-    );
+      roleRoom: {
+        title: 'The Role Room',
+        body: 'Produksjonssystem for planlegging, casting og gjennomføring.',
+      },
+      academy: {
+        title: 'Creatorhub Academy',
+        body: 'Læringslag for ferdighetsbygging, vekst og nye innganger til plattformen.',
+      },
+      community: {
+        title: 'Community Layer',
+        body: 'Et økosystem for samarbeid, relasjoner og retensjon rundt kreativt arbeid.',
+      },
+    },
+    profile: {
+      label: 'Company Profile',
+      title: 'Om selskapet',
+      body:
+        'Creatorhub AS er posisjonert som et plattformselskap med tydelig produktstruktur og et selskapsspråk som speiler hvordan kreativt arbeid faktisk blir utført.',
+      rows: [
+        ['Selskap', 'Creatorhub AS'],
+        ['Kategori', 'Plattform for kreativt arbeid'],
+        ['Modell', 'Kjerneplattform med produkter og community-lag'],
+        ['Posisjon', 'Bygget av kreative, for kreative'],
+      ],
+    },
+    final: {
+      title: 'Creatorhub er laget for hvordan kreativt arbeid faktisk skjer.',
+      body:
+        'Målet er å bygge et varig system for kreative profesjoner, der administrasjon, gjennomføring, læring og nettverk ikke lenger er fragmentert.',
+      primary: 'Gå til forsiden',
+      secondary: 'Åpne Community',
+    },
+  },
+  en: {
+    title: 'Creatorhub | About Creatorhub AS',
+    nav: {
+      home: 'Home',
+      platform: 'Platform',
+      roleRoom: 'Role Room',
+      academy: 'Academy',
+      community: 'Community',
+      signIn: 'Sign in',
+    },
+    hero: {
+      eyebrow: 'Creatorhub AS',
+      title: 'About Creatorhub AS',
+      subtitle:
+        'Creatorhub is building a structured platform for managing, executing and scaling creative work.',
+      body:
+        'We are building for creative professions that need more than isolated tools. Creatorhub combines a core platform, products and a community layer into one connected system.',
+      primary: 'Back to the homepage',
+      secondary: 'Open the platform',
+    },
+    story: {
+      label: 'Why Creatorhub Exists',
+      title: 'We are building a system, not just more features.',
+      body:
+        'Creative work is often fragmented across project management, production tools, learning and relationships. Creatorhub brings these layers together into one structured system with a clear core, products built on top and a community layer that keeps the ecosystem active over time.',
+    },
+    structure: {
+      label: 'Company Structure',
+      title: 'How Creatorhub is structured',
+      body:
+        'Creatorhub AS is organised as a platform company where the core platform is the engine and the products extend the same system.',
+      items: [
+        {
+          title: 'Core Platform',
+          subtitle: 'Project Management System',
+          description: 'Project management, team collaboration, workflow structure and production visibility for creative work.',
+        },
+        {
+          title: 'Products',
+          subtitle: 'The Role Room and Creatorhub Academy',
+          description: 'Two product layers that deepen usage and expand the platform surface area.',
+        },
+        {
+          title: 'Community Layer',
+          subtitle: 'Network, learning and retention',
+          description: 'A layer that connects creators, teams and professionals over time.',
+        },
+      ],
+    },
+    principles: {
+      label: 'Principles',
+      title: 'What makes Creatorhub different',
+      items: [
+        'Platform first. Products are built on top of the core.',
+        'Built by creatives, for creative workflows.',
+        'Learning and community are integrated into the system, not detached side bets.',
+        'Structure, execution and growth live inside the same platform.',
+      ],
+    },
+    layers: {
+      label: 'Platform Layers',
+      title: 'The layers in the ecosystem',
+      body:
+        'Each layer has a clear role in the company model: the core drives workflow, the products deepen usage, and the community layer supports long-term retention.',
+      platform: {
+        title: 'Core Platform',
+        body: 'The base for planning, project management, collaboration and production control.',
+      },
+      roleRoom: {
+        title: 'The Role Room',
+        body: 'A production system for planning, casting and execution.',
+      },
+      academy: {
+        title: 'Creatorhub Academy',
+        body: 'A learning layer for skill development, growth and new entry points into the platform.',
+      },
+      community: {
+        title: 'Community Layer',
+        body: 'An ecosystem for collaboration, relationships and retention around creative work.',
+      },
+    },
+    profile: {
+      label: 'Company Profile',
+      title: 'Company overview',
+      body:
+        'Creatorhub AS is positioned as a platform company with a clear product structure and a company narrative aligned with how creative work is actually executed.',
+      rows: [
+        ['Company', 'Creatorhub AS'],
+        ['Category', 'Platform for creative work'],
+        ['Model', 'Core platform with products and a community layer'],
+        ['Positioning', 'Built by creatives, for creatives'],
+      ],
+    },
+    final: {
+      title: 'Creatorhub is designed around how creative work actually happens.',
+      body:
+        'The goal is to build a lasting system for creative professions where operations, execution, learning and network are no longer fragmented.',
+      primary: 'Go to homepage',
+      secondary: 'Open Community',
+    },
+  },
+} as const;
 
-    if (element) {
-      observer.observe(element);
-    }
+const MotionDiv = motion.div;
 
-    return () => {
-      if (element) {
-        observer.unobserve(element);
-      }
-    };
-  }, [hasAnimated]);
+function upsertHeadLink(rel: string, href: string) {
+  if (typeof document === 'undefined') {
+    return;
+  }
 
-  return { ref: elementRef, isVisible };
-};
+  const existing = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+  if (existing) {
+    existing.href = href;
+    return;
+  }
 
-// Animated section wrapper
-interface AnimatedSectionProps {
-  children: React.ReactNode;
-  animation?: 'fadeInUp' | 'slideInLeft' | 'slideInRight' | 'scaleIn';
-  delay?: number;
+  const next = document.createElement('link');
+  next.rel = rel;
+  next.href = href;
+  document.head.appendChild(next);
 }
 
-const AnimatedSection: React.FC<AnimatedSectionProps> = ({
-  children,
-  animation = 'fadeInUp',
-  delay = 0,
-}) => {
-  const { ref, isVisible } = useScrollReveal();
-  const [mounted, setMounted] = useState(false);
+function ensureLandingFonts() {
+  if (typeof document === 'undefined' || document.getElementById('creatorhub-investor-fonts')) {
+    return;
+  }
 
-  useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), 50);
-    return () => clearTimeout(timer);
-  }, []);
+  const link = document.createElement('link');
+  link.id = 'creatorhub-investor-fonts';
+  link.rel = 'stylesheet';
+  link.href =
+    'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap';
+  document.head.appendChild(link);
+}
 
-  const getAnimationStyles = () => {
-    if (!mounted) return { opacity: 1, transform: 'none' };
-
-    const baseStyles = {
-      fadeInUp: {
-        transform: isVisible ? 'translateY(0)' : 'translateY(30px)',
-        opacity: isVisible ? 1 : 0,
-      },
-      slideInLeft: {
-        transform: isVisible ? 'translateX(0)' : 'translateX(-30px)',
-        opacity: isVisible ? 1 : 0,
-      },
-      slideInRight: {
-        transform: isVisible ? 'translateX(0)' : 'translateX(30px)',
-        opacity: isVisible ? 1 : 0,
-      },
-      scaleIn: {
-        transform: isVisible ? 'scale(1)' : 'scale(0.97)',
-        opacity: isVisible ? 1 : 0,
-      },
-    };
-
-    return baseStyles[animation];
-  };
-
+function AboutSectionHeading({
+  label,
+  title,
+  body,
+}: {
+  label: string;
+  title: string;
+  body: string;
+}) {
   return (
-    <Box
-      ref={ref}
-      sx={{
-        ...getAnimationStyles(),
-        transition: mounted ? `all 0.7s cubic-bezier(0.4, 0, 0.2, 1) ${delay}s` : 'none',
-      }}
-    >
-      {children}
-    </Box>
+    <Stack spacing={2} sx={{ maxWidth: 760 }}>
+      <Typography
+        sx={{
+          fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+          fontSize: '0.8rem',
+          letterSpacing: '0.24em',
+          textTransform: 'uppercase',
+          color: 'rgba(255,186,108,0.84)',
+        }}
+      >
+        {label}
+      </Typography>
+      <Typography
+        variant="h2"
+        sx={{
+          fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+          fontWeight: 700,
+          fontSize: { xs: '2rem', md: '3rem' },
+          lineHeight: 1.02,
+          color: '#f7f1e8',
+          letterSpacing: '-0.04em',
+        }}
+      >
+        {title}
+      </Typography>
+      <Typography sx={{ color: 'rgba(242,234,223,0.72)', lineHeight: 1.8, fontSize: { xs: '1rem', md: '1.08rem' } }}>
+        {body}
+      </Typography>
+    </Stack>
   );
-};
-
-// CreatorHub Logo Icon Component
-const CreatorHubLogoIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
-  <svg viewBox="0 0 40 40" width={size} height={size} style={{ display: 'block' }}>
-    <defs>
-      <linearGradient id="aboutLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#f59e0b" />
-        <stop offset="100%" stopColor="#ea580c" />
-      </linearGradient>
-    </defs>
-    <circle cx="20" cy="20" r="18" fill="url(#aboutLogoGrad)" />
-    <g transform="translate(8, 8)">
-      <path d="M12 4 L12 18 L10 20 L8 18 L8 16 L6 16 L6 6 L8 4 Z" fill="white" opacity="0.95" />
-      <polygon points="8,4 10,2 12,4" fill="rgba(255,255,255,0.7)" />
-      <circle cx="18" cy="7" r="3" fill="white" opacity="0.9" />
-      <rect x="17" y="6" width="2" height="2" rx="0.3" fill="url(#aboutLogoGrad)" />
-      <line x1="12" y1="8" x2="15" y2="7" stroke="white" strokeWidth="1.2" opacity="0.8" />
-      <polygon points="5,7 2,5 2,9" fill="white" opacity="0.9" />
-      <line x1="8" y1="8" x2="5" y2="7" stroke="white" strokeWidth="1.2" opacity="0.8" />
-      <circle cx="18" cy="17" r="2" fill="white" opacity="0.9" />
-      <rect x="18" y="14" width="1" height="3" fill="white" opacity="0.9" />
-      <line x1="12" y1="15" x2="16" y2="17" stroke="white" strokeWidth="1.2" opacity="0.8" />
-      <circle cx="5" cy="17" r="3" fill="white" opacity="0.9" />
-      <circle cx="4" cy="16" r="0.8" fill="url(#aboutLogoGrad)" />
-      <circle cx="6" cy="16" r="0.8" fill="#f59e0b" />
-      <circle cx="5" cy="18" r="0.8" fill="#ea580c" />
-      <line x1="8" y1="15" x2="8" y2="17" stroke="white" strokeWidth="1.2" opacity="0.8" />
-    </g>
-  </svg>
-);
-
-// Glassmorphism card styles
-const glassCardStyle = {
-  background: 'rgba(255, 255, 255, 0.03)',
-  backdropFilter: 'blur(20px)',
-  WebkitBackdropFilter: 'blur(20px)',
-  border: '1px solid rgba(255, 140, 0, 0.15)',
-  borderRadius: '20px',
-  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-  '&:hover': {
-    transform: 'translateY(-8px)',
-    boxShadow: '0 20px 60px rgba(255, 140, 0, 0.15)',
-    border: '1px solid rgba(255, 140, 0, 0.3)',
-  },
-};
+}
 
 function AboutComponent() {
-  const { language } = useLanguage();
+  const { language, setLanguage } = useLanguage();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [, setLocation] = useLocation();
+  const copy = aboutCopy[language];
 
-  const handleNavigation = (path: string) => {
+  useEffect(() => {
+    ensureLandingFonts();
+    document.title = copy.title;
+    upsertHeadLink('icon', CREATORHUB_ICON_URL);
+    upsertHeadLink('apple-touch-icon', CREATORHUB_ICON_URL);
+  }, [copy.title]);
+
+  const navigate = (path: string) => {
+    setMenuOpen(false);
     setLocation(path);
   };
 
-  const texts = {
-    title: language === 'no' ? 'Om CreatorHub Norge' : 'About CreatorHub Norge',
-    subtitle:
-      language === 'no'
-        ? 'Alt-i-ett plattform for kreative profesjonelle i Norge'
-        : 'All-in-one platform for creative professionals in Norway',
-    mission: language === 'no' ? 'Vårt Oppdrag' : 'Our Mission',
-    missionText:
-      language === 'no'
-        ? 'CreatorHub Norge er dedikert til å støtte norske kreative profesjonelle med verktøy, ressurser og fellesskap de trenger for å vokse og lykkes i den digitale tidsalderen.'
-        : 'CreatorHub Norge is dedicated to supporting Norwegian creative professionals with the tools, resources, and community they need to grow and succeed in the digital age.',
-    services: language === 'no' ? 'For Kreative Profesjonelle' : 'For Creative Professionals',
-    team: language === 'no' ? 'Møt Grunnleggeren' : 'Meet the Founder',
-    founder: language === 'no' ? 'Grunnlegger og CEO' : 'Founder and CEO',
-    company: language === 'no' ? 'Bedriftsinformasjon' : 'Company Information',
-    values: language === 'no' ? 'Våre Verdier' : 'Our Values',
-    whyCreatorHub: language === 'no' ? 'Hvorfor CreatorHub?' : 'Why CreatorHub?',
-    platform: language === 'no' ? 'Plattformen' : 'The Platform',
-    integrations: language === 'no' ? 'Integrasjoner' : 'Integrations',
-    norwegian: language === 'no' ? 'Tilpasset Norge' : 'Made for Norway',
-  };
-
-  // Platform capabilities
-  const platformFeatures = [
-    {
-      title: language === 'no' ? 'Klientportaler' : 'Client Portals',
-      description: language === 'no' 
-        ? 'Profesjonelle gallerier for bildedeling, utvelgelse og levering til kunder'
-        : 'Professional galleries for image sharing, selection and delivery to clients',
-    },
-    {
-      title: language === 'no' ? 'Kontraktshåndtering' : 'Contract Management',
-      description: language === 'no'
-        ? 'Digitale kontrakter med BankID-signering, maler og automatisk oppfølging'
-        : 'Digital contracts with BankID signing, templates and automatic follow-up',
-    },
-    {
-      title: language === 'no' ? 'Prosjektstyring' : 'Project Management',
-      description: language === 'no'
-        ? 'Komplett oversikt over prosjekter, tidslinjer, oppgaver og milepæler'
-        : 'Complete overview of projects, timelines, tasks and milestones',
-    },
-    {
-      title: language === 'no' ? 'Fakturering' : 'Invoicing',
-      description: language === 'no'
-        ? 'Integrert fakturering med Fiken-synkronisering og automatisk bokføring'
-        : 'Integrated invoicing with Fiken sync and automatic accounting',
-    },
-    {
-      title: language === 'no' ? 'Story Arc Studio' : 'Story Arc Studio',
-      description: language === 'no'
-        ? 'Avansert videoredigering med AI-assistanse, fargegradering og eksport'
-        : 'Advanced video editing with AI assistance, color grading and export',
-    },
-    {
-      title: language === 'no' ? 'Virtual Studio' : 'Virtual Studio',
-      description: language === 'no'
-        ? '3D-studio for produktfotografering med lysoppsett og bakgrunner'
-        : '3D studio for product photography with lighting setup and backgrounds',
-    },
-  ];
-
-  // Integrations
-  const integrations = [
-    { name: 'Google Drive', description: language === 'no' ? 'Fillagring og synkronisering' : 'File storage and sync' },
-    { name: 'Google Calendar', description: language === 'no' ? 'Avtaler og bookinger' : 'Appointments and bookings' },
-    { name: 'Fiken', description: language === 'no' ? 'Regnskap og fakturering' : 'Accounting and invoicing' },
-    { name: 'BankID', description: language === 'no' ? 'Sikker digital signering' : 'Secure digital signing' },
-    { name: 'Vipps', description: language === 'no' ? 'Betalingsløsning (kommer)' : 'Payment solution (coming)' },
-  ];
-
-  // Norwegian focus points
-  const norwegianFeatures = [
-    {
-      title: language === 'no' ? 'Norsk Språk' : 'Norwegian Language',
-      description: language === 'no' ? 'Hele plattformen er på norsk' : 'The entire platform is in Norwegian',
-    },
-    {
-      title: language === 'no' ? 'Norske Integrasjoner' : 'Norwegian Integrations',
-      description: language === 'no' ? 'Fiken, BankID, Vipps og mer' : 'Fiken, BankID, Vipps and more',
-    },
-    {
-      title: language === 'no' ? 'GDPR-Kompatibel' : 'GDPR Compliant',
-      description: language === 'no' ? 'Fullt samsvar med personvern' : 'Full privacy compliance',
-    },
-    {
-      title: language === 'no' ? 'Norsk Support' : 'Norwegian Support',
-      description: language === 'no' ? 'Hjelp på ditt eget språk' : 'Help in your own language',
-    },
-  ];
-
-  const services = [
-    {
-      icon: <PhotoCamera sx={{ fontSize: 48 }} />,
-      title: language === 'no' ? 'Fotograf' : 'Photographer',
-      description:
-        language === 'no'
-          ? 'Bildeutvelgelse, kundeproofing og leveringsgallerier. Kontrakter, booking og fakturaintegrasjon.'
-          : 'Image culling, client proofing and delivery galleries. Contracts, booking and invoice integration.',
-      color: '#2e7d32', // Green - matching landing-desktop
-    },
-    {
-      icon: <VideoLibrary sx={{ fontSize: 48 }} />,
-      title: language === 'no' ? 'Videograf' : 'Videographer',
-      description:
-        language === 'no'
-          ? 'Fra pre-produksjon til leveranse. Storyboarding, multikamera-redigering, revisjonshåndtering og klientgjennomgang.'
-          : 'From pre-production to delivery. Storyboarding, multi-cam editing, revision management and client review.',
-      color: '#1565c0', // Blue - matching landing-desktop
-    },
-    {
-      icon: <LibraryMusic sx={{ fontSize: 48 }} />,
-      title: language === 'no' ? 'Musikkprodusent' : 'Music Producer',
-      description:
-        language === 'no'
-          ? 'Opptak, miksing og mastering. Musikkstudioverktøy og distribusjonsløsninger.'
-          : 'Recording, mixing and mastering. Music studio tools and distribution solutions.',
-      color: '#7b1fa2', // Purple - matching landing-desktop
-    },
-    {
-      icon: <Business sx={{ fontSize: 48 }} />,
-      title: language === 'no' ? 'Leverandør' : 'Vendor',
-      description:
-        language === 'no'
-          ? 'Produktkatalog, ordrehåndtering og kundeinnsikt. Digital distribusjon med lisensiering og betalingsløsninger.'
-          : 'Product catalog, order management and customer insights. Digital distribution with licensing and payment solutions.',
-      color: '#ff8c00', // Orange - matching landing-desktop
-    },
-  ];
-
-  const values = [
-    {
-      icon: <Rocket sx={{ fontSize: 36 }} />,
-      title: language === 'no' ? 'Innovasjon' : 'Innovation',
-      description: language === 'no' ? 'Alltid i forkant av teknologi' : 'Always at the forefront of technology',
-    },
-    {
-      icon: <Security sx={{ fontSize: 36 }} />,
-      title: language === 'no' ? 'Sikkerhet' : 'Security',
-      description: language === 'no' ? 'Dine data er trygge hos oss' : 'Your data is safe with us',
-    },
-    {
-      icon: <Speed sx={{ fontSize: 36 }} />,
-      title: language === 'no' ? 'Effektivitet' : 'Efficiency',
-      description: language === 'no' ? 'Spar tid med smarte verktøy' : 'Save time with smart tools',
-    },
-    {
-      icon: <Support sx={{ fontSize: 36 }} />,
-      title: language === 'no' ? 'Støtte' : 'Support',
-      description: language === 'no' ? 'Norsk support døgnet rundt' : 'Norwegian support around the clock',
-    },
-  ];
-
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        background: '#0f0f1a',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Grid background pattern */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundImage: `
-            linear-gradient(rgba(255, 140, 0, 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 140, 0, 0.03) 1px, transparent 1px)
-          `,
-          backgroundSize: '60px 60px',
-          pointerEvents: 'none',
+    <Box sx={{ bgcolor: '#05060a', color: '#f6f2ea', minHeight: '100vh' }}>
+      <GlobalStyles
+        styles={{
+          body: { backgroundColor: '#05060a', color: '#f6f2ea' },
+          '#root': { backgroundColor: '#05060a' },
         }}
       />
 
-      {/* Gradient orbs */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: '10%',
-          left: '5%',
-          width: '400px',
-          height: '400px',
-          background: 'radial-gradient(circle, rgba(245, 158, 11, 0.15) 0%, transparent 70%)',
-          filter: 'blur(60px)',
-          pointerEvents: 'none',
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: '20%',
-          right: '10%',
-          width: '500px',
-          height: '500px',
-          background: 'radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, transparent 70%)',
-          filter: 'blur(80px)',
-          pointerEvents: 'none',
-        }}
-      />
+      <Box sx={{ position: 'relative', overflow: 'hidden' }}>
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `linear-gradient(180deg, rgba(5,6,10,0.28) 0%, rgba(5,6,10,0.84) 62%, rgba(5,6,10,1) 100%), url(${ABOUT_BACKDROP_URL})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.34,
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'radial-gradient(circle at top right, rgba(255,186,108,0.18), transparent 28%), radial-gradient(circle at left center, rgba(208,120,56,0.12), transparent 38%)',
+          }}
+        />
 
-      {/* Navigation Header */}
-      <Box
-        sx={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-          background: 'rgba(15, 15, 26, 0.8)',
-          backdropFilter: 'blur(20px)',
-          borderBottom: '1px solid rgba(255, 140, 0, 0.1)',
-        }}
-      >
-        <Container maxWidth="xl">
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              py: 2,
-            }}
-          >
-            {/* Logo */}
-            <Box
-              onClick={() => handleNavigation('/')}
-              sx={{
-                cursor: 'pointer',
-                transition: 'transform 0.3s',
-                '&:hover': { transform: 'scale(1.05)' },
-              }}
-            >
-              <img
-                src="/creatorhub-logo-amber.svg"
-                alt="CreatorHub Norge"
-                style={{ height: 100 }}
-              />
-            </Box>
+        <Box
+          sx={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 20,
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            backdropFilter: 'blur(22px)',
+            background: 'rgba(5,6,10,0.58)',
+          }}
+        >
+          <Container maxWidth="xl" sx={{ py: 1.5 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+              <Button
+                onClick={() => navigate('/')}
+                sx={{
+                  gap: 1.2,
+                  px: 0,
+                  color: '#fff5e8',
+                  textTransform: 'none',
+                  '&:hover': { bgcolor: 'transparent' },
+                }}
+              >
+                <Box component="img" src={CREATORHUB_ICON_URL} alt="Creatorhub" sx={{ width: 34, height: 34 }} />
+                <Stack spacing={0.15} sx={{ alignItems: 'flex-start' }}>
+                  <Typography sx={{ fontFamily: '"Space Grotesk", "Manrope", sans-serif', fontWeight: 700 }}>
+                    Creatorhub
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,245,232,0.56)' }}>
+                    Creatorhub AS
+                  </Typography>
+                </Stack>
+              </Button>
 
-            {/* Nav Links */}
-            <Stack direction="row" spacing={1}>
-              <Button
-                variant="text"
-                onClick={() => handleNavigation('/')}
-                startIcon={<Home sx={{ fontSize: 18 }} />}
-                sx={{
-                  color: '#fff',
-                  textTransform: 'none',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  '&:hover': {
-                    background: 'rgba(255, 140, 0, 0.1)',
-                    color: '#f59e0b',
-                  },
-                }}
-              >
-                Hjem
-              </Button>
-              <Button
-                variant="text"
-                onClick={() => handleNavigation('/academy')}
-                startIcon={<School sx={{ fontSize: 18 }} />}
-                sx={{
-                  color: '#fff',
-                  textTransform: 'none',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  '&:hover': {
-                    background: 'rgba(255, 140, 0, 0.1)',
-                    color: '#f59e0b',
-                  },
-                }}
-              >
-                Academy
-              </Button>
-              <Button
-                variant="text"
-                onClick={() => handleNavigation('/community')}
-                startIcon={<Group sx={{ fontSize: 18 }} />}
-                sx={{
-                  color: '#fff',
-                  textTransform: 'none',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  '&:hover': {
-                    background: 'rgba(255, 140, 0, 0.1)',
-                    color: '#f59e0b',
-                  },
-                }}
-              >
-                Community
-              </Button>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
+                <Button onClick={() => navigate('/')} sx={{ color: 'rgba(246,242,234,0.74)' }}>
+                  {copy.nav.home}
+                </Button>
+                <Button onClick={() => navigate('/theroleroom')} sx={{ color: 'rgba(246,242,234,0.74)' }}>
+                  {copy.nav.roleRoom}
+                </Button>
+                <Button onClick={() => navigate('/academy')} sx={{ color: 'rgba(246,242,234,0.74)' }}>
+                  {copy.nav.academy}
+                </Button>
+                <Button onClick={() => navigate('/community')} sx={{ color: 'rgba(246,242,234,0.74)' }}>
+                  {copy.nav.community}
+                </Button>
+              </Stack>
+
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  sx={{
+                    p: 0.5,
+                    borderRadius: '999px',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    bgcolor: 'rgba(255,255,255,0.03)',
+                  }}
+                >
+                  {localeOptions.map((option) => (
+                    <Button
+                      key={option.value}
+                      onClick={() => setLanguage(option.value)}
+                      startIcon={<span>{option.flag}</span>}
+                      sx={{
+                        minWidth: 0,
+                        px: 1.4,
+                        py: 0.65,
+                        borderRadius: '999px',
+                        color: language === option.value ? '#150d05' : 'rgba(246,242,234,0.72)',
+                        backgroundColor: language === option.value ? '#ffba6c' : 'transparent',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        textTransform: 'none',
+                        '&:hover': {
+                          backgroundColor:
+                            language === option.value ? '#ffba6c' : 'rgba(255,255,255,0.06)',
+                        },
+                      }}
+                    >
+                      {language === 'no' ? option.no : option.en}
+                    </Button>
+                  ))}
+                </Stack>
+
+                <Button
+                  onClick={() => navigate('/login')}
+                  variant="outlined"
+                  sx={{
+                    display: { xs: 'none', md: 'inline-flex' },
+                    borderColor: 'rgba(255,186,108,0.4)',
+                    color: '#ffba6c',
+                    borderRadius: '999px',
+                    '&:hover': { borderColor: '#ffba6c', bgcolor: 'rgba(255,186,108,0.08)' },
+                  }}
+                >
+                  {copy.nav.signIn}
+                </Button>
+
+                <IconButton
+                  onClick={() => setMenuOpen(true)}
+                  sx={{ display: { xs: 'inline-flex', md: 'none' }, color: '#fff5e8' }}
+                >
+                  <Menu />
+                </IconButton>
+              </Stack>
             </Stack>
-          </Box>
-        </Container>
-      </Box>
+          </Container>
+        </Box>
 
-      {/* Hero Section */}
-      <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, pt: 8, pb: 6 }}>
-        <AnimatedSection>
-          <Box sx={{ textAlign: 'center', mb: 8 }}>
-            <Box
-              sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 2,
-                mb: 3,
-                px: 3,
-                py: 1,
-                borderRadius: '30px',
-                background: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.3)',
-              }}
-            >
-              <CreatorHubLogoIcon size={32} />
-              <Typography sx={{ color: '#f59e0b', fontWeight: 600, fontSize: '0.9rem' }}>
-                Norges Kreative Plattform
-              </Typography>
-            </Box>
-
-            <Typography
-              variant="h1"
-              sx={{
-                fontSize: { xs: '2.5rem', md: '4rem' },
-                fontWeight: 800,
-                color: '#fff',
-                mb: 2,
-                lineHeight: 1.1,
-              }}
-            >
-              {texts.title}
-            </Typography>
-
-            <Typography
-              sx={{
-                fontSize: { xs: '1.1rem', md: '1.4rem' },
-                color: 'rgba(255, 255, 255, 0.7)',
-                maxWidth: 700,
-                mx: 'auto',
-                lineHeight: 1.6,
-              }}
-            >
-              {texts.subtitle}
-            </Typography>
-          </Box>
-        </AnimatedSection>
-
-        {/* Mission Section */}
-        <AnimatedSection delay={0.1}>
+        <Container maxWidth="xl" sx={{ position: 'relative', zIndex: 1, py: { xs: 9, md: 13 } }}>
           <Box
             sx={{
-              ...glassCardStyle,
-              p: { xs: 4, md: 6 },
-              mb: 6,
-              textAlign: 'center',
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(320px, 0.84fr)' },
+              gap: { xs: 6, md: 8 },
+              alignItems: 'end',
             }}
           >
-            <Typography
-              variant="h3"
-              sx={{
-                fontSize: { xs: '1.8rem', md: '2.2rem' },
-                fontWeight: 700,
-                background: 'linear-gradient(135deg, #f59e0b, #ea580c)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                mb: 3,
-              }}
+            <MotionDiv
+              initial={{ opacity: 0, y: 32 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7 }}
             >
-              {texts.mission}
-            </Typography>
-            <Typography
-              sx={{
-                fontSize: { xs: '1rem', md: '1.2rem' },
-                color: 'rgba(255, 255, 255, 0.8)',
-                lineHeight: 1.8,
-                maxWidth: 800,
-                mx: 'auto',
-              }}
-            >
-              {texts.missionText}
-            </Typography>
-          </Box>
-        </AnimatedSection>
-
-        {/* Services Section */}
-        <AnimatedSection delay={0.2}>
-          <Typography
-            variant="h3"
-            sx={{
-              fontSize: { xs: '1.8rem', md: '2.5rem' },
-              fontWeight: 700,
-              color: '#fff',
-              textAlign: 'center',
-              mb: 5,
-            }}
-          >
-            {texts.services}
-          </Typography>
-
-          <Grid container spacing={3} sx={{ mb: 8 }}>
-            {services.map((service, index) => (
-              <Grid item xs={12} sm={6} key={index}>
-                <AnimatedSection animation="scaleIn" delay={0.1 * index}>
-                  <Box
+              <Stack spacing={3}>
+                <Typography sx={{ fontFamily: '"Space Grotesk", "Manrope", sans-serif', color: 'rgba(255,186,108,0.84)', letterSpacing: '0.24em', textTransform: 'uppercase', fontSize: '0.8rem' }}>
+                  {copy.hero.eyebrow}
+                </Typography>
+                <Typography
+                  variant="h1"
+                  sx={{
+                    fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                    fontWeight: 700,
+                    fontSize: { xs: '3rem', md: '5.4rem' },
+                    lineHeight: 0.94,
+                    letterSpacing: '-0.06em',
+                    maxWidth: 760,
+                  }}
+                >
+                  {copy.hero.title}
+                </Typography>
+                <Typography sx={{ fontSize: { xs: '1.08rem', md: '1.26rem' }, color: 'rgba(246,242,234,0.76)', maxWidth: 620, lineHeight: 1.75 }}>
+                  {copy.hero.subtitle}
+                </Typography>
+                <Typography sx={{ fontSize: '1rem', color: 'rgba(246,242,234,0.58)', maxWidth: 660, lineHeight: 1.8 }}>
+                  {copy.hero.body}
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
+                  <Button
+                    onClick={() => navigate('/')}
+                    variant="contained"
+                    endIcon={<ArrowForward />}
                     sx={{
-                      ...glassCardStyle,
-                      p: 4,
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      textAlign: 'center',
+                      borderRadius: '999px',
+                      px: 3,
+                      py: 1.35,
+                      bgcolor: '#ffba6c',
+                      color: '#150d05',
+                      fontWeight: 800,
+                      '&:hover': { bgcolor: '#ffcb91' },
                     }}
                   >
-                    <Box
-                      sx={{
-                        width: 80,
-                        height: 80,
-                        borderRadius: '20px',
-                        background: `linear-gradient(135deg, ${service.color}20, ${service.color}40)`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        mb: 3,
-                        color: service.color,
-                        border: `1px solid ${service.color}40`,
-                      }}
-                    >
-                      {service.icon}
-                    </Box>
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: 700,
-                        color: '#fff',
-                        mb: 2,
-                      }}
-                    >
-                      {service.title}
-                    </Typography>
-                    <Typography
-                      sx={{
-                        color: 'rgba(255, 255, 255, 0.6)',
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      {service.description}
-                    </Typography>
-                  </Box>
-                </AnimatedSection>
-              </Grid>
-            ))}
-          </Grid>
-        </AnimatedSection>
-
-        {/* Platform Features Section */}
-        <AnimatedSection delay={0.25}>
-          <Typography
-            variant="h3"
-            sx={{
-              fontSize: { xs: '1.8rem', md: '2.5rem' },
-              fontWeight: 700,
-              color: '#fff',
-              textAlign: 'center',
-              mb: 2,
-            }}
-          >
-            {texts.platform}
-          </Typography>
-          <Typography
-            sx={{
-              color: 'rgba(255, 255, 255, 0.6)',
-              textAlign: 'center',
-              mb: 5,
-              maxWidth: 700,
-              mx: 'auto',
-            }}
-          >
-            {language === 'no'
-              ? 'En komplett verktøykasse for å drive en profesjonell kreativ virksomhet'
-              : 'A complete toolkit for running a professional creative business'}
-          </Typography>
-
-          <Grid container spacing={2} sx={{ mb: 8 }}>
-            {platformFeatures.map((feature, index) => (
-              <Grid item xs={12} sm={6} md={4} key={index}>
-                <AnimatedSection animation="scaleIn" delay={0.05 * index}>
-                  <Box
+                    {copy.hero.primary}
+                  </Button>
+                  <Button
+                    onClick={() => navigate('/login')}
+                    variant="text"
+                    endIcon={<NorthEast />}
                     sx={{
-                      p: 3,
-                      borderRadius: '16px',
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px solid rgba(255, 140, 0, 0.1)',
-                      height: '100%',
-                      transition: 'all 0.3s',
-                      '&:hover': {
-                        background: 'rgba(255, 140, 0, 0.05)',
-                        borderColor: 'rgba(255, 140, 0, 0.3)',
-                        transform: 'translateY(-4px)',
-                      },
+                      color: '#fff5e8',
+                      justifyContent: { xs: 'space-between', sm: 'center' },
+                      '&:hover': { bgcolor: 'transparent', color: '#ffcf95' },
                     }}
                   >
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-                      <CheckCircle sx={{ color: '#10b981', fontSize: 24, mt: 0.5 }} />
-                      <Box>
-                        <Typography sx={{ fontWeight: 700, color: '#fff', mb: 0.5 }}>
-                          {feature.title}
-                        </Typography>
-                        <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.9rem', lineHeight: 1.5 }}>
-                          {feature.description}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </Box>
-                </AnimatedSection>
-              </Grid>
-            ))}
-          </Grid>
-        </AnimatedSection>
+                    {copy.hero.secondary}
+                  </Button>
+                </Stack>
+              </Stack>
+            </MotionDiv>
 
-        {/* Integrations Section */}
-        <AnimatedSection delay={0.3}>
-          <Box
-            sx={{
-              ...glassCardStyle,
-              p: { xs: 4, md: 6 },
-              mb: 6,
-            }}
-          >
-            <Typography
-              variant="h3"
-              sx={{
-                fontSize: { xs: '1.8rem', md: '2.2rem' },
-                fontWeight: 700,
-                background: 'linear-gradient(135deg, #f59e0b, #ea580c)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                mb: 2,
-                textAlign: 'center',
-              }}
+            <MotionDiv
+              initial={{ opacity: 0, y: 42 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.78, delay: 0.14 }}
             >
-              {texts.integrations}
-            </Typography>
-            <Typography
-              sx={{
-                color: 'rgba(255, 255, 255, 0.6)',
-                textAlign: 'center',
-                mb: 4,
-              }}
-            >
-              {language === 'no'
-                ? 'Sømløs integrasjon med verktøyene du allerede bruker'
-                : 'Seamless integration with the tools you already use'}
-            </Typography>
-
-            <Grid container spacing={3} justifyContent="center">
-              {integrations.map((integration, index) => (
-                <Grid item xs={6} sm={4} md={2.4} key={index}>
-                  <Box
-                    sx={{
-                      textAlign: 'center',
-                      p: 2,
-                      borderRadius: '12px',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      transition: 'all 0.3s',
-                      '&:hover': {
-                        background: 'rgba(255, 140, 0, 0.1)',
-                        borderColor: 'rgba(255, 140, 0, 0.3)',
-                      },
-                    }}
-                  >
-                    <IntegrationInstructions sx={{ color: '#f59e0b', fontSize: 32, mb: 1 }} />
-                    <Typography sx={{ fontWeight: 600, color: '#fff', fontSize: '0.95rem' }}>
-                      {integration.name}
-                    </Typography>
-                    <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.75rem' }}>
-                      {integration.description}
-                    </Typography>
-                  </Box>
-                </Grid>
-              ))}
-            </Grid>
-          </Box>
-        </AnimatedSection>
-
-        {/* Norwegian Focus Section */}
-        <AnimatedSection delay={0.35}>
-          <Box
-            sx={{
-              p: { xs: 4, md: 6 },
-              borderRadius: '24px',
-              background: 'linear-gradient(135deg, rgba(0, 82, 147, 0.2), rgba(186, 12, 47, 0.1))',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              mb: 8,
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Norwegian flag accent */}
-            <Box
-              sx={{
-                position: 'absolute',
-                top: -50,
-                right: -50,
-                width: 150,
-                height: 150,
-                background: 'radial-gradient(circle, rgba(186, 12, 47, 0.3) 0%, transparent 70%)',
-                filter: 'blur(40px)',
-              }}
-            />
-            
-            <Typography
-              variant="h3"
-              sx={{
-                fontSize: { xs: '1.8rem', md: '2.2rem' },
-                fontWeight: 700,
-                color: '#fff',
-                mb: 2,
-                textAlign: 'center',
-              }}
-            >
-              {texts.norwegian}
-            </Typography>
-            <Typography
-              sx={{
-                color: 'rgba(255, 255, 255, 0.7)',
-                textAlign: 'center',
-                mb: 4,
-                maxWidth: 700,
-                mx: 'auto',
-              }}
-            >
-              {language === 'no'
-                ? 'Utviklet spesifikt for norske kreative virksomheter med lokale integrasjoner og full GDPR-samsvar'
-                : 'Developed specifically for Norwegian creative businesses with local integrations and full GDPR compliance'}
-            </Typography>
-
-            <Grid container spacing={3}>
-              {norwegianFeatures.map((feature, index) => (
-                <Grid item xs={6} md={3} key={index}>
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Box
-                      sx={{
-                        width: 60,
-                        height: 60,
-                        borderRadius: '50%',
-                        background: 'rgba(255, 255, 255, 0.1)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        mx: 'auto',
-                        mb: 2,
-                      }}
-                    >
-                      {index === 0 && <Language sx={{ color: '#f59e0b', fontSize: 28 }} />}
-                      {index === 1 && <IntegrationInstructions sx={{ color: '#f59e0b', fontSize: 28 }} />}
-                      {index === 2 && <Verified sx={{ color: '#10b981', fontSize: 28 }} />}
-                      {index === 3 && <Support sx={{ color: '#3b82f6', fontSize: 28 }} />}
-                    </Box>
-                    <Typography sx={{ fontWeight: 700, color: '#fff', mb: 0.5 }}>
-                      {feature.title}
-                    </Typography>
-                    <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem' }}>
-                      {feature.description}
-                    </Typography>
-                  </Box>
-                </Grid>
-              ))}
-            </Grid>
-          </Box>
-        </AnimatedSection>
-
-        {/* Values Section */}
-        <AnimatedSection delay={0.3}>
-          <Typography
-            variant="h3"
-            sx={{
-              fontSize: { xs: '1.8rem', md: '2.5rem' },
-              fontWeight: 700,
-              color: '#fff',
-              textAlign: 'center',
-              mb: 5,
-            }}
-          >
-            {texts.values}
-          </Typography>
-
-          <Grid container spacing={3} sx={{ mb: 8 }}>
-            {values.map((value, index) => (
-              <Grid item xs={6} md={3} key={index}>
-                <AnimatedSection animation="fadeInUp" delay={0.1 * index}>
-                  <Box
-                    sx={{
-                      textAlign: 'center',
-                      p: 3,
-                      borderRadius: '16px',
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px solid rgba(255, 140, 0, 0.1)',
-                      transition: 'all 0.3s',
-                      '&:hover': {
-                        background: 'rgba(255, 140, 0, 0.05)',
-                        transform: 'translateY(-4px)',
-                      },
-                    }}
-                  >
-                    <Box sx={{ color: '#f59e0b', mb: 2 }}>{value.icon}</Box>
-                    <Typography
-                      sx={{
-                        fontWeight: 700,
-                        color: '#fff',
-                        mb: 1,
-                        fontSize: '1.1rem',
-                      }}
-                    >
-                      {value.title}
-                    </Typography>
-                    <Typography
-                      sx={{
-                        color: 'rgba(255, 255, 255, 0.5)',
-                        fontSize: '0.9rem',
-                      }}
-                    >
-                      {value.description}
-                    </Typography>
-                  </Box>
-                </AnimatedSection>
-              </Grid>
-            ))}
-          </Grid>
-        </AnimatedSection>
-
-        {/* Team Section */}
-        <AnimatedSection delay={0.4}>
-          <Box
-            sx={{
-              ...glassCardStyle,
-              p: { xs: 4, md: 6 },
-              mb: 6,
-            }}
-          >
-            <Typography
-              variant="h3"
-              sx={{
-                fontSize: { xs: '1.8rem', md: '2.2rem' },
-                fontWeight: 700,
-                background: 'linear-gradient(135deg, #f59e0b, #ea580c)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                mb: 4,
-                textAlign: 'center',
-              }}
-            >
-              {texts.team}
-            </Typography>
-
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: 'center', gap: 4 }}>
-              {/* Profile Image */}
               <Box
                 sx={{
-                  width: 200,
-                  height: 200,
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #f59e0b, #ea580c)',
-                  padding: '4px',
-                  flexShrink: 0,
-                  boxShadow: '0 0 50px rgba(245, 158, 11, 0.4)',
-                  overflow: 'hidden',
+                  borderRadius: '30px',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  background:
+                    'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
+                  p: { xs: 3, md: 4 },
                 }}
               >
-                <Box
-                  component="img"
-                  src="/assets/daniel-qazi.jpg"
-                  alt="Daniel Qazi - Grunnlegger og CEO"
-                  sx={{
-                    width: '100%',
-                    height: '100%',
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                    objectPosition: '80% 15%',
-                    transform: 'scale(1.05)',
-                    transition: 'transform 0.3s ease',
-                  }}
-                />
-              </Box>
-
-              <Box sx={{ flex: 1, textAlign: { xs: 'center', md: 'left' } }}>
-                <Typography
-                  variant="h4"
-                  sx={{
-                    fontWeight: 700,
-                    color: '#fff',
-                    mb: 1,
-                  }}
-                >
-                  Daniel Qazi
-                </Typography>
-                <Typography
-                  sx={{
-                    color: '#f59e0b',
-                    fontWeight: 600,
-                    mb: 2,
-                    fontSize: '1.1rem',
-                  }}
-                >
-                  {texts.founder}
-                </Typography>
-                <Typography
-                  sx={{
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    lineHeight: 1.8,
-                    mb: 3,
-                  }}
-                >
-                  {language === 'no'
-                    ? 'Erfaren fotograf og teknologientusiast som driver CreatorHub Norge med en visjon om å styrke det norske kreative miljøet. Med bakgrunn i både kreativt arbeid og teknologi, forstår Daniel de unike utfordringene kreative profesjonelle møter daglig.'
-                    : 'Experienced photographer and technology enthusiast driving CreatorHub Norge with a vision to empower the Norwegian creative community. With a background in both creative work and technology, Daniel understands the unique challenges creative professionals face daily.'}
-                </Typography>
-
-                <Stack direction="row" spacing={1} justifyContent={{ xs: 'center', md: 'flex-start' }}>
-                  <IconButton
-                    sx={{
-                      color: '#fff',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      '&:hover': { background: '#0077b5', transform: 'translateY(-2px)' },
-                      transition: 'all 0.3s',
-                    }}
-                  >
-                    <LinkedIn />
-                  </IconButton>
-                  <IconButton
-                    sx={{
-                      color: '#fff',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      '&:hover': {
-                        background: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)',
-                        transform: 'translateY(-2px)',
-                      },
-                      transition: 'all 0.3s',
-                    }}
-                  >
-                    <Instagram />
-                  </IconButton>
+                <Stack spacing={2.2}>
+                  {copy.structure.items.map((item, index) => (
+                    <Box
+                      key={item.title}
+                      sx={{
+                        p: 2.2,
+                        borderRadius: '22px',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: index === 0 ? 'rgba(255,186,108,0.12)' : 'rgba(255,255,255,0.03)',
+                      }}
+                    >
+                      <Stack spacing={0.7}>
+                        <Typography sx={{ fontFamily: '"Space Grotesk", "Manrope", sans-serif', fontWeight: 700 }}>
+                          {item.title}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(246,242,234,0.58)', fontSize: '0.92rem' }}>
+                          {item.subtitle}
+                        </Typography>
+                        <Typography sx={{ color: 'rgba(246,242,234,0.74)', lineHeight: 1.75 }}>
+                          {item.description}
+                        </Typography>
+                      </Stack>
+                    </Box>
+                  ))}
                 </Stack>
               </Box>
-            </Box>
-          </Box>
-        </AnimatedSection>
-
-        {/* Company Info */}
-        <AnimatedSection delay={0.5}>
-          <Box
-            sx={{
-              ...glassCardStyle,
-              p: { xs: 4, md: 6 },
-              mb: 6,
-            }}
-          >
-            <Typography
-              variant="h3"
-              sx={{
-                fontSize: { xs: '1.8rem', md: '2.2rem' },
-                fontWeight: 700,
-                background: 'linear-gradient(135deg, #f59e0b, #ea580c)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                mb: 4,
-                textAlign: 'center',
-              }}
-            >
-              {texts.company}
-            </Typography>
-
-            <Grid container spacing={4}>
-              <Grid item xs={12} md={6}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                  <Box
-                    sx={{
-                      width: 50,
-                      height: 50,
-                      borderRadius: '12px',
-                      background: 'rgba(245, 158, 11, 0.1)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Business sx={{ color: '#f59e0b', fontSize: 28 }} />
-                  </Box>
-                  <Box>
-                    <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem' }}>
-                      Firmanavn
-                    </Typography>
-                    <Typography sx={{ color: '#fff', fontWeight: 600 }}>QAZI FOTOREEL</Typography>
-                  </Box>
-                </Box>
-
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                  <Box
-                    sx={{
-                      width: 50,
-                      height: 50,
-                      borderRadius: '12px',
-                      background: 'rgba(245, 158, 11, 0.1)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <EmojiEvents sx={{ color: '#f59e0b', fontSize: 28 }} />
-                  </Box>
-                  <Box>
-                    <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem' }}>
-                      Org.nummer
-                    </Typography>
-                    <Typography sx={{ color: '#fff', fontWeight: 600 }}>833 038 222</Typography>
-                  </Box>
-                </Box>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                  <Box
-                    sx={{
-                      width: 50,
-                      height: 50,
-                      borderRadius: '12px',
-                      background: 'rgba(245, 158, 11, 0.1)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Email sx={{ color: '#f59e0b', fontSize: 28 }} />
-                  </Box>
-                  <Box>
-                    <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem' }}>
-                      E-post
-                    </Typography>
-                    <Typography sx={{ color: '#fff', fontWeight: 600 }}>daniel@creatorhubn.com</Typography>
-                  </Box>
-                </Box>
-
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Box
-                    sx={{
-                      width: 50,
-                      height: 50,
-                      borderRadius: '12px',
-                      background: 'rgba(245, 158, 11, 0.1)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <LocationOn sx={{ color: '#f59e0b', fontSize: 28 }} />
-                  </Box>
-                  <Box>
-                    <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem' }}>
-                      Lokasjon
-                    </Typography>
-                    <Typography sx={{ color: '#fff', fontWeight: 600 }}>Norge 🇳🇴</Typography>
-                  </Box>
-                </Box>
-              </Grid>
-            </Grid>
-          </Box>
-        </AnimatedSection>
-
-        {/* CTA Section */}
-        <AnimatedSection delay={0.6}>
-          <Box
-            sx={{
-              textAlign: 'center',
-              py: 6,
-              px: 4,
-              borderRadius: '24px',
-              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(234, 88, 12, 0.1))',
-              border: '1px solid rgba(245, 158, 11, 0.2)',
-              mb: 6,
-            }}
-          >
-            <Typography
-              variant="h4"
-              sx={{
-                fontWeight: 700,
-                color: '#fff',
-                mb: 2,
-              }}
-            >
-              {language === 'no' ? 'Klar til å bli med?' : 'Ready to join?'}
-            </Typography>
-            <Typography
-              sx={{
-                color: 'rgba(255, 255, 255, 0.7)',
-                mb: 4,
-                maxWidth: 500,
-                mx: 'auto',
-              }}
-            >
-              {language === 'no'
-                ? 'Bli en del av Norges voksende kreative fellesskap i dag.'
-                : 'Become part of Norway\'s growing creative community today.'}
-            </Typography>
-            <Button
-              variant="contained"
-              onClick={() => handleNavigation('/')}
-              endIcon={<ArrowForward />}
-              sx={{
-                background: 'linear-gradient(135deg, #f59e0b, #ea580c)',
-                color: '#fff',
-                px: 4,
-                py: 1.5,
-                borderRadius: '12px',
-                fontSize: '1rem',
-                fontWeight: 600,
-                textTransform: 'none',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #d97706, #c2410c)',
-                  transform: 'translateY(-2px)',
-                  boxShadow: '0 10px 30px rgba(245, 158, 11, 0.3)',
-                },
-                transition: 'all 0.3s',
-              }}
-            >
-              {language === 'no' ? 'Kom i gang' : 'Get started'}
-            </Button>
-          </Box>
-        </AnimatedSection>
-      </Container>
-
-      {/* Footer */}
-      <Box
-        sx={{
-          borderTop: '1px solid rgba(255, 140, 0, 0.1)',
-          py: 4,
-          background: 'rgba(0, 0, 0, 0.3)',
-        }}
-      >
-        <Container maxWidth="lg">
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: { xs: 'column', md: 'row' },
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 2,
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <img src="/creatorhub-logo-amber.svg" alt="CreatorHub" style={{ height: 100 }} />
-              <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.9rem' }}>
-                © 2025 CreatorHub Norge. Alle rettigheter reservert.
-              </Typography>
-            </Box>
-
-            <Stack direction="row" spacing={2}>
-              <Button
-                variant="text"
-                size="small"
-                onClick={() => handleNavigation('/')}
-                sx={{
-                  color: 'rgba(255, 255, 255, 0.5)',
-                  textTransform: 'none',
-                  '&:hover': { color: '#f59e0b' },
-                }}
-              >
-                Hjem
-              </Button>
-              <Button
-                variant="text"
-                size="small"
-                onClick={() => handleNavigation('/academy')}
-                sx={{
-                  color: 'rgba(255, 255, 255, 0.5)',
-                  textTransform: 'none',
-                  '&:hover': { color: '#f59e0b' },
-                }}
-              >
-                Academy
-              </Button>
-              <Button
-                variant="text"
-                size="small"
-                onClick={() => handleNavigation('/community')}
-                sx={{
-                  color: 'rgba(255, 255, 255, 0.5)',
-                  textTransform: 'none',
-                  '&:hover': { color: '#f59e0b' },
-                }}
-              >
-                Community
-              </Button>
-            </Stack>
+            </MotionDiv>
           </Box>
         </Container>
       </Box>
+
+      <Container maxWidth="xl" sx={{ py: { xs: 10, md: 14 } }}>
+        <Stack spacing={{ xs: 10, md: 14 }}>
+          <MotionDiv initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.2 }}>
+            <AboutSectionHeading
+              label={copy.story.label}
+              title={copy.story.title}
+              body={copy.story.body}
+            />
+          </MotionDiv>
+
+          <MotionDiv initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.2 }}>
+            <AboutSectionHeading
+              label={copy.structure.label}
+              title={copy.structure.title}
+              body={copy.structure.body}
+            />
+          </MotionDiv>
+
+          <MotionDiv initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.2 }}>
+            <Box
+              sx={{
+                borderRadius: '30px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                overflow: 'hidden',
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' },
+              }}
+            >
+              {copy.principles.items.map((item, index) => (
+                <Box
+                  key={item}
+                  sx={{
+                    p: { xs: 3, md: 3.5 },
+                    borderRight: {
+                      xs: 'none',
+                      md: index === copy.principles.items.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                    },
+                    borderBottom: {
+                      xs: index === copy.principles.items.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                      md: 'none',
+                    },
+                    backgroundColor: index === 0 ? 'rgba(255,186,108,0.08)' : 'transparent',
+                  }}
+                >
+                  <Typography sx={{ color: '#fbf5ee', lineHeight: 1.8 }}>{item}</Typography>
+                </Box>
+              ))}
+            </Box>
+          </MotionDiv>
+
+          <MotionDiv initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.2 }}>
+            <AboutSectionHeading
+              label={copy.layers.label}
+              title={copy.layers.title}
+              body={copy.layers.body}
+            />
+            <Box
+              sx={{
+                mt: 5,
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' },
+                gap: 2,
+              }}
+            >
+              {[
+                {
+                  title: copy.layers.platform.title,
+                  body: copy.layers.platform.body,
+                  icon: <AccountTree sx={{ color: '#ffba6c' }} />,
+                  media: <Box component="img" src={CREATORHUB_ICON_URL} alt="Creatorhub" sx={{ width: 52, height: 52 }} />,
+                },
+                {
+                  title: copy.layers.roleRoom.title,
+                  body: copy.layers.roleRoom.body,
+                  icon: <AutoAwesome sx={{ color: '#ffba6c' }} />,
+                  media: <Box component="img" src={ROLE_ROOM_LOGO_URL} alt="The Role Room" sx={{ width: 210, height: 'auto' }} />,
+                },
+                {
+                  title: copy.layers.academy.title,
+                  body: copy.layers.academy.body,
+                  icon: <School sx={{ color: '#ffba6c' }} />,
+                  media: <Box component="img" src={ACADEMY_LOGO_URL} alt="Creatorhub Academy" sx={{ width: 180, height: 'auto' }} />,
+                },
+                {
+                  title: copy.layers.community.title,
+                  body: copy.layers.community.body,
+                  icon: <Groups sx={{ color: '#ffba6c' }} />,
+                  media: <Box component="img" src={COMMUNITY_ICON_URL} alt="Creatorhub Community" sx={{ width: 52, height: 52 }} />,
+                },
+              ].map((layer) => (
+                <Box
+                  key={layer.title}
+                  sx={{
+                    borderRadius: '26px',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'rgba(255,255,255,0.03)',
+                    p: 3,
+                  }}
+                >
+                  <Stack spacing={2}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+                      {layer.media}
+                      {layer.icon}
+                    </Stack>
+                    <Typography sx={{ fontFamily: '"Space Grotesk", "Manrope", sans-serif', fontWeight: 700, fontSize: '1.2rem' }}>
+                      {layer.title}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(246,242,234,0.7)', lineHeight: 1.8 }}>
+                      {layer.body}
+                    </Typography>
+                  </Stack>
+                </Box>
+              ))}
+            </Box>
+          </MotionDiv>
+
+          <MotionDiv initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.2 }}>
+            <AboutSectionHeading
+              label={copy.profile.label}
+              title={copy.profile.title}
+              body={copy.profile.body}
+            />
+            <Box
+              sx={{
+                mt: 5,
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
+              }}
+            >
+              {copy.profile.rows.map(([label, value], index) => (
+                <Stack
+                  key={label}
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={2}
+                  justifyContent="space-between"
+                  sx={{
+                    py: 2.5,
+                    borderBottom:
+                      index === copy.profile.rows.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  <Typography sx={{ color: 'rgba(255,186,108,0.84)', minWidth: 180 }}>{label}</Typography>
+                  <Typography sx={{ color: '#fbf5ee' }}>{value}</Typography>
+                </Stack>
+              ))}
+            </Box>
+          </MotionDiv>
+        </Stack>
+      </Container>
+
+      <Box sx={{ px: { xs: 2, md: 4 }, pb: { xs: 10, md: 14 } }}>
+        <Box
+          sx={{
+            maxWidth: 1480,
+            mx: 'auto',
+            borderRadius: '34px',
+            border: '1px solid rgba(255,186,108,0.14)',
+            background:
+              'linear-gradient(135deg, rgba(255,186,108,0.16) 0%, rgba(27,18,9,0.96) 55%, rgba(10,10,16,0.98) 100%)',
+            p: { xs: 3, md: 5 },
+          }}
+        >
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) auto' },
+              gap: { xs: 3, md: 4 },
+              alignItems: 'center',
+            }}
+          >
+            <Stack spacing={2}>
+              <Typography
+                sx={{
+                  fontFamily: '"Space Grotesk", "Manrope", sans-serif',
+                  fontSize: { xs: '2rem', md: '3.4rem' },
+                  lineHeight: 1,
+                  fontWeight: 700,
+                  letterSpacing: '-0.05em',
+                  maxWidth: 760,
+                }}
+              >
+                {copy.final.title}
+              </Typography>
+              <Typography sx={{ color: 'rgba(246,242,234,0.72)', maxWidth: 740, lineHeight: 1.8 }}>
+                {copy.final.body}
+              </Typography>
+            </Stack>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
+              <Button
+                onClick={() => navigate('/')}
+                variant="contained"
+                endIcon={<ArrowForward />}
+                sx={{
+                  borderRadius: '999px',
+                  px: 3,
+                  py: 1.3,
+                  bgcolor: '#ffba6c',
+                  color: '#150d05',
+                  fontWeight: 800,
+                  '&:hover': { bgcolor: '#ffcb91' },
+                }}
+              >
+                {copy.final.primary}
+              </Button>
+              <Button
+                onClick={() => navigate('/community')}
+                variant="outlined"
+                endIcon={<NorthEast />}
+                sx={{
+                  borderRadius: '999px',
+                  px: 3,
+                  py: 1.3,
+                  borderColor: 'rgba(255,245,232,0.22)',
+                  color: '#fff5e8',
+                  '&:hover': { borderColor: '#fff5e8', bgcolor: 'rgba(255,255,255,0.04)' },
+                }}
+              >
+                {copy.final.secondary}
+              </Button>
+            </Stack>
+          </Box>
+        </Box>
+      </Box>
+
+      <Drawer
+        anchor="right"
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 300,
+            bgcolor: '#0b0d12',
+            color: '#f6f2ea',
+            p: 2,
+          },
+        }}
+      >
+        <Stack spacing={2}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography sx={{ fontFamily: '"Space Grotesk", "Manrope", sans-serif', fontWeight: 700 }}>
+              Creatorhub
+            </Typography>
+            <IconButton onClick={() => setMenuOpen(false)} sx={{ color: '#fff5e8' }}>
+              <Close />
+            </IconButton>
+          </Stack>
+
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+
+          <Button onClick={() => navigate('/')} sx={{ justifyContent: 'space-between', color: '#fbf5ee' }} endIcon={<ArrowForward />}>
+            {copy.nav.home}
+          </Button>
+          <Button onClick={() => navigate('/theroleroom')} sx={{ justifyContent: 'space-between', color: '#fbf5ee' }} endIcon={<ArrowForward />}>
+            {copy.nav.roleRoom}
+          </Button>
+          <Button onClick={() => navigate('/academy')} sx={{ justifyContent: 'space-between', color: '#fbf5ee' }} endIcon={<ArrowForward />}>
+            {copy.nav.academy}
+          </Button>
+          <Button onClick={() => navigate('/community')} sx={{ justifyContent: 'space-between', color: '#fbf5ee' }} endIcon={<ArrowForward />}>
+            {copy.nav.community}
+          </Button>
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+          <Button
+            onClick={() => navigate('/login')}
+            variant="contained"
+            sx={{
+              borderRadius: '999px',
+              bgcolor: '#ffba6c',
+              color: '#150d05',
+              fontWeight: 800,
+              '&:hover': { bgcolor: '#ffcb91' },
+            }}
+          >
+            {copy.nav.signIn}
+          </Button>
+        </Stack>
+      </Drawer>
     </Box>
   );
 }
 
-// Wrap with Visual Editor for customization support
 const About = withVisualEditor(AboutComponent, {
   componentId: 'about',
   componentName: 'About Page',
