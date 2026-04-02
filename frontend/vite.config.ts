@@ -138,6 +138,7 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'client/index.html'),
         casting: path.resolve(__dirname, 'client/casting.html'),
+        theroleroom: path.resolve(__dirname, 'client/theroleroom.html'),
       },
       external: (id) => {
         // Exclude external drive paths

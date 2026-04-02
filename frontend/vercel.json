@@ -59,11 +59,11 @@
           "value": "(www\\.)?theroleroom\\.com"
         }
       ],
-      "destination": "/casting.html"
+      "destination": "/theroleroom.html"
     },
     {
       "source": "/theroleroom",
-      "destination": "/casting.html"
+      "destination": "/theroleroom.html"
     },
     {
       "source": "/api/(.*)",
