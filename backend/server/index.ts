@@ -18,6 +18,7 @@ import path from "path";
 import os from "os";
 import { Readable } from "stream";
 import archiver from "archiver";
+import nodemailer from "nodemailer";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { load as loadHtml } from "cheerio";
@@ -26186,6 +26187,734 @@ app.get("/api/platform/stats", (req, res) => {
 // Invite Request Routes (vendor/professional signup workflow)
 // ============================================================================
 
+type RoleRoomCommercialPersona = "production_team" | "content_producer";
+
+type RoleRoomCommercialAccessPayloadMember = {
+  name: string;
+  email: string;
+  roleId: string;
+  roleLabel: string | null;
+  isLeader: boolean;
+};
+
+function normalizeRoleRoomCommercialPersona(
+  value: unknown,
+): RoleRoomCommercialPersona | null {
+  const normalized = toAdminString(value);
+  return normalized === "production_team" || normalized === "content_producer"
+    ? normalized
+    : null;
+}
+
+function splitRoleRoomContactName(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return { firstName: "", lastName: "" };
+  }
+
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: "" };
+  }
+
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts.slice(-1).join(" "),
+  };
+}
+
+function getRoleRoomCommercialPlan(persona: RoleRoomCommercialPersona) {
+  if (persona === "production_team") {
+    return {
+      planId: "role-room-production-team",
+      planName: "Produksjonsteam",
+      personaLabel: "Produksjonsteam",
+      seatPriceExVat: 795,
+      minimumSeats: 3,
+    };
+  }
+
+  return {
+    planId: "role-room-content-producer",
+    planName: "Innholdsprodusent",
+    personaLabel: "Innholdsprodusent",
+    seatPriceExVat: 495,
+    minimumSeats: 1,
+  };
+}
+
+type RoleRoomEducationInstitutionType =
+  | "upper_secondary"
+  | "folk_high_school"
+  | "vocational_college"
+  | "higher_education"
+  | "private_school";
+
+type RoleRoomEducationSeatRange =
+  | "up_to_15"
+  | "up_to_30"
+  | "up_to_60"
+  | "up_to_120"
+  | "more_than_120";
+
+type RoleRoomEducationStartWindow =
+  | "this_semester"
+  | "next_semester"
+  | "next_academic_year"
+  | "exploring";
+
+const ROLE_ROOM_EDUCATION_INSTITUTION_TYPE_LABELS: Record<
+  RoleRoomEducationInstitutionType,
+  string
+> = {
+  upper_secondary: "Videregående skole",
+  folk_high_school: "Folkehøyskole",
+  vocational_college: "Fagskole",
+  higher_education: "Høyskole / universitet",
+  private_school: "Privat skole / kursaktør",
+};
+
+const ROLE_ROOM_EDUCATION_STUDENT_RANGE_LABELS: Record<
+  RoleRoomEducationSeatRange,
+  string
+> = {
+  up_to_15: "Opptil 15 studenter",
+  up_to_30: "16–30 studenter",
+  up_to_60: "31–60 studenter",
+  up_to_120: "61–120 studenter",
+  more_than_120: "120+ studenter",
+};
+
+const ROLE_ROOM_EDUCATION_STAFF_RANGE_LABELS: Record<
+  RoleRoomEducationSeatRange,
+  string
+> = {
+  up_to_15: "1–2 faglærere / koordinatorer",
+  up_to_30: "3–5 faglærere / koordinatorer",
+  up_to_60: "6–10 faglærere / koordinatorer",
+  up_to_120: "11–20 faglærere / koordinatorer",
+  more_than_120: "20+ faglærere / koordinatorer",
+};
+
+const ROLE_ROOM_EDUCATION_START_WINDOW_LABELS: Record<
+  RoleRoomEducationStartWindow,
+  string
+> = {
+  this_semester: 'Så snart som mulig',
+  next_semester: 'Neste semester',
+  next_academic_year: 'Neste studieår',
+  exploring: 'Vi sonderer fortsatt',
+};
+
+type RoleRoomEducationInquiryMetadata = {
+  kind: "role_room_education_inquiry";
+  version: 1;
+  companyName: string;
+  organizationNumber: string;
+  contactName: string;
+  contactEmail: string;
+  contactRole: string;
+  institutionType: RoleRoomEducationInstitutionType;
+  institutionTypeLabel: string;
+  programName: string;
+  studentSeatRange: RoleRoomEducationSeatRange;
+  studentSeatLabel: string;
+  staffSeatRange: RoleRoomEducationSeatRange;
+  staffSeatLabel: string;
+  desiredStartWindow: RoleRoomEducationStartWindow;
+  desiredStartWindowLabel: string;
+  useCase: string;
+  taxMode: "ex_vat";
+};
+
+function isRoleRoomEducationInstitutionType(
+  value: unknown,
+): value is RoleRoomEducationInstitutionType {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(
+      ROLE_ROOM_EDUCATION_INSTITUTION_TYPE_LABELS,
+      value,
+    )
+  );
+}
+
+function isRoleRoomEducationSeatRange(
+  value: unknown,
+): value is RoleRoomEducationSeatRange {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(
+      ROLE_ROOM_EDUCATION_STUDENT_RANGE_LABELS,
+      value,
+    )
+  );
+}
+
+function isRoleRoomEducationStartWindow(
+  value: unknown,
+): value is RoleRoomEducationStartWindow {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(
+      ROLE_ROOM_EDUCATION_START_WINDOW_LABELS,
+      value,
+    )
+  );
+}
+
+function normalizeMailConfigValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getRoleRoomEducationInquiryMailer() {
+  const user =
+    normalizeMailConfigValue(process.env.GMAIL_USER) ||
+    normalizeMailConfigValue(process.env.GOOGLE_WORKSPACE_EMAIL) ||
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL);
+  const password = normalizeMailConfigValue(
+    process.env.GMAIL_APP_PASSWORD,
+  ).replace(/\s+/g, "");
+
+  if (!user || !password) {
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user,
+      pass: password,
+    },
+  });
+}
+
+async function resolveRoleRoomEducationInquiryGmailSender() {
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+
+  const connectionResult = await pool.query<{
+    user_id: string | null;
+    google_email: string | null;
+    role_room_email: string | null;
+  }>(
+    `SELECT user_id, google_email, role_room_email
+     FROM role_room_google_connections
+     WHERE connection_state = 'connected'
+       AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
+       AND (
+         LOWER(COALESCE(google_email, '')) = LOWER($1)
+         OR LOWER(COALESCE(role_room_email, '')) = LOWER($1)
+       )
+     ORDER BY
+       CASE WHEN refresh_token_encrypted IS NOT NULL THEN 0 ELSE 1 END,
+       last_used_at DESC NULLS LAST,
+       updated_at DESC NULLS LAST,
+       created_at DESC NULLS LAST
+     LIMIT 1`,
+    [adminEmail],
+  );
+
+  const connectionRow = connectionResult.rows[0] ?? null;
+  const preferredUserId = normalizeMailConfigValue(connectionRow?.user_id);
+  if (!preferredUserId) {
+    return null;
+  }
+
+  const authorized = await resolveRoleRoomGoogleConnection(pool, preferredUserId, {
+    allowFallbackToAnyUser: false,
+  });
+  const grantedScopes = Array.isArray(authorized.connection.storedScopes)
+    ? authorized.connection.storedScopes
+    : [];
+
+  if (!grantedScopes.includes("https://www.googleapis.com/auth/gmail.send")) {
+    return null;
+  }
+
+  return {
+    adminEmail,
+    senderEmail:
+      normalizeMailConfigValue(authorized.connection.googleEmail) || adminEmail,
+    authorized,
+  };
+}
+
+async function sendRoleRoomEducationInquiryAdminEmail(options: {
+  requestId: string;
+  companyName: string;
+  organizationNumber: string;
+  contactName: string;
+  contactEmail: string;
+  metadata: RoleRoomEducationInquiryMetadata;
+}) {
+  const transporter = getRoleRoomEducationInquiryMailer();
+  if (!transporter) {
+    return {
+      sent: false,
+      reason: "missing_email_config",
+      accepted: [] as string[],
+    };
+  }
+
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const fromEmail =
+    normalizeMailConfigValue(process.env.GMAIL_USER) ||
+    normalizeMailConfigValue(process.env.GOOGLE_WORKSPACE_EMAIL) ||
+    adminEmail;
+
+  const { metadata } = options;
+  const subject = `Ny institusjonsforespørsel i The Role Room — ${options.companyName}`;
+  const text = [
+    "Ny institusjonsforespørsel i The Role Room.",
+    "",
+    `Forespørsel-ID: ${options.requestId}`,
+    `Institusjon: ${options.companyName}`,
+    `Organisasjonsnummer: ${options.organizationNumber}`,
+    `Kontaktperson: ${options.contactName}`,
+    `Kontaktrolle: ${metadata.contactRole}`,
+    `Kontakt e-post: ${options.contactEmail}`,
+    `Institusjonstype: ${metadata.institutionTypeLabel}`,
+    `Studieprogram / fagområde: ${metadata.programName}`,
+    `Studentomfang: ${metadata.studentSeatLabel}`,
+    `Faglærere / koordinatorer: ${metadata.staffSeatLabel}`,
+    `Ønsket oppstart: ${metadata.desiredStartWindowLabel}`,
+    "",
+    "Bruksområde:",
+    metadata.useCase,
+  ].join("\n");
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
+      <div style="max-width:720px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
+        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Ny institusjonsforespørsel</h1>
+        </div>
+        <div style="padding:24px">
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#4d473f">
+            En ny utdanningsinstitusjon har sendt inn en samarbeidsforespørsel via The Role Room.
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:14px">
+            <tr><td style="padding:8px 0;color:#7b7368">Forespørsel-ID</td><td style="padding:8px 0;font-weight:700">${options.requestId}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Institusjon</td><td style="padding:8px 0;font-weight:700">${options.companyName}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Organisasjonsnummer</td><td style="padding:8px 0">${options.organizationNumber}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Kontaktperson</td><td style="padding:8px 0">${options.contactName}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Stilling</td><td style="padding:8px 0">${metadata.contactRole}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">E-post</td><td style="padding:8px 0">${options.contactEmail}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Institusjonstype</td><td style="padding:8px 0">${metadata.institutionTypeLabel}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Studieprogram</td><td style="padding:8px 0">${metadata.programName}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Studentomfang</td><td style="padding:8px 0">${metadata.studentSeatLabel}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Faglærere / koordinatorer</td><td style="padding:8px 0">${metadata.staffSeatLabel}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Ønsket oppstart</td><td style="padding:8px 0">${metadata.desiredStartWindowLabel}</td></tr>
+          </table>
+          <div style="margin-top:20px;padding:16px;border-radius:14px;background:#faf7f1;border:1px solid #efe4d4">
+            <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#8a4b00;font-weight:700;margin-bottom:8px">Bruksområde</div>
+            <div style="font-size:14px;line-height:1.7;color:#3d372f;white-space:pre-wrap">${metadata.useCase}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const gmailSender = await resolveRoleRoomEducationInquiryGmailSender().catch(
+    (error) => {
+      console.error(
+        "Role Room education inquiry Gmail API sender lookup failed:",
+        error,
+      );
+      return null;
+    },
+  );
+
+  if (gmailSender) {
+    const gmail = google.gmail({
+      version: "v1",
+      auth: gmailSender.authorized.oauthClient,
+    });
+    const rawMessage = [
+      `To: ${gmailSender.adminEmail}`,
+      `From: CreatorHub Norge <${gmailSender.senderEmail}>`,
+      `Reply-To: ${options.contactEmail}`,
+      `Subject: ${subject}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "MIME-Version: 1.0",
+      "",
+      html,
+    ].join("\r\n");
+
+    const response = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: Buffer.from(rawMessage, "utf8").toString("base64url"),
+      },
+    });
+
+    return {
+      sent: true,
+      reason: null,
+      accepted: [gmailSender.adminEmail],
+      provider: "gmail_api",
+      messageId: normalizeMailConfigValue(response.data.id),
+    };
+  }
+
+  const info = await transporter.sendMail({
+    from: `CreatorHub Norge <${fromEmail}>`,
+    to: adminEmail,
+    replyTo: options.contactEmail,
+    subject,
+    text,
+    html,
+  });
+
+  return {
+    sent: true,
+    reason: null,
+    accepted: Array.isArray(info.accepted)
+      ? info.accepted.map((value) => String(value))
+      : [],
+    provider: "smtp",
+    messageId: normalizeMailConfigValue(info.messageId),
+  };
+}
+
+app.post("/api/role-room/commercial-access", async (req, res) => {
+  try {
+    const persona = normalizeRoleRoomCommercialPersona(req.body?.persona);
+    if (!persona) {
+      return res.status(400).json({
+        error: "persona må være production_team eller content_producer",
+      });
+    }
+
+    const organizationNumber = String(req.body?.organizationNumber || "").replace(
+      /\D/g,
+      "",
+    );
+    if (!isValidNorwegianOrgNumber(organizationNumber)) {
+      return res.status(400).json({
+        error: "Organisasjonsnummer må være et gyldig norsk organisasjonsnummer.",
+      });
+    }
+
+    const brregLookup = await lookupInviteRequestBrregCompany(organizationNumber);
+    if (brregLookup.lookupStatus === "not_found") {
+      return res.status(400).json({
+        error:
+          "Organisasjonsnummeret ble ikke funnet i Brønnøysundregistrene.",
+      });
+    }
+
+    const plan = getRoleRoomCommercialPlan(persona);
+    const membersRaw = Array.isArray(req.body?.teamMembers)
+      ? (req.body.teamMembers as Array<Record<string, unknown>>)
+      : [];
+
+    const normalizedMembers = membersRaw
+      .map((entry, index) => {
+        const name = toAdminString(entry?.name)?.trim() || "";
+        const email =
+          toAdminString(entry?.email)?.trim().toLowerCase() || "";
+        const roleId = toAdminString(entry?.roleId)?.trim() || "";
+        const roleLabel = toAdminString(entry?.roleLabel)?.trim() || null;
+        if (!name || !email || !roleId) {
+          return null;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          return null;
+        }
+        return {
+          name,
+          email,
+          roleId,
+          roleLabel,
+          isLeader: entry?.isLeader === true || index === 0,
+        } satisfies RoleRoomCommercialAccessPayloadMember;
+      })
+      .filter(
+        (entry): entry is RoleRoomCommercialAccessPayloadMember =>
+          Boolean(entry),
+      );
+
+    const dedupedMembers = Array.from(
+      new Map(
+        normalizedMembers.map((member) => [member.email, member] as const),
+      ).values(),
+    );
+
+    if (dedupedMembers.length < plan.minimumSeats) {
+      return res.status(400).json({
+        error:
+          persona === "production_team"
+            ? "Produksjonsteam må ha minst 3 personer."
+            : "Innholdsprodusent må ha minst 1 person.",
+      });
+    }
+
+    const companyName =
+      brregLookup.company?.name?.trim() ||
+      toAdminString(req.body?.companyName)?.trim() ||
+      `Foretak ${organizationNumber}`;
+    const teamLead =
+      dedupedMembers.find((member) => member.isLeader) || dedupedMembers[0];
+    const monthlyTotalExVat =
+      dedupedMembers.length * plan.seatPriceExVat;
+    const metadata = {
+      kind: "role_room_commercial_access" as const,
+      version: 1,
+      persona,
+      personaLabel: plan.personaLabel,
+      subscriptionType: plan.planId,
+      subscriptionLabel: plan.planName,
+      companyName,
+      organizationNumber,
+      teamLeadName: teamLead.name,
+      teamLeadEmail: teamLead.email,
+      teamSize: dedupedMembers.length,
+      seatPriceExVat: plan.seatPriceExVat,
+      monthlyTotalExVat,
+      taxMode: "ex_vat",
+      members: dedupedMembers,
+    };
+    const serializedMetadata = JSON.stringify(metadata);
+    const requests = [] as Array<Record<string, unknown> | null>;
+
+    for (const member of dedupedMembers) {
+      const existingInvite = await findAdminInviteRequest(member.email, member.email);
+      const existingPaymentCompleted = Boolean(existingInvite?.payment_completed);
+      const existingStatus = toAdminString(existingInvite?.status);
+      const existingJourneyStatus = toAdminString(existingInvite?.user_journey_status);
+      const { firstName, lastName } = splitRoleRoomContactName(member.name);
+
+      const inviteRequest = await upsertAdminInviteRequest({
+        email: member.email,
+        firstName,
+        lastName,
+        profession: member.roleId,
+        businessName: companyName,
+        organizationNumber,
+        status:
+          existingPaymentCompleted && existingStatus
+            ? existingStatus
+            : "pending",
+        userJourneyStatus:
+          existingPaymentCompleted && existingJourneyStatus
+            ? existingJourneyStatus
+            : "role_room_pending_payment",
+        source: "role_room",
+        selectedPlan: plan.planId,
+        planName: plan.planName,
+        planPrice: monthlyTotalExVat,
+        paymentCompleted: existingPaymentCompleted,
+        message: serializedMetadata,
+      });
+
+      requests.push(inviteRequest as Record<string, unknown> | null);
+    }
+
+    return res.status(201).json({
+      success: true,
+      organizationNumber,
+      companyName,
+      planId: plan.planId,
+      planName: plan.planName,
+      monthlyTotalExVat,
+      paymentCompleted: requests.some(
+        (entry) => Boolean(entry?.payment_completed),
+      ),
+      membersRegistered: dedupedMembers.length,
+      teamLeadEmail: teamLead.email,
+    });
+  } catch (error) {
+    console.error("Error creating Role Room commercial access requests:", error);
+    return res.status(500).json({
+      error: "Kunne ikke opprette Role Room-tilgangsforespørselen.",
+    });
+  }
+});
+
+app.post("/api/role-room/education-inquiries", async (req, res) => {
+  try {
+    const organizationNumber = String(req.body?.organizationNumber || "").replace(
+      /\D/g,
+      "",
+    );
+    const contactName = String(req.body?.contactName || "").trim();
+    const contactEmail = String(req.body?.contactEmail || "")
+      .trim()
+      .toLowerCase();
+    const contactRole = String(req.body?.contactRole || "").trim();
+    const programName = String(req.body?.programName || "").trim();
+    const useCase = String(req.body?.useCase || "").trim();
+    const institutionType = req.body?.institutionType;
+    const studentSeatRange = req.body?.studentSeatRange;
+    const staffSeatRange = req.body?.staffSeatRange;
+    const desiredStartWindow = req.body?.desiredStartWindow;
+
+    if (!isValidNorwegianOrgNumber(organizationNumber)) {
+      return res.status(400).json({
+        error: "Organisasjonsnummer må være et gyldig norsk organisasjonsnummer.",
+      });
+    }
+
+    if (!contactName || !contactRole || !programName || !useCase) {
+      return res.status(400).json({
+        error:
+          "Kontaktperson, stilling, studieprogram og bruksområde må fylles ut.",
+      });
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+      return res.status(400).json({
+        error: "Kontaktpersonen må ha en gyldig e-postadresse.",
+      });
+    }
+
+    if (!isRoleRoomEducationInstitutionType(institutionType)) {
+      return res.status(400).json({
+        error: "Velg institusjonstype.",
+      });
+    }
+
+    if (!isRoleRoomEducationSeatRange(studentSeatRange)) {
+      return res.status(400).json({
+        error: "Velg studentomfang.",
+      });
+    }
+
+    if (!isRoleRoomEducationSeatRange(staffSeatRange)) {
+      return res.status(400).json({
+        error: "Velg antall faglærere / koordinatorer.",
+      });
+    }
+
+    if (!isRoleRoomEducationStartWindow(desiredStartWindow)) {
+      return res.status(400).json({
+        error: "Velg ønsket oppstart.",
+      });
+    }
+
+    const brregLookup = await lookupInviteRequestBrregCompany(organizationNumber);
+    if (brregLookup.lookupStatus === "not_found") {
+      return res.status(400).json({
+        error:
+          "Organisasjonsnummeret ble ikke funnet i Brønnøysundregistrene.",
+      });
+    }
+
+    const companyName =
+      brregLookup.company?.name?.trim() ||
+      String(req.body?.companyName || "").trim() ||
+      `Foretak ${organizationNumber}`;
+    const metadata: RoleRoomEducationInquiryMetadata = {
+      kind: "role_room_education_inquiry",
+      version: 1,
+      companyName,
+      organizationNumber,
+      contactName,
+      contactEmail,
+      contactRole,
+      institutionType,
+      institutionTypeLabel:
+        ROLE_ROOM_EDUCATION_INSTITUTION_TYPE_LABELS[institutionType],
+      programName,
+      studentSeatRange,
+      studentSeatLabel:
+        ROLE_ROOM_EDUCATION_STUDENT_RANGE_LABELS[studentSeatRange],
+      staffSeatRange,
+      staffSeatLabel: ROLE_ROOM_EDUCATION_STAFF_RANGE_LABELS[staffSeatRange],
+      desiredStartWindow,
+      desiredStartWindowLabel:
+        ROLE_ROOM_EDUCATION_START_WINDOW_LABELS[desiredStartWindow],
+      useCase,
+      taxMode: "ex_vat",
+    };
+    const serializedMetadata = JSON.stringify(metadata);
+    const existingInvite = await findAdminInviteRequest(contactEmail, contactEmail);
+    const { firstName, lastName } = splitRoleRoomContactName(contactName);
+    const inviteRequest = await upsertAdminInviteRequest({
+      email: contactEmail,
+      firstName,
+      lastName,
+      profession: "education_institution",
+      businessName: companyName,
+      organizationNumber,
+      status: normalizeMailConfigValue(existingInvite?.status) || "pending",
+      userJourneyStatus:
+        normalizeMailConfigValue(existingInvite?.user_journey_status) ||
+        "role_room_education_pending_review",
+      source: "role_room_education",
+      message: serializedMetadata,
+    });
+
+    const inviteRequestId = normalizeMailConfigValue(inviteRequest?.id) || null;
+    const proffAnalysis = buildInviteRequestProffAnalysis({
+      organizationNumber,
+      companyName,
+      brregLookup,
+    });
+
+    if (inviteRequestId) {
+      await upsertInviteRequestProffScreening(
+        inviteRequestId,
+        organizationNumber,
+        proffAnalysis,
+      );
+    }
+
+    let notification = {
+      sent: false,
+      reason: "not_attempted",
+      accepted: [] as string[],
+    };
+
+    try {
+      notification = await sendRoleRoomEducationInquiryAdminEmail({
+        requestId: inviteRequestId || "unknown-request",
+        companyName,
+        organizationNumber,
+        contactName,
+        contactEmail,
+        metadata,
+      });
+    } catch (notificationError) {
+      console.error(
+        "Role Room education inquiry notification failed:",
+        notificationError,
+      );
+      notification = {
+        sent: false,
+        reason: "notification_failed",
+        accepted: [],
+      };
+    }
+
+    return res.status(201).json({
+      success: true,
+      requestId: inviteRequestId,
+      companyName,
+      organizationNumber,
+      status: "pending",
+      notificationEmailSent: notification.sent,
+      notificationAcceptedRecipients: notification.accepted,
+      notificationReason: notification.reason,
+      notificationProvider: notification.provider ?? null,
+      notificationMessageId: notification.messageId ?? null,
+      message:
+        "Forespørselen er mottatt. Vi tar kontakt for å sette opp en institusjonssamtale.",
+    });
+  } catch (error) {
+    console.error("Error creating Role Room education inquiry:", error);
+    return res.status(500).json({
+      error: "Kunne ikke sende institusjonsforespørselen.",
+    });
+  }
+});
+
 // Submit a new invite request (from InviteRequestForm on landing page)
 app.post("/api/invite-requests", async (req, res) => {
   try {
@@ -37567,6 +38296,11 @@ app.post("/api/academy/cohort-settings", async (req, res) => {
 // Get all invite requests (admin view)
 app.get("/api/invite-requests", async (req, res) => {
   try {
+    if (!(await hasTable("invite_requests"))) {
+      return res.json([]);
+    }
+
+    const inviteColumns = await getTableColumns("invite_requests");
     const source =
       typeof req.query.source === "string" ? req.query.source : null;
     const status =
@@ -37574,7 +38308,7 @@ app.get("/api/invite-requests", async (req, res) => {
     const params: string[] = [];
     const clauses: string[] = [];
 
-    if (source) {
+    if (source && inviteColumns.has("source")) {
       params.push(source);
       clauses.push(`source = $${params.length}`);
     }
@@ -37583,7 +38317,9 @@ app.get("/api/invite-requests", async (req, res) => {
       clauses.push(`status = $${params.length}`);
     }
 
-    let query = "SELECT * FROM invite_requests";
+    const selectColumns =
+      inviteColumns.size > 0 ? Array.from(inviteColumns).join(", ") : "*";
+    let query = `SELECT ${selectColumns} FROM invite_requests`;
     if (clauses.length > 0) {
       query += ` WHERE ${clauses.join(" AND ")}`;
     }
@@ -38798,6 +39534,104 @@ const sortAdminUsersByRecency = (
   return String(a.email || "").localeCompare(String(b.email || ""), "nb");
 };
 
+type RoleRoomCommercialAccessMemberSnapshot = {
+  name: string;
+  email: string;
+  roleId: string;
+  roleLabel: string | null;
+  isLeader: boolean;
+};
+
+type RoleRoomCommercialAccessSnapshot = {
+  kind: "role_room_commercial_access";
+  persona: string | null;
+  personaLabel: string | null;
+  subscriptionType: string | null;
+  subscriptionLabel: string | null;
+  companyName: string | null;
+  organizationNumber: string | null;
+  teamLeadName: string | null;
+  teamLeadEmail: string | null;
+  teamSize: number | null;
+  seatPriceExVat: number | null;
+  monthlyTotalExVat: number | null;
+  taxMode: string | null;
+  members: RoleRoomCommercialAccessMemberSnapshot[];
+};
+
+function parseRoleRoomCommercialAccessSnapshot(
+  value: unknown,
+): RoleRoomCommercialAccessSnapshot | null {
+  if (!value) {
+    return null;
+  }
+
+  let parsed: unknown = value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith("{")) {
+      return null;
+    }
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+
+  const record = parsed as Record<string, unknown>;
+  if (toAdminString(record.kind) !== "role_room_commercial_access") {
+    return null;
+  }
+
+  const members = Array.isArray(record.members)
+    ? record.members
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") {
+            return null;
+          }
+          const memberRecord = entry as Record<string, unknown>;
+          const email = toAdminString(memberRecord.email)?.trim().toLowerCase() || "";
+          if (!email) {
+            return null;
+          }
+
+          return {
+            name: toAdminString(memberRecord.name) || email,
+            email,
+            roleId: toAdminString(memberRecord.roleId) || "",
+            roleLabel: toAdminString(memberRecord.roleLabel),
+            isLeader: memberRecord.isLeader === true,
+          };
+        })
+        .filter(
+          (entry): entry is RoleRoomCommercialAccessMemberSnapshot =>
+            Boolean(entry),
+        )
+    : [];
+
+  return {
+    kind: "role_room_commercial_access",
+    persona: toAdminString(record.persona),
+    personaLabel: toAdminString(record.personaLabel),
+    subscriptionType: toAdminString(record.subscriptionType),
+    subscriptionLabel: toAdminString(record.subscriptionLabel),
+    companyName: toAdminString(record.companyName),
+    organizationNumber: toAdminString(record.organizationNumber),
+    teamLeadName: toAdminString(record.teamLeadName),
+    teamLeadEmail: toAdminString(record.teamLeadEmail)?.trim().toLowerCase() || null,
+    teamSize: readNumber(record.teamSize),
+    seatPriceExVat: readNumber(record.seatPriceExVat),
+    monthlyTotalExVat: readNumber(record.monthlyTotalExVat),
+    taxMode: toAdminString(record.taxMode),
+    members,
+  };
+}
+
 async function listAdminUsersSnapshot(): Promise<Record<string, unknown>[]> {
   const inviteTableExists = await hasTable("invite_requests");
   const inviteColumns = inviteTableExists
@@ -38823,6 +39657,10 @@ async function listAdminUsersSnapshot(): Promise<Record<string, unknown>[]> {
           ? "organization_number"
           : "NULL::text AS organization_number",
         inviteColumns?.has("status") ? "status" : "NULL::text AS status",
+        inviteColumns?.has("message")
+          ? "message"
+          : "NULL::text AS message",
+        inviteColumns?.has("source") ? "source" : "NULL::text AS source",
         inviteColumns?.has("created_at")
           ? "created_at"
           : "NOW() AS created_at",
@@ -38850,6 +39688,15 @@ async function listAdminUsersSnapshot(): Promise<Record<string, unknown>[]> {
         inviteColumns?.has("plan_name")
           ? "plan_name"
           : "NULL::text AS plan_name",
+        inviteColumns?.has("plan_price")
+          ? "plan_price"
+          : "NULL::numeric AS plan_price",
+        inviteColumns?.has("payment_amount")
+          ? "payment_amount"
+          : "NULL::numeric AS payment_amount",
+        inviteColumns?.has("payment_timestamp")
+          ? "payment_timestamp"
+          : "NULL::timestamp AS payment_timestamp",
       ]
     : [];
   const inviteRows =
@@ -38923,6 +39770,10 @@ async function listAdminUsersSnapshot(): Promise<Record<string, unknown>[]> {
 
   for (const inviteRow of inviteRows as Record<string, unknown>[]) {
     const email = String(inviteRow.email || "").trim().toLowerCase();
+    const roleRoomAccess =
+      parseRoleRoomCommercialAccessSnapshot(inviteRow.message) || null;
+    const roleRoomMember =
+      roleRoomAccess?.members.find((member) => member.email === email) || null;
     const accountUserId = toAdminString(inviteRow.registered_user_id);
     const matchedAccount =
       (accountUserId ? accountById.get(accountUserId) : null) ||
@@ -38987,6 +39838,31 @@ async function listAdminUsersSnapshot(): Promise<Record<string, unknown>[]> {
       paymentCompleted: Boolean(inviteRow.payment_completed),
       selectedPlan: toAdminString(inviteRow.selected_plan),
       planName: toAdminString(inviteRow.plan_name),
+      planPrice:
+        inviteRow.plan_price != null ? Number(inviteRow.plan_price) : null,
+      paymentAmount:
+        inviteRow.payment_amount != null
+          ? Number(inviteRow.payment_amount)
+          : null,
+      paymentTimestamp: inviteRow.payment_timestamp || null,
+      source: toAdminString(inviteRow.source),
+      roleRoomAccess:
+        roleRoomAccess
+          ? {
+              ...roleRoomAccess,
+              isTeamLeader: Boolean(
+                roleRoomMember?.isLeader ||
+                  (roleRoomAccess.teamLeadEmail &&
+                    roleRoomAccess.teamLeadEmail === email),
+              ),
+              memberRoleId:
+                roleRoomMember?.roleId || toAdminString(inviteRow.profession),
+              memberRoleLabel:
+                roleRoomMember?.roleLabel ||
+                roleRoomMember?.roleId ||
+                toAdminString(inviteRow.profession),
+            }
+          : null,
       approvedByUserId,
       approvedBy: formatAdminUserIdentity(approvedByAccount) || approvedByUserId,
     });
@@ -39330,6 +40206,12 @@ async function upsertAdminInviteRequest(input: {
   organizationNumber?: string | null;
   status?: string | null;
   userJourneyStatus?: string | null;
+  source?: string | null;
+  selectedPlan?: string | null;
+  planName?: string | null;
+  planPrice?: number | null;
+  paymentCompleted?: boolean | null;
+  message?: string | null;
   sendInvite?: boolean;
   processed?: boolean;
   registeredUserId?: string | null;
@@ -39369,6 +40251,9 @@ async function upsertAdminInviteRequest(input: {
     if (inviteColumns.has("status") && input.status !== undefined) {
       pushValue("status", input.status);
     }
+    if (inviteColumns.has("message") && input.message !== undefined) {
+      pushValue("message", input.message);
+    }
     if (inviteColumns.has("processed_by") && input.processedBy !== undefined) {
       pushValue("processed_by", input.processedBy);
     }
@@ -39383,6 +40268,24 @@ async function upsertAdminInviteRequest(input: {
       input.registeredUserId !== undefined
     ) {
       pushValue("registered_user_id", input.registeredUserId);
+    }
+    if (inviteColumns.has("source") && input.source !== undefined) {
+      pushValue("source", input.source);
+    }
+    if (inviteColumns.has("selected_plan") && input.selectedPlan !== undefined) {
+      pushValue("selected_plan", input.selectedPlan);
+    }
+    if (inviteColumns.has("plan_name") && input.planName !== undefined) {
+      pushValue("plan_name", input.planName);
+    }
+    if (inviteColumns.has("plan_price") && input.planPrice !== undefined) {
+      pushValue("plan_price", input.planPrice);
+    }
+    if (
+      inviteColumns.has("payment_completed") &&
+      input.paymentCompleted !== undefined
+    ) {
+      pushValue("payment_completed", input.paymentCompleted);
     }
     if (inviteColumns.has("invite_sent_at") && input.sendInvite) {
       updates.push("invite_sent_at = NOW()");
@@ -39440,6 +40343,9 @@ async function upsertAdminInviteRequest(input: {
   if (inviteColumns.has("status")) {
     pushInsert("status", input.status || "approved");
   }
+  if (inviteColumns.has("message")) {
+    pushInsert("message", input.message || null);
+  }
   if (inviteColumns.has("processed_by")) {
     pushInsert("processed_by", input.processedBy || null);
   }
@@ -39451,7 +40357,19 @@ async function upsertAdminInviteRequest(input: {
     );
   }
   if (inviteColumns.has("source")) {
-    pushInsert("source", "admin-dashboard");
+    pushInsert("source", input.source || "admin-dashboard");
+  }
+  if (inviteColumns.has("selected_plan")) {
+    pushInsert("selected_plan", input.selectedPlan || null);
+  }
+  if (inviteColumns.has("plan_name")) {
+    pushInsert("plan_name", input.planName || null);
+  }
+  if (inviteColumns.has("plan_price")) {
+    pushInsert("plan_price", input.planPrice || null);
+  }
+  if (inviteColumns.has("payment_completed")) {
+    pushInsert("payment_completed", input.paymentCompleted ?? false);
   }
   if (inviteColumns.has("registered_user_id")) {
     pushInsert("registered_user_id", input.registeredUserId || null);
@@ -40292,7 +41210,7 @@ app.get("/api/invite-requests", async (req, res) => {
 
     const whereClause = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const result = await pool.query(
-      `SELECT id::text, email, first_name, last_name, profession, company_name, status,
+      `SELECT id::text, email, first_name, last_name, profession, company_name, organization_number, message, status,
               user_journey_status, admin_notes, source, selected_plan, plan_name, plan_price,
               payment_completed, payment_transaction_id, payment_amount, payment_timestamp,
               processed_by, processed_at, created_at, updated_at
@@ -40309,6 +41227,8 @@ app.get("/api/invite-requests", async (req, res) => {
       lastName: row.last_name || "",
       email: row.email,
       business: row.company_name || null,
+      organizationNumber: row.organization_number || null,
+      message: row.message || null,
       status: row.status || "pending",
       requestDate: row.created_at,
       processedDate: row.processed_at || null,
