@@ -26949,9 +26949,71 @@ async function readRoleRoomCommercialCheckoutSessionRecord(
 async function readRoleRoomCommercialCheckoutRecordBySubscriptionId(
   subscriptionId: string,
 ): Promise<RoleRoomCommercialCheckoutSessionRecord | null> {
-  return compatStoreGet<RoleRoomCommercialCheckoutSessionRecord>(
+  const cached = await compatStoreGet<RoleRoomCommercialCheckoutSessionRecord>(
     roleRoomCommercialSubscriptionKey(subscriptionId),
   );
+  if (cached) {
+    return cached;
+  }
+
+  const rows = await listRoleRoomCommercialReminderInviteRequests();
+  const matchingRow =
+    rows.find((row) => {
+      const snapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+      return (
+        snapshot?.stripeSubscriptionId === subscriptionId ||
+        toAdminString(row.payment_transaction_id) === subscriptionId
+      );
+    }) || null;
+  if (!matchingRow) {
+    return null;
+  }
+
+  const matchingSnapshot = parseRoleRoomCommercialAccessSnapshot(matchingRow.message);
+  if (!matchingSnapshot) {
+    return null;
+  }
+
+  const teamKey = buildRoleRoomCommercialReminderTeamKey(matchingSnapshot);
+  const teamRows = rows.filter((row) => {
+    const snapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+    return snapshot && buildRoleRoomCommercialReminderTeamKey(snapshot) === teamKey;
+  });
+  const leaderRow =
+    teamRows.find((row) => {
+      const rowEmail = toAdminString(row.email)?.trim().toLowerCase() || "";
+      return (
+        matchingSnapshot.teamLeadEmail &&
+        rowEmail === matchingSnapshot.teamLeadEmail
+      );
+    }) || matchingRow;
+
+  const rebuilt = buildRoleRoomCommercialCheckoutRecordFromInviteRequest(leaderRow);
+  if (!rebuilt) {
+    return null;
+  }
+
+  const latestUpdatedAt = teamRows
+    .map((row) => Date.parse(toAdminString(row.updated_at) || ""))
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => right - left)[0];
+
+  const record: RoleRoomCommercialCheckoutSessionRecord = {
+    ...rebuilt,
+    requestIds: teamRows
+      .map((row) => toAdminString(row.id))
+      .filter((value): value is string => Boolean(value)),
+    memberEmails:
+      matchingSnapshot.members.length > 0
+        ? matchingSnapshot.members.map((member) => member.email)
+        : rebuilt.memberEmails,
+    stripeSubscriptionId: subscriptionId,
+    updatedAt: latestUpdatedAt
+      ? new Date(latestUpdatedAt).toISOString()
+      : rebuilt.updatedAt,
+  };
+  await writeRoleRoomCommercialCheckoutSessionRecord(record);
+  return record;
 }
 
 function getStripeCheckoutSessionSubscriptionId(
