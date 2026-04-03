@@ -26469,7 +26469,9 @@ function buildRoleRoomCheckoutReturnUrl(input: {
   } else {
     url.searchParams.delete("session_id");
   }
-  return url.toString();
+  return url
+    .toString()
+    .replace("%7BCHECKOUT_SESSION_ID%7D", "{CHECKOUT_SESSION_ID}");
 }
 
 function doesRoleRoomCommercialPaymentMatchCurrentSetup(input: {
