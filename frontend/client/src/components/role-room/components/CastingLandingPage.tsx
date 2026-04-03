@@ -266,41 +266,110 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
               />
             ) : null}
             <Box
-              component="video"
-              src={introVideoUrl}
-              autoPlay muted playsInline
-              onEnded={() => setShowIntro(false)}
-              onLoadedData={() => {
-                setIntroVideoReady(true);
-                setIntroVideoFailed(false);
-              }}
-              onCanPlay={() => {
-                setIntroVideoReady(true);
-                setIntroVideoFailed(false);
-              }}
-              onError={() => {
-                setIntroVideoReady(false);
-                setIntroVideoFailed(true);
-              }}
-              data-testid="role-room-landing-intro-video"
-              data-media-mode={introVideoReady && !introVideoFailed ? 'video' : 'image'}
               sx={{
-                position: 'absolute', inset: 0,
-                width: '100%', height: '100%',
-                objectFit: 'cover',
-                opacity: introVideoReady && !introVideoFailed ? 1 : 0,
-                transition: 'opacity 0.3s ease',
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                px: { xs: 0, sm: 2.5, md: 4 },
+                py: { xs: 0, sm: 2.5, md: 4 },
               }}
-            />
+            >
+              <Box
+                sx={{
+                  position: 'relative',
+                  width: {
+                    xs: '100%',
+                    sm: 'min(calc(100vw - 32px), calc(100vh - 32px), 820px)',
+                    md: 'min(calc(100vw - 64px), calc(100vh - 64px), 920px)',
+                    xl: 'min(calc(100vw - 96px), calc(100vh - 80px), 1080px)',
+                  },
+                  height: {
+                    xs: '100%',
+                    sm: 'min(calc(100vw - 32px), calc(100vh - 32px), 820px)',
+                    md: 'min(calc(100vw - 64px), calc(100vh - 64px), 920px)',
+                    xl: 'min(calc(100vw - 96px), calc(100vh - 80px), 1080px)',
+                  },
+                  borderRadius: { xs: 0, sm: '28px', md: '34px' },
+                  overflow: 'hidden',
+                  border: { xs: 'none', sm: '1px solid rgba(255,255,255,0.08)' },
+                  boxShadow: {
+                    xs: 'none',
+                    sm: '0 32px 120px rgba(0,0,0,0.42)',
+                    md: '0 36px 140px rgba(0,0,0,0.5)',
+                  },
+                  background: '#000',
+                }}
+              >
+                <Box
+                  component="video"
+                  src={introVideoUrl}
+                  autoPlay
+                  muted
+                  playsInline
+                  onEnded={() => setShowIntro(false)}
+                  onLoadedData={() => {
+                    setIntroVideoReady(true);
+                    setIntroVideoFailed(false);
+                  }}
+                  onCanPlay={() => {
+                    setIntroVideoReady(true);
+                    setIntroVideoFailed(false);
+                  }}
+                  onError={() => {
+                    setIntroVideoReady(false);
+                    setIntroVideoFailed(true);
+                  }}
+                  data-testid="role-room-landing-intro-video"
+                  data-media-mode={introVideoReady && !introVideoFailed ? 'video' : 'image'}
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    objectPosition: 'center center',
+                    opacity: introVideoReady && !introVideoFailed ? 1 : 0,
+                    transition: 'opacity 0.3s ease',
+                  }}
+                />
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
+                    background: {
+                      xs: 'linear-gradient(180deg, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.12) 100%)',
+                      sm: 'radial-gradient(circle at center, rgba(255,255,255,0.02) 0%, rgba(0,0,0,0.16) 72%, rgba(0,0,0,0.34) 100%)',
+                    },
+                  }}
+                />
+              </Box>
+            </Box>
             {/* Skip button */}
             <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }}
-              style={{ position: 'absolute', bottom: 40, right: 40, zIndex: 10 }}
+              style={{ position: 'absolute', zIndex: 10 }}
             >
               <Button
                 onClick={() => setShowIntro(false)}
-                sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem',
-                  '&:hover': { color: 'rgba(255,255,255,0.8)' } }}
+                sx={{
+                  position: 'fixed',
+                  right: { xs: 14, sm: 24, md: 40 },
+                  bottom: { xs: 14, sm: 24, md: 40 },
+                  color: 'rgba(255,255,255,0.56)',
+                  fontSize: { xs: '0.78rem', sm: '0.85rem' },
+                  px: { xs: 1.1, sm: 1.35 },
+                  py: 0.45,
+                  borderRadius: 999,
+                  backdropFilter: 'blur(10px)',
+                  bgcolor: 'rgba(8,10,18,0.34)',
+                  '&:hover': {
+                    color: 'rgba(255,255,255,0.88)',
+                    bgcolor: 'rgba(8,10,18,0.5)',
+                  },
+                }}
               >
                 {introSkipLabel}
               </Button>
