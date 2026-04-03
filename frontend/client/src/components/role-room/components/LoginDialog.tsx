@@ -1738,6 +1738,59 @@ export default function LoginDialog({
     url.searchParams.delete('rrActivationMessage');
     window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
   }, []);
+  const resetRoleRoomPersonaSelection = useCallback((options?: {
+    clearAuthFields?: boolean;
+  }) => {
+    orgLookupAbortRef.current?.abort();
+    restoredCommercialDraftRef.current = false;
+    handledCheckoutSessionRef.current = '';
+    persistedCommercialSetupRef.current = '';
+    clearRoleRoomCommercialDraft();
+    clearCommercialCheckoutParams();
+    clearCommercialActivationParams();
+    setSelectedRole('');
+    setLoginPersona('');
+    setOrganizationNumber('');
+    setOrganizationCompanyName('');
+    setOrganizationLookupError('');
+    setOrganizationLookupLoading(false);
+    setOrganizationValidatedNumber('');
+    setCommercialPaymentNotice(null);
+    setCommercialPaymentPending(false);
+    setPaidCommercialSetupSignature('');
+    setEducationInstitutionType('');
+    setEducationProgramName('');
+    setEducationStudentSeatRange('');
+    setEducationStaffSeatRange('');
+    setEducationContactRole('');
+    setEducationDesiredStartWindow('');
+    setEducationUseCase('');
+    setEducationInquiryWebsite('');
+    setEducationInquiryStartedAt(Date.now());
+    setEducationInquiryTurnstileToken('');
+    setEducationInquiryTurnstileError('');
+    setEducationInquiryTurnstileResetSignal((value) => value + 1);
+    setEducationInquirySubmitted(null);
+    setContentProducerStep('company');
+    setProductionTeamStep('company');
+    setProductionTeamMembers(createInitialTeamMembers());
+    setError('');
+    setLoading(false);
+
+    if (options?.clearAuthFields) {
+      setEmail('');
+      setPassword('');
+      setForgotPassword(false);
+      setForgotEmail('');
+      setForgotSent(false);
+    }
+
+    resetCommercialPanelScroll();
+  }, [
+    clearCommercialActivationParams,
+    clearCommercialCheckoutParams,
+    resetCommercialPanelScroll,
+  ]);
 
   useEffect(() => {
     setBackdropVideoReady(false);
@@ -2025,38 +2078,11 @@ export default function LoginDialog({
     if (!open) {
       orgLookupAbortRef.current?.abort();
       const t = setTimeout(() => {
-        setEmail('');
-        setPassword('');
-        setSelectedRole('');
-        setLoginPersona('');
-        setOrganizationNumber('');
-        setOrganizationCompanyName('');
-        setOrganizationLookupError('');
-        setOrganizationLookupLoading(false);
-        setOrganizationValidatedNumber('');
-        setCommercialPaymentNotice(null);
-        setCommercialPaymentPending(false);
-        setPaidCommercialSetupSignature('');
-        setEducationInstitutionType('');
-        setEducationProgramName('');
-        setEducationStudentSeatRange('');
-        setEducationStaffSeatRange('');
-        setEducationContactRole('');
-        setEducationDesiredStartWindow('');
-        setEducationUseCase('');
-        setEducationInquirySubmitted(null);
-        setContentProducerStep('company');
-        setProductionTeamStep('company');
-        setError('');
-        setLoading(false);
-        setForgotPassword(false);
-        setForgotEmail('');
-        setForgotSent(false);
-        setProductionTeamMembers(createInitialTeamMembers());
+        resetRoleRoomPersonaSelection({ clearAuthFields: true });
       }, 300);
       return () => clearTimeout(t);
     }
-  }, [open]);
+  }, [open, resetRoleRoomPersonaSelection]);
 
   useEffect(() => {
     if (!loginPersona) {
@@ -4553,6 +4579,31 @@ export default function LoginDialog({
           {contentProducerStepNavigation}
           {productionTeamStepNavigation}
           {contentProducerAccessChooser}
+          {isLandingPage && effectiveLoginPersona && !clientPortalIntent && !talentPortalIntent && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+              <Button
+                type="button"
+                onClick={() => resetRoleRoomPersonaSelection()}
+                sx={{
+                  minHeight: 38,
+                  px: 1.4,
+                  textTransform: 'none',
+                  fontSize: '0.76rem',
+                  fontWeight: 600,
+                  borderRadius: '999px',
+                  color: 'rgba(238,232,250,0.9)',
+                  bgcolor: 'rgba(255,255,255,0.045)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  '&:hover': {
+                    bgcolor: 'rgba(255,255,255,0.095)',
+                    borderColor: 'rgba(255,255,255,0.16)',
+                  },
+                }}
+              >
+                Tilbake til valg
+              </Button>
+            </Box>
+          )}
           {isLandingPage && !effectiveLoginPersona && (
             <Box
               sx={{
@@ -4898,6 +4949,7 @@ export default function LoginDialog({
                         onChange={(event) => updateProductionTeamMember(0, 'email', event.target.value)}
                         fullWidth
                         size="small"
+                        helperText="Bruk jobb- eller institusjonse-post. Midlertidige e-posttjenester blir blokkert."
                         sx={glassInputSx(false)}
                       />
                     </Box>

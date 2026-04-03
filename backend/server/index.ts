@@ -28044,6 +28044,48 @@ type RoleRoomEducationInquiryMetadata = {
   desiredStartWindowLabel: string;
   useCase: string;
   taxMode: "ex_vat";
+  spamSignals?: RoleRoomEducationInquirySpamSignal[];
+};
+
+type RoleRoomEducationInquirySpamReason =
+  | "bot_filtered"
+  | "submitted_too_fast"
+  | "rate_limited"
+  | "disposable_email_blocked"
+  | "turnstile_failed";
+
+type RoleRoomEducationInquirySpamSignal = {
+  reason: RoleRoomEducationInquirySpamReason;
+  reasonLabel: string;
+  recordedAt: string;
+  ipAddress: string;
+  detail?: string | null;
+};
+
+type RoleRoomEducationSpamAttemptMetadata = {
+  kind: "role_room_education_spam_attempt";
+  version: 1;
+  companyName: string;
+  organizationNumber: string;
+  contactName: string;
+  contactEmail: string;
+  contactRole: string;
+  institutionType: string | null;
+  institutionTypeLabel: string | null;
+  programName: string;
+  studentSeatRange: string | null;
+  studentSeatLabel: string | null;
+  staffSeatRange: string | null;
+  staffSeatLabel: string | null;
+  desiredStartWindow: string | null;
+  desiredStartWindowLabel: string | null;
+  useCase: string;
+  taxMode: "ex_vat";
+  spamReason: RoleRoomEducationInquirySpamReason;
+  spamReasonLabel: string;
+  spamRecordedAt: string;
+  ipAddress: string;
+  detail?: string | null;
 };
 
 const ROLE_ROOM_EDUCATION_INQUIRY_MIN_FILL_MS = 2500;
@@ -28052,6 +28094,34 @@ const ROLE_ROOM_EDUCATION_INQUIRY_IP_MAX_ATTEMPTS = 6;
 const ROLE_ROOM_EDUCATION_INQUIRY_CONTACT_COOLDOWN_MS = 30 * 60 * 1000;
 const ROLE_ROOM_EDUCATION_INQUIRY_ORG_NOTIFICATION_COOLDOWN_MS =
   6 * 60 * 60 * 1000;
+const ROLE_ROOM_EDUCATION_DISPOSABLE_EMAIL_DOMAINS = new Set([
+  "10minutemail.com",
+  "10minutemail.net",
+  "20minutemail.com",
+  "dispostable.com",
+  "emailondeck.com",
+  "fakeinbox.com",
+  "guerrillamail.com",
+  "guerrillamail.net",
+  "maildrop.cc",
+  "mailinator.com",
+  "sharklasers.com",
+  "temp-mail.org",
+  "tempmail.com",
+  "tempmailo.com",
+  "trashmail.com",
+  "yopmail.com",
+]);
+const ROLE_ROOM_EDUCATION_SPAM_REASON_LABELS: Record<
+  RoleRoomEducationInquirySpamReason,
+  string
+> = {
+  bot_filtered: "Honeypot trigget",
+  submitted_too_fast: "Sendt inn for raskt",
+  rate_limited: "Rate limit trigget",
+  disposable_email_blocked: "Midlertidig e-post blokkert",
+  turnstile_failed: "Turnstile verifisering feilet",
+};
 const ROLE_ROOM_TURNSTILE_VERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const ROLE_ROOM_TURNSTILE_EDUCATION_ACTION =
@@ -28118,6 +28188,19 @@ function getRoleRoomRequestIpAddress(req: express.Request) {
     return candidate.split(",")[0]?.trim() || "unknown";
   }
   return req.ip || req.socket?.remoteAddress || "unknown";
+}
+
+function getRoleRoomEducationEmailDomain(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const atIndex = normalizedEmail.lastIndexOf("@");
+  return atIndex >= 0 ? normalizedEmail.slice(atIndex + 1) : "";
+}
+
+function isRoleRoomEducationDisposableEmail(email: string) {
+  const domain = getRoleRoomEducationEmailDomain(email);
+  return Boolean(
+    domain && ROLE_ROOM_EDUCATION_DISPOSABLE_EMAIL_DOMAINS.has(domain),
+  );
 }
 
 function getRoleRoomTurnstileSecretKey() {
@@ -28306,6 +28389,162 @@ function registerRoleRoomEducationInquiryIpAttempt(ipAddress: string) {
     allowed: existing.count <= ROLE_ROOM_EDUCATION_INQUIRY_IP_MAX_ATTEMPTS,
     retryAfterSeconds,
   };
+}
+
+function appendRoleRoomEducationSpamSignalToMessage(
+  existingMessage: unknown,
+  signal: RoleRoomEducationInquirySpamSignal,
+) {
+  if (typeof existingMessage !== "string" || !existingMessage.trim()) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(existingMessage) as
+      | (Record<string, unknown> & {
+          kind?: unknown;
+          spamSignals?: unknown;
+        })
+      | null;
+    if (!parsed || parsed.kind !== "role_room_education_inquiry") {
+      return null;
+    }
+
+    const currentSignals = Array.isArray(parsed.spamSignals)
+      ? parsed.spamSignals.filter(
+          (entry): entry is RoleRoomEducationInquirySpamSignal =>
+            Boolean(entry) && typeof entry === "object",
+        )
+      : [];
+
+    return JSON.stringify({
+      ...parsed,
+      spamSignals: [signal, ...currentSignals].slice(0, 5),
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function recordRoleRoomEducationInquirySpamAttempt(input: {
+  organizationNumber: string;
+  companyName?: string | null;
+  contactName: string;
+  contactEmail: string;
+  contactRole?: string | null;
+  institutionType?: unknown;
+  programName?: string | null;
+  studentSeatRange?: unknown;
+  staffSeatRange?: unknown;
+  desiredStartWindow?: unknown;
+  useCase?: string | null;
+  ipAddress: string;
+  reason: RoleRoomEducationInquirySpamReason;
+  detail?: string | null;
+}) {
+  if (!(await hasTable("invite_requests"))) {
+    return null;
+  }
+
+  const normalizedEmail = normalizeMailConfigValue(input.contactEmail).toLowerCase();
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return null;
+  }
+
+  const organizationNumber = String(input.organizationNumber || "").replace(/\D/g, "");
+  const companyName =
+    normalizeMailConfigValue(input.companyName) ||
+    (organizationNumber ? `Foretak ${organizationNumber}` : "Ukjent institusjon");
+  const spamSignal: RoleRoomEducationInquirySpamSignal = {
+    reason: input.reason,
+    reasonLabel: ROLE_ROOM_EDUCATION_SPAM_REASON_LABELS[input.reason],
+    recordedAt: new Date().toISOString(),
+    ipAddress: input.ipAddress || "unknown",
+    detail: normalizeMailConfigValue(input.detail) || null,
+  };
+  const existingInvite = await findAdminInviteRequest(normalizedEmail, normalizedEmail);
+  const existingStatus = normalizeMailConfigValue(existingInvite?.status);
+  const existingJourneyStatus = normalizeMailConfigValue(
+    existingInvite?.user_journey_status,
+  );
+  const mergedExistingMessage = appendRoleRoomEducationSpamSignalToMessage(
+    existingInvite?.message,
+    spamSignal,
+  );
+  const shouldPreserveExistingState = Boolean(
+    existingInvite?.id &&
+      normalizeMailConfigValue(existingInvite?.profession) ===
+        "education_institution" &&
+      normalizeMailConfigValue(existingInvite?.source || "role_room_education") ===
+        "role_room_education" &&
+      existingStatus &&
+      existingStatus !== "spam_filtered" &&
+      existingJourneyStatus !== "role_room_education_spam_filtered",
+  );
+  const { firstName, lastName } = splitRoleRoomContactName(input.contactName);
+  const spamMetadata: RoleRoomEducationSpamAttemptMetadata = {
+    kind: "role_room_education_spam_attempt",
+    version: 1,
+    companyName,
+    organizationNumber,
+    contactName: normalizeMailConfigValue(input.contactName),
+    contactEmail: normalizedEmail,
+    contactRole: normalizeMailConfigValue(input.contactRole),
+    institutionType:
+      typeof input.institutionType === "string" && input.institutionType.trim()
+        ? input.institutionType.trim()
+        : null,
+    institutionTypeLabel: isRoleRoomEducationInstitutionType(input.institutionType)
+      ? ROLE_ROOM_EDUCATION_INSTITUTION_TYPE_LABELS[input.institutionType]
+      : null,
+    programName: normalizeMailConfigValue(input.programName),
+    studentSeatRange:
+      typeof input.studentSeatRange === "string" && input.studentSeatRange.trim()
+        ? input.studentSeatRange.trim()
+        : null,
+    studentSeatLabel: isRoleRoomEducationSeatRange(input.studentSeatRange)
+      ? ROLE_ROOM_EDUCATION_STUDENT_RANGE_LABELS[input.studentSeatRange]
+      : null,
+    staffSeatRange:
+      typeof input.staffSeatRange === "string" && input.staffSeatRange.trim()
+        ? input.staffSeatRange.trim()
+        : null,
+    staffSeatLabel: isRoleRoomEducationSeatRange(input.staffSeatRange)
+      ? ROLE_ROOM_EDUCATION_STAFF_RANGE_LABELS[input.staffSeatRange]
+      : null,
+    desiredStartWindow:
+      typeof input.desiredStartWindow === "string" &&
+      input.desiredStartWindow.trim()
+        ? input.desiredStartWindow.trim()
+        : null,
+    desiredStartWindowLabel: isRoleRoomEducationStartWindow(
+      input.desiredStartWindow,
+    )
+      ? ROLE_ROOM_EDUCATION_START_WINDOW_LABELS[input.desiredStartWindow]
+      : null,
+    useCase: normalizeMailConfigValue(input.useCase),
+    taxMode: "ex_vat",
+    spamReason: input.reason,
+    spamReasonLabel: ROLE_ROOM_EDUCATION_SPAM_REASON_LABELS[input.reason],
+    spamRecordedAt: spamSignal.recordedAt,
+    ipAddress: spamSignal.ipAddress,
+    detail: spamSignal.detail,
+  };
+
+  return upsertAdminInviteRequest({
+    email: normalizedEmail,
+    firstName,
+    lastName,
+    profession: "education_institution",
+    businessName: companyName,
+    organizationNumber,
+    status: shouldPreserveExistingState ? existingStatus : "spam_filtered",
+    userJourneyStatus: shouldPreserveExistingState
+      ? existingJourneyStatus
+      : "role_room_education_spam_filtered",
+    source: "role_room_education",
+    message: mergedExistingMessage || JSON.stringify(spamMetadata),
+  });
 }
 
 async function readRoleRoomEducationInquirySpamState(input: {
@@ -31357,6 +31596,7 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
     const contactRole = String(req.body?.contactRole || "").trim();
     const programName = String(req.body?.programName || "").trim();
     const useCase = String(req.body?.useCase || "").trim();
+    const companyNameHint = String(req.body?.companyName || "").trim();
     const institutionType = req.body?.institutionType;
     const studentSeatRange = req.body?.studentSeatRange;
     const staffSeatRange = req.body?.staffSeatRange;
@@ -31368,6 +31608,21 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
         contactEmail,
         organizationNumber,
       });
+      await recordRoleRoomEducationInquirySpamAttempt({
+        organizationNumber,
+        companyName: companyNameHint,
+        contactName,
+        contactEmail,
+        contactRole,
+        institutionType,
+        programName,
+        studentSeatRange,
+        staffSeatRange,
+        desiredStartWindow,
+        useCase,
+        ipAddress,
+        reason: "bot_filtered",
+      }).catch(() => null);
       return res.status(202).json({
         success: true,
         requestId: null,
@@ -31386,6 +31641,21 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
       Number.isFinite(startedAtMs) &&
       Date.now() - startedAtMs < ROLE_ROOM_EDUCATION_INQUIRY_MIN_FILL_MS
     ) {
+      await recordRoleRoomEducationInquirySpamAttempt({
+        organizationNumber,
+        companyName: companyNameHint,
+        contactName,
+        contactEmail,
+        contactRole,
+        institutionType,
+        programName,
+        studentSeatRange,
+        staffSeatRange,
+        desiredStartWindow,
+        useCase,
+        ipAddress,
+        reason: "submitted_too_fast",
+      }).catch(() => null);
       return res.status(429).json({
         error:
           "Forespørselen ble sendt litt for raskt. Gå gjennom feltene og prøv igjen om noen sekunder.",
@@ -31394,6 +31664,22 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
 
     const ipAttempt = registerRoleRoomEducationInquiryIpAttempt(ipAddress);
     if (!ipAttempt.allowed) {
+      await recordRoleRoomEducationInquirySpamAttempt({
+        organizationNumber,
+        companyName: companyNameHint,
+        contactName,
+        contactEmail,
+        contactRole,
+        institutionType,
+        programName,
+        studentSeatRange,
+        staffSeatRange,
+        desiredStartWindow,
+        useCase,
+        ipAddress,
+        reason: "rate_limited",
+        detail: `retry_after=${ipAttempt.retryAfterSeconds}`,
+      }).catch(() => null);
       res.setHeader("Retry-After", String(ipAttempt.retryAfterSeconds));
       return res.status(429).json({
         error:
@@ -31417,6 +31703,28 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
       return res.status(400).json({
         error: "Kontaktpersonen må ha en gyldig e-postadresse.",
+      });
+    }
+
+    if (isRoleRoomEducationDisposableEmail(contactEmail)) {
+      await recordRoleRoomEducationInquirySpamAttempt({
+        organizationNumber,
+        companyName: companyNameHint,
+        contactName,
+        contactEmail,
+        contactRole,
+        institutionType,
+        programName,
+        studentSeatRange,
+        staffSeatRange,
+        desiredStartWindow,
+        useCase,
+        ipAddress,
+        reason: "disposable_email_blocked",
+      }).catch(() => null);
+      return res.status(400).json({
+        error:
+          "Bruk en jobb- eller institusjonse-post for institusjonsforespørsler.",
       });
     }
 
@@ -31481,6 +31789,27 @@ app.post("/api/role-room/education-inquiries", async (req, res) => {
           hostname: turnstileVerification.hostname,
           action: turnstileVerification.action,
         });
+        await recordRoleRoomEducationInquirySpamAttempt({
+          organizationNumber,
+          companyName: companyNameHint,
+          contactName,
+          contactEmail,
+          contactRole,
+          institutionType,
+          programName,
+          studentSeatRange,
+          staffSeatRange,
+          desiredStartWindow,
+          useCase,
+          ipAddress,
+          reason: "turnstile_failed",
+          detail: [
+            turnstileVerification.reason,
+            ...(turnstileVerification.errorCodes || []),
+          ]
+            .filter(Boolean)
+            .join(", "),
+        }).catch(() => null);
 
         return res.status(403).json({
           error:
