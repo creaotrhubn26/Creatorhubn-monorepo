@@ -93,11 +93,33 @@ interface User {
   permissions?: string[];
   paymentCompleted?: boolean;
   planName?: string | null;
+  planPrice?: number | null;
+  paymentAmount?: number | null;
+  paymentTimestamp?: string | null;
+  onboardingStatus?: string | null;
+  source?: string | null;
   selectedPlan?: string | null;
   approvedAt?: string | null;
   approvedBy?: string | null;
   approvedByUserId?: string | null;
   lastLoginAt?: string | null;
+  roleRoomAccess?: {
+    persona?: string | null;
+    personaLabel?: string | null;
+    subscriptionType?: string | null;
+    subscriptionLabel?: string | null;
+    companyName?: string | null;
+    organizationNumber?: string | null;
+    teamLeadName?: string | null;
+    teamLeadEmail?: string | null;
+    teamSize?: number | null;
+    seatPriceExVat?: number | null;
+    monthlyTotalExVat?: number | null;
+    taxMode?: string | null;
+    isTeamLeader?: boolean;
+    memberRoleId?: string | null;
+    memberRoleLabel?: string | null;
+  } | null;
 }
 
 interface Role {
@@ -202,6 +224,54 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
     });
   };
 
+  const formatOrganizationNumber = (value?: string | null) => {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (digits.length !== 9) {
+      return value || 'Ikke oppgitt';
+    }
+    return digits.replace(/(\d{3})(?=\d)/g, '$1 ').trim();
+  };
+
+  const formatCurrencyNok = (value?: number | null) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return null;
+    }
+    return `${value.toLocaleString('nb-NO')} kr`;
+  };
+
+  const getSourceChip = (source?: string | null) => {
+    const normalized = String(source || '').trim().toLowerCase();
+    if (normalized === 'role_room') {
+      return {
+        label: 'The Role Room',
+        sx: {
+          bgcolor: '#fff4de',
+          color: '#9a5b00',
+        },
+      };
+    }
+    if (normalized === 'creatorhub') {
+      return {
+        label: 'CreatorHub',
+        sx: {
+          bgcolor: '#eef4ff',
+          color: '#2d63d7',
+        },
+      };
+    }
+    return null;
+  };
+
+  const getEffectiveSource = (currentUser: User) => {
+    if (currentUser.source) {
+      return currentUser.source;
+    }
+    if (currentUser.roleRoomAccess) {
+      return 'role_room';
+    }
+    return null;
+  };
+
   const getAccessPills = (currentUser: User) => {
     const pills: Array<{ key: string; label: string; sx: Record<string, unknown> }> = [];
     const roleLabel =
@@ -242,6 +312,29 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
     }
 
     return pills;
+  };
+
+  const getRoleRoomActivationChip = (currentUser: User) => {
+    const normalized = String(currentUser.onboardingStatus || '').trim().toLowerCase();
+    if (normalized === 'role_room_activation_required') {
+      return {
+        label: 'Venter kontogodkjenning',
+        sx: {
+          bgcolor: '#fff1e8',
+          color: '#a14b14',
+        },
+      };
+    }
+    if (normalized === 'role_room_access_activated' || normalized === 'active') {
+      return {
+        label: 'Konto godkjent',
+        sx: {
+          bgcolor: '#ecf7ff',
+          color: '#1f6fb2',
+        },
+      };
+    }
+    return null;
   };
 
   // Fetch users
@@ -626,6 +719,9 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       const businessName = String(currentUser.businessName || currentUser.companyName || '').toLowerCase();
       const profession = String(currentUser.profession || '').toLowerCase();
       const role = String(currentUser.role || '').toLowerCase();
+      const organizationNumber = String(currentUser.organizationNumber || '').toLowerCase();
+      const planName = String(currentUser.planName || currentUser.selectedPlan || '').toLowerCase();
+      const source = String(getEffectiveSource(currentUser) || '').toLowerCase();
 
       const matchesSearch = !normalizedSearch || [
         currentUser.email.toLowerCase(),
@@ -633,6 +729,9 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         businessName,
         profession,
         role,
+        organizationNumber,
+        planName,
+        source,
       ].some((value) => value.includes(normalizedSearch));
 
       const matchesRole = !normalizedRole || role === normalizedRole;
@@ -1293,7 +1392,9 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                       <Checkbox size="small" />
                     </TableCell>
                     <TableCell>User name</TableCell>
+                    <TableCell>Bedrift</TableCell>
                     <TableCell>Access</TableCell>
+                    <TableCell>Abonnement</TableCell>
                     <TableCell align="left">Last active</TableCell>
                     <TableCell align="left">Date added</TableCell>
                     <TableCell align="center" sx={{ width: 72 }}>
@@ -1305,7 +1406,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                   {usersLoading ? (
                     Array.from({ length: 6 }).map((_, index) => (
                       <TableRow key={index}>
-                        {Array.from({ length: 6 }).map((_, cellIndex) => (
+                        {Array.from({ length: 8 }).map((_, cellIndex) => (
                           <TableCell key={cellIndex}>
                             <Skeleton variant="text" />
                           </TableCell>
@@ -1375,6 +1476,30 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                           </Box>
                         </TableCell>
                         <TableCell>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.45 }}>
+                            <Typography variant="body2" sx={{ color: '#181512', fontWeight: 600 }}>
+                              {user.businessName || user.companyName || user.roleRoomAccess?.companyName || 'Ikke oppgitt'}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#7c7469' }}>
+                              Org.nr. {formatOrganizationNumber(user.organizationNumber || user.roleRoomAccess?.organizationNumber)}
+                            </Typography>
+                            {getSourceChip(getEffectiveSource(user)) ? (
+                              <Chip
+                                label={getSourceChip(getEffectiveSource(user))?.label}
+                                size="small"
+                                sx={{
+                                  width: 'fit-content',
+                                  height: 22,
+                                  borderRadius: '999px',
+                                  fontWeight: 700,
+                                  fontSize: '0.68rem',
+                                  ...getSourceChip(getEffectiveSource(user))?.sx,
+                                }}
+                              />
+                            ) : null}
+                          </Box>
+                        </TableCell>
+                        <TableCell>
                           <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
                             {getAccessPills(user).map((pill) => (
                               <Chip
@@ -1390,6 +1515,82 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                                 }}
                               />
                             ))}
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.55 }}>
+                            <Box sx={{ display: 'flex', gap: 0.6, flexWrap: 'wrap' }}>
+                              {user.planName || user.selectedPlan || user.roleRoomAccess?.subscriptionLabel ? (
+                                <Chip
+                                  label={user.planName || user.roleRoomAccess?.subscriptionLabel || user.selectedPlan}
+                                  size="small"
+                                  sx={{
+                                    height: 24,
+                                    borderRadius: '999px',
+                                    fontWeight: 700,
+                                    fontSize: '0.7rem',
+                                    bgcolor: '#f4efe7',
+                                    color: '#4f473f',
+                                  }}
+                                />
+                              ) : null}
+                              <Chip
+                                label={user.paymentCompleted ? 'Betalt' : 'Venter betaling'}
+                                size="small"
+                                sx={{
+                                  height: 24,
+                                  borderRadius: '999px',
+                                  fontWeight: 700,
+                                  fontSize: '0.7rem',
+                                  bgcolor: user.paymentCompleted ? '#e9f7ef' : '#fff4de',
+                                  color: user.paymentCompleted ? '#1b7b4a' : '#a05a00',
+                                }}
+                              />
+                              {user.roleRoomAccess?.isTeamLeader ? (
+                                <Chip
+                                  label="Teamleder"
+                                  size="small"
+                                  sx={{
+                                    height: 24,
+                                    borderRadius: '999px',
+                                    fontWeight: 700,
+                                    fontSize: '0.7rem',
+                                    bgcolor: '#eef4ff',
+                                    color: '#2d63d7',
+                                  }}
+                                />
+                              ) : null}
+                              {getRoleRoomActivationChip(user) ? (
+                                <Chip
+                                  label={getRoleRoomActivationChip(user)?.label}
+                                  size="small"
+                                  sx={{
+                                    height: 24,
+                                    borderRadius: '999px',
+                                    fontWeight: 700,
+                                    fontSize: '0.7rem',
+                                    ...getRoleRoomActivationChip(user)?.sx,
+                                  }}
+                                />
+                              ) : null}
+                            </Box>
+                            <Typography variant="caption" sx={{ color: '#5c544c' }}>
+                              {user.roleRoomAccess?.memberRoleLabel || user.roleLabel || 'Rolle ikke satt'}
+                            </Typography>
+                            {user.roleRoomAccess?.teamSize ? (
+                              <Typography variant="caption" sx={{ color: '#7c7469' }}>
+                                {`${user.roleRoomAccess.teamSize} personer · ${formatCurrencyNok(user.roleRoomAccess.monthlyTotalExVat) || 'Pris ikke satt'} / mnd eks. mva.`}
+                              </Typography>
+                            ) : user.planPrice ? (
+                              <Typography variant="caption" sx={{ color: '#7c7469' }}>
+                                {`${formatCurrencyNok(user.planPrice)} / mnd eks. mva.`}
+                              </Typography>
+                            ) : null}
+                            {user.paymentTimestamp ? (
+                              <Typography variant="caption" sx={{ color: '#7c7469' }}>
+                                {`Betalt ${formatUserDate(user.paymentTimestamp)}`}
+                              </Typography>
+                            ) : null}
                           </Box>
                         </TableCell>
                         <TableCell>
@@ -1425,7 +1626,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
 
                   {!usersLoading && filteredUsers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={8}>
                         <Alert severity="info" sx={{ my: 2 }}>
                           Ingen brukere matcher søket eller filteret.
                         </Alert>

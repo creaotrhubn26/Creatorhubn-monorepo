@@ -144,7 +144,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
     }
 
     const params = new URLSearchParams(window.location.search);
-    if (params.get('rrCheckout')) {
+    if (params.get('rrCheckout') || params.get('rrActivation')) {
       setLoginDialogOpen(true);
     }
   }, []);

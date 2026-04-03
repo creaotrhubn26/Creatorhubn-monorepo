@@ -132,6 +132,9 @@ interface RoleRoomCommercialSessionStatusResponse {
   status?: string | null;
   paymentStatus?: string | null;
   paymentCompleted?: boolean;
+  activationRequired?: boolean;
+  activationApproved?: boolean;
+  activationEmailsSent?: boolean;
   transactionId?: string | null;
   paymentAmount?: number | null;
   paymentTimestamp?: string | null;
@@ -1567,6 +1570,15 @@ export default function LoginDialog({
     url.searchParams.delete('session_id');
     window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
   }, []);
+  const clearCommercialActivationParams = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('rrActivation');
+    url.searchParams.delete('rrActivationMessage');
+    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+  }, []);
 
   useEffect(() => {
     setBackdropVideoReady(false);
@@ -2620,6 +2632,30 @@ export default function LoginDialog({
       return;
     }
 
+    const activationStatus = new URL(window.location.href).searchParams.get('rrActivation');
+    const activationMessage = new URL(window.location.href).searchParams.get('rrActivationMessage');
+    if (!activationStatus) {
+      return;
+    }
+
+    if (activationStatus === 'success') {
+      setCommercialPaymentNotice({
+        severity: 'success',
+        message: activationMessage || 'Kontoen er godkjent. Du kan logge inn.',
+      });
+      setError('');
+    } else {
+      setError(activationMessage || 'Kontoen kunne ikke godkjennes. Åpne lenken fra e-posten på nytt.');
+    }
+
+    clearCommercialActivationParams();
+  }, [clearCommercialActivationParams, open]);
+
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') {
+      return;
+    }
+
     const url = new URL(window.location.href);
     const checkoutStatus = url.searchParams.get('rrCheckout');
     const sessionId = url.searchParams.get('session_id');
@@ -2677,6 +2713,12 @@ export default function LoginDialog({
           setProductionTeamStep('auth');
         }
 
+        setCommercialPaymentNotice({
+          severity: result.activationRequired ? 'warning' : 'success',
+          message: result.activationRequired
+            ? 'Betalingen er registrert. Vi har sendt en e-post for kontogodkjenning. Godkjenn kontoen før første innlogging.'
+            : 'Betalingen er registrert. Innloggingen er nå åpen.',
+        });
         markCommercialPaymentComplete(commercialSetupSignature);
       } catch (sessionError) {
         setError(
@@ -2821,7 +2863,7 @@ export default function LoginDialog({
         setError(data.detail ?? data.error ?? 'Ugyldig e-post eller passord');
       }
     } catch {
-      await completeLocalLogin();
+      setError('Innloggingen kunne ikke fullføres. Prøv igjen når kontoen er godkjent.');
     } finally {
       setLoading(false);
     }
@@ -5330,7 +5372,7 @@ export default function LoginDialog({
               </Typography>
               <Typography sx={{ fontSize: { xs: '0.96rem', sm: '1.02rem' }, fontWeight: 700, color: 'rgba(250,247,255,0.96)' }}>
                 {isCommercialPaymentSatisfied
-                  ? 'Betalingen er registrert. Innloggingen er nå åpen.'
+                  ? 'Betalingen er registrert. Fullfør kontogodkjenningen fra e-posten hvis dette er første gang du logger inn.'
                   : `Aktiver ${isProductionTeamFlow ? 'produksjonsteamet' : 'innholdsprodusent-planen'} før innlogging.`}
               </Typography>
               <Typography sx={{ fontSize: '0.78rem', lineHeight: 1.6, color: 'rgba(210,204,228,0.72)' }}>

@@ -18807,6 +18807,7 @@ async function updateInviteRequestPaymentState(input: {
   transactionId: string;
   completedAt: string;
   journeyStatus?: string | null;
+  status?: string | null;
 }) {
   if (!(await hasTable("invite_requests"))) {
     return null;
@@ -18859,6 +18860,9 @@ async function updateInviteRequestPaymentState(input: {
     isPersistableCompatUserId(input.userId)
   ) {
     pushValue("registered_user_id", input.userId);
+  }
+  if (inviteColumns.has("status") && input.status) {
+    pushValue("status", input.status);
   }
   if (inviteColumns.has("updated_at")) {
     updates.push("updated_at = NOW()");
@@ -20724,6 +20728,21 @@ app.post("/api/auth/login", async (req, res) => {
     const effectivePassword = canUseGeneralGuestPassword
       ? prototypeGuestPassword
       : password;
+    const commercialRoleRoomLogin = isRoleRoomCommercialLoginIntent({
+      loginAs,
+      requestedRole,
+    });
+
+    if (commercialRoleRoomLogin) {
+      const accessGate = await getRoleRoomCommercialLoginGate({
+        email: normalizedEmail,
+        loginAs,
+        requestedRole,
+      });
+      if (!accessGate.allowed) {
+        return res.status(403).json({ error: accessGate.reason });
+      }
+    }
 
     // Local environments are not guaranteed to have every optional users column.
     const userColumns = await getTableColumns("users");
@@ -26383,6 +26402,12 @@ const ROLE_ROOM_STRIPE_SUBSCRIPTION_RECORD_PREFIX =
 
 let roleRoomStripeClient: Stripe | null | undefined;
 const ROLE_ROOM_STRIPE_PRODUCT_TAX_CODE = "txcd_10103001";
+const ROLE_ROOM_ACTIVATION_REQUIRED_JOURNEY_STATUS =
+  "role_room_activation_required";
+const ROLE_ROOM_ACTIVATED_JOURNEY_STATUS = "role_room_access_activated";
+const ROLE_ROOM_ACTIVATION_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 14;
+
+type RoleRoomCommercialActivationStatus = "pending_approval" | "approved";
 
 function roleRoomCommercialCheckoutSessionKey(sessionId: string) {
   return `${ROLE_ROOM_STRIPE_CHECKOUT_RECORD_PREFIX}${sessionId}`;
@@ -26472,6 +26497,105 @@ function buildRoleRoomCheckoutReturnUrl(input: {
   return url
     .toString()
     .replace("%7BCHECKOUT_SESSION_ID%7D", "{CHECKOUT_SESSION_ID}");
+}
+
+function isRoleRoomClientReviewerRole(value: unknown) {
+  const normalized = toAdminString(value);
+  return normalized === "client" || normalized === "client_reviewer";
+}
+
+function isRoleRoomCommercialLoginIntent(input: {
+  loginAs?: unknown;
+  requestedRole?: unknown;
+}) {
+  const loginAs = toAdminString(input.loginAs);
+  if (loginAs === "production_team") {
+    return true;
+  }
+
+  if (loginAs === "content_producer") {
+    return !isRoleRoomClientReviewerRole(input.requestedRole);
+  }
+
+  return false;
+}
+
+function hashRoleRoomActivationToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function generateRoleRoomActivationToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+function buildRoleRoomActivationUrl(input: {
+  token: string;
+  browserOrigin?: string | null;
+  returnPath?: string | null;
+}) {
+  const browserOrigin =
+    normalizeRoleRoomBrowserOrigin(input.browserOrigin) ||
+    getDefaultRoleRoomPublicOrigin();
+  const rawPath =
+    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
+      ? input.returnPath.trim()
+      : "/";
+  const url = new URL("/api/role-room/billing/activate", browserOrigin);
+  url.searchParams.set("token", input.token);
+  url.searchParams.set("browserOrigin", browserOrigin);
+  url.searchParams.set("returnPath", rawPath);
+  return url.toString();
+}
+
+function buildRoleRoomActivationReturnUrl(input: {
+  browserOrigin?: string | null;
+  returnPath?: string | null;
+  status: "success" | "error";
+  message?: string | null;
+}) {
+  const browserOrigin =
+    normalizeRoleRoomBrowserOrigin(input.browserOrigin) ||
+    getDefaultRoleRoomPublicOrigin();
+  const rawPath =
+    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
+      ? input.returnPath.trim()
+      : "/";
+  const url = new URL(rawPath, browserOrigin);
+  url.searchParams.set("rrActivation", input.status);
+  if (input.message) {
+    url.searchParams.set("rrActivationMessage", input.message);
+  } else {
+    url.searchParams.delete("rrActivationMessage");
+  }
+  return url.toString();
+}
+
+function getRoleRoomCommercialActivationStatus(
+  inviteRequest: Record<string, unknown> | null | undefined,
+) {
+  const snapshot = parseRoleRoomCommercialAccessSnapshot(inviteRequest?.message);
+  const approved =
+    snapshot?.activationStatus === "approved" ||
+    Boolean(snapshot?.activationApprovedAt) ||
+    toAdminString(inviteRequest?.user_journey_status) ===
+      ROLE_ROOM_ACTIVATED_JOURNEY_STATUS;
+  const pendingApproval =
+    Boolean(inviteRequest?.payment_completed) &&
+    !approved &&
+    (
+      snapshot?.activationStatus === "pending_approval" ||
+      toAdminString(inviteRequest?.user_journey_status) ===
+        ROLE_ROOM_ACTIVATION_REQUIRED_JOURNEY_STATUS
+    );
+
+  return {
+    approved,
+    pendingApproval,
+    emailSent: Boolean(snapshot?.activationEmailSentAt),
+    tokenHash: snapshot?.activationTokenHash || null,
+    tokenExpiresAt: snapshot?.activationTokenExpiresAt || null,
+    snapshot,
+  };
 }
 
 function doesRoleRoomCommercialPaymentMatchCurrentSetup(input: {
@@ -26754,12 +26878,18 @@ async function markRoleRoomCommercialCheckoutRecordPaid(
     await getRoleRoomCommercialInviteRequestsForBillingRecord(record);
 
   const requestIds: string[] = [];
+  const refreshedInviteRequests: Record<string, unknown>[] = [];
   for (const inviteRequest of inviteRequests) {
     const requestId = toAdminString(inviteRequest.id);
     const email = toAdminString(inviteRequest.email);
     if (!requestId && !email) {
       continue;
     }
+
+    const activationState = getRoleRoomCommercialActivationStatus(inviteRequest);
+    const journeyStatus = activationState.approved
+      ? ROLE_ROOM_ACTIVATED_JOURNEY_STATUS
+      : ROLE_ROOM_ACTIVATION_REQUIRED_JOURNEY_STATUS;
 
     const updated = await updateInviteRequestPaymentState({
       requestId,
@@ -26770,13 +26900,38 @@ async function markRoleRoomCommercialCheckoutRecordPaid(
       amountMajor: input.amountMajor,
       transactionId: input.transactionId,
       completedAt: input.completedAt,
-      journeyStatus: "role_room_payment_completed",
+      journeyStatus,
+      status: "approved",
     });
 
-    const updatedId = toAdminString(updated?.id) || requestId;
+    const provisioned = updated
+      ? await ensureInviteRequestAccessProvisioning(updated, {
+          journeyStatus,
+          isActive: true,
+        }).catch((error) => {
+          console.error(
+            "Role Room commercial access provisioning failed after payment:",
+            error,
+          );
+          return null;
+        })
+      : null;
+
+    const refreshedInvite =
+      provisioned && updated?.id
+        ? ((await pool
+            .query("SELECT * FROM invite_requests WHERE id = $1 LIMIT 1", [
+              updated.id,
+            ])
+            .then((result) => result.rows[0] || updated)
+            .catch(() => updated)) as Record<string, unknown>)
+        : ((updated || inviteRequest) as Record<string, unknown>);
+
+    const updatedId = toAdminString(refreshedInvite?.id) || requestId;
     if (updatedId) {
       requestIds.push(updatedId);
     }
+    refreshedInviteRequests.push(refreshedInvite);
   }
 
   const nextRecord: RoleRoomCommercialCheckoutSessionRecord = {
@@ -26791,6 +26946,10 @@ async function markRoleRoomCommercialCheckoutRecordPaid(
     updatedAt: new Date().toISOString(),
   };
   await writeRoleRoomCommercialCheckoutSessionRecord(nextRecord);
+  await ensureRoleRoomCommercialActivationEmails(
+    nextRecord,
+    refreshedInviteRequests.length > 0 ? refreshedInviteRequests : inviteRequests,
+  );
   return nextRecord;
 }
 
@@ -26996,30 +27155,14 @@ async function ensureRoleRoomCommercialAccess(input: {
   const teamLead =
     dedupedMembers.find((member) => member.isLeader) || dedupedMembers[0];
   const monthlyTotalExVat = dedupedMembers.length * plan.seatPriceExVat;
-  const metadata = {
-    kind: "role_room_commercial_access" as const,
-    version: 1,
-    persona,
-    personaLabel: plan.personaLabel,
-    subscriptionType: plan.planId,
-    subscriptionLabel: plan.planName,
-    companyName,
-    organizationNumber,
-    teamLeadName: teamLead.name,
-    teamLeadEmail: teamLead.email,
-    teamSize: dedupedMembers.length,
-    seatPriceExVat: plan.seatPriceExVat,
-    monthlyTotalExVat,
-    taxMode: "ex_vat",
-    members: dedupedMembers,
-  };
-  const serializedMetadata = JSON.stringify(metadata);
-
   const requests: Record<string, unknown>[] = [];
   let currentSetupPaid = true;
 
   for (const member of dedupedMembers) {
     const existingInvite = await findAdminInviteRequest(member.email, member.email);
+    const existingSnapshot = parseRoleRoomCommercialAccessSnapshot(
+      existingInvite?.message,
+    );
     const currentPaymentCompleted = doesRoleRoomCommercialPaymentMatchCurrentSetup(
       {
         inviteRequest: existingInvite,
@@ -27034,6 +27177,18 @@ async function ensureRoleRoomCommercialAccess(input: {
     if (existingInvite?.id && Boolean(existingInvite.payment_completed) && !currentPaymentCompleted) {
       await resetRoleRoomCommercialInvitePaymentState(String(existingInvite.id));
     }
+
+    const serializedMetadata = buildRoleRoomCommercialInviteMessage({
+      persona,
+      plan,
+      companyName,
+      organizationNumber,
+      teamLead,
+      members: dedupedMembers,
+      member,
+      monthlyTotalExVat,
+      existingSnapshot,
+    });
 
     const inviteRequest = await upsertAdminInviteRequest({
       email: member.email,
@@ -27417,6 +27572,464 @@ async function sendRoleRoomEducationInquiryAdminEmail(options: {
   };
 }
 
+async function updateRoleRoomCommercialInviteRecord(input: {
+  inviteRequest: Record<string, unknown>;
+  message?: string | null;
+  journeyStatus?: string | null;
+  status?: string | null;
+  processed?: boolean;
+}) {
+  const inviteRequestId = toAdminString(input.inviteRequest.id);
+  if (!inviteRequestId || !(await hasTable("invite_requests"))) {
+    return input.inviteRequest;
+  }
+
+  const inviteColumns = await getTableColumns("invite_requests");
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  const pushValue = (column: string, value: unknown) => {
+    values.push(value);
+    updates.push(`${column} = $${values.length}`);
+  };
+
+  if (inviteColumns.has("message") && input.message !== undefined) {
+    pushValue("message", input.message);
+  }
+  if (
+    inviteColumns.has("user_journey_status") &&
+    input.journeyStatus !== undefined
+  ) {
+    pushValue("user_journey_status", input.journeyStatus);
+  }
+  if (inviteColumns.has("status") && input.status !== undefined) {
+    pushValue("status", input.status);
+  }
+  if (inviteColumns.has("processed_at") && input.processed) {
+    updates.push("processed_at = COALESCE(processed_at, NOW())");
+  }
+  if (inviteColumns.has("updated_at")) {
+    updates.push("updated_at = NOW()");
+  }
+
+  if (updates.length === 0) {
+    return input.inviteRequest;
+  }
+
+  values.push(inviteRequestId);
+  const result = await pool.query(
+    `UPDATE invite_requests
+     SET ${updates.join(", ")}
+     WHERE id = $${values.length}
+     RETURNING *`,
+    values,
+  );
+
+  return (result.rows[0] as Record<string, unknown> | undefined) || input.inviteRequest;
+}
+
+async function sendRoleRoomCommercialActivationEmail(options: {
+  companyName: string;
+  planName: string;
+  recipientEmail: string;
+  recipientName: string;
+  activationUrl: string;
+  memberRoleLabel?: string | null;
+  isLeader?: boolean;
+  monthlyTotalExVat: number;
+}) {
+  const transporter = getRoleRoomEducationInquiryMailer();
+  if (!transporter) {
+    return {
+      sent: false,
+      reason: "missing_email_config",
+      accepted: [] as string[],
+      provider: null as string | null,
+      messageId: null as string | null,
+    };
+  }
+
+  const adminEmail =
+    normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
+    "daniel@creatorhubn.com";
+  const fromEmail =
+    normalizeMailConfigValue(process.env.GMAIL_USER) ||
+    normalizeMailConfigValue(process.env.GOOGLE_WORKSPACE_EMAIL) ||
+    adminEmail;
+  const subject = `The Role Room er klar — godkjenn kontoen din`;
+  const text = [
+    `Hei ${options.recipientName},`,
+    "",
+    `Betalingen for ${options.companyName} er registrert i The Role Room.`,
+    `Plan: ${options.planName}`,
+    `Beløp: ${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr per måned eks. mva.`,
+    "",
+    "Før første innlogging må du godkjenne kontoen din via denne lenken:",
+    options.activationUrl,
+    "",
+    "Når godkjenningen er fullført, kan du logge inn med samme e-postadresse.",
+    "",
+    "Hvis du ikke forventet denne e-posten, kan du se bort fra den.",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
+      <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
+        <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen er bekreftet</h1>
+        </div>
+        <div style="padding:24px">
+          <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#4d473f">Hei ${options.recipientName},</p>
+          <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#4d473f">
+            Betalingen for <strong>${options.companyName}</strong> er registrert. Kontoen din i The Role Room er klargjort.
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px">
+            <tr><td style="padding:8px 0;color:#7b7368">Plan</td><td style="padding:8px 0;font-weight:700">${options.planName}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Rolle</td><td style="padding:8px 0">${options.memberRoleLabel || "Teammedlem"}${options.isLeader ? " · Teamleder" : ""}</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">Pris</td><td style="padding:8px 0">${options.monthlyTotalExVat.toFixed(2).replace(".", ",")} kr / mnd eks. mva.</td></tr>
+            <tr><td style="padding:8px 0;color:#7b7368">E-post</td><td style="padding:8px 0">${options.recipientEmail}</td></tr>
+          </table>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#4d473f">
+            Før første innlogging må du godkjenne kontoen din.
+          </p>
+          <a href="${options.activationUrl}" style="display:inline-block;padding:14px 20px;border-radius:999px;background:#f6c358;color:#171410;text-decoration:none;font-weight:700">Godkjenn kontoen din</a>
+          <p style="margin:18px 0 0;font-size:12px;line-height:1.7;color:#7b7368">
+            Hvis knappen ikke virker, kan du kopiere denne lenken:
+            <br />
+            <span style="word-break:break-all">${options.activationUrl}</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const gmailSender = await resolveRoleRoomEducationInquiryGmailSender().catch(
+    (error) => {
+      console.error(
+        "Role Room commercial activation Gmail API sender lookup failed:",
+        error,
+      );
+      return null;
+    },
+  );
+
+  if (gmailSender) {
+    const gmail = google.gmail({
+      version: "v1",
+      auth: gmailSender.authorized.oauthClient,
+    });
+    const rawMessage = [
+      `To: ${options.recipientEmail}`,
+      `From: CreatorHub Norge <${gmailSender.senderEmail}>`,
+      `Reply-To: ${adminEmail}`,
+      `Subject: ${subject}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "MIME-Version: 1.0",
+      "",
+      html,
+    ].join("\r\n");
+
+    const response = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: Buffer.from(rawMessage, "utf8").toString("base64url"),
+      },
+    });
+
+    return {
+      sent: true,
+      reason: null,
+      accepted: [options.recipientEmail],
+      provider: "gmail_api",
+      messageId: normalizeMailConfigValue(response.data.id),
+    };
+  }
+
+  const info = await transporter.sendMail({
+    from: `CreatorHub Norge <${fromEmail}>`,
+    to: options.recipientEmail,
+    replyTo: adminEmail,
+    subject,
+    text,
+    html,
+  });
+
+  return {
+    sent: true,
+    reason: null,
+    accepted: Array.isArray(info.accepted)
+      ? info.accepted.map((value) => String(value))
+      : [],
+    provider: "smtp",
+    messageId: normalizeMailConfigValue(info.messageId),
+  };
+}
+
+async function ensureRoleRoomCommercialActivationEmails(
+  record: RoleRoomCommercialCheckoutSessionRecord,
+  inviteRequests: Record<string, unknown>[],
+) {
+  for (const inviteRequest of inviteRequests) {
+    const snapshot = parseRoleRoomCommercialAccessSnapshot(inviteRequest.message);
+    const activationState = getRoleRoomCommercialActivationStatus(inviteRequest);
+    const inviteEmail =
+      toAdminString(inviteRequest.email)?.trim().toLowerCase() ||
+      snapshot?.memberEmail ||
+      "";
+
+    if (!inviteEmail || activationState.approved) {
+      continue;
+    }
+
+    if (activationState.pendingApproval && activationState.emailSent) {
+      continue;
+    }
+
+    const member =
+      snapshot?.members.find((entry) => entry.email === inviteEmail) || {
+        name:
+          `${toAdminString(inviteRequest.first_name) || ""} ${toAdminString(inviteRequest.last_name) || ""}`.trim() ||
+          inviteEmail.split("@")[0] ||
+          "Role Room-medlem",
+        email: inviteEmail,
+        roleId:
+          snapshot?.memberRoleId ||
+          toAdminString(inviteRequest.profession) ||
+          "team_member",
+        roleLabel:
+          snapshot?.memberRoleLabel ||
+          toAdminString(inviteRequest.profession) ||
+          "Teammedlem",
+        isLeader:
+          snapshot?.memberIsLeader === true ||
+          snapshot?.teamLeadEmail === inviteEmail,
+      };
+
+    const plan = getRoleRoomCommercialPlan(record.persona);
+    const token = generateRoleRoomActivationToken();
+    const tokenHash = hashRoleRoomActivationToken(token);
+    const tokenExpiresAt = new Date(
+      Date.now() + ROLE_ROOM_ACTIVATION_TOKEN_TTL_MS,
+    ).toISOString();
+    const preparedMessage = buildRoleRoomCommercialInviteMessage({
+      persona: record.persona,
+      plan,
+      companyName: record.companyName,
+      organizationNumber: record.organizationNumber,
+      teamLead:
+        snapshot?.members.find((entry) => entry.isLeader) || member,
+      members:
+        snapshot?.members.length && snapshot.members.length > 0
+          ? snapshot.members
+          : [member],
+      member,
+      monthlyTotalExVat: record.monthlyTotalExVat,
+      existingSnapshot: snapshot,
+      activation: {
+        status: "pending_approval",
+        tokenHash,
+        tokenExpiresAt,
+        approvedAt: null,
+        emailSentAt: null,
+        emailProvider: null,
+        emailMessageId: null,
+      },
+    });
+
+    const preparedInvite = await updateRoleRoomCommercialInviteRecord({
+      inviteRequest,
+      message: preparedMessage,
+      journeyStatus: ROLE_ROOM_ACTIVATION_REQUIRED_JOURNEY_STATUS,
+      status: "approved",
+      processed: true,
+    });
+    const activationUrl = buildRoleRoomActivationUrl({
+      token,
+      browserOrigin: getDefaultRoleRoomPublicOrigin(),
+      returnPath: "/",
+    });
+
+    let emailResult:
+      | Awaited<ReturnType<typeof sendRoleRoomCommercialActivationEmail>>
+      | null = null;
+    try {
+      emailResult = await sendRoleRoomCommercialActivationEmail({
+        companyName: record.companyName,
+        planName: record.planName,
+        recipientEmail: inviteEmail,
+        recipientName: member.name,
+        activationUrl,
+        memberRoleLabel: member.roleLabel,
+        isLeader: member.isLeader,
+        monthlyTotalExVat: record.monthlyTotalExVat,
+      });
+    } catch (error) {
+      console.error("Role Room commercial activation email failed:", error);
+    }
+
+    const finalMessage = buildRoleRoomCommercialInviteMessage({
+      persona: record.persona,
+      plan,
+      companyName: record.companyName,
+      organizationNumber: record.organizationNumber,
+      teamLead:
+        snapshot?.members.find((entry) => entry.isLeader) || member,
+      members:
+        snapshot?.members.length && snapshot.members.length > 0
+          ? snapshot.members
+          : [member],
+      member,
+      monthlyTotalExVat: record.monthlyTotalExVat,
+      existingSnapshot: parseRoleRoomCommercialAccessSnapshot(
+        preparedInvite.message,
+      ),
+      activation: {
+        status: "pending_approval",
+        tokenHash,
+        tokenExpiresAt,
+        approvedAt: null,
+        emailSentAt: emailResult?.sent ? new Date().toISOString() : null,
+        emailProvider: emailResult?.provider || null,
+        emailMessageId: emailResult?.messageId || null,
+      },
+    });
+
+    await updateRoleRoomCommercialInviteRecord({
+      inviteRequest: preparedInvite,
+      message: finalMessage,
+      journeyStatus: ROLE_ROOM_ACTIVATION_REQUIRED_JOURNEY_STATUS,
+      status: "approved",
+      processed: true,
+    });
+  }
+}
+
+async function findRoleRoomCommercialInviteByActivationToken(token: string) {
+  if (!(await hasTable("invite_requests"))) {
+    return null;
+  }
+
+  const tokenHash = hashRoleRoomActivationToken(token);
+  const inviteColumns = await getTableColumns("invite_requests");
+  const selectColumns =
+    inviteColumns.size > 0 ? Array.from(inviteColumns).join(", ") : "*";
+  const clauses: string[] = [];
+  if (inviteColumns.has("payment_completed")) {
+    clauses.push("payment_completed = true");
+  }
+  if (inviteColumns.has("source")) {
+    clauses.push("LOWER(COALESCE(source, '')) = 'role_room'");
+  }
+  const query = `SELECT ${selectColumns} FROM invite_requests${
+    clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : ""
+  } ORDER BY updated_at DESC NULLS LAST, created_at DESC`;
+  const result = await pool.query(query);
+
+  return (
+    (result.rows as Record<string, unknown>[]).find((row) => {
+      const snapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+      return snapshot?.activationTokenHash === tokenHash;
+    }) || null
+  );
+}
+
+async function findLatestRoleRoomCommercialInviteRequestByEmail(email: string) {
+  if (!(await hasTable("invite_requests"))) {
+    return null;
+  }
+
+  const inviteColumns = await getTableColumns("invite_requests");
+  const selectColumns =
+    inviteColumns.size > 0 ? Array.from(inviteColumns).join(", ") : "*";
+  const clauses = ["LOWER(email) = LOWER($1)"];
+  if (inviteColumns.has("source")) {
+    clauses.push("LOWER(COALESCE(source, '')) = 'role_room'");
+  }
+
+  const result = await pool.query(
+    `SELECT ${selectColumns}
+     FROM invite_requests
+     WHERE ${clauses.join(" AND ")}
+     ORDER BY created_at DESC`,
+    [email],
+  );
+
+  return (
+    (result.rows as Record<string, unknown>[]).find((row) => {
+      const snapshot = parseRoleRoomCommercialAccessSnapshot(row.message);
+      return Boolean(
+        snapshot &&
+          normalizeRoleRoomCommercialPersona(snapshot.persona) != null,
+      );
+    }) || null
+  );
+}
+
+async function getRoleRoomCommercialLoginGate(input: {
+  email: string;
+  loginAs?: unknown;
+  requestedRole?: unknown;
+}) {
+  if (
+    !isRoleRoomCommercialLoginIntent({
+      loginAs: input.loginAs,
+      requestedRole: input.requestedRole,
+    })
+  ) {
+    return {
+      required: false,
+      allowed: true,
+      reason: null as string | null,
+      inviteRequest: null as Record<string, unknown> | null,
+    };
+  }
+
+  const inviteRequest = await findLatestRoleRoomCommercialInviteRequestByEmail(
+    input.email,
+  );
+  const snapshot = parseRoleRoomCommercialAccessSnapshot(inviteRequest?.message);
+  const isCommercialInvite =
+    Boolean(snapshot) &&
+    normalizeRoleRoomCommercialPersona(snapshot?.persona) != null;
+
+  if (!inviteRequest || !isCommercialInvite) {
+    return {
+      required: true,
+      allowed: false,
+      reason:
+        "Kontoen din er ikke aktivert for The Role Room. Fullfør bestilling og kontogodkjenning først.",
+      inviteRequest: inviteRequest || null,
+    };
+  }
+
+  if (!Boolean(inviteRequest.payment_completed)) {
+    return {
+      required: true,
+      allowed: false,
+      reason:
+        "Betalingen er ikke bekreftet ennå. Fullfør Stripe-betalingen før du logger inn.",
+      inviteRequest,
+    };
+  }
+
+  const activationState = getRoleRoomCommercialActivationStatus(inviteRequest);
+  if (!activationState.approved) {
+    return {
+      required: true,
+      allowed: false,
+      reason:
+        "Sjekk e-posten din og godkjenn kontoen før første innlogging i The Role Room.",
+      inviteRequest,
+    };
+  }
+
+  return {
+    required: true,
+    allowed: true,
+    reason: null as string | null,
+    inviteRequest,
+  };
+}
+
 app.post("/api/role-room/commercial-access", async (req, res) => {
   try {
     const access = await ensureRoleRoomCommercialAccess({
@@ -27640,6 +28253,29 @@ app.get("/api/role-room/billing/session-status", async (req, res) => {
     );
     const storedRecord =
       syncedRecord || (await readRoleRoomCommercialCheckoutSessionRecord(sessionId));
+    const inviteRequests = storedRecord
+      ? await getRoleRoomCommercialInviteRequestsForBillingRecord(storedRecord)
+      : [];
+    const activationRequired =
+      Boolean(storedRecord?.paymentCompleted) &&
+      inviteRequests.length > 0 &&
+      inviteRequests.some(
+        (inviteRequest) =>
+          !getRoleRoomCommercialActivationStatus(inviteRequest).approved,
+      );
+    const activationApproved =
+      inviteRequests.length > 0 &&
+      inviteRequests.every(
+        (inviteRequest) =>
+          getRoleRoomCommercialActivationStatus(inviteRequest).approved,
+      );
+    const activationEmailsSent =
+      inviteRequests.length > 0 &&
+      inviteRequests.every((inviteRequest) => {
+        const activationState =
+          getRoleRoomCommercialActivationStatus(inviteRequest);
+        return activationState.approved || activationState.emailSent;
+      });
 
     return res.json({
       success: true,
@@ -27657,12 +28293,186 @@ app.get("/api/role-room/billing/session-status", async (req, res) => {
         storedRecord?.stripeSubscriptionId ||
         getStripeCheckoutSessionSubscriptionId(session) ||
         null,
+      activationRequired,
+      activationApproved,
+      activationEmailsSent,
     });
   } catch (error) {
     console.error("Error reading Role Room Stripe checkout session:", error);
     return res.status(500).json({
       error: "Kunne ikke lese Stripe Checkout-status for The Role Room.",
     });
+  }
+});
+
+app.get("/api/role-room/billing/activate", async (req, res) => {
+  const browserOrigin = normalizeRoleRoomBrowserOrigin(req.query?.browserOrigin);
+  const returnPath =
+    typeof req.query?.returnPath === "string" ? req.query.returnPath : "/";
+  const token = normalizeMailConfigValue(req.query?.token);
+
+  const redirect = (status: "success" | "error", message?: string | null) => {
+    res.redirect(
+      buildRoleRoomActivationReturnUrl({
+        browserOrigin,
+        returnPath,
+        status,
+        message,
+      }),
+    );
+  };
+
+  try {
+    if (!token) {
+      redirect("error", "Aktiveringslenken mangler token.");
+      return;
+    }
+
+    const inviteRequest = await findRoleRoomCommercialInviteByActivationToken(
+      token,
+    );
+    if (!inviteRequest) {
+      redirect(
+        "error",
+        "Aktiveringslenken er ugyldig eller allerede brukt.",
+      );
+      return;
+    }
+
+    const snapshot = parseRoleRoomCommercialAccessSnapshot(inviteRequest.message);
+    const tokenState = getRoleRoomCommercialActivationStatus(inviteRequest);
+    if (tokenState.approved) {
+      redirect("success", "Kontoen er allerede godkjent. Du kan logge inn.");
+      return;
+    }
+
+    if (!tokenState.tokenHash) {
+      redirect("error", "Aktiveringslenken er ikke lenger gyldig.");
+      return;
+    }
+
+    if (tokenState.tokenHash !== hashRoleRoomActivationToken(token)) {
+      redirect("error", "Aktiveringslenken er ugyldig.");
+      return;
+    }
+
+    if (
+      tokenState.tokenExpiresAt &&
+      new Date(tokenState.tokenExpiresAt).getTime() < Date.now()
+    ) {
+      redirect("error", "Aktiveringslenken har utløpt.");
+      return;
+    }
+
+    const persona = normalizeRoleRoomCommercialPersona(snapshot?.persona);
+    if (!persona || !snapshot) {
+      redirect("error", "Fant ikke Role Room-tilgangen for denne lenken.");
+      return;
+    }
+
+    const plan = getRoleRoomCommercialPlan(persona);
+    const member =
+      snapshot.members.find(
+        (entry) =>
+          entry.email ===
+          (snapshot.memberEmail ||
+            toAdminString(inviteRequest.email)?.trim().toLowerCase()),
+      ) ||
+      snapshot.members[0];
+    const provisioned = await ensureInviteRequestAccessProvisioning(
+      inviteRequest,
+      {
+        journeyStatus: ROLE_ROOM_ACTIVATED_JOURNEY_STATUS,
+        isActive: true,
+      },
+    );
+    const refreshedInvite =
+      provisioned && inviteRequest.id
+        ? ((await pool
+            .query("SELECT * FROM invite_requests WHERE id = $1 LIMIT 1", [
+              inviteRequest.id,
+            ])
+            .then((result) => result.rows[0] || inviteRequest)
+            .catch(() => inviteRequest)) as Record<string, unknown>)
+        : inviteRequest;
+    const updatedMessage = buildRoleRoomCommercialInviteMessage({
+      persona,
+      plan,
+      companyName:
+        snapshot.companyName ||
+        toAdminString(refreshedInvite.company_name) ||
+        "The Role Room",
+      organizationNumber:
+        snapshot.organizationNumber ||
+        toAdminString(refreshedInvite.organization_number) ||
+        "",
+      teamLead:
+        snapshot.members.find((entry) => entry.isLeader) ||
+        member || {
+          name:
+            snapshot.teamLeadName ||
+            member?.name ||
+            "Role Room-leder",
+          email:
+            snapshot.teamLeadEmail ||
+            member?.email ||
+            toAdminString(refreshedInvite.email) ||
+            "",
+          roleId: member?.roleId || "team_lead",
+          roleLabel: member?.roleLabel || "Teamleder",
+          isLeader: true,
+        },
+      members:
+        snapshot.members.length > 0
+          ? snapshot.members
+          : member
+            ? [member]
+            : [],
+      member:
+        member || {
+          name:
+            `${toAdminString(refreshedInvite.first_name) || ""} ${toAdminString(refreshedInvite.last_name) || ""}`.trim() ||
+            toAdminString(refreshedInvite.email) ||
+            "Role Room-medlem",
+          email:
+            toAdminString(refreshedInvite.email)?.trim().toLowerCase() || "",
+          roleId:
+            snapshot.memberRoleId ||
+            toAdminString(refreshedInvite.profession) ||
+            "team_member",
+          roleLabel:
+            snapshot.memberRoleLabel ||
+            toAdminString(refreshedInvite.profession) ||
+            "Teammedlem",
+          isLeader: snapshot.memberIsLeader === true,
+        },
+      monthlyTotalExVat:
+        snapshot.monthlyTotalExVat ||
+        Number(refreshedInvite.payment_amount || refreshedInvite.plan_price || 0),
+      existingSnapshot: snapshot,
+      activation: {
+        status: "approved",
+        tokenHash: null,
+        tokenExpiresAt: null,
+        approvedAt: new Date().toISOString(),
+      },
+    });
+
+    await updateRoleRoomCommercialInviteRecord({
+      inviteRequest: refreshedInvite,
+      message: updatedMessage,
+      journeyStatus: ROLE_ROOM_ACTIVATED_JOURNEY_STATUS,
+      status: "approved",
+      processed: true,
+    });
+
+    redirect("success", "Kontoen er godkjent. Du kan logge inn.");
+  } catch (error) {
+    console.error("Error activating Role Room commercial account:", error);
+    redirect(
+      "error",
+      "Kunne ikke godkjenne kontoen. Prøv igjen fra e-posten.",
+    );
   }
 });
 
@@ -28578,7 +29388,13 @@ const normalizeInvitePlanId = (value: unknown): string | null => {
   return raw.toLowerCase().replace(/\s+/g, "-");
 };
 
-async function ensureInviteRequestAccessProvisioning(inviteRequest: any) {
+async function ensureInviteRequestAccessProvisioning(
+  inviteRequest: any,
+  options?: {
+    journeyStatus?: string | null;
+    isActive?: boolean;
+  },
+) {
   const usersTableExists = await hasTable("users");
   if (!usersTableExists) {
     return {
@@ -28597,7 +29413,7 @@ async function ensureInviteRequestAccessProvisioning(inviteRequest: any) {
     profession: toAdminString(inviteRequest.profession),
     businessName: toAdminString(inviteRequest.company_name),
     organizationNumber: toAdminString(inviteRequest.organization_number),
-    isActive: true,
+    isActive: options?.isActive ?? true,
   });
 
   const userId = accountUser?.id ? String(accountUser.id) : null;
@@ -28629,11 +29445,9 @@ async function ensureInviteRequestAccessProvisioning(inviteRequest: any) {
     subscriptionLinked = true;
   }
 
-  const journeyStatus = userId
-    ? subscriptionLinked
-      ? "active"
-      : "account_created"
-    : "approved";
+  const journeyStatus =
+    options?.journeyStatus ??
+    (userId ? (subscriptionLinked ? "active" : "account_created") : "approved");
 
   if (inviteRequest.id) {
     await pool.query(
@@ -40486,7 +41300,84 @@ type RoleRoomCommercialAccessSnapshot = {
   monthlyTotalExVat: number | null;
   taxMode: string | null;
   members: RoleRoomCommercialAccessMemberSnapshot[];
+  memberName: string | null;
+  memberEmail: string | null;
+  memberRoleId: string | null;
+  memberRoleLabel: string | null;
+  memberIsLeader: boolean;
+  activationStatus: RoleRoomCommercialActivationStatus | null;
+  activationTokenHash: string | null;
+  activationTokenExpiresAt: string | null;
+  activationApprovedAt: string | null;
+  activationEmailSentAt: string | null;
+  activationEmailProvider: string | null;
+  activationEmailMessageId: string | null;
 };
+
+function buildRoleRoomCommercialInviteMessage(input: {
+  persona: RoleRoomCommercialPersona;
+  plan: ReturnType<typeof getRoleRoomCommercialPlan>;
+  companyName: string;
+  organizationNumber: string;
+  teamLead: RoleRoomCommercialAccessPayloadMember;
+  members: RoleRoomCommercialAccessPayloadMember[];
+  member: RoleRoomCommercialAccessPayloadMember;
+  monthlyTotalExVat: number;
+  existingSnapshot?: RoleRoomCommercialAccessSnapshot | null;
+  activation?: Partial<{
+    status: RoleRoomCommercialActivationStatus | null;
+    tokenHash: string | null;
+    tokenExpiresAt: string | null;
+    approvedAt: string | null;
+    emailSentAt: string | null;
+    emailProvider: string | null;
+    emailMessageId: string | null;
+  }>;
+}) {
+  const existing = input.existingSnapshot;
+
+  return JSON.stringify({
+    kind: "role_room_commercial_access",
+    version: 1,
+    persona: input.persona,
+    personaLabel: input.plan.personaLabel,
+    subscriptionType: input.plan.planId,
+    subscriptionLabel: input.plan.planName,
+    companyName: input.companyName,
+    organizationNumber: input.organizationNumber,
+    teamLeadName: input.teamLead.name,
+    teamLeadEmail: input.teamLead.email,
+    teamSize: input.members.length,
+    seatPriceExVat: input.plan.seatPriceExVat,
+    monthlyTotalExVat: input.monthlyTotalExVat,
+    taxMode: "ex_vat",
+    members: input.members,
+    memberName: input.member.name,
+    memberEmail: input.member.email,
+    memberRoleId: input.member.roleId,
+    memberRoleLabel: input.member.roleLabel,
+    memberIsLeader: input.member.isLeader,
+    activationStatus: input.activation?.status ?? existing?.activationStatus ?? null,
+    activationTokenHash:
+      input.activation?.tokenHash ?? existing?.activationTokenHash ?? null,
+    activationTokenExpiresAt:
+      input.activation?.tokenExpiresAt ??
+      existing?.activationTokenExpiresAt ??
+      null,
+    activationApprovedAt:
+      input.activation?.approvedAt ?? existing?.activationApprovedAt ?? null,
+    activationEmailSentAt:
+      input.activation?.emailSentAt ?? existing?.activationEmailSentAt ?? null,
+    activationEmailProvider:
+      input.activation?.emailProvider ??
+      existing?.activationEmailProvider ??
+      null,
+    activationEmailMessageId:
+      input.activation?.emailMessageId ??
+      existing?.activationEmailMessageId ??
+      null,
+  });
+}
 
 function parseRoleRoomCommercialAccessSnapshot(
   value: unknown,
@@ -40558,6 +41449,22 @@ function parseRoleRoomCommercialAccessSnapshot(
     monthlyTotalExVat: readNumber(record.monthlyTotalExVat),
     taxMode: toAdminString(record.taxMode),
     members,
+    memberName: toAdminString(record.memberName),
+    memberEmail: toAdminString(record.memberEmail)?.trim().toLowerCase() || null,
+    memberRoleId: toAdminString(record.memberRoleId),
+    memberRoleLabel: toAdminString(record.memberRoleLabel),
+    memberIsLeader: record.memberIsLeader === true,
+    activationStatus:
+      record.activationStatus === "pending_approval" ||
+      record.activationStatus === "approved"
+        ? record.activationStatus
+        : null,
+    activationTokenHash: toAdminString(record.activationTokenHash),
+    activationTokenExpiresAt: toAdminString(record.activationTokenExpiresAt),
+    activationApprovedAt: toAdminString(record.activationApprovedAt),
+    activationEmailSentAt: toAdminString(record.activationEmailSentAt),
+    activationEmailProvider: toAdminString(record.activationEmailProvider),
+    activationEmailMessageId: toAdminString(record.activationEmailMessageId),
   };
 }
 

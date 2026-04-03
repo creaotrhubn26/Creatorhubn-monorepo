@@ -71,6 +71,7 @@ interface InviteRequest {
   paymentTransactionId?: string;
   paymentAmount?: number;
   paymentTimestamp?: string;
+  userJourneyStatus?: string | null;
   source?: string;
   proffAnalysisStatus?: 'completed' | 'failed' | null;
   proffRecommendation?: 'approve' | 'review' | 'reject' | null;
@@ -80,6 +81,27 @@ interface InviteRequest {
   proffLastScreenedAt?: string | null;
   proffScreeningSource?: string | null;
   proffBrregVerified?: boolean;
+}
+
+interface RoleRoomEducationInquiryMessage {
+  kind: 'role_room_education_inquiry';
+  version: 1;
+  companyName: string;
+  organizationNumber: string;
+  contactName: string;
+  contactEmail: string;
+  contactRole: string;
+  institutionType: string;
+  institutionTypeLabel: string;
+  programName: string;
+  studentSeatRange: string;
+  studentSeatLabel: string;
+  staffSeatRange: string;
+  staffSeatLabel: string;
+  desiredStartWindow: string;
+  desiredStartWindowLabel: string;
+  useCase: string;
+  taxMode: 'ex_vat';
 }
 
 interface PrototypeTesterRequest {
@@ -97,6 +119,42 @@ interface PrototypeTesterRequest {
   requestDate: string;
   processedDate?: string;
   processedBy?: string;
+}
+
+function parseRoleRoomEducationInquiryMessage(raw?: string | null): RoleRoomEducationInquiryMessage | null {
+  if (!raw || typeof raw !== 'string') {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<RoleRoomEducationInquiryMessage>;
+    if (parsed.kind !== 'role_room_education_inquiry') {
+      return null;
+    }
+
+    return {
+      kind: 'role_room_education_inquiry',
+      version: 1,
+      companyName: String(parsed.companyName || ''),
+      organizationNumber: String(parsed.organizationNumber || ''),
+      contactName: String(parsed.contactName || ''),
+      contactEmail: String(parsed.contactEmail || ''),
+      contactRole: String(parsed.contactRole || ''),
+      institutionType: String(parsed.institutionType || ''),
+      institutionTypeLabel: String(parsed.institutionTypeLabel || ''),
+      programName: String(parsed.programName || ''),
+      studentSeatRange: String(parsed.studentSeatRange || ''),
+      studentSeatLabel: String(parsed.studentSeatLabel || ''),
+      staffSeatRange: String(parsed.staffSeatRange || ''),
+      staffSeatLabel: String(parsed.staffSeatLabel || ''),
+      desiredStartWindow: String(parsed.desiredStartWindow || ''),
+      desiredStartWindowLabel: String(parsed.desiredStartWindowLabel || ''),
+      useCase: String(parsed.useCase || ''),
+      taxMode: 'ex_vat',
+    };
+  } catch {
+    return null;
+  }
 }
 
 export default function AdminInviteSystem() {
@@ -299,7 +357,50 @@ export default function AdminInviteSystem() {
     if (normalized === 'evendi') {
       return { label: 'Evendi', color: 'secondary' as const };
     }
+    if (normalized === 'role_room' || normalized === 'role_room_education') {
+      return { label: 'The Role Room', color: 'warning' as const };
+    }
     return { label: 'Ukjent', color: 'default' as const };
+  };
+
+  const getRequestSource = (request: InviteRequest) => {
+    if (request.source) {
+      return request.source;
+    }
+
+    const educationMessage = parseRoleRoomEducationInquiryMessage(request.message);
+    if (educationMessage) {
+      return 'role_room_education';
+    }
+
+    return 'unknown';
+  };
+
+  const getInviteDisplayPlan = (request: InviteRequest) => {
+    const educationMessage = parseRoleRoomEducationInquiryMessage(request.message);
+    if (educationMessage) {
+      return {
+        label: 'Institusjonssamtale',
+        caption: `${educationMessage.institutionTypeLabel || 'Institusjon'} · ${educationMessage.programName || 'Program ikke satt'}`,
+      };
+    }
+
+    if (request.selectedPlan || request.planName) {
+      const normalizedJourneyStatus = String(request.userJourneyStatus || '').trim().toLowerCase();
+      const paymentCaption = request.paymentCompleted ? '✓ Betalt' : 'Venter betaling';
+      const activationCaption =
+        normalizedJourneyStatus === 'role_room_activation_required'
+          ? 'Venter kontogodkjenning'
+          : normalizedJourneyStatus === 'role_room_access_activated' || normalizedJourneyStatus === 'active'
+            ? 'Konto godkjent'
+            : paymentCaption;
+      return {
+        label: request.planName || request.selectedPlan || 'Plan',
+        caption: activationCaption,
+      };
+    }
+
+    return null;
   };
 
   const getProffRecommendationChip = (request: InviteRequest) => {
@@ -425,7 +526,7 @@ export default function AdminInviteSystem() {
                           </TableCell>
                           <TableCell>
                             {(() => {
-                              const sourceChip = getSourceChip(request.source);
+                              const sourceChip = getSourceChip(getRequestSource(request));
                               return <Chip label={sourceChip.label} size="small" color={sourceChip.color} />;
                             })()}
                           </TableCell>
@@ -458,24 +559,21 @@ export default function AdminInviteSystem() {
                             </Box>
                           </TableCell>
                           <TableCell>
-                            {request.selectedPlan ? (
+                            {getInviteDisplayPlan(request) ? (
                               <Box>
                                 <Chip
-                                  label={request.planName || request.selectedPlan}
+                                  label={getInviteDisplayPlan(request)?.label}
                                   size="small"
                                   color={request.paymentCompleted ? "success" : "warning"}
                                   icon={<PaymentIcon />}
                                 />
-                                {request.paymentCompleted && (
-                                  <Typography variant="caption" display="block" color="success.main">
-                                    ✓ Betalt
-                                  </Typography>
-                                )}
-                                {!request.paymentCompleted && (
-                                  <Typography variant="caption" display="block" color="warning.main">
-                                    Venter betaling
-                                  </Typography>
-                                )}
+                                <Typography
+                                  variant="caption"
+                                  display="block"
+                                  color={request.paymentCompleted ? "success.main" : "warning.main"}
+                                >
+                                  {getInviteDisplayPlan(request)?.caption}
+                                </Typography>
                               </Box>
                             ) : (
                               <Typography variant="caption" color="textSecondary">
@@ -551,7 +649,7 @@ export default function AdminInviteSystem() {
                           <TableCell>{request.business || `${request.firstName} ${request.lastName}`}</TableCell>
                           <TableCell>
                             {(() => {
-                              const sourceChip = getSourceChip(request.source);
+                              const sourceChip = getSourceChip(getRequestSource(request));
                               return <Chip label={sourceChip.label} size="small" color={sourceChip.color} />;
                             })()}
                           </TableCell>
@@ -834,7 +932,7 @@ export default function AdminInviteSystem() {
                 <Grid item xs={6}>
                   <Typography variant="subtitle2">Kilde</Typography>
                   {(() => {
-                    const sourceChip = getSourceChip(selectedRequest.source);
+                    const sourceChip = getSourceChip(getRequestSource(selectedRequest));
                     return (
                       <Chip
                         label={sourceChip.label}
@@ -847,6 +945,53 @@ export default function AdminInviteSystem() {
                 </Grid>
                 <Grid item xs={6}><Typography variant="subtitle2">E-post</Typography><Typography variant="body2">{selectedRequest.email}</Typography></Grid>
                 <Grid item xs={6}><Typography variant="subtitle2">Telefon</Typography><Typography variant="body2">{selectedRequest.phone || 'Ikke oppgitt'}</Typography></Grid>
+
+                {(() => {
+                  const educationInquiry = parseRoleRoomEducationInquiryMessage(selectedRequest.message);
+                  if (!educationInquiry) {
+                    return null;
+                  }
+
+                  return (
+                    <>
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2" sx={{ mt: 2, mb: 1, fontWeight: 'bold' }}>
+                          Institusjonskvalifisering
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2">Institusjonstype</Typography>
+                        <Typography variant="body2">{educationInquiry.institutionTypeLabel || 'Ikke oppgitt'}</Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2">Stilling / rolle</Typography>
+                        <Typography variant="body2">{educationInquiry.contactRole || 'Ikke oppgitt'}</Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2">Studieprogram / fagområde</Typography>
+                        <Typography variant="body2">{educationInquiry.programName || 'Ikke oppgitt'}</Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2">Ønsket oppstart</Typography>
+                        <Typography variant="body2">{educationInquiry.desiredStartWindowLabel || 'Ikke oppgitt'}</Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2">Studentomfang</Typography>
+                        <Typography variant="body2">{educationInquiry.studentSeatLabel || 'Ikke oppgitt'}</Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2">Faglærere / koordinatorer</Typography>
+                        <Typography variant="body2">{educationInquiry.staffSeatLabel || 'Ikke oppgitt'}</Typography>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2">Bruksområde</Typography>
+                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                          {educationInquiry.useCase || 'Ikke oppgitt'}
+                        </Typography>
+                      </Grid>
+                    </>
+                  );
+                })()}
 
                 <Grid item xs={12}>
                   <Typography variant="subtitle2" sx={{ mt: 2, mb: 1, fontWeight: 'bold' }}>

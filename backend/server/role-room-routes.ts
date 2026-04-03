@@ -3056,17 +3056,171 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return normalizedFallbackRole;
   }
 
+  function isRoleRoomClientReviewerRole(
+    role: string | null | undefined,
+  ): boolean {
+    const normalizedRole = readStringValue(role)?.toLowerCase() ?? '';
+    return normalizedRole === 'client' || normalizedRole === 'client_reviewer';
+  }
+
+  function isRoleRoomCommercialGoogleLoginIntent(
+    state: Pick<RoleRoomGoogleOauthState, 'loginAs' | 'requestedRole' | 'projectId'>,
+  ): boolean {
+    const normalizedLoginAs = readStringValue(state.loginAs)?.toLowerCase() ?? '';
+    if (normalizedLoginAs === 'production_team') {
+      return true;
+    }
+
+    if (normalizedLoginAs === 'content_producer') {
+      if (state.projectId) {
+        return false;
+      }
+      return !isRoleRoomClientReviewerRole(state.requestedRole);
+    }
+
+    return false;
+  }
+
+  function parseRoleRoomCommercialInviteActivation(
+    value: unknown,
+  ): {
+    kind: 'role_room_commercial_access';
+    activationStatus: 'pending_approval' | 'approved' | null;
+    activationApprovedAt: string | null;
+  } | null {
+    if (!value || typeof value !== 'string') {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed.startsWith('{')) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      if (readStringValue(parsed.kind) !== 'role_room_commercial_access') {
+        return null;
+      }
+
+      const activationStatus = readStringValue(parsed.activationStatus);
+      return {
+        kind: 'role_room_commercial_access',
+        activationStatus:
+          activationStatus === 'pending_approval' || activationStatus === 'approved'
+            ? activationStatus
+            : null,
+        activationApprovedAt: readStringValue(parsed.activationApprovedAt),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function getRoleRoomCommercialGoogleLoginGate(
+    email: string,
+    state: Pick<RoleRoomGoogleOauthState, 'loginAs' | 'requestedRole' | 'projectId'>,
+  ): Promise<{
+    required: boolean;
+    allowed: boolean;
+    reason: string | null;
+  }> {
+    if (!isRoleRoomCommercialGoogleLoginIntent(state)) {
+      return {
+        required: false,
+        allowed: true,
+        reason: null,
+      };
+    }
+
+    const inviteResult = await pool.query(
+      `SELECT *
+       FROM invite_requests
+       WHERE LOWER(email) = LOWER($1)
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [email],
+    ).catch(() => ({ rows: [], rowCount: 0 }));
+    const inviteRequest = inviteResult.rows[0] as Record<string, unknown> | undefined;
+    const activation = parseRoleRoomCommercialInviteActivation(
+      inviteRequest?.message,
+    );
+
+    if (!inviteRequest || !activation) {
+      return {
+        required: true,
+        allowed: false,
+        reason:
+          'Kontoen din er ikke aktivert for The Role Room. Fullfør bestilling og kontogodkjenning først.',
+      };
+    }
+
+    if (inviteRequest.payment_completed !== true) {
+      return {
+        required: true,
+        allowed: false,
+        reason:
+          'Betalingen er ikke bekreftet ennå. Fullfør Stripe-betalingen før du logger inn.',
+      };
+    }
+
+    if (
+      activation.activationStatus !== 'approved' &&
+      !activation.activationApprovedAt
+    ) {
+      return {
+        required: true,
+        allowed: false,
+        reason:
+          'Sjekk e-posten din og godkjenn kontoen før første innlogging i The Role Room.',
+      };
+    }
+
+    return {
+      required: true,
+      allowed: true,
+      reason: null,
+    };
+  }
+
   async function resolveRoleRoomGoogleLoginUser(
     googleEmail: string,
     googleProfile: Record<string, unknown>,
     state: RoleRoomGoogleOauthState,
   ): Promise<(RoleRoomGoogleResolvedUser & { autoAssignProjectRole?: string | null }) | null> {
     const normalizedEmail = googleEmail.trim().toLowerCase();
+    const commercialGate = await getRoleRoomCommercialGoogleLoginGate(
+      normalizedEmail,
+      state,
+    );
+    if (!commercialGate.allowed) {
+      throw new Error(
+        commercialGate.reason ||
+          'Kontoen må godkjennes før du kan logge inn i The Role Room.',
+      );
+    }
+
     const localUser = await findRoleRoomUserByEmail(normalizedEmail);
     if (localUser) {
       return {
         ...localUser,
         role: resolveRoleRoomSessionRole(state.loginAs, state.requestedRole, localUser.role),
+      };
+    }
+
+    if (commercialGate.required) {
+      const ensuredUser = await ensureRoleRoomUserByEmail(normalizedEmail, {
+        ...googleProfile,
+        name: readStringValue(googleProfile.name),
+      });
+
+      return {
+        ...ensuredUser,
+        role: resolveRoleRoomSessionRole(
+          state.loginAs,
+          state.requestedRole,
+          ensuredUser.role,
+        ),
       };
     }
 
@@ -5011,6 +5165,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const targetConnectionUserId = readStringValue(req.body?.targetConnectionUserId);
       const targetConnectionEmail = readStringValue(req.body?.targetConnectionEmail);
       const returnPath = sanitizeRoleRoomReturnPath(req.body?.returnPath, req);
+      const loginEmail = readStringValue(req.body?.email)?.trim().toLowerCase() ?? null;
+
+      if (mode === 'login' && loginEmail) {
+        const loginGate = await getRoleRoomCommercialGoogleLoginGate(loginEmail, {
+          loginAs,
+          requestedRole,
+          projectId,
+        });
+        if (!loginGate.allowed) {
+          res.status(403).json({ error: loginGate.reason });
+          return;
+        }
+      }
 
       roleRoomGoogleOauthStateStore.set(stateId, {
         mode,
