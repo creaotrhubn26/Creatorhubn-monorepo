@@ -156,6 +156,32 @@ interface RoleRoomEducationInquiryResponse {
   error?: string;
 }
 
+type RoleRoomTurnstileWidgetId = string | number;
+
+type RoleRoomTurnstileApi = {
+  ready: (callback: () => void) => void;
+  render: (
+    container: HTMLElement,
+    options: {
+      sitekey: string;
+      action?: string;
+      theme?: 'light' | 'dark' | 'auto';
+      callback?: (token: string) => void;
+      'expired-callback'?: () => void;
+      'timeout-callback'?: () => void;
+      'error-callback'?: () => void;
+    },
+  ) => RoleRoomTurnstileWidgetId;
+  reset: (widgetId?: RoleRoomTurnstileWidgetId) => void;
+  remove?: (widgetId?: RoleRoomTurnstileWidgetId) => void;
+};
+
+declare global {
+  interface Window {
+    turnstile?: RoleRoomTurnstileApi;
+  }
+}
+
 /* ─────────────────────────── per-card config ───────────────────────────
  * Add a new card by adding one entry here — label, icon, video and focal
  * point all in one place.  Then reference its id in professionCategories.
@@ -197,6 +223,135 @@ const ROLE_CARDS: Record<string, {
 
 /* ── derived lookup map used internally by the card renderer ───────── */
 const roleIcons = Object.fromEntries(Object.entries(ROLE_CARDS).filter(([, v]) => v.icon).map(([k, v]) => [k, v.icon!]));
+
+const ROLE_ROOM_TURNSTILE_VERIFY_ACTION = 'role_room_education_inquiry';
+const ROLE_ROOM_TURNSTILE_SCRIPT_ID = 'role-room-turnstile-script';
+const ROLE_ROOM_TURNSTILE_SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+const ROLE_ROOM_TURNSTILE_TEST_SITE_KEY = '1x00000000000000000000AA';
+
+function getRoleRoomTurnstileSiteKey() {
+  const configured = String(
+    import.meta.env.VITE_ROLE_ROOM_TURNSTILE_SITE_KEY
+      || import.meta.env.VITE_TURNSTILE_SITE_KEY
+      || '',
+  ).trim();
+  if (configured) {
+    return configured;
+  }
+  return import.meta.env.DEV ? ROLE_ROOM_TURNSTILE_TEST_SITE_KEY : '';
+}
+
+function RoleRoomTurnstileWidget({
+  siteKey,
+  action,
+  resetSignal,
+  onTokenChange,
+  onErrorChange,
+}: {
+  siteKey: string;
+  action: string;
+  resetSignal: number;
+  onTokenChange: (token: string) => void;
+  onErrorChange: (message: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const widgetIdRef = useRef<RoleRoomTurnstileWidgetId | null>(null);
+
+  useEffect(() => {
+    if (!siteKey || typeof window === 'undefined') {
+      return;
+    }
+
+    let cancelled = false;
+    const renderWidget = () => {
+      if (
+        cancelled
+        || !window.turnstile
+        || !containerRef.current
+        || widgetIdRef.current !== null
+      ) {
+        return;
+      }
+
+      onErrorChange('');
+      widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        sitekey: siteKey,
+        action,
+        theme: 'dark',
+        callback: (token) => {
+          onErrorChange('');
+          onTokenChange(token);
+        },
+        'expired-callback': () => {
+          onTokenChange('');
+          onErrorChange('Bekreftelsen utløp. Bekreft på nytt før du sender forespørselen.');
+        },
+        'timeout-callback': () => {
+          onTokenChange('');
+          onErrorChange('Bekreftelsen tok for lang tid. Prøv igjen.');
+        },
+        'error-callback': () => {
+          onTokenChange('');
+          onErrorChange('Bekreftelsen kunne ikke lastes. Oppdater siden og prøv igjen.');
+        },
+      });
+    };
+
+    const existingScript = document.getElementById(
+      ROLE_ROOM_TURNSTILE_SCRIPT_ID,
+    ) as HTMLScriptElement | null;
+
+    const handleLoad = () => {
+      if (!window.turnstile) {
+        onErrorChange('Bekreftelsen kunne ikke initialiseres. Oppdater siden og prøv igjen.');
+        return;
+      }
+      window.turnstile.ready(renderWidget);
+    };
+
+    if (window.turnstile) {
+      window.turnstile.ready(renderWidget);
+    } else if (existingScript) {
+      existingScript.addEventListener('load', handleLoad);
+      existingScript.addEventListener('error', () => {
+        onErrorChange('Bekreftelsen kunne ikke lastes. Oppdater siden og prøv igjen.');
+      });
+    } else {
+      const script = document.createElement('script');
+      script.id = ROLE_ROOM_TURNSTILE_SCRIPT_ID;
+      script.src = ROLE_ROOM_TURNSTILE_SCRIPT_SRC;
+      script.async = true;
+      script.defer = true;
+      script.addEventListener('load', handleLoad);
+      script.addEventListener('error', () => {
+        onErrorChange('Bekreftelsen kunne ikke lastes. Oppdater siden og prøv igjen.');
+      });
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      cancelled = true;
+      if (existingScript) {
+        existingScript.removeEventListener('load', handleLoad);
+      }
+      if (widgetIdRef.current !== null && window.turnstile?.remove) {
+        window.turnstile.remove(widgetIdRef.current);
+        widgetIdRef.current = null;
+      }
+    };
+  }, [action, onErrorChange, onTokenChange, siteKey]);
+
+  useEffect(() => {
+    if (widgetIdRef.current === null || !window.turnstile) {
+      return;
+    }
+    onTokenChange('');
+    onErrorChange('');
+    window.turnstile.reset(widgetIdRef.current);
+  }, [onErrorChange, onTokenChange, resetSignal]);
+
+  return <Box ref={containerRef} sx={{ minHeight: 65 }} />;
+}
 
 /* ── use-case scenarios shown on the left branding panel ──────────── */
 const USE_CASES: { roleId: string; line: string }[] = [
@@ -1530,6 +1685,9 @@ export default function LoginDialog({
   const [educationUseCase, setEducationUseCase] = useState('');
   const [educationInquiryStartedAt, setEducationInquiryStartedAt] = useState<number>(() => Date.now());
   const [educationInquiryWebsite, setEducationInquiryWebsite] = useState('');
+  const [educationInquiryTurnstileToken, setEducationInquiryTurnstileToken] = useState('');
+  const [educationInquiryTurnstileError, setEducationInquiryTurnstileError] = useState('');
+  const [educationInquiryTurnstileResetSignal, setEducationInquiryTurnstileResetSignal] = useState(0);
   const [educationInquirySubmitted, setEducationInquirySubmitted] = useState<{
     requestId: string | null;
     notificationEmailSent: boolean;
@@ -1591,6 +1749,9 @@ export default function LoginDialog({
       handledCheckoutSessionRef.current = '';
       setEducationInquiryWebsite('');
       setEducationInquiryStartedAt(Date.now());
+      setEducationInquiryTurnstileToken('');
+      setEducationInquiryTurnstileError('');
+      setEducationInquiryTurnstileResetSignal(0);
     }
   }, [open]);
 
@@ -1600,11 +1761,16 @@ export default function LoginDialog({
     }
     setEducationInquiryWebsite('');
     setEducationInquiryStartedAt(Date.now());
+    setEducationInquiryTurnstileToken('');
+    setEducationInquiryTurnstileError('');
+    setEducationInquiryTurnstileResetSignal((value) => value + 1);
   }, [effectiveLoginPersona, open]);
 
   const loginEyebrow = ROLE_ROOM_LANDING_CONFIG.login.eyebrowText;
   const loginTitle = ROLE_ROOM_LANDING_CONFIG.login.title;
   const loginSubtitle = ROLE_ROOM_LANDING_CONFIG.login.subtitle;
+  const educationTurnstileSiteKey = getRoleRoomTurnstileSiteKey();
+  const educationTurnstileEnabled = Boolean(educationTurnstileSiteKey);
   const effectiveLoginPersona = getEffectiveLoginPersona(selectedRole, loginPersona);
   const requiresCommercialSetup =
     isLandingPage && !clientPortalIntent && !talentPortalIntent;
@@ -2578,8 +2744,17 @@ export default function LoginDialog({
       return;
     }
 
+    if (educationTurnstileEnabled && !educationInquiryTurnstileToken) {
+      const message = educationInquiryTurnstileError
+        || 'Bekreft at du er et menneske før du sender forespørselen.';
+      setEducationInquiryTurnstileError(message);
+      setError(message);
+      return;
+    }
+
     setLoading(true);
     setError('');
+    setEducationInquiryTurnstileError('');
 
     try {
       const response = await fetch(ROLE_ROOM_EDUCATION_INQUIRY_ENDPOINT, {
@@ -2601,6 +2776,7 @@ export default function LoginDialog({
           useCase: educationUseCase.trim(),
           startedAt: new Date(educationInquiryStartedAt).toISOString(),
           website: educationInquiryWebsite.trim(),
+          turnstileToken: educationInquiryTurnstileToken,
         }),
       });
       const result = await response.json() as RoleRoomEducationInquiryResponse;
@@ -2623,6 +2799,10 @@ export default function LoginDialog({
           : 'Kunne ikke sende institusjonsforespørselen',
       );
     } finally {
+      if (educationTurnstileEnabled) {
+        setEducationInquiryTurnstileToken('');
+        setEducationInquiryTurnstileResetSignal((value) => value + 1);
+      }
       setLoading(false);
     }
   }, [
@@ -2630,10 +2810,13 @@ export default function LoginDialog({
     educationDesiredStartWindow,
     educationInstitutionType,
     educationInquiryStartedAt,
+    educationInquiryTurnstileError,
+    educationInquiryTurnstileToken,
     educationInquiryWebsite,
     educationProgramName,
     educationStaffSeatRange,
     educationStudentSeatRange,
+    educationTurnstileEnabled,
     educationUseCase,
     loading,
     normalizedOrganizationNumber,
@@ -4952,6 +5135,39 @@ export default function LoginDialog({
                       </Box>
                     </Box>
 
+                    {educationTurnstileEnabled ? (
+                      <Box
+                        sx={{
+                          p: 1.1,
+                          borderRadius: '18px',
+                          bgcolor: 'rgba(255,255,255,0.03)',
+                          border: '1px solid rgba(255,255,255,0.07)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 0.75,
+                        }}
+                      >
+                        <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(245,240,255,0.94)' }}>
+                          Bekreft innsendingen
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.55, color: 'rgba(210,204,228,0.72)' }}>
+                          Vi bruker Cloudflare Turnstile for å stoppe automatisert spam mot institusjonsforespørsler.
+                        </Typography>
+                        <RoleRoomTurnstileWidget
+                          siteKey={educationTurnstileSiteKey}
+                          action={ROLE_ROOM_TURNSTILE_VERIFY_ACTION}
+                          resetSignal={educationInquiryTurnstileResetSignal}
+                          onTokenChange={setEducationInquiryTurnstileToken}
+                          onErrorChange={setEducationInquiryTurnstileError}
+                        />
+                        {educationInquiryTurnstileError ? (
+                          <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.5, color: '#ffb4c1' }}>
+                            {educationInquiryTurnstileError}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                    ) : null}
+
                     <Box
                       sx={{
                         display: 'grid',
@@ -4981,7 +5197,11 @@ export default function LoginDialog({
                       <Button
                         type="button"
                         onClick={handleEducationInquirySubmit}
-                        disabled={!isCommercialSetupComplete || loading}
+                        disabled={
+                          !isCommercialSetupComplete
+                          || loading
+                          || (educationTurnstileEnabled && !educationInquiryTurnstileToken)
+                        }
                         sx={{
                           minHeight: 44,
                           textTransform: 'none',
