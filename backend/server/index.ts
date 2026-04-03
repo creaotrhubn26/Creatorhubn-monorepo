@@ -27329,12 +27329,7 @@ async function syncRoleRoomCommercialStripeInvoice(
   invoice: Stripe.Invoice,
   completedAtOverride?: string | null,
 ) {
-  const subscriptionId =
-    typeof invoice.subscription === "string"
-      ? invoice.subscription
-      : invoice.subscription && typeof invoice.subscription === "object"
-        ? String(invoice.subscription.id || "")
-        : "";
+  const subscriptionId = getStripeInvoiceSubscriptionId(invoice);
   if (!subscriptionId) {
     return null;
   }
@@ -27369,11 +27364,7 @@ async function clearRoleRoomCommercialStripeSubscription(
 ) {
   const subscriptionId =
     "subscription" in source
-      ? typeof source.subscription === "string"
-        ? source.subscription
-        : source.subscription && typeof source.subscription === "object"
-          ? String(source.subscription.id || "")
-          : ""
+      ? getStripeInvoiceSubscriptionId(source)
       : source.id;
 
   if (!subscriptionId) {
@@ -28922,6 +28913,64 @@ function deriveRoleRoomCommercialPaymentStatus(input: {
   return "pending_payment" as const;
 }
 
+function getStripeInvoiceSubscriptionId(invoice: Stripe.Invoice) {
+  if (typeof invoice.subscription === "string" && invoice.subscription.trim()) {
+    return invoice.subscription;
+  }
+
+  if (
+    invoice.subscription &&
+    typeof invoice.subscription === "object" &&
+    typeof invoice.subscription.id === "string" &&
+    invoice.subscription.id.trim()
+  ) {
+    return invoice.subscription.id;
+  }
+
+  const parentSubscription =
+    invoice.parent &&
+    typeof invoice.parent === "object" &&
+    "subscription_details" in invoice.parent &&
+    invoice.parent.subscription_details &&
+    typeof invoice.parent.subscription_details === "object" &&
+    "subscription" in invoice.parent.subscription_details
+      ? invoice.parent.subscription_details.subscription
+      : null;
+  if (typeof parentSubscription === "string" && parentSubscription.trim()) {
+    return parentSubscription;
+  }
+
+  const lines = invoice.lines?.data || [];
+  for (const line of lines) {
+    const parent = line.parent;
+    if (!parent || typeof parent !== "object") {
+      continue;
+    }
+
+    if (
+      "subscription_item_details" in parent &&
+      parent.subscription_item_details &&
+      typeof parent.subscription_item_details === "object" &&
+      typeof parent.subscription_item_details.subscription === "string" &&
+      parent.subscription_item_details.subscription.trim()
+    ) {
+      return parent.subscription_item_details.subscription;
+    }
+
+    if (
+      "license_fee_subscription_details" in parent &&
+      parent.license_fee_subscription_details &&
+      typeof parent.license_fee_subscription_details === "object" &&
+      typeof parent.license_fee_subscription_details.subscription === "string" &&
+      parent.license_fee_subscription_details.subscription.trim()
+    ) {
+      return parent.license_fee_subscription_details.subscription;
+    }
+  }
+
+  return "";
+}
+
 async function resolveRoleRoomCommercialAccountForRequest(
   req: express.Request,
 ): Promise<RoleRoomCommercialResolvedAccount | null> {
@@ -29006,11 +29055,10 @@ async function resolveRoleRoomCommercialAccountForRequest(
             : null);
       if (subscription.latest_invoice) {
         if (typeof subscription.latest_invoice === "string") {
-          latestInvoiceId = latestInvoiceId || subscription.latest_invoice;
+          latestInvoiceId = subscription.latest_invoice;
         } else if (typeof subscription.latest_invoice === "object") {
-          latestInvoiceId = latestInvoiceId || String(subscription.latest_invoice.id || "");
-          latestInvoiceStatus =
-            latestInvoiceStatus || subscription.latest_invoice.status || null;
+          latestInvoiceId = String(subscription.latest_invoice.id || "") || latestInvoiceId;
+          latestInvoiceStatus = subscription.latest_invoice.status || latestInvoiceStatus;
           const nextPaymentAttempt = subscription.latest_invoice.next_payment_attempt;
           if (typeof nextPaymentAttempt === "number" && Number.isFinite(nextPaymentAttempt)) {
             nextPaymentAttemptAt = new Date(nextPaymentAttempt * 1000).toISOString();
@@ -29914,7 +29962,7 @@ app.get("/api/role-room/billing/account", async (req, res) => {
         seatPriceExVat: account.snapshot.seatPriceExVat,
         monthlyTotalExVat: account.snapshot.monthlyTotalExVat,
         taxMode: account.snapshot.taxMode,
-        paymentCompleted: Boolean(account.currentRow.payment_completed),
+        paymentCompleted: account.paymentStatus === "active",
         paymentStatus: account.paymentStatus,
         paymentStatusLabel,
         paymentMessage,
