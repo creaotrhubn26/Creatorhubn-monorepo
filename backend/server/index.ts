@@ -414,9 +414,6 @@ app.post(
             event.data.object as Stripe.Checkout.Session,
             eventTimestamp,
           );
-          await syncCreatorHubStripeCheckoutSession(
-            event.data.object as Stripe.Checkout.Session,
-          );
           break;
         case "invoice.paid":
           await syncRoleRoomCommercialStripeInvoice(
