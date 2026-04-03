@@ -27807,6 +27807,38 @@ function getRoleRoomEducationInquiryMailer() {
   });
 }
 
+const ROLE_ROOM_EMAIL_BRAND_COLOR = "#a13bca";
+
+async function buildGmailRawMessage(options: {
+  to: string;
+  from: string;
+  replyTo?: string | null;
+  subject: string;
+  text?: string | null;
+  html: string;
+}) {
+  const compiler = nodemailer.createTransport({
+    streamTransport: true,
+    buffer: true,
+    newline: "unix",
+  });
+
+  const info = await compiler.sendMail({
+    from: options.from,
+    to: options.to,
+    replyTo: normalizeMailConfigValue(options.replyTo) || undefined,
+    subject: options.subject,
+    text: normalizeMailConfigValue(options.text) || undefined,
+    html: options.html,
+  });
+
+  const rawBuffer = Buffer.isBuffer(info.message)
+    ? info.message
+    : Buffer.from(String(info.message ?? ""), "utf8");
+
+  return rawBuffer.toString("base64url");
+}
+
 async function resolveRoleRoomEducationInquiryGmailSender() {
   const adminEmail =
     normalizeMailConfigValue(process.env.GOOGLE_ADMIN_EMAIL) ||
@@ -27909,7 +27941,7 @@ async function sendRoleRoomEducationInquiryAdminEmail(options: {
     <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
       <div style="max-width:720px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
         <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${ROLE_ROOM_EMAIL_BRAND_COLOR};font-weight:700">The Role Room</div>
           <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Ny institusjonsforespørsel</h1>
         </div>
         <div style="padding:24px">
@@ -27953,21 +27985,18 @@ async function sendRoleRoomEducationInquiryAdminEmail(options: {
       version: "v1",
       auth: gmailSender.authorized.oauthClient,
     });
-    const rawMessage = [
-      `To: ${gmailSender.adminEmail}`,
-      `From: CreatorHub Norge <${gmailSender.senderEmail}>`,
-      `Reply-To: ${options.contactEmail}`,
-      `Subject: ${subject}`,
-      'Content-Type: text/html; charset="UTF-8"',
-      "MIME-Version: 1.0",
-      "",
-      html,
-    ].join("\r\n");
 
     const response = await gmail.users.messages.send({
       userId: "me",
       requestBody: {
-        raw: Buffer.from(rawMessage, "utf8").toString("base64url"),
+        raw: await buildGmailRawMessage({
+          to: gmailSender.adminEmail,
+          from: `CreatorHub Norge <${gmailSender.senderEmail}>`,
+          replyTo: options.contactEmail,
+          subject,
+          text,
+          html,
+        }),
       },
     });
 
@@ -28172,21 +28201,18 @@ async function sendRoleRoomCommercialEmail(options: {
       version: "v1",
       auth: gmailSender.authorized.oauthClient,
     });
-    const rawMessage = [
-      `To: ${options.recipientEmail}`,
-      `From: CreatorHub Norge <${gmailSender.senderEmail}>`,
-      `Reply-To: ${replyTo}`,
-      `Subject: ${options.subject}`,
-      'Content-Type: text/html; charset="UTF-8"',
-      "MIME-Version: 1.0",
-      "",
-      options.html,
-    ].join("\r\n");
 
     const response = await gmail.users.messages.send({
       userId: "me",
       requestBody: {
-        raw: Buffer.from(rawMessage, "utf8").toString("base64url"),
+        raw: await buildGmailRawMessage({
+          to: options.recipientEmail,
+          from: `CreatorHub Norge <${gmailSender.senderEmail}>`,
+          replyTo,
+          subject: options.subject,
+          text: options.text,
+          html: options.html,
+        }),
       },
     });
 
@@ -28258,7 +28284,7 @@ async function sendRoleRoomCommercialActivationEmail(options: {
     <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
       <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
         <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${ROLE_ROOM_EMAIL_BRAND_COLOR};font-weight:700">The Role Room</div>
           <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">${
             options.isReminder
               ? "Påminnelse om kontogodkjenning"
@@ -28335,7 +28361,7 @@ async function sendRoleRoomCommercialPaymentReminderEmail(options: {
     <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
       <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
         <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${ROLE_ROOM_EMAIL_BRAND_COLOR};font-weight:700">The Role Room</div>
           <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen mangler fortsatt</h1>
         </div>
         <div style="padding:24px">
@@ -28400,7 +28426,7 @@ async function sendRoleRoomCommercialPaymentFailedEmail(options: {
     <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
       <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
         <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${ROLE_ROOM_EMAIL_BRAND_COLOR};font-weight:700">The Role Room</div>
           <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen må oppdateres</h1>
         </div>
         <div style="padding:24px">
@@ -28462,7 +28488,7 @@ async function sendRoleRoomCommercialPaymentRecoveryEmail(options: {
     <div style="font-family:Arial,sans-serif;background:#f6f3ee;padding:24px;color:#181512">
       <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:18px;border:1px solid #e9e0d4;overflow:hidden">
         <div style="padding:20px 24px;background:#171410;color:#f8f5ef">
-          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#f6c358;font-weight:700">The Role Room</div>
+          <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:${ROLE_ROOM_EMAIL_BRAND_COLOR};font-weight:700">The Role Room</div>
           <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2">Betalingen er godkjent</h1>
         </div>
         <div style="padding:24px">
