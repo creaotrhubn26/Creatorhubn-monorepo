@@ -1,7 +1,13 @@
 export const ROLE_ROOM_CANONICAL_PATH = '/theroleroom';
 export const ROLE_ROOM_LEGACY_PATH = '/casting.html';
 export const ROLE_ROOM_TALENT_PORTAL_PATH = '/talentportal';
-const ROLE_ROOM_DEDICATED_HOSTS = new Set(['theroleroom.com', 'www.theroleroom.com']);
+export const ROLE_ROOM_EDUCATION_PATH = '/utdanningsinstitusjon';
+const ROLE_ROOM_DEDICATED_HOSTS = new Set([
+  'theroleroom.com',
+  'www.theroleroom.com',
+  'localhost',
+  '127.0.0.1',
+]);
 
 export function isRoleRoomDedicatedHost(hostname: string | null | undefined): boolean {
   if (typeof hostname !== 'string') {
@@ -38,6 +44,12 @@ export function normalizeRoleRoomStandalonePath(
   ) {
     return ROLE_ROOM_TALENT_PORTAL_PATH;
   }
+  if (
+    isRoleRoomDedicatedHost(locationLike?.hostname)
+    && (lowerPath === ROLE_ROOM_EDUCATION_PATH || lowerPath === `${ROLE_ROOM_EDUCATION_PATH}/`)
+  ) {
+    return ROLE_ROOM_EDUCATION_PATH;
+  }
   if (isRoleRoomDedicatedHost(locationLike?.hostname) && lowerPath === '/') {
     return '/';
   }
@@ -59,10 +71,25 @@ export function isRoleRoomStandalonePathname(
   ) {
     return true;
   }
+  if (
+    isRoleRoomDedicatedHost(locationLike?.hostname)
+    && (normalizedPath === ROLE_ROOM_EDUCATION_PATH || normalizedPath === `${ROLE_ROOM_EDUCATION_PATH}/`)
+  ) {
+    return true;
+  }
   return normalizedPath === ROLE_ROOM_CANONICAL_PATH
     || normalizedPath === `${ROLE_ROOM_CANONICAL_PATH}/`
     || normalizedPath === ROLE_ROOM_LEGACY_PATH
     || normalizedPath.endsWith(ROLE_ROOM_LEGACY_PATH);
+}
+
+export function isRoleRoomEducationPathname(
+  pathname: string,
+  locationLike?: Pick<Location, 'hostname'> | null,
+): boolean {
+  const normalizedPath = pathname.trim().toLowerCase();
+  return isRoleRoomDedicatedHost(locationLike?.hostname)
+    && (normalizedPath === ROLE_ROOM_EDUCATION_PATH || normalizedPath === `${ROLE_ROOM_EDUCATION_PATH}/`);
 }
 
 export function getRoleRoomReturnPath(
