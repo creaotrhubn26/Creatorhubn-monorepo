@@ -1707,6 +1707,7 @@ export default function LoginDialog({
   const rolePickerScrollRef = useRef<HTMLDivElement>(null);
   const clientPortalIntent = parseClientPortalIntentFromWindow();
   const talentPortalIntent = parseTalentPortalIntentFromWindow();
+  const effectiveLoginPersona = getEffectiveLoginPersona(selectedRole, loginPersona);
   const backdropStillUrl = getRoleRoomVideoStillUrl(DESIGN.backdrop.src, '/role-room-assets/landing_backdrop.webp');
   const resetCommercialPanelScroll = useCallback(() => {
     if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
@@ -1771,7 +1772,6 @@ export default function LoginDialog({
   const loginSubtitle = ROLE_ROOM_LANDING_CONFIG.login.subtitle;
   const educationTurnstileSiteKey = getRoleRoomTurnstileSiteKey();
   const educationTurnstileEnabled = Boolean(educationTurnstileSiteKey);
-  const effectiveLoginPersona = getEffectiveLoginPersona(selectedRole, loginPersona);
   const requiresCommercialSetup =
     isLandingPage && !clientPortalIntent && !talentPortalIntent;
   const isStepwiseContentProducerFlow = Boolean(
